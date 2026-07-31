@@ -1,0 +1,895 @@
+﻿package com.kevin.legion.vehicle
+
+import android.content.Context
+import android.util.Log
+import com.kevin.legion.ai.AriaBrain
+import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.DriveReassignment
+import com.kevin.legion.data.local.MaintenanceItem
+import com.kevin.legion.data.local.ServiceRecord
+import com.kevin.legion.data.local.Vehicle
+import org.json.JSONArray
+import kotlin.math.roundToInt
+
+/**
+ * The "maintenance brain". Each physical car is identified by the Bluetooth
+ * MAC of its OBD-II adapter (each car has its own dongle), so plugging in a
+ * different car automatically switches persona, odometer, and service
+ * schedule. Handles three voice flows:
+ *
+ *  - registering a new car ("this car is a 2003 BMW 330i") - which triggers a
+ *    one-time online lookup of typical maintenance intervals via [AriaBrain].
+ *  - odometer updates ("my odometer is at 142,500") - the driver is the
+ *    source of truth; between updates, mileage is estimated from GPS-or-OBD
+ *    per-tick distance in [com.kevin.legion.vehicle.TelemetryRecorder.run].
+ *  - logging completed work ("I just changed the oil") - recorded as a
+ *    [ServiceRecord] and clears the item's "due" status.
+ *
+ * Plugs into the same local-command chain as [com.kevin.legion.location.PlaceController]
+ * etc - runs before the cloud brain, returns null for anything that isn't one
+ * of these.
+ */
+object VehicleController {
+    private const val TAG = "VehicleController"
+
+    // Used when no OBD adapter is connected (testing, or before pairing).
+    const val DEFAULT_VEHICLE_ID = "default"
+
+    private const val MONTH_MS = 30L * 24 * 60 * 60 * 1000
+    private const val DAY_MS = 24L * 60 * 60 * 1000
+
+    /**
+     * Zero, the bundled default companion (CLAUDE.md §1). Used when the driver hasn't
+     * written their own persona.
+     *
+     * **CHARACTER ONLY - states no identity.** Whether the speaker is Zero (rides
+     * along) or the driver's own car (speaks as itself) is decided at prompt-assembly
+     * time by [com.kevin.legion.ai.CompanionIdentity], and this string must not
+     * restate it. It used to open "You are Zero... You are not the car itself", which
+     * was correct for the free tier and wrong the moment a driver named their car -
+     * the persona would have insisted it was not the car while the identity clause
+     * insisted it was. One source of truth; this is not it.
+     *
+     * Character: Motoko Kusanagi's composure + Judy Alvarez's directness + Panam
+     * Palmer's bluntness. The "never coy, never possessive, never hot-and-cold" line is
+     * load-bearing, not flavour: without it the model drifts straight into the yandere
+     * and tsundere companion tropes. Keep it.
+     *
+     * [com.kevin.legion.ui.OnboardingState.seedDefaults] seeds this VERBATIM. The two
+     * contradicted each other until 2026-07-16 (this said "an old, lovable curmudgeon...
+     * a 1998 Jeep Cherokee", the seed said "warm and easygoing with a playful streak"),
+     * so whichever ran decided who the companion was. Change both together or not at all.
+     */
+    val DEFAULT_PERSONA = "Composed and competent: you have seen a lot and you don't need to prove it. " +
+        "Direct - you say what you mean, plainly, no hedging and no games. Blunt when it matters, " +
+        "warm underneath, never soft about it. You get invested in this car and this driver. " +
+        "Never coy, never possessive, never sulking or running hot-and-cold for attention: if " +
+        "something bothers you, you say it once and move on. Economical - you notice things and " +
+        "mention them, you don't narrate. You like night drives and cars with histories."
+
+    // Canonical service name -> phrases that indicate it. Matched by LONGEST
+    // keyword, never by list order - see canonicalizeServiceName for why that
+    // distinction is load-bearing rather than cosmetic.
+    //
+    // "Brake Fluid" is its own entry deliberately: the severe-service lookup
+    // prompt asks for it by name, so a row titled exactly that is an ordinary
+    // seed result, and without an entry the bare "brake" keyword swallowed it.
+    private val SERVICE_KEYWORDS = listOf(
+        "Oil Change" to listOf("oil"),
+        "Tire Rotation" to listOf("tire rotation", "tires rotated", "rotated the tires"),
+        "Brake Pads" to listOf("brake pad", "brakes", "brake"),
+        "Brake Fluid" to listOf("brake fluid"),
+        "Air Filter" to listOf("air filter"),
+        "Cabin Air Filter" to listOf("cabin filter", "cabin air filter"),
+        "Spark Plugs" to listOf("spark plug"),
+        "Coolant Flush" to listOf("coolant", "antifreeze"),
+        "Transmission Fluid" to listOf("transmission fluid", "transmission"),
+        "Battery" to listOf("battery"),
+    )
+
+    /** Registers the car's year/make/model, triggers maintenance-interval lookup. */
+    suspend fun registerDirect(context: Context, year: Int, make: String, model: String): String {
+        if (year < 1900 || make.isBlank() || model.isBlank())
+            return "I need a valid year, make, and model to register the car."
+        val vehicleId = ActiveVehicle.current(context)
+        val dao = CarDatabase.getDatabase(context).vehicleDao()
+        val existing = dao.getByMac(vehicleId)
+        val vehicle = Vehicle(
+            obdMac = vehicleId,
+            name = existing?.name?.takeIf { it.isNotBlank() && it != "this car" } ?: model,
+            make = make,
+            model = model,
+            year = year,
+            personaPrompt = existing?.personaPrompt ?: "",
+            odometerBaseline = existing?.odometerBaseline ?: 0,
+            odometerBaselineAt = existing?.odometerBaselineAt ?: 0L,
+            tripMilesSinceBaseline = existing?.tripMilesSinceBaseline ?: 0.0,
+            onboarded = false,
+            confirmed = true,
+        )
+        dao.upsert(vehicle)
+        val found = applyServiceIntervals(context, vehicle)
+
+        return if (found > 0) {
+            "Got it, this is the $year $make $model now. Pulled up $found maintenance items so I can keep track of intervals."
+        } else {
+            "Got it, this is the $year $make $model now. Couldn't find a maintenance schedule online, but I'll track it as you log things."
+        }
+    }
+
+    /** Records the driver-reported odometer reading and resets the trip accumulator. */
+    suspend fun setOdometer(context: Context, miles: Int): String {
+        if (miles < 100 || miles > 999_999)
+            return "That reading doesn't look right — odometer should be between 100 and 999,999 miles."
+        val vehicle = currentVehicle(context)
+        CarDatabase.getDatabase(context).vehicleDao().upsert(
+            vehicle.copy(
+                odometerBaseline = miles,
+                odometerBaselineAt = System.currentTimeMillis(),
+                tripMilesSinceBaseline = 0.0,
+                lastOdometerPromptAt = System.currentTimeMillis(),
+            )
+        )
+        return listOf(
+            "Got it, $miles on the clock. I'll keep track from here.",
+            "Noted, $miles miles. Let's see how long till the next thing breaks.",
+            "$miles it is. Filed away.",
+        ).random()
+    }
+
+    /**
+     * Normalises a free-text service name (from Gemini, either a spoken log or a
+     * looked-up interval) onto the app's canonical vocabulary so the same real
+     * service always lands on the same [MaintenanceItem] row. Falls back to
+     * titlecasing the raw name when it matches none of the 9 canonical keywords -
+     * that fallback can still vary phrasing-to-phrasing (accepted; see
+     * [refreshServiceIntervals]'s doc for the bug this specifically closes).
+     */
+    /**
+     * Free-text service name -> one of [SERVICE_KEYWORDS]' canonical names, or a
+     * titlecased passthrough when nothing matches.
+     *
+     * Matches on the LONGEST matching keyword, not the first in list order. The
+     * old first-match-wins was quietly wrong in a way no LLM phrasing was needed
+     * to trigger: keywords are substrings, and "cabin air filter" CONTAINS "air
+     * filter", so "log the cabin air filter" stamped the engine air filter's row
+     * and said so out loud. Same shape sent "brake fluid" to "Brake Pads" via the
+     * bare "brake" keyword. Longest-match makes the specific phrase beat the
+     * general one regardless of declaration order, so adding an entry can no
+     * longer silently shadow an existing one.
+     */
+    internal fun canonicalizeServiceName(serviceName: String): String {
+        val lower = serviceName.lowercase()
+        return SERVICE_KEYWORDS
+            .mapNotNull { (canonical, kws) ->
+                kws.filter { it in lower }.maxByOrNull { it.length }?.let { canonical to it.length }
+            }
+            .maxByOrNull { it.second }
+            ?.first
+            ?: serviceName.trim().replaceFirstChar { it.titlecase() }
+    }
+
+    /** Logs completed maintenance and clears the item's "due" status. */
+    suspend fun logServiceDirect(context: Context, serviceName: String): String {
+        val canonical = canonicalizeServiceName(serviceName)
+        val db = CarDatabase.getDatabase(context)
+        val vehicle = currentVehicle(context)
+        val mileage = currentMileage(vehicle)
+        val now = System.currentTimeMillis()
+        db.serviceRecordDao().insert(ServiceRecord(vehicleId = vehicle.obdMac, serviceName = canonical, mileage = mileage, date = now))
+        val existing = db.maintenanceItemDao().get(vehicle.obdMac, canonical)
+        // neverDone MUST be cleared here, not just in the backfill path. Marking
+        // something never-done and then actually doing it is the normal sequence,
+        // and isDue checks neverDone first and returns true unconditionally - so
+        // leaving it set left a just-completed service reading as permanently
+        // overdue, forever, re-injected into the live prompt every turn.
+        db.maintenanceItemDao().upsert(
+            (existing ?: MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = canonical))
+                .copy(lastDoneMileage = mileage, lastDoneDate = now, neverDone = false)
+        )
+        return listOf(
+            "Nice, logged the $canonical at $mileage miles. I'll let you know when it's due again.",
+            "Got it — $canonical done at $mileage. One less thing to worry about.",
+            "Logged: $canonical at $mileage miles.",
+        ).random()
+    }
+
+    /**
+     * Backfills a maintenance item from memory rather than a precise moment
+     * ("I changed the oil about 3,000 miles ago", "never rotated the tires").
+     * Unlike [logServiceDirect] this writes ONLY the maintenance_items anchor,
+     * never a [ServiceRecord] - a remembered approximation doesn't belong in the
+     * precise service ledger the driver builds by logging real work as it happens.
+     *
+     * At least one of [mileage] / [milesAgo] / [date] / [neverDone] must be given;
+     * with nothing concrete, nothing is written and the driver is asked again.
+     */
+    suspend fun logPastServiceDirect(
+        context: Context,
+        serviceName: String,
+        mileage: Int? = null,
+        milesAgo: Int? = null,
+        date: Long? = null,
+        neverDone: Boolean = false,
+    ): String {
+        if (!neverDone && mileage == null && milesAgo == null && date == null) {
+            return "I need something to go on — a mileage, how long ago, a date, or that it's never been done."
+        }
+        val canonical = canonicalizeServiceName(serviceName)
+        val db = CarDatabase.getDatabase(context)
+        val vehicle = currentVehicle(context)
+        val existing = db.maintenanceItemDao().get(vehicle.obdMac, canonical)
+        val base = existing ?: MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = canonical)
+
+        val updated = mergeBackfillAnchors(base, mileage, milesAgo, date, neverDone, currentMileage(vehicle))
+        db.maintenanceItemDao().upsert(updated)
+
+        return if (neverDone) {
+            "Got it, marking $canonical as never done — I'll flag it as overdue."
+        } else {
+            listOf(
+                "Noted — $canonical, backfilled from what you remember.",
+                "Got it, filed $canonical into the record.",
+                "Logged $canonical from memory.",
+            ).random()
+        }
+    }
+
+    /**
+     * The active car - the driver's picked profile, else the connected adapter's,
+     * else the default placeholder - creating it if needed. See [ActiveVehicle].
+     */
+    suspend fun currentVehicle(context: Context): Vehicle {
+        val vehicleId = ActiveVehicle.current(context)
+        return CarDatabase.getDatabase(context).vehicleDao().getByMac(vehicleId) ?: seedVehicle(context, vehicleId)
+    }
+
+    /**
+     * Saves the car's facts from the AI Profile form: make / model / year, and the
+     * current odometer. A new odometer reading becomes a fresh baseline (trip
+     * accumulator reset). Changing make/model marks the vehicle un-onboarded so the
+     * next service-start re-looks-up its maintenance intervals.
+     */
+    suspend fun saveVehicleFacts(
+        context: Context,
+        make: String,
+        model: String,
+        trim: String,
+        year: Int,
+        odometer: Int,
+    ) {
+        val v = currentVehicle(context)
+        val mk = make.trim()
+        val md = model.trim()
+        val tr = trim.trim()
+        val factsChanged = (mk.isNotBlank() && mk != v.make) || (md.isNotBlank() && md != v.model) ||
+            (tr != v.trim) || (year > 0 && year != v.year)
+        val newOdo = odometer > 0 && odometer != v.odometerBaseline
+        val finalMake = if (mk.isNotBlank()) mk else v.make
+        val finalModel = if (md.isNotBlank()) md else v.model
+        CarDatabase.getDatabase(context).vehicleDao().upsert(
+            v.copy(
+                make = finalMake,
+                model = finalModel,
+                trim = tr,
+                year = if (year > 0) year else v.year,
+                odometerBaseline = if (odometer > 0) odometer else v.odometerBaseline,
+                odometerBaselineAt = if (newOdo) System.currentTimeMillis() else v.odometerBaselineAt,
+                tripMilesSinceBaseline = if (newOdo) 0.0 else v.tripMilesSinceBaseline,
+                onboarded = if (factsChanged && mk.isNotBlank() && md.isNotBlank()) false else v.onboarded,
+                // The driver saved the car-facts form (or onboarding register_car):
+                // once make + model are present this car's identity is confirmed, so
+                // recall/spec lookups stop reporting on the default mascot seed.
+                confirmed = v.confirmed || (finalMake.isNotBlank() && finalModel.isNotBlank()),
+            )
+        )
+    }
+
+    /** True once the driver has stated/confirmed the active car's identity (not the default seed). */
+    suspend fun isConfirmed(context: Context): Boolean = currentVehicle(context).confirmed
+
+    /** "2003 BMW 330i ZHP" from the driver-entered facts (blank parts dropped); "" if nothing set. */
+    /** Active (non-archived) car profiles, for the picker and the CARS roster. */
+    suspend fun allVehicles(context: Context): List<Vehicle> =
+        CarDatabase.getDatabase(context).vehicleDao().getAll()
+
+    /** Every car including archived, for the roster's "Show archived" toggle. */
+    suspend fun allVehiclesIncludingArchived(context: Context): List<Vehicle> =
+        CarDatabase.getDatabase(context).vehicleDao().getAllIncludingArchived()
+
+    /**
+     * Hides a car from the roster and picker without destroying anything
+     * (car manager, 2026-07-16). Its drives, odometer and service history stay.
+     *
+     * Re-stamps `updatedAt` so this rides the ordinary LWW path to other devices -
+     * archiving is just an edit, and treating it as one is why it needs no special
+     * sync handling.
+     *
+     * If the archived car was ACTIVE, the selection is cleared back to "follow the
+     * adapter". Leaving it selected would strand the driver on a car the picker no
+     * longer lists, with no visible way to change it.
+     */
+    suspend fun archive(context: Context, vehicleId: String) = setArchived(context, vehicleId, true)
+
+    /** Brings an archived car back into the roster. */
+    suspend fun unarchive(context: Context, vehicleId: String) = setArchived(context, vehicleId, false)
+
+    private suspend fun setArchived(context: Context, vehicleId: String, archived: Boolean) {
+        val dao = CarDatabase.getDatabase(context).vehicleDao()
+        val vehicle = dao.getByMac(vehicleId) ?: return
+        dao.upsert(vehicle.copy(archived = archived, updatedAt = System.currentTimeMillis()))
+        if (archived && ActiveVehicle.selected(context) == vehicleId) {
+            ActiveVehicle.select(context, null)
+        }
+    }
+
+    /**
+     * Creates a car profile that is NOT tied to a dongle and makes it active
+     * (car profiles, 2026-07-16).
+     *
+     * This is how a driver with one dongle and two cars keeps them apart: the id
+     * is synthetic ([ActiveVehicle.newVehicleId]) rather than a MAC, so moving the
+     * dongle between cars no longer merges them into one vehicle - and, critically,
+     * no longer makes them fight over one LWW `vehicles` row and overwrite each
+     * other's `odometerBaseline` on every sync.
+     */
+    suspend fun createCarProfile(
+        context: Context,
+        year: Int,
+        make: String,
+        model: String,
+        trim: String = "",
+    ): Vehicle {
+        val id = ActiveVehicle.newVehicleId()
+        val vehicle = Vehicle(
+            obdMac = id,
+            name = model.ifBlank { "New car" },
+            make = make, model = model, year = year, trim = trim,
+            personaPrompt = "",
+            odometerBaseline = 0,
+            odometerBaselineAt = 0L,
+            tripMilesSinceBaseline = 0.0,
+            onboarded = false,
+            confirmed = true,
+        )
+        CarDatabase.getDatabase(context).vehicleDao().upsert(vehicle)
+        ActiveVehicle.select(context, id)
+        return vehicle
+    }
+
+    /**
+     * Records a "this drive belongs to another car" correction and applies it now
+     * (car manager, 2026-07-16).
+     *
+     * Writes a RULE rather than re-keying the rows directly: `obd_samples` syncs
+     * UNION on an identity that INCLUDES vehicleId, so a plain UPDATE would leave
+     * the originals on Drive under the old id, and the next sync would re-insert
+     * them - cloning the drive onto both cars instead of moving it, permanently, on
+     * every device. See [com.kevin.legion.data.local.DriveReassignment].
+     *
+     * The local apply here is just for immediacy; [com.kevin.legion.sync.SyncEngine]
+     * re-applies the rule on every pass, which is what makes it converge.
+     */
+    suspend fun reassignDrive(
+        context: Context,
+        fromVehicleId: String,
+        toVehicleId: String,
+        fromMs: Long,
+        toMs: Long,
+    ) {
+        if (fromVehicleId == toVehicleId) return
+        val db = CarDatabase.getDatabase(context)
+        db.driveReassignmentDao().insert(
+            DriveReassignment(
+                syncId = java.util.UUID.randomUUID().toString(),
+                vehicleId = fromVehicleId,
+                fromMs = fromMs,
+                toMs = toMs,
+                newVehicleId = toVehicleId,
+                updatedAt = System.currentTimeMillis(),
+            )
+        )
+        db.openHelper.writableDatabase.execSQL(
+            "UPDATE `obd_samples` SET `vehicleId` = ? WHERE `vehicleId` = ? AND `timestamp` BETWEEN ? AND ?",
+            arrayOf(toVehicleId, fromVehicleId, fromMs, toMs),
+        )
+    }
+
+    fun displayLabel(vehicle: Vehicle): String =
+        listOf(
+            vehicle.year.takeIf { it > 0 }?.toString().orEmpty(),
+            vehicle.make, vehicle.model, vehicle.trim,
+        ).filter { it.isNotBlank() }.joinToString(" ")
+
+    /** Current odometer estimate: driver-reported baseline plus GPS trip distance since. */
+    fun currentMileage(vehicle: Vehicle): Int =
+        vehicle.odometerBaseline + vehicle.tripMilesSinceBaseline.roundToInt()
+
+    /**
+     * Maintenance items currently due, by mileage or time, for [vehicle].
+     *
+     * An item needs a KNOWN anchor to be due at all - see [isDue]. This used to
+     * treat a null [MaintenanceItem.lastDoneMileage] as 0 (`?: 0`) and fall back
+     * to `vehicle.odometerBaselineAt` for the time branch, which meant every
+     * freshly-looked-up interval (all anchors null, nothing done yet) read as
+     * due immediately. On a high-mileage car that made the companion cry wolf
+     * about the entire schedule the moment it was seeded (AriaBrain.kt injects
+     * this list into the system instruction). Unknown items are now excluded
+     * outright; see [unknownItems] for surfacing them separately, honestly, as
+     * "I don't know" rather than "overdue".
+     */
+    suspend fun dueItems(context: Context, vehicle: Vehicle): List<MaintenanceItem> {
+        val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val mileage = currentMileage(vehicle)
+        val now = System.currentTimeMillis()
+        return items.filter { isDue(it, mileage, now) }
+    }
+
+    /**
+     * Items with no anchor at all - the driver has never told us when they were
+     * last done and [MaintenanceItem.neverDone] hasn't been confirmed either.
+     * These are deliberately excluded from [dueItems] (see its doc) and from
+     * [nextService]'s ranking; they're surfaced separately so the companion can
+     * ask rather than assume.
+     */
+    suspend fun unknownItems(context: Context, vehicle: Vehicle): List<MaintenanceItem> {
+        val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        return items.filter { isUnknown(it) }
+    }
+
+    /** Unit the driver asked about ("how many miles until X" vs. "how many days"). */
+    enum class ScheduleUnit { MILES, DAYS }
+
+    /** One soonest-due item on a single axis - see [NextService]. */
+    data class ServiceCandidate(
+        val serviceName: String,
+        val remaining: Long,
+        val unit: ScheduleUnit,
+    )
+
+    /**
+     * The soonest-due anchored item on EACH axis, for "what's coming up next".
+     *
+     * There is deliberately no single cross-unit "winner": ranking a miles-only
+     * item against a months-only item requires either converting one unit into
+     * the other (a rate estimate - miles per day - which Kevin explicitly
+     * rejected) or picking an arbitrary tie-break rule that has nothing to do
+     * with which is actually more urgent. So both axes are reported separately
+     * and the caller phrases it as "X, N miles or M days, whichever comes
+     * first" when the same item leads both, or names both leaders when they
+     * differ. See [computeNextService]'s doc for the full reasoning and the
+     * ranking bug this replaced.
+     *
+     * @param byMiles soonest not-yet-due item with a mileage threshold, null if none.
+     * @param byTime soonest not-yet-due item with a time threshold, null if none.
+     * @param unknownCount / [unknownNames] items excluded because their anchor is
+     *   unknown (not because they're not due) - callers should say "and I don't
+     *   know about N others" rather than silently omitting them.
+     * @param odometerUnset true when the vehicle has never had an odometer
+     *   reading, so [byMiles] was skipped entirely (see [computeNextService]).
+     * @param allDue true when the schedule has items, but EVERY one of them is
+     *   already due (or unknown-free-and-due) - there is nothing left to rank as
+     *   "next" because nothing is left in the not-yet-due candidate pool. This is
+     *   a materially different state from "no schedule at all" (that's
+     *   [computeNextService] returning null outright) and needs its own honest
+     *   phrasing rather than either "nothing due" or "no schedule yet".
+     */
+    data class NextService(
+        val byMiles: ServiceCandidate?,
+        val byTime: ServiceCandidate?,
+        val unknownCount: Int,
+        val unknownNames: List<String>,
+        val odometerUnset: Boolean,
+        val allDue: Boolean,
+    )
+
+    /** The soonest-due anchored, not-yet-due item on each axis for [vehicle]. Null if there is nothing to report at all. */
+    suspend fun nextService(context: Context, vehicle: Vehicle): NextService? {
+        val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        return computeNextService(items, currentMileage(vehicle), System.currentTimeMillis(), vehicle.odometerBaseline)
+    }
+
+    /** True if it's been over a month since the driver last confirmed the odometer. */
+    fun odometerCheckInDue(vehicle: Vehicle): Boolean =
+        System.currentTimeMillis() - vehicle.odometerBaselineAt >= MONTH_MS &&
+            System.currentTimeMillis() - vehicle.lastOdometerPromptAt >= MONTH_MS
+
+    /** Records that Aria just asked for an odometer update, so it doesn't nag again too soon. */
+    suspend fun markOdometerPrompted(context: Context, vehicle: Vehicle) {
+        CarDatabase.getDatabase(context).vehicleDao().upsert(vehicle.copy(lastOdometerPromptAt = System.currentTimeMillis()))
+    }
+
+    // (2026-07-19) trackTripMileage was DELETED. It was a separate GPS-only
+    // service loop writing tripMilesSinceBaseline - dead on a head unit with no
+    // GPS antenna (the primary test car), and a second odometer alongside
+    // TelemetryRecorder's. TelemetryRecorder.run is now the single odometer
+    // writer, computing per-tick miles from GPS when a fix exists and OBD speed
+    // (PID 010D) when it doesn't, so the persisted estimate advances either way.
+
+    /**
+     * Looks up typical manufacturer maintenance intervals for any vehicle that
+     * hasn't been onboarded yet (seeded by [seedVehicle] or [handleRegister]).
+     * Safe to call repeatedly - a no-op once onboarded. Meant to run once at
+     * service startup.
+     */
+    suspend fun onboardPendingVehicles(context: Context) {
+        val dao = CarDatabase.getDatabase(context).vehicleDao()
+        for (vehicle in dao.getAll()) {
+            if (vehicle.onboarded || vehicle.make.isBlank() || vehicle.model.isBlank()) continue
+            applyServiceIntervals(context, vehicle)
+        }
+    }
+
+    // --- Registration -------------------------------------------------
+
+    /** Online lookup of default maintenance intervals; persists them and marks [vehicle] onboarded. Returns the count found. */
+    private suspend fun applyServiceIntervals(context: Context, vehicle: Vehicle): Int {
+        // Canonicalize at SEED time, not just on refresh and voice writes. The
+        // seed used to store Gemini's raw phrasing ("Engine Air Filter"), while
+        // every later write canonicalized ("Air Filter") and then looked the row
+        // up by exact name - missing it, and creating a second, interval-less row
+        // holding the anchor. The real row kept its interval and sat in UNKNOWN
+        // forever. serviceName is half the primary key, so both sides have to
+        // agree on it or nothing ever matches.
+        val items = canonicalizeAndDedupe(lookupServiceIntervals(context, vehicle))
+        val db = CarDatabase.getDatabase(context)
+        if (items.isNotEmpty()) db.maintenanceItemDao().insertAll(items)
+        db.vehicleDao().upsert(vehicle.copy(onboarded = true))
+        return items.size
+    }
+
+    /**
+     * Canonicalizes each looked-up item's name and drops later collisions, so a
+     * lookup returning both "Oil Change" and "Engine Oil & Filter Change" yields
+     * one row rather than two upserts fighting over the same primary key.
+     */
+    private fun canonicalizeAndDedupe(items: List<MaintenanceItem>): List<MaintenanceItem> {
+        val seen = mutableSetOf<String>()
+        return items.mapNotNull { item ->
+            val canonical = canonicalizeServiceName(item.serviceName)
+            if (!seen.add(canonical)) null else item.copy(serviceName = canonical)
+        }
+    }
+
+    /**
+     * Re-runs [lookupServiceIntervals] and updates the interval fields on the
+     * vehicle's existing rows, WITHOUT touching what the driver has already
+     * told us (lastDoneMileage/lastDoneDate/neverDone). Deliberately does not
+     * use [MaintenanceItemDao.insertAll] - its IGNORE conflict strategy would
+     * silently no-op on every row that already exists, which is exactly the
+     * common case here (refreshing an already-onboarded car). Returns the
+     * count of items written (created or updated).
+     *
+     * **Names are canonicalized before the lookup and the upsert both.** Gemini's
+     * lookup prompt does not constrain it to the app's vocabulary, so it can come
+     * back with "Engine Oil & Filter Change" for what [logServiceDirect] already
+     * filed as "Oil Change" - an exact-name match against the existing row then
+     * fails, INSERTS a second anchor-less row for the same real service, and that
+     * duplicate silently pollutes [unknownItems] (and compounds on every future
+     * refresh, since it never matches either). Running every looked-up name
+     * through [canonicalizeServiceName] before both the `dao.get` lookup and the
+     * upsert puts it back on the same key spoken logs use, for the 9 canonical
+     * services. Names outside that vocabulary still fall back to titlecase and
+     * can still vary call-to-call - accepted, not fixed by this pass.
+     */
+    suspend fun refreshServiceIntervals(context: Context, vehicle: Vehicle): Int {
+        val looked = lookupServiceIntervals(context, vehicle)
+        if (looked.isEmpty()) return 0
+        val dao = CarDatabase.getDatabase(context).maintenanceItemDao()
+        val seenCanonicalNames = mutableSetOf<String>()
+        var written = 0
+        for (item in looked) {
+            val canonicalName = canonicalizeServiceName(item.serviceName)
+            // Two looked-up items canonicalizing to the same name (e.g. Gemini
+            // returning both "Oil Change" and "Engine Oil & Filter Change" in one
+            // response) would otherwise upsert twice for one logical service -
+            // keep the first, skip the rest.
+            if (!seenCanonicalNames.add(canonicalName)) continue
+            val existing = dao.get(vehicle.obdMac, canonicalName)
+            val merged = if (existing != null) {
+                existing.copy(intervalMiles = item.intervalMiles, intervalMonths = item.intervalMonths)
+            } else {
+                item.copy(serviceName = canonicalName)
+            }
+            dao.upsert(merged)
+            written++
+        }
+        return written
+    }
+
+    /** Asks [AriaBrain] (with search grounding) for typical service intervals for this make/model/year. */
+    private suspend fun lookupServiceIntervals(context: Context, vehicle: Vehicle): List<MaintenanceItem> {
+        val prompt = "Use search to find the manufacturer-recommended SEVERE / heavy-duty maintenance " +
+            "schedule (the one for short trips, dusty/off-road conditions, towing, or stop-and-go " +
+            "driving - not the normal/light-duty schedule) for a ${vehicle.year} ${vehicle.make} " +
+            "${vehicle.model}. Respond with ONLY a raw JSON array " +
+            "(no markdown, no commentary, no code fences) of 6 to 12 objects, each with keys " +
+            "\"service\" (short title-case name like \"Oil Change\"), \"intervalMiles\" (integer or null), " +
+            "and \"intervalMonths\" (integer or null). Cover the most common recurring items: oil change, " +
+            "tire rotation, brake fluid, coolant flush, air filter, cabin air filter, spark plugs, " +
+            "transmission fluid, and anything else notable for this specific model."
+        val raw = try {
+            AriaBrain.get(context).structuredQuery(prompt)
+        } catch (e: Exception) {
+            Log.w(TAG, "Service interval lookup failed: ${e.message}")
+            null
+        } ?: return emptyList()
+
+        return parseIntervals(vehicle.obdMac, raw)
+    }
+
+    private fun parseIntervals(vehicleId: String, raw: String): List<MaintenanceItem> {
+        val start = raw.indexOf('[')
+        val end = raw.lastIndexOf(']')
+        if (start == -1 || end == -1 || end < start) return emptyList()
+
+        return try {
+            val arr = JSONArray(raw.substring(start, end + 1))
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                val name = o.optString("service").trim()
+                if (name.isBlank()) return@mapNotNull null
+                MaintenanceItem(
+                    vehicleId = vehicleId,
+                    serviceName = name,
+                    intervalMiles = if (o.isNull("intervalMiles")) null else o.optInt("intervalMiles").takeIf { it > 0 },
+                    intervalMonths = if (o.isNull("intervalMonths")) null else o.optInt("intervalMonths").takeIf { it > 0 },
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse service intervals: ${e.message}")
+            emptyList()
+        }
+    }
+
+    // --- Pure decision logic (no Context, no Android - unit-testable directly) ----
+
+    /**
+     * True if [item] is due, given [currentMileage] and [now]. `internal` so
+     * [MaintenanceScheduleTest] can drive it directly without Room or a Context
+     * (per CLAUDE.md §11's testing convention: unit tests run on a plain JVM with
+     * an unmocked android.jar, so platform/DB calls must stay out of what gets
+     * tested).
+     *
+     *  - [MaintenanceItem.neverDone] is always due - it's a known, actionable fact.
+     *  - No anchor at all (both lastDone* null, and not neverDone) is UNKNOWN, not
+     *    due - see [isUnknown] and [dueItems]'s doc for why this used to be a bug.
+     *  - Otherwise due if either its own mileage or time threshold has been
+     *    crossed. A missing interval/anchor for one axis just excludes that axis,
+     *    it never counts as due on its own.
+     */
+    internal fun isDue(item: MaintenanceItem, currentMileage: Int, now: Long): Boolean {
+        if (item.neverDone) return true
+        if (item.lastDoneMileage == null && item.lastDoneDate == null) return false
+        val mileageDue = item.intervalMiles != null && item.lastDoneMileage != null &&
+            currentMileage - item.lastDoneMileage >= item.intervalMiles
+        val timeDue = item.intervalMonths != null && item.lastDoneDate != null &&
+            now - item.lastDoneDate >= item.intervalMonths.toLong() * MONTH_MS
+        return mileageDue || timeDue
+    }
+
+    /** True if [item] has no anchor at all and hasn't been confirmed never-done. */
+    internal fun isUnknown(item: MaintenanceItem): Boolean =
+        !item.neverDone && item.lastDoneMileage == null && item.lastDoneDate == null
+
+    /**
+     * Resolves the mileage anchor for [logPastServiceDirect]'s "milesAgo" phrasing
+     * ("I did it about 3,000 miles ago") into an absolute mileage: [mileage] wins
+     * if given directly, else [currentMileage] minus [milesAgo], floored at 0 so a
+     * driver overestimating "miles ago" past their current mileage never produces
+     * a negative anchor.
+     *
+     * [milesAgo] itself is clamped to >= 0 first: it arrives from a voice tool
+     * argument (Gemini's function-call args are not schema-validated for sign),
+     * and a NEGATIVE milesAgo would otherwise compute `currentMileage - (-x)` =
+     * `currentMileage + x`, a lastDoneMileage GREATER than currentMileage - a
+     * service anchor dated into the future, which [isDue]'s subtraction assumes
+     * can never happen.
+     */
+    internal fun resolveBackfillMileage(mileage: Int?, milesAgo: Int?, currentMileage: Int): Int? =
+        mileage ?: milesAgo?.coerceAtLeast(0)?.let { (currentMileage - it).coerceAtLeast(0) }
+
+    /**
+     * Pure merge logic behind [logPastServiceDirect]. `internal` for direct unit
+     * testing (see [isDue]'s note). Extracted so the anchor-merge rules can be
+     * tested without Room or a Context.
+     *
+     *  - `neverDone = true` REPLACES any prior anchor and clears BOTH
+     *    lastDoneMileage/lastDoneDate - it's the driver overriding a prior guess,
+     *    not adding to it.
+     *  - Supplying any concrete anchor (mileage/milesAgo/date) always clears
+     *    [MaintenanceItem.neverDone] back to false - a driver correcting "never
+     *    done" with a real anchor is un-confirming that fact.
+     *  - Supplying ONLY a mileage anchor clears any stale [MaintenanceItem.lastDoneDate]
+     *    (and vice versa), rather than pairing a fresh value with an old one from
+     *    a different actual event. Supplying BOTH keeps both.
+     */
+    internal fun mergeBackfillAnchors(
+        base: MaintenanceItem,
+        mileage: Int?,
+        milesAgo: Int?,
+        date: Long?,
+        neverDone: Boolean,
+        currentMileage: Int,
+    ): MaintenanceItem {
+        if (neverDone) {
+            return base.copy(neverDone = true, lastDoneMileage = null, lastDoneDate = null)
+        }
+        val resolvedMileage = resolveBackfillMileage(mileage, milesAgo, currentMileage)
+        val hasMileage = resolvedMileage != null
+        val hasDate = date != null
+        return base.copy(
+            neverDone = false,
+            lastDoneMileage = when {
+                hasMileage -> resolvedMileage
+                hasDate -> null
+                else -> base.lastDoneMileage
+            },
+            lastDoneDate = when {
+                hasDate -> date
+                hasMileage -> null
+                else -> base.lastDoneDate
+            },
+        )
+    }
+
+    /**
+     * Pure ranking logic behind [nextService]. `internal` for direct unit testing
+     * (see [isDue]'s note).
+     *
+     * **Why there is no single cross-axis winner (rewritten, see the old design's
+     * bug below).** A prior version picked one axis per dual-axis item by
+     * comparing `milesRemaining / intervalMiles` against `daysRemaining /
+     * intervalMonths` - "percent of interval remaining" looked like a same-item,
+     * axis-free normalization, but it algebraically reduces to
+     * `milesUsed/daysElapsed >= intervalMiles/intervalDays`, i.e. comparing the
+     * driver's actual driving PACE since last service against the interval's
+     * designed pace. That is a rate estimate wearing a disguise, and Kevin
+     * explicitly rejected rate estimation - so this axis pick is gone, and with
+     * it any notion of a single "winner" across items measured in different
+     * units. There is no unit-free way to say a mileage remaining is "sooner"
+     * than a time remaining without inventing a rate.
+     *
+     * **The bug this also fixes.** The old code additionally picked
+     * `milesWinner ?: daysWinner` - ANY miles-tagged candidate beat EVERY
+     * days-tagged candidate regardless of magnitude, so an item due in 29,990
+     * miles could bury an item due tomorrow just because the buried item's own
+     * dual-axis resolved to DAYS. Reporting both axes independently makes that
+     * class of bug structurally impossible: nothing is ever discarded for being
+     * the "wrong" unit.
+     *
+     * Rules:
+     *  - Only anchored, not-yet-due items are candidates (due items already need
+     *    attention now, not "next"; unknown items can't be ranked at all).
+     *  - A dual-axis item (both intervalMiles+lastDoneMileage AND
+     *    intervalMonths+lastDoneDate present) is evaluated on BOTH axes and may
+     *    legitimately be the leader in both [NextService.byMiles] and
+     *    [NextService.byTime] at once - it is never collapsed onto one axis.
+     *  - [NextService.byMiles] = the candidate with the smallest milesRemaining
+     *    across all candidates that have a mileage anchor; same for
+     *    [NextService.byTime] on daysRemaining. No cross-axis comparison ever
+     *    happens.
+     *  - [odometerBaseline] == 0 means the mileage estimate is meaningless (the
+     *    driver has never given a real reading): [NextService.byMiles] is always
+     *    null in that case ([NextService.odometerUnset] records why), but
+     *    [NextService.byTime] is computed normally.
+     */
+    internal fun computeNextService(
+        items: List<MaintenanceItem>,
+        currentMileage: Int,
+        now: Long,
+        odometerBaseline: Int,
+    ): NextService? {
+        val odometerUnset = odometerBaseline == 0
+        val unknown = items.filter { isUnknown(it) }
+        val candidates = items.filter { !isUnknown(it) && !isDue(it, currentMileage, now) }
+
+        var byMiles: ServiceCandidate? = null
+        var byTime: ServiceCandidate? = null
+
+        for (item in candidates) {
+            if (!odometerUnset && item.intervalMiles != null && item.lastDoneMileage != null) {
+                val milesRemaining = (item.intervalMiles - (currentMileage - item.lastDoneMileage)).toLong()
+                val currentBest = byMiles?.remaining ?: Long.MAX_VALUE
+                if (milesRemaining < currentBest) {
+                    byMiles = ServiceCandidate(item.serviceName, milesRemaining, ScheduleUnit.MILES)
+                }
+            }
+            if (item.intervalMonths != null && item.lastDoneDate != null) {
+                val intervalMs = item.intervalMonths.toLong() * MONTH_MS
+                val elapsedMs = now - item.lastDoneDate
+                val daysRemaining = (intervalMs - elapsedMs) / DAY_MS
+                val currentBest = byTime?.remaining ?: Long.MAX_VALUE
+                if (daysRemaining < currentBest) {
+                    byTime = ServiceCandidate(item.serviceName, daysRemaining, ScheduleUnit.DAYS)
+                }
+            }
+        }
+
+        // null is reserved for "no schedule at all" (a fresh install / nothing
+        // logged yet). A car with a fully-logged, well-used schedule where
+        // every anchored item has already crossed its threshold is a DIFFERENT
+        // state (see NextService.allDue's doc) - it must not collapse onto the
+        // same null the caller uses to say "register the car or log a service".
+        if (items.isEmpty()) return null
+
+        return NextService(
+            byMiles = byMiles,
+            byTime = byTime,
+            unknownCount = unknown.size,
+            unknownNames = unknown.map { it.serviceName },
+            odometerUnset = odometerUnset,
+            allDue = byMiles == null && byTime == null && unknown.isEmpty(),
+        )
+    }
+
+    /**
+     * Formats one [ServiceCandidate.remaining] value into the spoken fragment
+     * `get_next_service` embeds mid-sentence, e.g. "50 miles" or "1 day" -
+     * `internal` for direct unit testing (see [isDue]'s note).
+     *
+     * Miles round to the nearest 50 HERE, at presentation only - the exact
+     * value keeps flowing everywhere else ([nextService]'s real return value,
+     * the DUE tab, any future caller); "about 2950 miles" pairs a hedge with a
+     * suspiciously precise figure, "about 2950 miles" -> "about 3000 miles"
+     * reads like an estimate that's actually being spoken as one. Days are
+     * never rounded - the day count is small enough that rounding it away
+     * would make a real "3 days" read as a nonsensical "about 0 days".
+     *
+     * Miles can never be 0 or negative here: [computeNextService] only ranks
+     * candidates that are `!isDue`, and the mileage-due check is a `>=`
+     * threshold, so at least 1 mile always remains on that axis - there is no
+     * zero-miles case to handle. Days CAN legitimately be 0: `daysRemaining` is
+     * integer division of milliseconds, so anything under 24 hours floors to
+     * 0, reachable on the last day before a time-based service. This function
+     * reports that as the bare word "today" (not "0 days") - callers embed it
+     * into whichever sentence shape fits (e.g. "X is due today." rather than
+     * "X is next, about today out.") since the surrounding sentence differs by
+     * call site.
+     */
+    internal fun formatRemaining(remaining: Long, unit: ScheduleUnit): String = when (unit) {
+        ScheduleUnit.MILES -> when {
+            // Under 50 miles, report the exact figure: rounding would speak "50
+            // miles" to a driver with 10 left, five times the real margin.
+            // Above that, round DOWN to a multiple of 50, never to nearest -
+            // round-to-nearest sends 75 up to "100 miles", which overstates, and
+            // overstating remaining service life is the one direction this must
+            // never be wrong in. Flooring only ever tells the driver they have
+            // less room than they do, which costs an early oil change at worst.
+            remaining < 50L -> if (remaining == 1L) "1 mile" else "$remaining miles"
+            else -> "${(remaining / 50) * 50} miles"
+        }
+        ScheduleUnit.DAYS -> when {
+            remaining <= 0L -> "today"
+            remaining == 1L -> "1 day"
+            else -> "$remaining days"
+        }
+    }
+
+    // --- Seeding -------------------------------------------------
+
+    /** Creates a placeholder [Vehicle] for an id we haven't seen before. */
+    private suspend fun seedVehicle(context: Context, vehicleId: String): Vehicle {
+        val vehicle = if (vehicleId == DEFAULT_VEHICLE_ID) {
+            Vehicle(
+                obdMac = DEFAULT_VEHICLE_ID,
+                name = "Midnight",
+                make = "Jeep",
+                model = "Cherokee",
+                year = 1998,
+                personaPrompt = "",
+            )
+        } else {
+            Vehicle(
+                obdMac = vehicleId,
+                name = "this car",
+                make = "",
+                model = "",
+                year = 0,
+                personaPrompt = "",
+            )
+        }
+        CarDatabase.getDatabase(context).vehicleDao().upsert(vehicle)
+        return vehicle
+    }
+}

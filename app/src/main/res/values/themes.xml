@@ -1,0 +1,5 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Placeholder theme only - the design language is a clean-slate rebuild,
+         not ported from Midnight AI's retired city-pop AriaTheme. -->
+    <style name="Theme.Legion" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

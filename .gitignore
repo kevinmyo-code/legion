@@ -1,0 +1,46 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+build/
+app/build/
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Build artifacts / caches
+*.apk
+*.aab
+.kotlin/
+/.idea/
+
+# Signing key - personal sideload keystore, never commit
+app/release.jks
+*.jks
+*.keystore
+
+# Firebase config - not set up yet for this project (fresh Firebase project
+# needed, see README). Never commit a real google-services.json.
+app/google-services.json
+
+# OS / editor
+Thumbs.db
+
+# Wayfinder / to-spec working state (short-lived; decisions get filed to memory/library)
+.scratch/
+
+# Background-agent worktree scratch space
+.claude/worktrees/
+
+# Vosk wake-word model: fetched locally per app/src/main/assets/vosk-model/README.md,
+# never committed. The binary is gitignored, not the source set.
+app/src/main/assets/vosk-model/*
+!app/src/main/assets/vosk-model/README.md
