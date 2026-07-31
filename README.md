@@ -2,8 +2,8 @@
 
 Phone-only AI assistant (Alfred/JARVIS register - a tool with personality, not a mascot)
 orchestrating **aspects** of life: **fleet** (OBD/car, ported from Midnight AI), **ledger**
-(finance, to be ported from Project Andromeda), **pantry** (grocery receipt photos ->
-consumption rates + macros, not yet built).
+(finance - bank-statement ingestion ported from Project Andromeda), **pantry** (grocery
+receipt photos -> consumption rates + macros, not yet built).
 
 This repo is a clean-history fork-by-copy of `MIDNIGHT_AI` (a private archive of the prior
 car-launcher product), seeded 2026-07-31 per the pivot recorded in `MIDNIGHT_AI`'s
@@ -57,13 +57,54 @@ grep-based reconciliation finds symbol-level breaks; only a real compile finds t
 mismatches, wrongly-deleted shared code, missing files that were never flagged because nothing
 grepped for their absence).
 
+## Ledger aspect (bank-statement ingestion) - done, deterministic-first
+
+Ports Project Andromeda's `duo_ledger.bronze` layer (`~/PycharmProjects/Andromeda`) - the
+only part of Andromeda with real content; `silver`/`gold`/`categorization`/`fx`/`agent` are
+all empty stubs, nothing to port there. Full design in
+`.claude/plans/wiggly-beaming-quasar.md`.
+
+- `ledger/parsers/`: `DbsStatementParser`, `BofaStatementParser` - direct Kotlin ports, same
+  balance-continuity reconciliation checks as the Python originals. `LedgerMoney` parses
+  exact `Long` cents (not `Double` - see `LedgerTransaction`'s doc for why). `PdfWords`/
+  `PdfText` (PdfBox-Android) replace `pdfplumber`.
+- `StatementDispatcher` tries both deterministic parsers first; only when NEITHER recognizes
+  the layout does it fall to `LedgerStatementAgent`, a one-shot Gemini extraction that must
+  pass the same reconciliation principle (extracted transactions sum to the statement's own
+  stated total) before anything is accepted - a mismatch quarantines, nothing is written.
+  Every row is tagged `DETERMINISTIC` or `LLM_RECONCILED`.
+- `LedgerController` orchestrates: read the picked file, dispatch, dedupe against existing
+  rows (by real-world content, not filename/lineRef - two different exports of the same
+  transaction must not double-count), insert.
+- Voice tools: `import_statement` (opens `ui/LedgerImportActivity`, a picker placeholder),
+  `get_balance`, `list_recent_transactions`.
+- Room: `LedgerTransaction`/`LedgerTransactionDao`, `CarDatabase` v1 -> v2 with a real
+  (verbatim, generated-schema-matched) migration.
+- **Real finding, not assumed:** PdfBox-Android ships its fonts/glyphlists as Android assets,
+  unreachable from a plain JVM unit test - confirmed by actually running the coordinate-
+  extraction spike before porting the rest of the DBS parser, which failed with a clear
+  `GlyphList not found` error. Fixed by adding Robolectric (test-only) to shadow
+  `AssetManager`; the spike then verified real extraction against a generated fixture,
+  matching the fixture's known column positions exactly.
+- 11 tests, 5 fixture PDFs (generated via Andromeda's own `reportlab` tooling under
+  `tests/helpers/pdf_builders.py`, for parity with the Python originals) - happy-path DBS,
+  happy-path BofA, a DBS balance mismatch, a BofA section-total mismatch, an unrecognized
+  layout (proving the LLM-fallback routing without needing a real Gemini key). All green.
+- Not tested: the dedup path in `LedgerController` itself (attempted via Robolectric's
+  `ShadowContentResolver`, hit an API/behavior mismatch not worth chasing further - the
+  underlying dedup query is a simple, inspectable `COUNT(*)`, and the parser/reconciliation
+  logic it sits on top of is fully verified).
+
 ## Not built yet
 
 - **`ui/`** - almost every screen. This is intentional, not a gap to panic about; see the
-  design-language note above.
-- **`ledger` and `pantry` aspects** - not started. Ledger ports from Project Andromeda;
-  pantry is new (receipt-photo ingestion behind the deterministic reconciliation gate
-  described in `MIDNIGHT_AI`'s `memory/MEMORY.md`).
+  design-language note above. (`LedgerImportActivity`/`SavedPlacesActivity`/`MainActivity`
+  are placeholders, not real UI.)
+- **`pantry` aspect** - not started. New (receipt-photo ingestion behind the deterministic
+  reconciliation gate described in `MIDNIGHT_AI`'s `memory/MEMORY.md`) - no Andromeda
+  equivalent to port from.
+- **Ledger's categorization/FX/insights** - not built. Nothing to port (Andromeda's
+  `silver`/`gold`/`categorization`/`fx` are empty stubs); this is new design work for later.
 - **Onboarding** - `ai/OnboardingFlow.kt` (the system-instruction builder) ported, but its
   identity clause is placeholder content (see `ai/AssistantIdentity.kt`'s doc comment) and
   the conversational onboarding UI that hosts it doesn't exist yet.
