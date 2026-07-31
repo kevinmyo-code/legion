@@ -28,3 +28,37 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         )
     }
 }
+
+/**
+ * v2 -> v3: adds `pantry_receipts` + `pantry_line_items` (the pantry aspect's
+ * grocery-receipt ingestion). Verbatim from the generated schema JSON
+ * (`app/schemas/com.kevin.legion.data.local.CarDatabase/3.json`).
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `pantry_receipts` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`store` TEXT NOT NULL, " +
+                "`purchaseDate` INTEGER NOT NULL, " +
+                "`currency` TEXT NOT NULL, " +
+                "`totalCents` INTEGER NOT NULL, " +
+                "`sourceImagePath` TEXT NOT NULL, " +
+                "`syncId` TEXT NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `pantry_line_items` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`receiptId` INTEGER NOT NULL, " +
+                "`name` TEXT NOT NULL, " +
+                "`quantity` REAL NOT NULL, " +
+                "`unitPriceCents` INTEGER, " +
+                "`totalPriceCents` INTEGER NOT NULL, " +
+                "`caloriesKcal` INTEGER, " +
+                "`proteinG` REAL, " +
+                "`carbsG` REAL, " +
+                "`fatG` REAL, " +
+                "`syncId` TEXT NOT NULL)"
+        )
+    }
+}

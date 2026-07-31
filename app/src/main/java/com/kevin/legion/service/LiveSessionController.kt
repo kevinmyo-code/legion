@@ -10,6 +10,7 @@ import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.ai.firstGreetingOpener
 import com.kevin.legion.ui.LedgerImportActivity
+import com.kevin.legion.ui.PantryImportActivity
 import com.kevin.legion.ui.SavedPlacesActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -522,6 +523,10 @@ class LiveSessionController(context: Context) {
                             openLedgerImport()
                             JSONObject().put("success", true)
                         }
+                        "import_receipt" -> {
+                            openPantryImport()
+                            JSONObject().put("success", true)
+                        }
                         else -> LiveToolbox.dispatch(appContext, call.name, call.args)
                             ?: JSONObject().put("success", true)
                     }
@@ -549,6 +554,12 @@ class LiveSessionController(context: Context) {
 
     private fun openLedgerImport() {
         val intent = Intent(appContext, LedgerImportActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        appContext.startActivity(intent)
+    }
+
+    private fun openPantryImport() {
+        val intent = Intent(appContext, PantryImportActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         appContext.startActivity(intent)
     }

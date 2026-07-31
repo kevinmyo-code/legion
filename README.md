@@ -3,7 +3,8 @@
 Phone-only AI assistant (Alfred/JARVIS register - a tool with personality, not a mascot)
 orchestrating **aspects** of life: **fleet** (OBD/car, ported from Midnight AI), **ledger**
 (finance - bank-statement ingestion ported from Project Andromeda), **pantry** (grocery
-receipt photos -> consumption rates + macros, not yet built).
+receipt photo ingestion + per-item macro estimates - new design work, no Andromeda
+equivalent).
 
 This repo is a clean-history fork-by-copy of `MIDNIGHT_AI` (a private archive of the prior
 car-launcher product), seeded 2026-07-31 per the pivot recorded in `MIDNIGHT_AI`'s
@@ -95,14 +96,56 @@ all empty stubs, nothing to port there. Full design in
   underlying dedup query is a simple, inspectable `COUNT(*)`, and the parser/reconciliation
   logic it sits on top of is fully verified).
 
+## Pantry aspect (grocery receipt ingestion) - done, LLM-vision-first
+
+New design work - unlike ledger, there's no Andromeda equivalent to port (groceries are
+photographed, not born-digital, so there's no deterministic layout the way bank statements
+have one). Same reconciliation discipline as ledger, applied as the PRIMARY path instead of
+a fallback. Full design in `.claude/plans/wiggly-beaming-quasar.md`.
+
+- `ai/SubAgent.kt` extended with an optional inline image part (`ask`/`askTyped` now take
+  `imageBytes`/`imageMimeType`) - the one new shared capability this needed, reused rather
+  than a one-off HTTP call duplicating `SubAgent`'s plumbing.
+- `pantry/PantryReceiptAgent`: one-shot Gemini vision call extracts store/date/currency/
+  total + line items (name, quantity, unit/total price, and per-item macro ESTIMATES -
+  calories/protein/carbs/fat, guessed from the model's general knowledge since a receipt
+  never prints those). `parseAndReconcile` enforces the same gate ledger's does: extracted
+  item totals must sum exactly to the receipt's own printed total, or the whole receipt
+  quarantines - nothing written. Macro estimates are never part of that check (there's
+  nothing on a receipt to verify them against) and must always be surfaced as estimates,
+  never fact (CLAUDE.md §9.1's "anchored to falsifiable reality" thesis).
+- `pantry/PantryController` orchestrates: read the saved photo, extract+reconcile, insert
+  the receipt then its line items on success (deleting the source photo), keep the photo on
+  a quarantine so the driver can inspect or retry without re-shooting it.
+- `data/PantryPhotoStore` (replaces the old `PhotoAlbumStore` - multi-album/cover-art shape
+  didn't fit ingestion-only storage) + `ui/CameraCapture` (ported from Midnight AI,
+  generalized from car photos to receipts) + a restored `FileProvider` (removed in the
+  ledger-port reconciliation pass since nothing used it then).
+- Voice tools: `import_receipt` (opens `ui/PantryImportActivity`, a take-photo/pick-from-
+  gallery placeholder), `list_recent_groceries` (macro fields explicitly flagged as
+  estimates in the tool description), `get_grocery_spend`.
+- Room: `PantryReceipt`/`PantryReceiptDao`, `PantryLineItem`/`PantryLineItemDao`,
+  `CarDatabase` v2 -> v3 with a real (verbatim, generated-schema-matched) migration. No
+  `ingestMethod` field on `PantryReceipt` - every row is LLM-extracted by construction, so
+  the column would always read the same value.
+- 8 tests (`SubAgentPartsTest` - the new `inlineData` JSON shape, text-only vs. with-image;
+  `PantryReceiptAgentTest` - happy path, mismatched total, missing item price, unparseable
+  garbage, null macros never gating reconciliation), all against canned JSON strings (no
+  real image fixture or network call needed - there's no deterministic ground truth to
+  synthesize fixtures against here, unlike ledger's real PDFs). All green.
+- Not tested: `PantryController`'s DB-write path end to end (same Robolectric
+  `ShadowContentResolver`-shaped gap noted for `LedgerController`'s dedup - not attempted
+  again here since the underlying insert calls are simple, inspectable DAO methods).
+
 ## Not built yet
 
 - **`ui/`** - almost every screen. This is intentional, not a gap to panic about; see the
-  design-language note above. (`LedgerImportActivity`/`SavedPlacesActivity`/`MainActivity`
-  are placeholders, not real UI.)
-- **`pantry` aspect** - not started. New (receipt-photo ingestion behind the deterministic
-  reconciliation gate described in `MIDNIGHT_AI`'s `memory/MEMORY.md`) - no Andromeda
-  equivalent to port from.
+  design-language note above. (`LedgerImportActivity`/`PantryImportActivity`/
+  `SavedPlacesActivity`/`MainActivity` are placeholders, not real UI.)
+- **Pantry's consumption-rate tracking and spend/nutrition aggregation** - not built.
+  Deliberately deferred (Kevin, when scoping pantry), same shape as ledger's
+  categorization/FX being deferred - ingestion + per-item macro estimation first, insight
+  layers later.
 - **Ledger's categorization/FX/insights** - not built. Nothing to port (Andromeda's
   `silver`/`gold`/`categorization`/`fx` are empty stubs); this is new design work for later.
 - **Onboarding** - `ai/OnboardingFlow.kt` (the system-instruction builder) ported, but its

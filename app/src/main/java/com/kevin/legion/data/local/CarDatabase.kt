@@ -17,6 +17,9 @@ import androidx.room.RoomDatabase
  * `.claude/plans/wiggly-beaming-quasar.md`) - additive only, no destructive
  * fallback for the upgrade path even though there's no real installed base
  * yet, matching the discipline this project intends to keep from here on.
+ *
+ * v3: `pantry_receipts` + `pantry_line_items` (the pantry aspect's grocery-
+ * receipt ingestion, same plan file).
  */
 @Database(
     entities = [
@@ -29,8 +32,9 @@ import androidx.room.RoomDatabase
         DriveReassignment::class,
         EpisodicTurn::class, CompanionMemory::class,
         LedgerTransaction::class,
+        PantryReceipt::class, PantryLineItem::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -55,6 +59,8 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun episodicTurnDao(): EpisodicTurnDao
     abstract fun companionMemoryDao(): CompanionMemoryDao
     abstract fun ledgerTransactionDao(): LedgerTransactionDao
+    abstract fun pantryReceiptDao(): PantryReceiptDao
+    abstract fun pantryLineItemDao(): PantryLineItemDao
 
     companion object {
         @Volatile
@@ -67,7 +73,7 @@ abstract class CarDatabase : RoomDatabase() {
                     CarDatabase::class.java,
                     "legion_database",
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                     .build()
                 INSTANCE = instance

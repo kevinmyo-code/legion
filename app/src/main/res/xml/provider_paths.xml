@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    FileProvider path configuration for CameraCapture's camera-app handoff URI.
+    The "cache-path" element exposes context.cacheDir so FileProvider can
+    produce content:// URIs for the temporary JPEG written there.
+-->
+<paths>
+    <cache-path name="shared_images" path="." />
+</paths>

@@ -79,6 +79,14 @@
             android:screenOrientation="unspecified"
             android:theme="@style/Theme.Legion" />
 
+        <!-- Grocery receipt photo import, launched by the import_receipt tool
+             (.claude/plans/wiggly-beaming-quasar.md). Placeholder UI. -->
+        <activity
+            android:name=".ui.PantryImportActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:theme="@style/Theme.Legion" />
+
         <service
             android:name=".service.AriaForegroundService"
             android:enabled="true"
@@ -106,6 +114,20 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>
+
+        <!-- FileProvider for CameraCapture's camera-app handoff URI (pantry
+             receipt photos). Authority = packageName + ".provider". Not
+             exported; the OS broker grants read-URI permission to the
+             receiving camera app for the duration of the capture only. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/provider_paths" />
+        </provider>
 
     </application>
 

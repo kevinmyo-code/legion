@@ -43,8 +43,19 @@ class SubAgent(
      * One-shot worker. [context] is the domain data block the caller assembled;
      * [question] is what to answer about it. Returns the worker's text, or null
      * on any failure so the caller can speak a fallback rather than a half-answer.
+     *
+     * [imageBytes], when set, attaches an inline image part alongside the text
+     * (Gemini's `generateContent` accepts `inlineData` and `text` parts in the
+     * same turn) - added for [com.kevin.legion.pantry.PantryReceiptAgent],
+     * which needs vision to read a photographed receipt. No other caller uses
+     * this yet; kept optional and off by default so nothing else changes shape.
      */
-    suspend fun ask(context: String, question: String): String? = withContext(Dispatchers.IO) {
+    suspend fun ask(
+        context: String,
+        question: String,
+        imageBytes: ByteArray? = null,
+        imageMimeType: String = "image/jpeg",
+    ): String? = withContext(Dispatchers.IO) {
         val userText = buildString {
             if (context.isNotBlank()) append(context).append("\n\n")
             append(question)
@@ -57,7 +68,7 @@ class SubAgent(
             }
             put("contents", JSONArray().put(JSONObject().apply {
                 put("role", "user")
-                put("parts", JSONArray().put(JSONObject().put("text", userText)))
+                put("parts", userParts(userText, imageBytes, imageMimeType))
             }))
             if (useSearch) {
                 put("tools", JSONArray().put(JSONObject().put("google_search", JSONObject())))
@@ -81,7 +92,12 @@ class SubAgent(
      * (allowed here because there are no function declarations to conflict with,
      * unlike in [investigate]).
      */
-    suspend fun askTyped(context: String, question: String): AgentResult = withContext(Dispatchers.IO) {
+    suspend fun askTyped(
+        context: String,
+        question: String,
+        imageBytes: ByteArray? = null,
+        imageMimeType: String = "image/jpeg",
+    ): AgentResult = withContext(Dispatchers.IO) {
         val userText = buildString {
             if (context.isNotBlank()) append(context).append("\n\n")
             append(question)
@@ -93,7 +109,7 @@ class SubAgent(
             }
             put("contents", JSONArray().put(JSONObject().apply {
                 put("role", "user")
-                put("parts", JSONArray().put(JSONObject().put("text", userText)))
+                put("parts", userParts(userText, imageBytes, imageMimeType))
             }))
             if (useSearch) {
                 put("tools", JSONArray().put(JSONObject().put("google_search", JSONObject())))
@@ -104,6 +120,22 @@ class SubAgent(
             is HttpOutcome.HttpError -> classify(o)
             HttpOutcome.Network -> AgentResult.Offline
         }
+    }
+
+    /**
+     * Builds the `parts` array for a user turn: text, plus an inline image part
+     * if supplied. Internal (not private) so [SubAgentPartsTest] can verify the
+     * JSON shape directly, without a real network call.
+     */
+    internal fun userParts(text: String, imageBytes: ByteArray?, imageMimeType: String): JSONArray {
+        val parts = JSONArray().put(JSONObject().put("text", text))
+        if (imageBytes != null) {
+            parts.put(JSONObject().put("inlineData", JSONObject().apply {
+                put("mimeType", imageMimeType)
+                put("data", android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP))
+            }))
+        }
+        return parts
     }
 
     /**

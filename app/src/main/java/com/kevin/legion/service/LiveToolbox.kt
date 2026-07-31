@@ -9,6 +9,7 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.ledger.LedgerController
+import com.kevin.legion.pantry.PantryController
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.util.shortDate
@@ -317,6 +318,30 @@ object LiveToolbox {
         ))
 
         fns.put(fn(
+            name = "import_receipt",
+            description = "Open the camera or gallery picker to log a grocery receipt into the " +
+                "pantry. Use when the driver asks to log, add, or scan a grocery receipt.",
+            params = obj(),
+            required = listOf(),
+        ))
+
+        fns.put(fn(
+            name = "list_recent_groceries",
+            description = "Read back recently logged grocery items. Calorie/protein/carb/fat figures " +
+                "are ESTIMATES the model guessed at ingestion time, never measured - always phrase " +
+                "them as estimates, never as fact.",
+            params = obj("count" to schema("integer", "How many items to return. Default 10.")),
+            required = listOf(),
+        ))
+
+        fns.put(fn(
+            name = "get_grocery_spend",
+            description = "Report total logged grocery spend across all receipts.",
+            params = obj(),
+            required = listOf(),
+        ))
+
+        fns.put(fn(
             name = "set_odometer",
             description = "Record the car's current odometer reading (the driver is the source of " +
                 "truth). Use when the driver states their mileage, e.g. 'my odometer is at 142500'.",
@@ -590,10 +615,13 @@ object LiveToolbox {
             "activate_garage" -> activateGarage(context, args)
             "get_balance" -> getLedgerBalance(context, args.optString("account"))
             "list_recent_transactions" -> listRecentTransactions(context, args.optInt("count", 10))
+            "list_recent_groceries" -> listRecentGroceries(context, args.optInt("count", 10))
+            "get_grocery_spend" -> getGrocerySpend(context)
             // Session-scoped tools the owning controller handles (it has the live
             // session / capture controller / activity), so dispatch returns null:
             "show_saved_places" -> null // caller launches the saved-places screen and replies
             "import_statement" -> null // caller launches the statement-import screen and replies
+            "import_receipt" -> null // caller launches the receipt-import screen and replies
             else -> result(success = false, message = "Unknown tool: $name")
         }
     }
@@ -769,6 +797,28 @@ object LiveToolbox {
         }
         return JSONObject().put("success", true).put("count", transactions.size).put("transactions", arr)
     }
+
+    /** Recent grocery line items - macro fields are estimates, see the tool's own description. */
+    private suspend fun listRecentGroceries(context: Context, count: Int): JSONObject {
+        val items = PantryController.recentLineItems(context, count.coerceIn(1, 100))
+        val arr = JSONArray()
+        for (i in items) {
+            val o = JSONObject()
+                .put("name", i.name)
+                .put("quantity", i.quantity)
+                .put("totalPrice", i.totalPriceCents / 100.0)
+            i.caloriesKcal?.let { o.put("estimatedCaloriesKcal", it) }
+            i.proteinG?.let { o.put("estimatedProteinG", it) }
+            i.carbsG?.let { o.put("estimatedCarbsG", it) }
+            i.fatG?.let { o.put("estimatedFatG", it) }
+            arr.put(o)
+        }
+        return JSONObject().put("success", true).put("count", items.size).put("items", arr)
+    }
+
+    /** Total logged grocery spend across all receipts. */
+    private suspend fun getGrocerySpend(context: Context): JSONObject =
+        JSONObject().put("success", true).put("total", PantryController.totalSpendCents(context) / 100.0)
 
     /**
      * Dispatches the activate_garage voice tool: a Context/JSONObject-thin
