@@ -71,6 +71,14 @@
             android:screenOrientation="unspecified"
             android:theme="@style/Theme.Legion" />
 
+        <!-- Bank-statement PDF import, launched by the import_statement tool
+             (.claude/plans/wiggly-beaming-quasar.md). Placeholder UI. -->
+        <activity
+            android:name=".ui.LedgerImportActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:theme="@style/Theme.Legion" />
+
         <service
             android:name=".service.AriaForegroundService"
             android:enabled="true"

@@ -9,6 +9,7 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.ai.firstGreetingOpener
+import com.kevin.legion.ui.LedgerImportActivity
 import com.kevin.legion.ui.SavedPlacesActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -517,6 +518,10 @@ class LiveSessionController(context: Context) {
                             if (call.args.optBoolean("visible", true)) openSavedPlaces()
                             JSONObject().put("success", true)
                         }
+                        "import_statement" -> {
+                            openLedgerImport()
+                            JSONObject().put("success", true)
+                        }
                         else -> LiveToolbox.dispatch(appContext, call.name, call.args)
                             ?: JSONObject().put("success", true)
                     }
@@ -538,6 +543,12 @@ class LiveSessionController(context: Context) {
 
     private fun openSavedPlaces() {
         val intent = Intent(appContext, SavedPlacesActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        appContext.startActivity(intent)
+    }
+
+    private fun openLedgerImport() {
+        val intent = Intent(appContext, LedgerImportActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         appContext.startActivity(intent)
     }

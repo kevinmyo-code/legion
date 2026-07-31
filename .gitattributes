@@ -1,0 +1,25 @@
+# Normalize line endings: store LF in the repo, check out native on each OS.
+* text=auto
+
+# Keep shell/gradle wrapper scripts as LF.
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Windows scripts as CRLF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets — never touch. Git's own binary auto-detection already
+# protects these (verified byte-for-byte against the ledger PDF fixtures,
+# .claude/plans/wiggly-beaming-quasar.md), but don't rely on a heuristic
+# alone for financial test data.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.apk binary
+*.aab binary
+*.aar binary
+*.ttf binary
+*.otf binary
+*.pdf binary

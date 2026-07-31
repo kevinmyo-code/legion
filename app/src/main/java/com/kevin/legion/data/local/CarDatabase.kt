@@ -12,6 +12,11 @@ import androidx.room.RoomDatabase
  * installed base, so there is nothing to migrate from. The v6-onward
  * additive-migration discipline (exportSchema + schemas/ + MigrationTest) that
  * governed Midnight AI resumes from here, starting at v1.
+ *
+ * v2: `ledger_transactions` (the ledger aspect's bank-statement ingestion,
+ * `.claude/plans/wiggly-beaming-quasar.md`) - additive only, no destructive
+ * fallback for the upgrade path even though there's no real installed base
+ * yet, matching the discipline this project intends to keep from here on.
  */
 @Database(
     entities = [
@@ -23,8 +28,9 @@ import androidx.room.RoomDatabase
         YearlyWrapped::class,
         DriveReassignment::class,
         EpisodicTurn::class, CompanionMemory::class,
+        LedgerTransaction::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -48,6 +54,7 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun driveReassignmentDao(): DriveReassignmentDao
     abstract fun episodicTurnDao(): EpisodicTurnDao
     abstract fun companionMemoryDao(): CompanionMemoryDao
+    abstract fun ledgerTransactionDao(): LedgerTransactionDao
 
     companion object {
         @Volatile
@@ -60,6 +67,7 @@ abstract class CarDatabase : RoomDatabase() {
                     CarDatabase::class.java,
                     "legion_database",
                 )
+                    .addMigrations(MIGRATION_1_2)
                     .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                     .build()
                 INSTANCE = instance

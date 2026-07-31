@@ -17,6 +17,15 @@ playServicesAuth = "21.2.0"
 # Vosk (custom wake word, ported from Midnight AI's 2026-07-19 reopen):
 # published directly to Maven Central, no JitPack needed.
 vosk = "0.3.47"
+# PdfBox-Android (ledger bank-statement parsing, .claude/plans/wiggly-beaming-quasar.md):
+# Android port of Apache PDFBox, needed for per-word coordinate extraction
+# (DBS statement column classification) that Android has no built-in equivalent
+# for. Verify this resolves - not yet confirmed against Maven Central directly.
+pdfboxAndroid = "2.0.27.0"
+# Robolectric: test-only, needed because PdfBox-Android's fonts/glyphlists ship
+# as Android assets (not JVM classpath resources) - a plain unit test can't
+# reach them without something shadowing AssetManager.
+robolectric = "4.13"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -48,6 +57,8 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
 # Custom wake word ("hey <name>"), ported from Midnight AI.
 vosk-android = { group = "com.alphacephei", name = "vosk-android", version.ref = "vosk" }
+pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

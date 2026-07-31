@@ -92,6 +92,15 @@ android {
             assets.srcDirs("$projectDir/schemas")
         }
     }
+    testOptions {
+        unitTests {
+            // PdfBox-Android's fonts/glyphlists/cmaps ship in the AAR's assets/,
+            // reachable only via Android's AssetManager - not on a plain JVM unit
+            // test's classpath. Robolectric (below) needs this to shadow that
+            // AssetManager with the real merged assets instead of a stub.
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 kapt {
@@ -132,6 +141,11 @@ dependencies {
     // driver's OWN Google Drive appDataFolder for BYO-cloud cross-device sync.
     implementation(libs.play.services.auth)
 
+    // Ledger aspect (.claude/plans/wiggly-beaming-quasar.md): PDF text/coordinate
+    // extraction for bank-statement parsing. Android has no built-in equivalent
+    // to Python's pdfplumber word-position extraction the DBS parser depends on.
+    implementation(libs.pdfbox.android)
+
     // Custom wake word ("hey <name>"), ported from Midnight AI.
     implementation(libs.vosk.android)
 
@@ -147,6 +161,10 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation("org.json:json:20231013")
+    // Robolectric: needed so ledger PDF-parsing unit tests can shadow
+    // AssetManager and reach PdfBox-Android's bundled fonts/glyphlists (see
+    // testOptions.unitTests.isIncludeAndroidResources above for why).
+    testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))

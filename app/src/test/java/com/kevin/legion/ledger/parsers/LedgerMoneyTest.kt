@@ -1,0 +1,47 @@
+package com.kevin.legion.ledger.parsers
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Test
+
+/**
+ * Mirrors Project Andromeda's `tests/bronze/test_money.py` exactly - same
+ * cases, same expectations, proving the Kotlin port matches the Python
+ * original's behavior.
+ */
+class LedgerMoneyTest {
+    @Test
+    fun `accepts well-formed amounts`() {
+        assertEquals(10000L, parseMoneyCents("100.00"))
+        assertEquals(123456L, parseMoneyCents("1,234.56"))
+        assertEquals(-123456L, parseMoneyCents("-1,234.56"))
+        assertEquals(123456L, parseMoneyCents("$1,234.56"))
+        assertEquals(-1798L, parseMoneyCents("-$17.98"))
+        assertEquals(0L, parseMoneyCents("0.00"))
+    }
+
+    @Test
+    fun `rejects malformed amounts`() {
+        val malformed = listOf(
+            "1,23.45", // wrong thousands grouping
+            "123.4", // missing a decimal place
+            "123.456", // too many decimal places
+            "123", // no decimals at all
+            "(123.45)", // parenthesized negative, not a supported convention
+            "123.45 CR", // trailing marker glued on
+            "",
+            "abc",
+        )
+        for (token in malformed) {
+            assertThrows("expected rejection of '$token'", GenericStatementParseException::class.java) {
+                parseMoneyCents(token)
+            }
+        }
+    }
+
+    @Test
+    fun `extracts candidates from free text`() {
+        val text = "Total Balance Carried Forward: 15,424.58 5,350.44 4,640.88"
+        assertEquals(listOf("15,424.58", "5,350.44", "4,640.88"), findMoneyTokens(text))
+    }
+}

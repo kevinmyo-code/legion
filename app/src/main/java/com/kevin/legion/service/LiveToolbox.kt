@@ -8,6 +8,7 @@ import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
+import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.util.shortDate
@@ -287,6 +288,35 @@ object LiveToolbox {
         ))
 
         fns.put(fn(
+            name = "import_statement",
+            description = "Open the file picker to import a bank statement PDF into the ledger. " +
+                "Use when the driver asks to import, add, or upload a statement, or add a bank " +
+                "account's transactions.",
+            params = obj(),
+            required = listOf(),
+        ))
+
+        fns.put(fn(
+            name = "get_balance",
+            description = "Report the latest known balance for a ledger account. If the driver " +
+                "doesn't name one and only one account is on file, use that one; if several exist, " +
+                "ask which, or report all of them.",
+            params = obj("account" to schema("string", "Which account, if the driver named one. " +
+                "Leave empty to get all known accounts.")),
+            required = listOf(),
+        ))
+
+        fns.put(fn(
+            name = "list_recent_transactions",
+            description = "Read back the most recent ledger transactions (raw descriptions and " +
+                "amounts - there's no spend-by-category breakdown yet, so don't imply insight this " +
+                "doesn't have). Use when the driver asks what they've spent money on recently or " +
+                "wants to review recent transactions.",
+            params = obj("count" to schema("integer", "How many to return. Default 10.")),
+            required = listOf(),
+        ))
+
+        fns.put(fn(
             name = "set_odometer",
             description = "Record the car's current odometer reading (the driver is the source of " +
                 "truth). Use when the driver states their mileage, e.g. 'my odometer is at 142500'.",
@@ -558,9 +588,12 @@ object LiveToolbox {
             "list_build_history" -> listBuildHistory(context, args.optString("type"))
             "get_spend" -> getSpend(context, args.optString("category"))
             "activate_garage" -> activateGarage(context, args)
+            "get_balance" -> getLedgerBalance(context, args.optString("account"))
+            "list_recent_transactions" -> listRecentTransactions(context, args.optInt("count", 10))
             // Session-scoped tools the owning controller handles (it has the live
             // session / capture controller / activity), so dispatch returns null:
             "show_saved_places" -> null // caller launches the saved-places screen and replies
+            "import_statement" -> null // caller launches the statement-import screen and replies
             else -> result(success = false, message = "Unknown tool: $name")
         }
     }
@@ -704,6 +737,37 @@ object LiveToolbox {
         return JSONObject().put("success", true)
             .put("total", BuildSheetController.totalSpend(context))
             .put("byCategory", catObj)
+    }
+
+    /** Latest known balance for one account, or all known accounts if none named. */
+    private suspend fun getLedgerBalance(context: Context, account: String): JSONObject {
+        val accounts = if (account.isNotBlank()) listOf(account) else LedgerController.allAccountIds(context)
+        if (accounts.isEmpty()) {
+            return result(success = false, message = "No ledger accounts on file yet - import a statement first.")
+        }
+        val o = JSONObject().put("success", true)
+        val balances = JSONObject()
+        for (acct in accounts) {
+            val cents = LedgerController.latestBalanceCents(context, acct)
+            if (cents != null) balances.put(acct, cents / 100.0)
+        }
+        return o.put("balances", balances)
+    }
+
+    /** Recent ledger transactions, raw (no categorization yet - see the tool's own description). */
+    private suspend fun listRecentTransactions(context: Context, count: Int): JSONObject {
+        val transactions = LedgerController.recentTransactions(context, count.coerceIn(1, 100))
+        val arr = JSONArray()
+        for (t in transactions) {
+            arr.put(
+                JSONObject()
+                    .put("date", shortDate(t.txnDate))
+                    .put("description", t.description)
+                    .put("amount", t.amountCents / 100.0)
+                    .put("account", t.accountId)
+            )
+        }
+        return JSONObject().put("success", true).put("count", transactions.size).put("transactions", arr)
     }
 
     /**
