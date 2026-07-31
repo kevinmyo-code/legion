@@ -26,9 +26,6 @@ data class BuildEntry(
     val date: Long,                 // when (epoch ms)
     val mileage: Int? = null,
     val notes: String = "",
-    // Absolute path to an attached photo (e.g. the new wheels), shown as a
-    // polaroid in the logbook. Added v10->v11. "" = none.
-    @ColumnInfo(defaultValue = "''") val photoPath: String = "",
     // Portable cross-device identity for sync (S1) - see MemoryEntry.syncId.
     @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
 )

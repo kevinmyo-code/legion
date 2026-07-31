@@ -12,7 +12,7 @@ import kotlinx.coroutines.withContext
  * [com.kevin.legion.ui.OnboardingState]).
  */
 object CompanionReset {
-    /** Clears only the long-term memories; keeps the persona, voice, face, and all other data. */
+    /** Clears only the long-term memories; keeps the persona, voice, and all other data. */
     suspend fun resetMemories(context: Context) {
         val db = CarDatabase.getDatabase(context)
         db.memoryDao().deleteAll()
@@ -26,16 +26,16 @@ object CompanionReset {
     }
 
     /**
-     * Wipes the companion's identity (name, personality, voice, face) and the
+     * Wipes the companion's identity (name, personality, voice) and the
      * driver's About-You profile, so onboarding can build a fresh persona. Keeps
      * memories, saved places, the to-do list, and per-car maintenance history.
+     *
+     * No avatar/background/car-image deletion anymore - AvatarStudio (generated
+     * art) was retired with the city-pop design language in the 2026-07-31 pivot.
      */
     suspend fun resetCompanion(context: Context) = withContext(Dispatchers.IO) {
         CompanionProfile.clear(context)
         DriverProfile.clear(context)
-        AvatarStudio.deleteAvatars(context, AvatarStudio.activeAvatarId(context))
-        AvatarStudio.deleteBackground(context)
-        AvatarStudio.deleteCarImages(context)
     }
 
     /**

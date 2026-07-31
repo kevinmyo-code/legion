@@ -63,14 +63,31 @@
             </intent-filter>
         </activity>
 
-        <!-- SavedPlacesActivity (show_saved_places tool) is not rebuilt yet -
-             ui/ is a clean-slate rebuild, see README. Add back once it exists. -->
+        <!-- On-demand list of voice-tagged places, launched by the
+             show_saved_places tool. Placeholder UI, see README. -->
+        <activity
+            android:name=".ui.SavedPlacesActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:theme="@style/Theme.Legion" />
 
         <service
             android:name=".service.AriaForegroundService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|dataSync|microphone" />
+
+        <!-- Grants MediaSessionManager access to active media sessions (now-playing
+             state, e.g. Spotify) once the driver enables notification access in
+             system settings. No notifications are parsed. -->
+        <service
+            android:name=".service.MediaNotificationListener"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <receiver
             android:name=".service.BootReceiver"

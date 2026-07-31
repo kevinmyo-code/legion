@@ -7,9 +7,9 @@ import com.kevin.legion.ai.CompanionProfile
 
 /**
  * Whether cross-device BYO-cloud sync (S1) can run on this install right now.
- * Mirrors [com.kevin.legion.vehicle.NavCapability]: a hard gate checked
- * before any sync work, so the feature is fully opt-in and degrades to today's
- * 100%-on-device behaviour with zero regression when unavailable.
+ * A hard gate checked before any sync work, so the feature is fully opt-in and
+ * degrades to today's 100%-on-device behaviour with zero regression when
+ * unavailable.
  *
  * Two conditions:
  *  - Google Play Services present (the Identity Authorization API and Drive both

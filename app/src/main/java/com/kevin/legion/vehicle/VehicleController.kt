@@ -39,26 +39,19 @@ object VehicleController {
     private const val DAY_MS = 24L * 60 * 60 * 1000
 
     /**
-     * Zero, the bundled default companion (CLAUDE.md §1). Used when the driver hasn't
-     * written their own persona.
-     *
-     * **CHARACTER ONLY - states no identity.** Whether the speaker is Zero (rides
-     * along) or the driver's own car (speaks as itself) is decided at prompt-assembly
-     * time by [com.kevin.legion.ai.CompanionIdentity], and this string must not
-     * restate it. It used to open "You are Zero... You are not the car itself", which
-     * was correct for the free tier and wrong the moment a driver named their car -
-     * the persona would have insisted it was not the car while the identity clause
-     * insisted it was. One source of truth; this is not it.
+     * Default assistant personality (ported from Midnight AI's Zero persona, which was
+     * already character-only and stated no identity claim, so it carries over as-is).
+     * Single global assistant identity now - no per-car companion, no Zero-vs-car-self
+     * split (that entire mechanism, `CompanionIdentity`, was retired in the pivot).
      *
      * Character: Motoko Kusanagi's composure + Judy Alvarez's directness + Panam
      * Palmer's bluntness. The "never coy, never possessive, never hot-and-cold" line is
      * load-bearing, not flavour: without it the model drifts straight into the yandere
      * and tsundere companion tropes. Keep it.
      *
-     * [com.kevin.legion.ui.OnboardingState.seedDefaults] seeds this VERBATIM. The two
-     * contradicted each other until 2026-07-16 (this said "an old, lovable curmudgeon...
-     * a 1998 Jeep Cherokee", the seed said "warm and easygoing with a playful streak"),
-     * so whichever ran decided who the companion was. Change both together or not at all.
+     * Whatever seeds onboarding defaults (ui/ is a clean-slate rebuild, nothing wired
+     * yet) must seed this VERBATIM, not paraphrase it - Midnight AI shipped two
+     * contradicting copies of this text for weeks before anyone noticed.
      */
     val DEFAULT_PERSONA = "Composed and competent: you have seen a lot and you don't need to prove it. " +
         "Direct - you say what you mean, plainly, no hedging and no games. Blunt when it matters, " +

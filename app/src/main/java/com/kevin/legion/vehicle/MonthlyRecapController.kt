@@ -2,13 +2,8 @@ package com.kevin.legion.vehicle
 
 import android.content.Context
 import android.util.Log
-import com.kevin.legion.ai.AvatarStudio
-import com.kevin.legion.ai.CompanionIdentity
+import com.kevin.legion.ai.AssistantIdentity
 import com.kevin.legion.ai.SubAgent
-import com.kevin.legion.ai.WallpaperColorScheme
-import com.kevin.legion.ai.WallpaperLandscape
-import com.kevin.legion.ai.WallpaperTimeOfDay
-import com.kevin.legion.billing.EntitlementManager
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MonthlyRecap
 import java.text.SimpleDateFormat
@@ -175,10 +170,6 @@ object MonthlyRecapController {
         serviceCount: Int,
     ): String {
         val fallback = "Another month on the road together - $driveCount drives, ${milesDriven.toInt()} miles."
-        // The stats above are always computed and saved for free; this narrative is the
-        // only Gemini-billed part of a monthly recap, so it's the only part gated by AI
-        // mode. Ungated, the numbers-only fallback below still shows on the recap.
-        if (!EntitlementManager.canUseSubAgent()) return fallback
         val stats = buildString {
             append("Miles driven: ${milesDriven.toInt()}. ")
             append("Drives: $driveCount. ")
@@ -187,11 +178,10 @@ object MonthlyRecapController {
             append("Trouble codes seen: $codeCount. ")
             append("Services logged: $serviceCount.")
         }
-        // Identity from CompanionIdentity (Zero looks back WITH the driver; a named
-        // car looks back on its own year). Still deliberately self-contained rather
-        // than injecting the full CompanionProfile persona, matching the other
+        // Identity from AssistantIdentity, deliberately self-contained rather than
+        // injecting the full CompanionProfile persona, matching the other
         // sub-agents - only the speaker's stance is shared, not the character.
-        val system = CompanionIdentity.shortClause(context) + " " +
+        val system = AssistantIdentity.shortClause(context) + " " +
             "You are looking back at $monthName with the driver. Given the month's stats, write " +
             "2-4 short, warm, spoken-natural sentences reflecting on the month - notice something " +
             "real in the numbers (a long drive, a quiet month, a rough patch with codes), don't " +
@@ -200,6 +190,12 @@ object MonthlyRecapController {
         return agent.ask(stats, "Write the recap.") ?: fallback
     }
 
+    /**
+     * Cover art generation is retired for now: it depended on `AvatarStudio`
+     * (city-pop art direction, retired in the 2026-07-31 pivot) and no
+     * replacement image-gen path has been decided. Always returns null;
+     * `coverImagePath` stays a valid nullable column, just unpopulated.
+     */
     private suspend fun generateCover(
         context: Context,
         vehicleId: String,
@@ -207,25 +203,7 @@ object MonthlyRecapController {
         monthName: String,
         year: Int,
         month: Int,
-    ): String? {
-        if (!EntitlementManager.canGenerateImage()) return null
-        val carDesc = VehicleController.displayLabel(vehicle).ifBlank { "a car" }
-        // Cycle color scheme by month so a year's worth of covers (once the
-        // shelf UI exists to show them together) has visual variety instead
-        // of all twelve looking the same.
-        val scheme = WallpaperColorScheme.entries[(month - 1) % WallpaperColorScheme.entries.size]
-        val results = AvatarStudio.generateBackgroundConcepts(
-            context = context,
-            description = "$carDesc, a monthly recap cassette cover for $monthName $year",
-            colorScheme = scheme,
-            timeOfDay = WallpaperTimeOfDay.NIGHT,
-            landscape = WallpaperLandscape.CITY,
-            includeAvatar = true,
-            count = 1,
-        )
-        val bitmap = results.firstOrNull() ?: return null
-        return AvatarStudio.saveRecapCover(context, vehicleId, year, month, bitmap)
-    }
+    ): String? = null
 
     private fun monthRange(year: Int, month: Int): Pair<Long, Long> {
         val cal = Calendar.getInstance()

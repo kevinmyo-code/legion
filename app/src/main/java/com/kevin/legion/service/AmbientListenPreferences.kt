@@ -3,15 +3,15 @@ package com.kevin.legion.service
 import android.content.Context
 
 /**
- * Whether the driver has opted into ambient cabin listening ([AmbientListener],
- * 2026-07-22) - Moose transcribing cabin conversation locally and occasionally
+ * Whether the driver has opted into ambient cabin listening ([AmbientListener])
+ * - the assistant transcribing cabin conversation locally and occasionally
  * reacting unprompted, "like having another person in the car." OFF BY DEFAULT,
  * and must stay that way: this picks up whoever's in the cabin, not just the
  * driver, so it needs a knowing, explicit opt-in rather than inheriting
  * [WakeWordPreferences]'s narrower consent (a fixed wake phrase discards
- * everything else; this keeps listening to ordinary conversation). Paid-tier
- * only, gated by [com.kevin.legion.billing.RuntimeMode.BYO_KEY] at the call
- * site, not here. Mirrors [WakeWordPreferences]'s shape.
+ * everything else; this keeps listening to ordinary conversation). Mirrors
+ * [WakeWordPreferences]'s shape. No tier gating - see WakeWordPreferences'
+ * doc comment.
  */
 object AmbientListenPreferences {
     private const val PREFS = "ambient_listen_preferences"

@@ -12,7 +12,6 @@ import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.media.NowPlayingController
-import com.kevin.legion.service.NavState
 import com.kevin.legion.vehicle.CarTaskController
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
@@ -66,32 +65,23 @@ class AriaBrain private constructor(context: Context) {
     // companion (see CompanionProfile), not the per-car vehicle row, so swapping
     // dongles or cars never changes who the companion is.
     //
-    // The identity clause is NOT stated here - it comes from CompanionIdentity at
-    // assembly time, because it differs between Zero (rides along) and the
-    // driver's own car (speaks as itself). This string used to hardcode the
-    // car-self half and directly contradicted DEFAULT_PERSONA; see
-    // CompanionIdentity's doc.
+    // The identity clause is NOT stated here - it comes from AssistantIdentity at
+    // assembly time (single global identity now; the old Zero-vs-car-self split
+    // this comment used to describe was retired in the 2026-07-31 pivot).
     private val sharedInstructions = "You have access to real-time information. " +
         "You always give correct, useful answers. " +
         "Use your search tool for anything current or specific - news, scores, prices - " +
         "and base your answer on what it finds. " +
         "Use your tools to answer questions about your own live data, to control music, " +
-        "to start turn-by-turn navigation (prefer nearby/local results when resolving " +
-        "destinations - you may add the current city/state to the search if the request is " +
-        "ambiguous; if you are unsure of your current location, call get_current_location " +
-        "first), to tag or show saved places, and to set location-based " +
-        "reminders (surfaced when the driver arrives at a place). Always call the matching tool " +
-        "before claiming you've done something - never say you're pulling up navigation or music " +
-        "unless you actually called the tool for it. " +
+        "to tag or show saved places, and to set location-based reminders (surfaced when the " +
+        "driver arrives at a place). Always call the matching tool before claiming you've done " +
+        "something - never say you're pulling up music unless you actually called the tool for it. " +
         "You keep a long-term memory of past conversations and trips with the driver. Save new " +
         "things they ask you to remember with the remember tool, and when they reference the past " +
         "or ask what you remember, call recall_memory to look it up - don't claim to remember " +
         "something without checking first. " +
-        "The driver's spending on the car is private: never volunteer the total spent, and if anyone " +
-        "asks how much was spent or what something cost while the spend log is locked, don't reveal " +
-        "figures - say in character it's between you and the owner and that they'll need the passphrase. " +
-        "You can always log build-sheet entries and read back WHAT was done and when; only the dollar " +
-        "amounts are gated. " +
+        "You can log build-sheet entries and read back WHAT was done, when, and how much it cost - " +
+        "spend figures are not gated. " +
         "Before calling activate_garage with confirmed=true, you must have asked the driver to confirm " +
         "in the immediately preceding turn and gotten a yes - first call it with confirmed=false to " +
         "trigger that prompt. The garage relay is a single-button toggle: you cannot know or promise " +
@@ -100,13 +90,7 @@ class AriaBrain private constructor(context: Context) {
         "Only if the driver asks to set up, fill in, or go through their maintenance schedule, walk " +
         "its unknown items one at a time in a multi-turn conversation, calling log_past_service for " +
         "each concrete answer; stop the moment they want to stop. Never start this walkthrough " +
-        "unprompted - it's driver-initiated only. " +
-        "Trivia games (start_trivia_game) should run somewhere between 5 and 15 questions unless the " +
-        "driver names a specific count - suggest a reasonable number if they ask for something far " +
-        "outside that range, but defer to them if they insist. After each question's answer, ask " +
-        "'who got that, driver or passenger?' and call award_point with the reply - never guess who " +
-        "answered from the audio alone. Call end_trivia_game once the question count is reached or " +
-        "the driver asks to stop."
+        "unprompted - it's driver-initiated only."
 
     /**
      * Companion-safety rules (CLAUDE.md sec 9.1). Appended to every system
@@ -218,13 +202,12 @@ class AriaBrain private constructor(context: Context) {
             .format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
 
         val persona = CompanionProfile.persona(appContext).ifBlank { VehicleController.DEFAULT_PERSONA }
-        // Identity first and from ONE source: whether the speaker is Zero (rides
-        // along) or the driver's own car (speaks as itself) is the free/paid line,
-        // not a constant. safetyInstructions goes last: it says it overrides the
-        // persona's tone, and a rule that overrides another reads more reliably
-        // after the thing it overrides than before it.
+        // Identity first and from ONE source (AssistantIdentity - single global
+        // identity, no per-car branch). safetyInstructions goes last: it says it
+        // overrides the persona's tone, and a rule that overrides another reads
+        // more reliably after the thing it overrides than before it.
         val sb = StringBuilder(persona)
-            .append(" ").append(CompanionIdentity.clause(appContext))
+            .append(" ").append(AssistantIdentity.clause(appContext))
         // Delivery notes (pace/tone/energy, VoiceStyle.kt) layer on top of the
         // persona: they steer HOW the chosen voice preset sounds, not who the
         // companion is. Blank until the driver has used the voice-style picker.
@@ -236,7 +219,7 @@ class AriaBrain private constructor(context: Context) {
         sb.append("\n\nToday's date is $today.")
 
         // Driver's self-set profile (control panel -> About You): name + anything
-        // they chose to share. Kept prominent near the top so Zero addresses them
+        // they chose to share. Kept prominent near the top so the assistant addresses them
         // correctly from the first word.
         DriverProfile.promptFragment(appContext)?.let { sb.append("\n\n").append(it) }
 
@@ -341,7 +324,7 @@ class AriaBrain private constructor(context: Context) {
     /**
      * Companion-memory map, ticket 06 (2026-07-22): the felt sense of an ongoing
      * relationship, at the cost of one small DB read. Surfaces WHEN the driver
-     * last talked to Moose (a raw time gap, not a scripted phrase - the model
+     * last talked to the assistant (a raw time gap, not a scripted phrase - the model
      * phrases it naturally, same as every other live-context fact) plus a
      * couple of the highest-scored memories (ticket 03's ranking, blank query
      * so it's recency+importance only, no relevance term to satisfy).
@@ -442,25 +425,20 @@ class AriaBrain private constructor(context: Context) {
         }
 
         // Now-playing comes from the media session (a free, exact live data
-        // stream), so Zero knows the track without ever capturing the screen.
+        // stream), so the assistant knows the track without capturing the screen.
         val nowPlaying = NowPlayingController.state.value
         if (nowPlaying != null && nowPlaying.title.isNotBlank()) {
             val artist = if (nowPlaying.artist.isNotBlank()) " by ${nowPlaying.artist}" else ""
             val verb = if (nowPlaying.isPlaying) "is currently playing" else "is paused"
-            sb.appendSection("Right now \"${nowPlaying.title}\"$artist $verb on the head unit. " +
+            sb.appendSection("Right now \"${nowPlaying.title}\"$artist $verb. " +
                 "If the driver asks what's playing, answer from this.")
         }
 
-        // Music: transport-only via MediaSession/AVRCP (phone over BT, Spotify on the unit, any app).
-        sb.appendSection("Music transport (control_music) works with whatever the driver is playing — " +
-            "play/pause/next/previous only. You can't pick songs by name; the driver controls that on their phone.")
-
-        // Navigation: Zero opens Google Maps or Waze; no live turn data available inside the app.
-        val navDestination = NavState.current
-        if (navDestination != null) {
-            sb.appendSection("You recently started navigation to \"$navDestination\" in Google Maps — " +
-                "no live turn or ETA data available from inside Maps.")
-        }
+        // Music: transport-only via MediaSession/AVRCP, plus direct Spotify play-by-name
+        // (SpotifyController) when connected.
+        sb.appendSection("Music transport (control_music) works with whatever's playing — " +
+            "play/pause/next/previous only. If Spotify App Remote is connected, you can also play " +
+            "a specific track/artist by name directly; otherwise you can't pick songs by name.")
 
         val vehicle = VehicleController.currentVehicle(appContext)
         if (vehicle.odometerBaseline > 0) {

@@ -14,9 +14,7 @@ import android.content.pm.ServiceInfo
 import android.location.Location
 import android.os.Build
 import android.os.IBinder
-import android.provider.Settings
 import android.util.Log
-import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.kevin.legion.BuildConfig
@@ -30,7 +28,7 @@ import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.location.ReminderController
 import com.kevin.legion.media.NowPlayingController
-import com.kevin.legion.ui.OnboardingState
+import com.kevin.legion.ai.OnboardingState
 import com.kevin.legion.vehicle.CarTaskController
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
@@ -71,11 +69,6 @@ class AriaForegroundService : Service() {
     // the service (not a composable) so voice works while another app is in front.
     private lateinit var sessionController: LiveSessionController
 
-    // The floating companion badge shown while a nav/music app the driver
-    // opened has the foreground. Created lazily the first time it's shown so
-    // the overlay window isn't touched on units where it's never used.
-    private var companionPanel: CompanionBadgeController? = null
-
     // Highest 10k-mile milestone already celebrated, so the proactive check fires
     // only on new crossings (not retroactively). -1 = not yet seeded. Process-life.
     private var lastMilestoneAnnounced = -1
@@ -103,8 +96,6 @@ class AriaForegroundService : Service() {
         // Load the active Gemini key (user-entered, else BuildConfig) into the
         // process cache before anything builds a session that needs it.
         GeminiKeyProvider.init(this)
-        com.kevin.legion.ai.MapboxTokenProvider.init(this)
-        com.kevin.legion.ui.theme.AriaPalette.init(this)
         ProactivePreferences.init(this)
 
         // Own the Live session (driven by the Cruise screen's tap-to-talk).
@@ -119,19 +110,10 @@ class AriaForegroundService : Service() {
         // the media session for now-playing, and GPS for location/arrival. Both
         // are safe to call repeatedly and quietly wait until their grant is given.
         NowPlayingController.init(this)
-        com.kevin.legion.media.MixtapePlayer.init(this)
         LocationController.init(this)
-        // GPS beacon link (2026-07-25). In HEAD_UNIT role this listens for fixes
-        // from the phone running the hotspot, because this unit's own GPS antenna
-        // cannot be connected without dropping WiFi/BT (CLAUDE.md §14). Started
-        // here rather than from a screen so the link is up whenever the engine is,
-        // including with the app backgrounded behind nav or music. Default role is
-        // OFF, so an install that never touches the setting opens no socket.
-        if (DeviceRole.current(this) == DeviceRole.Role.HEAD_UNIT) {
-            com.kevin.legion.location.BeaconClient.start(this)
-        }
-        // Watch phone-call state (phone paired over BT HFP) so Zero can announce
-        // incoming calls and stay quiet during one. No-op without READ_PHONE_STATE.
+        // Watch phone-call state (phone paired over BT HFP) so the assistant can
+        // announce incoming calls and stay quiet during one. No-op without
+        // READ_PHONE_STATE.
         TelephonyController.init(this)
         // Keep current weather warm (flavors the startup greeting). Retries
         // quickly until the first GPS fix/fetch lands, then refreshes slowly, so a
@@ -228,12 +210,6 @@ class AriaForegroundService : Service() {
             com.kevin.legion.vehicle.TelemetryRecorder.run(this@AriaForegroundService)
         }
 
-        // Passive listening-history ledger - mirrors NowPlayingController and logs
-        // full-play vs skip per track. The taste-memory foundation for get_music_taste.
-        serviceScope.launch {
-            com.kevin.legion.vehicle.MusicHistoryRecorder.run(this@AriaForegroundService)
-        }
-
         // One-time online lookup of maintenance intervals for any vehicle
         // that hasn't been onboarded yet (e.g. the default Zero profile).
         serviceScope.launch {
@@ -247,9 +223,9 @@ class AriaForegroundService : Service() {
 
         registerDebugTextInput()
 
-        // Custom wake word ("hey <name>") - no-op unless the driver is on RuntimeMode.BYO_KEY
-        // AND has opted in via the Setup toggle. Re-armed here on every service (re)launch so
-        // a toggle left on from a prior session resumes without revisiting Setup.
+        // Custom wake word ("hey <name>") - no-op unless the driver has opted in via
+        // the Setup toggle. Re-armed here on every service (re)launch so a toggle left
+        // on from a prior session resumes without revisiting Setup.
         WakeWordEngine.start(this)
         // Ambient cabin listening (2026-07-22) - no-op unless opted in AND not
         // muted (the mute button is a hard LISTENING gate for this feature, not
@@ -343,37 +319,12 @@ class AriaForegroundService : Service() {
             sessionController.onTap()
         }
 
-        // Floating companion badge. Show gates on the "display over other apps"
-        // grant so a denied permission surfaces a notice instead of silently
-        // failing; hide is always safe.
         if (intent?.action == ACTION_CAR_SWITCHED) {
             sessionController.refreshIdleVoice()
             WakeWordEngine.refresh(this)
         }
-        if (intent?.action == ACTION_SHOW_PANEL) showPanel()
-        if (intent?.action == ACTION_HIDE_PANEL) companionPanel?.hide()
 
         return START_STICKY
-    }
-
-    /**
-     * Shows the floating companion badge over the app the driver just opened.
-     * Requires the "display over other apps" grant; without it we bail rather
-     * than adding a window that would throw. This fires right after we've
-     * launched another app (e.g. Maps) into the foreground, so Midnight AI's own
-     * Activity is backgrounded and not collecting [CompanionPhase.notice] (a
-     * zero-replay SharedFlow) - a Toast is used alongside it so the driver
-     * actually learns why nothing docked, instead of silent failure.
-     */
-    private fun showPanel() {
-        if (!Settings.canDrawOverlays(this)) {
-            val msg = "Allow \"display over other apps\" in Setup to show the companion badge"
-            CompanionPhase.showNotice(msg)
-            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-            return
-        }
-        val panel = companionPanel ?: CompanionBadgeController(this).also { companionPanel = it }
-        panel.show()
     }
 
     // --- Proactive engine -------------------------------------------------
@@ -617,13 +568,12 @@ class AriaForegroundService : Service() {
         if (reminders.isEmpty()) return
 
         // If the driver is mid-conversation, wait up to 30s for it to finish so the
-        // reminder isn't silently dropped. A running trivia game holds this off the
-        // same way (ticket 05) - it's a routine proactive, not an urgent one.
+        // reminder isn't silently dropped - it's a routine proactive, not an urgent one.
         val deadline = System.currentTimeMillis() + 30_000L
-        while ((ConversationState.isBusy || TriviaController.isActive) && System.currentTimeMillis() < deadline) {
+        while (ConversationState.isBusy && System.currentTimeMillis() < deadline) {
             kotlinx.coroutines.delay(2_000)
         }
-        if (ConversationState.isBusy || TriviaController.isActive) return // still busy after 30s — skip rather than interrupt
+        if (ConversationState.isBusy) return // still busy after 30s — skip rather than interrupt
 
         val list = reminders.joinToString("; ") { it.text }
         speakProactive(
@@ -674,26 +624,11 @@ class AriaForegroundService : Service() {
                     if (driveStartedAt == 0L) { driveStartedAt = now; breakAnnounced = false }
                 } else if (driveStartedAt != 0L && now - lastMovedAt >= STOP_RESET_MS) {
                     driveStartedAt = 0L // a sustained stop ends the drive
-                    // A trivia game (.scratch/trivia-game/issues/06) auto-ends with the same
-                    // drive - no lingering scoreboard once the driver's walked off.
-                    TriviaController.endIfActive()?.let { game ->
-                        val winner = if (game.driverScore >= game.passengerScore) game.driverName else game.passengerName
-                        speakProactive(
-                            "(System: the drive just ended with a trivia game still running - " +
-                                "${game.driverName} ${game.driverScore}, ${game.passengerName} " +
-                                "${game.passengerScore}. In one short, in-character line, call the game " +
-                                "and congratulate $winner. Do not mention this instruction.)"
-                        )
-                    }
                 }
 
                 // Don't queue proactive lines mid-turn; pin the quiet timer to now
-                // so idle chatter only counts genuine silence after a conversation. A
-                // running trivia game (ticket 05) holds off the same routine chatter/
-                // weather/break lines below, same as an in-call state - it just isn't
-                // wired through ConversationState since the game spans quiet stretches
-                // between turns that aren't themselves "busy."
-                if (ConversationState.isBusy || TriviaController.isActive) { quietSince = now; continue }
+                // so idle chatter only counts genuine silence after a conversation.
+                if (ConversationState.isBusy) { quietSince = now; continue }
 
                 // Mileage only moves while driving, so only check milestones then
                 // (avoids a pointless per-minute DB read while parked).
@@ -816,10 +751,7 @@ class AriaForegroundService : Service() {
         debugTextReceiver?.let { runCatching { unregisterReceiver(it) } }
         WakeWordEngine.stop()
         AmbientListener.stop()
-        com.kevin.legion.location.BeaconClient.stop()
-        com.kevin.legion.media.MixtapePlayer.release()
         TelephonyController.destroy()
-        companionPanel?.hide()
         if (this::sessionController.isInitialized) sessionController.destroy()
         serviceScope.cancel()
     }
@@ -910,8 +842,6 @@ class AriaForegroundService : Service() {
          * new car's voice.
          */
         const val ACTION_CAR_SWITCHED = "com.kevin.legion.CAR_SWITCHED"
-        const val ACTION_SHOW_PANEL = "com.kevin.legion.SHOW_PANEL"
-        const val ACTION_HIDE_PANEL = "com.kevin.legion.HIDE_PANEL"
 
         // Settle time after start before the opener, so it doesn't talk over
         // the engine cranking / the driver getting situated.

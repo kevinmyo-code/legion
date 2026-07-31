@@ -21,10 +21,6 @@ interface BuildEntryDao {
     @Delete
     suspend fun delete(entry: BuildEntry)
 
-    /** Attaches (or clears) a photo path on an entry. */
-    @Query("UPDATE build_entries SET photoPath = :path WHERE id = :id")
-    suspend fun setPhoto(id: Long, path: String)
-
     /** Full build history for a vehicle, newest first. */
     @Query("SELECT * FROM build_entries WHERE vehicleId = :vehicleId ORDER BY date DESC")
     suspend fun getForVehicle(vehicleId: String): List<BuildEntry>

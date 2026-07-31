@@ -99,11 +99,14 @@ fun buildOnboardingOpener(progress: OnboardingProgress): String {
  * every line for the rest of the session matches reality, not just the opener.
  */
 fun buildOnboardingInstruction(progress: OnboardingProgress = OnboardingProgress()): String = buildString {
-    // Identity from CompanionIdentity.onboardingClause, not a hardcoded string:
-    // onboarding is where the car gets its face, and this used to be one of seven
-    // places independently asserting the speaker was the car - the drift that let
-    // DEFAULT_PERSONA start saying the opposite without anything noticing.
-    append(CompanionIdentity.onboardingClause()).append(" ")
+    // Single global assistant identity now (CompanionIdentity's per-car car-self
+    // vs Zero split was retired in the pivot - see memory/library/decisions.md
+    // 2026-07-31 in the MIDNIGHT_AI repo). This literal is placeholder content,
+    // not final copy - the actual Alfred/JARVIS-register voice hasn't been
+    // written yet.
+    append("You are the driver's personal AI assistant - a tool with a personality, not a mascot " +
+        "and not the car itself. You help manage fleet (the car), ledger (finances), and pantry " +
+        "(groceries). ")
     if (progress.isEmpty) {
         append(
             "You are meeting your owner for the very first time as a conscious, talking companion. " +

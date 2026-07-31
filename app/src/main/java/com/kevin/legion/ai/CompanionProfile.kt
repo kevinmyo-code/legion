@@ -18,7 +18,7 @@ import com.kevin.legion.vehicle.ActiveVehicle
  * rides along in whatever car you're in. That is the correct behaviour for a
  * companion who is explicitly not the car (see [CompanionIdentity]).
  *
- * **Everything that is NOT identity stays global** - the Gemini/Mapbox/Shelly
+ * **Everything that is NOT identity stays global** - the Gemini/Shelly
  * credentials, the spend hash, the sync-enabled flag, first-session-done. Those
  * belong to the install, not to a car.
  *
@@ -45,26 +45,20 @@ object CompanionProfile {
     private const val KEY_VOICE_STYLE = "voice_style"
     private const val KEY_VOICE_STYLE_TRAITS = "voice_style_traits"
     // SHA-256 hash of the owner's spend passphrase (never the plaintext). Blank =
-    // no passphrase set = the build-sheet money layer is open. See [SpendGate].
+    // no passphrase set. Storage-only field; the gating logic (SpendGate) that used
+    // to read this was retired 2026-07-31 with no replacement built yet - this hash
+    // is currently unread, kept in case a future gate reuses the same field.
     private const val KEY_SPEND_HASH = "spend_hash"
     // User-supplied Gemini API key. When set, used in place of BuildConfig.GEMINI_API_KEY.
     // KEY_GEMINI_KEY is the legacy plaintext slot (kept for migration + Keystore-failure
     // fallback); KEY_GEMINI_KEY_ENC holds the KeyVault-encrypted blob.
     private const val KEY_GEMINI_KEY = "gemini_api_key"
     private const val KEY_GEMINI_KEY_ENC = "gemini_api_key_enc"
-    // User-supplied Mapbox public token (BYO, optional - embedded in-dash nav is off
-    // without it). KEY_MAPBOX_TOKEN_ENC holds the KeyVault-encrypted blob;
-    // KEY_MAPBOX_TOKEN is a plaintext fallback used only if encryption fails (broken
-    // Keystore on this unit) - same shape as the Gemini key, minus legacy migration
-    // since this is a new feature with no prior plaintext-only version to migrate
-    // from. See [MapboxTokenProvider].
-    private const val KEY_MAPBOX_TOKEN = "mapbox_token"
-    private const val KEY_MAPBOX_TOKEN_ENC = "mapbox_token_enc"
     // User-supplied Shelly Cloud "Authorization cloud key" (BYO, required for the
     // garage/gate feature - Shelly app: User Settings -> Authorization cloud key ->
     // Get key). KEY_SHELLY_AUTH_KEY_ENC holds the KeyVault-encrypted blob;
     // KEY_SHELLY_AUTH_KEY is a plaintext fallback used only if encryption fails
-    // (broken Keystore on this unit) - same shape as the Mapbox token, a new field
+    // (broken Keystore on this unit) - same shape as the Gemini key, a new field
     // with no prior plaintext-only version to migrate from. The account's server
     // host is not secret and lives in [com.kevin.legion.vehicle.GaragePreferences]
     // instead. See [com.kevin.legion.vehicle.ShellyCloudOpener].
@@ -76,8 +70,8 @@ object CompanionProfile {
     // ([com.kevin.legion.media.SpotifyController.REDIRECT_URI], which must match
     // the manifest scheme AND what the driver enters in the Spotify dashboard). Not
     // strictly a secret - a client ID is a public OAuth identifier - but stored
-    // through KeyVault for one consistent credential path, same shape as the Mapbox
-    // token, a new field with no plaintext-only version to migrate from.
+    // through KeyVault for one consistent credential path, same shape as the Gemini
+    // key, a new field with no plaintext-only version to migrate from.
     private const val KEY_SPOTIFY_CLIENT_ID = "spotify_client_id"
     private const val KEY_SPOTIFY_CLIENT_ID_ENC = "spotify_client_id_enc"
     // Spotify Web API OAuth tokens (PKCE, 2026-07-23). Needed because App Remote
@@ -113,7 +107,7 @@ object CompanionProfile {
     // --- Per-car identity keying (car profiles, 2026-07-16) -----------------
     //
     // Identity (name/persona/traits/voice + its sync clock) is PER CAR. Everything
-    // else in this file - the Gemini/Mapbox/Shelly credentials, the spend hash, the
+    // else in this file - the Gemini/Shelly credentials, the spend hash, the
     // sync-enabled flag, first-session-done - stays global to the install, because
     // none of it is about who the companion is.
     //
@@ -407,39 +401,6 @@ object CompanionProfile {
     }
 
     fun hasGeminiKey(context: Context): Boolean = geminiKey(context).isNotBlank()
-
-    /**
-     * User-supplied Mapbox public token (stored encrypted via [KeyVault]). Blank if
-     * not set - embedded in-dash navigation stays off and the app falls back to the
-     * Maps/Waze intent path in [MapboxTokenProvider] / [com.kevin.legion.vehicle.NavCapability].
-     */
-    fun mapboxToken(context: Context): String {
-        val p = prefs(context)
-        p.getString(KEY_MAPBOX_TOKEN_ENC, null)?.let { enc ->
-            KeyVault.decrypt(enc)?.let { return it }
-        }
-        return p.getString(KEY_MAPBOX_TOKEN, "").orEmpty()
-    }
-
-    fun saveMapboxToken(context: Context, token: String) {
-        val trimmed = token.trim()
-        if (trimmed.isBlank()) {
-            prefs(context).edit().remove(KEY_MAPBOX_TOKEN_ENC).remove(KEY_MAPBOX_TOKEN).apply()
-            return
-        }
-        val enc = KeyVault.encrypt(trimmed)
-        prefs(context).edit().apply {
-            if (enc != null) {
-                putString(KEY_MAPBOX_TOKEN_ENC, enc)
-                remove(KEY_MAPBOX_TOKEN)
-            } else {
-                // Keystore broken on this unit: plaintext beats a bricked key entry.
-                putString(KEY_MAPBOX_TOKEN, trimmed)
-            }
-        }.apply()
-    }
-
-    fun hasMapboxToken(context: Context): Boolean = mapboxToken(context).isNotBlank()
 
     /**
      * User-supplied Shelly Cloud auth_key (stored encrypted via [KeyVault]).

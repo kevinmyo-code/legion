@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.service.AriaForegroundService
-import com.kevin.legion.ui.AppBackground
 import java.util.UUID
 
 /**
@@ -93,16 +92,8 @@ object ActiveVehicle {
      *   car's persona until the TTL lapses.
      * - `ACTION_CAR_SWITCHED` - a warm Live socket holds the previous car's voice
      *   (same shape as the "default voice after onboarding" field bug).
-     * - [AppBackground.notifyChanged] - wallpaper + avatar are decoded at render, so
-     *   the surfaces need telling to re-read.
      */
     fun notifyResolutionChanged(context: Context) {
-        // The GPS beacon role is per-car (see DeviceRole): this same device is the
-        // beacon in the car with a bolted-in head unit and the app host in the car
-        // without one. Applying it here, rather than making the driver remember a
-        // Setup toggle on every swap, is the point of storing it per car - and this
-        // is the one place that already knows the resolved car changed.
-        com.kevin.legion.service.DeviceRole.applyCurrent(context)
         AriaBrain.get(context).invalidateBase()
         runCatching {
             context.startService(
@@ -110,6 +101,5 @@ object ActiveVehicle {
                     .setAction(AriaForegroundService.ACTION_CAR_SWITCHED)
             )
         }
-        AppBackground.notifyChanged()
     }
 }

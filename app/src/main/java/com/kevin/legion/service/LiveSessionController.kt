@@ -9,7 +9,6 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.ai.firstGreetingOpener
-import com.kevin.legion.billing.EntitlementManager
 import com.kevin.legion.ui.SavedPlacesActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -90,14 +89,6 @@ class LiveSessionController(context: Context) {
     // failed connection ("Couldn't connect") from a mid-chat drop ("Connection lost").
     private var connectedThisSession = false
 
-    // Tracks ACTIVE conversation/speech time (mic open or Zero talking) across
-    // the current socket's lifetime. Dormant since the entitlement broker was
-    // removed (CLAUDE.md sec 2/8, 2026-07-16) - no reporting call to make - but
-    // kept for a future local spend readout. See VoiceUsageMeter's doc for the
-    // segment model; started/paused at the call sites below, read out in
-    // LiveEvent.Closed.
-    private val usageMeter = VoiceUsageMeter()
-
     // Consecutive prewarm sockets that never connected (dead zone / bad key). The
     // auto-prewarm after a close backs off exponentially on this so we don't
     // hot-loop failed connects. Reset on any successful connect and on a fresh tap.
@@ -171,7 +162,6 @@ class LiveSessionController(context: Context) {
         // silentDestroy skips LiveEvent.Closed, so close out any dangling
         // segment here too (e.g. a proactive line still speaking) - otherwise
         // its stuck-open segmentStartMs would inflate the NEXT socket's report.
-        usageMeter.pause(System.currentTimeMillis())
         session?.silentDestroy()
         session = null
         prewarm()
@@ -201,8 +191,8 @@ class LiveSessionController(context: Context) {
 
         // Fast-fail with a visible reason instead of a silent 15s connect attempt.
         if (TelephonyController.isInCall) { CompanionPhase.showNotice("ON A CALL"); return }
-        // Two tiers only (CLAUDE.md sec 2): a no-key install needs a key, full stop.
-        if (!GeminiKeyProvider.hasKey() && !EntitlementManager.canStartVoice()) {
+        // BYO-key only, no tiers (commercial model retired 2026-07-31).
+        if (!GeminiKeyProvider.hasKey()) {
             CompanionPhase.showNotice("ADD A GEMINI KEY IN SETUP TO TALK")
             return
         }
@@ -220,7 +210,6 @@ class LiveSessionController(context: Context) {
             // silentDestroy skips Closed - close out any dangling segment
             // (e.g. the proactive speech this branch is interrupting) so it
             // doesn't leak into the fresh conversation's own reported total.
-            usageMeter.pause(System.currentTimeMillis())
             s.silentDestroy()
             session = null
         }
@@ -262,7 +251,6 @@ class LiveSessionController(context: Context) {
             // proactive line spoken on an already-connected socket - it never
             // fires LiveEvent.Connected, so start the billing segment here.
             s != null && s.isWarm() -> {
-                usageMeter.startSegment(System.currentTimeMillis())
                 s.speakOnWarm(prompt)
             }
             // A socket is still connecting (prewarm): speak once it's up, warm.
@@ -306,7 +294,6 @@ class LiveSessionController(context: Context) {
             // in LISTENING forever. silentDestroy skips Closed, so close out any
             // dangling segment (e.g. a proactive line that was mid-speech on this
             // socket) before the fresh conversation starts its own.
-            usageMeter.pause(System.currentTimeMillis())
             s.silentDestroy()
             session = null
             startConversation()
@@ -317,7 +304,6 @@ class LiveSessionController(context: Context) {
         // active talk begins - only once the send actually landed (a stale-socket
         // failure above starts a fresh conversation instead, billed from its own
         // Connected event).
-        usageMeter.startSegment(System.currentTimeMillis())
         // Commit the one-time intro flag only after the send actually landed.
         if (isFirst) CompanionProfile.markFirstSessionDone(appContext)
     }
@@ -392,7 +378,6 @@ class LiveSessionController(context: Context) {
                 // billing segment here; Pending.NONE is a bare prewarm sitting
                 // idle (no one spoke), so it must NOT start one.
                 if (pendingAction != Pending.NONE) {
-                    usageMeter.startSegment(System.currentTimeMillis())
                 }
                 when (pendingAction) {
                     Pending.CONVERSATION -> {
@@ -431,7 +416,6 @@ class LiveSessionController(context: Context) {
                 // is the worst possible moment to imply the app broke. Pause the
                 // meter by hand since silentDestroy skips the Closed path that
                 // normally does it (same reason as refreshIdleVoice).
-                usageMeter.pause(System.currentTimeMillis())
                 session?.silentDestroy()
                 session = null
                 conversationMode = false
@@ -448,7 +432,6 @@ class LiveSessionController(context: Context) {
                 if (conversationMode) {
                     set(Phase.LISTENING, "Listening...")
                 } else {
-                    usageMeter.pause(System.currentTimeMillis())
                     set(Phase.IDLE, IDLE_STATUS)
                 }
             }
@@ -458,7 +441,6 @@ class LiveSessionController(context: Context) {
                 // reached via parkWarm after a warm-socket proactive line, on top
                 // of the TurnComplete pause above - pause() is a no-op if the
                 // segment is already closed).
-                usageMeter.pause(System.currentTimeMillis())
                 conversationMode = false
                 set(Phase.IDLE, IDLE_STATUS)
             }
@@ -492,12 +474,6 @@ class LiveSessionController(context: Context) {
                 // A prewarm socket (not a conversation) that never connected is a
                 // failed connect - escalate the retry backoff.
                 if (!everConnected && !userInitiated) consecutivePrewarmFailures++
-
-                // Always close out the meter (folds in any still-open segment and
-                // resets it for the next socket). No broker to report to (CLAUDE.md
-                // sec 2/8: broker removed 2026-07-16) - the meter stays dormant,
-                // kept for a future local spend readout.
-                usageMeter.stopAndReportSeconds(System.currentTimeMillis())
 
                 session = null
                 pendingAction = Pending.NONE

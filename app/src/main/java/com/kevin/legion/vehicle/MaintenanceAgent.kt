@@ -2,7 +2,7 @@
 
 import android.content.Context
 import com.kevin.legion.ai.AgentResult
-import com.kevin.legion.ai.CompanionIdentity
+import com.kevin.legion.ai.AssistantIdentity
 import com.kevin.legion.ai.SubAgent
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.util.shortDate
@@ -85,9 +85,9 @@ object MaintenanceAgent {
         )
     }
 
-    // Identity from CompanionIdentity, never restated here - see its doc.
+    // Identity from AssistantIdentity, never restated here - see its doc.
     private fun system(context: Context) =
-        CompanionIdentity.shortClause(context) + " " +
+        AssistantIdentity.shortClause(context) + " " +
             "You are reasoning about this car's maintenance - not an outside specialist consulted " +
             "about a vehicle. You are given its current estimated mileage and its scheduled " +
             "maintenance (each item's interval and when it was last done), plus the driver's " +

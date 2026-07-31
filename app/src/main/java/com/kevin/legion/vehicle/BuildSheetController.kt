@@ -10,10 +10,8 @@ import com.kevin.legion.data.local.CarDatabase
  * scheduled maintenance brain ([VehicleController]) and the to-do list
  * ([CarTaskController]); together they feed the logbook timeline.
  *
- * Logging is always allowed (it's the owner's own data). READING the money layer
- * (per-entry costs + the grand total) is gated by [com.kevin.legion.ai.SpendGate] -
- * this controller just returns the raw numbers; the caller (LiveToolbox / the UI)
- * decides whether to reveal them. The *history* (what/when) is never gated.
+ * No spend-gating (SpendGate was retired 2026-07-31, no replacement built yet) -
+ * this controller just returns the raw numbers to whoever calls it.
  */
 object BuildSheetController {
     val TYPES = setOf("mod", "part", "repair", "consumable", "other")
@@ -46,8 +44,6 @@ object BuildSheetController {
                 notes = notes.trim(),
             )
         )
-        // Confirmation deliberately omits the dollar figure (the money layer is
-        // gated/hidden); Zero acknowledges what was logged, not how much.
         return "Logged \"$t\" on your build sheet."
     }
 
@@ -78,7 +74,7 @@ object BuildSheetController {
         return map
     }
 
-    /** Maps a loose hint from Zero to one of [TYPES]. */
+    /** Maps a loose hint from the assistant to one of [TYPES]. */
     fun normalizeType(raw: String): String {
         val c = raw.trim().lowercase()
         return when {

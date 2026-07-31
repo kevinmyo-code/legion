@@ -4,8 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.SubAgent
-import com.kevin.legion.billing.EntitlementManager
-import com.kevin.legion.billing.RuntimeMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -104,14 +102,12 @@ object AmbientListener {
     private var lastReactionAtMs = 0L
 
     /**
-     * Starts if not already running. No-ops unless: paid tier (nothing to
-     * react WITH on free-tier Zero), the driver opted in
-     * ([AmbientListenPreferences]), and NOT muted ([ProactivePreferences] -
+     * Starts if not already running. No-ops unless: the driver opted in
+     * ([AmbientListenPreferences]) and NOT muted ([ProactivePreferences] -
      * the hard listening gate, see the class doc). Safe to call unconditionally
      * on every service launch, mirroring [WakeWordEngine.start].
      */
     fun start(context: Context) {
-        if (EntitlementManager.mode.value != RuntimeMode.BYO_KEY) return
         if (!AmbientListenPreferences.isEnabled(context)) return
         if (ProactivePreferences.isMuted(context)) return
         if (scope != null) return // already running

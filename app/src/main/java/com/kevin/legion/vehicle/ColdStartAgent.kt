@@ -2,7 +2,7 @@ package com.kevin.legion.vehicle
 
 import android.content.Context
 import com.kevin.legion.ai.AgentResult
-import com.kevin.legion.ai.CompanionIdentity
+import com.kevin.legion.ai.AssistantIdentity
 import com.kevin.legion.ai.SubAgent
 
 /**
@@ -18,7 +18,7 @@ import com.kevin.legion.ai.SubAgent
 object ColdStartAgent {
 
     // Built per call, not `by lazy`: the identity clause depends on whether the
-    // driver has named their car (CompanionIdentity), so a cached agent would pin
+    // driver has named their car (AssistantIdentity), so a cached agent would pin
     // whichever identity was current at first use for the rest of the process.
     // A SubAgent is a thin holder around a REST call, so this costs nothing.
     private fun agent(context: Context) =
@@ -40,11 +40,11 @@ object ColdStartAgent {
         return agent(context).askTyped(ctx, q)
     }
 
-    // Identity comes from CompanionIdentity, never restated here: Zero reasons
+    // Identity comes from AssistantIdentity, never restated here: Zero reasons
     // ABOUT the car's cold starts, a named car reasons about its OWN. Both need
     // the same numeric brief, so only the stance differs.
     private fun system(context: Context) =
-        CompanionIdentity.shortClause(context) + " " +
+        AssistantIdentity.shortClause(context) + " " +
             "You are reasoning about this car's cold starts - not an outside analyst consulted " +
             "about an enthusiast's car. You are given its recorded cold starts: OBD samples from the " +
             "first minute after a cold engine start - RPM, coolant temperature, short/long fuel " +

@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * Whether the driver has muted proactive chatter (idle chatter, arrival/
  * reminder proactives, health/recall alerts - everything [ProactiveBus]
- * routes). Mirrors [NavPreferences]'s shape: plain app-global SharedPreferences.
+ * routes). Plain app-global SharedPreferences.
  *
  * Driver-initiated speech (tap avatar, PTT, the DTC sheet's "ASK" button)
  * is untouched - this only silences what the companion says unprompted,

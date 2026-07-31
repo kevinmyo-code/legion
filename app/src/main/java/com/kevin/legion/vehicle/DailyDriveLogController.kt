@@ -2,9 +2,8 @@ package com.kevin.legion.vehicle
 
 import android.content.Context
 import android.util.Log
-import com.kevin.legion.ai.CompanionIdentity
+import com.kevin.legion.ai.AssistantIdentity
 import com.kevin.legion.ai.SubAgent
-import com.kevin.legion.billing.EntitlementManager
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.DailyDriveLog
 import java.util.Calendar
@@ -193,11 +192,10 @@ object DailyDriveLogController {
         return log
     }
 
-    // The numbers above (miles, drives, MPG, codes) are always computed and saved for
-    // free - this narrative is the only Gemini-billed part of a daily log, so it's the
-    // only part gated by AI mode. Ungated, it falls back to the same numbers-only line
-    // used when the agent call itself fails - the driver always gets a note, just not
-    // the AI-written one until they've unlocked or subscribed.
+    // The numbers above (miles, drives, MPG, codes) are always computed and saved locally;
+    // this narrative is the only Gemini-billed part of a daily log (no tier gating anymore -
+    // every install is BYO-key, see AssistantIdentity's doc). Falls back to a numbers-only
+    // line if the agent call itself fails.
     private suspend fun generateNarrative(
         context: Context,
         milesDriven: Double,
@@ -206,14 +204,13 @@ object DailyDriveLogController {
         codeCount: Int,
     ): String {
         val fallback = "$driveCount drives, ${milesDriven.toInt()} miles today."
-        if (!EntitlementManager.canUseSubAgent()) return fallback
         val stats = buildString {
             append("Miles driven today: ${milesDriven.toInt()}. ")
             append("Drives: $driveCount. ")
             avgMpg?.let { append("Average MPG: ${"%.1f".format(it)}. ") }
             append("Trouble codes: $codeCount.")
         }
-        val system = CompanionIdentity.shortClause(context) + " " +
+        val system = AssistantIdentity.shortClause(context) + " " +
             "You are noting today's driving in one line for the driver. Given today's stats, write " +
             "exactly ONE short, warm, spoken-natural sentence - a quick daily note, not a full " +
             "recap. Plain text only, no markdown."

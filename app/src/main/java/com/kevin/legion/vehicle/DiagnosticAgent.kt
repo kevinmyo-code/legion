@@ -2,7 +2,7 @@
 
 import android.content.Context
 import com.kevin.legion.ai.AgentResult
-import com.kevin.legion.ai.CompanionIdentity
+import com.kevin.legion.ai.AssistantIdentity
 import com.kevin.legion.ai.SubAgent
 
 /**
@@ -20,7 +20,7 @@ import com.kevin.legion.ai.SubAgent
 object DiagnosticAgent {
 
     // Per call, not `by lazy`: the identity clause depends on whether the driver
-    // has named their car (CompanionIdentity), so a cached agent would pin the
+    // has named their car (AssistantIdentity), so a cached agent would pin the
     // identity current at first use for the whole process.
     private fun agent(context: Context) =
         SubAgent(systemInstruction = system(context), useSearch = true)
@@ -94,9 +94,9 @@ object DiagnosticAgent {
         return out.ifEmpty { null }
     }
 
-    // Identity from CompanionIdentity, never restated here - see its doc.
+    // Identity from AssistantIdentity, never restated here - see its doc.
     private fun system(context: Context) =
-        CompanionIdentity.shortClause(context) + " " +
+        AssistantIdentity.shortClause(context) + " " +
             "You are reasoning about this car's trouble codes - not an outside specialist consulted " +
             "about a vehicle. You are given the OBD-II trouble codes stored on the car plus the driver's " +
             "question, and you answer about THOSE codes. For each relevant code give: what it means " +

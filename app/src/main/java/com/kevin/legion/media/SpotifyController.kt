@@ -25,11 +25,11 @@ import java.util.concurrent.TimeUnit
  * installed Spotify app, not a browser redirect, so no Activity-result flow is
  * needed here - [connect] works from any context. It DOES require the Spotify app
  * to be installed and the user logged in with Premium; [onFailure] fires otherwise
- * and we stay on the phone-BT / mixtape path with zero regression.
+ * and control_music's plain MediaSession transport keeps working with zero regression.
  *
- * While connected this flips [MusicSource] to SPOTIFY so [MusicRouter] sends
- * transport here; on disconnect it reverts to PHONE. Everything is defensively
- * guarded - a Spotify failure must never crash the launcher.
+ * No source-routing layer exists anymore (MusicRouter/MusicSource were retired with
+ * the mixtape stack in the 2026-07-31 pivot) - callers check [isConnected] directly.
+ * Everything is defensively guarded - a Spotify failure must never crash the app.
  *
  * NOT YET WIRED: the Setup UI that captures the client ID and calls [connect], and
  * the manifest redirect scheme. This controller is the transport/lifecycle seam;
@@ -168,7 +168,6 @@ object SpotifyController {
     private fun finishAttempt(deferred: CompletableDeferred<Boolean>, connected: SpotifyAppRemote?) {
         remote = connected
         if (connected != null) {
-            MusicSource.set(Source.SPOTIFY)
             Log.i(TAG, "App Remote connected")
         }
         inFlight = null
@@ -181,9 +180,7 @@ object SpotifyController {
      * context where the driver just explicitly asked to connect (the Setup
      * screen's CONNECT button, or the OAuth redirect landing) - anywhere else,
      * use [connectSilently]. Fire-and-forget: joins whatever attempt is already
-     * in flight rather than starting a second one, but does not wait on it. On
-     * success flips [MusicSource] to SPOTIFY; on failure leaves the source
-     * untouched (stays PHONE/MIXTAPE).
+     * in flight rather than starting a second one, but does not wait on it.
      */
     fun connect(context: Context) {
         if (isConnected) return
@@ -235,11 +232,10 @@ object SpotifyController {
         return startConnect(context, showAuthView = false).await()
     }
 
-    /** Tears down the connection and reverts routing to phone BT. Safe to call repeatedly. */
+    /** Tears down the connection. Safe to call repeatedly. */
     fun disconnect() {
         remote?.let { runCatching { SpotifyAppRemote.disconnect(it) } }
         remote = null
-        if (MusicSource.current.value == Source.SPOTIFY) MusicSource.set(Source.PHONE)
     }
 
     fun play(): Boolean = withPlayer { it.playerApi.resume() }

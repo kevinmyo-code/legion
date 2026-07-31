@@ -3,11 +3,11 @@ package com.kevin.legion.service
 import android.content.Context
 
 /**
- * Whether the driver has opted into the custom wake word ("hey <companion name>",
- * see `.scratch/custom-wake-word/`). Off by default, paid-tier only (gated by
- * [com.kevin.legion.billing.RuntimeMode.BYO_KEY] at the call site, not here -
- * this object only stores the driver's own on/off choice), supplements push-to-talk
- * rather than replacing it. Mirrors [ProactivePreferences]'s shape.
+ * Whether the driver has opted into the custom wake word ("hey <assistant name>").
+ * Off by default (this object only stores the driver's own on/off choice),
+ * supplements push-to-talk rather than replacing it. Mirrors [ProactivePreferences]'s
+ * shape. No tier gating - the commercial model (billing/, RuntimeMode) was retired
+ * in the 2026-07-31 pivot; every install is the same, BYO-key app.
  */
 object WakeWordPreferences {
     private const val PREFS = "wake_word_preferences"

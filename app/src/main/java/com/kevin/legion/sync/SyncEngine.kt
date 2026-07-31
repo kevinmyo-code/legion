@@ -5,14 +5,12 @@ import android.database.Cursor
 import android.util.Log
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.kevin.legion.MidnightEvents
-import com.kevin.legion.ai.AvatarStudio
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.DriveReassigner
 import com.kevin.legion.vehicle.TelemetryRecorder
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.DriveReassignment
-import com.kevin.legion.ui.AppBackground
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,17 +64,12 @@ private typealias CompanionClash = CompanionSync.CompanionClash
  * genuine first-time content mismatch needs a one-time driver choice rather than
  * a silent pick - see [CompanionSync.decideCompanion] and [pendingCompanionClash].
  *
- * The companion's AVATAR faces, Cruise WALLPAPER, and (2026-07-24) GARAGE
- * BACKDROP travel alongside identity as one zip, `companion_media.zip`
- * ([AvatarStudio.packCompanionMedia] / [AvatarStudio.unpackCompanionMedia]) -
- * a deliberate narrow reopening of "media stays per-device" (CLAUDE.md sec
- * 8/9): a visual restyle bumps the same companion clock as a name/persona
- * edit ([CompanionProfile.touchCompanion]), so whichever device's identity
- * wins LWW carries its pictures with it rather than leaving the other device
- * to regenerate them. Media transfer is best-effort - see
- * [uploadCompanionMedia]/[downloadCompanionMedia]. Recap covers, mixtape
- * covers, car photos, and icon concepts are explicitly NOT part of this
- * archive and stay per-device.
+ * Companion media (avatar/wallpaper) sync is currently a NO-OP:
+ * [uploadCompanionMedia]/[downloadCompanionMedia] are stubs, kept as named call
+ * sites in [syncCompanion] rather than deleted, because `AvatarStudio` (the
+ * generator they packed/unpacked media through) was retired with the city-pop
+ * design language in the 2026-07-31 pivot. Only identity fields (name/persona/
+ * traits/voice) actually sync right now.
  */
 object SyncEngine {
     private const val TAG = "SyncEngine"
@@ -377,35 +370,6 @@ object SyncEngine {
         return ids
     }
 
-    /**
-     * Downloads a car's avatar+wallpaper archive if this device doesn't have it yet
-     * (the lazy half of the hybrid). Call on a car switch.
-     *
-     * Returns true if the car's art is present locally afterwards. False means
-     * offline, no Drive, or that car has no archive yet - all of which are normal,
-     * and the caller shows "sync to load this car's art" rather than treating it as
-     * an error. Never blocks the switch: a car is fully usable with a name and a
-     * persona and no face.
-     */
-    suspend fun ensureCompanionMedia(context: Context, vehicleId: String): Boolean =
-        withContext(Dispatchers.IO) {
-            if (AvatarStudio.hasAvatar(context, CompanionProfile.avatarIdFor(vehicleId))) return@withContext true
-            if (!SyncCapability.syncAvailable(context)) return@withContext false
-            val token = DriveAuth.accessTokenOrNull(context) ?: return@withContext false
-            runCatching {
-                val drive = DriveClient(token)
-                val name = "companion_media-${driveSafe(vehicleId)}.zip"
-                val file = drive.listAppData()[name] ?: return@runCatching false
-                val bytes = drive.download(file.id) ?: return@runCatching false
-                AvatarStudio.unpackCompanionMediaFor(context, vehicleId, bytes)
-                AppBackground.notifyChanged()
-                true
-            }.getOrElse {
-                Log.w(TAG, "companion media fetch for $vehicleId failed: ${it.message}")
-                false
-            }
-        }
-
     private fun syncTable(
         db: SupportSQLiteDatabase,
         drive: DriveClient,
@@ -523,45 +487,20 @@ object SyncEngine {
     }
 
     /**
-     * Uploads the local avatar+wallpaper alongside an [CompanionSync.Decision.UPLOAD_LOCAL]
-     * identity win (or a `keepLocal` [resolveCompanionClash]). Best-effort: a
-     * pack/upload failure (including a B20 upload conflict) is logged and left
-     * for the next sync pass, same policy as [syncFile] - it never fails the
-     * whole sync and never touches the identity write, which already succeeded.
+     * No-op for now: avatar/wallpaper generation ([AvatarStudio]) was retired with
+     * the city-pop design language in the 2026-07-31 pivot, so there is no media to
+     * pack and upload alongside an identity win. Kept as a named call site (rather
+     * than deleted from [syncCompanion]) so a future image-gen feature has an
+     * obvious place to plug back in.
      */
     private fun uploadCompanionMedia(context: Context, drive: DriveClient, existing: Map<String, DriveClient.DriveFile>) {
-        try {
-            val bytes = AvatarStudio.packCompanionMedia(context) ?: return
-            val name = companionMediaFile(context)
-            when (drive.upsert(name, bytes, existing)) {
-                DriveClient.UpdateResult.Conflict -> Log.w(TAG, "$name: upload conflict, left for next sync")
-                DriveClient.UpdateResult.Failure -> Log.w(TAG, "$name: upload failed")
-                DriveClient.UpdateResult.Ok -> {}
-            }
-        } catch (t: Throwable) {
-            Log.w(TAG, "companion media upload failed", t)
-        }
     }
 
     /**
-     * Downloads and unpacks the remote avatar+wallpaper alongside an
-     * [CompanionSync.Decision.ADOPT_REMOTE] identity win (or a `!keepLocal`
-     * [resolveCompanionClash]), then nudges every screen showing the avatar/
-     * wallpaper to reload - the same signal a local restyle uses, since these
-     * are decoded fresh off disk at render time rather than cached in a
-     * StateFlow bitmap (CLAUDE.md sec 9). Best-effort, same policy as
-     * [uploadCompanionMedia]: no `companion_media.zip` yet (a remote that
-     * never generated one) is a normal no-op, not a failure.
+     * No-op for now - see [uploadCompanionMedia]. Kept as a named call site for
+     * the same reason.
      */
     private fun downloadCompanionMedia(context: Context, drive: DriveClient, existing: Map<String, DriveClient.DriveFile>) {
-        try {
-            val file = existing[companionMediaFile(context)] ?: existing[LEGACY_COMPANION_MEDIA_FILE] ?: return
-            val bytes = drive.download(file.id) ?: return
-            AvatarStudio.unpackCompanionMedia(context, bytes)
-            AppBackground.notifyChanged()
-        } catch (t: Throwable) {
-            Log.w(TAG, "companion media download failed", t)
-        }
     }
 
     /**

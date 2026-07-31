@@ -5,8 +5,6 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import com.kevin.legion.ai.CompanionProfile
-import com.kevin.legion.billing.EntitlementManager
-import com.kevin.legion.billing.RuntimeMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,10 +28,8 @@ import java.io.File
  * built from [CompanionProfile.name] - the only approach that supports an arbitrary
  * driver-chosen name without per-phrase training at build time.
  *
- * Paid-tier only, opt-in, off by default, supplements push-to-talk rather than replacing
- * it (CLAUDE.md sec 8): [start] no-ops unless the driver is on [RuntimeMode.BYO_KEY] (a
- * free-tier Zero can't converse at all, so there's nothing to wake into) AND has flipped
- * the [WakeWordPreferences] Setup toggle on.
+ * Opt-in, off by default, supplements push-to-talk rather than replacing it: [start]
+ * no-ops unless the driver has flipped the [WakeWordPreferences] Setup toggle on.
  *
  * On-hardware validation (2026-07-19): no false triggers across a real drive on the
  * "hey <name>" grammar; battery/CPU draw is a non-issue since the head unit is on shore
@@ -78,11 +74,10 @@ object WakeWordEngine {
     /**
      * Starts the engine if it isn't already running. Safe to call unconditionally (e.g.
      * from [AriaForegroundService.onCreate] on every launch, and again from the Setup
-     * toggle the moment it's flipped on) - no-ops if the driver isn't entitled or hasn't
-     * opted in, or if already running.
+     * toggle the moment it's flipped on) - no-ops if the driver hasn't opted in, or if
+     * already running.
      */
     fun start(context: Context) {
-        if (EntitlementManager.mode.value != RuntimeMode.BYO_KEY) return
         if (!WakeWordPreferences.isEnabled(context)) return
         // Ambient listening (2026-07-22) is open-vocabulary and would already
         // catch "hey <name>" in its own transcript - running both would fight

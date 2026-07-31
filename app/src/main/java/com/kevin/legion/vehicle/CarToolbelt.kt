@@ -4,9 +4,6 @@ import android.content.Context
 import com.kevin.legion.ai.AgentTool
 import com.kevin.legion.ai.SubAgent
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.LibraryTrack
-import com.kevin.legion.data.local.Mixtape
-import com.kevin.legion.data.local.MusicPlay
 import com.kevin.legion.util.shortDate
 import org.json.JSONArray
 import org.json.JSONObject
@@ -14,7 +11,7 @@ import kotlin.math.roundToInt
 
 /**
  * The shared read-only toolbelt the investigating specialists ([DiagnosticAgent],
- * [SymptomAgent], [MaintenanceAgent], [ColdStartAgent], [MusicAgent]) pull car data through.
+ * [SymptomAgent], [MaintenanceAgent], [ColdStartAgent]) pull car data through.
  *
  * Two layers:
  *  - Formatters ([trendSummary], [codeHistory], ...): each returns a compact
@@ -63,89 +60,6 @@ object CarToolbelt {
         return "$metric over $d days: ${values.size} samples, avg ${f(values.average())}$unit " +
             "(min ${f(values.min())}, max ${f(values.max())}). " +
             "Recent average ${f(recent)}$unit vs ${f(earlier)}$unit earlier."
-    }
-
-    /**
-     * Listening-history taste summary over recorded [MusicPlay] rows: top artists
-     * and tracks by completed plays, overall skip rate, and a night-vs-day split.
-     * This is the aggregation the Live `get_music_taste` tool delegates to.
-     */
-    suspend fun musicTasteSummary(context: Context, days: Int): String {
-        val d = days.coerceIn(1, 730)
-        val now = System.currentTimeMillis()
-        val plays = CarDatabase.getDatabase(context).musicPlayDao().getSince(now - d * 86_400_000L)
-        if (plays.size < 8) return "Not enough listening history yet - keep playing music and it builds up."
-
-        val completed = plays.filter { it.completed }
-        val skipRate = ((plays.size - completed.size).toDouble() / plays.size * 100).roundToInt()
-
-        fun topBy(selector: (MusicPlay) -> String, limit: Int) =
-            completed.groupBy(selector).entries
-                .sortedByDescending { it.value.size }
-                .take(limit)
-                .map { it.key to it.value.size }
-
-        val topArtists = topBy({ it.artist.ifBlank { "Unknown artist" } }, 5)
-        val topTracks = topBy({ "${it.title} - ${it.artist.ifBlank { "Unknown artist" }}" }, 5)
-
-        val cal = java.util.Calendar.getInstance()
-        fun isNight(ts: Long): Boolean {
-            cal.timeInMillis = ts
-            val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
-            return hour >= 20 || hour < 5
-        }
-        val nightCount = plays.count { isNight(it.timestamp) }
-        val nightPct = (nightCount.toDouble() / plays.size * 100).roundToInt()
-
-        return buildString {
-            append("$d-day listening: ${plays.size} tracks played, $skipRate% skipped.\n")
-            if (topArtists.isNotEmpty()) {
-                append("Top artists: ${topArtists.joinToString(", ") { (a, n) -> "$a ($n)" }}.\n")
-            }
-            if (topTracks.isNotEmpty()) {
-                append("Top tracks: ${topTracks.joinToString(", ") { (t, n) -> "$t ($n)" }}.\n")
-            }
-            append("$nightPct% of plays happen at night (8pm-5am).")
-        }
-    }
-
-    /**
-     * What's already saved on the head unit: the general library ("the drawer")
-     * plus the driver's assembled mixtapes. Pre-seeded into MusicAgent's prompt
-     * so it never recommends something already sitting on the car.
-     */
-    suspend fun savedMusicSummary(context: Context): String {
-        val db = CarDatabase.getDatabase(context)
-        val tracks = db.libraryTrackDao().getAll()
-        val tapes = db.mixtapeDao().getAll()
-        return formatSavedMusic(tracks, tapes)
-    }
-
-    /** Pure formatting half of [savedMusicSummary], split out for unit testing. */
-    fun formatSavedMusic(tracks: List<LibraryTrack>, tapes: List<Mixtape>): String {
-        if (tracks.isEmpty() && tapes.isEmpty()) return "Nothing saved on the head unit yet."
-        return buildString {
-            if (tracks.isNotEmpty()) {
-                val artists = tracks.map { it.artist.ifBlank { "Unknown artist" } }.distinct()
-                append("${tracks.size} track(s) saved on the head unit from ${artists.size} artist(s): ")
-                append(artists.take(10).joinToString(", "))
-                if (artists.size > 10) append(", ...")
-                append(".\n")
-                val albums = tracks.map { it.album }.filter { it.isNotBlank() }.distinct()
-                if (albums.isNotEmpty()) {
-                    append("Albums: ").append(albums.take(8).joinToString(", "))
-                    if (albums.size > 8) append(", ...")
-                    append(".\n")
-                }
-            } else {
-                append("No individual tracks saved yet.\n")
-            }
-            if (tapes.isNotEmpty()) {
-                append("Saved mixtapes: ").append(tapes.joinToString(", ") { it.name }).append(".")
-            } else {
-                append("No mixtapes assembled yet.")
-            }
-        }
     }
 
     /** Recent DTC events with the freeze-frame highlights latched at trip time. */
@@ -372,11 +286,11 @@ object CarToolbelt {
         codeHistoryTool(context), oilAnalysesTool(context), webLookupTool(),
     )
 
-    // ColdStartAgent and MusicAgent are one-shot (askTyped), not investigate
-    // loops, so they no longer need belts - each pre-assembles its data
-    // (coldStartReport / musicTasteSummary + savedMusicSummary) into the prompt
-    // and answers in a single round. Their old belts + the tools exclusive to
-    // them (get_cold_starts, get_music_taste, list_saved_music) were removed.
+    // ColdStartAgent is one-shot (askTyped), not an investigate loop, so it no
+    // longer needs a belt - it pre-assembles coldStartReport into the prompt and
+    // answers in a single round. Its old belt was removed. MusicAgent (the other
+    // former one-shot specialist) was retired entirely in the 2026-07-31 pivot,
+    // along with the taste-ledger/saved-library data it depended on.
 
     // --- Tool factories -----------------------------------------------------
 

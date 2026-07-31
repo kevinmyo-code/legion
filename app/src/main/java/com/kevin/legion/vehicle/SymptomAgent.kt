@@ -2,7 +2,7 @@
 
 import android.content.Context
 import com.kevin.legion.ai.AgentResult
-import com.kevin.legion.ai.CompanionIdentity
+import com.kevin.legion.ai.AssistantIdentity
 import com.kevin.legion.ai.SubAgent
 
 /**
@@ -19,7 +19,7 @@ import com.kevin.legion.ai.SubAgent
  */
 object SymptomAgent {
 
-    // Per call, not `by lazy`: see CompanionIdentity - the identity clause is not
+    // Per call, not `by lazy`: see AssistantIdentity - the identity clause is not
     // a constant, so a cached agent would pin whichever was current at first use.
     private fun agent(context: Context) =
         SubAgent(systemInstruction = system(context), useSearch = true)
@@ -57,9 +57,9 @@ object SymptomAgent {
         }
     }
 
-    // Identity from CompanionIdentity, never restated here - see its doc.
+    // Identity from AssistantIdentity, never restated here - see its doc.
     private fun system(context: Context) =
-        CompanionIdentity.shortClause(context) + " " +
+        AssistantIdentity.shortClause(context) + " " +
             "You are reasoning about this car's symptoms - not an outside specialist consulted " +
             "about a vehicle. The driver describes how the car is BEHAVING - a noise, smell, vibration, " +
             "leak, rough idle, hard start, loss of power, or how a warning light is acting - and you " +

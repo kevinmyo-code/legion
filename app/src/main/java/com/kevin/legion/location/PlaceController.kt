@@ -8,48 +8,30 @@ import com.kevin.legion.data.local.TaggedPlace
 object PlaceController {
     private const val MATCH_RADIUS_M = 150f
 
-    /** 
-     * Tags a location under [rawLabel] (normalized). 
-     * If [address] is provided, it is resolved via geocoding. 
-     * Otherwise, the current GPS location is used.
-     * Returns a spoken ack. 
+    /**
+     * Tags the current GPS location under [rawLabel] (normalized). Returns a spoken ack.
+     *
+     * Address-based tagging (resolving a spoken address via geocoding) was dropped along
+     * with embedded nav - it depended on Mapbox's geocoding API, which the new app doesn't
+     * carry a dependency on. Only "tag where I am right now" is supported.
      */
-    suspend fun tagPlace(context: Context, rawLabel: String, address: String? = null): String {
+    suspend fun tagPlace(context: Context, rawLabel: String): String {
         val label = normalizeLabel(rawLabel)
             ?: return "I didn't catch what to call this spot — try something like 'home' or 'work'."
-        
-        val lat: Double
-        val lng: Double
 
-        if (!address.isNullOrBlank()) {
-            when (val geo = com.kevin.legion.service.NavGeocoder.geocode(address)) {
-                is com.kevin.legion.service.NavGeocoder.Outcome.Found -> {
-                    lat = geo.lat
-                    lng = geo.lng
-                }
-                else -> return "I couldn't find an address for \"$address\", so I couldn't pin it."
-            }
-        } else {
-            val loc = LocationController.state.value
-                ?: return "I don't have a GPS lock yet, so I can't pin this spot. Give it a sec and try again."
-            lat = loc.latitude
-            lng = loc.longitude
-        }
+        val loc = LocationController.state.value
+            ?: return "I don't have a GPS lock yet, so I can't pin this spot. Give it a sec and try again."
 
         CarDatabase.getDatabase(context).placeDao().upsert(
             TaggedPlace(
                 label = label,
-                latitude = lat,
-                longitude = lng,
+                latitude = loc.latitude,
+                longitude = loc.longitude,
                 timestamp = System.currentTimeMillis(),
             )
         )
         return ackFor(label)
     }
-
-    /** Tags the current GPS location under [rawLabel] (normalized). Returns a spoken ack. */
-    @Deprecated("Use the version with address support", ReplaceWith("tagPlace(context, rawLabel, null)"))
-    suspend fun tagCurrentPlace(context: Context, rawLabel: String): String = tagPlace(context, rawLabel, null)
 
     /** Deletes the saved place matching [rawLabel]. Returns a spoken ack, or an error if not found. */
     suspend fun forgetPlace(context: Context, rawLabel: String): String {
@@ -68,21 +50,6 @@ object PlaceController {
     /** All saved places (used by the UI list). */
     suspend fun all(context: Context): List<TaggedPlace> =
         CarDatabase.getDatabase(context).placeDao().getAll()
-
-    /**
-     * The saved place a spoken destination refers to, or null if it doesn't name one.
-     *
-     * Exact match on the normalized label only - deliberately no fuzzy/substring
-     * matching (`.scratch/mapbox-embedded-nav/issues/05-geocoding-source.md`): a
-     * near-miss silently routing the driver somewhere they didn't ask for is worse
-     * at speed than falling through to the Maps/Waze intent path, which geocodes
-     * free text properly. This is the ONLY destination source embedded nav accepts
-     * in v1; there is no live geocoding.
-     */
-    suspend fun resolveDestination(context: Context, raw: String): TaggedPlace? {
-        val label = normalizeLabel(raw) ?: return null
-        return CarDatabase.getDatabase(context).placeDao().getAll().firstOrNull { it.label == label }
-    }
 
     /**
      * The label of the saved place the driver is currently within

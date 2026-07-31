@@ -31,18 +31,16 @@ data class GlanceCardPayload(
 /**
  * Ephemeral glance-card state, driven by [LiveToolbox]'s data-tool dispatch
  * (`get_codes`, `check_readiness`, `get_mpg`, `get_health` - one inline
- * `GlanceCardController.show()` call per opted-in tool, no registry). Mirrors
- * [TriviaController]'s shape deliberately: pure state, no owned timer or
- * coroutine scope. The 5s auto-dismiss (and therefore "newest wins" on a
- * fresh card replacing one still showing) lives entirely in the collecting
- * composable's `LaunchedEffect(payload)` - Compose cancels the previous
- * effect the instant the key (the payload) changes, which is what makes a
- * new card pre-empt an old one's countdown for free, no manual Job
- * bookkeeping needed (`.scratch/glance-cards/issues/03-*`).
+ * `GlanceCardController.show()` call per opted-in tool, no registry). Pure
+ * state, no owned timer or coroutine scope. The 5s auto-dismiss (and
+ * therefore "newest wins" on a fresh card replacing one still showing) lives
+ * entirely in the collecting composable's `LaunchedEffect(payload)` - Compose
+ * cancels the previous effect the instant the key (the payload) changes,
+ * which is what makes a new card pre-empt an old one's countdown for free, no
+ * manual Job bookkeeping needed.
  *
- * Deliberately not persisted - no Room table. Same reasoning as
- * [TriviaController]: this is display-only, driver-requested state that
- * belongs to the current moment, not history.
+ * Deliberately not persisted - no Room table. This is display-only,
+ * driver-requested state that belongs to the current moment, not history.
  */
 object GlanceCardController {
     private val _current = MutableStateFlow<GlanceCardPayload?>(null)

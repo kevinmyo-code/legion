@@ -6,8 +6,7 @@ import org.json.JSONObject
 import java.util.UUID
 
 /**
- * The driver's configured garage/gate doors, stored locally - mirrors
- * [com.kevin.legion.service.NavPreferences]'s shape: plain app-global
+ * The driver's configured garage/gate doors, stored locally - plain app-global
  * SharedPreferences. The Shelly Cloud device id and channel per door are not
  * sensitive (they identify hardware, not grant access) and the account's
  * server host is likewise not a secret, so none of it goes through

@@ -1,35 +1,20 @@
 ﻿package com.kevin.legion.service
 
-import android.app.SearchManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.AriaBrain
-import com.kevin.legion.ai.AvatarStudio
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
-import com.kevin.legion.ai.SpendGate
-import com.kevin.legion.ai.avatarDescriptors
-import com.kevin.legion.billing.EntitlementManager
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
-import com.kevin.legion.ui.AppBackground
 import com.kevin.legion.util.shortDate
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.kevin.legion.location.ReminderController
-import com.kevin.legion.media.MixtapePlayer
 import com.kevin.legion.media.MusicController
-import com.kevin.legion.media.MusicRouter
-import com.kevin.legion.media.MusicSource
-import com.kevin.legion.media.Source
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.media.VolumeController
@@ -43,7 +28,6 @@ import com.kevin.legion.vehicle.DtcDescriptions
 import com.kevin.legion.vehicle.GarageController
 import com.kevin.legion.vehicle.GaragePreferences
 import com.kevin.legion.vehicle.MaintenanceAgent
-import com.kevin.legion.vehicle.MusicAgent
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.SymptomAgent
 import com.kevin.legion.vehicle.TelemetryRecorder
@@ -70,10 +54,6 @@ import org.json.JSONObject
  * (it owns the screen), not here - [dispatch] returns null for it.
  */
 object LiveToolbox {
-
-    // Image (re)generation runs seconds-to-minutes - far longer than the Live tool
-    // timeout - so restyle tools kick the work off here and return immediately.
-    private val imageScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     /** Function declarations to advertise in the Live setup message. */
     fun declarations(): JSONArray {
@@ -169,18 +149,6 @@ object LiveToolbox {
         ))
 
         fns.put(fn(
-            name = "get_music_taste",
-            description = "Fetch what the driver actually listens to from the recorded listening " +
-                "history: top artists and tracks, overall skip rate, and how much listening happens " +
-                "at night versus during the day. Use when the driver asks what they've been listening " +
-                "to, wants a music recommendation, or asks about their taste.",
-            params = obj(
-                "days" to schema("integer", "How many days back to look. Default 90."),
-            ),
-            required = listOf(),
-        ))
-
-        fns.put(fn(
             name = "check_readiness",
             description = "Read the emissions readiness monitors live from the OBD port - which " +
                 "self-tests are complete and which still need drive time. Use before a state " +
@@ -237,37 +205,9 @@ object LiveToolbox {
         ))
 
         fns.put(fn(
-            name = "recommend_music",
-            description = "Hand off to the music specialist for a listening recommendation: new " +
-                "artists or tracks to check out, or resurfacing something already saved on the head " +
-                "unit that fits the moment. Grounds picks in the driver's actual listening taste and " +
-                "never suggests something they already have saved. Use when the driver asks what to " +
-                "listen to, wants a recommendation, or asks for something new. Tell the driver you're " +
-                "digging into it before calling this - it takes a little while. If it offers a saved " +
-                "mixtape by name and the driver says yes, call play_mixtape with that name.",
-            params = obj(
-                "question" to schema("string", "The driver's request in their own words, e.g. 'find " +
-                    "me something for a night drive' or 'what new music would I like'."),
-            ),
-            required = listOf("question"),
-        ))
-
-        fns.put(fn(
-            name = "play_mixtape",
-            description = "Start playing one of the driver's saved mixtapes by name. Use after " +
-                "recommend_music offers a saved tape and the driver agrees, or whenever the driver " +
-                "names a saved tape directly, e.g. 'play my night drive mix'.",
-            params = obj(
-                "name" to schema("string", "The saved mixtape's name, e.g. 'CITY POP NIGHTS'."),
-            ),
-            required = listOf("name"),
-        ))
-
-        fns.put(fn(
             name = "control_music",
             description = "Control music playback hands-free: 'play', 'pause', 'next', 'previous'. " +
-                "Works with whatever's playing — phone music over Bluetooth, Spotify on the head unit, " +
-                "any audio source. Transport only; the driver picks tracks on their phone.",
+                "Works with whatever's playing on the phone. Transport only.",
             params = obj(
                 "action" to schema("string", "The playback action.",
                     enum = listOf("play", "pause", "next", "previous")),
@@ -276,21 +216,8 @@ object LiveToolbox {
         ))
 
         fns.put(fn(
-            name = "set_music_source",
-            description = "Switch which player the music comes from - 'phone' = the driver's phone " +
-                "over Bluetooth; 'head_unit' = Spotify running on the head unit (only if they've " +
-                "connected it in Setup). Switching gracefully pauses the other one first. Use for " +
-                "'play on my phone', 'switch to the head unit', 'back to my phone'.",
-            params = obj(
-                "source" to schema("string", "Where music should come from.",
-                    enum = listOf("phone", "head_unit")),
-            ),
-            required = listOf("source"),
-        ))
-
-        fns.put(fn(
             name = "control_volume",
-            description = "Adjust the head unit's music/media volume - an instant on-device action. " +
+            description = "Adjust the phone's music/media volume - an instant on-device action. " +
                 "'up'/'down' nudge it, 'set' jumps to a level (0-100), 'mute'/'unmute' silence or " +
                 "restore it. This controls the music the driver hears, not your own speaking voice.",
             params = obj(
@@ -302,45 +229,13 @@ object LiveToolbox {
         ))
 
         fns.put(fn(
-            name = "start_navigation",
-            description = "Start in-dash Mapbox turn-by-turn navigation to a destination, right here " +
-                "on the head unit - no other app opens. Needs a GL ES 3.0 head unit and the driver's " +
-                "own saved Mapbox token; if either is missing, or location access isn't granted, this " +
-                "fails with a message explaining what to fix in Settings rather than navigating. Use " +
-                "whenever the driver asks to navigate, get directions, or go somewhere, e.g. 'take " +
-                "me to the nearest gas station' or 'navigate home'.",
-            params = obj("destination" to schema("string",
-                "Address, place name, or search query, e.g. '123 Main St', 'nearest gas station', 'home'.")),
-            required = listOf("destination"),
-        ))
-
-        fns.put(fn(
-            name = "stop_navigation",
-            description = "Clear the tracked navigation destination. Use when the driver says to " +
-                "stop navigating or cancel directions.",
-            params = obj(),
-            required = listOf(),
-        ))
-
-        fns.put(fn(
-            name = "open_music",
-            description = "Open a music app (Spotify by default) beside Midnight AI so the driver can " +
-                "stream. Use when they ask to open Spotify, open music, or start streaming with no " +
-                "specific track in mind. Note: music also plays from the phone over Bluetooth without " +
-                "opening anything - for play/pause/skip of whatever's already playing, use " +
-                "control_music instead. If the driver names something specific to play, use " +
-                "play_music instead of this.",
-            params = obj(),
-            required = listOf(),
-        ))
-
-        fns.put(fn(
             name = "play_music",
-            description = "Open the driver's music app and try to play something specific by name - a " +
-                "song, artist, album, or playlist - the way a phone assistant would. Use when the " +
-                "driver names what they want to hear, e.g. 'play Plastic Love' or 'play some city " +
-                "pop'. Best-effort: whether it actually starts playing depends on the app. Once " +
-                "something's playing, control_music handles play/pause/skip.",
+            description = "Play something specific by name - a song, artist, album, or playlist - " +
+                "directly in-app via Spotify (requires the driver to have connected their own Spotify " +
+                "account in Setup). Use when the driver names what they want to hear, e.g. 'play " +
+                "Plastic Love' or 'play some city pop'. If Spotify isn't connected, this fails with a " +
+                "message telling the driver to connect it in Setup or pick something on their phone " +
+                "themselves. Once something's playing, control_music handles play/pause/skip.",
             params = obj("query" to schema("string",
                 "What to play, in the driver's own words, e.g. 'Plastic Love by Mariya Takeuchi'.")),
             required = listOf("query"),
@@ -348,9 +243,8 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "show_app",
-            description = "Bring this app's Cruise dashboard to the foreground. Use when the driver " +
-                "asks to open the app, show the dashboard, go back to the cruise screen, or 'bring " +
-                "up Midnight AI' - handy after Google Maps has taken over the screen.",
+            description = "Bring this app to the foreground. Use when the driver asks to open the " +
+                "app or come back to it.",
             params = obj(),
             required = listOf(),
         ))
@@ -369,12 +263,11 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "tag_place",
-            description = "Save a location under a label like 'home', 'work', or 'gym', so it can be " +
-                "referenced later. Use when the driver says something like 'this is my work' or " +
-                "'save 123 Main St as the gym'.",
+            description = "Save the driver's CURRENT location under a label like 'home', 'work', or " +
+                "'gym', so it can be referenced later. Use when the driver says something like 'this " +
+                "is my work' while they're there. No address-based tagging - only the current GPS spot.",
             params = obj(
                 "label" to schema("string", "Short label for this place, e.g. home, work, gym."),
-                "address" to schema("string", "Optional: actual physical address to save under this label. If missing, I'll pin your current spot.")
             ),
             required = listOf("label"),
         ))
@@ -515,25 +408,6 @@ object LiveToolbox {
         ))
 
         fns.put(fn(
-            name = "restyle_background",
-            description = "Change the app's wallpaper (the driver's car turned into a city-pop " +
-                "illustration) based on a spoken adjustment - e.g. 'make it more orange', 'add palm " +
-                "trees', 'more of a night vibe'. Applies the change to the current wallpaper. Only works " +
-                "once a wallpaper exists (the driver uploads their car photo in settings first).",
-            params = obj("instruction" to schema("string", "The change the driver wants, in their words.")),
-            required = listOf("instruction"),
-        ))
-
-        fns.put(fn(
-            name = "restyle_avatar",
-            description = "Regenerate your own avatar face based on a spoken adjustment - e.g. 'give " +
-                "yourself sunglasses', 'make it more retro', 'warmer colors'. Redraws your face with that " +
-                "change. Use when the driver wants your look changed.",
-            params = obj("instruction" to schema("string", "The change the driver wants to your look.")),
-            required = listOf("instruction"),
-        ))
-
-        fns.put(fn(
             name = "recall_memory",
             description = "Search your long-term memory of past conversations and trips with the " +
                 "driver. Use when they ask what you remember, reference something from before, or " +
@@ -585,20 +459,9 @@ object LiveToolbox {
         fns.put(fn(
             name = "get_spend",
             description = "Report how much has been spent on the car - the grand total or one category. " +
-                "Spending is PRIVATE and hidden by default: if this returns locked, do NOT reveal any " +
-                "numbers - tell the driver in character it's between you and the owner and you need the " +
-                "passphrase (they unlock with unlock_spend). Only use when the driver explicitly asks " +
-                "about money, cost, or total spent.",
+                "Only use when the driver explicitly asks about money, cost, or total spent.",
             params = obj("category" to schema("string", "Optional category, e.g. 'mods' or 'maintenance'.")),
             required = listOf(),
-        ))
-
-        fns.put(fn(
-            name = "unlock_spend",
-            description = "Unlock the private spend figures when the driver offers the spend passphrase. " +
-                "Call this with whatever word or phrase they give as the passphrase.",
-            params = obj("passphrase" to schema("string", "The passphrase the driver said.")),
-            required = listOf("passphrase"),
         ))
 
         fns.put(fn(
@@ -617,48 +480,6 @@ object LiveToolbox {
                     "prompt. True only after the driver has just confirmed."),
             ),
             required = listOf("confirmed"),
-        ))
-
-        fns.put(fn(
-            name = "set_spend_passphrase",
-            description = "Set or change the passphrase that locks the car's spend figures, when the " +
-                "driver wants to protect how much they've spent. If a passphrase is already set, it can " +
-                "only be changed after it's been unlocked.",
-            params = obj("passphrase" to schema("string", "The word or phrase to use as the passphrase.")),
-            required = listOf("passphrase"),
-        ))
-
-        fns.put(fn(
-            name = "start_trivia_game",
-            description = "Start a trivia game between the driver and a passenger. Use when the driver " +
-                "asks to play trivia or a quiz game. Games should run 5 to 15 questions unless the " +
-                "driver names a specific count.",
-            params = obj(
-                "category" to schema("string", "Trivia category/topic, e.g. 'movies', '90s music', 'general knowledge'."),
-                "question_count" to schema("integer", "How many questions to play, e.g. 10."),
-                "driver_name" to schema("string", "The driver's name."),
-                "passenger_name" to schema("string", "The passenger's name."),
-            ),
-            required = listOf("category", "question_count", "driver_name", "passenger_name"),
-        ))
-
-        fns.put(fn(
-            name = "award_point",
-            description = "Award one point to whoever answered the current trivia question correctly. " +
-                "Ask 'who got that, driver or passenger?' after the answer comes in, then call this " +
-                "with the spoken reply.",
-            params = obj(
-                "who" to schema("string", "Who gets the point.", enum = listOf("driver", "passenger")),
-            ),
-            required = listOf("who"),
-        ))
-
-        fns.put(fn(
-            name = "end_trivia_game",
-            description = "End the current trivia game and announce the final score. Use once the " +
-                "question count is reached or the driver asks to stop.",
-            params = obj(),
-            required = listOf(),
         ))
 
         fns.put(fn(
@@ -688,20 +509,13 @@ object LiveToolbox {
             "get_health" -> getHealth()
             "get_trend" -> getTrend(context, args)
             "get_mpg" -> getMpg(context)
-            "get_music_taste" -> getMusicTaste(context, args)
             "check_readiness" -> checkReadiness()
             "check_cold_start" -> checkColdStart(context)
             "get_next_service" -> getNextService(context)
             "ask_maintenance" -> askMaintenance(context, args)
-            "recommend_music" -> recommendMusic(context, args)
-            "play_mixtape" -> playMixtape(context, args)
             "control_music" -> controlMusic(context, args)
-            "set_music_source" -> setMusicSource(context, args.optString("source"))
             "control_volume" -> controlVolume(context, args)
-            "get_current_location" -> getCurrentLocation()
-            "start_navigation" -> startNavigation(context, args.optString("destination"))
-            "stop_navigation" -> stopNavigation()
-            "open_music" -> openMusic(context)
+            "get_current_location" -> getCurrentLocation(context)
             "play_music" -> playMusic(context, args.optString("query"))
             "show_app" -> showApp(context)
             "set_reminder" -> result(
@@ -709,8 +523,8 @@ object LiveToolbox {
                 message = ReminderController.add(context, args.optString("place"), args.optString("text")),
             )
             "tag_place" -> result(
-                success = true, 
-                message = PlaceController.tagPlace(context, args.optString("label"), args.optString("address", null))
+                success = true,
+                message = PlaceController.tagPlace(context, args.optString("label"))
             )
             "forget_place" -> result(success = true, message = PlaceController.forgetPlace(context, args.optString("label")))
             "set_odometer" -> result(success = true, message = VehicleController.setOdometer(context, args.optInt("miles")))
@@ -727,8 +541,6 @@ object LiveToolbox {
             )
             "remember" -> result(success = true, message = AriaBrain.get(context).remember(args.optString("text")))
             "recall_memory" -> recallMemory(context, args.optString("query"))
-            "restyle_background" -> restyleBackground(context, args.optString("instruction"))
-            "restyle_avatar" -> restyleAvatar(context, args.optString("instruction"))
             "add_car_task" -> result(
                 success = true,
                 message = CarTaskController.add(context, args.optString("task"), args.optString("category")),
@@ -745,20 +557,7 @@ object LiveToolbox {
             "log_build_entry" -> logBuildEntry(context, args)
             "list_build_history" -> listBuildHistory(context, args.optString("type"))
             "get_spend" -> getSpend(context, args.optString("category"))
-            "unlock_spend" -> unlockSpend(context, args.optString("passphrase"))
-            "set_spend_passphrase" -> setSpendPassphrase(context, args.optString("passphrase"))
             "activate_garage" -> activateGarage(context, args)
-            "start_trivia_game" -> result(
-                success = true,
-                message = TriviaController.start(
-                    category = args.optString("category"),
-                    questionCount = args.optInt("question_count", 10),
-                    driverName = args.optString("driver_name"),
-                    passengerName = args.optString("passenger_name"),
-                ),
-            )
-            "award_point" -> result(success = true, message = TriviaController.awardPoint(args.optString("who")))
-            "end_trivia_game" -> result(success = true, message = TriviaController.end())
             // Session-scoped tools the owning controller handles (it has the live
             // session / capture controller / activity), so dispatch returns null:
             "show_saved_places" -> null // caller launches the saved-places screen and replies
@@ -853,38 +652,6 @@ object LiveToolbox {
         return JSONObject().put("success", true).put("count", memories.size).put("memories", arr)
     }
 
-    // --- Appearance: voice-driven restyle (fire-and-forget) -------------
-
-    /** Restyles the existing wallpaper from a spoken instruction; refreshes the UI when done. */
-    private fun restyleBackground(context: Context, instruction: String): JSONObject {
-        if (!AvatarStudio.hasBackground(context)) {
-            return result(success = false,
-                message = "There's no wallpaper yet - upload a photo of the car in settings first, then I can restyle it.")
-        }
-        imageScope.launch {
-            if (AvatarStudio.restyleBackground(context, instruction) != null) AppBackground.notifyChanged()
-        }
-        return result(success = true, message = "On it - reworking your wallpaper now, give me a few seconds.")
-    }
-
-    /** Regenerates the avatar from a spoken instruction; nudges the service to reload the face when done. */
-    private fun restyleAvatar(context: Context, instruction: String): JSONObject {
-        imageScope.launch {
-            val ok = AvatarStudio.regenerateAvatar(
-                context,
-                vehicleId = AvatarStudio.activeAvatarId(context),
-                name = CompanionProfile.name(context),
-                descriptors = avatarDescriptors(CompanionProfile.selections(context)),
-                adjustment = instruction,
-            )
-            if (ok) {
-                // A plain start intent makes the service reload the avatar onto the floating button.
-                runCatching { context.startService(Intent(context, AriaForegroundService::class.java)) }
-            }
-        }
-        return result(success = true, message = "Alright, redrawing my face with that - give me a moment.")
-    }
-
     // --- Build sheet / spend ledger -------------------------------------
 
     /** Logs a build-sheet entry (mod/part/repair/consumable/other), with optional cost. */
@@ -905,12 +672,9 @@ object LiveToolbox {
     }
 
     /**
-     * Reads back build history (what/when - always available). Per-entry costs are
-     * included only when the spend log is unlocked; otherwise costsHidden flags
-     * that the figures are gated (history still returns).
+     * Reads back build history (what/when, plus cost - ungated, see [getSpend]'s doc).
      */
     private suspend fun listBuildHistory(context: Context, type: String): JSONObject {
-        val unlocked = SpendGate.isUnlocked(context)
         val entries = BuildSheetController.history(context, type)
         val arr = JSONArray()
         for (e in entries) {
@@ -918,19 +682,17 @@ object LiveToolbox {
             if (e.mileage != null) o.put("mileage", e.mileage)
             if (e.vendor.isNotBlank()) o.put("vendor", e.vendor)
             if (e.notes.isNotBlank()) o.put("notes", e.notes)
-            if (unlocked && e.cost != null) o.put("cost", e.cost)
+            if (e.cost != null) o.put("cost", e.cost)
             arr.put(o)
         }
-        return JSONObject().put("success", true).put("count", entries.size)
-            .put("costsHidden", !unlocked).put("entries", arr)
+        return JSONObject().put("success", true).put("count", entries.size).put("entries", arr)
     }
 
-    /** Reports total / per-category spend - gated by [SpendGate]. */
+    /**
+     * Reports total / per-category spend. No gating - SpendGate was retired
+     * 2026-07-31 with no replacement built yet.
+     */
     private suspend fun getSpend(context: Context, category: String): JSONObject {
-        if (!SpendGate.isUnlocked(context)) {
-            return JSONObject().put("success", false).put("locked", true)
-                .put("message", "The spend log is locked. Ask the owner for the passphrase and I'll open it.")
-        }
         val byCat = BuildSheetController.spendByCategory(context)
         val cat = category.trim().lowercase()
         if (cat.isNotBlank()) {
@@ -942,25 +704,6 @@ object LiveToolbox {
         return JSONObject().put("success", true)
             .put("total", BuildSheetController.totalSpend(context))
             .put("byCategory", catObj)
-    }
-
-    /** Unlocks the spend figures if the passphrase matches. */
-    private fun unlockSpend(context: Context, passphrase: String): JSONObject {
-        if (passphrase.isBlank()) return result(success = false, message = "I need the passphrase.")
-        return if (SpendGate.unlock(context, passphrase))
-            result(success = true, message = "Unlocked - I can talk numbers now.")
-        else result(success = false, message = "That's not it. The spend stays sealed.")
-    }
-
-    /** Sets/changes the spend passphrase (change requires being unlocked). */
-    private fun setSpendPassphrase(context: Context, passphrase: String): JSONObject {
-        if (passphrase.isBlank()) return result(success = false, message = "Tell me the word or phrase you want to use.")
-        if (SpendGate.hasPassphrase(context) && !SpendGate.isUnlocked(context)) {
-            return result(success = false,
-                message = "There's already a passphrase - say the current one first, then I can change it.")
-        }
-        SpendGate.setPassphrase(context, passphrase)
-        return result(success = true, message = "Done. Your spend's locked behind that now - don't forget it.")
     }
 
     /**
@@ -1066,16 +809,14 @@ object LiveToolbox {
      * Gates, then delegates to a specialist and maps its [AgentResult] to the
      * tool-response JSON, phrasing each failure kind in character and recording
      * key health for the Setup screen. [call] is only invoked (spending a real
-     * Gemini call) once [EntitlementManager.canUseSubAgent] confirms a key is
-     * saved - per CLAUDE.md sec 2 (2026-07-16 rewrite), sub-agent diagnosis is
-     * a Gemini-billed action gated behind the $10 BYO-key unlock like every
-     * other metered call.
+     * Gemini call) once a key is actually saved - no tiers anymore (the
+     * commercial model was retired 2026-07-31), every install is BYO-key only.
      */
     private suspend fun agentResult(failMessage: String, call: suspend () -> AgentResult): JSONObject {
-        if (!EntitlementManager.canUseSubAgent()) {
+        if (!GeminiKeyProvider.hasKey()) {
             return result(
                 false,
-                "That needs the full AI companion - unlock with your own key to keep going.",
+                "I need a Gemini key to do that - add your own in Setup to keep going.",
             )
         }
         return when (val r = call()) {
@@ -1218,16 +959,6 @@ object LiveToolbox {
                 put("recentDrivesMpg", JSONArray(trips.map { "%.1f".format(it.value) }))
             }
         }
-    }
-
-    /**
-     * Listening-taste summary over the recorded [com.kevin.legion.data.local.MusicPlay]
-     * ledger. The aggregation lives in [CarToolbelt.musicTasteSummary] (one source of truth);
-     * this just wraps its text for the Live model.
-     */
-    private suspend fun getMusicTaste(context: Context, args: JSONObject): JSONObject {
-        val text = CarToolbelt.musicTasteSummary(context, args.optInt("days", 90))
-        return result(!text.startsWith("Not enough listening history"), text)
     }
 
     /** Live emissions-readiness read - which monitors are done, which need drive time. */
@@ -1458,47 +1189,6 @@ object LiveToolbox {
         }
     }
 
-    /**
-     * Delegates to the investigating music specialist ([MusicAgent]). Pre-seeds
-     * nothing here - the agent pre-seeds its own taste + saved-library summaries -
-     * so this is a thin pass-through. Another mid-conversation round-trip, so
-     * Zero typically says "let me think..." first.
-     */
-    private suspend fun recommendMusic(context: Context, args: JSONObject): JSONObject {
-        return agentResult("I couldn't reach the music specialist just now - try again in a sec.") {
-            MusicAgent.recommend(context, args.optString("question"))
-        }
-    }
-
-    /**
-     * Starts a saved mixtape playing by name ([MixtapePlayer.play]) - the action
-     * half of the recommend/offer flow: recommend_music can name a saved tape,
-     * and this is what actually spins it up when the driver says yes. Matches
-     * case-insensitively, then by prefix, then by substring, so a slightly loose
-     * name still resolves.
-     */
-    private suspend fun playMixtape(context: Context, args: JSONObject): JSONObject {
-        val name = args.optString("name").trim()
-        if (name.isBlank()) return result(success = false, message = "Which mixtape?")
-
-        val tapes = CarDatabase.getDatabase(context).mixtapeDao().getAll()
-        if (tapes.isEmpty()) return result(success = false, message = "No mixtapes saved yet.")
-
-        val tape = tapes.firstOrNull { it.name.equals(name, ignoreCase = true) }
-            ?: tapes.firstOrNull { it.name.startsWith(name, ignoreCase = true) }
-            ?: tapes.firstOrNull { it.name.contains(name, ignoreCase = true) }
-        if (tape == null) {
-            return result(
-                success = false,
-                message = "I don't have a mixtape called that. Saved mixtapes: " +
-                    tapes.joinToString(", ") { it.name } + ".",
-            )
-        }
-
-        withContext(Dispatchers.Main) { MixtapePlayer.play(context, tape.id) }
-        return result(success = true, message = "Spinning up ${tape.name}.")
-    }
-
     private suspend fun getVehicleData(metric: String): JSONObject {
         if (!ObdBluetoothManager.isConnected) {
             return JSONObject().put("connected", false)
@@ -1529,56 +1219,23 @@ object LiveToolbox {
     }
 
     /**
-     * Controls phone music over Bluetooth via Android's media-session framework
-     * ([MusicController]) - transport only (play/pause/next/previous). Music plays
-     * on the driver's phone and streams to the head unit; there's no search-to-play
-     * (AVRCP can't carry a search), so the driver picks tracks on their phone.
+     * Controls whatever's playing via Android's media-session framework
+     * ([MusicController]) - transport only (play/pause/next/previous). Works
+     * against any active session (phone-BT relay, Spotify, etc); there's no
+     * search-to-play here, only [playMusic] (Spotify-direct) supports that.
      *
-     * The media framework expects to run on a thread with a Looper; Live tool dispatch
-     * runs on a worker, so every MusicController call is marshalled to [Dispatchers.Main]
-     * (a bare worker thread threw "Can't create handler ...", crashing the app on next/play).
-     */
-    /**
-     * Controls phone music over Bluetooth via Android's media-session framework
-     * ([MusicController]) — transport only (play/pause/next/previous). Music plays
-     * on the driver's phone and streams to the head unit; there's no search-to-play
-     * (AVRCP can't carry a search), so the driver picks tracks on their phone.
-     *
-     * The media framework expects to run on a thread with a Looper; Live tool dispatch
-     * runs on a worker, so every MusicController call is marshalled to [Dispatchers.Main].
+     * The media framework expects to run on a thread with a Looper; Live tool
+     * dispatch runs on a worker, so every MusicController call is marshalled to
+     * [Dispatchers.Main] (a bare worker thread threw "Can't create handler ...",
+     * crashing the app on next/play).
      */
     private suspend fun controlMusic(context: Context, args: JSONObject): JSONObject {
         return when (val action = args.optString("action")) {
-            "play"     -> simpleMusicResult(withContext(Dispatchers.Main) { MusicRouter.play(context) })
-            "pause"    -> simpleMusicResult(withContext(Dispatchers.Main) { MusicRouter.pause(context) })
-            "next"     -> simpleMusicResult(withContext(Dispatchers.Main) { MusicRouter.next(context) })
-            "previous" -> simpleMusicResult(withContext(Dispatchers.Main) { MusicRouter.previous(context) })
+            "play"     -> simpleMusicResult(withContext(Dispatchers.Main) { MusicController.play(context) })
+            "pause"    -> simpleMusicResult(withContext(Dispatchers.Main) { MusicController.pause(context) })
+            "next"     -> simpleMusicResult(withContext(Dispatchers.Main) { MusicController.next(context) })
+            "previous" -> simpleMusicResult(withContext(Dispatchers.Main) { MusicController.previous(context) })
             else       -> result(success = false, message = "Unknown music action: $action")
-        }
-    }
-
-    /**
-     * Voice-driven graceful source switch between the phone (acct A, over
-     * Bluetooth) and head-unit Spotify (acct B, App Remote) - see
-     * [MusicRouter.switchToSpotify]/[switchToPhone] for the pause-outgoing/
-     * start-incoming mechanics. Runs on the main thread; media session calls
-     * need a Looper (see class doc above [controlMusic]).
-     */
-    private suspend fun setMusicSource(context: Context, source: String): JSONObject = withContext(Dispatchers.Main) {
-        when (source) {
-            "phone" -> {
-                MusicRouter.switchToPhone(context)
-                result(success = true, message = "Back on your phone.")
-            }
-            "head_unit", "spotify" -> {
-                if (!SpotifyController.isConnected) {
-                    result(success = false, message = "Spotify on the head unit isn't connected — set it up in Setup first.")
-                } else {
-                    MusicRouter.switchToSpotify(context)
-                    result(success = true, message = "Switched to Spotify on the head unit.")
-                }
-            }
-            else -> result(success = false, message = "I can play from your phone or the head unit — which one?")
         }
     }
 
@@ -1609,237 +1266,83 @@ object LiveToolbox {
     }
 
     /**
-     * Mapbox-only in-dash navigation (2026-07-25): a saved place first, else
-     * geocoded free text, always via [com.kevin.legion.ui.EmbeddedNavActivity] - no
-     * Maps/Waze intent fallback and no driver-preferred nav app anymore. Fails with an
-     * actionable message when [com.kevin.legion.vehicle.NavCapability.embeddedNavAvailable]
-     * is false (no GL ES 3.0 / no saved Mapbox token) or geocoding can't resolve the query.
-     *
-     * The actual resolution logic lives in [NavLauncher.launch] (2026-07-24, then rewired
-     * 2026-07-25 for Mapbox-only + geocoding) - extracted so Cruise's NavPanel widget can
-     * make the exact same launch decision without going through a voice tool call. This
-     * method just wraps its [NavLauncher.Outcome] into a tool-response JSONObject.
+     * Reverse-geocodes via Android's built-in `Geocoder` (needs a GMS geocoding
+     * backend on-device; degrades to coordinates-only if unavailable, per CLAUDE.md
+     * sec 9's "network calls degrade gracefully" rule). Embedded navigation and its
+     * Mapbox-backed reverse geocoding were retired in the 2026-07-31 pivot - this is
+     * a plain fallback, not the BYO-token path Midnight AI used.
      */
-    private suspend fun startNavigation(context: Context, destination: String): JSONObject =
-        when (val outcome = NavLauncher.launch(context, destination, openActivity = false)) {
-            is NavLauncher.Outcome.Opened -> result(success = true, message = outcome.message)
-            is NavLauncher.Outcome.Failed -> result(success = false, message = outcome.message)
-        }
-
-    /**
-     * 2026-07-28 rewrite: dropped both a `LocationManager.getLastKnownLocation` fallback
-     * and `android.location.Geocoder` reverse geocoding.
-     *
-     * - `LocationManager` bypassed [LocationController], the single merge point for every
-     *   position source on this app (CLAUDE.md sec 14 - the Cherokee's own GPS antenna
-     *   kills the head unit's WiFi/BT rail, so position now arrives from a phone beacon
-     *   over UDP; [LocationController.state] is where every source, including the beacon,
-     *   lands). `getLastKnownLocation` can also return an hours-stale cached fix with no
-     *   staleness check - reporting that as "current location" is worse than admitting no
-     *   fix exists.
-     * - `android.location.Geocoder` needs a GMS/vendor geocoding backend, which the cheap
-     *   AOSP 8-10 head units this app targets (CLAUDE.md sec 1) frequently lack; there it
-     *   throws or returns empty, the old `catch` swallowed it, and the tool always said
-     *   "unknown address" with no signal why. [NavGeocoder.reverseGeocode] reuses the same
-     *   BYO Mapbox token already wired for forward geocoding instead of a second,
-     *   vendor-dependent stack.
-     */
-    private suspend fun getCurrentLocation(): JSONObject {
+    private suspend fun getCurrentLocation(context: Context): JSONObject {
         val loc = LocationController.state.value
             ?: return result(success = false, message = "I don't have a GPS fix yet.")
 
         val coords = "(lat ${loc.latitude}, lng ${loc.longitude})"
-        return when (val outcome = NavGeocoder.reverseGeocode(loc.latitude, loc.longitude)) {
-            is NavGeocoder.Outcome.Found ->
-                result(success = true, message = "Current location: ${outcome.label} $coords")
-            // No token, no result, or a network miss all still count as success: knowing
-            // WHERE you are is more basic than being able to NAME it, and CLAUDE.md sec 9
-            // requires network calls to degrade gracefully rather than fail the whole tool
-            // over an optional label.
-            else ->
-                result(success = true, message = "Current location: $coords (couldn't resolve an address)")
+        val label = withContext(Dispatchers.IO) {
+            runCatching {
+                @Suppress("DEPRECATION")
+                android.location.Geocoder(context, java.util.Locale.getDefault())
+                    .getFromLocation(loc.latitude, loc.longitude, 1)
+                    ?.firstOrNull()
+                    ?.let { listOfNotNull(it.thoroughfare, it.locality, it.adminArea).joinToString(", ") }
+                    ?.ifBlank { null }
+            }.getOrNull()
         }
+        return if (label != null) result(success = true, message = "Current location: $label $coords")
+        else result(success = true, message = "Current location: $coords (couldn't resolve an address)")
     }
 
     /**
-     * Opens [intent] full-screen (a normal app launch, no split-screen attempt -
-     * that was removed 2026-07-08, see CompanionBadgeController), then shows the
-     * floating companion badge over it so Midnight AI stays reachable
-     * (tap-to-talk, transport) without the driver needing to switch back.
-     */
-    private fun openFullscreenWithBadge(context: Context, intent: Intent) {
-        context.startActivity(intent.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-        val badgeIntent = Intent(context, AriaForegroundService::class.java)
-            .setAction(AriaForegroundService.ACTION_SHOW_PANEL)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(badgeIntent)
-        else context.startService(badgeIntent)
-    }
-
-    private fun stopNavigation(): JSONObject {
-        NavState.clear()
-        return result(success = true, message = "Navigation cancelled.")
-    }
-
-    /**
-     * Opens the first installed music app from [MUSIC_FALLBACKS] (Spotify
-     * first), with the floating companion badge over it. Phone-Bluetooth
-     * streaming is untouched; this is purely the "launch a music app" path.
-     * Gated on [MusicPreferences.headUnitAppEnabled] (off by default) - a
-     * driver who only ever streams from their phone over Bluetooth shouldn't
-     * have Zero unexpectedly launch a separate, possibly logged-out local
-     * install onto the head unit's own screen.
-     */
-    private fun openMusic(context: Context): JSONObject {
-        if (!MusicPreferences.headUnitAppEnabled(context)) {
-            return result(
-                success = false,
-                message = "You can stream music from your phone over Bluetooth, and I'll control playback " +
-                    "from here. Turn on \"Music app on this head unit\" in Setup if you'd rather I open one.",
-            )
-        }
-        val pm = context.packageManager
-        val pkg = MUSIC_FALLBACKS.firstOrNull { pm.getLaunchIntentForPackage(it) != null }
-            ?: return result(
-                success = false,
-                message = "I couldn't find a music app to open — you can still stream from your phone over Bluetooth.",
-            )
-        val intent = pm.getLaunchIntentForPackage(pkg)
-            ?: return result(success = false, message = "I couldn't open that music app.")
-        return try {
-            openFullscreenWithBadge(context, intent)
-            result(success = true, message = "Opening ${appLabel(context, pkg)}.")
-        } catch (_: Exception) {
-            result(success = false, message = "I couldn't open the music app.")
-        }
-    }
-
-    /**
-     * The public, Siri-style "play something specific" tier: fires Android's
-     * standard play-from-search intent at a music app, the way a phone
-     * assistant hands a query to whatever's installed. No SDK, no
-     * credentials, just a plain Android intent. Whether it actually starts
-     * playing is up to the target app; if it doesn't declare a play-from-
-     * search handler at all, this just opens the app like [openMusic] does.
-     *
-     * The App Remote SDK ([SpotifyController]) has NO free-text search API -
-     * only `play(uri)` against an exact `spotify:track:...` URI, plus a
-     * recommendations/browse surface. So even with a live BYO connection,
-     * turning "play <query>" into a URI still has to go through this same
-     * OS-level search intent; App Remote cannot replace it, only sit
-     * alongside it for transport once something's playing.
-     *
-     * If [SpotifyController] is already connected, playback stays IN PLACE and
-     * this intent path is not used at all (2026-07-29) - the Web API resolves a
-     * URI and App Remote plays it with Spotify still in the background. If any
-     * step of that fails the driver gets a spoken reason; we do NOT fall back to
-     * foregrounding Spotify, because a connected driver leaving the launcher is
-     * the failure this path was built to eliminate. On success, mark
-     * [MusicSource] as SPOTIFY so the next control_music (pause/skip) routes to
-     * [SpotifyController]'s transport instead of stale phone-AVRCP routing.
+     * Plays a specific track/artist by name, in-app, via Spotify App Remote +
+     * Web API search. This is the only "play something specific" path left -
+     * the old OS-level play-from-search-intent fallback (opening a separate
+     * music app full-screen, with a floating companion badge over it) was
+     * retired with the rest of the car-launcher UI in the 2026-07-31 pivot.
+     * If Spotify isn't connected, this fails with an actionable message rather
+     * than falling back to launching another app.
      */
     private suspend fun playMusic(context: Context, query: String): JSONObject {
         if (query.isBlank()) return result(success = false, message = "What should I play?")
 
         // ensureConnected, not isConnected: App Remote drops on its own (Spotify
-        // killed/backgrounded) and nothing used to bring it back, so a driver who
-        // had set Spotify up got told to enable an unrelated head-unit toggle.
+        // killed/backgrounded), so this always tries a silent reconnect first.
         // Only attempts a reconnect when a client ID is actually saved, so a
         // driver who never set Spotify up pays nothing here.
-        if (SpotifyController.ensureConnected(context)) {
-            // Once Spotify is connected, this path NEVER foregrounds the Spotify app
-            // (changed 2026-07-29). It used to fall through to the OS search intent
-            // whenever search or playback failed, which threw the driver out of the
-            // launcher mid-drive - the precise outcome this whole in-app path exists
-            // to avoid. A connected driver gets a spoken reason instead, so a fixable
-            // problem (needs CONNECT in Setup) is something they can actually act on
-            // rather than a mysterious app switch.
-
-            // Not authorized = no Web API = no way to turn a name into a URI. Say so
-            // plainly; this is the one failure the driver can fix themselves.
-            if (!SpotifyWebApi.isAuthorized(context)) {
-                return result(
-                    success = false,
-                    message = "Spotify isn't finished connecting - open Setup, tap CONNECT under the " +
-                        "Spotify client ID, and approve it in the browser. Then I can play by name without " +
-                        "leaving this screen.",
-                )
-            }
-
-            // Search BEFORE touching the phone stream: this is the network-dependent,
-            // failure-prone half, and silencing acct A only to then play nothing
-            // leaves the car quiet for no reason.
-            val uri = SpotifyWebApi.searchTrackUri(context, query)
-                ?: return result(
-                    success = false,
-                    message = "I couldn't find \"$query\" on Spotify, or couldn't reach it just now.",
-                )
-
-            // Pause the phone stream if it isn't already the active source, so acct A
-            // goes quiet before acct B starts - otherwise both play at once.
-            if (MusicSource.current.value != Source.SPOTIFY) {
-                withContext(Dispatchers.Main) { MusicController.pausePhone(context) }
-            }
-
-            // playUri now awaits App Remote's real result, so this genuinely means
-            // playback started - it is not the old "the call didn't throw".
-            if (SpotifyController.playUri(uri)) {
-                MusicSource.set(Source.SPOTIFY)
-                return result(success = true, message = "Playing \"$query\" on Spotify.")
-            }
+        if (!SpotifyController.ensureConnected(context)) {
             return result(
                 success = false,
-                message = "Spotify wouldn't start that one - it may not be playable on your account here.",
+                message = "Spotify isn't connected - connect your Spotify account in Setup, or pick " +
+                    "something on your phone yourself and I'll control play/pause/skip from here.",
             )
         }
 
-        if (!MusicPreferences.headUnitAppEnabled(context)) {
+        // Not authorized = no Web API = no way to turn a name into a URI. Say so
+        // plainly; this is the one failure the driver can fix themselves.
+        if (!SpotifyWebApi.isAuthorized(context)) {
             return result(
                 success = false,
-                message = "I can't search and play from here — pick it on your phone and I'll control " +
-                    "playback. Turn on \"Music app on this head unit\" in Setup if you'd rather I open one.",
+                message = "Spotify isn't finished connecting - open Setup, tap CONNECT under the " +
+                    "Spotify client ID, and approve it in the browser. Then I can play by name.",
             )
         }
-        val pkg = MUSIC_FALLBACKS.firstOrNull { context.packageManager.getLaunchIntentForPackage(it) != null }
+
+        val uri = SpotifyWebApi.searchTrackUri(context, query)
             ?: return result(
                 success = false,
-                message = "I couldn't find a music app to open — you can still stream from your phone over Bluetooth.",
+                message = "I couldn't find \"$query\" on Spotify, or couldn't reach it just now.",
             )
-        return playMusicVia(context, query, pkg) {}
+
+        // playUri awaits App Remote's real result, so this genuinely means
+        // playback started - it is not just "the call didn't throw".
+        if (SpotifyController.playUri(uri)) {
+            return result(success = true, message = "Playing \"$query\" on Spotify.")
+        }
+        return result(
+            success = false,
+            message = "Spotify wouldn't start that one - it may not be playable on your account here.",
+        )
     }
 
-    private fun playMusicVia(context: Context, query: String, pkg: String, onLaunched: () -> Unit): JSONObject {
-        val pm = context.packageManager
-        if (pm.getLaunchIntentForPackage(pkg) == null) {
-            return result(
-                success = false,
-                message = "I couldn't find a music app to open — you can still stream from your phone over Bluetooth.",
-            )
-        }
-        val searchIntent = Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
-            setPackage(pkg)
-            putExtra(SearchManager.QUERY, query)
-            putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*")
-        }
-        val intent = if (pm.resolveActivity(searchIntent, 0) != null) searchIntent
-            else pm.getLaunchIntentForPackage(pkg)
-                ?: return result(success = false, message = "I couldn't open that music app.")
-        return try {
-            openFullscreenWithBadge(context, intent)
-            onLaunched()
-            result(success = true, message = "Trying to play \"$query\" on ${appLabel(context, pkg)}.")
-        } catch (_: Exception) {
-            result(success = false, message = "I couldn't start that.")
-        }
-    }
-
-    /** Best-effort human label for an installed package, for spoken confirmation. */
-    private fun appLabel(context: Context, pkg: String): String =
-        runCatching {
-            val pm = context.packageManager
-            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-        }.getOrDefault("your music app")
-
-    /** Brings our own app (the Cruise HUD) to the foreground on request. */
+    /** Brings our own app to the foreground on request. */
     private fun showApp(context: Context): JSONObject {
         val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT) }
@@ -1921,17 +1424,6 @@ object LiveToolbox {
         return fns
     }
 
-    private const val SPOTIFY_PACKAGE = "com.spotify.music"
-
-    // Music apps open_music tries when the preferred pick isn't installed, in order.
-    private val MUSIC_FALLBACKS = listOf(
-        SPOTIFY_PACKAGE,
-        "com.google.android.apps.youtube.music",
-        "com.amazon.mp3",
-        "deezer.android.app",
-        "com.apple.android.music",
-        "com.soundcloud.android",
-    )
 
     private fun result(success: Boolean, message: String?): JSONObject =
         JSONObject().put("success", success).apply { if (message != null) put("message", message) }

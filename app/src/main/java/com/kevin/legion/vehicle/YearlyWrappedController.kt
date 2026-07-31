@@ -1,13 +1,8 @@
 package com.kevin.legion.vehicle
 
 import android.content.Context
-import com.kevin.legion.ai.AvatarStudio
-import com.kevin.legion.ai.CompanionIdentity
+import com.kevin.legion.ai.AssistantIdentity
 import com.kevin.legion.ai.SubAgent
-import com.kevin.legion.ai.WallpaperColorScheme
-import com.kevin.legion.ai.WallpaperLandscape
-import com.kevin.legion.ai.WallpaperTimeOfDay
-import com.kevin.legion.billing.EntitlementManager
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.YearlyWrapped
 
@@ -99,10 +94,6 @@ object YearlyWrappedController {
         serviceCount: Int,
     ): String {
         val fallback = "A whole year on the road together - $driveCount drives, ${milesDriven.toInt()} miles."
-        // The stats above are always computed and saved for free; this narrative is the
-        // only Gemini-billed part of a Yearly Wrapped, so it's the only part gated by
-        // AI mode. Ungated, the numbers-only fallback below still shows on the Wrapped.
-        if (!EntitlementManager.canUseSubAgent()) return fallback
         val stats = buildString {
             append("Year: $year. ")
             append("Total miles driven: ${milesDriven.toInt()}. ")
@@ -113,9 +104,8 @@ object YearlyWrappedController {
             append("Trouble codes seen across the year: $codeCount. ")
             append("Services logged: $serviceCount.")
         }
-        // Identity from CompanionIdentity - Zero looks back WITH the driver, a named
-        // car looks back on its own year. See CompanionIdentity's doc.
-        val system = CompanionIdentity.shortClause(context) + " " +
+        // Identity from AssistantIdentity - see its doc.
+        val system = AssistantIdentity.shortClause(context) + " " +
             "You are looking back at the whole of $year with the driver - a year-end wrapped, not " +
             "just one month. Given the year's stats, write 3-5 short, warm, spoken-natural sentences that " +
             "feel like a genuine look-back over a full year together - notice the big picture " +
@@ -125,26 +115,15 @@ object YearlyWrappedController {
         return agent.ask(stats, "Write the year-end wrapped.") ?: fallback
     }
 
+    /**
+     * Cover art generation is retired for now: it depended on `AvatarStudio`
+     * (city-pop art direction, retired in the 2026-07-31 pivot) and no
+     * replacement image-gen path has been decided. Always returns null.
+     */
     private suspend fun generateCover(
         context: Context,
         vehicleId: String,
         vehicle: com.kevin.legion.data.local.Vehicle,
         year: Int,
-    ): String? {
-        if (!EntitlementManager.canGenerateImage()) return null
-        val carDesc = VehicleController.displayLabel(vehicle).ifBlank { "a car" }
-        val results = AvatarStudio.generateBackgroundConcepts(
-            context = context,
-            description = "$carDesc, a year-end Wrapped poster for $year",
-            colorScheme = WallpaperColorScheme.entries[year % WallpaperColorScheme.entries.size],
-            timeOfDay = WallpaperTimeOfDay.NIGHT,
-            landscape = WallpaperLandscape.CITY,
-            includeAvatar = true,
-            count = 1,
-        )
-        val bitmap = results.firstOrNull() ?: return null
-        // Reuses the recap-cover save path with month=0 as a "whole year" sentinel -
-        // no new save function needed, same file-naming scheme, just one more slot.
-        return AvatarStudio.saveRecapCover(context, vehicleId, year, 0, bitmap)
-    }
+    ): String? = null
 }
