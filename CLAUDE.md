@@ -15,6 +15,10 @@ Created 2026-08-01 from the 2026-07-30/31 pivot off Midnight AI. This file holds
    Card catalog: `memory/library/INDEX.md`. Do not bulk-read shelf files into the main context.
    **Most of that library is FROZEN Midnight AI history** (see §11) - it is reference, not rules.
 5. **`TEAM.md`**. Subagent roster and dispatch cadence.
+6. **`.claude/skills/`**. Vendored skills, ported from Midnight AI 2026-08-01. Chris Banes's
+   Kotlin/Compose guidance (verbatim), plus repo-specific `wayfinder`, `to-spec`, `grillme`, and
+   `issue-tracker.md`. **`wayfinder` has no plugin equivalent and exists only here.** Provenance and
+   the list of the eight files adapted for LEGION are in `.claude/skills/ATTRIBUTION.md`.
 
 If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins for rules.**
 
