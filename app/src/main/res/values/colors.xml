@@ -1,0 +1,7 @@
+<resources>
+    <!-- Mirrors InstrumentGround in ui/theme/Color.kt. Duplicated because the
+         launch theme is resolved by the platform before any Compose code runs,
+         so it cannot read the Kotlin value. Keep the two in sync by hand; this
+         is the only place the palette is repeated. -->
+    <color name="instrument_ground">#FF0B0D0E</color>
+</resources>
