@@ -40,6 +40,9 @@ Thumbs.db
 # Background-agent worktree scratch space
 .claude/worktrees/
 
+# Per-machine tool permissions. The shared agent defs in .claude/agents/ ARE committed.
+.claude/settings.local.json
+
 # Vosk wake-word model: fetched locally per app/src/main/assets/vosk-model/README.md,
 # never committed. The binary is gitignored, not the source set.
 app/src/main/assets/vosk-model/*
