@@ -1323,3 +1323,41 @@ size, and last-modified. (2) **The central claim is traced, not tested.** Whethe
 (prefix grant, per-call re-query, per-call `enforceTree()`, Drive's real `isChildDocument`), but
 nothing was run on hardware - the research session had no device attached. A 15-minute device probe
 is specified and raised as its own ticket. If it comes back no, this decision is void.
+
+## 2026-08-01 - Design language: "Instrument" on Material 3's machinery
+
+Context: the city-pop language died with the 2026-07-30/31 pivot and `ui/` was left a clean slate
+with no theme, no tokens, and no reference. Nine screens plus four wayfinder tickets were blocked
+behind choosing one. Three directions were mocked and compared across the same three surfaces
+(home, a dense ledger list, a pantry item carrying macro estimates): Instrument (a dark readout,
+mono numerals, hairlines), Dossier (light, serif, documents), and Platform (stock Material 3).
+
+**Kevin's call: Instrument, built on Material 3's machinery.** The two were presented as a fork and
+are not one. M3 is a component library plus a token layer; Instrument is almost entirely a retuning
+of the token layer, so M3's components, touch targets, accessibility semantics and dynamic-type
+handling are all kept and only the tokens change. This is explicitly a rejection of Midnight AI's
+approach, where `AriaColors`/`AriaType`/`AriaDimens` were built from scratch and every screen had to
+know about them.
+
+Three overrides carry the direction: the **shape scale flattened to near-zero** (M3's 8-28dp radii
+and card-first habit cost vertical space and soften exactly the wanted quality; 2dp survives on the
+largest roles only because at 0dp a sheet has no visible edge against a near-black ground);
+**monospace for anything numeric** (Compose has no `font-variant-numeric: tabular-nums`, so picking
+a mono family IS the mechanism for aligning digits, not a style preference); and **one accent**,
+with `secondary`/`tertiary` left as neutrals. **Dynamic colour is declined** - it would hand the
+signal hue to the user's wallpaper and the signal is the identity.
+
+**Money and provenance roles live outside `ColorScheme`**, in `LegionSemantics` behind
+`LocalLegionSemantics`: credit / debit / estimated / quarantined / rule / ruleFaint / faint / ghost.
+Material 3 has no vocabulary for these and squatting on `tertiary` would both lie about that role's
+meaning and break when a component reads it for its own purposes. Two sub-decisions worth not
+re-deriving: **`debit` resolves to plain `onSurface`** because most statement rows are debits and
+colouring them all red turns signal into noise; and **`estimated` is a guardrail rather than
+styling** (CLAUDE.md §4 rule five), so an explicit label always carries the meaning and the colour
+only reinforces it - colour alone fails in greyscale and for colour-blind users.
+
+Built in `ui/theme/` (Color, Type, Shape, Theme, ThemePreview) with `res/values/themes.xml`
+retargeted off `Theme.Material.Light.NoActionBar`, which was flashing white on every cold start
+against a near-black app. `compileDebugKotlin` green. **No preview has been rendered and nothing has
+run on a device.** Left open deliberately: dark-vs-light default (currently forced dark, ignoring
+the system, with a working light scheme so daylight use is not broken), icon set, and motion.
