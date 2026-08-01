@@ -34,8 +34,24 @@ app/google-services.json
 # OS / editor
 Thumbs.db
 
-# Wayfinder / to-spec working state (short-lived; decisions get filed to memory/library)
-.scratch/
+# Scratch working state. Disposable by default, EXCEPT wayfinder maps, tickets
+# and research findings, which are tracked.
+#
+# This used to be a blanket `.scratch/`. That convention destroyed a 15-ticket
+# wayfinder map with twelve unresolved contested calls in the 2026-07-31 machine
+# port, because the directory was gitignored, never committed, and nothing had
+# been filed to memory/library yet. "Disposable" was true of the churn and false
+# of the map. Decisions still get filed to memory/library/decisions.md as they
+# are made - that rule is unchanged and is the durable record. This just stops
+# the in-flight state from being one `rm -rf` away from gone.
+.scratch/**
+!.scratch/
+!.scratch/*/
+!.scratch/*/map.md
+!.scratch/*/issues/
+!.scratch/*/issues/**
+!.scratch/*/research/
+!.scratch/*/research/**
 
 # Background-agent worktree scratch space
 .claude/worktrees/

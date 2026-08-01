@@ -43,6 +43,13 @@ If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins 
 - **MIDNIGHT_AI (`C:\Users\Kwin\StudioProjects\MIDNIGHT_AI`) is a FROZEN ARCHIVE.** Private, read
   only, historical reference for what was ported. Never build there. Never write LEGION's project
   history into its memory files, which is what happened during the 2026-07-31 port session.
+- **RUN SESSIONS FROM THIS DIRECTORY, not from MIDNIGHT_AI.** On 2026-08-01 a session did all its
+  work here with its working directory set to the archive. Three things broke silently: `/wayfinder`,
+  `/prototype` and every other slash-command resolved to the ARCHIVE's skills (the un-adapted copies
+  that still enforce the dead frame-clock motion ban and head-unit preview sizes), the agent roster
+  came from the archive's `.claude/agents/`, and Claude Code's own per-project memory was written
+  under the MIDNIGHT_AI key. **A session started here gets a fresh, empty auto-memory**, which is
+  precisely why the handoff lives in `memory/MEMORY.md` and this file rather than there.
 - **Solo dev:** Kevin (kevinmyo@gmail.com).
 - **Project Andromeda (`~/PycharmProjects/Andromeda`) retires now that ledger has ported.** Only
   its `duo_ledger.bronze` layer had real content; `silver`/`gold`/`categorization`/`fx`/`agent`
@@ -167,6 +174,16 @@ app/src/main/java/com/kevin/legion/
 build. Four `RELEASE_STORE_*` values for a release build. Set `JAVA_HOME` in your own environment;
 **do not put `org.gradle.java.home` in the committed `gradle.properties`** - Midnight AI's did, and
 it broke on any machine without Android Studio at that exact path, violating clone-and-run.
+
+**On Kevin's machine specifically (2026-08-01): there is no JDK on `PATH` and `JAVA_HOME` is unset,
+so `./gradlew` fails outright from a fresh shell.** Android Studio is at
+`C:\Users\Kwin\Apps\AndroidStudio`, NOT the default `C:\Program Files\Android\Android Studio`. Export
+it per shell rather than committing it:
+
+```
+export JAVA_HOME="/c/Users/Kwin/Apps/AndroidStudio/jbr"
+export PATH="$JAVA_HOME/bin:$PATH"
+```
 
 ---
 

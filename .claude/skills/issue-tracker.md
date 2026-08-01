@@ -4,18 +4,22 @@ Issues and specs (you may know a spec as a PRD) for this repo live as markdown f
 
 LEGION is a solo repo with no issue-tracker workflow: work is tracked in `memory/MEMORY.md` (live
 state) and `memory/library/` (long-term). `.scratch/` is deliberately NOT a competing tracker. It is
-short-lived working state for one effort, and it is gitignored. When an effort finishes, its
-decisions get filed to `memory/library/decisions.md` via the librarian (FILE mode) and the scratch
-directory is disposable. See ATTRIBUTION.md for why this file exists at all.
+working state for one effort. When an effort finishes, its decisions get filed to
+`memory/library/decisions.md` via the librarian (FILE mode). See ATTRIBUTION.md for why this file
+exists at all.
 
-> **`.scratch/` HAS ALREADY BEEN LOST ONCE, AND IT COST REAL WORK.** A 15-ticket wayfinder map with
-> twelve unresolved contested calls was destroyed in a machine port on 2026-07-31, because
-> `.scratch/` is gitignored, was never committed, and none of its content had been filed to
-> `memory/library/` yet. It is gone, not stale.
+> **`.scratch/` WAS LOST ONCE AND IT COST REAL WORK.** A 15-ticket wayfinder map with twelve
+> unresolved contested calls was destroyed in a machine port on 2026-07-31, because `.scratch/` was
+> blanket-gitignored, never committed, and none of its content had been filed to `memory/library/`
+> yet. It is gone, not stale.
 >
-> **Therefore: file a decision to `memory/library/decisions.md` when it is made, not when the effort
-> ends.** Treat `.scratch/` as a scratchpad that may vanish at any moment, because it can. If the
-> only copy of a decision is in `.scratch/`, that decision is not saved.
+> **Fixed 2026-08-01: maps, tickets and research findings are now TRACKED.** `.gitignore` still
+> ignores `.scratch/` churn, but negates `map.md`, `issues/**`, and `research/**`. Commit them like
+> any other file. "Disposable" was true of the churn and false of the map.
+>
+> **This does not replace filing decisions.** File to `memory/library/decisions.md` when a decision
+> is made, not when the effort ends. Tracked-in-git protects the working state; the library is the
+> durable record a future session actually reads. Both, not either.
 
 ## Conventions
 
