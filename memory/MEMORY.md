@@ -9,43 +9,38 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 
 ## Status as of 2026-08-01
 
-- **Builds clean, no UI.** `./gradlew compileDebugKotlin -Pnokey` succeeds, `testDebugUnitTest`
-  green (19 tests: 11 ledger, 8 pantry). Verified with real builds on 2026-07-31, not source
-  inspection.
-- **fleet** aspect ported and compiling. **ledger** done (deterministic-first, LLM fallback).
-  **pantry** done (LLM-vision-first). See README.md for per-aspect detail; not duplicated here.
-- **`ui/` is an intentional clean slate.** Only placeholders exist. No replacement design language
-  has been chosen since city-pop died with the pivot.
-- Repo is public and live: `github.com/kevinmyo-code/legion`. Only branch is `main`.
-- **Memory system set up 2026-08-01** (this file, CLAUDE.md, TEAM.md, `.claude/agents/`, and the
-  library copied wholesale from Midnight AI then banner-pruned - see CLAUDE.md §11).
-- **Skills ported 2026-08-01.** `.claude/skills/`, 31 files. Eight adapted for LEGION, the rest
-  verbatim; the prototype trio had to be rewritten because it enforced the dead frame-clock motion
-  ban and head-unit preview sizes. `wayfinder` is repo-only with no plugin equivalent.
-- **First wayfinder map charted 2026-08-01:** `.scratch/ledger-drive-ingestion/`, ten tickets, for
-  Drive-folder batch ingestion plus a basic UI across all three aspects. `.scratch/` is gitignored
-  and has been lost once already, so file each resolution to `library/decisions.md` as it lands.
+- **Builds clean.** `compileDebugKotlin -Pnokey` and `testDebugUnitTest` green (19 tests: 11 ledger,
+  8 pantry). fleet ported; ledger and pantry done. Per-aspect detail is in README.md, not here.
+- **`ui/` holds a theme and placeholders, nothing else.** The design language is decided and built
+  (Instrument on M3, `ui/theme/`); no screens exist yet.
+- Repo public: `github.com/kevinmyo-code/legion`. `dev` is the trunk, `main` two commits behind.
+- **Tooling set up 2026-08-01:** memory system (this file, CLAUDE.md, TEAM.md, `.claude/agents/`,
+  the banner-pruned library - CLAUDE.md §11) and `.claude/skills/` (31 files, 8 adapted).
 
 ## Blocking
 
 - **The lost design doc.** Both READMEs and Midnight AI's memory cite LEGION's
   `.claude/plans/wiggly-beaming-quasar.md` as the full ledger + pantry design. **It does not
-  exist** - `.claude/` was never committed and did not survive the machine port. The design is now
-  only recoverable from the code and README. Do not send an agent to read that path.
+  exist** - `.claude/` was never committed and did not survive the machine port. Recoverable only
+  from the code and README. Do not send an agent to read that path.
 - **Drive OAuth is keyed to package + SHA-1 signing cert**, so a stranger's own build fails
-  authorization. Directly threatens the clone-and-run hard requirement. Unresolved, no approach
-  chosen.
-- **Drive has no compare-and-swap.** Today's shared-file last-write-wins sync will silently lose
-  rows. Sync must become append-only. Unresolved.
-- **Assistant identity is placeholder copy** (`ai/AssistantIdentity.kt`). The Alfred/JARVIS-register
-  voice has not been written. Everything user-facing is blocked behind this.
-- **Crisis resource is US-only (988).** Carried over unfixed from Midnight AI.
-- **Firebase is not wired up.** `MidnightEvents` logs via `Log.d`, so there is no crash reporting
-  and no remote observability at all right now.
+  authorization. Directly threatens clone-and-run. Unresolved, no approach chosen.
+- **Drive has no compare-and-swap.** Shared-file last-write-wins will silently lose rows; sync must
+  become append-only. Unresolved, and ledger data is the worst thing to lose rows from.
+- **Assistant identity is placeholder copy** (`ai/AssistantIdentity.kt`). The Alfred/JARVIS voice
+  has not been written; everything user-facing is blocked behind it.
+- **Crisis resource is US-only (988).** Carried over unfixed.
+- **Firebase is not wired up.** `MidnightEvents` logs via `Log.d`: no crash reporting, no remote
+  observability, so a swallowed exception is invisible in the field.
 
 ## Untested / unverified
 
 - **Nothing has run on a device.** Compile + unit tests are the whole verification story.
+- **The Drive access model rests on one unproven behavior.** SAF was chosen for the statements
+  folder, but whether a picked tree's `listFiles()` returns files added AFTER the grant is `traced`
+  through four layers and never run on hardware. Ticket 11 is a 15-minute probe that settles it. If
+  it comes back no, the access decision is void.
+- **The theme compiles but has never been rendered.** Five previews exist in `ui/theme/ThemePreview.kt`.
 - `LedgerController`'s dedup path and `PantryController`'s DB-write path are untested (Robolectric
   `ShadowContentResolver` mismatch, judged not worth chasing).
 - Every ported fleet path (OBD, sync, wake word, proactives) compiles but has not been exercised in
@@ -53,12 +48,31 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 
 ## In-flight
 
-Nothing. The port session closed 2026-07-31 with both aspects done and committed.
+**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 2 of 11 tickets resolved.** Destination is a
+build-ready spec for Drive-folder batch ingestion plus a basic UI across all three aspects. The map
+and every ticket are now TRACKED IN GIT (see the gitignore note below), so read them directly:
+`.scratch/ledger-drive-ingestion/map.md`.
+
+| State | Tickets |
+|---|---|
+| Resolved | 01 SAF feasibility, 02 design language |
+| **Frontier (takeable now)** | **03 ingested-file ledger**, 04 twin transactions, 07 app shell + ignition, 09 fleet/pantry UI, 11 SAF device probe |
+| Blocked | 05 batch mechanics (needs 03), 06 spend gate (needs 05), 08 ledger UI (needs 03+05), 10 does ledger sync (needs 03) |
+
+**Suggested next: 03 (ingested-file ledger).** Deepest chain - it gates 05, which gates 06 and 08 -
+and the SAF research already narrowed its central question.
 
 ## Notes for next session
 
-- **Decide the branching model in practice.** CLAUDE.md §8 specifies `main` + `dev`, but `dev` does
-  not exist here yet - the port landed straight on `main`. Create it before the next feature.
+- **Render the five theme previews in Studio before building any screen on them.** The Instrument
+  theme compiles and has never been drawn. Semantic money and provenance roles live in
+  `LegionSemantics` via `LocalLegionSemantics`, NOT in `ColorScheme` - reach for them, do not add
+  colours to the scheme.
+- **`.scratch/` maps, tickets and research are now tracked in git**, reversing the blanket ignore
+  that destroyed the previous 15-ticket map. Filing decisions to `library/decisions.md` as they are
+  made is still required: git protects working state, the library is what gets read.
+- Five commits landed on `dev` on 2026-08-01: memory system, skills port, Drive-access decision,
+  theme, and this handoff.
 - **Two contested calls the port left open, flagged not decided:** whether `media/MusicController`
   is still wanted alongside Spotify App Remote, and that `vehicle/BuildSheetController` entries are
   now text-only (`photoPath` dropped) as a schema change, not just a doc update.
