@@ -19,6 +19,12 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 - Repo is public and live: `github.com/kevinmyo-code/legion`. Only branch is `main`.
 - **Memory system set up 2026-08-01** (this file, CLAUDE.md, TEAM.md, `.claude/agents/`, and the
   library copied wholesale from Midnight AI then banner-pruned - see CLAUDE.md §11).
+- **Skills ported 2026-08-01.** `.claude/skills/`, 31 files. Eight adapted for LEGION, the rest
+  verbatim; the prototype trio had to be rewritten because it enforced the dead frame-clock motion
+  ban and head-unit preview sizes. `wayfinder` is repo-only with no plugin equivalent.
+- **First wayfinder map charted 2026-08-01:** `.scratch/ledger-drive-ingestion/`, ten tickets, for
+  Drive-folder batch ingestion plus a basic UI across all three aspects. `.scratch/` is gitignored
+  and has been lost once already, so file each resolution to `library/decisions.md` as it lands.
 
 ## Blocking
 
