@@ -1290,3 +1290,36 @@ total, all green), not just source inspection or a grep pass. Full design in LEG
 
 **Verification tag:** `built` and `tested` for both aspects - real compiles and real test runs,
 not inferred.
+
+## 2026-08-01 - Ledger Drive-folder access: SAF, gated at API 30, no new OAuth scope
+
+Context: Kevin wants to point LEGION at a Google Drive folder of bank statements, ingest them in
+one batch, and have new statements uploaded there later picked up without re-processing the old
+ones. The existing `sync/DriveAuth.kt` requests `drive.appdata`, a hidden app-private space that
+structurally cannot see user files, so a new access route was needed. Three were on the table: SAF
+(`ACTION_OPEN_DOCUMENT_TREE`) against the Google Drive app's DocumentsProvider, `drive.file` plus
+the Google Picker, or `drive.readonly` REST.
+
+**Decision: SAF, gated at `SDK_INT >= 30`, with a per-file `ACTION_OPEN_DOCUMENT` fallback, and no
+new OAuth scope.** Researched by disassembling the shipping Drive app (2.26.307.6) and reading AOSP
+`DocumentsUI`; full findings were written to `.scratch/ledger-drive-ingestion/research/`, which is
+gitignored and disposable, hence this entry.
+
+Why: Drive's provider advertises `Root.FLAG_SUPPORTS_IS_CHILD` only above API 30, which is exactly
+the flag `DocumentsUI` filters tree-pickable roots on. Below that the root does not appear, so the
+long-standing "Drive does not support tree picking" belief is true for Android 10 and below and
+false above it. `minSdk` here is 24, so the per-file fallback is mandatory rather than defensive.
+Both paths yield document URIs, so nothing downstream forks. The rejected alternatives:
+`drive.file`'s folder-grant semantics for later-added files are undocumented by Google (both owning
+doc pages read, neither states it), and `drive.readonly` is a restricted scope whose verification
+burden worsens the already-open clone-and-run blocker.
+
+**Two consequences worth not re-deriving.** (1) **SAF exposes no content hash.**
+`DocumentsContract.Document`'s column set is closed and Drive's `md5Checksum` is unreachable
+through a tree URI, so any content identity must be computed by LEGION over the bytes, at the cost
+of a full read per file. Cheap alternatives are the document id (`acc=<index>;doc=<driveFileId>`),
+size, and last-modified. (2) **The central claim is traced, not tested.** Whether a picked tree's
+`listFiles()` returns files added AFTER the grant traces to yes through four independent layers
+(prefix grant, per-call re-query, per-call `enforceTree()`, Drive's real `isChildDocument`), but
+nothing was run on hardware - the research session had no device attached. A 15-minute device probe
+is specified and raised as its own ticket. If it comes back no, this decision is void.
