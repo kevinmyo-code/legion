@@ -124,6 +124,8 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
+    // Single-activity shell (ticket 07): bottom-nav tabs + absorbed sub-routes.
+    implementation(libs.navigation.compose)
 
     // Room
     implementation(libs.room.runtime)

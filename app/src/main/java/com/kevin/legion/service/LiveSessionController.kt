@@ -9,9 +9,8 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.ai.firstGreetingOpener
-import com.kevin.legion.ui.LedgerImportActivity
-import com.kevin.legion.ui.PantryImportActivity
-import com.kevin.legion.ui.SavedPlacesActivity
+import com.kevin.legion.ui.LegionRoute
+import com.kevin.legion.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -546,20 +545,30 @@ class LiveSessionController(context: Context) {
         }
     }
 
+    // These three used to startActivity a dedicated orphan Activity each
+    // (SavedPlacesActivity/LedgerImportActivity/PantryImportActivity, all
+    // deleted - ticket 07 resolution §5). Their content now lives inside
+    // MainActivity's single NavHost, so a voice tool lands there instead,
+    // carrying the target sub-route as an intent extra (see
+    // MainActivity.EXTRA_ROUTE's doc comment).
+
     private fun openSavedPlaces() {
-        val intent = Intent(appContext, SavedPlacesActivity::class.java)
+        val intent = Intent(appContext, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.FLEET_PLACES)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         appContext.startActivity(intent)
     }
 
     private fun openLedgerImport() {
-        val intent = Intent(appContext, LedgerImportActivity::class.java)
+        val intent = Intent(appContext, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.LEDGER_IMPORT)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         appContext.startActivity(intent)
     }
 
     private fun openPantryImport() {
-        val intent = Intent(appContext, PantryImportActivity::class.java)
+        val intent = Intent(appContext, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.PANTRY_IMPORT)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         appContext.startActivity(intent)
     }

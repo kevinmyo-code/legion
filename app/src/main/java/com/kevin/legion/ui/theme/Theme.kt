@@ -63,7 +63,15 @@ private val DarkScheme = darkColorScheme(
 
     error = StateQuarantined,
     onError = InstrumentGround,
-    errorContainer = InstrumentSurface,
+    // NOT InstrumentSurface, which is what `surface` holds. Material 3's
+    // `contentColorFor` is a by-VALUE `when` chain and it tests
+    // `errorContainer` BEFORE `surface`, so two roles sharing one colour
+    // means the earlier role wins for every caller. With both set to
+    // InstrumentSurface, `Surface {}`'s default content colour resolved to
+    // `onErrorContainer` and every screen in the app - including the
+    // first-run key screen and its consent copy - rendered its body text in
+    // the quarantine red. Verified on the A17K 2026-08-02.
+    errorContainer = InstrumentSurfaceSunken,
     onErrorContainer = StateQuarantined,
 )
 
