@@ -16,7 +16,11 @@ feature flag is true**. That flag is exactly what AOSP `DocumentsUI` filters roo
 `ACTION_OPEN_DOCUMENT_TREE`. So "Drive has historically not supported tree picking" is true for
 Android 10 and below and false for Android 11 and above.
 
-The crux (sub-question 2) is **traced, not tested**, and it traces to YES at both layers:
+The crux (sub-question 2) was **traced, not tested** when this was written. **It is now TESTED and
+it passed** - see `## Device probe` at the end, run 2026-08-02 on the Oppo A17K. The trace below
+stands; read it as corroborated rather than provisional. The one thing the device added that the
+trace did not predict is **latency**: the new file was invisible for at least 2m36s and appeared
+only after the Drive app was opened. It traces to YES at both layers:
 
 | Layer | Snapshot or live | Evidence |
 |---|---|---|
@@ -25,8 +29,11 @@ The crux (sub-question 2) is **traced, not tested**, and it traces to YES at bot
 | Framework authorization | Live. Child access is re-verified per call via `isChildDocument` | `DocumentsProvider.enforceTree()` |
 | Drive implementation | Live. Real `isChildDocument` + `queryChildDocuments`, cursor carries a notification URI | Drive `Lmuz;` bytecode |
 
-There is no snapshot anywhere in the chain. **Nothing is on-device verified.** The one probe that
-matters is specified at the bottom and takes 15 minutes on the Oppo.
+There is no snapshot anywhere in the chain. **Everything above this line was written without
+hardware**; the probe specified at the bottom has since been run and its results are appended under
+`## Device probe`. Sub-questions 1 and 2 are settled on-device. **Sub-question 4 (offline
+behaviour) and reboot persistence are still not run** - the probe reached the phone only over
+Wi-Fi ADB, and both tests sever that link.
 
 **No new OAuth scope. Do not add `drive.readonly`.** See the fallback section.
 
@@ -614,3 +621,120 @@ re-walks them:
 | 24 | The Android Google Picker redirects to a browser tab | `traced` (Google's own page, dated 2026-07-14) |
 | 25 | `drive.readonly` is a restricted scope and worsens the clone-and-run blocker | `traced` for the classification, `reasoned` for the impact |
 | 26 | Nothing in this document was run on a device | `tested` (`adb devices` empty; no emulator image installed) |
+
+---
+
+## Device probe
+
+Run 2026-08-02 00:11-00:22 local, ticket 11. **Everything below is `tested` unless tagged
+otherwise.** It supersedes the `traced` tags above wherever the two speak to the same claim.
+Line 26 of the assumptions ledger ("Nothing in this document was run on a device") is now false
+for this section only; the sections above it were still authored without hardware.
+
+### Setup as actually run
+
+| Item | Planned | Actual |
+|---|---|---|
+| Device | Oppo A17K, Android 12 (API 31) | `OPPO CPH2471`, `SDK_INT=31`, ColorOS `V12.1`. Matches |
+| Transport | USB | **Wireless debugging.** USB never enumerated: the phone did not appear in `Get-PnpDevice` at all, so `adb devices` stayed empty through a cable swap and an MTP-mode change. Paired over Wi-Fi instead |
+| Drive app | 2.26.307.6 (the version disassembled) | **2.26.297.3**, i.e. slightly OLDER than the APK the trace was taken from. The disassembled behaviour held anyway |
+| Folder | `LegionProbe`, two PDFs | `LegionProbe`, **five** real BofA statement PDFs |
+| Probe | research file's paste-ready code | Same, plus null projection and on-screen output. See ticket 11 |
+
+### Results
+
+| Step | Observable | Result |
+|---|---|---|
+| 1 | Drive offered as a root in the tree picker | **PASS.** "Drive / kevinmyo@gmail.com" in the drawer |
+| 2 | Folder selectable, persistable grant taken | **PASS.** `TREE=content://com.google.android.apps.docs.storage/tree/acc%3D1%3Bdoc%3Dencoded%3D...` |
+| 3 | `listFiles()` returns the folder's files | **PASS.** `COUNT=5`, all `application/pdf`, non-zero sizes |
+| 4 | Byte read works | **PASS.** `READ ok ... bytes=164087 header=%PDF- ms=637` |
+| 6 | **New file appears without re-picking** | **PASS, with a latency caveat.** See below |
+
+**Sub-question 1 is settled YES on this device.** Drive's provider does advertise
+`FLAG_SUPPORTS_IS_CHILD` at API 31 and DocumentsUI does admit it to `ACTION_OPEN_DOCUMENT_TREE`.
+Assumptions 2 and 5 hold at runtime, on a Drive build one version older than the one dexdumped.
+
+**Sub-question 2 (the crux) is settled YES, qualified.** A sixth PDF uploaded from a laptop browser
+did appear in `listFiles()` through the existing grant, with no re-pick. The qualification is
+timing, and it is step 6b of the plan, not step 6:
+
+| Time | Event | `COUNT` |
+|---|---|---|
+| 00:14:44 | Grant taken | 5 |
+| 00:16:12 | Sixth PDF uploaded from laptop browser (its own `last_modified`) | - |
+| 00:16:50 | LIST, phone's Drive app not touched | **5** |
+| 00:18:15 | LIST | **5** |
+| 00:18:48 | LIST, 2m36s after upload | **5** |
+| ~00:19-00:20 | **Drive app opened on the phone** and the folder browsed | - |
+| 00:22:00 | LIST | **6** |
+
+So: **not visible for at least 2 minutes 36 seconds on its own, visible after the Drive app was
+opened.** The two variables (elapsed time, Drive app foregrounded) were not isolated - this run
+cannot say whether waiting longer alone would have sufficed. Treat the access model as sound but
+**do not design as though a fresh upload is visible promptly.** A "scan folder" action that finds
+nothing new is an expected outcome, not an error state, and the UI must say so rather than imply
+the folder is empty or the grant is broken.
+
+### Metadata actually returned, and what it costs ticket 03
+
+Columns, from a **null projection** so nothing is hidden:
+
+```
+_id, document_id, _display_name, _size, mime_type, flags, last_modified, icon
+```
+
+1. **There is no hash column, confirmed on hardware.** The ingested-file ledger cannot key on
+   content identity from SAF metadata. Either hash the bytes locally after `openInputStream`, or
+   key on `document_id`.
+2. **`document_id` is opaque, stable within a session, and equal to `_id`.** Shape is
+   `acc=1;doc=encoded=<base64ish>`. The `acc=1` prefix is an account index, which is a hazard for
+   a multi-account phone: it is positional, not an account identifier. **`reasoned`** - one account
+   was signed in, so nothing here tests what a second one does to the prefix.
+3. **`last_modified` is a real per-file upload timestamp.** The first five all read
+   `1785646789365` (2026-08-01 23:59:49), which looked like a folder-wide stamp and would have
+   been useless. The sixth read `1785647772220` (2026-08-02 00:16:12), matching its upload. The
+   uniformity was a batch upload, nothing more. It is upload time, **not** the statement's own
+   date, so it orders ingestion but says nothing about the document's content.
+4. **`flags=455` on every file** = `MOVE|COPY|RENAME|DELETE|WRITE|THUMBNAIL`
+   (256+128+64+4+2+1). Two things follow. `FLAG_VIRTUAL_DOCUMENT` (512) is **absent**, so PDFs are
+   real byte streams and `openInputStream` is correct for them. But a Google-native Doc or Sheet
+   dropped in the same folder **would** be virtual and would fail that call - ingestion must skip
+   non-`application/pdf` entries rather than assume every child is readable. **`reasoned`**: no
+   Google-native file was placed in the folder to confirm it.
+
+### Two hazards the trace did not predict
+
+1. **An empty listing is indistinguishable from an unloaded one.** `extras` came back
+   `Bundle[EMPTY_PARCEL]` on every query - **no `loading` key, ever**, contrary to what step 3 of
+   the plan expected to look for. Yet the picker itself showed "No items" for both My Drive and
+   `LegionProbe` on first entry, then populated on a pull-to-refresh. So the provider does serve
+   stale-empty results while it loads, and gives the caller **no signal at all** that it is doing
+   so. A batch ingest must not conclude "folder is empty" from a single `COUNT=0`.
+2. **First read of a not-yet-cached file is slow and needs the network.** 637ms for an already
+   browsed file, **1248ms for the freshly uploaded one**. Sixty files at that rate is a minute of
+   pure I/O before any parsing or LLM call, which is a real input to ticket 05's execution model.
+
+### Not run
+
+Steps 7 (reboot persistence), 8 and 9 (airplane-mode listing and byte read) were **not executed**.
+Both are blocked by the transport: the phone is reachable only over Wi-Fi ADB, so enabling airplane
+mode severs the connection, and a reboot drops wireless debugging on most ColorOS builds. They need
+either a working USB cable or a human reading the on-screen output. **The offline failure mode
+therefore remains untested**, and sub-question 4 stays `traced`.
+
+### Assumptions ledger for this section
+
+| # | Claim | Tag |
+|---|---|---|
+| D1 | Drive is offered as a pickable tree root on API 31 / Drive 2.26.297.3 | `tested` |
+| D2 | A file added after the grant is returned by `listFiles()` with no re-pick | `tested` |
+| D3 | That file was NOT returned for at least 2m36s, and appeared only after the Drive app was opened | `tested` |
+| D4 | Whether elapsed time alone would have sufficed | **unknown, not isolated** |
+| D5 | The provider exposes no hash-like column | `tested` (null projection) |
+| D6 | `last_modified` is per-file upload time | `tested` (two distinct values, one matching a known upload) |
+| D7 | `flags=455`, so PDFs are non-virtual | `tested` for the value, arithmetic for the decode |
+| D8 | Google-native files in the same folder would be virtual and fail `openInputStream` | `reasoned` |
+| D9 | `acc=1` is a positional account index that a second signed-in account could disturb | `reasoned` |
+| D10 | `extras` never carries a `loading` key, yet stale-empty listings occur | `tested` |
+| D11 | Reboot persistence and offline behaviour | **not run** |
