@@ -74,6 +74,19 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice|dataSync|microphone" />
 
+        <!-- Ledger's folder-scan pipeline (ticket 08 Part 6). Deliberately its
+             own service rather than folded into AriaForegroundService above -
+             see LedgerIngestService's doc comment: that service's onCreate()
+             unconditionally boots the whole voice assistant, which opening
+             the Ledger tab must never do. dataSync only - no BLUETOOTH_CONNECT
+             or RECORD_AUDIO gate needed, and no new permission: the app
+             already holds FOREGROUND_SERVICE_DATA_SYNC. -->
+        <service
+            android:name=".service.LedgerIngestService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <!-- Grants MediaSessionManager access to active media sessions (now-playing
              state, e.g. Spotify) once the driver enables notification access in
              system settings. No notifications are parsed. -->

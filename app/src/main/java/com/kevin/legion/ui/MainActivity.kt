@@ -114,7 +114,12 @@ private fun LegionShell(deepLinkRoute: String? = null, deepLinkNonce: Int = 0) {
             }
 
             composable(LegionRoute.LEDGER) {
-                LedgerScreen(onOpenImport = { navController.navigate(LegionRoute.LEDGER_IMPORT) })
+                LedgerScreen(
+                    onOpenImport = { navController.navigate(LegionRoute.LEDGER_IMPORT) },
+                    // The spend gate (ticket 08 Part 6 item 3) routes here when no
+                    // Gemini key is stored, rather than failing silently.
+                    onOpenKeySettings = { navController.navigate(LegionRoute.SETTINGS_KEY) },
+                )
             }
             composable(LegionRoute.LEDGER_IMPORT) {
                 LedgerImportScreen(onBack = { navController.popBackStack() })
