@@ -10,7 +10,7 @@ rules.** Depth lives in the library, not here. Under 80 lines. MIDNIGHT_AI: see 
   REFUSED the result. Money spent, zero rows written. §4 validated live.
 - **The shell renders**; ledger is real (variant B). Fleet/pantry interiors are ticket 09.
 - **`feat/ledger-ingestion` is 6 parts deep and PUSHED.** `dev` is still 14 ahead of `origin/dev`.
-  Repo public: `github.com/kevinmyo-code/legion`. `dev` is the trunk; `main` is behind.
+  `github.com/kevinmyo-code/legion`, public. `dev` is the trunk; `main` is behind.
 
 ## Blocking
 
@@ -48,8 +48,7 @@ build spec. Tracked in git; decisions also in `library/decisions.md`. **Built: 0
 - **Ticket 09: set `contentColor` explicitly on error-container surfaces** (`errorContainer` shares
   a value with `secondaryContainer`), and reuse `ui/common/` rather than duplicating it.
 - **Two prototype branches, NEITHER to be merged:** `proto/ledger-ui`, `proto/fleet-pantry-ui`.
-- **Open, not blocking:** Compose BOM vs navigation-compose skew; deep-link `navigate()` lacks
-  `launchSingleTop`/`popUpTo`.
+- **Open, not blocking:** Compose BOM vs nav-compose skew; deep-link `navigate()` lacks `popUpTo`.
 
 ## Notes for next session
 
@@ -59,11 +58,10 @@ build spec. Tracked in git; decisions also in `library/decisions.md`. **Built: 0
 - **A ticket's own verification step is not optional (L11, CLAUDE.md §8).** Ticket 07's skipped
   `ThemePreview` render shipped an M3 colour collision. **One colour value, one M3 role.**
 - **Run it on the phone.** Every serious bug this session - red text, silent scans, forgotten
-  folder, invisible key - survived compile, tests and review. Only installing found them.
+  folder, invisible key - survived compile, tests AND review. Only installing found them.
 - **Do not resolve a schema ticket before its consumers.** Ticket 03 took four amendments.
 - **Verify what the librarian writes.** Three FILE passes so far, all needed hand correction.
-- **Two contested calls the port left open:** `MusicController` vs Spotify App Remote, and
-  `BuildSheetController` entries now text-only.
+- **Two contested port calls open:** `MusicController` vs Spotify, `BuildSheetController` text-only.
 - **ADB after a PC reboot needs a FRESH `adb pair`**, and the live port was the PAIRING dialog's.
 - **Device quirks:** `pm clear` is OEM-blocked (uninstall to wipe); `adb push`ed files are invisible
   to the Downloads provider - stage SAF fixtures under the device root.
