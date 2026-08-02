@@ -1,7 +1,7 @@
 # How does a folder of statements actually get ingested?
 
 Type: grilling
-Status: open - UNBLOCKED 2026-08-02, takeable now
+Status: resolved
 Blocked by: 01 (resolved), 03 (resolved)
 
 ## Question
@@ -61,3 +61,145 @@ The parts that constrain this ticket directly:
 - **Atomicity.** 03 confirms the per-statement boundary: `INGESTED` commits its rows,
   `QUARANTINED` writes nothing. Sub-question 3's "a batch is NOT atomic as a whole" is consistent
   with that and still needs stating explicitly for implementers.
+
+---
+
+## Resolution (2026-08-02, Kevin, 6 calls)
+
+### 1. Where it runs
+
+**Inside the existing `AriaForegroundService`**, as a new service-scoped `IngestScanner`.
+
+`AriaForegroundService` already declares `foregroundServiceType="connectedDevice|dataSync|microphone"`
+and the app already holds `FOREGROUND_SERVICE_DATA_SYNC`, so this needs **no new dependency and no
+manifest change**. `androidx.work` is deliberately not added: ticket 03 made process-death
+durability cheap by other means, and with the rescan trigger below nothing needs to run while the
+app is closed. A user-visible notification is the honest representation of a minutes-long operation
+the user just asked for.
+
+**Known watch item:** PDF parsing is CPU-bound and shares a process with a live Gemini session. A
+dedicated service would not have isolated this - same process either way - so serial phase 2 (below)
+is the actual mitigation.
+
+### 2. Concurrency: two phases, split by what each is bound on
+
+```
+phase 1  fetch + sha256 + classify        PARALLEL, limit 4
+           known id, size and mtime match  -> skip, zero bytes
+           sha256 hits an INGESTED record  -> DUPLICATE_CONTENT, stop before parsing
+           otherwise                       -> spill to cache, queue for phase 2
+
+         >>> exact count of new files is known HERE <<<
+         >>> this is where ticket 06's gate asks <<<
+
+phase 2  parse + reconciliation gate + commit    STRICTLY SERIAL
+           INGESTED     -> rows committed, each stamped with sourceFileId
+           QUARANTINED  -> nothing written, reason stored
+```
+
+Parallel on phase 1 because that is where the measured per-file cost actually goes (637ms cached,
+1248ms uncached), taking a 60-file first sync from roughly 72s to under 20s. Strictly serial on
+phase 2 because it bounds peak PdfBox memory to one document, makes the spend gate's count exact
+rather than racing work already in flight, keeps progress a simple ordered sequence, and avoids
+firing concurrent Gemini calls at a possibly rate-limited key.
+
+Statement PDFs measured 164-267 KB on the probe, so whole-file byte arrays are not the memory risk;
+PdfBox's per-document objects are.
+
+### 3. Staging
+
+**Phase 1 completes across every file before phase 2 begins**, with each new file's bytes spilled to
+`cacheDir/scan-<id>/<fileId>`.
+
+This is what lets ticket 06 gate on an **exact** count of new files before a single parse runs,
+while keeping peak memory to one file and downloading each file exactly once. About 16 MB of
+transient disk for 60 files at observed sizes.
+
+**Cleanup is an explicit obligation, three parts:**
+1. Each cache entry is deleted as soon as phase 2 consumes it.
+2. The whole `scan-<id>/` directory is deleted in a `finally`, whatever the outcome.
+3. Orphaned `scan-*` directories from a previously killed run are deleted when a scan starts.
+
+### 4. Interruption and resume
+
+**A killed scan is re-run, not resumed.** Known unchanged files cost zero bytes (ticket 03), so
+recovery is automatic and needs no resume protocol, no checkpoint, and no partial-state schema.
+Nothing partial is ever committed because the gate is per statement.
+
+### 5. Atomicity, stated explicitly
+
+The reconciliation gate is atomic **per statement**. **A batch is NOT atomic as a whole.** Thirty-
+nine good statements commit even if the fortieth quarantines. **Do not wrap the batch in a
+transaction.** The only multi-row transaction in this design is the replace flow from ticket 03
+(delete a file's old rows, insert its new ones).
+
+### 6. Rescan trigger
+
+**One child-documents query per connected folder on app open, diffed against `ingested_files`.**
+Zero bytes, zero parsing, zero spend. Unknown ids surface as a quiet inline count ("3 new
+statements") that the user taps to start an actual scan. **Never auto-ingest.**
+
+Against CLAUDE.md §7: the surfacing is passive and in-app, not a notification engineered to pull
+the user back, so it is not a re-engagement mechanic. A background periodic poll was rejected - it
+would need the WorkManager dependency §1 avoided, costs battery for a monthly-cadence event, and
+its natural UI is exactly the notification §7 prohibits.
+
+It also degrades honestly against the measured sync latency: a just-uploaded statement is often not
+in the listing yet, and the count then says nothing rather than claiming the folder is empty.
+
+### 7. Progress contract (this is what ticket 08 builds against)
+
+A single `StateFlow<ScanState>` exposed by `IngestScanner`:
+
+```kotlin
+sealed interface ScanState {
+    data object Idle : ScanState
+    data class Listing(val folderCount: Int) : ScanState
+    data class Staging(val done: Int, val total: Int) : ScanState
+    data class AwaitingApproval(val newFiles: Int, val estimate: SpendEstimate) : ScanState
+    data class Parsing(val done: Int, val total: Int, val currentName: String) : ScanState
+    data class Finished(val results: FileResults) : ScanState
+}
+```
+
+`FileResults` carries the accumulated per-file outcomes (ingested / quarantined / unreadable /
+duplicate / skipped), so the future quarantine review UX can observe the scan that produced an
+outcome rather than re-querying the database for it.
+
+One `StateFlow` rather than a phase flow plus an event flow: a collector attaching late (which is
+exactly what rotation does) gets current state immediately with nothing lost. Genuinely one-shot
+things - a snackbar for an unexpected failure - go on a **separate `Channel<ScanEvent>`**, per the
+repo's vendored `kotlin-flow-state-event-modeling` guidance. Do not smuggle events into state.
+
+`SpendEstimate`'s shape, and whether `AwaitingApproval` blocks or merely informs, are **ticket 06's**
+call. This ticket only fixes where in the pipeline it sits.
+
+### 8. Single-file import is unified
+
+`LedgerController.importStatement` becomes a **one-element run through the same pipeline**, so a
+hand-picked file gets a file record, a content hash and a `sourceFileId` exactly like a scanned one.
+Concrete payoff: import a statement by hand, and when the same file later appears in a connected
+folder, the hash check recognises it and skips it instead of re-parsing and re-paying.
+
+**This amends ticket 03:** `ingested_files.treeUri` becomes **nullable**, null meaning the file came
+from a single-file `ACTION_OPEN_DOCUMENT` pick. Signed off by Kevin in the same session, recorded in
+03 as an amendment rather than a silent edit.
+
+Two ingestion paths were rejected: both would have to honour the reconciliation gate independently
+and stay correct as parsers change, and the existing single-file path already has untested DB-write
+behaviour (CLAUDE.md §10).
+
+### 9. Filtering and non-errors
+
+- Children whose mime type is not `application/pdf` are recorded `UNREADABLE`. They never crash or
+  abort the batch. This is what catches a Google-native Doc or Sheet, which would be a virtual
+  document and would fail `openInputStream` (`reasoned`, not tested).
+- A listing that returns nothing, or returns nothing new, is a **normal outcome**. It is never
+  surfaced as an error and never as "the folder is empty", because the provider serves stale-empty
+  results with no signal at all.
+
+### What this ticket does NOT settle
+
+- The spend estimate's content, and whether approval blocks or informs. **Ticket 06.**
+- The screens that render `ScanState`. **Ticket 08.**
+- `accountId` derivation for a mixed-institution folder. Still open on the map.

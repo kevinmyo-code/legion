@@ -49,20 +49,24 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 
 ## In-flight
 
-**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 4 of 11 tickets resolved.** Destination is a
+**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 5 of 11 tickets resolved.** Destination is a
 build-ready spec for Drive-folder batch ingestion plus a basic UI across all three aspects. The map
 and every ticket are now TRACKED IN GIT (see the gitignore note below), so read them directly:
 `.scratch/ledger-drive-ingestion/map.md`.
 
 | State | Tickets |
 |---|---|
-| Resolved | 01 SAF feasibility, 02 design language, 03 ingested-file ledger, 11 SAF probe (steps 7-9 unrun) |
-| **Frontier (takeable now)** | 04 twin transactions, **05 batch mechanics**, 07 app shell + ignition, 09 fleet/pantry UI, 10 does ledger sync |
-| Blocked | 06 spend gate (needs 05), 08 ledger UI (needs 05) |
+| Resolved | 01 SAF feasibility, 02 design language, 03 ingested-file ledger, 05 batch mechanics, 11 SAF probe (steps 7-9 unrun) |
+| **Frontier (takeable now)** | 04 twin transactions, **06 spend gate**, 07 app shell + ignition, **08 ledger UI**, 09 fleet/pantry UI, 10 does ledger sync |
+| Blocked | (none) |
 
-**Suggested next: 05 (batch mechanics).** Only thing still gating 06 and 08. 03 handed it measured
-per-file I/O cost, a defined resume unit, and the stale-listing constraint; they are summarised at
-the bottom of ticket 05 so it needs no re-reading of 01 or 03.
+**Nothing is blocked any more.** Suggested next: **06 (spend gate)**, since 05 built the pipeline
+slot it drops into - staging completes before any parse, so 06 gets an exact new-file count to gate
+on and only has to decide the estimate's content and whether approval blocks or informs.
+
+**Ticket 05 amended ticket 03**: `ingested_files.treeUri` is nullable, null meaning a single-file
+pick, so hand-imports and folder scans share one pipeline. Recorded as an amendment in 03, not a
+silent edit.
 
 **The crux is TESTED and passed (2026-08-02).** A file uploaded after the grant appears in
 `listFiles()` with no re-pick, so the Drive access model holds. Caveat: it was invisible for at
