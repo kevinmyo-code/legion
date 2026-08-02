@@ -1566,3 +1566,50 @@ vehicle agents, so cost visibility improves everywhere; deliberate scope widenin
 **Generalisable trap: a "skip anything already recorded" rule collides with any gate that lets the
 user say no.** Declining had to become a fifth state exempt from the skip rule, or declining once
 would have meant declining forever. Third amendment ticket 03 took in one session.
+
+---
+
+## 2026-08-02 - App shell and ignition: user-initiated, keyless-usable, no onboarding
+
+Wayfinder ticket `.scratch/ledger-drive-ingestion/issues/07-app-shell-and-ignition.md`, five calls
+with Kevin. Full spec in the ticket. Reasoning worth keeping:
+
+**Ignition is an explicit user toggle, and `BootReceiver` was deleted.** `BootReceiver` called
+`startActivity(MainActivity)` on `ACTION_BOOT_COMPLETED` - car-launcher behaviour that outlived the
+phone pivot and nobody had removed. On a phone an app that opens itself every boot is hostile and is
+the manufactured-return shape §7 prohibits. Starting the service from `MainActivity.onCreate` was
+rejected because opening the app to glance at a ledger would silently start mic capture and a Live
+session with no off switch short of force-stop; from `MidnightApplication.onCreate` because the
+process starts for reasons the user never initiated.
+
+**The key is OPTIONAL and there is no first-run wall.** The unlock for this was noticing how little
+of the app actually needs a key: deterministic ledger parsing, pantry, OBD and saved places all work
+keyless. Only the assistant and ticket 06's LLM fallback need one. A key wall would block a stranger
+who only wants to import bank statements behind a Google Cloud signup, and clone-and-run is a hard
+requirement, not a preference. So the key is requested at the point of use.
+
+**FACT correction worth not re-deriving: the 1-token validation ping exists and is not where
+CLAUDE.md said.** It is `ai/GeminiKeyValidator.kt`, returning `VALID`/`INVALID_KEY`/`NETWORK_ERROR`
+via a `maxOutputTokens = 1` call. `ai/KeyVault.kt` is AES/GCM encrypt/decrypt only. CLAUDE.md §3's
+tech-stack row attributed the ping to `KeyVault.kt`; **corrected in the same commit.** The
+three-way result is exactly right for the key screen - a typo and an aeroplane need different
+recoveries.
+
+**The free-tier training disclosure carries over.** It was never about commercial tiers, so the
+pivot killing the commercial model did not kill the disclosure. It is a factual statement that
+Google's free tier may train on submitted content, and here that content is the user's own bank
+statements and receipts. It belongs on the key screen, at the moment of consent, not in an About
+page where it is present but useless.
+
+**Onboarding deferred, deliberately, with the reason stated:** `OnboardingFlow.kt` is a scripted
+conversation in the assistant's voice, and `AssistantIdentity.kt` is placeholder copy by its own doc
+comment. Wiring the host UI now would have meant writing the assistant's entire register by accident
+inside a ticket scoped to app structure. Side effect: `OnboardingState.isComplete` proxying
+"has a Gemini key" was a placeholder and is now **honest**, because the key genuinely is the only
+gate on assistant features.
+
+Shell is one activity, Compose Navigation, four tabs, with the three orphan `exported="false"`
+activities absorbed as routes - their content is already written, only the hosting changes.
+Assistant is a global toggle rather than a tab because it is a mode, not a place. `MainActivity`
+also finally switches from `MaterialTheme` to the `LegionTheme` built in ticket 02, which no screen
+was using.
