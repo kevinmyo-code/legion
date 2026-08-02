@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.LedgerTransaction
+import com.kevin.legion.data.local.LedgerTransactionDao
 import com.kevin.legion.ledger.parsers.PdfWords
 import com.kevin.legion.ledger.parsers.StatementDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -24,8 +25,18 @@ object LedgerController {
      * fully-reconciled result - dedupes against existing rows and inserts the
      * new ones. Reconciliation is atomic per statement: either every
      * transaction commits, or nothing does.
+     *
+     * [sourceFileId] stamps [LedgerTransaction.sourceFileId] on every inserted
+     * row when the caller has one (the folder-scan/replace pipeline, ticket
+     * 03); a single-file pick passes null, matching that column's own
+     * "null for anything imported through a path that predates the scan
+     * pipeline" contract.
      */
-    suspend fun importStatement(context: Context, uri: Uri): LedgerImportResult = withContext(Dispatchers.IO) {
+    suspend fun importStatement(
+        context: Context,
+        uri: Uri,
+        sourceFileId: String? = null,
+    ): LedgerImportResult = withContext(Dispatchers.IO) {
         PdfWords.init(context)
 
         val bytes = try {
@@ -44,14 +55,14 @@ object LedgerController {
             is LedgerIngestResult.Quarantined -> LedgerImportResult(success = false, message = result.reason)
             is LedgerIngestResult.Success -> {
                 val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-                val fresh = result.transactions.filterNot { isDuplicate(dao, it) }
-                if (fresh.isNotEmpty()) dao.insertAll(fresh)
-                val skipped = result.transactions.size - fresh.size
+                val (fresh, skipped) = dedupAgainstExisting(dao, result.transactions)
+                val stamped = if (sourceFileId != null) fresh.map { it.copy(sourceFileId = sourceFileId) } else fresh
+                if (stamped.isNotEmpty()) dao.insertAll(stamped)
                 val message = buildString {
-                    append("Imported ${fresh.size} transaction(s) from $fileName.")
+                    append("Imported ${stamped.size} transaction(s) from $fileName.")
                     if (skipped > 0) append(" ($skipped already on file, skipped.)")
                 }
-                LedgerImportResult(success = true, message = message, importedCount = fresh.size)
+                LedgerImportResult(success = true, message = message, importedCount = stamped.size)
             }
         }
     }
@@ -65,9 +76,31 @@ object LedgerController {
     suspend fun recentTransactions(context: Context, limit: Int = 20): List<LedgerTransaction> =
         CarDatabase.getDatabase(context).ledgerTransactionDao().getRecent(limit)
 
-    private suspend fun isDuplicate(
-        dao: com.kevin.legion.data.local.LedgerTransactionDao, txn: LedgerTransaction,
-    ): Boolean = dao.countMatching(txn.accountId, txn.txnDate, txn.amountCents, txn.description) > 0
+    /**
+     * Fetches the existing-row candidate set per account across [incoming]'s
+     * own date range, then hands off to [resolveDedup] - ticket 04's pure
+     * per-tuple counting comparison, run in Kotlin rather than SQL. Grouped by
+     * [LedgerTransaction.accountId] first because a single statement is one
+     * account in practice, but this stays correct even if a future producer
+     * ever mixes them. Returns the rows to insert and how many were dropped as
+     * duplicates.
+     */
+    private suspend fun dedupAgainstExisting(
+        dao: LedgerTransactionDao,
+        incoming: List<LedgerTransaction>,
+    ): Pair<List<LedgerTransaction>, Int> {
+        val toInsert = mutableListOf<LedgerTransaction>()
+        var skipped = 0
+        for ((accountId, group) in incoming.groupBy { it.accountId }) {
+            val minDate = group.minOf { it.txnDate }
+            val maxDate = group.maxOf { it.txnDate }
+            val existing = dao.getForAccountInRange(accountId, minDate, maxDate)
+            val resolution = resolveDedup(existing, group)
+            toInsert += resolution.toInsert
+            skipped += resolution.duplicatesSkipped
+        }
+        return toInsert to skipped
+    }
 
     /** Best-effort human-readable filename for the import confirmation message. */
     private fun queryDisplayName(context: Context, uri: Uri): String? = try {

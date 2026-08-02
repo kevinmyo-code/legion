@@ -36,16 +36,18 @@ interface LedgerTransactionDao {
     suspend fun allAccountIds(): List<String>
 
     /**
-     * Whether a transaction matching this real-world content already exists -
-     * the dedup check re-importing an overlapping statement needs. Deliberately
-     * NOT keyed on [LedgerTransaction.lineRef]/[LedgerTransaction.sourceFile]:
-     * two different exports of the same underlying transaction (a monthly PDF
-     * vs. a year-to-date PDF covering the same date) have different filenames
-     * and line text, but are still the same transaction and must not double-count.
+     * The candidate set ticket 04's dedup rewrite compares an incoming
+     * statement against: every existing row for [accountId] whose date falls
+     * within the incoming statement's own [minTxnDate]..[maxTxnDate] range,
+     * inclusive. Deliberately NOT the comparison itself - it only narrows the
+     * fetch. `LedgerDedup.resolveDedup` does the actual per-tuple counting, in
+     * Kotlin, against this list. Replaces the old boolean `countMatching`
+     * existence check, which collapsed two genuinely separate identical
+     * purchases on the same day into one and silently dropped the second.
      */
     @Query(
-        "SELECT COUNT(*) FROM ledger_transactions WHERE accountId = :accountId " +
-            "AND txnDate = :txnDate AND amountCents = :amountCents AND description = :description"
+        "SELECT * FROM ledger_transactions WHERE accountId = :accountId " +
+            "AND txnDate BETWEEN :minTxnDate AND :maxTxnDate"
     )
-    suspend fun countMatching(accountId: String, txnDate: Long, amountCents: Long, description: String): Int
+    suspend fun getForAccountInRange(accountId: String, minTxnDate: Long, maxTxnDate: Long): List<LedgerTransaction>
 }
