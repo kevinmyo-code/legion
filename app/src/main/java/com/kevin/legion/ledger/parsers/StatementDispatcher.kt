@@ -1,8 +1,22 @@
 package com.kevin.legion.ledger.parsers
 
-import com.kevin.legion.ledger.LedgerIngestResult
+import com.kevin.legion.data.local.LedgerTransaction
+import com.kevin.legion.ledger.LedgerLlmOutcome
 import com.kevin.legion.ledger.LedgerStatementAgent
 import java.io.ByteArrayInputStream
+
+/**
+ * Outcome of [StatementDispatcher.dispatchDeterministic] - the free half of
+ * the pipeline, per `.scratch/ledger-drive-ingestion/issues/06-llm-spend-gate.md`
+ * §1: "split the dispatcher, do not add recognition." [NeedsLlm] carries the
+ * already-extracted plain text (not the raw bytes) so [StatementDispatcher.runLlm]
+ * never has to re-run PDF extraction.
+ */
+sealed class DeterministicResult {
+    data class Success(val transactions: List<LedgerTransaction>) : DeterministicResult()
+    data class Quarantined(val reason: String) : DeterministicResult()
+    data class NeedsLlm(val statementText: String) : DeterministicResult()
+}
 
 /**
  * Port of Project Andromeda's `duo_ledger.bronze.parsers.parse_statement`
@@ -16,30 +30,54 @@ import java.io.ByteArrayInputStream
  * other parsers or the LLM - it means this is a known bank format whose
  * numbers don't reconcile (a corrupted export, a real accounting problem), and
  * that's reported as a quarantine, not silently escalated to a fuzzier path.
+ *
+ * **Split into two entry points** (ticket 06 amendment to ticket 05):
+ * [dispatchDeterministic] runs the free half only - it NEVER touches Gemini,
+ * which is exactly what makes the batch pipeline's fallthrough count exact
+ * and free (`.scratch/ledger-drive-ingestion/issues/05-batch-ingestion-mechanics.md`
+ * amendment 1). [runLlm] is the paid half, called only for the approved set
+ * after the spend gate. The two used to be one function (`dispatch`) that
+ * discovered fallthrough by catching [UnrecognizedLayoutException] and
+ * immediately paying for it; that shape made it impossible to know the LLM
+ * count before spending on the first file.
  */
 object StatementDispatcher {
-    suspend fun dispatch(fileName: String, bytes: ByteArray): LedgerIngestResult {
+    /**
+     * Runs only the deterministic parsers. Pure CPU work (PDF text/word
+     * extraction + layout parsing) - no network, no coroutine suspension
+     * needed, which is itself part of the "free and exact" property the
+     * batch gate depends on.
+     */
+    fun dispatchDeterministic(fileName: String, bytes: ByteArray): DeterministicResult {
         try {
-            return LedgerIngestResult.Success(
+            return DeterministicResult.Success(
                 DbsStatementParser.parse(fileName, ByteArrayInputStream(bytes))
             )
         } catch (e: UnrecognizedLayoutException) {
             // fall through to the next parser
         } catch (e: StatementParseException) {
-            return LedgerIngestResult.Quarantined(e.message ?: "This statement's numbers didn't reconcile.")
+            return DeterministicResult.Quarantined(e.message ?: "This statement's numbers didn't reconcile.")
         }
 
         try {
-            return LedgerIngestResult.Success(
+            return DeterministicResult.Success(
                 BofaStatementParser.parse(fileName, ByteArrayInputStream(bytes))
             )
         } catch (e: UnrecognizedLayoutException) {
             // fall through to the LLM path
         } catch (e: StatementParseException) {
-            return LedgerIngestResult.Quarantined(e.message ?: "This statement's numbers didn't reconcile.")
+            return DeterministicResult.Quarantined(e.message ?: "This statement's numbers didn't reconcile.")
         }
 
         val text = PdfText.extractText(ByteArrayInputStream(bytes))
-        return LedgerStatementAgent.extract(fileName, text)
+        return DeterministicResult.NeedsLlm(text)
     }
+
+    /**
+     * The paid half: hands [statementText] (already extracted by
+     * [dispatchDeterministic]) to [LedgerStatementAgent]. Only ever called
+     * for files the ticket 06 spend gate has actually approved.
+     */
+    suspend fun runLlm(fileName: String, statementText: String): LedgerLlmOutcome =
+        LedgerStatementAgent.extract(fileName, statementText)
 }

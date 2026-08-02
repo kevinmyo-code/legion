@@ -50,4 +50,16 @@ interface LedgerTransactionDao {
             "AND txnDate BETWEEN :minTxnDate AND :maxTxnDate"
     )
     suspend fun getForAccountInRange(accountId: String, minTxnDate: Long, maxTxnDate: Long): List<LedgerTransaction>
+
+    /**
+     * The replace-flow's first step (ticket 03 amendment 2, wired in
+     * [com.kevin.legion.ledger.IngestPipeline]): drop a file's own previously
+     * committed rows before re-inserting its re-parsed replacement. Always
+     * called inside the same Room transaction as
+     * [IngestedFileDao.resetOverlapping], never on its own - see
+     * `IngestPipeline.commit`'s doc comment for why both must happen
+     * together.
+     */
+    @Query("DELETE FROM ledger_transactions WHERE sourceFileId = :sourceFileId")
+    suspend fun deleteBySourceFileId(sourceFileId: String)
 }
