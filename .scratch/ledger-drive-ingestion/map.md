@@ -70,7 +70,8 @@ BEFORE this effort ends. Do not let this directory be the only copy of anything.
   quarantine retryable only by explicit user action. Records are **never pruned** - the probe
   proved a listing can be stale-empty with no signal, so absence is not deletion.
   `ledger_transactions` gains a nullable `sourceFileId`, which is what makes replaced statements
-  solvable at all. Multi-folder carried now via `treeUri`. **`syncId` deferred to ticket 10.**
+  solvable at all. Multi-folder carried now via `treeUri`. **Took four amendments (05, 04, 06, 10);
+  schema is now FINAL. No `syncId` column - ticket 10 closed that deferral by removal.**
 
 - [How does a folder of statements actually get ingested?](issues/05-batch-ingestion-mechanics.md) -
   **runs in the existing `AriaForegroundService`**, which already declares `dataSync`, so no new
