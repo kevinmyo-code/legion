@@ -133,6 +133,19 @@ BEFORE this effort ends. Do not let this directory be the only copy of anything.
   hardware for the first time** and holds up - dark scheme only. Folder/progress/gate/quarantine/
   empty takes exist but were **not visually reviewed**; provisional.
 
+- [What do the fleet and pantry screens show?](issues/09-fleet-and-pantry-ui.md) - **pantry macros
+  are SEGREGATED from receipt data**, under `ON THE RECEIPT` / `ESTIMATED, NOT ON THE RECEIPT`
+  headers with an explicit sentence between them. Chosen over a denser inline `est.` treatment
+  because an estimate sharing a row with a real price can read as equally solid; segregation makes
+  that mistake structurally impossible rather than merely discouraged. §4 rule five is a guardrail,
+  and the sentence carries the meaning while colour only reinforces it. Fleet is four read-only
+  blocks - **LIVE (with a connection state and last-seen timestamps, because the OBD stack has never
+  run since the port)**, DUE, FAULTS, NOT BUILT YET. Data that exists with no screen gets an
+  **explicit ghosted NOT BUILT row stating what exists and why**, never dead space. Four shared
+  components to extract to `ui/common/` now: `SectionHeader`, `Hairline`, `ReadingRow`,
+  `NotBuiltRow`. Prototype branch `proto/fleet-pantry-ui` (`07abbdf`), **not merged**. Render defect
+  found: a fault description in alarm red outshouts its own code.
+
 ## Not yet specified
 
 - **Quarantine review UX.** What the user does with a statement that failed reconciliation:

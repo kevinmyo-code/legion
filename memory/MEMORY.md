@@ -53,23 +53,23 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 
 ## In-flight
 
-**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 9 of 11 tickets resolved.** Destination is a
+**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 10 of 11 tickets resolved.** Destination is a
 build-ready spec for Drive-folder batch ingestion plus a basic UI across all three aspects. The map
 and every ticket are now TRACKED IN GIT (see the gitignore note below), so read them directly:
 `.scratch/ledger-drive-ingestion/map.md`.
 
 | State | Tickets |
 |---|---|
-| Resolved | 01 SAF, 02 design, 03 file ledger, 04 twin txns, 05 batch, 06 gate, 07 shell, 08 ledger UI, 11 probe (7-9 unrun) |
-| **Frontier (takeable now)** | 09 fleet/pantry UI, 10 does ledger sync |
+| Resolved | 01-09 all resolved, 11 probe (steps 7-9 unrun) |
+| **Frontier (takeable now)** | **10 does ledger sync** |
 | Blocked | (none) |
 
-**2 left.** Suggested next: **09 (fleet/pantry UI)** - 08 settled the visual vocabulary it should
-reuse, so it is mostly application rather than invention.
+**ONE ticket left: 10 (does ledger data sync).** It is the last thing between this map and a
+build-ready spec. It interacts with the open append-only blocker above.
 
-**Prototype branch `proto/ledger-ui` (`476318e`) is NOT merged and must never be.** It carries a
-temporary `MainActivity` host. The validated decision lives in ticket 08; the branch is the primary
-source.
+**Two prototype branches, NEITHER merged and neither ever to be:** `proto/ledger-ui` (`476318e`) and
+`proto/fleet-pantry-ui` (`07abbdf`, branched off the first). Both carry a temporary `MainActivity`
+host. Validated decisions live in tickets 08 and 09; the branches are the primary sources.
 
 **Ticket 07 mandates deletions**: `BootReceiver` (auto-launched the app every boot, car-launcher
 leftover), `SavedPlacesActivity`, `LedgerImportActivity`, `PantryImportActivity`, and the
