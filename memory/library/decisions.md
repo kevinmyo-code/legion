@@ -1697,3 +1697,47 @@ happens to sit next to one.
 
 Incidental: the prototype host now holds `FLAG_KEEP_SCREEN_ON` and shows over the lock screen, which
 fixed the silent blank-capture problem that lost half of ticket 08's screenshots.
+
+---
+
+## 2026-08-02 - Ledger sync: both tables sync, and the append-only blocker was wrong
+
+Wayfinder ticket `.scratch/ledger-drive-ingestion/issues/10-does-ledger-data-sync.md`, three calls
+with Kevin. **The ticket's instruction to read `SyncEngine`/`SyncMerge` rather than decide from doc
+comments is what made this ticket worth doing** - the code contradicted the project's own recorded
+blocker on three counts.
+
+**What `memory/MEMORY.md` said, and what the code actually does** (all `traced` from source):
+"Drive has no compare-and-swap" - but `DriveConflict` + `DriveClient.upsert` implement
+version-checked optimistic concurrency, with a **version re-check as the real guard** because Drive
+v3's `If-Match` is undocumented, plus retry up to `MAX_CONFLICT_RETRIES`. "Last-write-wins will
+silently lose rows" - but `syncFile` re-merges remote into local, re-reads, and uploads the merged
+result; it is a read-merge-rewrite loop, not a blind overwrite. "Sync must become append-only" -
+but `SyncMerge.Mode.UNION` **is** append-only and was **already in use by 8 tables**. A blocker that
+had been carried forward as a hard constraint since the port dissolved on contact with the source.
+
+**`ledger_transactions` syncs, `Mode.UNION` on `syncId`** - the same shape `service_records` and
+`memories` already use. Transactions are immutable once committed, which is exactly UNION's
+assumption, so nothing is ever overwritten. The `syncId` whose doc comment pointed at a sync feature
+nobody had wired is finally the identity it was put there to be.
+
+**`ingested_files` syncs, `Mode.LWW`, natural key `driveFileId`, and needs NO `syncId` column.** This
+closed ticket 03's long-deferred question **by removing it rather than answering it**. The reason is
+worth keeping: 03 stripped the positional `acc=N;` prefix purely because it was an account index
+that could shift under a second signed-in account - and that unrelated decision left the stored
+value identical on both devices for the same file, i.e. a genuine cross-device natural key. LWW
+rather than UNION because the record is a state machine that legitimately changes; UNION would pin
+it to whichever state propagated first, so a retried or replaced file would never update across
+devices. Side effect: `sourceFileId` no longer dangles, because both sides of the reference sync.
+
+**The blocker was narrowed, not deleted.** What genuinely remains: after `MAX_CONFLICT_RETRIES` the
+loop calls `check(...)`, which **throws**, and nothing reports it since Firebase is not wired and
+`MidnightEvents` only logs. Making that log-and-skip-the-pass is in scope for this effort precisely
+because ledger is now the worst thing in the app to lose. Everything else in `sync/` is out of
+scope, and pantry stays unregistered as a separate call.
+
+**Standing caveat, unchanged: none of `sync/` has ever run in this app.** It compiles and is ported.
+Every claim above is `traced`, none is `tested`. Registering two tables does not change that.
+
+**Generalisable: a blocker recorded from doc comments outlived the code that disproved it.** Re-read
+the source before treating an inherited blocker as a constraint on a new decision.
