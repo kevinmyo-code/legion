@@ -79,9 +79,10 @@ and the SAF research already narrowed its central question.
 - **ADB works now.** The Oppo A17K is an ordinary phone with working ADB, so `qa` (Owen) is a real
   seat rather than a reasoning exercise. Every "silent failure" severity rating inherited from
   Midnight AI was driven by ADB being blocked on the head unit; that constraint is gone.
-- Fresh wayfinder map lives at `.scratch/multi-aspect-assistant/` (gitignored, disposable -
-  decisions.md is the authority). Its 5 contested items are already resolved and filed. **The
-  original 15-ticket map with 12 contested calls is GONE, not stale** - do not assume its numbering.
+- The live map is `.scratch/ledger-drive-ingestion/` (11 tickets, tracked in git - see In-flight).
+  Both resolved tickets are filed to `library/decisions.md` under 2026-08-01. **The original
+  15-ticket `.scratch/multi-aspect-assistant/` map with 12 contested calls is GONE, not stale** -
+  it predates this repo and its numbering does not map onto the current tickets.
 - Resolved research carried forward from the lost map, per the librarian's prior digest and
   **worth re-verifying before building on**: NOOA research, Drive research.
 - **Verify what the librarian writes.** On 2026-07-29 a FILE dispatch invented substantial detail
