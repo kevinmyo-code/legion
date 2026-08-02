@@ -1,7 +1,7 @@
 # Run the 15-minute SAF probe on a real device
 
 Type: task
-Status: open
+Status: in progress
 Blocked by: (none)
 
 ## Question
@@ -36,3 +36,28 @@ hash-like appears), since the ingested-file ledger's identity choice depends on 
 **Deliverable:** append the observed results to the findings file under a `## Device probe` heading,
 tagged `tested`, and correct any `traced` claim the device contradicts. If the crux comes back NO,
 say so loudly - that invalidates the access model and reopens the resolved research ticket.
+
+## Progress (2026-08-01)
+
+**Probe app is built and waiting on hardware.** Started this session; `adb devices` was empty, so
+nothing has run.
+
+- Project: `<scratchpad>/safprobe/`, package `com.kevin.safprobe`, `minSdk 30`, built OUTSIDE the
+  legion repo as the research file requires. Framework APIs only, **zero dependencies**, so no
+  result can be blamed on a library version.
+- APK: `<scratchpad>/safprobe/app/build/outputs/apk/debug/app-debug.apk` (2.5 MB), `assembleDebug`
+  green. Note for anyone rebuilding: AGP 9 needs `android.builtInKotlin=false` and
+  `android.newDsl=false` in `gradle.properties`, same as the legion repo, or
+  `org.jetbrains.kotlin.android` collides with AGP's own `kotlin` extension.
+
+Two deliberate deviations from the research file's paste-ready code, both additive:
+
+1. **Null projection instead of a fixed six-column one.** The fixed projection would hide any
+   column the provider actually returns, and the whole point of the metadata question is whether
+   anything hash-like appears. The probe logs `columnNames` plus every column of every row.
+2. **Output mirrored on screen, not logcat only.** Step 5 is performed on a laptop and the phone
+   may not be tethered at that moment. Each LIST is timestamped so step 6's sync latency is
+   measurable. `adb logcat -s SAFPROBE` still works.
+
+Remaining is entirely manual and needs Kevin: Drive prep (`LegionProbe` folder, two PDFs, browse
+into it once from the Drive app), phone connected with USB debugging, then steps 1-9.
