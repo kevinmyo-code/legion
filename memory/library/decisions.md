@@ -1468,3 +1468,52 @@ connected folder is caught by the hash check and skipped free. Two separate inge
 rejected because both would have to honour the reconciliation gate independently and stay correct as
 parsers change - and the existing single-file path already has untested DB-write behaviour
 (CLAUDE.md §10).
+
+---
+
+## 2026-08-02 - Twin transactions: dedup counts per tuple instead of testing existence
+
+Wayfinder ticket `.scratch/ledger-drive-ingestion/issues/04-twin-transactions.md`, four calls with
+Kevin. Full spec and test matrix in the ticket; this records the reasoning and the one finding that
+changed another ticket.
+
+**`lineRef` cannot carry dedup weight, and that had to be established by reading all three
+producers rather than assumed.** `BofaStatementParser` builds it from the first 60 characters of the
+line - deterministic but **not unique**, so two identical coffee lines produce an identical
+`lineRef`. `DbsStatementParser` builds it from page index plus y-coordinate - deterministic **and**
+unique, since two lines cannot share a y on a page. `LedgerStatementAgent` builds it from the index
+of a nondeterministic LLM response - **neither**. Any design keyed on `lineRef` would have worked
+for DBS, silently failed for BofA, and been undefined for the LLM path. This is the L10 lesson in
+miniature: the property looked uniform from the field name and was not.
+
+**The key call: ask "how many", not "does one exist".** `countMatching` returns a boolean-ish
+existence check, which is what collapses twins. Counting per
+`(accountId, txnDate, amountCents, normalizedDescription)` and inserting `max(0, N - M)` resolves
+twins and overlapping statements with the same arithmetic and no special cases: two coffees in one
+statement give N=2 M=0 so both survive, while a year-to-date statement restating them gives N=2 M=2
+so nothing double-counts. Chosen over an occurrence-ordinal column because it needs no new column on
+`ledger_transactions` and **no `lineRef` stability at all**, so it behaves identically for the
+deterministic parsers and the LLM path.
+
+Normalization (trim, collapse whitespace, uppercase) is **comparison-time only** - the stored
+description is never modified - and the comparison runs in Kotlin over a date-ranged fetch rather
+than in SQL, which avoids a stored normalized column and keeps the rule in one testable function.
+
+**It errs toward DROPPING, deliberately, and that is recorded rather than silent.** Two genuinely
+separate identical purchases straddling two statements collapse into one. That is accepted because
+an overlapping monthly-and-YTD pair is routine while two truly separate identical purchases on the
+same date in different statements is rare, and because the data genuinely cannot distinguish them.
+`ingested_files.duplicatesSkipped` makes it auditable per file.
+
+**The finding that mattered most was not in the ticket: counting opens a hole in ticket 03's replace
+flow.** Because an overlapping statement can contribute zero rows, a transaction attested to by two
+statements exists under only one `sourceFileId`. Ticket 03's
+`DELETE FROM ledger_transactions WHERE sourceFileId = :id` would destroy it, and since the other
+file is already `INGESTED` a rescan skips it, so it never returns - silent financial data loss.
+Fixed by resetting overlapping `INGESTED` files for the same account to `NEW` on any replacement,
+bounded by new `minTxnDate`/`maxTxnDate` columns so it does not re-ingest a whole account. **This
+was found by grilling, not by reading the code**, and it is the second amendment ticket 03 took in
+one session. Worth generalising: when a dedup rule changes what gets written, every delete path that
+assumed one-row-one-owner has to be re-examined.
+
+Installed base is zero (never run on a device, DB at v3, nothing released), so no backfill.

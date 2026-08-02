@@ -84,6 +84,18 @@ BEFORE this effort ends. Do not let this directory be the only copy of anything.
   UI observes one `StateFlow<ScanState>`. Single-file import is **unified** into the same pipeline,
   which amended ticket 03's `treeUri` to nullable.
 
+- [What makes two identical transaction lines distinct?](issues/04-twin-transactions.md) -
+  **`lineRef` cannot carry dedup weight**, established by reading all three producers: BofA's is
+  stable but not unique, DBS's is stable and unique, the LLM's is neither. **Dedup counts per tuple
+  instead of testing existence:** group both sides on account+date+amount+normalized description,
+  insert `max(0, N - M)`. Twins in one statement both survive, overlapping statements still
+  collapse, no new column and no `lineRef` dependency. Normalization is comparison-time only and
+  runs in Kotlin. **It errs toward DROPPING** on genuine ambiguity, recorded per file via
+  `duplicatesSkipped` rather than left silent. Grilling exposed a **replace hole** - counting means
+  an overlapping file can contribute zero rows, so deleting one file's rows can destroy
+  transactions another file also attested to; fixed by resetting overlapping files to `NEW`, which
+  amended ticket 03 a second time. Installed base is zero, so no backfill.
+
 ## Not yet specified
 
 - **Quarantine review UX.** What the user does with a statement that failed reconciliation:
