@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiKeyValidator
 import com.kevin.legion.ai.KeyCheck
 import kotlinx.coroutines.launch
@@ -57,6 +58,12 @@ fun KeyScreen(onBack: () -> Unit) {
             when (GeminiKeyValidator.check(keyText)) {
                 KeyCheck.VALID -> {
                     CompanionProfile.saveGeminiKey(context, keyText)
+                    // Refresh the process-wide cache immediately (GeminiKeyProvider.init
+                    // is otherwise only called once, at AriaForegroundService.onCreate) -
+                    // without this, anything that reads GeminiKeyProvider.hasKey() before
+                    // the next process restart (e.g. the ledger tab's spend gate, ticket
+                    // 08 Part 6) would keep reading "no key" even though one was just saved.
+                    GeminiKeyProvider.init(context)
                     status = "Saved."
                     checking = false
                 }
@@ -102,6 +109,7 @@ fun KeyScreen(onBack: () -> Unit) {
                 // time something actually calls Gemini.
                 Button(onClick = {
                     CompanionProfile.saveGeminiKey(context, keyText)
+                    GeminiKeyProvider.init(context) // see the VALID branch's comment above
                     status = "Saved. Not verified yet - we'll find out the next time it's used."
                     showSaveAnyway = false
                 }) {

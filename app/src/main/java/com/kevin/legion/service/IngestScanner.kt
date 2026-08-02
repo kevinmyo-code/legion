@@ -86,6 +86,13 @@ class IngestScanner(private val context: Context) {
      * [events] rather than await a return value for progress).
      */
     suspend fun scan(treeUri: Uri): Unit = withContext(Dispatchers.IO) {
+        // Re-entrancy guard. The SCAN control disables itself once state
+        // leaves Idle/Finished, but state doesn't move until after the
+        // blocking init below, so a fast double-tap could otherwise start two
+        // runs that fight over `pendingGate` and sweep each other's scanDir.
+        val current = _state.value
+        if (current !is ScanState.Idle && current !is ScanState.Finished) return@withContext
+
         PdfWords.init(context)
         sweepOrphanScanDirs() // cleanup obligation 3: a killed prior run's leftovers
 
@@ -94,6 +101,13 @@ class IngestScanner(private val context: Context) {
 
         try {
             runScan(treeUri, scanDir)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Must rethrow, not swallow. CancellationException IS-A Exception,
+            // so the generic handler below would have reported a cancelled
+            // scan as Finished(FileResults()) - indistinguishable from a scan
+            // that legitimately found nothing, on a batch that may have been
+            // halfway through and may already have spent tokens.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "scan failed: ${e.message}", e)
             _events.trySend(ScanEvent.Failed("The scan hit an unexpected problem: ${e.message}"))

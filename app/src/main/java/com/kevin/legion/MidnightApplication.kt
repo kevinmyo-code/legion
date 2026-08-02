@@ -2,6 +2,9 @@ package com.kevin.legion
 
 import android.app.Application
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.ai.GeminiKeyProvider
+import com.kevin.legion.ledger.LedgerFolderPreferences
+import com.kevin.legion.service.ProactivePreferences
 
 /**
  * Application subclass registered in the manifest via android:name=".MidnightApplication".
@@ -14,6 +17,26 @@ import com.kevin.legion.ai.CompanionProfile
 class MidnightApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+
+        // Process-wide caches that are seeded from disk exactly once.
+        //
+        // These used to be seeded in AriaForegroundService.onCreate, which was
+        // fine while that service started on its own. Ticket 07 made the
+        // assistant an explicit user toggle that is OFF by default, so on a
+        // normal launch that service never runs - and every one of these
+        // silently stayed empty while its backing value sat on disk. Verified
+        // on the A17K 2026-08-02: the ledger spend gate reported "no Gemini
+        // key" for a key that was saved and present, and the connected
+        // statements folder was forgotten on every process start.
+        //
+        // Application.onCreate is the correct home precisely because it does
+        // not depend on any feature being switched on. Each init is a cheap
+        // SharedPreferences read. AriaForegroundService still calls the first
+        // two, which is harmless - they are idempotent - and is left alone so
+        // the assistant path does not depend on this ordering.
+        GeminiKeyProvider.init(this)
+        ProactivePreferences.init(this)
+        LedgerFolderPreferences.init(this)
 
         MidnightEvents.setBuildContext(
             buildType = if (BuildConfig.DEBUG) "debug" else "release",

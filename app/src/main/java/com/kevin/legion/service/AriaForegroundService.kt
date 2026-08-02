@@ -69,13 +69,26 @@ class AriaForegroundService : Service() {
     // the service (not a composable) so voice works while another app is in front.
     private lateinit var sessionController: LiveSessionController
 
-    // The ledger folder-scan pipeline (ticket 05 resolution §1: service-scoped,
-    // not WorkManager - see IngestScanner's own doc comment). Public so a
-    // future ledger UI (ticket 08, out of scope here) can bind an Activity to
-    // this service and drive/observe a scan; nothing in this service itself
-    // triggers one yet.
-    lateinit var ingestScanner: IngestScanner
-        private set
+    // The ledger folder-scan pipeline used to be constructed HERE (ticket 05
+    // resolution §1) on the reasoning that this service already declares
+    // dataSync/connectedDevice/microphone, so hosting it costs no new
+    // dependency and no manifest change. Ticket 08 Part 6 (wiring the ledger
+    // UI to an actual scan) found that reasoning incomplete: onCreate() below
+    // unconditionally boots the ENTIRE assistant - mic prewarm, the spoken
+    // opener, the OBD Bluetooth loop, GPS, wake word, ambient listening - the
+    // instant this service is created for ANY reason, bind or start, with no
+    // internal gate on AssistantIgnition.isEnabled(). AssistantIgnition's own
+    // doc comment promises "ledger/pantry/fleet are unaffected" by that
+    // toggle, which is OFF by default (ticket 07 resolution §1, "a fresh
+    // install asks for nothing") - so a driver opening the Ledger tab on a
+    // fresh install must never cause Zero to start talking and the OBD radio
+    // to spin up. IngestScanner now lives in its own
+    // [com.kevin.legion.service.LedgerIngestService] instead, a small
+    // `dataSync`-only foreground service with no dependency on this one -
+    // see that class's doc comment for the full reasoning. Nothing under this
+    // comment references IngestScanner anymore; this note stays so the next
+    // person doesn't reintroduce it here for the same reason ticket 05 first
+    // reached for it.
 
     // Highest 10k-mile milestone already celebrated, so the proactive check fires
     // only on new crossings (not retroactively). -1 = not yet seeded. Process-life.
@@ -109,9 +122,9 @@ class AriaForegroundService : Service() {
         // Own the Live session (driven by the Cruise screen's tap-to-talk).
         sessionController = LiveSessionController(this)
 
-        // Own the ledger folder-scan pipeline (ticket 05). Construction only -
-        // no scan runs until something (the future ledger UI) calls scan().
-        ingestScanner = IngestScanner(this)
+        // IngestScanner construction used to happen here (ticket 05) - moved
+        // to LedgerIngestService. See the doc comment above where
+        // `ingestScanner` used to be declared for the full reasoning.
 
         // Pre-open a warm Gemini Live socket so the driver's first tap doesn't pay
         // the connect + setup handshake. Only once onboarding is done, so we don't
