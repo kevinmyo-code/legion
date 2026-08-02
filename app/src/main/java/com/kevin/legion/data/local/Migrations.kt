@@ -62,3 +62,43 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         )
     }
 }
+
+/**
+ * v3 -> v4: adds `ingested_files` (the ledger Drive-scan work-avoidance
+ * record, ticket 03) plus a nullable `ledger_transactions.sourceFileId`.
+ * Verbatim from the generated schema JSON
+ * (`app/schemas/com.kevin.legion.data.local.CarDatabase/4.json`), per the
+ * additive-migration discipline - see CarDatabase's doc comment.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `ingested_files` (" +
+                "`driveFileId` TEXT NOT NULL, " +
+                "`treeUri` TEXT, " +
+                "`displayName` TEXT NOT NULL, " +
+                "`sizeBytes` INTEGER NOT NULL, " +
+                "`lastModified` INTEGER NOT NULL, " +
+                "`contentSha256` TEXT, " +
+                "`state` TEXT NOT NULL, " +
+                "`duplicateOfFileId` TEXT, " +
+                "`quarantineReason` TEXT, " +
+                "`transactionCount` INTEGER NOT NULL, " +
+                "`firstSeenAt` INTEGER NOT NULL, " +
+                "`lastAttemptAt` INTEGER NOT NULL, " +
+                "`accountId` TEXT, " +
+                "`minTxnDate` INTEGER, " +
+                "`maxTxnDate` INTEGER, " +
+                "`duplicatesSkipped` INTEGER NOT NULL, " +
+                "`llmAttempted` INTEGER NOT NULL, " +
+                "`llmPromptTokens` INTEGER, " +
+                "`llmResponseTokens` INTEGER, " +
+                "PRIMARY KEY(`driveFileId`))"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_ingested_files_contentSha256` " +
+                "ON `ingested_files` (`contentSha256`)"
+        )
+        db.execSQL("ALTER TABLE `ledger_transactions` ADD COLUMN `sourceFileId` TEXT")
+    }
+}
