@@ -69,6 +69,14 @@ class AriaForegroundService : Service() {
     // the service (not a composable) so voice works while another app is in front.
     private lateinit var sessionController: LiveSessionController
 
+    // The ledger folder-scan pipeline (ticket 05 resolution §1: service-scoped,
+    // not WorkManager - see IngestScanner's own doc comment). Public so a
+    // future ledger UI (ticket 08, out of scope here) can bind an Activity to
+    // this service and drive/observe a scan; nothing in this service itself
+    // triggers one yet.
+    lateinit var ingestScanner: IngestScanner
+        private set
+
     // Highest 10k-mile milestone already celebrated, so the proactive check fires
     // only on new crossings (not retroactively). -1 = not yet seeded. Process-life.
     private var lastMilestoneAnnounced = -1
@@ -100,6 +108,10 @@ class AriaForegroundService : Service() {
 
         // Own the Live session (driven by the Cruise screen's tap-to-talk).
         sessionController = LiveSessionController(this)
+
+        // Own the ledger folder-scan pipeline (ticket 05). Construction only -
+        // no scan runs until something (the future ledger UI) calls scan().
+        ingestScanner = IngestScanner(this)
 
         // Pre-open a warm Gemini Live socket so the driver's first tap doesn't pay
         // the connect + setup handshake. Only once onboarding is done, so we don't

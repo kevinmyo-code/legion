@@ -34,6 +34,13 @@ import java.net.URL
  * REST endpoint as the maintenance-schedule lookup that used to live in
  * [AriaBrain.structuredQuery], which now delegates here).
  */
+/**
+ * [SubAgent.askWithUsage]'s result: [ask]'s text plus the measured token
+ * counts Gemini billed for that call, when the response reports them. See
+ * [SubAgent.askWithUsage]'s doc comment.
+ */
+data class AskOutcome(val text: String?, val promptTokens: Int?, val candidatesTokens: Int?)
+
 class SubAgent(
     private val systemInstruction: String = "",
     private val useSearch: Boolean = true,
@@ -56,12 +63,53 @@ class SubAgent(
         imageBytes: ByteArray? = null,
         imageMimeType: String = "image/jpeg",
     ): String? = withContext(Dispatchers.IO) {
+        val body = buildAskBody(context, question, imageBytes, imageMimeType)
+        when (val o = postRaw(body)) {
+            is HttpOutcome.Ok -> extractText(o.json)
+            else -> null
+        }
+    }
+
+    /**
+     * [ask]'s result plus the token counts Gemini reports on every
+     * `generateContent` call via `usageMetadata` - previously parsed by
+     * nothing at all (`.scratch/ledger-drive-ingestion/issues/06-llm-spend-gate.md`
+     * §6: "FACT: SubAgent does not parse usageMetadata"). Added for the
+     * ledger LLM-spend gate, which needs a MEASURED count instead of a
+     * reasoned one once at least one real call has run. Purely additive:
+     * [ask]/[askTyped]/[investigate] are untouched, so pantry and the vehicle
+     * agents that already call them see no behavior change.
+     * [promptTokens]/[candidatesTokens] are null when the call never reached
+     * a response (offline, HTTP error) or the field is absent from it.
+     */
+    suspend fun askWithUsage(
+        context: String,
+        question: String,
+        imageBytes: ByteArray? = null,
+        imageMimeType: String = "image/jpeg",
+    ): AskOutcome = withContext(Dispatchers.IO) {
+        val body = buildAskBody(context, question, imageBytes, imageMimeType)
+        when (val o = postRaw(body)) {
+            is HttpOutcome.Ok -> {
+                val (promptTokens, candidatesTokens) = parseUsageMetadata(o.json)
+                AskOutcome(extractText(o.json), promptTokens, candidatesTokens)
+            }
+            else -> AskOutcome(text = null, promptTokens = null, candidatesTokens = null)
+        }
+    }
+
+    /** Shared request body for [ask] and [askWithUsage] - same shape, different response handling. */
+    private fun buildAskBody(
+        context: String,
+        question: String,
+        imageBytes: ByteArray?,
+        imageMimeType: String,
+    ): JSONObject {
         val userText = buildString {
             if (context.isNotBlank()) append(context).append("\n\n")
             append(question)
         }
-
-        val body = JSONObject().apply {
+        return JSONObject().apply {
             if (systemInstruction.isNotBlank()) {
                 put("systemInstruction", JSONObject().put(
                     "parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
@@ -73,11 +121,6 @@ class SubAgent(
             if (useSearch) {
                 put("tools", JSONArray().put(JSONObject().put("google_search", JSONObject())))
             }
-        }
-
-        when (val o = postRaw(body)) {
-            is HttpOutcome.Ok -> extractText(o.json)
-            else -> null
         }
     }
 
@@ -290,6 +333,24 @@ class SubAgent(
         e.code == 400 && e.body.contains("API_KEY_INVALID") -> AgentResult.KeyInvalid
         e.code == 500 || e.code == 503 -> AgentResult.Overloaded
         else -> AgentResult.Failed
+    }
+
+    /**
+     * Pulls `usageMetadata.promptTokenCount`/`candidatesTokenCount` out of a
+     * `generateContent` response. Internal (not private), same pattern as
+     * [userParts], so a unit test can verify the parse against a fabricated
+     * response body without a network call. Returns nulls (not zeros) when
+     * the field is absent, so a caller can distinguish "measured zero" from
+     * "not reported" - Gemini omits `usageMetadata` entirely on some error
+     * shapes even inside an otherwise-200 response.
+     */
+    internal fun parseUsageMetadata(json: String): Pair<Int?, Int?> = try {
+        val usage = JSONObject(json).optJSONObject("usageMetadata")
+        val prompt = usage?.takeIf { it.has("promptTokenCount") }?.optInt("promptTokenCount")
+        val candidates = usage?.takeIf { it.has("candidatesTokenCount") }?.optInt("candidatesTokenCount")
+        prompt to candidates
+    } catch (e: Exception) {
+        null to null
     }
 
     /**

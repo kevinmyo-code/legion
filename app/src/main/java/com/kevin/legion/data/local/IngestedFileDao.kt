@@ -58,4 +58,23 @@ interface IngestedFileDao {
             "AND minTxnDate <= :replacedMax AND maxTxnDate >= :replacedMin"
     )
     suspend fun resetOverlapping(accountId: String, fileId: String, replacedMin: Long, replacedMax: Long)
+
+    /**
+     * Measured average token usage across every LLM call so far, for ticket
+     * 06's spend estimate to use a MEASURED number instead of a reasoned one
+     * once at least one real batch has run (§6: "after one real batch the app
+     * holds measured token counts, so the estimate stops being a reasoned
+     * number derived from a reasoned number"). Both fields are null (not
+     * zero) until at least one row has non-null token counts, which
+     * [IngestScanner] reads as "no measured data yet, fall back to the
+     * reasoned constant".
+     */
+    @Query(
+        "SELECT AVG(llmPromptTokens) as avgPrompt, AVG(llmResponseTokens) as avgResponse " +
+            "FROM ingested_files WHERE llmAttempted = 1 AND llmPromptTokens IS NOT NULL"
+    )
+    suspend fun averageLlmTokenUsage(): LlmTokenAverage?
 }
+
+/** Aggregate-query projection for [IngestedFileDao.averageLlmTokenUsage]. */
+data class LlmTokenAverage(val avgPrompt: Double?, val avgResponse: Double?)

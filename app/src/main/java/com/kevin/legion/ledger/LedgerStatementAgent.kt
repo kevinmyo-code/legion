@@ -6,8 +6,22 @@ import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
 import com.kevin.legion.ledger.parsers.parseMoneyCents
-import org.json.JSONArray
 import org.json.JSONObject
+
+/**
+ * [LedgerStatementAgent.extract]'s result: the same [LedgerIngestResult]
+ * [StatementDispatcher] used to return on its own, plus the measured token
+ * counts from Gemini's `usageMetadata` (ticket 06 §6). Tokens are recorded
+ * regardless of whether [result] is [LedgerIngestResult.Success] or
+ * [LedgerIngestResult.Quarantined] - a call that ran and still failed to
+ * reconcile still spent the money, and that must be visible, not silently
+ * dropped along with the failed extraction.
+ */
+data class LedgerLlmOutcome(
+    val result: LedgerIngestResult,
+    val promptTokens: Int?,
+    val responseTokens: Int?,
+)
 
 /**
  * LLM fallback for statements that don't match any known deterministic
@@ -28,7 +42,7 @@ object LedgerStatementAgent {
         "verbatim. Never invent, round, or estimate a figure - if a value isn't printed in the text, " +
         "leave it null. You are not being asked for advice or summary, only structured extraction."
 
-    suspend fun extract(fileName: String, statementText: String): LedgerIngestResult {
+    suspend fun extract(fileName: String, statementText: String): LedgerLlmOutcome {
         val prompt = buildString {
             append("Extract every transaction from this bank statement text. Respond with ONLY a raw ")
             append("JSON object (no markdown, no commentary, no code fences) with this exact shape:\n")
@@ -43,16 +57,29 @@ object LedgerStatementAgent {
             append(statementText)
         }
 
-        val raw = try {
-            SubAgent(systemInstruction = SYSTEM_INSTRUCTION, useSearch = false).ask("", prompt)
+        val outcome = try {
+            SubAgent(systemInstruction = SYSTEM_INSTRUCTION, useSearch = false).askWithUsage("", prompt)
         } catch (e: Exception) {
             Log.w(TAG, "extraction request failed: ${e.message}")
             null
-        } ?: return LedgerIngestResult.Quarantined(
-            "I couldn't reach the extraction service to read this statement - try again in a sec."
+        }
+
+        val raw = outcome?.text ?: return LedgerLlmOutcome(
+            result = LedgerIngestResult.Quarantined(
+                "I couldn't reach the extraction service to read this statement - try again in a sec."
+            ),
+            // Nulls here, not zeros: a null `text` means the request itself
+            // failed or threw, so usageMetadata (if outcome is non-null) still
+            // reflects whatever Gemini reported for that response, if any.
+            promptTokens = outcome?.promptTokens,
+            responseTokens = outcome?.candidatesTokens,
         )
 
-        return parseAndReconcile(fileName, raw)
+        return LedgerLlmOutcome(
+            result = parseAndReconcile(fileName, raw),
+            promptTokens = outcome.promptTokens,
+            responseTokens = outcome.candidatesTokens,
+        )
     }
 
     private fun parseAndReconcile(fileName: String, raw: String): LedgerIngestResult {
