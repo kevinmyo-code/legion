@@ -203,3 +203,36 @@ behaviour (CLAUDE.md §10).
 - The spend estimate's content, and whether approval blocks or informs. **Ticket 06.**
 - The screens that render `ScanState`. **Ticket 08.**
 - `accountId` derivation for a mixed-institution folder. Still open on the map.
+
+---
+
+## Amendment 1 (2026-08-02, from ticket 06, Kevin signed off in session)
+
+**`AwaitingApproval` moves.** This ticket placed it immediately after staging (phase 1). Ticket 06
+moved it to **between phase 2a and 2b**.
+
+**Why.** After staging, only the *new file* count is known. The **LLM** count is not - a file only
+reveals it needs the LLM by failing both deterministic parsers. So a gate placed after staging can
+only quote a worst case ("up to 60 files may need AI reading") when the truth is usually zero.
+Inflated warnings train click-through, which is the exact failure mode ticket 06 exists to prevent.
+
+**Phase 2 splits in two:**
+
+```
+phase 2a  deterministic parse, ALL staged files   serial
+            Success     -> COMMIT NOW
+            Quarantined -> record, no LLM call
+            NeedsLlm    -> set aside
+          >>> gate asks HERE. count EXACT. spend so far: zero <<<
+phase 2b  LLM for the approved set                serial
+```
+
+Deterministic parsing never calls Gemini, so the exact count is free. `StatementDispatcher` splits
+into `dispatchDeterministic` and `runLlm`.
+
+**`ScanState` changes accordingly:** `Staging` is followed by a deterministic-parse state, then
+`AwaitingApproval`, then the LLM phase. Both parse phases report progress separately - they have
+different costs and the user should see which one is running.
+
+Everything else in this ticket stands: phase 1 parallelism, cacheDir staging and its three-part
+cleanup, re-run-not-resume, batch-not-atomic, listing-only rescan trigger, single StateFlow.

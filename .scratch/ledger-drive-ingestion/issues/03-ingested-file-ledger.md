@@ -63,7 +63,7 @@ artefact, disambiguated by the sixth.
 
 ### 2. States
 
-`INGESTED` | `QUARANTINED` | `UNREADABLE` | `DUPLICATE_CONTENT`
+`INGESTED` | `QUARANTINED` | `UNREADABLE` | `DUPLICATE_CONTENT` | `NEEDS_LLM` (amendment 3)
 
 ```
 NEW --parse+gate--> INGESTED           (rows committed, stamped with sourceFileId)
@@ -71,7 +71,7 @@ NEW --parse+gate--> INGESTED           (rows committed, stamped with sourceFileI
                 \-> UNREADABLE         (not a PDF, virtual doc, IO failure)
                 \-> DUPLICATE_CONTENT  (sha256 already known, stopped before parsing)
 
-scan: any existing record -> skip, zero cost, regardless of state
+scan: any existing record -> skip, zero cost  EXCEPT state NEEDS_LLM (amendment 3)
 QUARANTINED --explicit user retry--> NEW
 size or mtime changed       --------> NEW   (the file was replaced in place)
 ```
@@ -119,6 +119,9 @@ New entity `ingested_files`:
 | `transactionCount` | INTEGER NOT NULL | rows committed, 0 unless `INGESTED` |
 | `firstSeenAt` | INTEGER NOT NULL | epoch millis |
 | `lastAttemptAt` | INTEGER NOT NULL | epoch millis |
+| `llmAttempted` | INTEGER NOT NULL | **amendment 3.** Did an LLM call run |
+| `llmPromptTokens` | INTEGER, nullable | **amendment 3.** Measured, from `usageMetadata` |
+| `llmResponseTokens` | INTEGER, nullable | **amendment 3.** Measured, from `usageMetadata` |
 | `accountId` | TEXT, nullable | **amendment 2.** Only known after parsing |
 | `minTxnDate` | INTEGER, nullable | **amendment 2.** Earliest txn date this file produced |
 | `maxTxnDate` | INTEGER, nullable | **amendment 2.** Latest txn date this file produced |
@@ -236,3 +239,40 @@ re-ingesting the whole account. `duplicatesSkipped` makes ticket 04's "errs towa
 behaviour auditable per file rather than invisible.
 
 Nothing else in this ticket's resolution changes.
+
+---
+
+## Amendment 3 (2026-08-02, from ticket 06, Kevin signed off in session)
+
+**Fifth state `NEEDS_LLM`, EXEMPT from the skip rule.** Plus three columns: `llmAttempted`,
+`llmPromptTokens`, `llmResponseTokens`.
+
+**Why the exemption.** This ticket's rule was "any existing record -> skip, regardless of state".
+Ticket 06 gates LLM spend and lets the user decline. Collision:
+
+- declined file WITH a record -> skipped forever, can never be approved later
+- declined file with NO record -> forgotten entirely
+
+So `NEEDS_LLM` is re-offered at every scan until approved or until the file changes. **Declining is
+always "not now", never "never".**
+
+**Why the token columns.** `SubAgent` currently discards `usageMetadata`, which Gemini returns on
+every call. Ticket 06 adds parsing and records the measured counts here. Payoff: after one real
+batch the cost estimate rests on measured tokens instead of a reasoned number derived from a
+reasoned number.
+
+Nothing else in this ticket's resolution changes.
+
+---
+
+## Amendment log
+
+| # | From | Change |
+|---|---|---|
+| 1 | ticket 05 | `treeUri` -> nullable. Null = single-file pick. Unifies hand-import and scan |
+| 2 | ticket 04 | +`accountId`, `minTxnDate`, `maxTxnDate`, `duplicatesSkipped`. Replace flow resets overlapping files. **Closed silent financial data loss** |
+| 3 | ticket 06 | +`NEEDS_LLM` state, exempt from skip rule. +`llmAttempted`, `llmPromptTokens`, `llmResponseTokens` |
+
+Three amendments in one session. **Signal that this ticket resolved early.** Nothing it decided was
+overturned, but the schema was not stable until 04, 05 and 06 had run. If a future effort resolves a
+schema ticket before the tickets that consume it, expect the same.

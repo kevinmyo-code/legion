@@ -49,26 +49,31 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 
 ## In-flight
 
-**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 6 of 11 tickets resolved.** Destination is a
+**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 7 of 11 tickets resolved.** Destination is a
 build-ready spec for Drive-folder batch ingestion plus a basic UI across all three aspects. The map
 and every ticket are now TRACKED IN GIT (see the gitignore note below), so read them directly:
 `.scratch/ledger-drive-ingestion/map.md`.
 
 | State | Tickets |
 |---|---|
-| Resolved | 01 SAF, 02 design language, 03 ingested-file ledger, 04 twin transactions, 05 batch mechanics, 11 SAF probe (steps 7-9 unrun) |
-| **Frontier (takeable now)** | **06 spend gate**, 07 app shell + ignition, **08 ledger UI**, 09 fleet/pantry UI, 10 does ledger sync |
+| Resolved | 01 SAF, 02 design language, 03 file ledger, 04 twin txns, 05 batch mechanics, 06 spend gate, 11 SAF probe (steps 7-9 unrun) |
+| **Frontier (takeable now)** | 07 app shell + ignition, **08 ledger UI**, 09 fleet/pantry UI, 10 does ledger sync |
 | Blocked | (none) |
 
-**Nothing is blocked.** Suggested next: **06 (spend gate)** - 05 built the exact slot it drops into,
-so it only has to decide the estimate's content and whether approval blocks or informs.
+**Nothing blocked. The whole ingestion pipeline is now specified.** 07/08/09 are UI, 10 is sync.
+Suggested next: **07 (app shell)** - nothing starts `AriaForegroundService` today, so 08 and 09 have
+nothing to hang off until it exists.
 
-**Ticket 03 has taken TWO amendments, both recorded in 03 itself, not silent edits.** From 05:
-`treeUri` nullable (null = single-file pick), so hand-imports and folder scans share one pipeline.
-From 04: `accountId`, `minTxnDate`, `maxTxnDate`, `duplicatesSkipped` added, and the replace flow now
-resets overlapping files. **That second one closed silent financial data loss** - counting dedup lets
-an overlapping statement contribute zero rows, so deleting one file's rows could destroy
-transactions another file also attested to. Found by grilling, not by reading code.
+**BEFORE ANY GATE UI SHIPS: pull live pricing for `gemini-3.5-flash-lite`.** Ticket 06 adopted NO
+price constant. The analyst's dollar figures are `reasoned` and explicitly unverified. Also open:
+nothing sets `thinkingConfig`, so implicit thinking-token billing is unknown.
+
+**Ticket 03 took THREE amendments in one session.** Log at the bottom of ticket 03; all recorded,
+none silent. From 05: `treeUri` nullable. From 04: four columns + replace flow resets overlapping
+files, which **closed silent financial data loss**. From 06: fifth state `NEEDS_LLM` exempt from the
+skip rule, else declining the spend gate would be permanent. Nothing was overturned, but the schema
+was not stable until its consumers had run. **Lesson: do not resolve a schema ticket before the
+tickets that consume it.**
 
 **The crux is TESTED and passed (2026-08-02).** A file uploaded after the grant appears in
 `listFiles()` with no re-pick, so the Drive access model holds. Caveat: it was invisible for at

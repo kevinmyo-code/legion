@@ -96,6 +96,18 @@ BEFORE this effort ends. Do not let this directory be the only copy of anything.
   transactions another file also attested to; fixed by resetting overlapping files to `NEW`, which
   amended ticket 03 a second time. Installed base is zero, so no backfill.
 
+- [How is LLM spend estimated and approved before a batch?](issues/06-llm-spend-gate.md) -
+  **no recognize-only pass exists and adding one buys nothing** (extraction dominates; DBS only
+  fails after iterating pages). Instead **split the dispatcher**: deterministic parse runs over all
+  staged files and commits, then the gate asks with an **exact** fallthrough count that cost zero
+  API spend to obtain. Amended ticket 05's gate placement. **Ask every time, never remember** -
+  defensible only because recognised banks never reach the gate. Count leads, cost is a labelled
+  secondary estimate. **No price constant adopted**: the `analyst`'s dollar figures are `reasoned`
+  and explicitly unverified, and implicit thinking-token billing is an open unknown. `SubAgent`
+  discards `usageMetadata` today; parse it and record measured tokens per file so the estimate stops
+  being a guess derived from a guess. Declining needs a fifth state `NEEDS_LLM` exempt from 03's
+  skip rule, else declining is permanent - amendment 3 to 03.
+
 ## Not yet specified
 
 - **Quarantine review UX.** What the user does with a statement that failed reconciliation:
