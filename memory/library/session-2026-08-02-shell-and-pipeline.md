@@ -72,3 +72,67 @@ Deliberate non-fixes with verification tags.
 ## Operational fact: adb pairing post-reboot
 
 **Discovery:** After PC reboot, the phone needs a **FRESH `adb pair`**, not just `adb connect` - surviving pairing record is not the same as a live transport. The working connect port was the one the pairing dialog advertised (43687), NOT the one shown on the main Wireless Debugging screen (44225). **Tag: tested** this session.
+
+## Continuation: Part 5 and Part 6, ledger UI and scan completion
+
+Session 2026-08-02 continued with two more commits, now pushed. Critical architectural decision and a new root-cause bug class emerging.
+
+### Commits landed (pushed to origin)
+
+- **7267369** - Part 5: ledger read surfaces. Ticket 08 items 4-7. Variant B "Stream" transaction list, per-currency balances with no FX, quarantine rows, empty states, plus `ui/common/` (SectionHeader, Hairline, ReadingRow, NotBuiltRow) extracted early per ticket 09's mandate.
+- **4272146** - Part 6: folder connection, scan progress, LLM spend gate. Ticket 08 items 1,2,3 and the rest of 7. First code ever to call `IngestScanner.scan()`.
+
+### Ratified architectural decision (Kevin, explicit, this session)
+
+**IngestScanner moved OUT of AriaForegroundService into new LedgerIngestService (foregroundServiceType=dataSync, bind-driven, no mic/GPS/Live socket).** 
+
+**Reason, traced by reading the method:** `AriaForegroundService.onCreate()` unconditionally boots the entire voice stack - mic prewarm, a Gemini Live socket, GPS, telephony, a weather loop - with NO check of `AssistantIgnition`. Binding `IngestScanner` from the Ledger tab would have started the assistant with the toggle off, violating ticket 07's ruling that a refusal means "assistant off, nothing else affected". Part 4 had placed the scanner in AriaForegroundService; that was harmless only while nothing bound to it.
+
+### Root-cause bug class identified (belongs in lessons.md)
+
+**Process-wide cache initialization must not live in an unconditionally-started service.**
+
+`GeminiKeyProvider`, `ProactivePreferences` and `LedgerFolderPreferences` are process-wide caches seeded once from disk by an `init()` call. The first two were seeded in `AriaForegroundService.onCreate`; the third was never seeded anywhere. Ticket 07 turned that service into an explicit opt-in toggle that is OFF by default. 
+
+**Result:** On a normal launch, nothing seeded any of them, while the backing values sat on disk perfectly intact. 
+
+**Symptoms, both tested on device:** the connected statements folder was forgotten on every process start, and the ledger spend gate reported "no Gemini key" for a key that WAS saved and present.
+
+**Fix:** All three now seeded in `MidnightApplication.onCreate`, which does not depend on any feature being switched on.
+
+**General rule worth graduating:** When a service stops starting unconditionally, everything it was incidentally initializing silently stops being initialised. A foreground service is not a safe home for process-wide init. Application.onCreate is.
+
+### Four bugs found by senior-dev review (all fixed before commit)
+
+1. **BLOCKING: scan was launched from composable's `rememberCoroutineScope()`**, so leaving the ledger tab cancelled it mid-batch, abandoning any Gemini call already paid for and making `LedgerIngestService.onUnbind`'s wait-for-Finished grace period meaningless. Now runs on the service's own scope via `LedgerIngestService.startScan`.
+
+2. **`IngestScanner.scan` swallowed `CancellationException` via generic `catch (e: Exception)` and reported a cancelled scan as `Finished(FileResults())` - indistinguishable from one that legitimately found nothing.** Now rethrown.
+
+3. **`LedgerFolderPreferences.connect()` never released the outgoing persisted URI grant**, so every CHANGE FOLDER leaked one. Persisted grants are an OS-capped resource.
+
+4. **Foreground notification claimed "scanning" from the moment the tab was opened** (promoted in `onCreate`). Now promoted in `startScan`, so it exists only while a scan runs. Plus a re-entrancy guard so a fast double-tap can't start two runs that sweep each other's scanDir.
+
+### On-device test result (tested, CPH2471, this session)
+
+The full ingestion pipeline ran end to end on hardware for the first time. 
+
+- Folder connected via SAF tree with a persisted grant
+- Gate rendered "1 statement needs AI reading" (correctly 1, not 2 - only the unrecognized layout reaches the LLM)
+- Approval ran a REAL Gemini call on Kevin's own key
+- Result QUARANTINED because document prints no total to reconcile against: "This statement doesn't print a clear total to verify against - refusing to guess"
+- **Money was spent and the output was still refused. Zero rows written.**
+
+This is CLAUDE.md §4's central thesis - LLM extraction only behind a deterministic gate - validated against a live model on hardware. The practical consequence worth recording: a successful, paid LLM call can legitimately produce nothing, and the UI has to make that legible rather than look broken.
+
+Earlier in same session, also tested on hardware: the first end-to-end ingestion at all, importing `dbs_happy_path.pdf` through real SAF picker ("Imported 3 transaction(s)"), and `dbs_balance_mismatch.pdf` quarantining.
+
+### Known issues NOT verified
+
+- **Tab switch DURING a live scan:** Fix is correct by construction (service scope vs composition scope) but both fixtures complete in under a second, so interruption could not be staged. `reasoned`.
+- **"Read by AI" provenance label has STILL never rendered.** Needs an unrecognized layout that DOES reconcile, and every fixture for that path is designed to fail. This is a FIXTURE GAP, not a code gap.
+- **Today's run used a LOCAL SAF tree, not a Drive-synced folder.** Same DocumentsContract code path, but does not reproduce the probe's stale-listing latency finding.
+
+### Operational facts
+
+- `adb shell pm clear` is BLOCKED by the OEM on this device (SecurityException, no CLEAR_APP_USER_DATA from shell). Wiping ledger state for repeatable test means uninstall + reinstall.
+- Files pushed by `adb push` into a subfolder are NOT visible through the MediaStore-backed Downloads DocumentsProvider (folder lists as "No items"), but ARE visible through internal-storage root (ExternalStorageProvider), which lists the real filesystem. Use the device root, not Download, when staging SAF fixtures.

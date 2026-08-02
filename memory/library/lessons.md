@@ -195,6 +195,22 @@ or a playbook shelf. An entry is only "closed" once its rule is written into tha
 
 **Status:** CLOSED 2026-08-02. The rule now lives in **CLAUDE.md §8, "A ticket's own verification steps are gates, not notes (L11)"**, alongside L10, plus a line in §7's feature-add checklist. An entry closes only when its rule sits in a surface something reads; both of those are read every session.
 
+### L12 — orchestrator + architecture: process-wide cache initialization in a conditionally-started service
+
+**What happened (session 2026-08-02, commits 4272146):** `GeminiKeyProvider`, `ProactivePreferences`, and `LedgerFolderPreferences` are process-wide caches seeded once from disk by an `init()` method. The first two were seeded in `AriaForegroundService.onCreate()`; the third was never seeded anywhere (an orphan). Ticket 07 converted `AriaForegroundService` from an unconditionally-started infrastructure service into an explicit opt-in toggle, OFF by default (`AssistantIgnition`). 
+
+**Actual symptoms, both tested on hardware:** On a normal app launch (toggle OFF), nothing seeded any of the three caches, so they stayed empty despite their backing values being intact on disk. The ledger tab showed "No statements folder connected" on every process start (it did not re-prompt - it simply offered CONNECT again, and reconnecting re-granted silently, which is what made it look like it worked), and the spend gate reported "no Gemini key" for a key that WAS saved. Two of the three were correct code stranded by a startup change; the third, `LedgerFolderPreferences.init()`, genuinely had zero callers anywhere and was a plain omission.
+
+**Root class:** Incidental initialization in an unconditionally-started service that later became conditionally-started. When a service is the guarantee of startup, everything it initialises becomes a hidden dependency, and flipping the service to optional removes that dependency silently. Nothing in compile, unit tests, or the senior-dev review caught it - the bug only appeared when the app was installed and opened.
+
+**Fix:** All three caches now seeded in `MidnightApplication.onCreate()`, which runs once per process lifecycle and is independent of any feature toggle. The caches are now guaranteed to exist on every app start.
+
+**General rule worth graduating into `playbook-coding.md`:** Application-global cache initialization must not live in a foreground service or any domain-specific service that might start conditionally. Use `Application.onCreate()` for process-wide invariants. A service is not a safe home for process-wide init. The rule is a corollary of the architecture decision (see `decisions.md` 2026-08-02): do not place feature-triggered startup inside an unconditionally-started infrastructure service. Converse: if something depends on guaranteed startup, do not hide it inside a service that toggles.
+
+**Regression check:** Any cache class with an `init()` method should have a tracing rule: find every callsite of `init()`, verify one of them runs unconditionally on process launch (either in `Application.onCreate` or in an Activity that cannot be bypassed). If `init()` is never called, or only called from a conditional path, flag it as uninitialized.
+
+**Status:** CLOSED 2026-08-02 - the rule now lives in `playbook-coding.md`'s "Application initialization and process-global state" section, which the coding agent reads.
+
 
 ### L10 — orchestrator (Stark): grep-based reconciliation reported "done" before a real compile found more
 

@@ -1761,3 +1761,11 @@ depends on it.
 **Context:** Ticket 07 (shell and key-entry UI) rendered all body text in quarantine red, including the first-run consent copy, due to a Material 3 theme collision. The dark scheme assigned `InstrumentSurface` to both `surface` and `errorContainer` roles. `contentColorFor()` resolves by value and tests `errorContainer` before `surface`, so the collision winner was red.
 
 **Decision (Kevin):** `errorContainer` set to `InstrumentSurfaceSunken`. This breaks the immediate collision and routes `contentColorFor` to the intended `onSurface` ink. **Tag: `on-device`** - the cause is `traced` to source, and the fix was rebuilt, installed and screenshotted on CPH2471, so the red is confirmed gone rather than merely reasoned away. Known residual: the new value collides with `secondaryContainer`/`surfaceVariant`/`surfaceContainerLow`, so the general problem recurs at ticket 08 (quarantine UI must set `contentColor` explicitly).
+
+## 2026-08-02 Ledger ingestion: IngestScanner moved to LedgerIngestService (architectural decision)
+
+**Ratified by Kevin, explicit, same session.** `IngestScanner` was initially placed in `AriaForegroundService` in Part 4 (commit 512823a). Part 6 (commit 4272146) moved it out into a new `LedgerIngestService` (foregroundServiceType=dataSync, bind-driven from the Ledger tab, no mic/GPS/Live socket startup).
+
+**Reason, traced by reading `AriaForegroundService.onCreate()`:** That method unconditionally boots the entire voice stack on every process start - mic prewarm, a Gemini Live socket, GPS, telephony, a weather loop - with NO check of `AssistantIgnition`. Binding `IngestScanner` (which lives at Ledger tab tap time) from the voice service would have started the assistant with the toggle explicitly OFF, violating ticket 07's resolution: "a refusal means assistant off, nothing else affected." The original placement was harmless only because nothing bound to the service; once the Ledger tab wired `startService()` + `bindService()`, the architecture became unsustainable.
+
+**The general principle:** Do not place feature-triggered services inside an unconditionally-started infrastructure service. Separation of concerns. A user flipping a toggle must not side-effect unrelated infrastructure.
