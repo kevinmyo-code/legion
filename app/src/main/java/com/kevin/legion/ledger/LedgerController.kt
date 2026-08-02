@@ -5,6 +5,8 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.IngestedFile
+import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
 import com.kevin.legion.data.local.LedgerTransactionDao
 import com.kevin.legion.ledger.parsers.DeterministicResult
@@ -178,6 +180,47 @@ object LedgerController {
         CarDatabase.getDatabase(context).ledgerTransactionDao().getRecent(limit)
 
     /**
+     * Per-account balance for ticket 08's balances surface (resolution §5):
+     * one row per known [LedgerTransaction.accountId], each carrying its own
+     * currency, never combined into a single headline figure across SGD and
+     * USD. [AccountBalance.balanceCents] is null when the source format
+     * never printed a running balance at all (Bank of America's section
+     * layout, per [LedgerTransactionDao.latestBalanceCents]'s doc comment) -
+     * the UI must render that as "not stated", never as zero.
+     */
+    suspend fun accountBalances(context: Context): List<AccountBalance> {
+        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
+        return dao.allAccountIds().map { accountId ->
+            AccountBalance(
+                accountId = accountId,
+                // Every id here came from allAccountIds(), so at least one
+                // row exists for it; currencyForAccount can only return null
+                // for an account with zero rows, which requireNotNull turns
+                // into a loud crash rather than a silently wrong currency.
+                currency = requireNotNull(dao.currencyForAccount(accountId)) {
+                    "accountId '$accountId' came from allAccountIds() but has no rows to read a currency from"
+                },
+                balanceCents = dao.latestBalanceCents(accountId),
+            )
+        }
+    }
+
+    /** Every currently-quarantined file, for ticket 08's quarantine surface (resolution §6, provisional). */
+    suspend fun quarantinedFiles(context: Context): List<IngestedFile> =
+        CarDatabase.getDatabase(context).ingestedFileDao().listQuarantined()
+
+    /**
+     * The quarantine row's RETRY action (resolution §6). Only flips the
+     * record back to [com.kevin.legion.data.local.IngestState.NEW] - it does
+     * not re-read or re-parse [driveFileId] itself. See
+     * [com.kevin.legion.data.local.IngestedFileDao.retryQuarantined]'s doc
+     * comment for why that split is deliberate rather than a shortcut.
+     */
+    suspend fun retryQuarantined(context: Context, driveFileId: String) {
+        CarDatabase.getDatabase(context).ingestedFileDao().retryQuarantined(driveFileId)
+    }
+
+    /**
      * Fetches the existing-row candidate set per account across [incoming]'s
      * own date range, then hands off to [resolveDedup] - ticket 04's pure
      * per-tuple counting comparison, run in Kotlin rather than SQL. Grouped by
@@ -230,3 +273,10 @@ object LedgerController {
 }
 
 data class LedgerImportResult(val success: Boolean, val message: String, val importedCount: Int = 0)
+
+/**
+ * One account's latest known balance, in its own currency. See
+ * [LedgerController.accountBalances]'s doc comment for why [balanceCents]
+ * being null is a real, distinct state from it being zero.
+ */
+data class AccountBalance(val accountId: String, val currency: LedgerCurrency, val balanceCents: Long?)

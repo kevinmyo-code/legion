@@ -56,7 +56,12 @@ object StatementDispatcher {
         } catch (e: UnrecognizedLayoutException) {
             // fall through to the next parser
         } catch (e: StatementParseException) {
-            return DeterministicResult.Quarantined(e.message ?: "This statement's numbers didn't reconcile.")
+            // userMessage first: `message` is the diagnostic, and it went in
+            // front of a user verbatim on the first device render of a
+            // quarantine row. See StatementParseException.userMessage.
+            return DeterministicResult.Quarantined(
+                e.userMessage ?: e.message ?: "This statement's numbers didn't reconcile."
+            )
         }
 
         try {
@@ -66,7 +71,12 @@ object StatementDispatcher {
         } catch (e: UnrecognizedLayoutException) {
             // fall through to the LLM path
         } catch (e: StatementParseException) {
-            return DeterministicResult.Quarantined(e.message ?: "This statement's numbers didn't reconcile.")
+            // userMessage first: `message` is the diagnostic, and it went in
+            // front of a user verbatim on the first device render of a
+            // quarantine row. See StatementParseException.userMessage.
+            return DeterministicResult.Quarantined(
+                e.userMessage ?: e.message ?: "This statement's numbers didn't reconcile."
+            )
         }
 
         val text = PdfText.extractText(ByteArrayInputStream(bytes))

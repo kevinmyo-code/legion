@@ -38,6 +38,32 @@ interface IngestedFileDao {
     suspend fun upsert(file: IngestedFile)
 
     /**
+     * Every currently-quarantined record, for ticket 08's quarantine surface
+     * (resolution §6). Newest attempt first so a recently-failed statement
+     * surfaces above one that has sat quarantined for weeks. Deliberately a
+     * plain state filter, not a join against [LedgerTransactionDao] - per
+     * [IngestedFile]'s own doc comment, [IngestState.QUARANTINED] means
+     * nothing was ever written for this file, so there is nothing to join.
+     */
+    @Query("SELECT * FROM ingested_files WHERE state = 'QUARANTINED' ORDER BY lastAttemptAt DESC")
+    suspend fun listQuarantined(): List<IngestedFile>
+
+    /**
+     * The explicit-retry transition from [IngestedFile]'s own state diagram:
+     * `QUARANTINED --explicit user retry--> NEW`. Only flips the state back
+     * to [IngestState.NEW] so the next scan re-examines the file; it does
+     * NOT re-read or re-parse anything itself - ticket 08 Part 5 (the read
+     * surfaces) stops here on purpose, since driving an actual re-parse
+     * means calling [com.kevin.legion.service.IngestScanner.scan], which is
+     * ticket 08 Part 6's job. Guarded to only affect a row that is actually
+     * [IngestState.QUARANTINED], so retrying twice in a row (a double-tap)
+     * is a harmless no-op the second time rather than clobbering a state a
+     * scan may have already moved on.
+     */
+    @Query("UPDATE ingested_files SET state = 'NEW' WHERE driveFileId = :driveFileId AND state = 'QUARANTINED'")
+    suspend fun retryQuarantined(driveFileId: String)
+
+    /**
      * Amendment 2's replace-flow reset: when a file's rows are deleted and
      * re-ingested, any OTHER already-[IngestState.INGESTED] file for the same
      * account whose date range overlaps the replaced range must go back to
