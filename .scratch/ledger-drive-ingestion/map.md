@@ -61,6 +61,17 @@ BEFORE this effort ends. Do not let this directory be the only copy of anything.
   deliberately uncoloured. **Built and compiling** in `ui/theme/`; no preview rendered, nothing on
   device. Dark-vs-light default, icons, and motion left open.
 
+- [What identifies a statement file as already ingested?](issues/03-ingested-file-ledger.md) -
+  **the record's job is WORK AVOIDANCE, not correctness.** Correctness stays at the transaction
+  layer (ticket 04). Skip filter is `driveFileId` + `sizeBytes` + `lastModified`, metadata only, so
+  a known unchanged file costs zero bytes; `acc=N;` stripped because the probe showed it is a
+  positional account index. `contentSha256` is recorded (free, bytes already in hand) and stops a
+  duplicate **before** parsing, keeping its LLM call out of ticket 06's estimate. Four states,
+  quarantine retryable only by explicit user action. Records are **never pruned** - the probe
+  proved a listing can be stale-empty with no signal, so absence is not deletion.
+  `ledger_transactions` gains a nullable `sourceFileId`, which is what makes replaced statements
+  solvable at all. Multi-folder carried now via `treeUri`. **`syncId` deferred to ticket 10.**
+
 ## Not yet specified
 
 - **Quarantine review UX.** What the user does with a statement that failed reconciliation:
