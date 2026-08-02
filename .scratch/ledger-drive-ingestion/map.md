@@ -108,6 +108,19 @@ BEFORE this effort ends. Do not let this directory be the only copy of anything.
   being a guess derived from a guess. Declining needs a fifth state `NEEDS_LLM` exempt from 03's
   skip rule, else declining is permanent - amendment 3 to 03.
 
+- [What is the app shell, and how does the app start itself?](issues/07-app-shell-and-ignition.md) -
+  **ignition is an explicit user toggle**, permissions asked there, refusal leaves the rest of the
+  app working. **`BootReceiver` DELETED** - it auto-launched `MainActivity` on every boot, a
+  car-launcher leftover and the §7 manufactured-return shape. **Key is OPTIONAL, no wall**: ledger,
+  pantry and OBD need no key, so a stranger gets a working app before deciding to go get one
+  (clone-and-run is a HARD requirement). The 1-token ping already exists at
+  `ai/GeminiKeyValidator.kt` - **CLAUDE.md §3 misattributed it to `KeyVault.kt`, fixed**. Free-tier
+  training disclosure carries over, reworded off tier framing, on the key screen where consent
+  happens. Shell is **one activity, bottom nav, four tabs** (Fleet/Ledger/Pantry/Settings); the
+  three orphan activities become routes; assistant is a global toggle, not a tab. `MainActivity`
+  switches to `LegionTheme`. **Onboarding DEFERRED** - it needs the assistant's voice, which does
+  not exist, and writing it inside a structure ticket would decide the register by accident.
+
 ## Not yet specified
 
 - **Quarantine review UX.** What the user does with a statement that failed reconciliation:

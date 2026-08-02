@@ -99,7 +99,7 @@ repeat. Commit map and ticket changes like any other file.
 | Platform | Android phone, Kotlin, Compose | Min/target per `build.gradle.kts` |
 | Voice AI | Gemini Live WebSocket STS | `service/GeminiLiveSession.kt`, server VAD, half-duplex |
 | Sub-agents | Gemini Flash REST | `ai/SubAgent.kt`, one-shot + bounded investigate loop; now also takes an optional inline image part (`imageBytes`/`imageMimeType`) for pantry vision |
-| BYO key | Paste + 1-token validation ping | `ai/KeyVault.kt` (Keystore AES/GCM), direct to Google, no proxy |
+| BYO key | Paste + 1-token validation ping | Ping is `ai/GeminiKeyValidator.kt` (`VALID`/`INVALID_KEY`/`NETWORK_ERROR`); storage is `ai/KeyVault.kt` (Keystore AES/GCM) via `CompanionProfile.saveGeminiKey`; resolution is `ai/GeminiKeyProvider.kt`. Direct to Google, no proxy |
 | Local DB | Room **v3** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). v1->v2 ledger, v2->v3 pantry, both real verbatim generated-SQL migrations with `exportSchema` |
 | OBD | ELM327 Bluetooth RFCOMM + BLE | Unchanged from Midnight AI |
 | Music | Generic MediaSession transport (`media/MusicController`) + Spotify App Remote direct play | `MusicRouter`/`MusicSource`/mixtapes all retired |

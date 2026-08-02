@@ -28,7 +28,9 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 - **Drive has no compare-and-swap.** Shared-file last-write-wins will silently lose rows; sync must
   become append-only. Unresolved, and ledger data is the worst thing to lose rows from.
 - **Assistant identity is placeholder copy** (`ai/AssistantIdentity.kt`). The Alfred/JARVIS voice
-  has not been written; everything user-facing is blocked behind it.
+  has not been written. **Ticket 07 deferred onboarding specifically because of this** - wiring
+  `OnboardingFlow` would have decided the register by accident inside a structure ticket. Needs its
+  own effort.
 - **Crisis resource is US-only (988).** Carried over unfixed.
 - **Firebase is not wired up.** `MidnightEvents` logs via `Log.d`: no crash reporting, no remote
   observability, so a swallowed exception is invisible in the field.
@@ -49,20 +51,24 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 
 ## In-flight
 
-**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 7 of 11 tickets resolved.** Destination is a
+**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 8 of 11 tickets resolved.** Destination is a
 build-ready spec for Drive-folder batch ingestion plus a basic UI across all three aspects. The map
 and every ticket are now TRACKED IN GIT (see the gitignore note below), so read them directly:
 `.scratch/ledger-drive-ingestion/map.md`.
 
 | State | Tickets |
 |---|---|
-| Resolved | 01 SAF, 02 design language, 03 file ledger, 04 twin txns, 05 batch mechanics, 06 spend gate, 11 SAF probe (steps 7-9 unrun) |
-| **Frontier (takeable now)** | 07 app shell + ignition, **08 ledger UI**, 09 fleet/pantry UI, 10 does ledger sync |
+| Resolved | 01 SAF, 02 design, 03 file ledger, 04 twin txns, 05 batch, 06 spend gate, 07 app shell, 11 SAF probe (7-9 unrun) |
+| **Frontier (takeable now)** | **08 ledger UI**, 09 fleet/pantry UI, 10 does ledger sync |
 | Blocked | (none) |
 
-**Nothing blocked. The whole ingestion pipeline is now specified.** 07/08/09 are UI, 10 is sync.
-Suggested next: **07 (app shell)** - nothing starts `AriaForegroundService` today, so 08 and 09 have
-nothing to hang off until it exists.
+**3 left. Ingestion pipeline AND app shell fully specified.** 08/09 are screens, 10 is sync.
+Suggested next: **08 (ledger UI)** - 05 defined the `ScanState` contract it renders, 06 defined the
+gate it hosts, 07 defined the tab it lives in.
+
+**Ticket 07 mandates deletions**: `BootReceiver` (auto-launched the app every boot, car-launcher
+leftover), `SavedPlacesActivity`, `LedgerImportActivity`, `PantryImportActivity`, and the
+`RECEIVE_BOOT_COMPLETED` permission. `MainActivity` switches `MaterialTheme` -> `LegionTheme`.
 
 **BEFORE ANY GATE UI SHIPS: pull live pricing for `gemini-3.5-flash-lite`.** Ticket 06 adopted NO
 price constant. The analyst's dollar figures are `reasoned` and explicitly unverified. Also open:
