@@ -272,7 +272,32 @@ Nothing else in this ticket's resolution changes.
 | 1 | ticket 05 | `treeUri` -> nullable. Null = single-file pick. Unifies hand-import and scan |
 | 2 | ticket 04 | +`accountId`, `minTxnDate`, `maxTxnDate`, `duplicatesSkipped`. Replace flow resets overlapping files. **Closed silent financial data loss** |
 | 3 | ticket 06 | +`NEEDS_LLM` state, exempt from skip rule. +`llmAttempted`, `llmPromptTokens`, `llmResponseTokens` |
+| 4 | ticket 10 | **No `syncId` column.** Syncs via `naturalPk` on `driveFileId`. Deferral closed by removal; schema now FINAL |
 
-Three amendments in one session. **Signal that this ticket resolved early.** Nothing it decided was
+Four amendments in one session. **Signal that this ticket resolved early.** Nothing it decided was
 overturned, but the schema was not stable until 04, 05 and 06 had run. If a future effort resolves a
 schema ticket before the tickets that consume it, expect the same.
+
+---
+
+## Amendment 4 (2026-08-02, from ticket 10) - the deferral is CLOSED, by removal
+
+**`ingested_files` gets NO `syncId` column.** The question this ticket deferred is answered by
+deleting it rather than by adding anything.
+
+Ticket 10 registers the table with `naturalPk = true` keyed on **`driveFileId`**:
+
+```kotlin
+Spec("ingested_files", listOf("driveFileId"), Mode.LWW, naturalPk = true, clock = "lastAttemptAt")
+```
+
+This works **because of a decision made in this ticket for an unrelated reason**: the positional
+`acc=N;` prefix is stripped, so the stored value is the Drive file id proper and is identical on
+both devices for the same file. That makes it a genuine cross-device natural key. `lastAttemptAt`,
+also defined here, serves as the LWW clock.
+
+`ledger_transactions` syncs too (`Mode.UNION` on `syncId`), so **`sourceFileId` no longer dangles** -
+both sides of the reference are present on every device.
+
+**The schema in this ticket is now FINAL.** All four amendments are applied; nothing further is
+deferred.

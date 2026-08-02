@@ -25,8 +25,14 @@ Never build there. Its memory files describe a dead head-unit car launcher.
   from the code and README. Do not send an agent to read that path.
 - **Drive OAuth is keyed to package + SHA-1 signing cert**, so a stranger's own build fails
   authorization. Directly threatens clone-and-run. Unresolved, no approach chosen.
-- **Drive has no compare-and-swap.** Shared-file last-write-wins will silently lose rows; sync must
-  become append-only. Unresolved, and ledger data is the worst thing to lose rows from.
+- **Sync: the old "no compare-and-swap / must become append-only" entry was WRONG** and is
+  corrected here (ticket 10, read from source). `DriveConflict` + `DriveClient.upsert` do
+  version-checked optimistic concurrency with retry; `syncFile` is a read-merge-rewrite loop, not a
+  blind overwrite; and `SyncMerge.Mode.UNION` is append-only and **already used by 8 tables**.
+  **What actually remains:** after `MAX_CONFLICT_RETRIES` the loop `check(...)`s and **throws**,
+  and nothing reports it (no Firebase, `MidnightEvents` only logs). Ticket 10 puts
+  log-and-skip-the-pass in scope. **None of `sync/` has ever run in this app** - all `traced`,
+  none `tested`.
 - **Assistant identity is placeholder copy** (`ai/AssistantIdentity.kt`). The Alfred/JARVIS voice
   has not been written. **Ticket 07 deferred onboarding specifically because of this** - wiring
   `OnboardingFlow` would have decided the register by accident inside a structure ticket. Needs its
@@ -53,19 +59,19 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 
 ## In-flight
 
-**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 10 of 11 tickets resolved.** Destination is a
+**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 11 of 11 tickets resolved. MAP COMPLETE.** Destination is a
 build-ready spec for Drive-folder batch ingestion plus a basic UI across all three aspects. The map
 and every ticket are now TRACKED IN GIT (see the gitignore note below), so read them directly:
 `.scratch/ledger-drive-ingestion/map.md`.
 
 | State | Tickets |
 |---|---|
-| Resolved | 01-09 all resolved, 11 probe (steps 7-9 unrun) |
-| **Frontier (takeable now)** | **10 does ledger sync** |
-| Blocked | (none) |
+| Resolved | **ALL 11.** 11's device probe steps 7-9 (reboot, offline) remain unrun |
+| Open | (none) |
 
-**ONE ticket left: 10 (does ledger data sync).** It is the last thing between this map and a
-build-ready spec. It interacts with the open append-only blocker above.
+**THE MAP IS COMPLETE. Nothing is left to decide; implementation is the next pass.** Read the map
+plus the eleven ticket resolutions as the build spec. Every decision is also filed in
+`library/decisions.md` under 2026-08-01/02.
 
 **Two prototype branches, NEITHER merged and neither ever to be:** `proto/ledger-ui` (`476318e`) and
 `proto/fleet-pantry-ui` (`07abbdf`, branched off the first). Both carry a temporary `MainActivity`

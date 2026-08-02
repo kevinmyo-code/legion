@@ -146,6 +146,18 @@ BEFORE this effort ends. Do not let this directory be the only copy of anything.
   `NotBuiltRow`. Prototype branch `proto/fleet-pantry-ui` (`07abbdf`), **not merged**. Render defect
   found: a fault description in alarm red outshouts its own code.
 
+- [Does ledger data sync across devices?](issues/10-does-ledger-data-sync.md) - **the append-only
+  blocker was WRONG and is corrected.** Reading `sync/` (which this ticket required) showed
+  version-checked optimistic concurrency with retry, a read-merge-rewrite loop rather than blind
+  overwrite, and `Mode.UNION` append-only **already in use by 8 tables**. So: `ledger_transactions`
+  syncs **UNION on `syncId`** (immutable rows, exactly UNION's assumption); `ingested_files` syncs
+  **LWW, natural key `driveFileId`, NO `syncId` column** - which closes ticket 03's deferral **by
+  removal**, and works only because 03 stripped the positional `acc=N;` prefix for an unrelated
+  reason, leaving a genuine cross-device key. `sourceFileId` no longer dangles. Residual risk
+  narrowed to one thing: retry exhaustion `check(...)`s and **throws**, unreported; making that
+  log-and-skip is in scope. **None of `sync/` has ever run in this app** - all `traced`, none
+  `tested`.
+
 ## Not yet specified
 
 - **Quarantine review UX.** What the user does with a statement that failed reconciliation:
