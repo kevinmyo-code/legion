@@ -44,8 +44,7 @@ Next is ticket 08 (ledger UI), which is also what finally CALLS `IngestScanner.s
 - **Before any spend-gate UI, pull live `gemini-3.5-flash-lite` pricing.** Ticket 06 took none.
 - **Ticket 08 must set `contentColor` explicitly on error-container surfaces** - `errorContainer`
   now shares a value with `secondaryContainer`, so the default is dim ink.
-- **Ticket 09 mandates extracting** `SectionHeader`, `Hairline`, `ReadingRow`, `NotBuiltRow` into
-  `ui/common/` before the aspects diverge.
+- **Ticket 09 mandates extracting** `SectionHeader`, `Hairline`, `ReadingRow`, `NotBuiltRow`.
 - **Two prototype branches, NEITHER to be merged:** `proto/ledger-ui`, `proto/fleet-pantry-ui`.
 - **Design for "a scan may legitimately find nothing new."** A new file stayed invisible 2m36s+.
 - **Open, not blocking:** Compose BOM vs navigation-compose 2.8.0 skew; deep-link `navigate()`
@@ -61,8 +60,7 @@ Next is ticket 08 (ledger UI), which is also what finally CALLS `IngestScanner.s
 - **Re-read source before treating an inherited blocker as a constraint** - append-only dissolved
   on contact with `sync/`.
 - **`.scratch/` is tracked in git**, but filing to the library is still required.
-- **Verify what the librarian writes.** Both the 2026-07-29 and 2026-08-02 FILE passes needed
-  hand correction.
+- **Verify what the librarian writes.** The 2026-07-29 and 2026-08-02 passes both needed fixing.
 - **Two contested calls the port left open:** `media/MusicController` alongside Spotify App Remote,
   and `vehicle/BuildSheetController` entries now text-only.
 - **ADB after a PC reboot needs a FRESH `adb pair`, not just `connect`** - and the live port was
