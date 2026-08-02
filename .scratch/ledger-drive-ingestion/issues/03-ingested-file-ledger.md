@@ -108,7 +108,7 @@ New entity `ingested_files`:
 | Column | Type | Notes |
 |---|---|---|
 | `driveFileId` | TEXT, PRIMARY KEY | `acc=N;` prefix stripped |
-| `treeUri` | TEXT NOT NULL | which connected folder found it |
+| `treeUri` | TEXT, nullable | which connected folder found it. **Null = single-file pick.** See amendment below |
 | `displayName` | TEXT NOT NULL | for the UI only, never for identity |
 | `sizeBytes` | INTEGER NOT NULL | change signal |
 | `lastModified` | INTEGER NOT NULL | change signal, per-file upload time |
@@ -176,3 +176,24 @@ in **1248ms**. Sixty uncached files is roughly a minute of pure I/O before any p
 - Whether `ingested_files` syncs. Ticket 10.
 - How the scan executes, and its concurrency and progress contract. Ticket 05.
 - The spend gate that consumes the "N files will need an LLM call" count. Ticket 06.
+
+---
+
+## Amendment 1 (2026-08-02, from ticket 05, Kevin signed off in session)
+
+**`treeUri` changes from `NOT NULL` to nullable.** Null means the file arrived through a single-file
+`ACTION_OPEN_DOCUMENT` pick rather than a folder scan.
+
+**Why.** Ticket 05 unified `LedgerController.importStatement` into the batch pipeline as a
+one-element run, so a hand-picked file now gets a file record, a content hash and a `sourceFileId`
+exactly like a scanned one. A hand-picked file has no tree URI, so `NOT NULL` made unification
+impossible.
+
+**What it buys.** Import a statement by hand today; when that same file later turns up in a
+connected folder, the hash check recognises it and records `DUPLICATE_CONTENT` instead of re-parsing
+it and possibly re-paying for an LLM call. Under the original `NOT NULL` schema the hand-import path
+would have written no record at all, so it would have got none of that protection and its rows would
+have had no provenance.
+
+Nothing else in this ticket's resolution changes. The skip filter, the four states, the never-prune
+rule, the hash-before-parse ordering and the `sourceFileId` column are all unaffected.

@@ -72,6 +72,18 @@ BEFORE this effort ends. Do not let this directory be the only copy of anything.
   `ledger_transactions` gains a nullable `sourceFileId`, which is what makes replaced statements
   solvable at all. Multi-folder carried now via `treeUri`. **`syncId` deferred to ticket 10.**
 
+- [How does a folder of statements actually get ingested?](issues/05-batch-ingestion-mechanics.md) -
+  **runs in the existing `AriaForegroundService`**, which already declares `dataSync`, so no new
+  dependency and no manifest change; `androidx.work` deliberately not added. **Two phases split by
+  what each is bound on:** fetch+hash **parallel (4)**, parse+gate **strictly serial** (bounds
+  PdfBox memory to one document, keeps the spend count exact, never fires concurrent Gemini calls).
+  Phase 1 completes for all files, spilling to `cacheDir`, which is what gives ticket 06 an exact
+  count to gate on. A killed scan is **re-run, not resumed** - known files cost zero bytes.
+  **A batch is NOT atomic as a whole.** Rescan is a **listing-only diff on app open** (one query,
+  zero bytes, zero spend) surfacing a quiet inline count; never auto-ingest, never a notification.
+  UI observes one `StateFlow<ScanState>`. Single-file import is **unified** into the same pipeline,
+  which amended ticket 03's `treeUri` to nullable.
+
 ## Not yet specified
 
 - **Quarantine review UX.** What the user does with a statement that failed reconciliation:

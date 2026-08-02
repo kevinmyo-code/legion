@@ -1417,3 +1417,54 @@ schema is final. It was not. `ingested_files` carries no `syncId` and is final i
 except sync. Deferring was judged cheaper than pre-empting 10's ruling, because the additive
 migration discipline makes adding the column a one-line `ALTER TABLE` later. Ticket 10 is therefore
 still free to rule either way.
+
+---
+
+## 2026-08-02 - Batch ingestion mechanics: two phases, split by what each is bound on
+
+Wayfinder ticket `.scratch/ledger-drive-ingestion/issues/05-batch-ingestion-mechanics.md`, six calls
+with Kevin, same session as ticket 03. Full spec in the ticket; this records the reasoning.
+
+**It runs in the existing `AriaForegroundService`, and `androidx.work` was deliberately NOT added.**
+The service already declares `foregroundServiceType="...dataSync..."` and the app already holds
+`FOREGROUND_SERVICE_DATA_SYNC`, so this costs no dependency and no manifest change. WorkManager's
+pitch is durability across process death and reboot, and ticket 03 had already made that cheap by
+other means: a killed scan is re-run, not resumed, because known unchanged files cost zero bytes.
+With the rescan trigger below, nothing needs to execute while the app is closed either, which
+removes the remaining reason to add it.
+
+**The central call is splitting the pipeline by what each phase is bound on, rather than picking one
+concurrency number for the whole thing.** Fetch and SHA-256 are network-bound and run **parallel,
+limit 4**, because that is where the probe's measured 637-1248ms per file actually goes; a 60-file
+first sync drops from roughly 72s to under 20s. Parse, gate and any LLM call are **strictly
+serial**, which buys four things at once: peak PdfBox memory stays at one document, the spend gate's
+count is exact rather than racing work already in flight, progress stays an ordered sequence instead
+of a set of concurrent states, and concurrent Gemini calls never hit a possibly rate-limited key.
+
+**Phase 1 completes for every file before phase 2 starts, spilling bytes to `cacheDir`.** This is
+the non-obvious one and it exists to serve ticket 06: staging is what makes an **exact** count of
+new files knowable before a single parse runs. The alternative, a bounded pipeline with backpressure,
+has better memory characteristics but only ever yields an estimate from metadata, which would have
+made the spend gate materially harder. Holding the batch in memory instead of on disk was rejected
+on the Oppo's 3-4 GB ceiling. The price is a three-part cleanup obligation (per-entry, per-scan
+`finally`, and orphan sweep at next start) that an implementer must not skip.
+
+**A batch is NOT atomic as a whole**, and the ticket says so explicitly because the per-statement
+gate makes it tempting to wrap the loop in a transaction. Thirty-nine good statements commit even if
+the fortieth quarantines.
+
+**Rescan is a listing-only diff on app open.** One `queryChildDocuments` per connected folder,
+diffed against `ingested_files`: zero bytes, zero parsing, zero spend. Unknown ids surface as a quiet
+inline count the user taps. This separates *listing* (cheap) from *ingesting* (expensive), which the
+ticket's original framing conflated. Against §7: passive in-app surfacing is not a re-engagement
+mechanic, whereas a background poll's natural UI is exactly the notification §7 prohibits - and it
+would have needed the dependency this ticket just avoided. It also degrades honestly against the
+probe's measured sync latency: a just-uploaded statement is often not listed yet, and the count then
+says nothing rather than claiming the folder is empty.
+
+**Single-file import is unified into the same pipeline as a one-element run**, which amended ticket
+03 (`treeUri` `NOT NULL` -> nullable). The payoff is that a hand-imported statement later found in a
+connected folder is caught by the hash check and skipped free. Two separate ingestion paths were
+rejected because both would have to honour the reconciliation gate independently and stay correct as
+parsers change - and the existing single-file path already has untested DB-write behaviour
+(CLAUDE.md §10).
