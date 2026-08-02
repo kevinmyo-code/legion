@@ -1613,3 +1613,45 @@ activities absorbed as routes - their content is already written, only the hosti
 Assistant is a global toggle rather than a tab because it is a mode, not a place. `MainActivity`
 also finally switches from `MaterialTheme` to the `LegionTheme` built in ticket 02, which no screen
 was using.
+
+---
+
+## 2026-08-02 - Ledger UI: readability beats density, and the render found what code review would not
+
+Wayfinder ticket `.scratch/ledger-drive-ingestion/issues/08-ledger-ui.md`. Prototype branch
+`proto/ledger-ui` (`476318e`), **not merged**. Three radically different transaction lists rendered
+on the Oppo A17K at 360dp.
+
+**Variant B "Stream" won: no columns, description gets full width and never truncates, amount
+beneath it, running balance dropped from the row entirely.** It costs roughly 3x the vertical space
+of the densest variant and that was accepted on purpose. The reasoning: on a phone the merchant
+string is the thing being scanned for, so truncating it is the actual failure mode, and every
+column-based layout truncates it at 360dp.
+
+**Three defects the render exposed that reading the code would not have.** This is the value of the
+prototype and worth remembering as a pattern:
+
+1. The statement-style variant **wrapped** `-1200.00` onto two lines. Three numeric columns (amount
+   and balance, plus a date gutter) simply do not fit at 360dp with a real description.
+2. That variant also **inverted its own hierarchy** - the running balance rendered visually heavier
+   than the amount, so the derived number dominated the real one.
+3. **BofA descriptions are prefix-heavy** (`CHECKCARD 0701 TRADER JOES #452 SAN JOSE CA`), so
+   right-truncation strips the merchant and keeps the boilerplate. That is a data-shape finding
+   independent of any variant, and it argues for display-time prefix stripping. Display only - the
+   stored description is never modified, matching ticket 04's normalization rule.
+
+**Balances are per-currency and never combined.** No FX anywhere, with a visible line saying so. An
+invented headline number combining SGD and USD would be exactly the unstated-value problem §4 rule
+five prohibits.
+
+**Incidental but load-bearing: the Instrument theme from ticket 02 rendered on hardware for the
+first time and holds up.** It had only ever compiled. Mono numerals align down the column, hairlines
+read correctly on the near-black ground, `credit` green is the only coloured money. The
+"compiles but never rendered" caveat is closed **for the dark scheme only** - light is still
+unrendered.
+
+**Honest gap:** folder connection, scan progress, the spend gate, quarantine rows and the three
+empty states were built but **never visually reviewed** - the phone re-locked between captures.
+They are provisional, not settled. The three distinct empty states matter most: "no folder" /
+"nothing new" / "folder looks empty, Drive may still be syncing", the last existing because of the
+probe's stale-listing finding and required never to read as an error.
