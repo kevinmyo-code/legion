@@ -10,7 +10,6 @@
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -63,29 +62,11 @@
             </intent-filter>
         </activity>
 
-        <!-- On-demand list of voice-tagged places, launched by the
-             show_saved_places tool. Placeholder UI, see README. -->
-        <activity
-            android:name=".ui.SavedPlacesActivity"
-            android:exported="false"
-            android:screenOrientation="unspecified"
-            android:theme="@style/Theme.Legion" />
-
-        <!-- Bank-statement PDF import, launched by the import_statement tool
-             (.claude/plans/wiggly-beaming-quasar.md). Placeholder UI. -->
-        <activity
-            android:name=".ui.LedgerImportActivity"
-            android:exported="false"
-            android:screenOrientation="unspecified"
-            android:theme="@style/Theme.Legion" />
-
-        <!-- Grocery receipt photo import, launched by the import_receipt tool
-             (.claude/plans/wiggly-beaming-quasar.md). Placeholder UI. -->
-        <activity
-            android:name=".ui.PantryImportActivity"
-            android:exported="false"
-            android:screenOrientation="unspecified"
-            android:theme="@style/Theme.Legion" />
+        <!-- SavedPlacesActivity, LedgerImportActivity, PantryImportActivity all
+             DELETED (ticket 07 resolution §5). Their content is absorbed into
+             MainActivity's single NavHost as fleet/places, ledger/import, and
+             pantry/import - only the hosting changed, so there is no longer a
+             second <activity> for any of them. -->
 
         <service
             android:name=".service.AriaForegroundService"
@@ -105,15 +86,11 @@
             </intent-filter>
         </service>
 
-        <receiver
-            android:name=".service.BootReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </receiver>
+        <!-- BootReceiver DELETED (ticket 07 resolution §1). It used to
+             startActivity(MainActivity) on ACTION_BOOT_COMPLETED - car-launcher
+             behaviour that outlived the phone pivot. Ignition is a user toggle
+             now (Settings, see com.kevin.legion.service.AssistantIgnition);
+             nothing starts this app, or AriaForegroundService, on its own. -->
 
         <!-- FileProvider for CameraCapture's camera-app handoff URI (pantry
              receipt photos). Authority = packageName + ".provider". Not
