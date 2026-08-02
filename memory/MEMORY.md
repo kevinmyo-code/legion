@@ -1,142 +1,80 @@
 # MEMORY.md
 
-Dashboard for LEGION. Read before responding. CLAUDE.md = locked rules. This file = what is
-happening now. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the library,
-not here. Keep this file under 80 lines.
+Dashboard for LEGION. Read before responding. **MEMORY.md wins for state, CLAUDE.md wins for
+rules.** Depth lives in the library, not here. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
-Predecessor: MIDNIGHT_AI (`C:\Users\Kwin\StudioProjects\MIDNIGHT_AI`), a frozen private archive.
-Never build there. Its memory files describe a dead head-unit car launcher.
+## Status as of 2026-08-02
 
-## Status as of 2026-08-01
-
-- **Builds clean.** `compileDebugKotlin -Pnokey` and `testDebugUnitTest` green (19 tests: 11 ledger,
-  8 pantry). fleet ported; ledger and pantry done. Per-aspect detail is in README.md, not here.
-- **`ui/` holds a theme and placeholders, nothing else.** The design language is decided and built
-  (Instrument on M3, `ui/theme/`); no screens exist yet.
-- Repo public: `github.com/kevinmyo-code/legion`. `dev` is the trunk, `main` two commits behind.
-- **Tooling set up 2026-08-01:** memory system (this file, CLAUDE.md, TEAM.md, `.claude/agents/`,
-  the banner-pruned library - CLAUDE.md §11) and `.claude/skills/` (31 files, 8 adapted).
+- **Builds clean.** `-Pnokey` compile + `testDebugUnitTest` green (19 tests). Detail: README.md.
+- **`ui/` = theme + placeholders.** No real screens. `MainActivity` still uses `MaterialTheme`.
+- Repo public: `github.com/kevinmyo-code/legion`. `dev` is the trunk; `main` is behind.
+- **The wayfinder map is COMPLETE (11/11).** Next pass is implementation, not decisions.
 
 ## Blocking
 
-- **The lost design doc.** Both READMEs and Midnight AI's memory cite LEGION's
-  `.claude/plans/wiggly-beaming-quasar.md` as the full ledger + pantry design. **It does not
-  exist** - `.claude/` was never committed and did not survive the machine port. Recoverable only
-  from the code and README. Do not send an agent to read that path.
-- **Drive OAuth is keyed to package + SHA-1 signing cert**, so a stranger's own build fails
-  authorization. Directly threatens clone-and-run. Unresolved, no approach chosen.
-- **Sync: the old "no compare-and-swap / must become append-only" entry was WRONG** and is
-  corrected here (ticket 10, read from source). `DriveConflict` + `DriveClient.upsert` do
-  version-checked optimistic concurrency with retry; `syncFile` is a read-merge-rewrite loop, not a
-  blind overwrite; and `SyncMerge.Mode.UNION` is append-only and **already used by 8 tables**.
-  **What actually remains:** after `MAX_CONFLICT_RETRIES` the loop `check(...)`s and **throws**,
-  and nothing reports it (no Firebase, `MidnightEvents` only logs). Ticket 10 puts
-  log-and-skip-the-pass in scope. **None of `sync/` has ever run in this app** - all `traced`,
-  none `tested`.
-- **Assistant identity is placeholder copy** (`ai/AssistantIdentity.kt`). The Alfred/JARVIS voice
-  has not been written. **Ticket 07 deferred onboarding specifically because of this** - wiring
-  `OnboardingFlow` would have decided the register by accident inside a structure ticket. Needs its
-  own effort.
-- **Crisis resource is US-only (988).** Carried over unfixed.
-- **Firebase is not wired up.** `MidnightEvents` logs via `Log.d`: no crash reporting, no remote
-  observability, so a swallowed exception is invisible in the field.
+- **Drive OAuth is keyed to package + SHA-1 signing cert.** A stranger's own build fails auth.
+  Threatens clone-and-run. No approach chosen.
+- **Assistant identity is placeholder** (`ai/AssistantIdentity.kt`). Ticket 07 deferred onboarding
+  because of it. Needs its own effort.
+- **Sync retry exhaustion throws.** After `MAX_CONFLICT_RETRIES`, `syncFile` calls `check(...)` and
+  nothing reports it. Ticket 10 puts log-and-skip in scope. (The old "Drive has no CAS / must become
+  append-only" blocker was WRONG - see `decisions.md` 2026-08-02.)
+- **Firebase not wired.** `MidnightEvents` logs via `Log.d`, so a swallowed exception is invisible.
+- **Crisis resource is US-only (988).** Unfixed.
+- **`.claude/plans/wiggly-beaming-quasar.md` does NOT exist**, despite both READMEs citing it. Never
+  survived the port. Do not send an agent to read that path.
 
 ## Untested / unverified
 
-- **No LEGION code has run on a device.** Compile + unit tests are the whole verification story.
-  The only thing exercised on hardware is a standalone SAF probe app, not this codebase.
-- **The Drive access model is settled** (ticket 11, 2026-08-02, Oppo A17K API 31). Still unrun:
-  reboot persistence of the grant, and the offline failure mode. USB never enumerated on Kevin's
-  machine, so the session ran over wireless ADB and both tests sever that transport. Sub-question 4
-  stays `traced`.
-- **The theme's DARK scheme is now rendered on hardware and holds up** (ticket 08 prototype,
-  A17K, 360dp): mono numerals align, hairlines read, `credit` is the only coloured money. **The
-  LIGHT scheme is still unrendered.**
-- `LedgerController`'s dedup path and `PantryController`'s DB-write path are untested (Robolectric
-  `ShadowContentResolver` mismatch, judged not worth chasing).
-- Every ported fleet path (OBD, sync, wake word, proactives) compiles but has not been exercised in
-  this app.
+- **No LEGION code has run on a device.** Only a standalone SAF probe and two throwaway UI
+  prototypes have. Compile + unit tests are the whole story for the real codebase.
+- **None of `sync/` has ever run here.** Ticket 10's rulings are all `traced`, none `tested`.
+- **Probe steps 7-9 unrun**: reboot grant persistence, offline failure mode. USB never enumerated;
+  wireless ADB severs on both.
+- **Theme: DARK rendered on hardware and holds up. LIGHT still unrendered.**
+- `LedgerController` dedup and `PantryController` DB-write paths untested (Robolectric mismatch).
+- Every ported fleet path (OBD, wake word, proactives) compiles, never exercised.
 
 ## In-flight
 
-**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 11 of 11 tickets resolved. MAP COMPLETE.** Destination is a
-build-ready spec for Drive-folder batch ingestion plus a basic UI across all three aspects. The map
-and every ticket are now TRACKED IN GIT (see the gitignore note below), so read them directly:
-`.scratch/ledger-drive-ingestion/map.md`.
+**`.scratch/ledger-drive-ingestion/` - MAP COMPLETE, 11/11.** The map plus its eleven ticket
+resolutions ARE the build spec. Tracked in git; every decision also in `library/decisions.md`
+(2026-08-01/02). Carry-forward actions:
 
-| State | Tickets |
-|---|---|
-| Resolved | **ALL 11.** 11's device probe steps 7-9 (reboot, offline) remain unrun |
-| Open | (none) |
-
-**THE MAP IS COMPLETE. Nothing is left to decide; implementation is the next pass.** Read the map
-plus the eleven ticket resolutions as the build spec. Every decision is also filed in
-`library/decisions.md` under 2026-08-01/02.
-
-**Two prototype branches, NEITHER merged and neither ever to be:** `proto/ledger-ui` (`476318e`) and
-`proto/fleet-pantry-ui` (`07abbdf`, branched off the first). Both carry a temporary `MainActivity`
-host. Validated decisions live in tickets 08 and 09; the branches are the primary sources.
-
-**Ticket 07 mandates deletions**: `BootReceiver` (auto-launched the app every boot, car-launcher
-leftover), `SavedPlacesActivity`, `LedgerImportActivity`, `PantryImportActivity`, and the
-`RECEIVE_BOOT_COMPLETED` permission. `MainActivity` switches `MaterialTheme` -> `LegionTheme`.
-
-**BEFORE ANY GATE UI SHIPS: pull live pricing for `gemini-3.5-flash-lite`.** Ticket 06 adopted NO
-price constant. The analyst's dollar figures are `reasoned` and explicitly unverified. Also open:
-nothing sets `thinkingConfig`, so implicit thinking-token billing is unknown.
-
-**Ticket 03 took THREE amendments in one session.** Log at the bottom of ticket 03; all recorded,
-none silent. From 05: `treeUri` nullable. From 04: four columns + replace flow resets overlapping
-files, which **closed silent financial data loss**. From 06: fifth state `NEEDS_LLM` exempt from the
-skip rule, else declining the spend gate would be permanent. Nothing was overturned, but the schema
-was not stable until its consumers had run. **Lesson: do not resolve a schema ticket before the
-tickets that consume it.**
-
-**The crux is TESTED and passed (2026-08-02).** A file uploaded after the grant appears in
-`listFiles()` with no re-pick, so the Drive access model holds. Caveat: it was invisible for at
-least 2m36s and appeared only after the Drive app was opened; the two variables were not isolated.
-**Design for "a scan may legitimately find nothing new."**
+- **Before any spend-gate UI: pull live `gemini-3.5-flash-lite` pricing.** Ticket 06 adopted NO
+  price constant; the analyst's figures are `reasoned`, unverified. Thinking-token billing unknown.
+- **Ticket 07 deletions**: `BootReceiver` + `RECEIVE_BOOT_COMPLETED`, and manifest entries for
+  `SavedPlaces` / `LedgerImport` / `PantryImport` activities. `MainActivity` -> `LegionTheme`.
+- **Ticket 09 mandates an extraction**: `SectionHeader`, `Hairline`, `ReadingRow`, `NotBuiltRow`
+  into `ui/common/`, before the three aspects diverge.
+- **Two prototype branches, NEITHER to be merged:** `proto/ledger-ui` (`476318e`),
+  `proto/fleet-pantry-ui` (`07abbdf`). Both carry a temporary `MainActivity` host.
+- **Design for "a scan may legitimately find nothing new."** The crux passed on device, but a new
+  file was invisible 2m36s+ and appeared only after the Drive app was opened.
 
 ## Notes for next session
 
-- **Render the five theme previews in Studio before building any screen on them.** The Instrument
-  theme compiles and has never been drawn. Semantic money and provenance roles live in
-  `LegionSemantics` via `LocalLegionSemantics`, NOT in `ColorScheme` - reach for them, do not add
-  colours to the scheme.
-- **`.scratch/` maps, tickets and research are now tracked in git**, reversing the blanket ignore
-  that destroyed the previous 15-ticket map. Filing decisions to `library/decisions.md` as they are
-  made is still required: git protects working state, the library is what gets read.
-- Five commits landed on `dev` on 2026-08-01: memory system, skills port, Drive-access decision,
-  theme, and this handoff.
-- **Two contested calls the port left open, flagged not decided:** whether `media/MusicController`
-  is still wanted alongside Spotify App Remote, and that `vehicle/BuildSheetController` entries are
-  now text-only (`photoPath` dropped) as a schema change, not just a doc update.
-- **ADB works now.** The Oppo A17K is an ordinary phone with working ADB, so `qa` (Owen) is a real
-  seat rather than a reasoning exercise. Every "silent failure" severity rating inherited from
-  Midnight AI was driven by ADB being blocked on the head unit; that constraint is gone.
-- The live map is `.scratch/ledger-drive-ingestion/` (11 tickets, tracked in git - see In-flight).
-  Both resolved tickets are filed to `library/decisions.md` under 2026-08-01. **The original
-  15-ticket `.scratch/multi-aspect-assistant/` map with 12 contested calls is GONE, not stale** -
-  it predates this repo and its numbering does not map onto the current tickets.
-- Resolved research carried forward from the lost map, per the librarian's prior digest and
-  **worth re-verifying before building on**: NOOA research, Drive research.
-- **Verify what the librarian writes.** On 2026-07-29 a FILE dispatch invented substantial detail
-  (a YAML file that did not exist, crashes never observed, wrong commit attributions) and had to be
-  corrected by hand. Same failure mode, in the tool meant to prevent it.
+- **Do not resolve a schema ticket before its consumers.** Ticket 03 took four amendments; nothing
+  overturned, but unstable until they ran. Log at the bottom of ticket 03.
+- **Re-read source before treating an inherited blocker as a constraint.** The append-only blocker
+  had been carried since the port and dissolved on contact with `sync/`.
+- **`.scratch/` is tracked in git**, but filing to `library/decisions.md` is still required: git
+  protects working state, the library is what gets read.
+- **Verify what the librarian writes.** A 2026-07-29 FILE dispatch invented substantial detail and
+  had to be corrected by hand.
+- **Two contested calls the port left open:** whether `media/MusicController` is still wanted
+  alongside Spotify App Remote, and `vehicle/BuildSheetController` entries now text-only.
+- **ADB works** (A17K, wireless). `qa` (Owen) is a real seat.
 
 ## Library
 
-Long-term memory is `memory/library/` (card catalog: `memory/library/INDEX.md`). Do not bulk-read
-shelves into context. Dispatch the librarian: RETRIEVE for a digest, FILE at session end.
-
-**Most shelves are FROZEN Midnight AI history.** Each carries a status banner; `INDEX.md` carries a
-status column. LIVE: `decisions.md` (2026-07-31 entries), `lessons.md`, `playbook-coding.md`
-(partly). Everything else is reference only. See CLAUDE.md §11.
+`memory/library/` (catalog: `INDEX.md`). Never bulk-read shelves; dispatch the librarian. **Most
+shelves are FROZEN Midnight AI history**, banner-marked. LIVE: `decisions.md`, `lessons.md`,
+`playbook-coding.md` (partly). CLAUDE.md §11.
 
 ## How to update this file
 
-- Keep it under 80 lines. One-liners only; narratives go to the library via the librarian (FILE).
-- Every session end: dispatch librarian FILE with session notes, then refresh Blocking, In-flight,
-  and Notes here.
-- A decision that changes a CLAUDE.md rule gets filed to `library/decisions.md` AND applied to
-  CLAUDE.md in the same commit.
+- Under 80 lines. One-liners; narratives go to the library via the librarian (FILE).
+- Session end: dispatch librarian FILE, then refresh Blocking / In-flight / Notes.
+- A decision changing a CLAUDE.md rule is filed to `library/decisions.md` AND applied to CLAUDE.md
+  in the same commit.
