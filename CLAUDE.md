@@ -81,8 +81,14 @@ None of these is re-openable without Kevin. Full record in `memory/library/decis
 
 **Do not assume the old wayfinder map applies.** The original
 `.scratch/multi-aspect-assistant/map.md` (15 tickets, 12 contested calls) did not survive a
-machine port - `.scratch/` is gitignored and was never committed. It is gone, not stale. A fresh
-map exists at the same path; its 5 contested items are already resolved and filed.
+machine port - `.scratch/` was blanket-gitignored and was never committed. It is gone, not stale.
+
+The live map is **`.scratch/ledger-drive-ingestion/map.md`** ("Ledger Drive-folder ingestion +
+basic UI", charted 2026-08-01): 11 tickets in `issues/`, plus `research/`. As of 2026-08-01,
+tickets 01 (SAF Drive-folder feasibility) and 02 (design language) are resolved; 03-11 are open.
+**All of it is tracked in git** - `.gitignore` now whitelists `.scratch/*/map.md`,
+`.scratch/*/issues/**`, and `.scratch/*/research/**` specifically so the earlier loss cannot
+repeat. Commit map and ticket changes like any other file.
 
 ---
 
