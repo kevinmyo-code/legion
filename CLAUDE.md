@@ -227,6 +227,8 @@ export PATH="$JAVA_HOME/bin:$PATH"
 - [ ] Does it need a backend? Then it is wrong. Rework it onto Drive `appDataFolder` or on-device.
 - [ ] Does it survive clone-and-run by a stranger with their own signing cert?
 - [ ] Safety: no sentience claims, no compulsion mechanic, no unfalsifiable memory about the user.
+- [ ] Built from a resolved ticket? Every verification step in that resolution accounted for as
+      done / deferred-with-a-follow-up / impossible-and-why. See §8 (L11).
 
 ---
 
@@ -256,6 +258,26 @@ dropped column, a file deleted because its name looked badge-related when core s
 it, and several files referenced but never copied over (nothing greps for an absence). **Run the
 real build.** Ledger's PdfBox/Robolectric finding is the same shape: it was caught by running the
 spike, not by reading the docs.
+
+### A ticket's own verification steps are gates, not notes (L11, 2026-08-02)
+
+A resolved ticket's verification instructions are binding on whoever builds it. Ticket 07 said, in
+writing, "render the five previews in `ui/theme/ThemePreview.kt` before building screens on the
+theme." That step was not performed, screens were built on the theme anyway, and the exact class of
+bug it existed to catch shipped into the first-run consent screen: `surface` and `errorContainer`
+held one colour value, M3's `contentColorFor` resolves by value testing `errorContainer` first, and
+every screen drew its body text in quarantine red. It was caught by installing the APK.
+
+**Nobody hid it.** The executing agent listed the step as unmet, in writing, with a valid reason
+(it could not render Compose previews). The orchestrator read that and proceeded. The failure was
+treating a surfaced gap as a note rather than a gate.
+
+**The rule.** Before reporting a ticket built, account for every verification step in its
+resolution as **done / deferred-with-a-named-follow-up / impossible-and-why**. Never silently
+carry an unmet one. When an executing agent reports a step it could not perform, that is a
+blocking item for the orchestrator to resolve or explicitly accept, not a footnote to relay
+onward. This is the L2/L3 relay discipline pointed at execution completeness rather than at
+verification tags.
 
 ### Improvement loop
 

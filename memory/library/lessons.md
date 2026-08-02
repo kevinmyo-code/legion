@@ -193,7 +193,7 @@ or a playbook shelf. An entry is only "closed" once its rule is written into tha
 
 **Regression check:** Review gate for tickets with explicit verification steps: every step in the resolution must be checked off in the same commit message or a follow-up entry, or explicitly deferred to another ticket.
 
-**Status:** OPEN (rule stated here; action required: graduate into CLAUDE.md §10 or an orchestrator checklist before the next session).
+**Status:** CLOSED 2026-08-02. The rule now lives in **CLAUDE.md §8, "A ticket's own verification steps are gates, not notes (L11)"**, alongside L10, plus a line in §7's feature-add checklist. An entry closes only when its rule sits in a surface something reads; both of those are read every session.
 
 
 ### L10 — orchestrator (Stark): grep-based reconciliation reported "done" before a real compile found more
