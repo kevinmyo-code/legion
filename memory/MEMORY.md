@@ -49,24 +49,26 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 
 ## In-flight
 
-**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 5 of 11 tickets resolved.** Destination is a
+**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 6 of 11 tickets resolved.** Destination is a
 build-ready spec for Drive-folder batch ingestion plus a basic UI across all three aspects. The map
 and every ticket are now TRACKED IN GIT (see the gitignore note below), so read them directly:
 `.scratch/ledger-drive-ingestion/map.md`.
 
 | State | Tickets |
 |---|---|
-| Resolved | 01 SAF feasibility, 02 design language, 03 ingested-file ledger, 05 batch mechanics, 11 SAF probe (steps 7-9 unrun) |
-| **Frontier (takeable now)** | 04 twin transactions, **06 spend gate**, 07 app shell + ignition, **08 ledger UI**, 09 fleet/pantry UI, 10 does ledger sync |
+| Resolved | 01 SAF, 02 design language, 03 ingested-file ledger, 04 twin transactions, 05 batch mechanics, 11 SAF probe (steps 7-9 unrun) |
+| **Frontier (takeable now)** | **06 spend gate**, 07 app shell + ignition, **08 ledger UI**, 09 fleet/pantry UI, 10 does ledger sync |
 | Blocked | (none) |
 
-**Nothing is blocked any more.** Suggested next: **06 (spend gate)**, since 05 built the pipeline
-slot it drops into - staging completes before any parse, so 06 gets an exact new-file count to gate
-on and only has to decide the estimate's content and whether approval blocks or informs.
+**Nothing is blocked.** Suggested next: **06 (spend gate)** - 05 built the exact slot it drops into,
+so it only has to decide the estimate's content and whether approval blocks or informs.
 
-**Ticket 05 amended ticket 03**: `ingested_files.treeUri` is nullable, null meaning a single-file
-pick, so hand-imports and folder scans share one pipeline. Recorded as an amendment in 03, not a
-silent edit.
+**Ticket 03 has taken TWO amendments, both recorded in 03 itself, not silent edits.** From 05:
+`treeUri` nullable (null = single-file pick), so hand-imports and folder scans share one pipeline.
+From 04: `accountId`, `minTxnDate`, `maxTxnDate`, `duplicatesSkipped` added, and the replace flow now
+resets overlapping files. **That second one closed silent financial data loss** - counting dedup lets
+an overlapping statement contribute zero rows, so deleting one file's rows could destroy
+transactions another file also attested to. Found by grilling, not by reading code.
 
 **The crux is TESTED and passed (2026-08-02).** A file uploaded after the grant appears in
 `listFiles()` with no re-pick, so the Drive access model holds. Caveat: it was invisible for at

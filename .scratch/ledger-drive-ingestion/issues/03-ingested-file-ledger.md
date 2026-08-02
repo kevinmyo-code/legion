@@ -119,6 +119,10 @@ New entity `ingested_files`:
 | `transactionCount` | INTEGER NOT NULL | rows committed, 0 unless `INGESTED` |
 | `firstSeenAt` | INTEGER NOT NULL | epoch millis |
 | `lastAttemptAt` | INTEGER NOT NULL | epoch millis |
+| `accountId` | TEXT, nullable | **amendment 2.** Only known after parsing |
+| `minTxnDate` | INTEGER, nullable | **amendment 2.** Earliest txn date this file produced |
+| `maxTxnDate` | INTEGER, nullable | **amendment 2.** Latest txn date this file produced |
+| `duplicatesSkipped` | INTEGER NOT NULL | **amendment 2.** Lines that matched existing rows |
 
 **Multi-folder is carried in the schema now**, hence `treeUri`. This is explicitly a two-country
 SGD/USD household ledger and Kevin's Drive already separates USA and Singapore statements into
@@ -197,3 +201,38 @@ have had no provenance.
 
 Nothing else in this ticket's resolution changes. The skip filter, the four states, the never-prune
 rule, the hash-before-parse ordering and the `sourceFileId` column are all unaffected.
+
+---
+
+## Amendment 2 (2026-08-02, from ticket 04, Kevin signed off in session)
+
+**Four columns added to `ingested_files`:** `accountId` (nullable, only known after parsing),
+`minTxnDate`, `maxTxnDate` (nullable, the date range of the transactions this file produced), and
+`duplicatesSkipped` (NOT NULL, count of incoming lines that matched existing rows).
+
+**Why - this closes a hole in THIS ticket's replace flow that ticket 04 exposed.** Ticket 04 keys
+dedup on counting per tuple rather than boolean existence, which means an overlapping statement can
+legitimately contribute **zero rows**. A transaction attested to by both a monthly and a
+year-to-date statement therefore exists under only the monthly's `sourceFileId`. This ticket's
+replace flow (`DELETE FROM ledger_transactions WHERE sourceFileId = :id`) would destroy those
+transactions outright, and because the YTD file is already `INGESTED` a rescan skips it, so the data
+never comes back. **Silent financial data loss, which is precisely what CLAUDE.md §4 exists to
+prevent.**
+
+**The replace flow is therefore amended** to reset overlapping files so the next scan restores what
+they should have contributed:
+
+```
+DELETE FROM ledger_transactions WHERE sourceFileId = :fileId
+UPDATE ingested_files SET state = 'NEW'
+  WHERE accountId = :accountId
+    AND driveFileId != :fileId
+    AND state = 'INGESTED'
+    AND minTxnDate <= :replacedMax AND maxTxnDate >= :replacedMin
+```
+
+`minTxnDate`/`maxTxnDate` are what bound that reset to genuinely overlapping statements instead of
+re-ingesting the whole account. `duplicatesSkipped` makes ticket 04's "errs toward dropping"
+behaviour auditable per file rather than invisible.
+
+Nothing else in this ticket's resolution changes.
