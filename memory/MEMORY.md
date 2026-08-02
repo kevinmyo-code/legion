@@ -43,7 +43,9 @@ Never build there. Its memory files describe a dead head-unit car launcher.
   reboot persistence of the grant, and the offline failure mode. USB never enumerated on Kevin's
   machine, so the session ran over wireless ADB and both tests sever that transport. Sub-question 4
   stays `traced`.
-- **The theme compiles but has never been rendered.** Five previews exist in `ui/theme/ThemePreview.kt`.
+- **The theme's DARK scheme is now rendered on hardware and holds up** (ticket 08 prototype,
+  A17K, 360dp): mono numerals align, hairlines read, `credit` is the only coloured money. **The
+  LIGHT scheme is still unrendered.**
 - `LedgerController`'s dedup path and `PantryController`'s DB-write path are untested (Robolectric
   `ShadowContentResolver` mismatch, judged not worth chasing).
 - Every ported fleet path (OBD, sync, wake word, proactives) compiles but has not been exercised in
@@ -51,20 +53,23 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 
 ## In-flight
 
-**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 8 of 11 tickets resolved.** Destination is a
+**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 9 of 11 tickets resolved.** Destination is a
 build-ready spec for Drive-folder batch ingestion plus a basic UI across all three aspects. The map
 and every ticket are now TRACKED IN GIT (see the gitignore note below), so read them directly:
 `.scratch/ledger-drive-ingestion/map.md`.
 
 | State | Tickets |
 |---|---|
-| Resolved | 01 SAF, 02 design, 03 file ledger, 04 twin txns, 05 batch, 06 spend gate, 07 app shell, 11 SAF probe (7-9 unrun) |
-| **Frontier (takeable now)** | **08 ledger UI**, 09 fleet/pantry UI, 10 does ledger sync |
+| Resolved | 01 SAF, 02 design, 03 file ledger, 04 twin txns, 05 batch, 06 gate, 07 shell, 08 ledger UI, 11 probe (7-9 unrun) |
+| **Frontier (takeable now)** | 09 fleet/pantry UI, 10 does ledger sync |
 | Blocked | (none) |
 
-**3 left. Ingestion pipeline AND app shell fully specified.** 08/09 are screens, 10 is sync.
-Suggested next: **08 (ledger UI)** - 05 defined the `ScanState` contract it renders, 06 defined the
-gate it hosts, 07 defined the tab it lives in.
+**2 left.** Suggested next: **09 (fleet/pantry UI)** - 08 settled the visual vocabulary it should
+reuse, so it is mostly application rather than invention.
+
+**Prototype branch `proto/ledger-ui` (`476318e`) is NOT merged and must never be.** It carries a
+temporary `MainActivity` host. The validated decision lives in ticket 08; the branch is the primary
+source.
 
 **Ticket 07 mandates deletions**: `BootReceiver` (auto-launched the app every boot, car-launcher
 leftover), `SavedPlacesActivity`, `LedgerImportActivity`, `PantryImportActivity`, and the

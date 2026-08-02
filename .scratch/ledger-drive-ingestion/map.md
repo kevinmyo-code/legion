@@ -121,6 +121,18 @@ BEFORE this effort ends. Do not let this directory be the only copy of anything.
   switches to `LegionTheme`. **Onboarding DEFERRED** - it needs the assistant's voice, which does
   not exist, and writing it inside a structure ticket would decide the register by accident.
 
+- [What does the ledger UI show?](issues/08-ledger-ui.md) - **variant B "Stream" wins**: no columns,
+  description gets full width and **never truncates**, amount beneath it, balance dropped from the
+  row. Costs ~3x the vertical space of the dense variant; accepted deliberately, because on a phone
+  the merchant string is what you scan for and truncating it is the real failure. Prototype
+  branch `proto/ledger-ui` (`476318e`), rendered on the A17K at 360dp, **not merged**. The render
+  exposed three things reading code would not: the statement variant **wraps** `-1200.00` (three
+  numeric columns do not fit at 360dp), its balance column **outweighs** the amount, and BofA
+  descriptions are **prefix-heavy** so right-truncation keeps boilerplate and drops the merchant.
+  Balances are per-currency and **never combined, no FX**. **The Instrument theme rendered on
+  hardware for the first time** and holds up - dark scheme only. Folder/progress/gate/quarantine/
+  empty takes exist but were **not visually reviewed**; provisional.
+
 ## Not yet specified
 
 - **Quarantine review UX.** What the user does with a statement that failed reconciliation:
