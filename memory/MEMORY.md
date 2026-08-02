@@ -26,8 +26,8 @@ rules.** Depth lives in the library, not here. Under 80 lines. MIDNIGHT_AI: see 
 
 ## Untested / unverified
 
-- **No LEGION code has run on a device.** Only a standalone SAF probe and two throwaway UI
-  prototypes have. Compile + unit tests are the whole story for the real codebase.
+- **Almost nothing has run on a device.** Verified on the A17K so far: the v3->v4 Room migration
+  (`tested` 2026-08-02) and the Instrument dark theme. Everything else is compile + unit tests.
 - **None of `sync/` has ever run here.** Ticket 10's rulings are all `traced`, none `tested`.
 - **Probe steps 7-9 unrun**: reboot grant persistence, offline failure mode. USB never enumerated;
   wireless ADB severs on both.
