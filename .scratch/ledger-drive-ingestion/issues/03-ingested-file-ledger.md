@@ -63,7 +63,7 @@ artefact, disambiguated by the sixth.
 
 ### 2. States
 
-`INGESTED` | `QUARANTINED` | `UNREADABLE` | `DUPLICATE_CONTENT` | `NEEDS_LLM` (amendment 3)
+`NEW` (amendment 5) | `INGESTED` | `QUARANTINED` | `UNREADABLE` | `DUPLICATE_CONTENT` | `NEEDS_LLM` (amendment 3)
 
 ```
 NEW --parse+gate--> INGESTED           (rows committed, stamped with sourceFileId)
@@ -71,7 +71,7 @@ NEW --parse+gate--> INGESTED           (rows committed, stamped with sourceFileI
                 \-> UNREADABLE         (not a PDF, virtual doc, IO failure)
                 \-> DUPLICATE_CONTENT  (sha256 already known, stopped before parsing)
 
-scan: any existing record -> skip, zero cost  EXCEPT state NEEDS_LLM (amendment 3)
+scan: any existing record -> skip, zero cost  EXCEPT states NEEDS_LLM and NEW
 QUARANTINED --explicit user retry--> NEW
 size or mtime changed       --------> NEW   (the file was replaced in place)
 ```
@@ -273,8 +273,9 @@ Nothing else in this ticket's resolution changes.
 | 2 | ticket 04 | +`accountId`, `minTxnDate`, `maxTxnDate`, `duplicatesSkipped`. Replace flow resets overlapping files. **Closed silent financial data loss** |
 | 3 | ticket 06 | +`NEEDS_LLM` state, exempt from skip rule. +`llmAttempted`, `llmPromptTokens`, `llmResponseTokens` |
 | 4 | ticket 10 | **No `syncId` column.** Syncs via `naturalPk` on `driveFileId`. Deferral closed by removal; schema now FINAL |
+| 5 | implementation | `NEW` is a real sixth state, not the absence of a record. Amendment 2's replace flow UPDATEs to it rather than DELETEing |
 
-Four amendments in one session. **Signal that this ticket resolved early.** Nothing it decided was
+Five amendments. **Signal that this ticket resolved early.** Nothing it decided was
 overturned, but the schema was not stable until 04, 05 and 06 had run. If a future effort resolves a
 schema ticket before the tickets that consume it, expect the same.
 
@@ -301,3 +302,30 @@ both sides of the reference are present on every device.
 
 **The schema in this ticket is now FINAL.** All four amendments are applied; nothing further is
 deferred.
+
+---
+
+## Amendment 5 (2026-08-02, found during implementation of Part 1)
+
+**`NEW` is a real, stored sixth state. Amendment 2's replace flow UPDATEs to it; it does NOT delete
+the row.**
+
+**The inconsistency this fixes was in this ticket.** The state-machine diagram used `NEW` as a state
+name (`QUARANTINED --retry--> NEW`, `size or mtime changed --> NEW`) while the state list and
+schema table defined only four, later five, values with no `NEW` in them. Amendment 2's pseudocode
+then said `UPDATE ingested_files SET state = 'NEW'`, which could not compile against the enum as
+specified.
+
+The implementing agent flagged it correctly and resolved it as "NEW is the absence of a record",
+implementing `resetOverlapping` as a `DELETE`. **That resolution was overridden.** Deleting the row
+discards `duplicatesSkipped` and the measured `llmPromptTokens`/`llmResponseTokens` - audit history
+that tickets 04 and 06 added deliberately, ticket 06's specifically so the cost estimate could stop
+being a guess derived from a guess - and it contradicts this ticket's own **"records are NEVER
+pruned"** rule.
+
+**Consequences:**
+- `IngestState` has six values. `NEW` is first.
+- The skip rule reads: any existing record is skipped at zero cost **except states `NEEDS_LLM` and
+  `NEW`**, both of which mean "re-examine me".
+- No schema change. The state is stored as TEXT, so `4.json` is unaffected and the v3 -> v4
+  migration is untouched.

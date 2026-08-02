@@ -20,6 +20,11 @@ import androidx.room.RoomDatabase
  *
  * v3: `pantry_receipts` + `pantry_line_items` (the pantry aspect's grocery-
  * receipt ingestion, same plan file).
+ *
+ * v4: `ingested_files` (the ledger Drive-ingestion scan's work-avoidance
+ * record, `.scratch/ledger-drive-ingestion/issues/03-ingested-file-ledger.md`)
+ * plus a nullable `LedgerTransaction.sourceFileId`. No `@ForeignKey` between
+ * them - see [LedgerTransaction.sourceFileId]'s doc comment.
  */
 @Database(
     entities = [
@@ -33,8 +38,9 @@ import androidx.room.RoomDatabase
         EpisodicTurn::class, CompanionMemory::class,
         LedgerTransaction::class,
         PantryReceipt::class, PantryLineItem::class,
+        IngestedFile::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -61,6 +67,7 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun ledgerTransactionDao(): LedgerTransactionDao
     abstract fun pantryReceiptDao(): PantryReceiptDao
     abstract fun pantryLineItemDao(): PantryLineItemDao
+    abstract fun ingestedFileDao(): IngestedFileDao
 
     companion object {
         @Volatile
@@ -73,7 +80,7 @@ abstract class CarDatabase : RoomDatabase() {
                     CarDatabase::class.java,
                     "legion_database",
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                     .build()
                 INSTANCE = instance

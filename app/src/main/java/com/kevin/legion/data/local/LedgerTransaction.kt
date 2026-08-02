@@ -51,4 +51,14 @@ data class LedgerTransaction(
     val ingestMethod: IngestMethod,
     // Portable cross-device identity for sync (S1) - see MemoryEntry.syncId.
     val syncId: String = java.util.UUID.randomUUID().toString(),
+    /**
+     * Which [IngestedFile] produced this row, when it came from the folder-scan
+     * or single-pick pipeline (ticket 03). Nullable and deliberately has NO
+     * `@ForeignKey`: `onDelete = CASCADE` would let deleting a file record
+     * silently delete committed financial rows. Any rollback of a file's rows
+     * must be an explicit, visible `DELETE ... WHERE sourceFileId = :id` in
+     * code, never an implicit cascade. Also null for anything imported before
+     * this column existed, or through a path that predates the scan pipeline.
+     */
+    val sourceFileId: String? = null,
 )
