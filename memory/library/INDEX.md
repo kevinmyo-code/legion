@@ -16,9 +16,9 @@ the top. Read the banner before acting on a shelf.
 
 | File | Status | What it holds | Updated |
 |---|---|---|---|
-| decisions.md | **LIVE** (frozen tail) | The 2026-07-31 pivot entries govern LEGION: multi-aspect pivot carry-over inventory ruled on (5 calls), the ledger port, the pantry port. Everything before that is Midnight AI strategy history (pricing, mascot, positioning, Mapbox, garage, car profiles, Fleet Hub, nav, GPS beacon, maintenance model, UI coherence) | 2026-07-31 |
-| lessons.md | **LIVE** (frozen tail) | Improvement loop: agent and orchestrator failure modes plus the rule that prevents recurrence. L1-L9 are Midnight AI but the rules are platform-independent. **L10 (2026-07-31) is the live one: a grep-clean result is not a done result, run the real build** | 2026-07-31 |
-| playbook-coding.md | **PARTLY LIVE** | Codebase conventions and gotchas. Its banner carries a section-by-section table. LIVE: sub-agents, Live session, Drive v3 concurrency, tombstones, testing/singletons/composables, credential backup, maintenance model. FROZEN: all UI/city-pop/settings-hub, Mapbox, image generation, flavor splits | 2026-08-01 |
+| decisions.md | **LIVE** (frozen tail) | The 2026-07-31 pivot entries govern LEGION: multi-aspect pivot carry-over inventory ruled on (5 calls), the ledger port, the pantry port. Everything before that is Midnight AI strategy history (pricing, mascot, positioning, Mapbox, garage, car profiles, Fleet Hub, nav, GPS beacon, maintenance model, UI coherence) | 2026-08-02 |
+| lessons.md | **LIVE** (frozen tail) | Improvement loop: agent and orchestrator failure modes plus the rule that prevents recurrence. L1-L9 are Midnight AI but the rules are platform-independent. **L10 (2026-07-31) is the live one: a grep-clean result is not a done result, run the real build. L11 (2026-08-02): mandated verification steps must not be silently skipped** | 2026-08-02 |
+| playbook-coding.md | **PARTLY LIVE** | Codebase conventions and gotchas. Its banner carries a section-by-section table. LIVE: sub-agents, Live session, Drive v3 concurrency, tombstones, testing/singletons/composables, credential backup, maintenance model, Material 3 theme gotcha. FROZEN: all UI/city-pop/settings-hub, Mapbox, image generation, flavor splits | 2026-08-02 |
 | blocking.md | FROZEN | B-series blocker narratives for the head-unit app (B1-B37). Root causes may still be instructive; the blockers themselves are not LEGION's | 2026-07-29 |
 | sprints.md | FROZEN | Midnight AI Sprint 0-6 status. LEGION has no sprint model yet | 2026-07-14 |
 | hardware.md | FROZEN | Device validation ledger for the Cherokee head unit + ELM327 + Outlander. The head unit no longer constrains design; ADB is no longer blocked | 2026-07-28 |
@@ -35,6 +35,7 @@ the top. Read the banner before acting on a shelf.
 | session-2026-07-14-onboarding-manager.md | FROZEN | Session notes: OnboardingManager tri-modal refactor, field test, cassette redesign | 2026-07-14 |
 | session-2026-07-28-gemini-audit-followups.md | FROZEN | Session notes: audit of the Android Studio Gemini pane's 3 commits, 9 fixes, lessons L4/L5 | 2026-07-28 |
 | session-2026-07-29-ui-and-maintenance-builds.md | FROZEN | Session notes: nine commits, maintenance feature, UI coherence phases 1-5, lessons L7-L9 | 2026-07-29 |
+| session-2026-08-02-shell-and-pipeline.md | **LIVE** | Session notes: Part 3/4 commits, ledger ingestion pipeline and app shell. Hardware verification (`tested`, `on-device`), three defects found and fixed, lesson L11 (verification step skip), residual known issues, adb operational fact | 2026-08-02 |
 
 ## Owed
 

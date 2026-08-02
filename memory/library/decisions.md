@@ -1755,3 +1755,9 @@ ticket 01 redid it from source against a disassembled Drive APK, and ticket 11 t
 crux on hardware. **The NOAA item is untouched and still unverified.** It is unrelated to the ledger
 effort; `weather/WeatherController` uses Open-Meteo (keyless) per CLAUDE.md §3, so nothing currently
 depends on it.
+
+## 2026-08-02 Ticket 07 theme defect: errorContainer collision
+
+**Context:** Ticket 07 (shell and key-entry UI) rendered all body text in quarantine red, including the first-run consent copy, due to a Material 3 theme collision. The dark scheme assigned `InstrumentSurface` to both `surface` and `errorContainer` roles. `contentColorFor()` resolves by value and tests `errorContainer` before `surface`, so the collision winner was red.
+
+**Decision (Kevin):** `errorContainer` set to `InstrumentSurfaceSunken`. This breaks the immediate collision and routes `contentColorFor` to the intended `onSurface` ink. **Tag: `on-device`** - the cause is `traced` to source, and the fix was rebuilt, installed and screenshotted on CPH2471, so the red is confirmed gone rather than merely reasoned away. Known residual: the new value collides with `secondaryContainer`/`surfaceVariant`/`surfaceContainerLow`, so the general problem recurs at ticket 08 (quarantine UI must set `contentColor` explicitly).

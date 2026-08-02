@@ -179,6 +179,23 @@ or a playbook shelf. An entry is only "closed" once its rule is written into tha
 
 **Status (overall L7/L8/L9):** all three are about briefing quality and verification at the orchestrator boundary. Graduate their rules into CLAUDE.md §10 (brief-checking checklist) or a dedicated "how to write a brief" playbook section if this class repeats.
 
+### L11 — orchestrator (Stark): mandated verification step skipped
+
+**What happened (session 2026-08-02):** Ticket 07's OWN resolution carried an explicit ordering instruction under "specified, not asked": "Render the five previews in `ui/theme/ThemePreview.kt` before building screens on the theme. It compiles and has never been drawn." The step was not performed, and screens were built on the theme anyway. The exact class of bug it existed to catch then shipped into a first-run consent screen (the M3 `contentColorFor` collision - see `playbook-coding.md`, and `decisions.md` 2026-08-02).
+
+**Nobody concealed it.** The coding agent's own report listed the preview render as unmet, in writing, with a reason (it could not render Compose previews from its environment). The orchestrator read that and proceeded to review and device-install anyway. The failure is not a bad report; it is an unmet gate that was surfaced correctly and then not acted on.
+
+**Why this fails differently than L2/L3:** those were relay-boundary failures (reporting a reasoned claim as verified, briefing without verification tags). L11 is about acting on a known gap. The information was present and correct; what was missing was treating a ticket-mandated step as blocking rather than as a note.
+
+**Root class:** Orchestrator completeness check. A ticket is only done when all its listed verification steps have been performed. "Rendered on device" != "passed all verification steps."
+
+**Rule (consider graduating into CLAUDE.md §10):** When a ticket resolution lists verification steps (render the previews, run the test, flash the device, check the log), mark each one done/deferred/impossible EXPLICITLY. A step that was supposed to happen but was silently skipped is not an omission, it is a gate failure. If a step is deferred, say so with a follow-up ticket. If it is impossible, explain why and accept the risk. Never ship with a gate list that includes unchecked items.
+
+**Regression check:** Review gate for tickets with explicit verification steps: every step in the resolution must be checked off in the same commit message or a follow-up entry, or explicitly deferred to another ticket.
+
+**Status:** OPEN (rule stated here; action required: graduate into CLAUDE.md §10 or an orchestrator checklist before the next session).
+
+
 ### L10 — orchestrator (Stark): grep-based reconciliation reported "done" before a real compile found more
 
 **Context:** the LEGION repo port (`memory/MEMORY.md` 2026-07-31) needed a reconciliation pass after
