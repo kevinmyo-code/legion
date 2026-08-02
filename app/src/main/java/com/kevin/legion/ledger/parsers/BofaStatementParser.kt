@@ -3,6 +3,7 @@ package com.kevin.legion.ledger.parsers
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
+import com.kevin.legion.ledger.formatCents
 import java.io.InputStream
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -62,7 +63,10 @@ object BofaStatementParser {
             val actualTotal = sectionTxns.sumOf { it.amountCents }
             if (actualTotal != statedTotal) {
                 throw BalanceContinuityException(
-                    "${section.totalMarker}: statement says $statedTotal, transactions sum to $actualTotal"
+                    "${section.totalMarker}: statement says $statedTotal, transactions sum to $actualTotal",
+                    userMessage = "The \"${section.totalMarker}\" section doesn't add up. The " +
+                        "statement says ${formatCents(statedTotal)}, but its own lines sum to " +
+                        "${formatCents(actualTotal)}. Nothing was imported.",
                 )
             }
             transactions.addAll(sectionTxns)
@@ -71,7 +75,11 @@ object BofaStatementParser {
 
         if (beginningBalance + netTotal != endingBalance) {
             throw BalanceContinuityException(
-                "beginning balance $beginningBalance + net movement $netTotal != ending balance $endingBalance"
+                "beginning balance $beginningBalance + net movement $netTotal != ending balance $endingBalance",
+                userMessage = "This statement's balances don't tie out. It opens at " +
+                    "${formatCents(beginningBalance)} and moves ${formatCents(netTotal)}, which " +
+                    "lands at ${formatCents(beginningBalance + netTotal)}, not the " +
+                    "${formatCents(endingBalance)} it states. Nothing was imported.",
             )
         }
 

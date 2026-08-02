@@ -36,6 +36,18 @@ interface LedgerTransactionDao {
     suspend fun allAccountIds(): List<String>
 
     /**
+     * [accountId]'s currency, read off its most recent transaction. An
+     * account's currency doesn't vary row to row in practice (one account,
+     * one bank, one currency), so there's no dedicated per-account table to
+     * query instead - this is ticket 08's balances surface (resolution §5)
+     * reading the one place currency already lives. Null only if [accountId]
+     * has no rows at all, which shouldn't happen for an id that came from
+     * [allAccountIds].
+     */
+    @Query("SELECT currency FROM ledger_transactions WHERE accountId = :accountId ORDER BY txnDate DESC LIMIT 1")
+    suspend fun currencyForAccount(accountId: String): LedgerCurrency?
+
+    /**
      * The candidate set ticket 04's dedup rewrite compares an incoming
      * statement against: every existing row for [accountId] whose date falls
      * within the incoming statement's own [minTxnDate]..[maxTxnDate] range,
