@@ -1655,3 +1655,45 @@ empty states were built but **never visually reviewed** - the phone re-locked be
 They are provisional, not settled. The three distinct empty states matter most: "no folder" /
 "nothing new" / "folder looks empty, Drive may still be syncing", the last existing because of the
 probe's stale-listing finding and required never to read as an error.
+
+---
+
+## 2026-08-02 - Fleet and pantry screens: segregate guesses from the document
+
+Wayfinder ticket `.scratch/ledger-drive-ingestion/issues/09-fleet-and-pantry-ui.md`. Prototype
+branch `proto/fleet-pantry-ui` (`07abbdf`), **not merged**, rendered on the A17K at 360dp.
+
+**The load-bearing decision is pantry macros, and it is a §4 rule five guardrail, not styling.**
+Two treatments were built. The dense one puts macros under the product name with an `est.` prefix in
+`semantics.estimated` amber. The chosen one physically separates them: `ON THE RECEIPT` and
+`ESTIMATED, NOT ON THE RECEIPT` as two blocks, with a sentence between them saying a receipt never
+prints nutrition and these were not checked against anything.
+
+**Why segregation beat the compact version:** inline, the estimate shares a row with a real price,
+so at a glance the two read as equally solid. Segregation makes that mistake **structurally
+impossible** rather than merely discouraged. It also satisfies the part of rule five that colour
+alone is never sufficient - the sentence carries the meaning and the amber only reinforces it.
+Accepted cost: roughly double the vertical space, repeated item names, and two places to look for
+one item.
+
+**Fleet is honest about hardware it has never talked to.** The LIVE block carries an explicit
+connection state and per-row last-seen timestamps ("No OBD adapter connected. Values below are the
+last seen reading", "3 days ago"), because nothing in the OBD stack has run since the port. A screen
+that implied a live reading it does not have would be the same class of dishonesty as an unlabelled
+estimate.
+
+**Data that exists with no UI gets an explicit ghosted NOT BUILT row** naming what exists and why it
+is not shown ("Service history - 12 records in the database, no screen"). Not dead space, not
+hidden, not faked. Same posture as the rest of the project.
+
+**Four shared components identified for `ui/common/` before the three aspects diverge:**
+`SectionHeader`, `Hairline`, `ReadingRow`, `NotBuiltRow`. Validated across both aspects and matching
+what ticket 08's ledger list already needed.
+
+**Render defect worth remembering as a pattern:** the fault *description* was coloured
+`semantics.quarantined` and rendered at reading size, so it visually outshouted its own code
+`P0442`. A description is not an alarm state. Semantic colours are for states, not for the text that
+happens to sit next to one.
+
+Incidental: the prototype host now holds `FLAG_KEEP_SCREEN_ON` and shows over the lock screen, which
+fixed the silent blank-capture problem that lost half of ticket 08's screenshots.
