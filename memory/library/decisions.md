@@ -1517,3 +1517,52 @@ one session. Worth generalising: when a dedup rule changes what gets written, ev
 assumed one-row-one-owner has to be re-examined.
 
 Installed base is zero (never run on a device, DB at v3, nothing released), so no backfill.
+
+---
+
+## 2026-08-02 - LLM spend gate: split the dispatcher so the count is exact and free
+
+Wayfinder ticket `.scratch/ledger-drive-ingestion/issues/06-llm-spend-gate.md`, four calls with
+Kevin plus one `analyst` dispatch. Full spec in the ticket. Reasoning worth keeping:
+
+**The gate's placement was the whole decision.** Placed after staging (where ticket 05 had put it),
+only the new-file count is known, so the gate must quote a worst case - "up to 60 files may need AI
+reading" - when the truth is usually zero. Inflated warnings train click-through, which defeats the
+gate. Placed after deterministic parsing, the count is **exact and cost nothing**, because
+deterministic parsers never call Gemini. `StatementDispatcher` splits into `dispatchDeterministic`
+and `runLlm`. Everything else in the ticket follows from that.
+
+**A recognize-only pass was rejected on evidence, not taste.** Both parsers need full PDF text or
+word extraction before they can judge a layout, and that extraction is the dominant cost.
+`DbsStatementParser` only discovers an unrecognised layout after iterating pages. So a recognition
+API would add a second code path that can drift from the real parser, to save almost nothing.
+
+**"Ask every time, never remember" became defensible only because of the split.** Recognised
+BofA/DBS statements never reach the gate, so a monthly rescan prompts zero times. Prompt frequency
+tracks actual spend rather than activity. Per-folder memory was rejected because one click
+permanently disarms the gate on the folder that will hold every future statement, and the user will
+not remember doing it.
+
+**The analyst refused to state a price, and that was the right call to respect.** No pricing data in
+the repo, no live access. Its order-of-magnitude figure came from training-era pricing for an older
+Flash-Lite generation and is not confirmed current nor confirmed to be this model's price. **No
+constant was adopted.** What it did establish `traced`: model is `gemini-3.5-flash-lite`,
+non-streaming `:generateContent`, ledger sends extracted *text* not PDF bytes, and the fixed prompt
+scaffold is 884 chars / ~221 tokens. Token estimates per file are `reasoned` only.
+
+Two things the analyst caught that were not asked for. The probe's 164-267 KB file sizes are **disk
+bytes** including PDF structure and embedded fonts, so they are unusable for token math and would
+overstate input by roughly an order of magnitude (they remain correct for ticket 05's staging
+figure, which is disk). And **N, the fallback file count, dominates the batch total**, not token
+estimation - which is exactly the input the dispatcher split makes exact. The weakest input became
+the most certain one.
+
+**`SubAgent` discards `usageMetadata`.** Gemini returns it on every call. Parsing it (three
+integers) turns the cost estimate from a reasoned number derived from a reasoned number into one
+calibrated by measured tokens after a single real batch. It also answers sub-question 6 - money
+spent on a call that still quarantined becomes visible instead of silent. Shared with pantry and the
+vehicle agents, so cost visibility improves everywhere; deliberate scope widening.
+
+**Generalisable trap: a "skip anything already recorded" rule collides with any gate that lets the
+user say no.** Declining had to become a fifth state exempt from the skip rule, or declining once
+would have meant declining forever. Third amendment ticket 03 took in one session.
