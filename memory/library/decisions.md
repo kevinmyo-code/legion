@@ -1361,3 +1361,59 @@ retargeted off `Theme.Material.Light.NoActionBar`, which was flashing white on e
 against a near-black app. `compileDebugKotlin` green. **No preview has been rendered and nothing has
 run on a device.** Left open deliberately: dark-vs-light default (currently forced dark, ignoring
 the system, with a working light scheme so daylight use is not broken), icon set, and motion.
+
+---
+
+## 2026-08-02 - The ingested-file ledger: work avoidance, not a correctness barrier
+
+Wayfinder ticket `.scratch/ledger-drive-ingestion/issues/03-ingested-file-ledger.md`, seven calls
+with Kevin. Settled the record that stops a folder rescan re-processing statements it has already
+seen. Full schema and state machine live in the ticket; this entry records the reasoning that is
+expensive to re-derive.
+
+**The ruling that determines everything else: the file record's job is WORK AVOIDANCE.**
+Correctness against double-counting stays at the transaction layer, which ticket 04 is fixing
+anyway. A file key that is wrong in either direction costs wasted work or a manual re-import; it
+can never produce a wrong balance. That is what licenses a metadata-only skip filter instead of
+downloading and hashing sixty PDFs on every scan. Had the record been made a correctness barrier,
+identity would have had to be a content hash, and two independent correctness mechanisms would sit
+in the same path with neither clearly winning.
+
+**Identity is `driveFileId` + `sizeBytes` + `lastModified`, with the `acc=N;` prefix stripped.**
+The device probe (same day, ticket 11) established the three facts this rests on. There is no
+hash-like column - confirmed against a null projection, not inferred. `acc=N` is a positional
+account index rather than an identifier, so storing it would make the key unstable for a reason
+unrelated to the file. And `last_modified` is a genuine per-file upload timestamp: five files
+sharing one value looked like a useless folder-wide stamp until a sixth, uploaded later, came back
+with its own. Without that sixth file the change-signal design would have been built on a
+misreading.
+
+**`contentSha256` is recorded but is not the skip key**, and it stops a duplicate **before** the
+parser or any Gemini call runs. It costs nothing extra because the bytes are already in memory. The
+saved LLM call therefore never enters ticket 06's spend estimate, rather than being estimated and
+then wasted.
+
+**Two decisions driven by a probe finding rather than by taste.** The provider returns stale-empty
+listings with *no signal at all* - `extras` was `Bundle[EMPTY_PARCEL]` on every query and the
+`loading` key the SAF contract suggests looking for never appeared, yet the picker served "No items"
+for a folder holding five files. So (1) records are **never pruned**: absence from a scan is not
+evidence of deletion, and pruning would convert a display concern into a data-integrity risk, since
+the next scan would re-ingest and lean entirely on transaction dedup. And (2) a scan that finds
+nothing new is a normal outcome, never an error state.
+
+**Quarantine is escapable only by explicit user action.** Permanent quarantine is wrong because
+parsers improve and the LLM is nondeterministic; auto-retry is worse because it silently re-pays for
+a Gemini call on every scan of a file that will probably fail identically - the exact behaviour
+ticket 06 exists to prevent.
+
+**`ledger_transactions` gains a nullable `sourceFileId`, with no `@ForeignKey`.** Nullable because
+the per-file `ACTION_OPEN_DOCUMENT` fallback that `minSdk = 24` makes mandatory has no folder-scan
+record behind it. No FK because `onDelete = CASCADE` would let deleting a file record silently
+delete committed financial rows. This column is the only mechanism that makes replaced or corrected
+upstream statements solvable at all.
+
+**Known tension, recorded rather than hidden.** Ticket 10 states sync must be settled before this
+schema is final. It was not. `ingested_files` carries no `syncId` and is final in every respect
+except sync. Deferring was judged cheaper than pre-empting 10's ruling, because the additive
+migration discipline makes adding the column a one-line `ALTER TABLE` later. Ticket 10 is therefore
+still free to rule either way.

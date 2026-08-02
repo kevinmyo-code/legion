@@ -1,8 +1,8 @@
 # Does ledger data sync across devices, and does the file ledger sync with it?
 
 Type: grilling
-Status: open
-Blocked by: 03
+Status: open - UNBLOCKED 2026-08-02, takeable now
+Blocked by: 03 (resolved)
 
 ## Question
 
@@ -27,3 +27,35 @@ ingested-file ledger's schema is final, because it changes the identity requirem
 
 Reaching for the existing `SyncEngine`/`SyncMerge` code is required, not optional; do not decide
 this from the doc comments alone.
+
+## What 03 handed this ticket, and what it deliberately left (2026-08-02)
+
+**03 resolved without ruling on sync, which inverts this ticket's stated premise.** The premise
+above says sync "must be settled before the ingested-file ledger's schema is final". It was not.
+`ingested_files` is specified and final **in every respect except sync**: it carries no `syncId`.
+That was a deliberate deferral, not an oversight - pre-empting this ticket's ruling was judged worse
+than adding one column later, and the additive-migration discipline makes that a one-line
+`ALTER TABLE` on a v4 -> v5. **So this ticket is genuinely free to rule either way**; it is not
+being handed a fait accompli.
+
+Facts from 03 that change the shape of sub-question 2:
+
+- **Device B re-processing everything is now much cheaper than the premise assumed.** The pipeline
+  hashes bytes and stops before parsing when the content is already known
+  (`DUPLICATE_CONTENT`). If transactions sync but the file ledger does not, device B still
+  downloads and hashes every file, but it does **not** pay for a parse or a Gemini call on any file
+  whose content device A already committed. The cost of not syncing the file ledger is therefore
+  bandwidth and time, not LLM spend.
+- **That saving depends entirely on transactions syncing.** The hash check matches against
+  `INGESTED` records in `ingested_files`, which is device-local. If neither table syncs, device B
+  pays full price for everything. The two decisions are coupled in one direction only.
+- **`ledger_transactions` now has a nullable `sourceFileId`** pointing at a device-local
+  `driveFileId`. If transactions sync and the file ledger does not, that column arrives on device B
+  as a dangling reference. Decide whether it syncs, is nulled on transfer, or is tolerated as
+  dangling.
+- **`driveFileId` is account-scoped, not device-scoped.** The `acc=N;` positional prefix is stripped
+  (03), so the stored id is the Drive file id proper, which is the same value on both devices for
+  the same file. It is therefore a viable cross-device key, which the premise did not assume.
+
+Sub-questions 1, 3 and 4 are untouched by 03. The append-only blocker in `memory/MEMORY.md` is
+still open and still unsolved.

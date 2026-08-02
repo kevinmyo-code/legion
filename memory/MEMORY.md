@@ -35,11 +35,12 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 
 ## Untested / unverified
 
-- **Nothing has run on a device.** Compile + unit tests are the whole verification story.
-- **The Drive access model rests on one unproven behavior.** SAF was chosen for the statements
-  folder, but whether a picked tree's `listFiles()` returns files added AFTER the grant is `traced`
-  through four layers and never run on hardware. Ticket 11 is a 15-minute probe that settles it. If
-  it comes back no, the access decision is void.
+- **No LEGION code has run on a device.** Compile + unit tests are the whole verification story.
+  The only thing exercised on hardware is a standalone SAF probe app, not this codebase.
+- **The Drive access model is settled** (ticket 11, 2026-08-02, Oppo A17K API 31). Still unrun:
+  reboot persistence of the grant, and the offline failure mode. USB never enumerated on Kevin's
+  machine, so the session ran over wireless ADB and both tests sever that transport. Sub-question 4
+  stays `traced`.
 - **The theme compiles but has never been rendered.** Five previews exist in `ui/theme/ThemePreview.kt`.
 - `LedgerController`'s dedup path and `PantryController`'s DB-write path are untested (Robolectric
   `ShadowContentResolver` mismatch, judged not worth chasing).
@@ -48,19 +49,25 @@ Never build there. Its memory files describe a dead head-unit car launcher.
 
 ## In-flight
 
-**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 2 of 11 tickets resolved.** Destination is a
+**Wayfinder effort `.scratch/ledger-drive-ingestion/` - 4 of 11 tickets resolved.** Destination is a
 build-ready spec for Drive-folder batch ingestion plus a basic UI across all three aspects. The map
 and every ticket are now TRACKED IN GIT (see the gitignore note below), so read them directly:
 `.scratch/ledger-drive-ingestion/map.md`.
 
 | State | Tickets |
 |---|---|
-| Resolved | 01 SAF feasibility, 02 design language |
-| **Frontier (takeable now)** | **03 ingested-file ledger**, 04 twin transactions, 07 app shell + ignition, 09 fleet/pantry UI, 11 SAF device probe |
-| Blocked | 05 batch mechanics (needs 03), 06 spend gate (needs 05), 08 ledger UI (needs 03+05), 10 does ledger sync (needs 03) |
+| Resolved | 01 SAF feasibility, 02 design language, 03 ingested-file ledger, 11 SAF probe (steps 7-9 unrun) |
+| **Frontier (takeable now)** | 04 twin transactions, **05 batch mechanics**, 07 app shell + ignition, 09 fleet/pantry UI, 10 does ledger sync |
+| Blocked | 06 spend gate (needs 05), 08 ledger UI (needs 05) |
 
-**Suggested next: 03 (ingested-file ledger).** Deepest chain - it gates 05, which gates 06 and 08 -
-and the SAF research already narrowed its central question.
+**Suggested next: 05 (batch mechanics).** Only thing still gating 06 and 08. 03 handed it measured
+per-file I/O cost, a defined resume unit, and the stale-listing constraint; they are summarised at
+the bottom of ticket 05 so it needs no re-reading of 01 or 03.
+
+**The crux is TESTED and passed (2026-08-02).** A file uploaded after the grant appears in
+`listFiles()` with no re-pick, so the Drive access model holds. Caveat: it was invisible for at
+least 2m36s and appeared only after the Drive app was opened; the two variables were not isolated.
+**Design for "a scan may legitimately find nothing new."**
 
 ## Notes for next session
 
