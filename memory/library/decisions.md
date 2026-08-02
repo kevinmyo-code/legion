@@ -1741,3 +1741,17 @@ Every claim above is `traced`, none is `tested`. Registering two tables does not
 
 **Generalisable: a blocker recorded from doc comments outlived the code that disproved it.** Re-read
 the source before treating an inherited blocker as a constraint on a new decision.
+
+---
+
+## 2026-08-02 - Note: research carried over from the lost map
+
+Moved off `memory/MEMORY.md` during a trim so it is not silently lost. Two research items were
+inherited from the destroyed `.scratch/multi-aspect-assistant/` map via a librarian digest, and were
+flagged **worth re-verifying before building on**: NOAA weather research, and Drive-access research.
+
+Status as of today: **the Drive-access half has been superseded and does not need re-verifying** -
+ticket 01 redid it from source against a disassembled Drive APK, and ticket 11 then confirmed the
+crux on hardware. **The NOAA item is untouched and still unverified.** It is unrelated to the ledger
+effort; `weather/WeatherController` uses Open-Meteo (keyless) per CLAUDE.md §3, so nothing currently
+depends on it.
