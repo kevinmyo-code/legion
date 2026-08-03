@@ -49,7 +49,6 @@ shape** (one-time adb script vs in-app screen vs vehicles-only; options given, n
 Then: **`sync/`** (still never executed), a **DTC seed dictionary**, then ledger insights.
 
 - **Two prototypes, NEITHER to be merged:** `proto/ledger-ui`, `proto/fleet-pantry-ui`.
-
 ## Notes for next session
 
 - **RUN IT ON THE PHONE.** Five bugs survived compile, the full suite AND review: red body text,
@@ -66,7 +65,6 @@ Then: **`sync/`** (still never executed), a **DTC seed dictionary**, then ledger
   the ledger rows, pantry receipt, folder grant and Gemini key today); `adb push`ed files are
   invisible to the Downloads provider; unsigned `.ps1` files are refused, pipe via
   `Invoke-Expression`; `uiautomator dump` serves STALE content for popups - screenshot instead.
-
 ## Library
 
 `memory/library/` (catalog: `INDEX.md`). Never bulk-read shelves; dispatch the librarian. **Most
