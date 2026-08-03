@@ -5,17 +5,13 @@ import android.database.Cursor
 import android.util.Log
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.kevin.legion.MidnightEvents
-import com.kevin.legion.ai.CompanionProfile
-import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.ai.CompanionProfileStore
 import com.kevin.legion.vehicle.DriveReassigner
 import com.kevin.legion.vehicle.TelemetryRecorder
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.DriveReassignment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
@@ -25,8 +21,6 @@ import org.json.JSONObject
 import java.util.UUID
 
 private typealias Mode = SyncMerge.Mode
-private typealias CompanionIdentity = CompanionSync.CompanionIdentity
-private typealias CompanionClash = CompanionSync.CompanionClash
 
 /**
  * The cross-device BYO-cloud sync engine (S1). Pushes and pulls the car-data
@@ -59,18 +53,27 @@ private typealias CompanionClash = CompanionSync.CompanionClash
  * Recaps (monthly/yearly/daily) joined in build step 5 - light data (DB rows)
  * only, cover-art bytes stay per-device (see [REGISTRY]).
  *
- * Companion identity (name/persona/traits/voice) IS synced, but as a separate
- * pass ([syncCompanion]) after the [REGISTRY] loop: it's a single `companion.json`
- * file in appDataFolder, not a Room table, and unlike the LWW tables above a
- * genuine first-time content mismatch needs a one-time driver choice rather than
- * a silent pick - see [CompanionSync.decideCompanion] and [pendingCompanionClash].
+ * **Companion identity sync (Kevin, 2026-08-02: named, synced companion
+ * profiles).** `companion_profiles` is a normal [REGISTRY] entry now - LWW on
+ * the portable `profileId` UUID, same as any other natural-key table. This
+ * retires the entire bespoke single-identity path that used to live here:
+ * `syncCompanion`, the per-car `companion-<vehicleId>.json` file, and
+ * `CompanionSync.decideCompanion`'s "two companions met" clash prompt
+ * (`pendingCompanionClash`/`resolveCompanionClash`). That machinery existed
+ * to reconcile ONE identity across devices; with named profiles two rows
+ * simply coexist through the ordinary LWW merge, so there is nothing left to
+ * clash over. After every [REGISTRY] table (including `companion_profiles`)
+ * has merged, [syncNow] materialises the ACTIVE profile's fields into
+ * [com.kevin.legion.ai.CompanionProfile]'s legacy flat keys via
+ * [CompanionProfileStore.materializeActive], so a profile edited on the
+ * other device shows up here without every reader of `CompanionProfile`
+ * needing to change. See [com.kevin.legion.data.local.CompanionProfileEntity]'s
+ * doc comment for the full design.
  *
- * Companion media (avatar/wallpaper) sync is currently a NO-OP:
- * [uploadCompanionMedia]/[downloadCompanionMedia] are stubs, kept as named call
- * sites in [syncCompanion] rather than deleted, because `AvatarStudio` (the
- * generator they packed/unpacked media through) was retired with the city-pop
- * design language in the 2026-07-31 pivot. Only identity fields (name/persona/
- * traits/voice) actually sync right now.
+ * Companion MEDIA (avatar/wallpaper) sync was already a no-op before this
+ * change - `AvatarStudio` (the generator media synced through) was retired
+ * with the city-pop design language in the 2026-07-31 pivot - so it is not
+ * reintroduced here either.
  */
 object SyncEngine {
     private const val TAG = "SyncEngine"
@@ -91,35 +94,6 @@ object SyncEngine {
     // TOMBSTONE_HORIZON_MS (B19) and for the same reason: the rule must outlive any
     // device that could still resurrect old-keyed rows from Drive and need re-keying.
     private const val REASSIGNMENT_HORIZON_MS = 90L * 24 * 60 * 60 * 1000
-
-    // Legacy single-companion filenames, from before car profiles (2026-07-16).
-    // Still read as a fallback so an install that synced under them keeps its
-    // companion; never written any more.
-    private const val LEGACY_COMPANION_FILE = "companion.json"
-    private const val LEGACY_COMPANION_MEDIA_FILE = "companion_media.zip"
-
-    // Per-car companion files. Identity is per-car now (CLAUDE.md §1: the paid
-    // companion IS the car, so two cars means two companions), so each car's
-    // identity and art get their own pair of files in the driver's Drive. Both
-    // devices can sync at once without fighting: the head unit writes the
-    // Cherokee's pair, the phone writes the Outlander's.
-    private fun companionFile(context: Context): String =
-        "companion-${driveSafe(ActiveVehicle.current(context))}.json"
-
-    private fun companionMediaFile(context: Context): String =
-        "companion_media-${driveSafe(ActiveVehicle.current(context))}.zip"
-
-    // Vehicle ids can be OBD MACs (colons) or synthetic "car:<uuid>" ids. Keep
-    // filenames boring - same reason AvatarStudio.sanitize exists.
-    private fun driveSafe(vehicleId: String): String = vehicleId.replace(Regex("[^A-Za-z0-9]"), "_")
-
-    // Set by syncCompanion when two devices' companion identities genuinely
-    // differ and neither has ever been reconciled - a real "two companions met"
-    // moment, not an ordinary edit. Non-blocking: sync itself never waits on
-    // this: it just leaves both copies untouched until the driver resolves it
-    // via [resolveCompanionClash], surfaced by MainActivity as a dialog.
-    private val _pendingCompanionClash = MutableStateFlow<CompanionClash?>(null)
-    val pendingCompanionClash: StateFlow<CompanionClash?> = _pendingCompanionClash.asStateFlow()
 
     /**
      * Fire-and-forget sync when the app comes to the foreground, so a mixtape or
@@ -263,6 +237,13 @@ object SyncEngine {
         // whichever state propagated first. Clock is lastAttemptAt, per
         // IngestedFile's own doc comment.
         Spec("ingested_files", listOf("driveFileId"), Mode.LWW, naturalPk = true, clock = "lastAttemptAt"),
+        // Named companion profiles (Kevin, 2026-08-02). LWW on the portable
+        // profileId UUID - a profile is edited over time (renamed, re-
+        // personified, a new voice picked) and the newer edit should win, the
+        // same shape as vehicles/maintenance_items above. Replaces the
+        // bespoke single-identity companion.json sync entirely - see this
+        // object's class doc comment.
+        Spec("companion_profiles", listOf("profileId"), Mode.LWW, naturalPk = true, clock = "updatedAt"),
     )
 
     data class Result(val ok: Boolean, val message: String)
@@ -323,22 +304,18 @@ object SyncEngine {
                             }
                     }
                 }
-                runCatching { syncAllCompanionIdentities(context, drive, existing) }
+                // companion_profiles has already merged as an ordinary REGISTRY
+                // table by this point (LWW, same as vehicles/maintenance_items).
+                // What's left is device-local: re-derive CompanionProfile's flat
+                // keys from whichever profile THIS device has active, in case the
+                // active profile's row just changed underneath it (an edit made on
+                // the other phone). See CompanionProfileStore's doc comment for
+                // why this is a materialisation step and not a sync step.
+                runCatching { CompanionProfileStore.materializeActive(context) }
                     .onFailure {
                         failures++
-                        Log.w(TAG, "pull companion identities failed", it)
-                        MidnightEvents.recordError("sync_companion_pull", it)
-                    }
-                // Wired to Crashlytics (not just Log.w) so a silent failure here is
-                // actually retrievable - this is the write path for companion-<id>.json,
-                // and a swallowed exception here was indistinguishable in the field
-                // from "sync never ran" (drive-notes-2: Fleet Hub showed "no cars
-                // synced" with no way to tell whether upload failed or never fired).
-                runCatching { syncCompanion(context, drive, existing) }
-                    .onFailure {
-                        failures++
-                        Log.w(TAG, "sync companion identity failed", it)
-                        MidnightEvents.recordError("sync_companion_push", it)
+                        Log.w(TAG, "materialize active companion profile failed", it)
+                        MidnightEvents.recordError("sync_companion_materialize", it)
                     }
                 if (failures == 0) Result(true, "Synced with your Google Drive.")
                 else Result(false, "Synced with some issues ($failures tables skipped).")
@@ -395,58 +372,6 @@ object SyncEngine {
             "DELETE FROM `drive_reassignments` WHERE `updatedAt` < ?",
             arrayOf<Any>(System.currentTimeMillis() - REASSIGNMENT_HORIZON_MS),
         )
-    }
-
-    /**
-     * Pulls EVERY car's companion identity, not just the active one (car manager,
-     * 2026-07-16).
-     *
-     * The eager half of Kevin's hybrid: identities are tiny JSON, so every device
-     * holds every car's name/persona/voice and the CARS roster renders instantly and
-     * offline. Media (megabytes of avatar faces per car) stays lazy - see
-     * [ensureCompanionMedia] - so a twelve-car roster doesn't drag eleven cars'
-     * portraits onto a head unit to drive one.
-     *
-     * Deliberately does NOT touch the ACTIVE car: [syncCompanion] owns that one,
-     * including its upload and its clash-prompt path. This is a read-only fill of
-     * the others, so it can never overwrite an edit the driver is making right now.
-     */
-    private fun syncAllCompanionIdentities(
-        context: Context,
-        drive: DriveClient,
-        existing: Map<String, DriveClient.DriveFile>,
-    ) {
-        val activeFile = companionFile(context)
-        for ((name, file) in existing) {
-            if (!name.startsWith("companion-") || !name.endsWith(".json")) continue
-            if (name == activeFile) continue // syncCompanion owns the active car
-            val vehicleId = vehicleIdForCompanionFile(context, name) ?: continue
-            val remote = runCatching { drive.download(file.id) }.getOrNull()
-                ?.let { companionFromJson(it) } ?: continue
-            val local = CompanionProfile.companionIdentityFor(context, vehicleId)
-            // Plain LWW, no prompt: the clash path is a first-meeting question about
-            // the car you are IN, and asking it about a car you merely have on the
-            // roster would be noise the driver has no context to answer.
-            if (local.isBlank || remote.updatedAt > local.updatedAt) {
-                CompanionProfile.saveCompanionIdentityFor(context, vehicleId, remote)
-            }
-        }
-    }
-
-    /** Maps `companion-<driveSafe(id)>.json` back to a real vehicleId via the roster. */
-    private fun vehicleIdForCompanionFile(context: Context, fileName: String): String? {
-        val safe = fileName.removePrefix("companion-").removeSuffix(".json")
-        return knownVehicleIds(context).firstOrNull { driveSafe(it) == safe }
-    }
-
-    /** Every vehicleId this device knows, archived included - the roster needs them all. */
-    private fun knownVehicleIds(context: Context): List<String> {
-        val ids = mutableListOf<String>()
-        val db = CarDatabase.getDatabase(context).openHelper.readableDatabase
-        db.query("SELECT obdMac FROM vehicles").use { c ->
-            while (c.moveToNext()) c.getString(0)?.let { ids.add(it) }
-        }
-        return ids
     }
 
     private fun syncTable(
@@ -536,124 +461,6 @@ object SyncEngine {
             snapshot = drive.listAppData()
         }
     }
-
-    /**
-     * Reconciles the companion identity (name/persona/traits/voice) against
-     * `companion.json` in appDataFolder. Unlike [syncFile] this is plain JSON,
-     * not gzip-NDJSON rows - a single object, not a table snapshot - so it's
-     * downloaded/uploaded directly via [DriveClient]'s create/update/upsert
-     * (its [DriveClient.DriveFile] version handling still applies; a B20
-     * upload conflict here is simply left for the next sync pass to retry,
-     * same as any other skipped table, rather than a second bespoke retry
-     * loop).
-     *
-     * See [CompanionSync.decideCompanion] for the full decision matrix. PROMPT
-     * publishes to [pendingCompanionClash] and returns without touching either
-     * copy - [resolveCompanionClash] finishes the job once the driver picks.
-     */
-    private fun syncCompanion(context: Context, drive: DriveClient, existing: Map<String, DriveClient.DriveFile>) {
-        // Per-car file first; fall back to the legacy single-companion file so an
-        // install that already synced under it adopts its own companion rather than
-        // seeing a blank remote and re-uploading a fresh one.
-        val remoteFile = existing[companionFile(context)] ?: existing[LEGACY_COMPANION_FILE]
-        val remote = remoteFile?.let { drive.download(it.id) }?.let { companionFromJson(it) }
-        val local = CompanionProfile.companionIdentity(context)
-        val reconciled = CompanionProfile.isCompanionReconciled(context)
-
-        when (CompanionSync.decideCompanion(local, remote, reconciled)) {
-            CompanionSync.Decision.UPLOAD_LOCAL -> {
-                drive.upsert(companionFile(context), companionToJson(local), existing)
-                CompanionProfile.markCompanionReconciled(context)
-                uploadCompanionMedia(context, drive, existing)
-            }
-            CompanionSync.Decision.ADOPT_REMOTE -> {
-                // remote is non-null on this branch (decideCompanion only returns
-                // ADOPT_REMOTE when remote != null).
-                CompanionProfile.saveCompanionIdentity(context, remote!!)
-                CompanionProfile.markCompanionReconciled(context)
-                downloadCompanionMedia(context, drive, existing)
-            }
-            CompanionSync.Decision.NOTHING -> CompanionProfile.markCompanionReconciled(context)
-            CompanionSync.Decision.PROMPT -> {
-                _pendingCompanionClash.value = CompanionClash(local, remote!!)
-                // Non-blocking: leave both copies (identity AND media) as-is
-                // until the driver resolves it via resolveCompanionClash.
-            }
-        }
-    }
-
-    /**
-     * No-op for now: avatar/wallpaper generation ([AvatarStudio]) was retired with
-     * the city-pop design language in the 2026-07-31 pivot, so there is no media to
-     * pack and upload alongside an identity win. Kept as a named call site (rather
-     * than deleted from [syncCompanion]) so a future image-gen feature has an
-     * obvious place to plug back in.
-     */
-    private fun uploadCompanionMedia(context: Context, drive: DriveClient, existing: Map<String, DriveClient.DriveFile>) {
-    }
-
-    /**
-     * No-op for now - see [uploadCompanionMedia]. Kept as a named call site for
-     * the same reason.
-     */
-    private fun downloadCompanionMedia(context: Context, drive: DriveClient, existing: Map<String, DriveClient.DriveFile>) {
-    }
-
-    /**
-     * The driver's choice on a [pendingCompanionClash]: keep this device's
-     * companion ([keepLocal] true) or switch to the other device's
-     * ([keepLocal] false). The winner is re-stamped with a FRESH `updatedAt`
-     * (unlike [CompanionProfile.saveCompanionIdentity]'s normal adopt path) so
-     * it wins the comparison on every device from here on, then written to
-     * both this device and Drive, and marked reconciled so future ordinary
-     * edits propagate silently by LWW instead of prompting again. The
-     * matching avatar/wallpaper follow the same choice: [keepLocal] uploads
-     * this device's media as the new canonical copy, `!keepLocal` downloads
-     * and adopts the other device's media (see [uploadCompanionMedia] /
-     * [downloadCompanionMedia] for the best-effort contract).
-     */
-    suspend fun resolveCompanionClash(context: Context, keepLocal: Boolean) = withContext(Dispatchers.IO) {
-        val clash = _pendingCompanionClash.value ?: return@withContext
-        val winner = (if (keepLocal) clash.local else clash.remote).copy(updatedAt = System.currentTimeMillis())
-        CompanionProfile.saveCompanionIdentity(context, winner)
-        CompanionProfile.markCompanionReconciled(context)
-        val token = DriveAuth.accessTokenOrNull(context)
-        if (token != null) {
-            mutex.withLock {
-                val drive = DriveClient(token)
-                val existing = drive.listAppData()
-                drive.upsert(companionFile(context), companionToJson(winner), existing)
-                if (keepLocal) uploadCompanionMedia(context, drive, existing)
-                else downloadCompanionMedia(context, drive, existing)
-            }
-        }
-        _pendingCompanionClash.value = null
-    }
-
-    private fun companionToJson(id: CompanionIdentity): ByteArray {
-        val o = JSONObject()
-            .put("name", id.name)
-            .put("persona", id.persona)
-            .put("traits", id.traits)
-            .put("voice", id.voice)
-            .put("updatedAt", id.updatedAt)
-        return o.toString().toByteArray(Charsets.UTF_8)
-    }
-
-    private fun companionFromJson(bytes: ByteArray): CompanionIdentity? =
-        try {
-            val o = JSONObject(String(bytes, Charsets.UTF_8))
-            CompanionIdentity(
-                name = o.optString("name", ""),
-                persona = o.optString("persona", ""),
-                traits = o.optString("traits", ""),
-                voice = o.optString("voice", ""),
-                updatedAt = o.optLong("updatedAt", 0L),
-            )
-        } catch (t: Throwable) {
-            Log.w(TAG, "companion.json parse failed", t)
-            null
-        }
 
     private fun executeAction(db: SupportSQLiteDatabase, spec: Spec, action: SyncMerge.Action) {
         when (action) {

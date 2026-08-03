@@ -18,6 +18,13 @@ activityCompose = "1.9.0"
 # (fleet/places, ledger/import, pantry/import, settings/key). New dependency -
 # not previously in this catalog.
 navigationCompose = "2.8.0"
+# Room 2.8.4's MigrationTestHelper parses the exported schema JSON with
+# kotlinx-serialization and needs 1.8.1. navigation-compose 2.8.0 drags in
+# 1.6.3, and AGP's consistent resolution then forces the androidTest classpath
+# to match the app's - so the migration test died with
+# AbstractMethodError: typeParametersSerializers(). Pinning it up here fixes
+# every configuration at once. See app/build.gradle.kts.
+kotlinxSerialization = "1.8.1"
 playServicesAuth = "21.2.0"
 # Vosk (custom wake word, ported from Midnight AI's 2026-07-19 reopen):
 # published directly to Maven Central, no JitPack needed.
@@ -52,6 +59,7 @@ material3 = { group = "androidx.compose.material3", name = "material3" }
 material3-windowsizeclass = { group = "androidx.compose.material3", name = "material3-window-size-class" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
+kotlinx-serialization-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-core", version.ref = "kotlinxSerialization" }
 lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }

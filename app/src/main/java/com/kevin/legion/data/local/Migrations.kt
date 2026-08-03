@@ -102,3 +102,27 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         db.execSQL("ALTER TABLE `ledger_transactions` ADD COLUMN `sourceFileId` TEXT")
     }
 }
+
+/**
+ * v4 -> v5: adds `companion_profiles` (named, synced assistant identities,
+ * Kevin 2026-08-02). Verbatim from the generated schema JSON
+ * (`app/schemas/com.kevin.legion.data.local.CarDatabase/5.json`), per the
+ * additive-migration discipline - see CarDatabase's doc comment and
+ * [CompanionProfileEntity]'s.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `companion_profiles` (" +
+                "`profileId` TEXT NOT NULL, " +
+                "`assistantName` TEXT NOT NULL, " +
+                "`persona` TEXT NOT NULL, " +
+                "`traits` TEXT NOT NULL, " +
+                "`voice` TEXT NOT NULL, " +
+                "`voiceStyle` TEXT NOT NULL, " +
+                "`voiceStyleTraits` TEXT NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`profileId`))"
+        )
+    }
+}
