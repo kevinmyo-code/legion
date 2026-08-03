@@ -21,6 +21,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.kevin.legion.sync.SyncEngine
 import com.kevin.legion.ui.theme.LegionTheme
 
 /**
@@ -71,6 +72,38 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         deepLinkRoute = intent.getStringExtra(EXTRA_ROUTE)
         deepLinkNonce++
+    }
+
+    /**
+     * Foreground-triggered auto-sync, decoupled from the voice assistant
+     * (ticket 10, `.scratch/ledger-drive-ingestion/issues/10-does-ledger-data-sync.md`,
+     * plus ticket 07 §1's ruling that ledger/pantry/fleet all work regardless of
+     * the assistant toggle). [AriaForegroundService]'s own engine-on gated
+     * `SyncEngine.maybeAutoSync` call is left in place - it is not wrong, just
+     * insufficient: that service only ever starts from the Settings assistant
+     * toggle, which defaults OFF, so a driver who never enables the assistant
+     * would otherwise never sync ledger or pantry data across devices at all.
+     * This is the same shape as L12 (a feature silently gated behind an
+     * unrelated toggle).
+     *
+     * Deliberately NOT `LedgerIngestService` either - that runs the folder
+     * scan, a different lifecycle entirely, and coupling sync to it would tie
+     * cross-device sync to whether the ledger scanner happens to be running.
+     *
+     * [SyncEngine.maybeAutoSync] is itself the safety net here, not this call
+     * site: it no-ops silently when [com.kevin.legion.sync.SyncCapability]
+     * says sync isn't available (no Play Services, or the driver never
+     * connected Drive), when its own 5-minute throttle hasn't elapsed, and
+     * [com.kevin.legion.sync.DriveAuth] fails soft (null token) with no
+     * network or no consent yet - `syncNow` never throws past its own
+     * try/catch. The launch is fire-and-forget on a short-lived
+     * `Dispatchers.Default` scope, so this callback returns immediately and
+     * never blocks the UI thread, including on a cold start where Drive has
+     * never been touched.
+     */
+    override fun onResume() {
+        super.onResume()
+        SyncEngine.maybeAutoSync(applicationContext)
     }
 
     companion object {
