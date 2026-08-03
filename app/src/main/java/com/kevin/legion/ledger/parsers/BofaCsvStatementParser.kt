@@ -36,26 +36,33 @@ import java.time.format.DateTimeParseException
  * per-row running-balance check starts from. Skipped, never parsed as a
  * zero-amount row.
  *
- * **`accountId` is a fixed placeholder, not derived from the file.** Unlike
- * the PDF statement, this CSV export prints no account number anywhere -
- * verified on the real file, not assumed. That means CSV-derived rows will
- * NOT share an `accountId` with [BofaStatementParser]'s PDF-derived rows for
- * the same physical account, so [com.kevin.legion.ledger.LedgerController]'s
- * accountBalances() will show it as a second account, and a later PDF
- * covering the same date range will not dedupe against these rows (dedup
- * keys on accountId + date range). Flagged, not silently swallowed - a real
- * decision Kevin needs to make (e.g. an explicit account-linking step), not
- * something this parser can resolve on its own.
+ * **`accountId` is never derived from the file - unlike the PDF statement,
+ * this CSV export prints no account number anywhere, verified on the real
+ * file, not assumed.** [accountHint] is the resolved answer from the
+ * per-account Drive subfolder this file was found in
+ * ([com.kevin.legion.ledger.LedgerAccountMappingPreferences], threaded down
+ * from [StatementDispatcher.dispatchDeterministic]). **No guessing, no
+ * silent placeholder**: if [accountHint] is null once every reconciliation
+ * anchor below has already passed, this throws [UnmappedAccountException]
+ * rather than writing a row under a fabricated account id - CLAUDE.md §4's
+ * "never silently accept" applied to account identity, not just money. See
+ * that exception's doc comment for why the numeric checks run first.
  */
 object BofaCsvStatementParser {
-    /** See this object's doc comment - no account number is printed anywhere in this export. */
-    const val ACCOUNT_ID = "BOFA-CSV-UNLINKED"
+    /**
+     * Internal-only placeholder used while building rows below, before
+     * [accountHint] is known to be non-null. Never returned to a caller -
+     * either every row is remapped to [accountHint] at the very end, or
+     * [UnmappedAccountException] is thrown first and nothing is returned at
+     * all.
+     */
+    private const val PENDING_ACCOUNT = "PENDING-ACCOUNT-RESOLUTION"
 
     private const val SUMMARY_HEADER = "Description,,Summary Amt."
     private const val TXN_HEADER = "Date,Description,Amount,Running Bal."
     private val DATE_FORMAT = DateTimeFormatter.ofPattern("MM/dd/yyyy")
 
-    fun parse(fileName: String, input: InputStream): List<LedgerTransaction> {
+    fun parse(fileName: String, input: InputStream, accountHint: String? = null): List<LedgerTransaction> {
         // String(bytes, Charsets.UTF_8) never throws on malformed input (it
         // substitutes the replacement character), which matters here: this is
         // tried against every file [StatementDispatcher] sees, including PDF
@@ -143,7 +150,7 @@ object BofaCsvStatementParser {
             transactions.add(
                 LedgerTransaction(
                     sourceFile = fileName,
-                    accountId = ACCOUNT_ID,
+                    accountId = PENDING_ACCOUNT,
                     currency = LedgerCurrency.USD,
                     txnDate = txnDate,
                     description = description,
@@ -195,7 +202,19 @@ object BofaCsvStatementParser {
             )
         }
 
-        return transactions
+        // Account resolution is LAST, after every numeric anchor above has
+        // already passed - see UnmappedAccountException's doc comment for
+        // why that ordering matters (a numbers problem is reported before a
+        // mapping problem, since it's the more likely real error).
+        if (accountHint == null) {
+            throw UnmappedAccountException(
+                "no accountHint supplied for $fileName and this export prints no account number of its own",
+                userMessage = "This file doesn't say which account it's for, and its folder isn't mapped " +
+                    "to one yet. Map the folder to an account in the ledger tab, then scan again. " +
+                    "Nothing was imported.",
+            )
+        }
+        return transactions.map { it.copy(accountId = accountHint) }
     }
 
     /** Parses one 3-field summary row ("label,,\"amount\""), validating the label prefix. */

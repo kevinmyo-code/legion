@@ -41,3 +41,17 @@ class GenericStatementParseException(
     message: String,
     userMessage: String? = null,
 ) : StatementParseException(message, userMessage)
+
+/**
+ * Raised when a file states no account of its own (BofA's mid-cycle CSV
+ * export, per [BofaCsvStatementParser]'s doc comment) AND the per-account
+ * Drive subfolder it was found in has no mapping - CLAUDE.md §4's "never
+ * guess" applied to account identity. Thrown only AFTER every reconciliation
+ * anchor has already passed, so a file with both a numeric mismatch and no
+ * mapping reports the numeric problem first (the more actionable one - the
+ * mapping is a one-tap fix, a numbers mismatch may mean a corrupted export).
+ */
+class UnmappedAccountException(
+    message: String,
+    userMessage: String? = null,
+) : StatementParseException(message, userMessage)
