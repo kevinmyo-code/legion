@@ -4,6 +4,7 @@ import android.app.Application
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.CompanionProfileStore
 import com.kevin.legion.ai.GeminiKeyProvider
+import com.kevin.legion.data.MidnightImport
 import com.kevin.legion.ledger.LedgerFolderPreferences
 import com.kevin.legion.service.ProactivePreferences
 import kotlinx.coroutines.CoroutineScope
@@ -71,6 +72,19 @@ class MidnightApplication : Application() {
         appScope.launch {
             CompanionProfileStore.ensureSeeded(this@MidnightApplication)
             CompanionProfileStore.materializeActive(this@MidnightApplication)
+        }
+
+        // One-time Midnight AI fleet-history import (see MidnightImport's class
+        // doc). Process-start work, same L12 reasoning as the caches above: it
+        // must run unconditionally, not from a service that might not be
+        // running. It is its own launch{}, not folded into the one above,
+        // because it is unrelated work with its own independent failure mode -
+        // a companion-profile hiccup must not skip the fleet import or vice
+        // versa. No-ops in one SharedPreferences read on every launch after
+        // the bundle either was never present (every clone but Kevin's own
+        // machine) or has already imported once.
+        appScope.launch {
+            MidnightImport.run(this@MidnightApplication)
         }
 
         MidnightEvents.setBuildContext(
