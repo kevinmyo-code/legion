@@ -126,6 +126,12 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
     // Single-activity shell (ticket 07): bottom-nav tabs + absorbed sub-routes.
     implementation(libs.navigation.compose)
+    // Not used directly by app code. Declared to raise navigation-compose's
+    // transitive kotlinx-serialization 1.6.3 to the 1.8.1 Room 2.8.4's
+    // MigrationTestHelper needs: AGP's consistent resolution pins the
+    // androidTest classpath to whatever the app runtime resolves, so the
+    // migration test cannot be fixed from the test configuration alone.
+    implementation(libs.kotlinx.serialization.core)
 
     // Room
     implementation(libs.room.runtime)

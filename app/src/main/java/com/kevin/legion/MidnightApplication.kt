@@ -2,9 +2,14 @@ package com.kevin.legion
 
 import android.app.Application
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.ai.CompanionProfileStore
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ledger.LedgerFolderPreferences
 import com.kevin.legion.service.ProactivePreferences
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Application subclass registered in the manifest via android:name=".MidnightApplication".
@@ -15,6 +20,13 @@ import com.kevin.legion.service.ProactivePreferences
  * quota tracking) was retired with the rest of billing/ in the 2026-07-31 pivot.
  */
 class MidnightApplication : Application() {
+    /**
+     * Process-lifetime scope for start-up work that touches disk or Room and so
+     * must not block `onCreate`. Owned by the Application because that is what
+     * the work's lifetime actually is; nothing cancels it because nothing should.
+     */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
 
@@ -37,6 +49,29 @@ class MidnightApplication : Application() {
         GeminiKeyProvider.init(this)
         ProactivePreferences.init(this)
         LedgerFolderPreferences.init(this)
+
+        // Named companion profiles (multi-companion, 2026-08-02): seed one
+        // profile from a pre-existing single identity if this install predates
+        // the feature, then materialise whichever profile is active on THIS
+        // device into CompanionProfile's flat keys so every reader of it
+        // (AriaBrain, LiveSessionController, GeminiLiveSession, ...) sees the
+        // right identity from the very first Live session, not just after the
+        // next sync pass or profile switch. Same L12 reasoning as the three
+        // caches above: this must run unconditionally on process start, not
+        // from a service that might not be running. Both steps touch Room, so
+        // they run on a process-scoped IO coroutine rather than blocking
+        // onCreate; a session that starts before this completes still reads
+        // CompanionProfile's PREVIOUS on-disk values (unchanged from last run),
+        // never a blank or half-written state.
+        // appScope, not a scope built inline here: constructing a CoroutineScope
+        // inside a function body is the anti-pattern the repo's vendored
+        // kotlin-coroutines-structured-concurrency skill names, and we removed
+        // exactly that from SyncEngine's foreground trigger two commits ago.
+        // Application IS the process-lifetime owner, so the scope belongs to it.
+        appScope.launch {
+            CompanionProfileStore.ensureSeeded(this@MidnightApplication)
+            CompanionProfileStore.materializeActive(this@MidnightApplication)
+        }
 
         MidnightEvents.setBuildContext(
             buildType = if (BuildConfig.DEBUG) "debug" else "release",

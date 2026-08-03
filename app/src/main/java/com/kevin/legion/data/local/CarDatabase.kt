@@ -25,6 +25,14 @@ import androidx.room.RoomDatabase
  * record, `.scratch/ledger-drive-ingestion/issues/03-ingested-file-ledger.md`)
  * plus a nullable `LedgerTransaction.sourceFileId`. No `@ForeignKey` between
  * them - see [LedgerTransaction.sourceFileId]'s doc comment.
+ *
+ * v5: `companion_profiles` (named, synced assistant identities, Kevin
+ * 2026-08-02: two people share one Google account and two phones, and each
+ * wants a different assistant). Replaces the bespoke single-identity
+ * `syncCompanion`/`companion-<vehicleId>.json` sync path retired in the same
+ * change - see [CompanionProfileEntity]'s doc comment and
+ * `ai/ActiveCompanionProfile.kt` for the device-local active selection that
+ * sits beside it.
  */
 @Database(
     entities = [
@@ -39,8 +47,9 @@ import androidx.room.RoomDatabase
         LedgerTransaction::class,
         PantryReceipt::class, PantryLineItem::class,
         IngestedFile::class,
+        CompanionProfileEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -68,6 +77,7 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun pantryReceiptDao(): PantryReceiptDao
     abstract fun pantryLineItemDao(): PantryLineItemDao
     abstract fun ingestedFileDao(): IngestedFileDao
+    abstract fun companionProfileDao(): CompanionProfileDao
 
     companion object {
         @Volatile
@@ -80,7 +90,7 @@ abstract class CarDatabase : RoomDatabase() {
                     CarDatabase::class.java,
                     "legion_database",
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                     .build()
                 INSTANCE = instance

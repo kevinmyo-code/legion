@@ -1,26 +1,48 @@
 ﻿package com.kevin.legion.ai
 
 import android.content.Context
-import com.kevin.legion.sync.CompanionSync.CompanionIdentity
 import com.kevin.legion.vehicle.ActiveVehicle
 
 /**
  * The companion's identity plus this install's BYO credentials.
  *
  * **Identity is PER CAR as of 2026-07-16 (car profiles).** Name, persona, traits,
- * voice, the avatar id and the sync clock are all keyed by the active vehicle
- * ([ActiveVehicle]) - a driver with two cars gets two companions, because §1 makes
- * the paid companion the CAR itself and one global identity across two cars is
- * incoherent. This reverses the older "companion = global (app install)" rule; the
- * reasoning and the free-tier carve-out are in library/decisions.md 2026-07-16.
+ * voice, and the avatar id are all keyed by the active vehicle ([ActiveVehicle])
+ * - the reasoning and the free-tier carve-out are in library/decisions.md
+ * 2026-07-16. This per-car keying predates, and is untouched by, the
+ * multi-companion change below; it is called out in CLAUDE.md sec 2 as stale
+ * (LEGION §1 killed per-car identity) but has not been ripped out, so the
+ * behaviour described here is what actually ships.
+ *
+ * **Named, synced companion profiles (Kevin, 2026-08-02) sit ON TOP of this
+ * class, not inside it.** Two people share one Google account and two phones
+ * and each wants a different assistant, so identity became a SET of named
+ * rows ([com.kevin.legion.data.local.CompanionProfileEntity], synced via
+ * [com.kevin.legion.sync.SyncEngine]'s normal LWW registry) with a
+ * device-local active selection ([ActiveCompanionProfile] - deliberately
+ * does NOT sync, see its doc comment). Rather than rewrite every reader of
+ * this object (`AriaBrain`, `LiveSessionController`, `GeminiLiveSession`,
+ * ...), switching the active profile - or pulling a newer version of it from
+ * sync - MATERIALISES that profile's fields into the KEY_NAME/KEY_PERSONA/
+ * KEY_TRAITS/KEY_VOICE/KEY_VOICE_STYLE/KEY_VOICE_STYLE_TRAITS keys below via
+ * the plain setters ([savePersona]/[saveProfileFull]/[saveVoice]/
+ * [saveVoiceStyle]), so every existing reader keeps working untouched. See
+ * [CompanionProfileStore.materializeActive]. The old bespoke single-identity
+ * sync path (`SyncEngine.syncCompanion`, per-car `companion-<id>.json`,
+ * `CompanionSync.decideCompanion`'s "two companions met" clash prompt) is
+ * retired in the same change: two named profiles simply coexist, there is
+ * nothing left to clash over.
  *
  * Free-tier Zero is unaffected: she has no name, so nothing is keyed, and she
  * rides along in whatever car you're in. That is the correct behaviour for a
- * companion who is explicitly not the car (see [CompanionIdentity]).
+ * companion who is explicitly not the car.
  *
  * **Everything that is NOT identity stays global** - the Gemini/Shelly
- * credentials, the spend hash, the sync-enabled flag, first-session-done. Those
- * belong to the install, not to a car.
+ * credentials, the spend hash, the sync-enabled flag, first-session-done.
+ * Those belong to the install, not to a car OR a named companion, and MUST
+ * NEVER be added to [com.kevin.legion.data.local.CompanionProfileEntity] -
+ * that table syncs to the driver's Drive, and a leaked secret riding along
+ * in a synced identity row would be a real leak (CLAUDE.md sec 7).
  *
  * Per-car vehicle DATA (odometer, maintenance schedule, service history) lives in
  * [com.kevin.legion.vehicle.VehicleController], keyed the same way.
@@ -90,16 +112,12 @@ object CompanionProfile {
     // No token is stored here - the Google Identity Authorization API mints/refreshes
     // the Drive access token on demand (see [com.kevin.legion.sync.DriveAuth]).
     private const val KEY_SYNC_ENABLED = "sync_enabled"
-    // Companion identity sync (S1, last piece): bumped to now() on every identity
-    // write (name/persona/traits/voice) so cross-device last-write-wins has a
-    // clock to compare, same shape as the Room tables' `updatedAt` column - see
-    // [com.kevin.legion.sync.CompanionSync.decideCompanion]. KEY_COMPANION_SYNC_RECONCILED
-    // flips true the first time this device's companion identity has been
-    // reconciled (via upload, adopt, or an explicit clash resolution) against
-    // Drive, so the very first content mismatch always prompts once, and every
-    // edit after that propagates silently by clock.
-    private const val KEY_COMPANION_UPDATED_AT = "companion_updated_at"
-    private const val KEY_COMPANION_SYNC_RECONCILED = "companion_sync_reconciled"
+    // KEY_COMPANION_UPDATED_AT / KEY_COMPANION_SYNC_RECONCILED (the old bespoke
+    // single-identity sync clock/reconciled-flag pair) were retired 2026-08-02
+    // along with SyncEngine.syncCompanion and CompanionSync.decideCompanion:
+    // identity now syncs as named CompanionProfileEntity rows with their OWN
+    // `updatedAt` clock, so this class no longer needs one of its own. See
+    // this object's class doc comment.
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -169,15 +187,7 @@ object CompanionProfile {
     fun voiceStyleSelections(context: Context): Map<String, PersonaSelection> =
         decodeSelections(identityString(context, KEY_VOICE_STYLE_TRAITS))
 
-    /**
-     * Assembles and saves the voice-style picks (mirrors [savePersona]'s shape).
-     * Deliberately does NOT bump [KEY_COMPANION_UPDATED_AT] - that clock backs
-     * CompanionIdentity's cross-device LWW merge, and voice style isn't part of
-     * that synced payload (see the field's own doc comment). Bumping it here
-     * would make this device's clock look newer for name/persona/traits/voice
-     * even though none of those changed, and could wrongly win a merge against
-     * a real edit made on another device.
-     */
+    /** Assembles and saves the voice-style picks (mirrors [savePersona]'s shape). */
     fun saveVoiceStyle(context: Context, selections: Map<String, PersonaSelection>) {
         prefs(context).edit()
             .putString(k(context, KEY_VOICE_STYLE), assembleVoiceStyle(selections))
@@ -209,38 +219,6 @@ object CompanionProfile {
     /** [avatarId] for an explicit car. */
     fun avatarIdFor(vehicleId: String): String = "$AVATAR_ID:$vehicleId"
 
-    /** [companionIdentity] for an explicit car, for the roster + eager identity pull. */
-    fun companionIdentityFor(context: Context, vehicleId: String): CompanionIdentity =
-        CompanionIdentity(
-            name = identityString(context, KEY_NAME, vehicleId),
-            persona = identityString(context, KEY_PERSONA, vehicleId),
-            traits = identityString(context, KEY_TRAITS, vehicleId),
-            voice = identityString(context, KEY_VOICE, vehicleId),
-            updatedAt = companionUpdatedAtFor(context, vehicleId),
-        )
-
-    /** [companionUpdatedAt] for an explicit car. */
-    fun companionUpdatedAtFor(context: Context, vehicleId: String): Long {
-        val p = prefs(context)
-        return p.getLong(k(KEY_COMPANION_UPDATED_AT, vehicleId), p.getLong(KEY_COMPANION_UPDATED_AT, 0L))
-    }
-
-    /**
-     * [saveCompanionIdentity] for an explicit car - used by the eager identity pull
-     * to fill in cars this device isn't currently in. Preserves the remote clock for
-     * the same reason the active-car version does: re-stamping would make every
-     * device think its own adopt was the freshest edit and LWW would never settle.
-     */
-    fun saveCompanionIdentityFor(context: Context, vehicleId: String, identity: CompanionIdentity) {
-        prefs(context).edit()
-            .putString(k(KEY_NAME, vehicleId), identity.name)
-            .putString(k(KEY_PERSONA, vehicleId), identity.persona)
-            .putString(k(KEY_TRAITS, vehicleId), identity.traits)
-            .putString(k(KEY_VOICE, vehicleId), identity.voice)
-            .putLong(k(KEY_COMPANION_UPDATED_AT, vehicleId), identity.updatedAt)
-            .apply()
-    }
-
     /**
      * The avatar cache id for the active car (see [AvatarStudio]). Per-car, so each
      * car's face is its own set of files rather than every car sharing one.
@@ -255,7 +233,6 @@ object CompanionProfile {
             .putString(k(context, KEY_NAME), name.trim())
             .putString(k(context, KEY_PERSONA), assemblePersona(name, vehicleDesc = null, selections = selections))
             .putString(k(context, KEY_TRAITS), encodeSelections(selections))
-            .putLong(k(context, KEY_COMPANION_UPDATED_AT), System.currentTimeMillis())
             .apply()
     }
 
@@ -264,7 +241,6 @@ object CompanionProfile {
         prefs(context).edit()
             .putString(k(context, KEY_NAME), name.trim())
             .putString(k(context, KEY_PERSONA), persona.trim())
-            .putLong(k(context, KEY_COMPANION_UPDATED_AT), System.currentTimeMillis())
             .apply()
     }
 
@@ -285,77 +261,13 @@ object CompanionProfile {
             .putString(k(context, KEY_NAME), name.trim())
             .putString(k(context, KEY_PERSONA), persona.trim())
             .putString(k(context, KEY_TRAITS), encodeSelections(selections))
-            .putLong(k(context, KEY_COMPANION_UPDATED_AT), System.currentTimeMillis())
             .apply()
     }
 
     fun saveVoice(context: Context, voiceName: String) {
         prefs(context).edit()
             .putString(k(context, KEY_VOICE), voiceName.trim())
-            .putLong(k(context, KEY_COMPANION_UPDATED_AT), System.currentTimeMillis())
             .apply()
-    }
-
-    /** Raw last-edit clock for the companion identity, used by cross-device sync's LWW. */
-    fun companionUpdatedAt(context: Context): Long {
-        val p = prefs(context)
-        // Per-car clock, falling back to the legacy flat one for the same reason
-        // identityString does - an existing profile must keep its edit history.
-        return p.getLong(k(context, KEY_COMPANION_UPDATED_AT), p.getLong(KEY_COMPANION_UPDATED_AT, 0L))
-    }
-
-    /**
-     * Bumps the companion's edit clock WITHOUT touching any identity field -
-     * used when a visual asset changes (the avatar is (re)generated, or the
-     * Cruise wallpaper is saved) so that edit wins cross-device LWW the same
-     * way a name/persona/voice edit does. See [AvatarStudio.deriveAndSaveStates]
-     * / [AvatarStudio.saveBackground] and [com.kevin.legion.sync.SyncEngine.syncCompanion].
-     */
-    fun touchCompanion(context: Context) {
-        prefs(context).edit().putLong(k(context, KEY_COMPANION_UPDATED_AT), System.currentTimeMillis()).apply()
-    }
-
-    /** The full companion identity as of this device's last local edit, for [saveCompanionIdentity]/sync. */
-    fun companionIdentity(context: Context): CompanionIdentity =
-        // Reads through the per-car accessors (which fall back to the legacy flat
-        // keys), so what syncs is the ACTIVE car's identity - not a global one.
-        CompanionIdentity(
-            name = name(context),
-            persona = persona(context),
-            traits = identityString(context, KEY_TRAITS),
-            voice = voice(context),
-            updatedAt = companionUpdatedAt(context),
-        )
-
-    /**
-     * Writes a full companion identity as-is (name/persona/traits/voice AND
-     * [CompanionIdentity.updatedAt]) - used when cross-device sync adopts the
-     * remote copy wholesale. Deliberately does NOT re-stamp `updatedAt` to
-     * now(): the remote's clock has to survive the write so this device's next
-     * sync compares correctly (re-stamping here would make every device think
-     * its own adopt was the freshest edit, defeating LWW).
-     */
-    fun saveCompanionIdentity(context: Context, identity: CompanionIdentity) {
-        prefs(context).edit()
-            .putString(k(context, KEY_NAME), identity.name)
-            .putString(k(context, KEY_PERSONA), identity.persona)
-            .putString(k(context, KEY_TRAITS), identity.traits)
-            .putString(k(context, KEY_VOICE), identity.voice)
-            .putLong(k(context, KEY_COMPANION_UPDATED_AT), identity.updatedAt)
-            .apply()
-    }
-
-    /**
-     * True once this device's companion identity has been reconciled at least
-     * once against the driver's Drive (uploaded, adopted, or a clash resolved).
-     * Gates whether the next content mismatch is a silent LWW edit or a
-     * one-time "two companions met" prompt - see [com.kevin.legion.sync.CompanionSync.decideCompanion].
-     */
-    fun isCompanionReconciled(context: Context): Boolean =
-        prefs(context).getBoolean(k(context, KEY_COMPANION_SYNC_RECONCILED), false)
-
-    fun markCompanionReconciled(context: Context) {
-        prefs(context).edit().putBoolean(k(context, KEY_COMPANION_SYNC_RECONCILED), true).apply()
     }
 
     /** Hashed spend passphrase (blank if none set). Storage only - logic in [SpendGate]. */
@@ -549,19 +461,11 @@ object CompanionProfile {
         prefs(context).edit().putBoolean(KEY_SYNC_ENABLED, enabled).apply()
     }
 
-    /**
-     * Wipes the companion's identity (name, persona, picks, voice). Does NOT
-     * clear the API key. Also clears the sync clock/reconciled flag - without
-     * this a reset-then-reonboard companion would carry a stale
-     * [KEY_COMPANION_UPDATED_AT]/[KEY_COMPANION_SYNC_RECONCILED] into the next
-     * sync and could lose the fresh onboarding to an older remote copy, or
-     * skip the one-time clash prompt it should get as a genuinely new companion.
-     */
+    /** Wipes the companion's identity (name, persona, picks, voice). Does NOT clear the API key. */
     fun clear(context: Context) {
         prefs(context).edit()
             .remove(KEY_NAME).remove(KEY_PERSONA).remove(KEY_TRAITS).remove(KEY_VOICE).remove(KEY_SPEND_HASH)
             .remove(KEY_VOICE_STYLE).remove(KEY_VOICE_STYLE_TRAITS)
-            .remove(KEY_COMPANION_UPDATED_AT).remove(KEY_COMPANION_SYNC_RECONCILED)
             .apply()
     }
 }
