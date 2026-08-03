@@ -27,9 +27,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ai.BUILT_IN_PERSONAS
 import com.kevin.legion.ai.CURATED_VOICES
+import com.kevin.legion.ai.GeminiVoice
 import com.kevin.legion.ai.Persona
 import com.kevin.legion.ai.personaFor
 import com.kevin.legion.data.local.CompanionProfileEntity
+import com.kevin.legion.ui.theme.LegionSemantics
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -125,6 +127,13 @@ data class CompanionEditorState(
  * [voiceTouched]) - so tapping through personas before typing anything always
  * shows a sensible starting point, but a user who already typed a custom
  * name and then changes their mind on persona doesn't lose it.
+ *
+ * **Each voice option in the dropdown carries an audition control** - a
+ * play/stop glyph, backed by [rememberVoiceAuditionPlayer], that lets the
+ * user hear the bundled clip for that voice before picking it. The player is
+ * scoped to this dialog's composition, so it is released the moment the
+ * dialog leaves the tree (cancel, save, or the screen navigating away) - see
+ * `ui/companions/VoiceAudition.kt`.
  */
 @Composable
 fun CompanionEditorDialog(
@@ -132,6 +141,7 @@ fun CompanionEditorDialog(
     onDismiss: () -> Unit,
     onSave: (CompanionEditorState) -> Unit,
 ) {
+    val sem = LocalLegionSemantics.current
     val isCreate = editing.profileId == null
     var name by remember(editing.profileId) { mutableStateOf(editing.name) }
     var personaKey by remember(editing.profileId) { mutableStateOf(editing.personaKey) }
@@ -139,6 +149,8 @@ fun CompanionEditorDialog(
     var nameTouched by remember(editing.profileId) { mutableStateOf(false) }
     var voiceTouched by remember(editing.profileId) { mutableStateOf(false) }
     var voiceMenuExpanded by remember { mutableStateOf(false) }
+    val auditionPlayer = rememberVoiceAuditionPlayer()
+    val auditioning by auditionPlayer.playing
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -190,6 +202,11 @@ fun CompanionEditorDialog(
                                     voiceTouched = true
                                     voiceMenuExpanded = false
                                 },
+                                // Its own clickable in trailingIcon's Text, distinct from
+                                // the item Row's - a tap on the glyph is consumed there
+                                // and never bubbles up into onClick, so auditioning a
+                                // voice never also selects it.
+                                trailingIcon = { VoiceAuditionGlyph(v, auditioning, auditionPlayer, sem) },
                             )
                         }
                     }
@@ -203,6 +220,37 @@ fun CompanionEditorDialog(
             ) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * One voice's audition control, rendered in [CompanionEditorDialog]'s
+ * dropdown as a [DropdownMenuItem] `trailingIcon`. Three states, text-coded
+ * rather than colour-coded so playing state reads even without colour
+ * (task requirement): no bundled clip ("—", disabled), idle ("PLAY"), and
+ * this voice auditioning right now ("STOP"). [auditioning] is
+ * [VoiceAuditionPlayer.playing]'s current value, hoisted by the caller so
+ * every row in the menu recomposes from the same single source of truth
+ * rather than each row polling the player itself.
+ */
+@Composable
+private fun VoiceAuditionGlyph(
+    voice: GeminiVoice,
+    auditioning: String?,
+    player: VoiceAuditionPlayer,
+    sem: LegionSemantics,
+) {
+    val hasClip = player.hasClip(voice)
+    val isPlaying = auditioning == voice.name
+    Text(
+        text = if (!hasClip) "—" else if (isPlaying) "STOP" else "PLAY",
+        style = LegionType.stamp,
+        color = when {
+            !hasClip -> sem.ghost
+            isPlaying -> MaterialTheme.colorScheme.primary
+            else -> sem.faint
+        },
+        modifier = if (hasClip) Modifier.clickable { player.toggle(voice) }.padding(horizontal = 4.dp) else Modifier.padding(horizontal = 4.dp),
     )
 }
 
