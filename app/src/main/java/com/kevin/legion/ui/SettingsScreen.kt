@@ -15,6 +15,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +25,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import com.kevin.legion.ai.CompanionProfileStore
+import com.kevin.legion.ai.personaFor
 import com.kevin.legion.service.AssistantIgnition
 
 /**
@@ -38,12 +43,37 @@ import com.kevin.legion.service.AssistantIgnition
  * leaves the toggle off and states why - it never partially starts the
  * service. Nothing here touches ledger/pantry/fleet; they have no
  * permission gate.
+ *
+ * **The "who is active" identity line (companion profiles Part 2, 2026-08-02).**
+ * Reads [CompanionProfileStore.activeProfile] so the current name and persona
+ * blurb are visible without navigating into `settings/companions` - a user
+ * whose partner just switched (or renamed) the profile on this same device
+ * shouldn't have to open a sub-screen to find out who they're talking to.
+ * Reloaded on every `ON_RESUME`, the same "cheap, not a poll" shape
+ * [LedgerScreen] uses for its folder/key status, since coming BACK from the
+ * companions screen after an edit is exactly the moment this needs to be
+ * fresh.
  */
 @Composable
-fun SettingsScreen(onOpenKeyScreen: () -> Unit) {
+fun SettingsScreen(onOpenKeyScreen: () -> Unit, onOpenCompanions: () -> Unit) {
     val context = LocalContext.current
     var enabled by remember { mutableStateOf(AssistantIgnition.isEnabled(context)) }
     var refusalReason by remember { mutableStateOf<String?>(null) }
+    var activeName by remember { mutableStateOf<String?>(null) }
+    var activeBlurb by remember { mutableStateOf<String?>(null) }
+    // Bumped on ON_RESUME to key the reload below - a plain Unit key would
+    // only ever fire once, and this needs to re-fire every time the user
+    // comes back from settings/companions having edited or switched.
+    var reloadNonce by remember { mutableStateOf(0) }
+
+    suspend fun reloadActiveProfile() {
+        val profile = CompanionProfileStore.activeProfile(context)
+        activeName = profile?.assistantName
+        activeBlurb = profile?.let { personaFor(it.persona).blurb }
+    }
+
+    LaunchedEffect(reloadNonce) { reloadActiveProfile() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { reloadNonce++ }
 
     // Step 2 of the chain: RECORD_AUDIO. Only reached once POST_NOTIFICATIONS
     // is settled (granted, or not applicable pre-Tiramisu).
@@ -103,9 +133,34 @@ fun SettingsScreen(onOpenKeyScreen: () -> Unit) {
                 onToggle = { turnOn -> if (turnOn) startIgnition() else stopIgnition() },
             )
 
+            ActiveCompanionRow(name = activeName, blurb = activeBlurb, onOpenCompanions = onOpenCompanions)
+
             Button(onClick = onOpenKeyScreen) {
                 Text("Gemini key")
             }
+        }
+    }
+}
+
+/**
+ * The "who is active" line - plain UI half, previewable without
+ * [CompanionProfileStore]. [name]/[blurb] null means the roster hasn't loaded
+ * yet or (a genuinely fresh install, pre-onboarding) no profile is active on
+ * this device at all; both render as "No companion set up yet" rather than
+ * blank space, matching CLAUDE.md's "say plainly what is not built/not set"
+ * posture.
+ */
+@Composable
+private fun ActiveCompanionRow(name: String?, blurb: String?, onOpenCompanions: () -> Unit) {
+    Column {
+        if (name != null) {
+            Text("Active companion: $name")
+            if (blurb != null) Text(blurb)
+        } else {
+            Text("No companion set up yet")
+        }
+        Button(onClick = onOpenCompanions) {
+            Text("Companions")
         }
     }
 }

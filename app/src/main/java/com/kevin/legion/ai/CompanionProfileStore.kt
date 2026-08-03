@@ -26,6 +26,15 @@ import java.util.UUID
  * active selection yet; a driver who resets still keeps whatever profile row
  * and active id they had, which is a known gap for whichever part wires reset
  * into the roster.
+ *
+ * **Part 2 (`ui/CompanionsScreen.kt`) adds the roster/picker screen** and,
+ * with it, [roster]/[activeProfile]/[saveProfile]/[switchActive]/[deleteProfile]
+ * below - the CRUD and switch operations the screen needs, kept here rather
+ * than in the screen itself so the Room/[ActiveCompanionProfile] sequencing
+ * (write-then-materialise, delete-then-maybe-reactivate) has exactly one
+ * implementation. [CompanionProfileEntity.persona] holds a [Persona.key]
+ * (`"alfred"`/`"dorothy"`), never assembled clause text - see [AssistantIdentity],
+ * which resolves the key through [personaFor] at read time.
  */
 object CompanionProfileStore {
 
@@ -135,4 +144,129 @@ object CompanionProfileStore {
         CompanionProfile.saveVoice(context, profile.voice)
         CompanionProfile.saveVoiceStyle(context, decodeSelections(profile.voiceStyleTraits))
     }
+
+    // --- Part 2: roster screen CRUD + switch -------------------------------
+
+    /** The full synced roster, newest edit first (thin pass-through to the DAO's own ordering). */
+    suspend fun roster(context: Context): List<CompanionProfileEntity> =
+        CarDatabase.getDatabase(context).companionProfileDao().getAll()
+
+    /**
+     * The device's ACTIVE profile row, or null if none is active yet (a fresh
+     * install pre-onboarding) or the active id no longer resolves (its row was
+     * deleted from another device before this one's next sync - a known gap,
+     * same shape as [materializeActive]'s own no-op fallback). Read-only
+     * convenience so `SettingsScreen`'s "who is active" line and
+     * `CompanionsScreen`'s roster don't each hand-roll the
+     * [ActiveCompanionProfile] + DAO lookup.
+     */
+    suspend fun activeProfile(context: Context): CompanionProfileEntity? {
+        val activeId = ActiveCompanionProfile.activeProfileId(context) ?: return null
+        return CarDatabase.getDatabase(context).companionProfileDao().getById(activeId)
+    }
+
+    /**
+     * Upserts [profile] (a create with a fresh UUID, or an edit reusing its
+     * existing id - the roster screen builds both the same way, see
+     * `CompanionsScreen`'s editor). Re-materialises immediately if [profile] is
+     * the device's active one, since a rename/re-voice/re-persona of the
+     * ASSISTANT YOU ARE TALKING TO right now must take effect without a
+     * restart; a create, or an edit to some other (non-active) profile, only
+     * touches the row.
+     *
+     * Callers are responsible for bumping `updatedAt` to "now" before calling
+     * this - kept a caller concern (not defaulted here) so a future
+     * sync-driven upsert (a newer row pulled from Drive) can pass the REMOTE
+     * clock through unmodified rather than always stamping local time.
+     */
+    suspend fun saveProfile(context: Context, profile: CompanionProfileEntity) {
+        val dao = CarDatabase.getDatabase(context).companionProfileDao()
+        dao.upsert(profile)
+
+        val activeId = ActiveCompanionProfile.activeProfileId(context)
+        // Adopt this profile if the device has no usable active selection.
+        //
+        // The "never end up with no identity" invariant was implemented for
+        // DELETION and missed on CREATION. Found on device 2026-08-02: a fresh
+        // install (no legacy identity, so `ensureSeeded` correctly seeded
+        // nothing) let two profiles be created with NO active selection at all.
+        // The roster showed neither as active, and `AssistantIdentity` fell
+        // through to `personaFor(null)` - answering as Alfred by fallback luck
+        // rather than by choice, with a blank name.
+        //
+        // Also covers an active id pointing at a row that no longer exists,
+        // which a delete on the other device can produce once the roster syncs.
+        val activeResolves = activeIdResolves(activeId, dao.getById(activeId ?: ""))
+        if (!activeResolves) {
+            ActiveCompanionProfile.setActiveProfileId(context, profile.profileId)
+            materializeActive(context)
+            return
+        }
+        if (activeId == profile.profileId) materializeActive(context)
+    }
+
+    /**
+     * Whether the device's stored active id still points at a real profile.
+     *
+     * Pure and internal for the same reason [canDelete] and
+     * [nextActiveAfterDeleting] are: this is the branch the creation-adoption
+     * fix turns on, and it was the one decision in this file with no test.
+     * Takes the already-looked-up row rather than a DAO so it stays testable
+     * without Room.
+     */
+    internal fun activeIdResolves(activeId: String?, row: CompanionProfileEntity?): Boolean =
+        activeId != null && row != null
+
+    /**
+     * Switches the device's active profile to [profileId] and materialises it,
+     * in that fixed order - [ActiveCompanionProfile.setActiveProfileId]'s own
+     * doc comment is explicit that callers must follow it with
+     * [materializeActive] for the switch to actually reach [CompanionProfile]'s
+     * flat keys, and this is the one place `CompanionsScreen`'s tap-to-switch
+     * calls through.
+     */
+    suspend fun switchActive(context: Context, profileId: String) {
+        ActiveCompanionProfile.setActiveProfileId(context, profileId)
+        materializeActive(context)
+    }
+
+    /**
+     * Deletes [profileId], refusing (no-op, returns false) if it is the
+     * roster's last remaining row - the assistant must never end up with no
+     * identity at all. If the deleted profile was this device's ACTIVE one,
+     * activates [nextActiveAfterDeleting]'s pick and materialises it in the
+     * same order [switchActive] uses, so this device is never left pointing at
+     * an active id that no longer resolves to anything.
+     */
+    suspend fun deleteProfile(context: Context, profileId: String): Boolean {
+        val dao = CarDatabase.getDatabase(context).companionProfileDao()
+        val roster = dao.getAll()
+        if (!canDelete(roster.size)) return false
+        dao.delete(profileId)
+        if (ActiveCompanionProfile.activeProfileId(context) == profileId) {
+            val next = nextActiveAfterDeleting(roster, profileId) ?: return true
+            switchActive(context, next)
+        }
+        return true
+    }
+
+    /**
+     * Pure guard for [deleteProfile]: true only when the roster has more than
+     * one row, i.e. deleting one still leaves at least one identity behind.
+     * Split out for the same unit-testability reason as [shouldSeedFromLegacy] -
+     * see `CompanionProfileStoreTest`.
+     */
+    internal fun canDelete(rosterSize: Int): Boolean = rosterSize > 1
+
+    /**
+     * Pure decision for [deleteProfile]: which profile becomes active after
+     * removing [deletedId] from [roster]. Picks the first remaining row in
+     * [roster]'s own order (the DAO returns newest-edit-first, so this lands on
+     * the next-most-recently-touched profile rather than an arbitrary one).
+     * Returns null only if [roster] held nothing but [deletedId] - callers
+     * gate that case with [canDelete] first, so in practice this only fires
+     * once a second row is confirmed to exist.
+     */
+    internal fun nextActiveAfterDeleting(roster: List<CompanionProfileEntity>, deletedId: String): String? =
+        roster.firstOrNull { it.profileId != deletedId }?.profileId
 }

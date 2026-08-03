@@ -6,10 +6,11 @@ package com.kevin.legion.ui
  * verbatim by the resolution:
  *
  * ```
- * fleet/       + fleet/places     <- was SavedPlacesActivity
- * ledger/      + ledger/import    <- was LedgerImportActivity
- * pantry/      + pantry/import    <- was PantryImportActivity
+ * fleet/       + fleet/places       <- was SavedPlacesActivity
+ * ledger/      + ledger/import      <- was LedgerImportActivity
+ * pantry/      + pantry/import      <- was PantryImportActivity
  * settings/    + settings/key
+ *              + settings/companions <- companion profile picker (Part 2, 2026-08-02)
  * ```
  *
  * Plain string constants rather than a sealed class with typed args: nothing
@@ -29,6 +30,8 @@ object LegionRoute {
 
     const val SETTINGS = "settings"
     const val SETTINGS_KEY = "settings/key"
+    /** The companion profile picker (roster, create/edit/delete/switch) - Part 2 of the multi-companion feature. */
+    const val SETTINGS_COMPANIONS = "settings/companions"
 
     /** The four bottom-nav destinations, in display order. Assistant is NOT one of them - it's a mode, not a place (resolution §5). */
     val TOP_LEVEL = listOf(FLEET, LEDGER, PANTRY, SETTINGS)

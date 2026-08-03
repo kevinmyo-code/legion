@@ -183,10 +183,16 @@ private fun LegionShell(deepLinkRoute: String? = null, deepLinkNonce: Int = 0) {
             }
 
             composable(LegionRoute.SETTINGS) {
-                SettingsScreen(onOpenKeyScreen = { navController.navigate(LegionRoute.SETTINGS_KEY) })
+                SettingsScreen(
+                    onOpenKeyScreen = { navController.navigate(LegionRoute.SETTINGS_KEY) },
+                    onOpenCompanions = { navController.navigate(LegionRoute.SETTINGS_COMPANIONS) },
+                )
             }
             composable(LegionRoute.SETTINGS_KEY) {
                 KeyScreen(onBack = { navController.popBackStack() })
+            }
+            composable(LegionRoute.SETTINGS_COMPANIONS) {
+                CompanionsScreen(onBack = { navController.popBackStack() })
             }
         }
     }
