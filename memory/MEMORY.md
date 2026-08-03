@@ -5,12 +5,12 @@ rules.** Depth lives in the library, not here. Under 80 lines. MIDNIGHT_AI: see 
 
 ## Status as of 2026-08-02 (session 2)
 
-- **Builds clean.** `-Pnokey` compile + `testDebugUnitTest` green (42 tests). Detail: README.md.
-- **PIPELINE WORKS END TO END ON HARDWARE.** Folder -> scan -> gate -> real Gemini call -> gate
-  REFUSED the result. Money spent, zero rows written. §4 validated live.
-- **The shell renders**; ledger is real (variant B). Fleet/pantry interiors are ticket 09.
-- **`feat/ledger-ingestion` is 6 parts deep and PUSHED.** `dev` is still 14 ahead of `origin/dev`.
-  `github.com/kevinmyo-code/legion`, public. `dev` is the trunk; `main` is behind.
+- **THE MAP IS BUILT.** All 11 tickets resolved, 03-09 implemented. No unbuilt ticket remains.
+- **Builds clean.** `-Pnokey` compile + `testDebugUnitTest` green (71 tests). Detail: README.md.
+- **Both LLM paths proven on hardware** on Kevin's key: ledger extraction (reconciled, and
+  separately REFUSED when the doc printed no total) and pantry receipt vision.
+- All four tabs are real screens. `feat/ledger-ingestion` is 13 commits, PUSHED. `dev` is still
+  14 ahead of `origin/dev`; `main` is far behind everything. The merge is Kevin's.
 
 ## Blocking
 
@@ -24,47 +24,47 @@ rules.** Depth lives in the library, not here. Under 80 lines. MIDNIGHT_AI: see 
 
 ## Untested / unverified
 
-- **On the A17K:** v3->v4 migration, ticket 04 case 7, the shell (dark + light), the full ledger
-  pipeline incl. a live LLM call. Fleet, pantry, sync, assistant: never run.
-- **`read by AI` has STILL never rendered** - needs a layout that falls through AND reconciles;
-  every such fixture is built to fail. FIXTURE gap.
-- **A tab switch DURING a live scan is untested**; the fix is `reasoned` (service scope).
-- **The nav graph has ZERO tests.** Back-stack behaviour is `reasoned` only.
-- **None of `sync/` has ever run here.** Ticket 10's rulings are `traced`, none `tested`.
+- **`sync/` has NEVER executed.** Ticket 10's rulings are all `traced`. Largest untested surface,
+  and the only one where a wrong ruling means silent data loss.
+- **The whole fleet aspect is unexercised** - OBD, wake word, proactives compile, never run. The
+  fleet screen renders DISCONNECTED because that is genuinely the state.
+- **`assets/dtc_descriptions_seed.json` has NEVER existed** in git history despite
+  `DtcDescriptions` calling it bundled. Every fault code reads "not identified locally".
+- **No run against a REAL Drive folder** - a local SAF tree cannot reproduce the 2m36s stale listing.
+- **A tab switch DURING a live scan** - `reasoned` (service scope); fixtures finish too fast to stage.
+- **The `+` money fix** is unit-tested only. **The nav graph has ZERO tests** (back-stack `reasoned`).
 - **Probe steps 7-9 unrun**: reboot grant persistence, offline failure mode.
-- **One unexplained process death** 2026-08-02: empty crash buffer, no FATAL, no recurrence.
 - `LedgerController` dedup and `PantryController` DB-write paths untested (Robolectric mismatch).
-- Every ported fleet path (OBD, wake word, proactives) compiles, never exercised.
 
 ## In-flight
 
-**`.scratch/ledger-drive-ingestion/` - MAP COMPLETE, 11/11**, and the eleven resolutions ARE the
-build spec. Tracked in git; decisions also in `library/decisions.md`. **Built: 03-08.** Only
-**ticket 09 (fleet + pantry screens)** is left.
+**Nothing.** `.scratch/ledger-drive-ingestion/` is complete: 11/11 resolved, 03-09 built. The next
+effort needs its own map. Candidates, in the order I would take them:
 
-- **Ticket 08 is not fully closed:** no fixture renders `read by AI`, and the run used a LOCAL SAF
-  tree, so the probe's stale-listing latency is unreproduced. Needs a real Drive folder.
-- **Before quoting any LLM cost, pull live `gemini-3.5-flash-lite` pricing.** Still no constant.
-- **Ticket 09: set `contentColor` explicitly on error-container surfaces** (`errorContainer` shares
-  a value with `secondaryContainer`), and reuse `ui/common/` rather than duplicating it.
+1. **`sync/`** - the biggest risk, and today proved `traced` claims die on contact with hardware.
+2. **The assistant's voice** (`AssistantIdentity`), which unblocks onboarding.
+3. **A DTC seed dictionary**, so FAULTS says something useful.
+4. **Ledger categorisation / FX / insights** - nothing to port, new design work.
+
 - **Two prototype branches, NEITHER to be merged:** `proto/ledger-ui`, `proto/fleet-pantry-ui`.
 - **Open, not blocking:** Compose BOM vs nav-compose skew; deep-link `navigate()` lacks `popUpTo`.
 
 ## Notes for next session
 
-- **A foreground service is not a home for process-wide init (L12).** Ticket 07 made
-  `AriaForegroundService` opt-in and OFF by default; everything it incidentally seeded silently
-  stopped being seeded. **`MidnightApplication.onCreate` is the safe home.**
-- **A ticket's own verification step is not optional (L11, CLAUDE.md §8).** Ticket 07's skipped
-  `ThemePreview` render shipped an M3 colour collision. **One colour value, one M3 role.**
-- **Run it on the phone.** Every serious bug this session - red text, silent scans, forgotten
-  folder, invisible key - survived compile, tests AND review. Only installing found them.
-- **Do not resolve a schema ticket before its consumers.** Ticket 03 took four amendments.
-- **Verify what the librarian writes.** Three FILE passes so far, all needed hand correction.
-- **Two contested port calls open:** `MusicController` vs Spotify, `BuildSheetController` text-only.
-- **ADB after a PC reboot needs a FRESH `adb pair`**, and the live port was the PAIRING dialog's.
+- **RUN IT ON THE PHONE.** Three bugs today survived compile, 71 tests AND senior-dev review: body
+  text in quarantine red, a saved key the gate could not see, every document date a day early.
+- **A date-only value and an instant must not share a formatter.** Ingestion stores dates at UTC
+  midnight; render in UTC (`documentDate`). The 8 other call sites are instants, correct in local.
+- **Fixtures must carry KNOWN, DERIVED totals and dates.** Both generators (`tools/`) compute the
+  printed total from their rows. Only reason the `+` bug and the date bug were findable.
+- **A foreground service is not a home for process-wide init (L12).** `MidnightApplication.onCreate`.
+- **A ticket's own verification step is a gate, not a note (L11, CLAUDE.md §8).**
+- **Verify what the librarian writes.** Four FILE passes, all needed hand correction. Two
+  contested port calls still open: `MusicController` vs Spotify, `BuildSheetController` text-only.
+- **ADB after a reboot needs a FRESH `adb pair`**, and the network moved to `192.168.4.x` today.
 - **Device quirks:** `pm clear` is OEM-blocked (uninstall to wipe); `adb push`ed files are invisible
-  to the Downloads provider - stage SAF fixtures under the device root.
+  to the Downloads provider (stage SAF fixtures under the device root); this machine's execution
+  policy refuses unsigned `.ps1` FILES, so run generators via `Invoke-Expression (Get-Content -Raw)`.
 
 ## Library
 
