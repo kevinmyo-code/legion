@@ -23,3 +23,34 @@ fun shortDate(epochMs: Long): String =
  */
 fun compactDate(epochMs: Long): String =
     Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate().format(COMPACT_DATE)
+
+/**
+ * "3 days ago" / "2 hours ago" / "just now" - ticket 09 resolution §1's FLEET
+ * LIVE block: nothing in the OBD stack has run since the port, so every
+ * reading shown is a PAST one, and the screen must say how stale it is rather
+ * than let a bare number read as live. Pure function of two millis so it is
+ * unit-testable without Robolectric, same posture as [com.kevin.legion.ledger.formatCents].
+ *
+ * Buckets widen as the gap grows (seconds -> minutes -> hours -> days ->
+ * months) because a driver caring about staleness at the minute level past a
+ * few days is not the failure mode this exists to catch - "47 days ago" reads
+ * the same as "48 days ago" would, so once the value is that stale, more
+ * precision buys nothing. A negative gap (clock skew, or a sample stamped a
+ * moment after [now] is captured) floors to "just now" rather than printing a
+ * nonsensical negative age.
+ */
+fun relativeAge(epochMs: Long, now: Long = System.currentTimeMillis()): String {
+    val deltaMs = (now - epochMs).coerceAtLeast(0)
+    val seconds = deltaMs / 1000
+    val minutes = seconds / 60
+    val hours = minutes / 60
+    val days = hours / 24
+    val months = days / 30
+    return when {
+        seconds < 45 -> "just now"
+        minutes < 60 -> if (minutes == 1L) "1 minute ago" else "$minutes minutes ago"
+        hours < 24 -> if (hours == 1L) "1 hour ago" else "$hours hours ago"
+        days < 30 -> if (days == 1L) "1 day ago" else "$days days ago"
+        else -> if (months <= 1L) "1 month ago" else "$months months ago"
+    }
+}
