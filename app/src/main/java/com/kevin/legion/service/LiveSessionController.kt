@@ -282,7 +282,7 @@ class LiveSessionController(context: Context) {
         val isFirst = !CompanionProfile.isFirstSessionDone(appContext)
         val ok = if (isFirst) {
             set(Phase.THINKING, "...")
-            s.beginConversation(firstGreetingOpener())
+            s.beginConversation(firstGreetingOpener(appContext))
         } else {
             set(Phase.LISTENING, "Listening...")
             s.beginConversation(null)
@@ -338,7 +338,7 @@ class LiveSessionController(context: Context) {
             val live = brain.buildLiveContext()
             val isFirst = !CompanionProfile.isFirstSessionDone(appContext)
             pendingPrompt = when {
-                isFirst -> firstGreetingOpener()
+                isFirst -> firstGreetingOpener(appContext)
                 live.isBlank() -> GREETING_PROMPT
                 else -> "(Current car/driver context, use naturally if relevant:\n$live)\n\n$GREETING_PROMPT"
             }

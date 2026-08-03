@@ -399,7 +399,7 @@ class AriaForegroundService : Service() {
         // normally instead of replaying the first-meeting line.
         if (!CompanionProfile.isFirstSessionDone(this)) {
             CompanionProfile.markFirstSessionDone(this)
-            speakProactive(firstGreetingOpener())
+            speakProactive(firstGreetingOpener(this@AriaForegroundService))
             return
         }
 
