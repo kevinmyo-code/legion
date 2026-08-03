@@ -1,7 +1,9 @@
 package com.kevin.legion.ai
 
+import com.kevin.legion.data.local.CompanionProfileEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -96,4 +98,93 @@ class CompanionProfileStoreTest {
         assertEquals(selections, decodeSelections(row.traits))
         assertTrue(decodeSelections(row.voiceStyleTraits).isEmpty())
     }
+
+    // --- canDelete / nextActiveAfterDeleting (Part 2 roster screen) ----------
+
+    private fun profile(id: String, updatedAt: Long) = CompanionProfileEntity(
+        profileId = id,
+        assistantName = id,
+        persona = "alfred",
+        traits = "",
+        voice = "Charon",
+        voiceStyle = "",
+        voiceStyleTraits = "",
+        updatedAt = updatedAt,
+    )
+
+    @Test
+    fun canDelete_lastRemainingProfile_refused() {
+        // The assistant must never end up with no identity at all.
+        assertFalse(CompanionProfileStore.canDelete(rosterSize = 1))
+    }
+
+    @Test
+    fun canDelete_twoOrMoreProfiles_allowed() {
+        assertTrue(CompanionProfileStore.canDelete(rosterSize = 2))
+        assertTrue(CompanionProfileStore.canDelete(rosterSize = 5))
+    }
+
+    @Test
+    fun canDelete_emptyRoster_refused() {
+        // Shouldn't happen in practice (ensureSeeded/onboarding always leaves
+        // at least one row), but a count of 0 must not read as "deletion is fine".
+        assertFalse(CompanionProfileStore.canDelete(rosterSize = 0))
+    }
+
+    @Test
+    fun nextActiveAfterDeleting_picksFirstRemainingRowInRosterOrder() {
+        // Roster is newest-edit-first (the DAO's own ORDER BY), so the pick
+        // lands on the next-most-recently-touched profile.
+        val roster = listOf(profile("a", 300L), profile("b", 200L), profile("c", 100L))
+        assertEquals("b", CompanionProfileStore.nextActiveAfterDeleting(roster, deletedId = "a"))
+    }
+
+    @Test
+    fun nextActiveAfterDeleting_deletedRowNotFirst_stillSkipsOnlyThatOne() {
+        val roster = listOf(profile("a", 300L), profile("b", 200L), profile("c", 100L))
+        assertEquals("a", CompanionProfileStore.nextActiveAfterDeleting(roster, deletedId = "b"))
+    }
+
+    @Test
+    fun nextActiveAfterDeleting_onlyRowWasTheDeletedOne_nullRatherThanCrashing() {
+        // canDelete gates this case in practice, but the function itself must
+        // degrade to null (not throw, not silently pick the deleted row).
+        val roster = listOf(profile("a", 300L))
+        assertNull(CompanionProfileStore.nextActiveAfterDeleting(roster, deletedId = "a"))
+    }
+
+    // --- activeIdResolves: the creation-adoption branch ---------------------
+    //
+    // Regression guard for the bug found on device 2026-08-02: the "never end
+    // up with no identity" invariant was implemented for deletion but not
+    // creation, so a fresh install could hold two profiles with NO active
+    // selection and answer as Alfred by fallback luck with a blank name.
+
+    @Test
+    fun `a null active id never resolves`() {
+        assertFalse(CompanionProfileStore.activeIdResolves(null, null))
+        assertFalse(CompanionProfileStore.activeIdResolves(null, profile("any")))
+    }
+
+    @Test
+    fun `an active id pointing at a missing row does not resolve`() {
+        // What a delete on the OTHER device produces once the roster syncs.
+        assertFalse(CompanionProfileStore.activeIdResolves("deleted-elsewhere", null))
+    }
+
+    @Test
+    fun `an active id with a live row resolves`() {
+        assertTrue(CompanionProfileStore.activeIdResolves("p1", profile("p1")))
+    }
+
+    private fun profile(id: String) = CompanionProfileEntity(
+        profileId = id,
+        assistantName = "Alfred",
+        persona = "alfred",
+        traits = "{}",
+        voice = "Charon",
+        voiceStyle = "",
+        voiceStyleTraits = "{}",
+        updatedAt = 1L,
+    )
 }

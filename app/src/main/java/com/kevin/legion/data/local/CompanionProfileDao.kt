@@ -25,4 +25,13 @@ interface CompanionProfileDao {
 
     @Query("SELECT COUNT(*) FROM companion_profiles")
     suspend fun count(): Int
+
+    /**
+     * Removes one row by id (Part 2, the roster/picker screen). Callers are
+     * responsible for the "never delete the last profile" and "reactivate if
+     * the deleted one was active" rules - see [com.kevin.legion.ai.CompanionProfileStore.deleteProfile] -
+     * this DAO stays a dumb store, same rationale as this file's class doc.
+     */
+    @Query("DELETE FROM companion_profiles WHERE profileId = :profileId")
+    suspend fun delete(profileId: String)
 }
