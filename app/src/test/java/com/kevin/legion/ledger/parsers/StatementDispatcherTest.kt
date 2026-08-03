@@ -70,6 +70,61 @@ class StatementDispatcherTest {
     }
 
     @Test
+    fun `a matching accountHint does not disturb a PDF's own printed account`() {
+        // The common case: the folder mapping agrees with what the file
+        // itself states (or the folder is simply unmapped) - either way,
+        // dbs_happy_path.pdf's own account (see DbsStatementParserTest) wins
+        // and nothing is quarantined.
+        val bytes = File("src/test/resources/ledger_fixtures/dbs_happy_path.pdf").readBytes()
+        val result = StatementDispatcher.dispatchDeterministic("dbs_happy_path.pdf", bytes, "1234567890")
+        assertTrue(result is DeterministicResult.Success)
+        assertTrue((result as DeterministicResult.Success).transactions.all { it.accountId == "1234567890" })
+    }
+
+    @Test
+    fun `a folder mapping that contradicts a PDF's own printed account quarantines rather than picking one`() {
+        // dbs_happy_path.pdf prints account 1234567890 (DbsStatementParserTest).
+        // A folder mapped to a DIFFERENT account means this file is most
+        // likely filed in the wrong subfolder - CLAUDE.md §4: never silently
+        // trust either side over the other.
+        val bytes = File("src/test/resources/ledger_fixtures/dbs_happy_path.pdf").readBytes()
+        val result = StatementDispatcher.dispatchDeterministic("dbs_happy_path.pdf", bytes, "SOME-OTHER-ACCOUNT")
+        assertTrue(result is DeterministicResult.Quarantined)
+        val reason = (result as DeterministicResult.Quarantined).reason
+        assertTrue(reason.contains("1234567890"))
+        assertTrue(reason.contains("SOME-OTHER-ACCOUNT"))
+        assertTrue(reason.contains("Nothing was imported."))
+    }
+
+    @Test
+    fun `a folder-mapped CSV resolves through the dispatcher without a mismatch`() {
+        val bytes = File("src/test/resources/ledger_fixtures/bofa_csv_happy_path.csv").readBytes()
+        val result = StatementDispatcher.dispatchDeterministic("bofa_csv_happy_path.csv", bytes, "BOFA-CHECKING")
+        assertTrue(result is DeterministicResult.Success)
+        assertTrue((result as DeterministicResult.Success).transactions.all { it.accountId == "BOFA-CHECKING" })
+    }
+
+    @Test
+    fun `an unmapped CSV quarantines with the mapping message, not a crash`() {
+        val bytes = File("src/test/resources/ledger_fixtures/bofa_csv_happy_path.csv").readBytes()
+        val result = StatementDispatcher.dispatchDeterministic("bofa_csv_happy_path.csv", bytes, null)
+        assertTrue(result is DeterministicResult.Quarantined)
+        assertTrue((result as DeterministicResult.Quarantined).reason.contains("Map the folder"))
+    }
+
+    @Test
+    fun `bytes that are neither a recognized CSV nor a real PDF quarantine instead of crashing PdfBox`() {
+        // The exact hazard widening acceptance to CSV introduced: a file
+        // that passed IngestPipeline.isAcceptableStatementFile's extension
+        // gate (a .csv that ISN'T BofA's layout) must never reach
+        // PDDocument.load() with non-PDF bytes.
+        val garbage = "not,a,recognized,csv,layout\n1,2,3,4,5\n".toByteArray()
+        val result = StatementDispatcher.dispatchDeterministic("mystery.csv", garbage)
+        assertTrue(result is DeterministicResult.Quarantined)
+        assertTrue((result as DeterministicResult.Quarantined).reason.contains("Nothing was imported."))
+    }
+
+    @Test
     fun `an unrecognized layout falls through to NeedsLlm without crashing, never quietly succeeding`() {
         // dispatchDeterministic never touches Gemini (that's the whole point
         // of the split - see StatementDispatcher's doc comment) - both

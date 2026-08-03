@@ -5,6 +5,7 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.CompanionProfileStore
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.data.MidnightImport
+import com.kevin.legion.ledger.LedgerAccountMappingPreferences
 import com.kevin.legion.ledger.LedgerFolderPreferences
 import com.kevin.legion.service.ProactivePreferences
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +51,10 @@ class MidnightApplication : Application() {
         GeminiKeyProvider.init(this)
         ProactivePreferences.init(this)
         LedgerFolderPreferences.init(this)
+        // Per-account subfolder mapping (checking/, credit/, ...) - same L12
+        // reasoning as the three above, added for the per-account-subfolder
+        // + CSV ingestion ticket.
+        LedgerAccountMappingPreferences.init(this)
 
         // Named companion profiles (multi-companion, 2026-08-02): seed one
         // profile from a pre-existing single identity if this install predates

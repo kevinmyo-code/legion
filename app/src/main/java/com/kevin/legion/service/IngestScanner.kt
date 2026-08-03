@@ -6,6 +6,7 @@ import android.provider.DocumentsContract
 import android.util.Log
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.ledger.IngestPipeline
+import com.kevin.legion.ledger.LedgerAccountMappingPreferences
 import com.kevin.legion.ledger.LedgerIngestResult
 import com.kevin.legion.ledger.parsers.DeterministicResult
 import com.kevin.legion.ledger.parsers.PdfText
@@ -123,6 +124,8 @@ class IngestScanner(private val context: Context) {
         val displayName: String,
         val cacheFile: File,
         val staged: IngestPipeline.StageOutcome.Staged,
+        /** Resolved via [LedgerAccountMappingPreferences.accountFor] against [SafChild.containingFolderId] - see the account-mapping ticket. Null for a file directly in the connected root, or whose subfolder has no mapping yet. */
+        val accountHint: String?,
     )
 
     private suspend fun runScan(treeUri: Uri, scanDir: File) {
@@ -174,7 +177,8 @@ class IngestScanner(private val context: Context) {
                                 // rather than however many the folder holds.
                                 val cacheFile = File(scanDir, URLEncoder.encode(driveFileId, "UTF-8"))
                                 cacheFile.writeBytes(outcome.bytes)
-                                staged += StagedFile(driveFileId, child.displayName, cacheFile, outcome)
+                                val accountHint = LedgerAccountMappingPreferences.accountFor(child.containingFolderId)
+                                staged += StagedFile(driveFileId, child.displayName, cacheFile, outcome, accountHint)
                             }
                         }
                         _state.value = ScanState.Staging(done1.incrementAndGet(), children.size)
@@ -192,7 +196,7 @@ class IngestScanner(private val context: Context) {
         for ((index, sf) in stagedList.withIndex()) {
             _state.value = ScanState.ParsingDeterministic(index, stagedList.size, sf.displayName)
             val bytes = sf.cacheFile.readBytes()
-            when (val det = StatementDispatcher.dispatchDeterministic(sf.displayName, bytes)) {
+            when (val det = StatementDispatcher.dispatchDeterministic(sf.displayName, bytes, sf.accountHint)) {
                 is DeterministicResult.Success -> {
                     IngestPipeline.commit(
                         context, sf.driveFileId, treeUri.toString(), sf.displayName,
@@ -303,6 +307,8 @@ class IngestScanner(private val context: Context) {
         val mimeType: String,
         val size: Long,
         val lastModified: Long,
+        /** The containing per-account subfolder's SAF document id, null for a file directly in the connected root. Resolved into an account via [LedgerAccountMappingPreferences.accountFor] in [runScan]'s phase 1. */
+        val containingFolderId: String? = null,
     )
 
     /**
@@ -311,11 +317,52 @@ class IngestScanner(private val context: Context) {
      * file and discards the cursor's extras) - one binder call for every
      * column this pipeline needs. `.scratch/ledger-drive-ingestion/research/01-saf-drive-folder-findings.md`
      * §2c point 2.
+     *
+     * **Recurses ONE level into subfolders** - Kevin's real layout puts
+     * per-account folders (`checking/`, `credit/`) directly under the
+     * connected root, each holding both a PDF (prints its own account) and a
+     * CSV (BofA's export, which doesn't). Every file found inside a
+     * subfolder carries that subfolder's document id as
+     * [SafChild.containingFolderId], the hint
+     * [LedgerAccountMappingPreferences] resolves into an account for any
+     * file that states none of its own.
+     *
+     * **Capped at one level on purpose.** The stated layout is exactly one
+     * folder deep; an unbounded walk risks unbounded binder-call fan-out
+     * against a provider that already serves stale-empty results with no
+     * signal at all (ticket 05's finding). A folder nested two levels down
+     * (a folder inside `checking/`) is simply not descended into again -
+     * that is a known, documented limit, not a silent gap. `reasoned`, not
+     * verified on-device: SAF recursion behavior only truly proves out on
+     * hardware, and none was available while this was built.
+     *
+     * A subfolder is NEVER itself staged as a file - only its children come
+     * back from this function. This is also the fix for the prior flat-only
+     * behavior's bug: a subfolder used to come back as an ordinary child,
+     * fail every parser, and land [com.kevin.legion.data.local.IngestState.UNREADABLE].
      */
     private fun listChildren(treeUri: Uri): List<SafChild> {
-        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
-            treeUri, DocumentsContract.getTreeDocumentId(treeUri)
-        )
+        val topLevel = queryChildDocuments(treeUri, DocumentsContract.getTreeDocumentId(treeUri))
+        val out = mutableListOf<SafChild>()
+        for (child in topLevel) {
+            if (child.mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
+                // One level of recursion, no further. Files inside inherit
+                // this subfolder's document id as their account-mapping
+                // hint; any directory found AT THIS DEPTH is not descended
+                // into again - the cap this function's doc comment names.
+                out += queryChildDocuments(treeUri, child.documentId)
+                    .filter { it.mimeType != DocumentsContract.Document.MIME_TYPE_DIR }
+                    .map { it.copy(containingFolderId = child.documentId) }
+            } else {
+                out += child
+            }
+        }
+        return out
+    }
+
+    /** One binder call: every direct child of [parentDocumentId] within [treeUri]. Shared by the root listing and the one-level subfolder recursion in [listChildren]. */
+    private fun queryChildDocuments(treeUri: Uri, parentDocumentId: String): List<SafChild> {
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocumentId)
         val columns = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
             DocumentsContract.Document.COLUMN_DISPLAY_NAME,

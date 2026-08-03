@@ -31,6 +31,34 @@ object IngestPipeline {
     fun stripAccountPrefix(documentId: String): String =
         documentId.replaceFirst(Regex("^acc=[^;]*;"), "")
 
+    /**
+     * Whether [displayName]/[mimeType] is a file this pipeline will even
+     * attempt to read - the gate before a single byte is fetched. **Not
+     * "accept everything"**: an unrecognized file must still land
+     * [IngestState.UNREADABLE], per the READ-FIRST brief for this ticket.
+     *
+     * PDF stays gated on mime type alone (`application/pdf`), unchanged from
+     * before - SAF providers report it consistently and this has been the
+     * working rule since ticket 03.
+     *
+     * CSV is gated on EXTENSION, not mime type, `reasoned` rather than
+     * observed against every SAF provider: providers are inconsistent about
+     * what mime type a `.csv` gets served as (`text/csv`,
+     * `text/comma-separated-values`, `application/vnd.ms-excel`, sometimes
+     * the generic `application/octet-stream` when the provider has no better
+     * guess) - the account-mapping brief names this inconsistency
+     * explicitly. The extension is the one signal Kevin's own upload
+     * actually controls. `application/octet-stream` alone, with no `.csv`
+     * extension, is NOT accepted on its own - that mime type is the generic
+     * fallback for countless non-statement binaries, and accepting it
+     * unconditionally would defeat "not everything".
+     */
+    fun isAcceptableStatementFile(displayName: String, mimeType: String): Boolean {
+        if (mimeType == "application/pdf") return true
+        val ext = displayName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+        return ext == "csv"
+    }
+
     /** SHA-256 over [bytes], hex-encoded. Computed once bytes are already in memory to be parsed - costs nothing extra. */
     fun sha256(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
@@ -83,8 +111,8 @@ object IngestPipeline {
         val now = System.currentTimeMillis()
         val existing = dao.getByDriveFileId(driveFileId)
 
-        if (mimeType != "application/pdf") {
-            val reason = "Not a PDF ($mimeType)"
+        if (!isAcceptableStatementFile(displayName, mimeType)) {
+            val reason = "Not a supported statement file ($mimeType)"
             dao.upsert(
                 blank(existing, driveFileId, treeUri, displayName, now).copy(
                     displayName = displayName, sizeBytes = sizeBytes, lastModified = lastModified,

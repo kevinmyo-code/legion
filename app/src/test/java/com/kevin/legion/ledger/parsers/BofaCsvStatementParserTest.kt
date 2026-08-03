@@ -16,15 +16,22 @@ import java.io.File
 class BofaCsvStatementParserTest {
     private fun fixture(name: String) = File("src/test/resources/ledger_fixtures/$name")
 
+    companion object {
+        /** A folder-mapped account id, standing in for what [com.kevin.legion.ledger.LedgerAccountMappingPreferences] would resolve. */
+        private const val MAPPED_ACCOUNT = "BOFA-CHECKING"
+    }
+
     @Test
     fun `parses the happy-path CSV export, skipping the beginning-balance row`() {
         val fixture = fixture("bofa_csv_happy_path.csv")
-        val transactions = fixture.inputStream().use { BofaCsvStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { BofaCsvStatementParser.parse(fixture.name, it, MAPPED_ACCOUNT) }
 
         assertEquals(7, transactions.size)
         assertTrue(transactions.all { it.ingestMethod == IngestMethod.DETERMINISTIC })
         assertTrue(transactions.all { it.currency == LedgerCurrency.USD })
-        assertTrue(transactions.all { it.accountId == BofaCsvStatementParser.ACCOUNT_ID })
+        // Every row is remapped to the resolved accountHint at the very end
+        // of parse() - see BofaCsvStatementParser's doc comment.
+        assertTrue(transactions.all { it.accountId == MAPPED_ACCOUNT })
 
         // Not the beginning-balance repeat row (empty amount) - the real
         // first transaction, exactly as printed.
@@ -44,7 +51,11 @@ class BofaCsvStatementParserTest {
     }
 
     @Test
-    fun `quarantines when the ending balance doesn't tie out`() {
+    fun `quarantines when the ending balance doesn't tie out, even with no accountHint supplied`() {
+        // Deliberately no accountHint - proves the numeric reconciliation
+        // anchors run BEFORE account resolution (UnmappedAccountException's
+        // doc comment): a file that's both unmapped AND numerically broken
+        // must report the numbers problem, not the mapping one.
         val fixture = fixture("bofa_csv_balance_mismatch.csv")
         val ex = assertThrows(BalanceContinuityException::class.java) {
             fixture.inputStream().use { BofaCsvStatementParser.parse(fixture.name, it) }
@@ -55,6 +66,20 @@ class BofaCsvStatementParserTest {
         assertTrue(ex.userMessage!!.contains("Nothing was imported."))
         assertTrue(ex.message!!.contains("222061")) // computed ending, in cents
         assertTrue(ex.message!!.contains("999999")) // stated (corrupted) ending, in cents
+    }
+
+    @Test
+    fun `throws UnmappedAccountException when the numbers reconcile but no accountHint is supplied`() {
+        // The gap-filler case this ticket exists for: a numerically clean
+        // file whose folder has no mapping yet must never silently write a
+        // placeholder account - CLAUDE.md §4's "never guess" applied to
+        // account identity.
+        val fixture = fixture("bofa_csv_happy_path.csv")
+        val ex = assertThrows(UnmappedAccountException::class.java) {
+            fixture.inputStream().use { BofaCsvStatementParser.parse(fixture.name, it, accountHint = null) }
+        }
+        assertTrue(ex.userMessage!!.contains("Map the folder"))
+        assertTrue(ex.userMessage!!.contains("Nothing was imported."))
     }
 
     @Test
@@ -79,7 +104,7 @@ class BofaCsvStatementParserTest {
             07/01/2026,"STORE, THE #123, CITY","30.00","23.69"
         """.trimIndent()
         val transactions = BofaCsvStatementParser.parse(
-            "comma.csv", ByteArrayInputStream(csv.toByteArray()),
+            "comma.csv", ByteArrayInputStream(csv.toByteArray()), MAPPED_ACCOUNT,
         )
         assertEquals(1, transactions.size)
         assertEquals("STORE, THE #123, CITY", transactions[0].description)

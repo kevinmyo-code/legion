@@ -43,6 +43,8 @@ import com.kevin.legion.data.local.IngestedFile
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
 import com.kevin.legion.ledger.AccountBalance
+import com.kevin.legion.ledger.DiscoveredAccountFolder
+import com.kevin.legion.ledger.LedgerAccountMappingPreferences
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ledger.LedgerFolderPreferences
 import com.kevin.legion.service.FileResults
@@ -52,6 +54,7 @@ import com.kevin.legion.service.ScanState
 import com.kevin.legion.service.SpendEstimate
 import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.SectionHeader
+import com.kevin.legion.ui.ledger.AccountMappingSection
 import com.kevin.legion.ui.ledger.BalancesSection
 import com.kevin.legion.ui.ledger.FolderConnectionRow
 import com.kevin.legion.ui.ledger.LedgerEmptyCopy
@@ -102,6 +105,8 @@ data class LedgerUiState(
     val folder: LedgerFolderUiState = LedgerFolderUiState.NotConnected,
     val scanState: ScanState = ScanState.Idle,
     val hasGeminiKey: Boolean = true,
+    val accountFolders: List<DiscoveredAccountFolder> = emptyList(),
+    val accountMapping: Map<String, String> = emptyMap(),
 )
 
 @Composable
@@ -128,6 +133,18 @@ fun LedgerScreen(onOpenImport: () -> Unit, onOpenKeySettings: () -> Unit) {
     val treeUri by LedgerFolderPreferences.treeUri.collectAsStateWithLifecycle()
     var folderUi by remember { mutableStateOf<LedgerFolderUiState>(LedgerFolderUiState.NotConnected) }
     var hasGeminiKey by remember { mutableStateOf(GeminiKeyProvider.hasKey()) }
+    // Discovered per-account subfolders (checking/, credit/) directly under
+    // the connected root - a query against the LIVE Drive tree, not derived
+    // from anything in Room, so it's kept separate from LedgerAccountMappingPreferences.mapping
+    // (which is just folderId -> accountId with no notion of what folders
+    // currently exist).
+    var accountFolders by remember { mutableStateOf<List<DiscoveredAccountFolder>>(emptyList()) }
+    val accountMapping by LedgerAccountMappingPreferences.mapping.collectAsStateWithLifecycle()
+
+    suspend fun refreshAccountFolders() {
+        val uri = treeUri
+        accountFolders = if (uri != null) LedgerAccountMappingPreferences.listAccountFolders(context, uri) else emptyList()
+    }
 
     suspend fun refreshFolderStatus() {
         val status = LedgerFolderPreferences.connectionStatus(context)
@@ -140,7 +157,10 @@ fun LedgerScreen(onOpenImport: () -> Unit, onOpenKeySettings: () -> Unit) {
 
     // Recomputed whenever the connected folder itself changes (connect,
     // change, disconnect)...
-    LaunchedEffect(treeUri) { refreshFolderStatus() }
+    LaunchedEffect(treeUri) {
+        refreshFolderStatus()
+        refreshAccountFolders()
+    }
     // ...and on resume, since both signals can go stale for reasons entirely
     // outside this app: a Gemini key saved from `settings/key` (this screen
     // was never told), or a Drive grant revoked by removing the Google
@@ -170,14 +190,24 @@ fun LedgerScreen(onOpenImport: () -> Unit, onOpenKeySettings: () -> Unit) {
     // committed, so a finished scan has to explicitly trigger a reload to
     // show what it just did.
     LaunchedEffect(scanState) {
-        if (scanState is ScanState.Finished) reloadNonce++
+        if (scanState is ScanState.Finished) {
+            reloadNonce++
+            // A scan could reveal a newly-created subfolder the mapping UI
+            // hasn't seen yet - cheap to re-list, no reason to wait for the
+            // next folder-change event.
+            refreshAccountFolders()
+        }
     }
 
-    // Folder/scan/key are live signals, not part of the async DB load above -
-    // merged into a fresh value each recomposition rather than folded back
-    // into the remembered `state` var, so this never risks a self-triggered
-    // recompose loop over fields that already have their own source of truth.
-    val fullState = state.copy(folder = folderUi, scanState = scanState, hasGeminiKey = hasGeminiKey)
+    // Folder/scan/key/mapping are live signals, not part of the async DB
+    // load above - merged into a fresh value each recomposition rather than
+    // folded back into the remembered `state` var, so this never risks a
+    // self-triggered recompose loop over fields that already have their own
+    // source of truth.
+    val fullState = state.copy(
+        folder = folderUi, scanState = scanState, hasGeminiKey = hasGeminiKey,
+        accountFolders = accountFolders, accountMapping = accountMapping,
+    )
 
     LedgerContent(
         state = fullState,
@@ -205,6 +235,9 @@ fun LedgerScreen(onOpenImport: () -> Unit, onOpenKeySettings: () -> Unit) {
         onApproveLlm = { scanner?.approveLlm() },
         onDeclineLlm = { scanner?.declineLlm() },
         onOpenKeySettings = onOpenKeySettings,
+        onAssignAccount = { folderId, accountId ->
+            LedgerAccountMappingPreferences.setMapping(context, folderId, accountId)
+        },
     )
 }
 
@@ -253,6 +286,7 @@ fun LedgerContent(
     onApproveLlm: () -> Unit,
     onDeclineLlm: () -> Unit,
     onOpenKeySettings: () -> Unit,
+    onAssignAccount: (folderId: String, accountId: String?) -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -276,6 +310,18 @@ fun LedgerContent(
                 onDisconnectFolder = onDisconnectFolder,
                 onScanNow = onScanNow,
             )
+            // Only meaningful once a folder is actually connected - renders
+            // nothing itself when state.accountFolders is empty (a flat
+            // connected folder with no per-account subfolders), see
+            // AccountMappingSection's doc comment.
+            if (state.folder is LedgerFolderUiState.Connected) {
+                AccountMappingSection(
+                    folders = state.accountFolders,
+                    mapping = state.accountMapping,
+                    knownAccountIds = state.balances.map { it.accountId }.distinct(),
+                    onAssign = onAssignAccount,
+                )
+            }
             Hairline()
             ScanStatusSection(
                 scanState = state.scanState,
@@ -414,7 +460,7 @@ private fun PreviewLedgerLoading() = LegionTheme {
     LedgerContent(
         LedgerUiState(loading = true),
         onOpenImport = {}, onRetryQuarantine = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {},
+        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> },
     )
 }
 
@@ -424,7 +470,7 @@ private fun PreviewLedgerEmptyNoFolder() = LegionTheme {
     LedgerContent(
         LedgerUiState(loading = false),
         onOpenImport = {}, onRetryQuarantine = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {},
+        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> },
     )
 }
 
@@ -438,7 +484,7 @@ private fun PreviewLedgerEmptyNothingNew() = LegionTheme {
             scanState = ScanState.Finished(FileResults(skipped = 6)),
         ),
         onOpenImport = {}, onRetryQuarantine = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {},
+        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> },
     )
 }
 
@@ -452,7 +498,7 @@ private fun PreviewLedgerEmptyLooksEmpty() = LegionTheme {
             scanState = ScanState.Finished(FileResults()),
         ),
         onOpenImport = {}, onRetryQuarantine = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {},
+        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> },
     )
 }
 
@@ -469,7 +515,7 @@ private fun PreviewLedgerAwaitingApproval() = LegionTheme {
             ),
         ),
         onOpenImport = {}, onRetryQuarantine = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {},
+        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> },
     )
 }
 
@@ -526,6 +572,6 @@ private fun PreviewLedgerPopulated() = LegionTheme {
             ),
         ),
         onOpenImport = {}, onRetryQuarantine = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {},
+        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> },
     )
 }
