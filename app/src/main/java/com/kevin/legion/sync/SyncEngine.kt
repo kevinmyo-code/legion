@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -136,6 +137,29 @@ object SyncEngine {
     }
 
     /**
+     * Sync scope owned by the engine itself, for callers that have no sensible
+     * scope of their own.
+     *
+     * The foreground trigger used to be `maybeAutoSync(ctx, CoroutineScope(...))`
+     * built fresh inside `MainActivity.onResume`, which is the exact
+     * instantiate-a-scope-in-a-function-body anti-pattern
+     * `.claude/skills/kotlin-coroutines-structured-concurrency` names: no owner,
+     * no cancellation, a new one every resume, and no handler on the resulting
+     * root Job. Handing an Activity's own scope over instead would be worse in a
+     * different way - rotating the phone mid-pass would cancel a Drive upload.
+     *
+     * A sync pass is process work, not screen work, so the engine holds one
+     * SupervisorJob scope for the process lifetime. Nothing cancels it because
+     * nothing should: a pass that survives the Activity is the desired
+     * behaviour, and [syncNow] is already serialised by [mutex] and bounded by
+     * its own throttle.
+     */
+    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** [maybeAutoSync] on the engine's own [engineScope]. See its doc for why callers should not pass a scope. */
+    fun maybeAutoSync(context: Context) = maybeAutoSync(context, engineScope)
+
+    /**
      * @param table SQLite table name.
      * @param identity columns that identify a row across devices.
      * @param mode UNION (append-only) or LWW (mutable).
@@ -203,6 +227,42 @@ object SyncEngine {
             "daily_drive_logs", listOf("vehicleId", "year", "month", "day"),
             Mode.LWW, naturalPk = false, clock = "generatedAt",
         ),
+        // ledger_transactions is DELIBERATELY NOT REGISTERED (Kevin, 2026-08-02).
+        //
+        // Ticket 10 ruled it UNION on syncId, justified entirely on "transactions
+        // are immutable once committed". **That premise is false.** Ticket 03/04's
+        // replace flow hard-deletes a file's rows when the Drive file is replaced
+        // in place - `IngestPipeline.commit` -> `deleteBySourceFileId`. UNION has
+        // no delete action at all (`SyncMerge.Action` is Insert | Update), so the
+        // next pass would re-download the still-present remote rows, find their
+        // syncIds absent locally, re-insert them, and re-upload the resurrected
+        // set. That is silently double-counted money on the one table §4's
+        // reconciliation gate exists to protect, via a path the gate never sees.
+        //
+        // The tombstone pattern car_tasks/places use cannot rescue UNION either:
+        // it works there precisely BECAUSE they are LWW, where a newer
+        // `deleted = 1` wins as an ordinary edit. Under UNION an existing local
+        // row is never updated, so a soft-delete would never propagate.
+        //
+        // So UNION and delete-propagation are mutually exclusive here, and
+        // ticket 10 explicitly rejected LWW. Rather than overturn that ruling
+        // inside a commit whose purpose was registration, this table waits for a
+        // tombstone ticket of its own. ingested_files below still syncs, which is
+        // where most of the value was: device B skips fetch AND hash for a file
+        // the other device already handled.
+        //
+        // Found by senior-dev review of the first code ever written against
+        // sync/, before any of it had run.
+        // ingested_files is LWW on the NATURAL key driveFileId (ticket 03 already
+        // strips the positional `acc=N;` prefix, so the stored id is identical on
+        // both devices for the same file - a genuine cross-device identity with no
+        // syncId column needed; ticket 10 closes that deferred question by
+        // REMOVING it, not answering it). Mode is LWW, not UNION, because the
+        // record is a state machine that legitimately changes (NEW -> INGESTED,
+        // retry after QUARANTINED, reset on replace) - UNION would pin it to
+        // whichever state propagated first. Clock is lastAttemptAt, per
+        // IngestedFile's own doc comment.
+        Spec("ingested_files", listOf("driveFileId"), Mode.LWW, naturalPk = true, clock = "lastAttemptAt"),
     )
 
     data class Result(val ok: Boolean, val message: String)
@@ -213,11 +273,25 @@ object SyncEngine {
      * skipped so the rest still sync.
      */
     suspend fun syncNow(context: Context): Result = withContext(Dispatchers.IO) {
-        if (!SyncCapability.syncAvailable(context)) {
-            return@withContext Result(false, "Cross-device sync isn't connected.")
+        // Both of these sit INSIDE the guard now. `accessTokenOrNull` bridges a
+        // Play Services Task via suspendCancellableCoroutine and resumes with an
+        // EXCEPTION on a genuine Task failure - it does not merely return null.
+        // It used to run outside syncNow's try/catch, so that throw escaped
+        // syncNow, escaped the caller's launch{}, and reached a root Job with no
+        // handler: a process crash. Harmless while the only caller was the
+        // assistant service's periodic loop; not harmless now that a foreground
+        // resume calls this unconditionally.
+        val token = try {
+            if (!SyncCapability.syncAvailable(context)) {
+                return@withContext Result(false, "Cross-device sync isn't connected.")
+            }
+            DriveAuth.accessTokenOrNull(context)
+                ?: return@withContext Result(false, "Couldn't reach your Google Drive - try again.")
+        } catch (e: Exception) {
+            Log.w(TAG, "couldn't get a Drive token", e)
+            MidnightEvents.recordError("sync_auth", e)
+            return@withContext Result(false, "Couldn't reach your Google Drive - try again.")
         }
-        val token = DriveAuth.accessTokenOrNull(context)
-            ?: return@withContext Result(false, "Couldn't reach your Google Drive - try again.")
 
         mutex.withLock {
             try {
@@ -226,12 +300,17 @@ object SyncEngine {
                 val db = CarDatabase.getDatabase(context).openHelper.writableDatabase
                 var failures = 0
                 for (spec in REGISTRY) {
-                    runCatching { syncTable(db, drive, existing, spec) }
-                        .onFailure {
-                            failures++
+                    // getOrElse, not onFailure: syncTable now returns false for a
+                    // conflict-exhausted skip, which throws nothing and would
+                    // otherwise leave `failures` at zero and report success for a
+                    // table that never uploaded.
+                    val ok = runCatching { syncTable(db, drive, existing, spec) }
+                        .getOrElse {
                             Log.w(TAG, "sync ${spec.table} failed", it)
                             MidnightEvents.recordError("sync_table_${spec.table}", it)
+                            false
                         }
+                    if (!ok) failures++
                     // Re-key immediately after the rules themselves land, so any
                     // correction another device made is applied to this device's
                     // rows before obd_samples (the very next spec) merges.
@@ -375,15 +454,20 @@ object SyncEngine {
         drive: DriveClient,
         existing: Map<String, DriveClient.DriveFile>,
         spec: Spec,
-    ) {
+    ): Boolean {
         if (spec.hasSyncId) backfillSyncIds(db, spec.table)
+        // A sharded table reports failure if ANY shard was skipped, but still
+        // attempts every other shard first - one month conflicting must not
+        // silently drop the rest.
+        var ok = true
         if (spec.shardTs != null) {
             for (month in monthsToSync(db, spec, existing)) {
-                syncFile(db, drive, existing, spec, "${spec.table}-$month.json.gz", monthFilter(spec.shardTs, month))
+                if (!syncFile(db, drive, existing, spec, "${spec.table}-$month.json.gz", monthFilter(spec.shardTs, month))) ok = false
             }
         } else {
-            syncFile(db, drive, existing, spec, "${spec.table}.json.gz", where = null)
+            ok = syncFile(db, drive, existing, spec, "${spec.table}.json.gz", where = null)
         }
+        return ok
     }
 
     /**
@@ -405,7 +489,7 @@ object SyncEngine {
         spec: Spec,
         fileName: String,
         where: String?,
-    ) {
+    ): Boolean {
         val selectSql = "SELECT * FROM `${spec.table}`${if (where != null) " WHERE $where" else ""}"
         var snapshot = existing
         var attempt = 0
@@ -431,10 +515,22 @@ object SyncEngine {
             val result = drive.upsert(fileName, SyncCodec.gzipNdjson(localAfter), snapshot)
             if (result != DriveClient.UpdateResult.Conflict) {
                 if (result == DriveClient.UpdateResult.Failure) Log.w(TAG, "$fileName: upload failed")
-                return
+                return true
             }
-            check(DriveConflict.shouldRetry(attempt, MAX_CONFLICT_RETRIES)) {
-                "$fileName: still conflicting after $attempt attempts"
+            if (!DriveConflict.shouldRetry(attempt, MAX_CONFLICT_RETRIES)) {
+                // Ticket 10 (2026-08-02): this used to `check(...)`, which THREW an
+                // IllegalStateException inside a sync pass nothing reports (Firebase
+                // isn't wired; MidnightEvents.recordError is a Log.w wrapper). Ledger
+                // is now the worst thing in the app to lose to an unreported crash,
+                // so a sustained conflict logs and skips THIS FILE for this pass
+                // instead - the next sync pass tries again from a fresh snapshot,
+                // same as any other per-table failure syncNow's runCatching handles.
+                Log.w(TAG, "$fileName: still conflicting after $attempt attempts, skipping this pass")
+                MidnightEvents.recordError("sync_conflict_exhausted_$fileName", IllegalStateException("still conflicting after $attempt attempts"))
+                // false, not Unit: syncNow's failure count is what decides the
+                // driver-facing "Synced with your Google Drive." string, and a
+                // table that silently didn't upload must not read as success.
+                return false
             }
             Log.w(TAG, "$fileName: upload conflict (attempt $attempt), re-merging")
             snapshot = drive.listAppData()

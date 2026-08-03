@@ -165,6 +165,14 @@ class AriaForegroundService : Service() {
         // Gated on engine-on so a parked car doesn't sync all day on the driver's
         // hotspot data. maybeAutoSync is itself a no-op unless Drive is connected
         // and its own throttle has elapsed, so this loop is cheap when idle.
+        //
+        // NOT the only trigger any more (ticket 10, 2026-08-02): this service only
+        // ever starts from the Settings assistant toggle, which defaults OFF, and
+        // ticket 07 §1 rules ledger/pantry/fleet all work regardless of that
+        // toggle. Left in place because it is not wrong - a live drive is still the
+        // right moment to push OBD telemetry - just insufficient on its own for
+        // ledger/pantry, which now also sync from MainActivity.onResume
+        // (foreground-lifecycle trigger, independent of the assistant).
         serviceScope.launch {
             while (isActive) {
                 delay(DRIVE_SYNC_INTERVAL_MS)
