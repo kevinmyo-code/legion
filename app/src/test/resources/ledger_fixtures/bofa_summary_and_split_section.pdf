@@ -1,0 +1,126 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 1955 >>
+stream
+BT
+/F1 9 Tf
+12 TL
+1 0 0 1 40 760 Tm
+(BANK OF AMERICA) Tj
+T*
+(Personal Checking Account Statement) Tj
+T*
+(Account number: 987654321000) Tj
+T*
+(Statement Period 06/01/26 to 06/30/26) Tj
+T*
+() Tj
+T*
+(Your checking account summary) Tj
+T*
+(Deposits and other additions 4,200.00) Tj
+T*
+(ATM and debit card subtractions -80.00) Tj
+T*
+(Other subtractions -75.00) Tj
+T*
+(Service fees -15.00) Tj
+T*
+() Tj
+T*
+(Beginning balance on 6/1/26 $7,500.00) Tj
+T*
+(Ending balance on 6/30/26 $11,530.00) Tj
+T*
+() Tj
+T*
+(Deposits and other additions) Tj
+T*
+(Date        Description                                          Amount) Tj
+T*
+(06/03/26 PAYROLL DEPOSIT 3,000.00) Tj
+T*
+(06/17/26 WIRE TYPE:WIRE IN DATE: 260617 TIME:0802 ET TRN:2026061700277191) Tj
+T*
+(SEQ:1002233445JS/100200 ORIG:ACME WIDGETS LLC ID:0099887766 SND BK:FIRST) Tj
+T*
+(Page 2 of 6) Tj
+T*
+(NATIONAL BANK, N.A. ID:0002 PMT DET:MB60617135571826) Tj
+T*
+(1,200.00) Tj
+T*
+(Total deposits and other additions $4,200.00) Tj
+T*
+() Tj
+T*
+(ATM and debit card subtractions) Tj
+T*
+(Date        Description                                          Amount) Tj
+T*
+(06/05/26 Debit Card Purchase GROCERY MART -80.00) Tj
+T*
+(Total ATM and debit card subtractions -$80.00) Tj
+T*
+() Tj
+T*
+(Other subtractions) Tj
+T*
+(Date        Description                                          Amount) Tj
+T*
+(06/10/26 Overdraft Protection Transfer -30.00) Tj
+T*
+(TAYLOR J RIVERA   !   Account # 4881 3004 3119   !   June 5, 2026 to July 8, 2026) Tj
+T*
+(Page 4 of 6) Tj
+T*
+(Other subtractions) Tj
+T*
+(Date        Description                                          Amount) Tj
+T*
+(06/22/26 Online Bill Pay UTILITY CO -45.00) Tj
+T*
+(Total other subtractions -$75.00) Tj
+T*
+() Tj
+T*
+(Service fees) Tj
+T*
+(Date        Description                                          Amount) Tj
+T*
+(06/20/26 Monthly Maintenance Fee -15.00) Tj
+T*
+(Total service fees -$15.00) Tj
+T*
+() Tj
+T*
+(This statement is issued for the period shown above.) Tj
+T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000002248 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+2345
+%%EOF
