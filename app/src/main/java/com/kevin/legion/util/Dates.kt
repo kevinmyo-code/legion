@@ -2,6 +2,7 @@
 
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 /**
@@ -23,6 +24,37 @@ fun shortDate(epochMs: Long): String =
  */
 fun compactDate(epochMs: Long): String =
     Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate().format(COMPACT_DATE)
+
+/**
+ * A date PRINTED ON A DOCUMENT - a statement transaction date, a receipt's
+ * purchase date - rendered exactly as printed.
+ *
+ * **Why these need their own formatter.** Every ingestion path normalises a
+ * parsed calendar date to UTC midnight
+ * (`LocalDate.parse(...).atStartOfDay(ZoneOffset.UTC)`): both statement
+ * parsers, the statement agent, and the receipt agent. Rendering that through
+ * [shortDate]/[compactDate] converts it to the DEVICE's zone, and anywhere
+ * west of UTC that lands on the previous calendar day. A receipt printed
+ * 04/18/2026 displayed as "Apr 17, 2026" on the A17K at UTC-5, and the ledger
+ * had been doing the same to every transaction date since it shipped.
+ *
+ * These values are date-only by construction - there is no time of day on a
+ * statement line - so the correct rendering reads them back in the same zone
+ * they were written in, which round-trips the printed date exactly and is
+ * identical on every device.
+ *
+ * **Do NOT use these for a real instant.** `CodeEvent.timestamp`,
+ * `ServiceRecord.date` and `BuildEntry.date` are `System.currentTimeMillis()`
+ * captures, and `MaintenanceItem.lastDoneDate` is normalised to LOCAL midnight
+ * by `LiveToolbox.parseIsoDate`. All of those are correct through
+ * [shortDate]/[compactDate] and would be wrong here.
+ */
+fun documentDate(epochMs: Long): String =
+    Instant.ofEpochMilli(epochMs).atZone(ZoneOffset.UTC).toLocalDate().format(SHORT_DATE)
+
+/** [documentDate] without the year, for the ledger stream's folded date. See [compactDate]. */
+fun documentDateCompact(epochMs: Long): String =
+    Instant.ofEpochMilli(epochMs).atZone(ZoneOffset.UTC).toLocalDate().format(COMPACT_DATE)
 
 /**
  * "3 days ago" / "2 hours ago" / "just now" - ticket 09 resolution §1's FLEET

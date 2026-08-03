@@ -12,6 +12,7 @@ import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.pantry.PantryController
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
+import com.kevin.legion.util.documentDate
 import com.kevin.legion.util.shortDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -789,7 +790,7 @@ object LiveToolbox {
         for (t in transactions) {
             arr.put(
                 JSONObject()
-                    .put("date", shortDate(t.txnDate))
+                    .put("date", documentDate(t.txnDate))
                     .put("description", t.description)
                     .put("amount", t.amountCents / 100.0)
                     .put("account", t.accountId)

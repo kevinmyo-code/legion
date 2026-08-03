@@ -16,7 +16,7 @@ import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.SectionHeader
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
-import com.kevin.legion.util.shortDate
+import com.kevin.legion.util.documentDate
 import kotlin.math.roundToInt
 
 /**
@@ -74,7 +74,7 @@ internal fun formatMacros(item: PantryLineItem): String {
 fun PantryReceiptSection(receipt: PantryReceipt, items: List<PantryLineItem>) {
     val sem = LocalLegionSemantics.current
     Column(Modifier.fillMaxWidth()) {
-        SectionHeader(receipt.store, shortDate(receipt.purchaseDate))
+        SectionHeader(receipt.store, documentDate(receipt.purchaseDate))
         Text(
             "${formatMoney(receipt.totalCents, receipt.currency)}, ${items.size} item(s)",
             style = LegionType.reading,

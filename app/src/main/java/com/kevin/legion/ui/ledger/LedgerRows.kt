@@ -31,7 +31,7 @@ import com.kevin.legion.ledger.formatMoney
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
-import com.kevin.legion.util.compactDate
+import com.kevin.legion.util.documentDateCompact
 
 /**
  * Ledger-specific read-surface rows for ticket 08 Parts 4-7 (resolution:
@@ -81,7 +81,7 @@ fun LedgerTransactionRow(txn: LedgerTransaction) {
         )
         Spacer(Modifier.height(3.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(compactDate(txn.txnDate), style = LegionType.stamp, color = sem.faint)
+            Text(documentDateCompact(txn.txnDate), style = LegionType.stamp, color = sem.faint)
             Spacer(Modifier.width(8.dp))
             Text(
                 formatMoney(txn.amountCents, txn.currency),
