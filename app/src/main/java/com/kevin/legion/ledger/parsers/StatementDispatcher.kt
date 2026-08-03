@@ -49,6 +49,31 @@ object StatementDispatcher {
      * batch gate depends on.
      */
     fun dispatchDeterministic(fileName: String, bytes: ByteArray): DeterministicResult {
+        // BofaCsvStatementParser MUST run first, before either PDF parser
+        // touches these bytes. Its recognition step is pure text matching
+        // (String(bytes, UTF_8) never throws), so handing it a real PDF is
+        // safe - the fixed CSV header string cannot appear in a BofA/DBS
+        // PDF's raw bytes, so it always falls through cleanly via
+        // UnrecognizedLayoutException and never shadows the PDF parsers. The
+        // reverse order would be unsafe: DbsStatementParser/BofaStatementParser
+        // call PdfText/PdfWords, which call PDDocument.load() - handed real
+        // CSV bytes, that throws a raw (non-StatementParseException) IOException
+        // that this catch chain does not handle, instead of falling through.
+        try {
+            return DeterministicResult.Success(
+                BofaCsvStatementParser.parse(fileName, ByteArrayInputStream(bytes))
+            )
+        } catch (e: UnrecognizedLayoutException) {
+            // fall through to the next parser
+        } catch (e: StatementParseException) {
+            // userMessage first: `message` is the diagnostic, and it went in
+            // front of a user verbatim on the first device render of a
+            // quarantine row. See StatementParseException.userMessage.
+            return DeterministicResult.Quarantined(
+                e.userMessage ?: e.message ?: "This statement's numbers didn't reconcile."
+            )
+        }
+
         try {
             return DeterministicResult.Success(
                 DbsStatementParser.parse(fileName, ByteArrayInputStream(bytes))
