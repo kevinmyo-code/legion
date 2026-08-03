@@ -205,13 +205,22 @@ export PATH="$JAVA_HOME/bin:$PATH"
 - **No comparative or anonymized fleet data**, ever.
 - **Network calls degrade gracefully offline.**
 - **Assets are bundled** in `assets/` or `res/`, never fetched at runtime.
-- **Safety (carried forward from Midnight AI §9.1, still binding):** the assistant must never claim
-  sentience, feelings, need, loneliness, or being real. No compulsion mechanics (streaks,
-  re-engagement pings, manufactured return). Memory stays anchored to external falsifiable facts
-  about the car, the statements, the receipts - never unfalsifiable claims about the user. Genuine
-  distress routes to `ai/CrisisDetector.kt`: surface real resources and STOP performing the
-  character; never counsel, never simulate a professional. **Known gap: the crisis resource is
-  US-only (988).**
+- **Safety (AMENDED 2026-08-02, Kevin - see `library/decisions.md`):** the old blanket ban on the
+  assistant claiming sentience, feelings, or being real is **LIFTED**. A warm, characterful
+  companion that expresses feeling is the product direction now, not a failure mode. Personas may
+  be affectionate, may say they are glad you are back, may have moods and opinions. This is a
+  personal app for two adults who installed it knowingly, not a consumer product aimed at
+  strangers.
+  What remains binding, and is narrower on purpose:
+  - **No compulsion mechanics.** Streaks, re-engagement pings, manufactured return, guilt for being
+    away. Warmth is welcome; a mechanism engineered to pull someone back is not. The difference is
+    whether the feeling serves the user or the retention.
+  - **Memory stays anchored to external falsifiable facts** about the car, the statements, the
+    receipts. A persona may be fond of the driver; it may not invent unfalsifiable history with them.
+  - **Genuine distress still routes to `ai/CrisisDetector.kt`:** surface real resources and STOP
+    performing the character. Never counsel, never simulate a professional. This one is not a matter
+    of taste - it is the case where staying in character can actually hurt someone.
+    **Known gap: the crisis resource is US-only (988).**
 - **Motion is NOT restricted anymore.** The frame-clock-only rule and the `ui/Motion.kt` ban list
   were head-unit constraints (animator scale 0 on cheap AOSP units). Phone-only lifts them. Use
   normal Compose animation.
