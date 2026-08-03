@@ -5,6 +5,7 @@ import android.util.Log
 import com.kevin.legion.data.PantryPhotoStore
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.PantryLineItem
+import com.kevin.legion.data.local.PantryReceipt
 import java.io.File
 
 /**
@@ -51,6 +52,22 @@ object PantryController {
 
     suspend fun totalSpendCents(context: Context): Long =
         CarDatabase.getDatabase(context).pantryReceiptDao().totalSpendCents()
+
+    /**
+     * The [limitReceipts] most recent receipts, each paired with its own line
+     * items - what ticket 09's pantry screen (resolution §2, TREATMENT B
+     * SEGREGATED) groups by, one receipt per `ON THE RECEIPT` / `ESTIMATED,
+     * NOT ON THE RECEIPT` pair. Composed from [PantryReceiptDao.getRecent] +
+     * [PantryLineItemDao.getForReceipt] rather than a new joined DAO query -
+     * receipt counts are small (personal grocery volume, not a ledger), so
+     * N+1 here costs nothing and avoids widening the DAO surface for a read
+     * only this screen needs.
+     */
+    suspend fun recentReceiptsWithItems(context: Context, limitReceipts: Int = 10): List<Pair<PantryReceipt, List<PantryLineItem>>> {
+        val db = CarDatabase.getDatabase(context)
+        val receipts = db.pantryReceiptDao().getRecent(limitReceipts)
+        return receipts.map { receipt -> receipt to db.pantryLineItemDao().getForReceipt(receipt.id) }
+    }
 }
 
 data class PantryImportResult(val success: Boolean, val message: String, val itemCount: Int = 0)

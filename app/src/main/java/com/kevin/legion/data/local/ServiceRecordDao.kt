@@ -37,4 +37,8 @@ interface ServiceRecordDao {
             "AND date >= :fromMs AND date <= :toMs"
     )
     suspend fun countInRange(vehicleId: String, fromMs: Long, toMs: Long): Int
+
+    /** Total records for a vehicle - ticket 09's FLEET "NOT BUILT YET" block needs a real count, not a hardcoded one. */
+    @Query("SELECT COUNT(*) FROM service_records WHERE vehicleId = :vehicleId")
+    suspend fun countForVehicle(vehicleId: String): Int
 }

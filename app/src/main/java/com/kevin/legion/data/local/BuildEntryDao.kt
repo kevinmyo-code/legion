@@ -36,4 +36,8 @@ interface BuildEntryDao {
     /** Logged spend for one category. */
     @Query("SELECT COALESCE(SUM(cost), 0) FROM build_entries WHERE vehicleId = :vehicleId AND type = :type")
     suspend fun spendByType(vehicleId: String, type: String): Double
+
+    /** Total entries for a vehicle - ticket 09's FLEET "NOT BUILT YET" block needs a real count, not a hardcoded one. */
+    @Query("SELECT COUNT(*) FROM build_entries WHERE vehicleId = :vehicleId")
+    suspend fun countForVehicle(vehicleId: String): Int
 }
