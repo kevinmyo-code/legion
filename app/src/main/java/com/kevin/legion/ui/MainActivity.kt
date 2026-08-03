@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -22,6 +23,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.kevin.legion.sync.SyncEngine
+import com.kevin.legion.ui.assistant.AssistantStrip
 import com.kevin.legion.ui.theme.LegionTheme
 
 /**
@@ -132,7 +134,22 @@ private fun LegionShell(deepLinkRoute: String? = null, deepLinkNonce: Int = 0) {
     }
 
     Scaffold(
-        bottomBar = { LegionBottomBar(navController) },
+        // AssistantStrip sits ABOVE the bottom nav inside this one slot,
+        // rather than in the Scaffold's main `content` lambda - the strip
+        // occupies zero space when the assistant is off (see its own doc),
+        // and a Scaffold's `content` padding is sized for a bottomBar whose
+        // height doesn't change; anchoring the strip to the bottomBar slot
+        // instead keeps that padding correct in both states. Assistant is
+        // still NOT a tab (ticket 07 resolution §5) - nothing here adds a
+        // NavHost destination or changes the back stack.
+        bottomBar = {
+            Column {
+                AssistantStrip(onOpenSettings = {
+                    navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
+                })
+                LegionBottomBar(navController)
+            }
+        },
     ) { innerPadding ->
         NavHost(
             navController = navController,
