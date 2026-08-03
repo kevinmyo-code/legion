@@ -136,3 +136,52 @@ Earlier in same session, also tested on hardware: the first end-to-end ingestion
 
 - `adb shell pm clear` is BLOCKED by the OEM on this device (SecurityException, no CLEAR_APP_USER_DATA from shell). Wiping ledger state for repeatable test means uninstall + reinstall.
 - Files pushed by `adb push` into a subfolder are NOT visible through the MediaStore-backed Downloads DocumentsProvider (folder lists as "No items"), but ARE visible through internal-storage root (ExternalStorageProvider), which lists the real filesystem. Use the device root, not Download, when staging SAF fixtures.
+
+## Part 7: Reconciling fixture, Treatment B render, and the date bug
+
+Three additional commits pushed to origin; all code is tested / on-device verified.
+
+### Commits landed (pushed to origin)
+
+- **b81a4cf** - The reconciling ledger fixture + the `+` money-parsing fix. Fixture `unrecognized_reconciling.pdf` falls through both deterministic parsers AND reconciles - no prior fixture did both. The gate now accepts it.
+- **ef70cc7** - Ticket 09: fleet and pantry screens. Pantry implements Treatment B (segregated receipt facts / LLM-guessed macros under separate headers). Fleet shows LIVE / DUE / FAULTS / NOT BUILT YET blocks. 23 new unit tests. Senior-dev review came back CLEAN, no blocking findings.
+- **0ee27e9** - The document-date timezone fix (critical finding in this commit).
+
+### The headline result (tested on device, CPH2471)
+
+**Treatment B rendered for the first time.** A synthetic receipt was generated, imported through the real pantry flow, and a REAL Gemini vision call on Kevin's own key extracted it. It RECONCILED - "Logged 5 item(s) from TRADER JOES #452", printed total 29.82 matching the sum of five line items exactly. The segregated layout then rendered correctly: prices and macros never share a row, the sentence sits between the two blocks. **Tag: tested.**
+
+### THE CRITICAL BUG FOUND (commit 0ee27e9)
+
+Rendering Treatment B immediately exposed that a receipt printed 04/18/2026 and the app displayed "Apr 17, 2026". A one-day drift. Cause, **traced then confirmed empirically**: EVERY ingestion path normalises a parsed calendar date to UTC midnight (`atStartOfDay(ZoneOffset.UTC)`) — `DbsStatementParser`, `BofaStatementParser`, `LedgerStatementAgent`, `PantryReceiptAgent` — while rendering through `ZoneId.systemDefault()`. At UTC-5 (device timezone), that lands on the previous calendar day.
+
+**The ledger had been doing this to every transaction date since it shipped.** Earlier screenshots this session showed Apr 26/18/10 for rows printed 27/19/11.
+
+**Fix:** New `documentDate`/`documentDateCompact` render formatters in UTC, used at the THREE call sites that render UTC-midnight values: (1) ledger stream row in `LedgerController`, (2) pantry receipt header in `PantryController`, (3) `get_transactions` voice tool result. Deliberately NOT a blanket change to all date formatting: the same two formatters are used at 8 other sites on real instants (`CodeEvent.timestamp`, `ServiceRecord.date`, `BuildEntry.date` are all `System.currentTimeMillis()`), and on `MaintenanceItem.lastDoneDate`, which `LiveToolbox.parseIsoDate` normalizes to LOCAL midnight. Those 8 were already correct and a blanket change would have broken them.
+
+**Verified on device after the fix:** receipt reads Apr 18 2026, ledger rows read Apr 27/19/11/5 (the printed dates). **Tag: tested.**
+
+**Total scope: 71 unit tests green, builds clean.**
+
+### The `+` money-parsing fix (commit b81a4cf)
+
+`MONEY_RE` was `^(-?)\$?...` - accepted a leading minus, rejected a leading plus. The first reconciling fixture printed its total as `+1,025.00` the way real statements do; the model echoed the `+` into `statedTotal`, and `parseMoneyCents` threw. The gate quarantined with "doesn't print a clear total to verify against" - a false negative, not a safety property. Fix: now accepts `+`. **`MONEY_TOKEN_RE` deliberately left as `-?`** - it only locates candidates, and a leading plus falls outside the match so the remainder parses to the same cents value. **Tag: built.**
+
+### Fixture generators now checked in
+
+Both are deterministic, dependency-free, and derive their printed total from the item rows rather than hardcoding it — a fixture whose own total is a typo tests the opposite of what it is for.
+
+- **`tools/make_ledger_fixture.py`** — dependency-free uncompressed PDF via reportlab (note: reportlab is not installed; generated fixture is a one-time artifact, not a build requirement). Produces `unrecognized_reconciling.pdf`: falls through both deterministic parsers AND reconciles.
+- **`tools/make_pantry_fixture.ps1`** — PowerShell + System.Drawing, because pantry ingests a PHOTO not a PDF and rendering text to a raster requires a font engine. Windows-only, acceptable for a hand-run fixture generator. **Operational: this machine's execution policy refuses unsigned script FILES even with `-ExecutionPolicy Bypass`; the generator must be run via `Invoke-Expression (Get-Content -Raw ...)`.** The script therefore cannot rely on `$PSScriptRoot` (empty when piped).
+
+### Pre-existing gap found, NOT fixed
+
+`DtcDescriptions.loadSeed` reads `assets/dtc_descriptions_seed.json`, which has NEVER existed in git history (checked `--all`), though its own doc comment calls it bundled. Degrades gracefully to an empty map, so every fault code reads "not identified locally". Building a DTC dictionary is a content task and wants its own ticket.
+
+### Still not verified
+
+- A tab switch DURING a live scan (reasoned, service scope architecture is correct by construction).
+- The `+` fix itself on device - unit-tested only, no statement printing a plus has been through a real extraction.
+- A run against a REAL Drive folder; everything so far used a local SAF tree, which cannot reproduce latency.
+- `sync/` has still never executed. Ticket 10's rulings remain traced.
+- The assistant permission chain has still never been exercised.

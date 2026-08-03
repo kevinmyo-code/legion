@@ -245,3 +245,21 @@ work, so "36 files reconciled" doesn't get reported as "done" one step early.
 
 **Status:** CLOSED (rule stated here; the LEGION repo now builds clean, verified 2026-07-31, and its
 own README documents the same lesson so a future session doesn't rediscover it from scratch).
+
+### L13 — coding + architecture: date-only values and instants must not share a formatter
+
+**What happened (session 2026-08-02, commit 0ee27e9):** The first end-to-end pantry ingestion rendered a receipt printed 04/18/2026 as "Apr 17, 2026" — a one-day drift. Root cause, traced to source: EVERY ingestion path normalizes a parsed calendar date to UTC midnight (`atStartOfDay(ZoneOffset.UTC)`) — `DbsStatementParser`, `BofaStatementParser`, `LedgerStatementAgent`, `PantryReceiptAgent`. But rendering called `ZoneId.systemDefault()` formatters. At UTC-5 (the test device), UTC midnight becomes the previous calendar day. The bug had existed in the ledger since it shipped; earlier screenshots showed Apr 26/18/10 for rows printed 27/19/11.
+
+**Why it was invisible:** The bug survived `./gradlew compileDebugKotlin` (compile), the full unit suite green at every point along the way (46 tests when the ledger renderer was reviewed, 69 when the pantry one was), and two senior-dev reviews that each read the affected file. 71 is the count AFTER this fix added its two regression tests. A date one day off still looks like a date. It was only discoverable because the fixture had a KNOWN printed date to compare the screen against. Same shape as the red consent-screen copy (L11) and the missing Gemini key (L12): invisible to every gate except installing it and looking.
+
+**Root class:** storing a date-only value as epoch-millis at UTC midnight (fine for storage) but rendering it in the device timezone (wrong). When a value came from `LocalDate.parse(...)` or was normalized to UTC midnight, it must be read back through the SAME zone it was written in.
+
+**Fix:** New `documentDate`/`documentDateCompact` render formatters in UTC, deployed to the THREE call sites that handle UTC-midnight values: ledger stream row, pantry receipt header, `get_transactions` voice tool. Deliberately NOT a blanket change: eight other call sites use the same formatters on real instants (`CodeEvent.timestamp`, `ServiceRecord.date`, `BuildEntry.date` are `System.currentTimeMillis()`), and on `MaintenanceItem.lastDoneDate` which is LocalDate-backed but normalized to LOCAL midnight. Those were already correct and would have broken under a blanket change. The fix required understanding which call site holds which type.
+
+**General rule (graduating into playbook-coding.md):** A date-only value and an instant are different types. If they share a formatter, the format must be aware of the zone both were written in. LocalDate-backed values normalized to UTC midnight must render in UTC. Real timestamps normalized to local midnight must render in the device timezone. Assign a different formatter per intent, or wrap the format to know its input zone. Never assume `ZoneId.systemDefault()` is safe for both kinds.
+
+**Regression check:** Any formatter used on a timestamp has one of three sources: (a) a System.currentTimeMillis() value (real instant, render in system timezone), (b) a LocalDate.parse() value (date-only, was normalized to UTC midnight, render in UTC), or (c) a local-midnight value (was normalized in LOCAL timezone, render in system timezone). Code that reads `lastDone*` fields or render-calls to formatters should tag which type they hold. If a formatter is used on both kinds, flag it for review.
+
+**Status:** CLOSED 2026-08-02. The rule now lives in **`playbook-coding.md`** under "Date handling and zone conversions", with the three call sites documented. The meta-lesson (invisible to tests, needs device-level verification on data with known ground truth) is noted in this entry and points to L10/L11/L12, the class of bugs that survive compile/test but not device-level observation.
+
+
