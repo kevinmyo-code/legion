@@ -809,8 +809,22 @@ class AriaForegroundService : Service() {
     private fun startForegroundCompat() {
         val notification = createNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            // NOT MEDIA_PLAYBACK. It was requested unconditionally here while the
+            // manifest only declares connectedDevice|dataSync|microphone, so
+            // startForeground threw
+            //   IllegalArgumentException: foregroundServiceType 0x00000083 is not
+            //   a subset of foregroundServiceType attribute 0x00000091
+            // and killed the process on the FIRST LINE of the assistant's own
+            // onCreate. The assistant could never start, on any build, since the
+            // port - found on 2026-08-02 the first time anything ever tapped
+            // tap-to-talk.
+            //
+            // Removed rather than declared: this app does not play media. Media3
+            // was dropped in the 2026-07-31 pivot and `media/MusicController`
+            // drives Spotify's OWN MediaSession rather than owning playback, so
+            // claiming the type would assert a capability that no longer exists.
+            // The flag is a leftover from Midnight AI, when the app did own music.
+            var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
             val bluetoothOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 granted(Manifest.permission.BLUETOOTH_CONNECT)
             } else true // pre-S Bluetooth permissions are install-time, not runtime
