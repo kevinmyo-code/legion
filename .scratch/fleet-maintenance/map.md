@@ -59,6 +59,25 @@ his two existing service records on a screen.
 
 <!-- one line per closed ticket: gist + link -->
 
+- [An interval edit that actually sticks](issues/05-an-edit-that-actually-sticks.md) - **the
+  no-op guard becomes law for this map**: every write returns its affected row count and a zero is
+  an error surfaced in words, never a shrug. Precedent set twice already today
+  (`setOdometerBaseline`, `applyDecodedIdentity`); from here a write path that discards its row
+  count is a review failure. Its conversational twin: **voice reads the value back**, because a
+  read-back cannot be produced if the write did not land - which is exactly how Kevin's original
+  "change it to 7,500" should have failed, out loud. **A driver-owned interval may only be changed
+  by something that names the change and takes a confirmation**: ticket 14's populate diff, or
+  `accept_proposal`, which demotes the advisor from sole author to proposer. The LLM seed may never
+  overwrite one - today it only fails to because `insertAll` happens to be `IGNORE`, protection
+  nobody chose. **`maintenance_items` gets targeted writes too** (`setIntervals`/`setAnchor`/
+  `setNeverDone`/`deleteItem`), closing the same whole-row REPLACE class `VehicleDao` just shed -
+  `logServiceDirect` does read-modify-write through it today. **`refreshServiceIntervals` is
+  deleted**; ticket 14 rebuilds the capability with a diff. `LiveToolbox`'s 23 hardcoded
+  `success = true` are fixed **only on the write paths that can now fail** - the 194-call-site sweep
+  is a scoped-out boundary, not an oversight, and is charted as fog.
+  **Unblocks 07. But 06 must resolve before 05 is BUILT** - decision 1 is unenforceable without its
+  provenance flag.
+
 - [One car label rule](issues/04-one-car-label-rule.md) - **counting reframed it a fourth time**:
   charted as twelve surfaces, actually **24 `displayLabel` call sites, 4 `carLabel`, ~16 raw `name`
   reads and FIVE different last-resort strings**, with two surfaces the chart missed entirely.
@@ -163,7 +182,13 @@ his two existing service records on a screen.
   hand is not sharp enough to ticket yet.
 - **Voice parity.** Every new UI affordance has a voice twin that may or may not need updating
   (`log_service`, `set_odometer`, `log_past_service`, `accept_proposal`). Deferred until the UI
-  shape is settled, so the tools follow the screens rather than the reverse.
+  shape is settled, so the tools follow the screens rather than the reverse. Ticket 05 has already
+  claimed one of these: a new `set_maintenance_interval` Live tool, with a read-back.
+- **`LiveToolbox`'s success/message contract.** 23 of its 194 `result(` calls hardcode
+  `success = true`, so the JSON envelope can assert success over a message that is a refusal.
+  Ticket 05 fixes only the write paths that can now fail and **explicitly scopes out** the rest.
+  The full sweep is its own effort, and it needs its own count before anyone touches it - the
+  hardcoded ones are a minority, so a blind sweep would do more harm than good.
 
 ## Out of scope
 

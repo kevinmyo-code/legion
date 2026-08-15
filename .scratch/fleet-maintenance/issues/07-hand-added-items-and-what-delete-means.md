@@ -2,7 +2,7 @@
 
 Type: grilling
 Status: open
-Blocked by: 05
+Blocked by: 05   # resolved 2026-08-15 - UNBLOCKED
 
 ## Question
 
