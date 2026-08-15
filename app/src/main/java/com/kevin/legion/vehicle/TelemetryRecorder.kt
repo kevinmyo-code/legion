@@ -213,12 +213,21 @@ object TelemetryRecorder {
             }
             if (tickMiles > 0.0) {
                 driveMiles += tickMiles
+                // Targeted write (ticket 13,
+                // .scratch/fleet-maintenance/issues/13-the-jeep-row-lost-its-identity.md):
+                // accumulates tripMilesSinceBaseline IN SQL rather than reading a
+                // Vehicle here and upserting the whole row back - this loop is the
+                // single highest-frequency writer of the vehicles table (every 30s
+                // while driving) and a whole-row upsert of a possibly-stale read was
+                // exactly the shape that clobbered concurrent identity/odometer
+                // writes. It also no longer routes through VehicleController.currentVehicle,
+                // so it can never silently seed a placeholder row for a car nobody
+                // has registered yet - see VehicleDao.addTripMiles and
+                // VehicleController.seedVehicle's doc for why a no-op here, for an
+                // unregistered vehicle id, is the correct behavior now rather than a bug.
                 runCatching {
-                    val vehicle = VehicleController.currentVehicle(context)
-                    db.vehicleDao().upsert(
-                        vehicle.copy(tripMilesSinceBaseline = vehicle.tripMilesSinceBaseline + tickMiles)
-                    )
-                }.onFailure { Log.w(TAG, "odometer upsert failed: ${it.message}") }
+                    db.vehicleDao().addTripMiles(vehicleId(context), tickMiles, now)
+                }.onFailure { Log.w(TAG, "trip-mile update failed: ${it.message}") }
             }
             lastTickAt = now
         }

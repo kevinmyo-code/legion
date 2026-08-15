@@ -49,6 +49,25 @@ owns making it structurally impossible on the write side.
    non-existent `(vehicleId, serviceName)` pair is a hard failure rather than an insert. **Pick
    one and make it the rule for every write on this map**, not just this one.
 
+   **Precedent already set by ticket 13 (2026-08-15):** `VehicleDao.setOdometerBaseline` returns
+   the affected row count and `setOdometer` treats `0` as a failure with words, rather than
+   reporting "Got it, 142,500 on the clock" for a reading that went nowhere. Pinned by
+   `VehicleControllerIdentityWritesTest`. That is the row-count-checked option, adopted once; this
+   ticket decides whether it becomes the rule.
+
+7. **`LiveToolbox` asserts `success = true` above every one of these guards** (surfaced by
+   senior-dev review of the ticket 13 fix, 2026-08-15). `LiveToolbox.kt:1378` reads
+   `result(success = true, message = VehicleController.setOdometer(...))` - so the JSON envelope
+   handed to Gemini says the call succeeded even when the message is now the new "I don't have this
+   car on file yet" refusal. **The same pattern repeats across most tool wrappers in that file**
+   (`log_service`, `set_reminder`, `tag_place`).
+
+   It is pre-existing and was not introduced by the ticket 13 fix, and in practice `message` is the
+   channel the model relays - but it is **the same false-success shape one layer up**, which makes
+   it this ticket's business rather than a nit to lose. Decide whether the tool envelope's `success`
+   flag has to be derived from the write rather than hardcoded, and note the blast radius: it is a
+   `LiveToolbox`-wide contract change, not a one-line fix.
+
 ## Watch for
 
 `MaintenanceItem`'s primary key is composite - `(vehicleId, serviceName)`. **Renaming a service item

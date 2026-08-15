@@ -18,6 +18,22 @@ fixes the twelve surfaces, and the car still has no make or model for `check_rec
 the maintenance seed, or any year/make/model lookup. The identity write-back is ticket 13.
 Question 6's placeholder-collision worry is **closed**: the two `this car` rows are both archived.
 
+## New consequence of ticket 13's fix (senior-dev review, 2026-08-15)
+
+Ticket 13 stopped `seedVehicle` persisting a placeholder, which is correct - but it means
+**child rows can now be written against a `vehicleId` that has no `vehicles` row.**
+`VehicleSpecController.refreshFromVin` / `saveManual` and `BuildSheetController.add` all key off
+`vehicleFor(...).obdMac`, so a VIN decode or a build-sheet entry logged against a never-registered
+dongle lands in `vehicle_specs` / `build_entries` with no parent.
+
+Assessed as **self-healing** - `obdMac` is stable, so a later registration attaches to the same key
+and the orphan reunites with its car. Tagged `reasoned`, **not tested and not seen on device.**
+
+**It sharpens this ticket rather than adding a new one**, because it is the same disease: Kevin's
+Jeep already has a `vehicle_specs` row that has never reached its `vehicles` row. The write-back
+this ticket owes has to work in both directions - decode-to-identity, and orphan-to-parent - or the
+gap just moves.
+
 ## Question
 
 Kevin renamed his car. The screen still says `THIS CAR`.

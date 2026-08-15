@@ -3,7 +3,6 @@
 import android.content.Context
 import android.util.Log
 import com.kevin.legion.ai.AriaBrain
-import com.kevin.legion.data.MidnightImport
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.DriveReassignment
 import com.kevin.legion.data.local.MaintenanceItem
@@ -81,27 +80,48 @@ object VehicleController {
         "Battery" to listOf("battery"),
     )
 
-    /** Registers the car's year/make/model, triggers maintenance-interval lookup. */
+    /**
+     * Registers the car's year/make/model, triggers maintenance-interval lookup.
+     *
+     * **Ticket 13 rewrite (2026-08-15).** This used to build a brand new [Vehicle]
+     * from scratch on every call - even when a row already existed - which
+     * silently dropped `voiceName`, `personaTraits`, `trim`, `archived` and
+     * `lastOdometerPromptAt` back to their defaults, unticketed data loss noticed
+     * only while diagnosing the same ticket's Jeep-row bug. Now: a brand new id
+     * (no row on file yet) still gets a real, fully-specified [Vehicle] inserted;
+     * an EXISTING row is corrected through [VehicleDao.setIdentity], which
+     * touches only the identity columns and leaves everything else - including
+     * the odometer and persona fields this function used to carry forward by
+     * hand - untouched by construction rather than by remembering to list them.
+     */
     suspend fun registerDirect(context: Context, year: Int, make: String, model: String): String {
         if (year < 1900 || make.isBlank() || model.isBlank())
             return "I need a valid year, make, and model to register the car."
         val vehicleId = ActiveVehicle.current(context)
         val dao = CarDatabase.getDatabase(context).vehicleDao()
         val existing = dao.getByMac(vehicleId)
-        val vehicle = Vehicle(
-            obdMac = vehicleId,
-            name = existing?.name?.takeIf { it.isNotBlank() && it != "this car" } ?: model,
-            make = make,
-            model = model,
-            year = year,
-            personaPrompt = existing?.personaPrompt ?: "",
-            odometerBaseline = existing?.odometerBaseline ?: 0,
-            odometerBaselineAt = existing?.odometerBaselineAt ?: 0L,
-            tripMilesSinceBaseline = existing?.tripMilesSinceBaseline ?: 0.0,
-            onboarded = false,
-            confirmed = true,
-        )
-        dao.upsert(vehicle)
+        val now = System.currentTimeMillis()
+        val name = existing?.name?.takeIf { it.isNotBlank() && it != "this car" } ?: model
+        val vehicle: Vehicle
+        if (existing == null) {
+            // Genuinely new row - nothing to preserve, a real INSERT.
+            vehicle = Vehicle(
+                obdMac = vehicleId,
+                name = name,
+                make = make,
+                model = model,
+                year = year,
+                personaPrompt = "",
+                onboarded = false,
+                confirmed = true,
+            )
+            dao.upsert(vehicle)
+        } else {
+            // Existing row: a targeted identity write, not a rebuild - see the
+            // function doc and VehicleDao.setIdentity for why.
+            dao.setIdentity(vehicleId, year, make, model, existing.trim, name, now)
+            vehicle = existing.copy(year = year, make = make, model = model, name = name, confirmed = true, updatedAt = now)
+        }
         val found = applyServiceIntervals(context, vehicle)
 
         return if (found > 0) {
@@ -120,14 +140,28 @@ object VehicleController {
         if (miles < 100 || miles > 999_999)
             return "That reading doesn't look right — odometer should be between 100 and 999,999 miles."
         val vehicle = vehicleFor(context, vehicleId)
-        CarDatabase.getDatabase(context).vehicleDao().upsert(
-            vehicle.copy(
-                odometerBaseline = miles,
-                odometerBaselineAt = System.currentTimeMillis(),
-                tripMilesSinceBaseline = 0.0,
-                lastOdometerPromptAt = System.currentTimeMillis(),
-            )
-        )
+        val now = System.currentTimeMillis()
+        // Targeted write (ticket 13): touches only the odometer baseline fields,
+        // so a concurrent trip-mile tick or identity edit can't be clobbered by
+        // this call the way a whole-row upsert of a possibly-stale `vehicle`
+        // could be.
+        //
+        // The row count is CHECKED, not discarded. Since ticket 13 stopped
+        // seedVehicle persisting placeholders, `vehicle` may be an in-memory
+        // placeholder for a car that has no row - and a targeted UPDATE against
+        // a missing row writes nothing while succeeding at the SQL level.
+        // Answering "Got it, 142,500 on the clock" to a reading that went
+        // nowhere is the same false-success ticket 13 was opened to remove (a
+        // write that reported success and changed nothing); it would just have
+        // moved one layer down. So an unregistered car is TOLD it is
+        // unregistered, and given the next step, rather than silently swallowing
+        // the number.
+        val written = CarDatabase.getDatabase(context).vehicleDao()
+            .setOdometerBaseline(vehicle.obdMac, miles, now, now)
+        if (written == 0) {
+            return "I don't have this car on file yet, so I can't attach that reading to it. " +
+                "Tell me the year, make and model first and I'll record $miles miles straight after."
+        }
         return listOf(
             "Got it, $miles on the clock. I'll keep track from here.",
             "Noted, $miles miles. Let's see how long till the next thing breaks.",
@@ -264,7 +298,7 @@ object VehicleController {
      */
     suspend fun vehicleFor(context: Context, vehicleId: String?): Vehicle {
         val id = vehicleId ?: ActiveVehicle.current(context)
-        return CarDatabase.getDatabase(context).vehicleDao().getByMac(id) ?: seedVehicle(context, id)
+        return CarDatabase.getDatabase(context).vehicleDao().getByMac(id) ?: seedVehicle(id)
     }
 
     /**
@@ -273,6 +307,21 @@ object VehicleController {
      * accumulator reset). Changing make/model marks the vehicle un-onboarded so the
      * next service-start re-looks-up its maintenance intervals.
      */
+    // DEAD CODE, AND A LOADED GUN. No callers anywhere in app/src (confirmed by
+    // ticket 13's audit, 2026-08-15, and again on review). It is the LAST
+    // remaining whole-row `upsert(v.copy(...))` against an existing row - exactly
+    // the shape ticket 13 removed everywhere else, because it is what overwrote a
+    // real car's identity and odometer back to blank on Kevin's phone.
+    //
+    // It is harmless only while nothing calls it. Its own doc above describes an
+    // "AI Profile form" that does not exist; the day someone builds that form and
+    // wires it here, the bug is live again with no review to catch it.
+    //
+    // OWNED BY: .scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md
+    // (question 3 - manual identity entry is that ticket's job, and this function
+    // is the vestigial version of it). Rewrite it onto VehicleDao.setIdentity +
+    // setOdometerBaseline, or delete it, when 14 is built. Do NOT wire a caller to
+    // it as it stands.
     suspend fun saveVehicleFacts(
         context: Context,
         make: String,
@@ -343,8 +392,11 @@ object VehicleController {
 
     private suspend fun setArchived(context: Context, vehicleId: String, archived: Boolean) {
         val dao = CarDatabase.getDatabase(context).vehicleDao()
-        val vehicle = dao.getByMac(vehicleId) ?: return
-        dao.upsert(vehicle.copy(archived = archived, updatedAt = System.currentTimeMillis()))
+        // Existence check only - the write itself is targeted (ticket 13),
+        // touching archived only, so it can't clobber a concurrent edit to any
+        // other column the way the old read-then-whole-row-write could.
+        dao.getByMac(vehicleId) ?: return
+        dao.setArchived(vehicleId, archived, System.currentTimeMillis())
         if (archived && ActiveVehicle.selected(context) == vehicleId) {
             ActiveVehicle.select(context, null)
         }
@@ -438,10 +490,13 @@ object VehicleController {
             trim = trim ?: existing.trim,
             name = name?.takeIf { it.isNotBlank() } ?: existing.name,
             confirmed = true,
-            updatedAt = System.currentTimeMillis(),
         )
         if (updated == existing) return "Nothing to change there - it's already a ${displayLabel(existing)}."
-        dao.upsert(updated)
+        // Targeted write (ticket 13): identity columns only, via
+        // VehicleDao.setIdentity - the odometer, persona and archive state on
+        // this row ride along untouched instead of round-tripping through a
+        // whole-row upsert of a struct built from a read that could be stale.
+        dao.setIdentity(vehicleId, updated.year, updated.make, updated.model, updated.trim, updated.name, System.currentTimeMillis())
         // Only re-pull intervals when the actual car changed, not on a rename.
         val identityChanged = updated.year != existing.year ||
             !updated.make.equals(existing.make, true) || !updated.model.equals(existing.model, true)
@@ -634,7 +689,9 @@ object VehicleController {
 
     /** Records that Aria just asked for an odometer update, so it doesn't nag again too soon. */
     suspend fun markOdometerPrompted(context: Context, vehicle: Vehicle) {
-        CarDatabase.getDatabase(context).vehicleDao().upsert(vehicle.copy(lastOdometerPromptAt = System.currentTimeMillis()))
+        // Targeted write (ticket 13): touches lastOdometerPromptAt only.
+        val now = System.currentTimeMillis()
+        CarDatabase.getDatabase(context).vehicleDao().markOdometerPrompted(vehicle.obdMac, now, now)
     }
 
     // (2026-07-19) trackTripMileage was DELETED. It was a separate GPS-only
@@ -672,7 +729,12 @@ object VehicleController {
         val items = canonicalizeAndDedupe(lookupServiceIntervals(context, vehicle))
         val db = CarDatabase.getDatabase(context)
         if (items.isNotEmpty()) db.maintenanceItemDao().insertAll(items)
-        db.vehicleDao().upsert(vehicle.copy(onboarded = true))
+        // Targeted write (ticket 13): flips onboarded only, via
+        // VehicleDao.markOnboarded. Every caller of this function already
+        // guarantees vehicle's row exists (a fresh insert just above in
+        // registerDirect/addVehicle, or a row pulled straight from getAll() in
+        // onboardPendingVehicles), so this is never a no-op in practice.
+        db.vehicleDao().markOnboarded(vehicle.obdMac, System.currentTimeMillis())
         return items.size
     }
 
@@ -735,17 +797,41 @@ object VehicleController {
         return written
     }
 
-    /** Asks [AriaBrain] (with search grounding) for typical service intervals for this make/model/year. */
+    /**
+     * Asks [AriaBrain] (with search grounding) for the manufacturer's NORMAL scheduled
+     * maintenance intervals for this car.
+     *
+     * **Normal, not severe (Kevin, 2026-08-15 - ticket 06 question 6).** This prompt used to
+     * demand the SEVERE / heavy-duty schedule, and that single word is what put a 3,000-mile
+     * oil interval on Kevin's 1998 Cherokee. Ticket 02 went and read the factory schedules:
+     * Chrysler's Schedule A (normal) is **7,500 miles or 6 months**, Schedule B (severe) is
+     * **3,000 miles with no time interval at all**. The model had answered correctly; the
+     * question was wrong. Severe is deliberately not offered as a setting - a car that genuinely
+     * lives a hard life gets its items edited by hand.
+     *
+     * **The item list was removed, and that is the other half of the fix.** The old prompt named
+     * "brake fluid" and "cabin air filter" and asked for "6 to 12 objects". Ticket 02 established
+     * that the XJ's factory schedule contains **no brake fluid service at all** (only a monthly
+     * level check) and that **the XJ has no cabin air filter**. So the prompt was naming items
+     * the vehicle does not have and setting a quota that had to be filled somehow - and both
+     * duly appeared on Kevin's phone as invented rows. A lookup must be allowed to return a
+     * short answer, and must never be told in advance what it will find.
+     *
+     * Whatever comes back is still an LLM's retrieval, not a figure the car stated - CLAUDE.md
+     * §4 rule 5. Labelling it as an estimate is ticket 06's job, not this function's.
+     */
     private suspend fun lookupServiceIntervals(context: Context, vehicle: Vehicle): List<MaintenanceItem> {
-        val prompt = "Use search to find the manufacturer-recommended SEVERE / heavy-duty maintenance " +
-            "schedule (the one for short trips, dusty/off-road conditions, towing, or stop-and-go " +
-            "driving - not the normal/light-duty schedule) for a ${vehicle.year} ${vehicle.make} " +
-            "${vehicle.model}. Respond with ONLY a raw JSON array " +
-            "(no markdown, no commentary, no code fences) of 6 to 12 objects, each with keys " +
+        val trim = vehicle.trim.trim().takeIf { it.isNotBlank() }?.let { " $it" } ?: ""
+        val prompt = "Use search to find the manufacturer's published NORMAL scheduled maintenance " +
+            "intervals - the standard/light-duty schedule, NOT the severe or heavy-duty one - for a " +
+            "${vehicle.year} ${vehicle.make} ${vehicle.model}$trim. Respond with ONLY a raw JSON array " +
+            "(no markdown, no commentary, no code fences) of objects, each with keys " +
             "\"service\" (short title-case name like \"Oil Change\"), \"intervalMiles\" (integer or null), " +
-            "and \"intervalMonths\" (integer or null). Cover the most common recurring items: oil change, " +
-            "tire rotation, brake fluid, coolant flush, air filter, cabin air filter, spark plugs, " +
-            "transmission fluid, and anything else notable for this specific model."
+            "and \"intervalMonths\" (integer or null). Include ONLY items the manufacturer actually " +
+            "publishes a scheduled interval for on THIS vehicle. Do not add common items the schedule " +
+            "does not list, do not invent an interval for an item the schedule gives none for (use null " +
+            "for that field), and do not pad the list to a particular length - a short, correct answer " +
+            "is better than a long one. Return an empty array if you cannot find the schedule."
         val raw = try {
             AriaBrain.get(context).structuredQuery(prompt)
         } catch (e: Exception) {
@@ -1015,7 +1101,27 @@ object VehicleController {
     // --- Seeding -------------------------------------------------
 
     /**
-     * Creates a placeholder [Vehicle] for an id we haven't seen before.
+     * Creates a placeholder [Vehicle] for an id we haven't seen before. **Never
+     * persisted, for ANY id (ticket 13, 2026-08-15,
+     * `.scratch/fleet-maintenance/issues/13-the-jeep-row-lost-its-identity.md`).**
+     *
+     * A car exists when the driver says so - through [registerDirect],
+     * [addVehicle], [createCarProfile] or [correctVehicle], every one of them an
+     * explicit driver action - not when a lookup against an id we've never seen
+     * happens to miss. Before this fix, EVERY caller of [vehicleFor] (and so
+     * [currentVehicle]) fell back to this function persisting a blank row on any
+     * miss, and [com.kevin.legion.vehicle.TelemetryRecorder.run] calls
+     * [currentVehicle] every 30 seconds while driving - the highest-frequency
+     * caller of this whole path. Per the ticket's resolution, that combination is
+     * what actually destroyed a real car's identity and odometer on Kevin's
+     * phone: a transient miss against a row that DID exist a moment before
+     * persisted a blank placeholder over it via [VehicleDao.upsert]'s whole-row
+     * REPLACE, silently, with no driver action anywhere in the chain - the exact
+     * writer was not pinned down beyond that in the ticket itself, but removing
+     * this function's ability to persist closes every variant of it at once, which
+     * is why Kevin chose this fix over a narrower one. Returning an unpersisted
+     * object still gives every caller a usable placeholder to read from; it just
+     * never becomes a row nobody asked for.
      *
      * A placeholder states nothing it does not know. Until 2026-08-03 the
      * [DEFAULT_VEHICLE_ID] branch seeded a specific, fully-specified car - a 1998
@@ -1031,10 +1137,12 @@ object VehicleController {
      * placeholder is still a placeholder and can still be collided with, but it
      * cannot contribute a false claim of its own to the wreck.
      *
-     * Every unknown id now seeds the same blank row.
+     * The sentinel-only never-persist carve-out this function used to have
+     * (2026-08-12) is now the rule for every id, not a special case for one of
+     * them - collapsed here, its reasoning kept above rather than deleted.
      */
-    private suspend fun seedVehicle(context: Context, vehicleId: String): Vehicle {
-        val vehicle = Vehicle(
+    private fun seedVehicle(vehicleId: String): Vehicle =
+        Vehicle(
             obdMac = vehicleId,
             name = "this car",
             make = "",
@@ -1042,17 +1150,4 @@ object VehicleController {
             year = 0,
             personaPrompt = "",
         )
-        // The sentinel is NEVER a car (2026-08-12). `default` is the fallback id
-        // ActiveVehicle.current returns when nothing is selected and no dongle is
-        // connected, and it is also MidnightImport's landing bucket - so persisting
-        // a row for it manufactures a vehicle out of the absence of one. On Kevin's
-        // device that produced two phantom "this car" entries in a three-car
-        // roster, and they reappeared after every deletion because this function
-        // re-created them on the next unresolved lookup. Returned unpersisted so
-        // callers still get a usable placeholder object without the roster growing
-        // a car nobody owns.
-        if (vehicleId == MidnightImport.SENTINEL_VEHICLE_ID) return vehicle
-        CarDatabase.getDatabase(context).vehicleDao().upsert(vehicle)
-        return vehicle
-    }
 }
