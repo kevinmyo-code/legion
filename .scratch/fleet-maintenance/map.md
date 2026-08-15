@@ -59,6 +59,25 @@ his two existing service records on a screen.
 
 <!-- one line per closed ticket: gist + link -->
 
+- [A seeded interval is a guess](issues/06-a-seeded-interval-is-a-guess.md) - **a `[GUESS]` DeckTag
+  on the row**, which satisfies §4 rule 7 *because the tag carries the word* - so it may never
+  degrade to a coloured dot or an icon under layout pressure. Counting found **six surfaces render
+  or speak an interval, and two of them are LLM prompts** (`MaintenanceAgent`, `FleetPlaybook`):
+  feeding an unlabelled guess into a model that states it back confidently is how an estimate
+  launders itself into a fact, so **a disclosure that stops at the screen just moves the lie to the
+  loudest channel.** One new TEXT column, `intervalSource` = `SEEDED`|`CONFIRMED`, **v19 -> v20**,
+  every existing row defaulting to `SEEDED` (correct - all 54 are LLM-produced, and `updatedAt`
+  cannot reveal authorship because the Kotlin default stamps construction). Deliberately **not**
+  reusing `IngestMethod`: that vocabulary describes what survived the §4 gate, and an interval never
+  enters it. Confirm-all exists but **re-states every value first**; editing or accepting confirms,
+  with no separate step. **No bundled factory table** - the LLM lookup stays for every car, so the
+  3,000 -> 7,500 correction rests entirely on the shipped prompt fix plus Kevin confirming it, and
+  nothing deterministic backs it up. Two refinements added on resolution: **a null interval gets no
+  tag** (Kevin's `Brake Fluid`/`Brake Pads` orphans have no number to doubt), and the tag's claim is
+  **broader than the number** - ticket 02 proved a seeded row can invent an item that does not exist
+  on the car at all (`Brake Fluid Flush`; the XJ has no cabin air filter).
+  **Unblocks the builds of 05, 09 and 14.**
+
 - [An interval edit that actually sticks](issues/05-an-edit-that-actually-sticks.md) - **the
   no-op guard becomes law for this map**: every write returns its affected row count and a zero is
   an error surfaced in words, never a shrug. Precedent set twice already today
