@@ -415,7 +415,28 @@ fun DeckTextField(
             // does not show a stray mark at offset 0.
             if (isFocused && enabled) {
                 layoutResult?.let { layout ->
-                    val caret = layout.getCursorRect(value.length)
+                    // CLAMP to the layout's OWN text length, never `value.length` directly.
+                    //
+                    // `layoutResult` is captured in `onTextLayout` and lags `value` by a frame:
+                    // on the recomposition that follows a keystroke, `value` already carries the
+                    // new text while `layout` still describes the old. Asking it for a cursor at
+                    // an offset it has never measured throws
+                    // `IllegalArgumentException: offset(1) is out of bounds [0, 0]` and takes the
+                    // whole app down.
+                    //
+                    // Found on-device 2026-08-15, by typing into the maintenance item-detail
+                    // screen's interval field - the first editable text field any shipped LEGION
+                    // surface has ever actually had (the only other caller is `ThemePreview`,
+                    // which nobody types into). It is a crash in a SHARED mission-control control,
+                    // not in the screen that surfaced it, and 1180 unit tests plus two review
+                    // passes could not see it: it exists only as a frame-timing interaction
+                    // between two recompositions.
+                    //
+                    // Clamping is right rather than merely safe. A cursor drawn one frame behind
+                    // the text is invisible to a human; a crash is not.
+                    val caret = layout.getCursorRect(
+                        value.length.coerceIn(0, layout.layoutInput.text.length),
+                    )
                     Box(
                         Modifier
                             .offset { IntOffset(caret.left.roundToInt(), caret.top.roundToInt()) }
