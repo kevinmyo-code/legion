@@ -119,9 +119,12 @@ his two existing service records on a screen.
   drilldown, the service-history screen, the odometer entry, the recall button - but each one's
   contents depend on the decision ticket above it. They graduate as decisions land, the way
   `mission-control` tickets 13-16 did.
-- **Room migration plan.** At least one bump is coming (a per-item provenance flag from ticket 06,
-  probably a cost writer from ticket 11, possibly a tombstone from ticket 07). Whether that is one
-  bump or three is not decidable until those three tickets resolve. Room is at **v19**.
+- **Room migration plan.** At least one bump is coming, and ticket 14 has now named a concrete one:
+  **an `engine` column on `vehicles`** (Kevin asked for it in the manual-input set, and ticket 02
+  showed why - a 4.0L XJ and a 2.5L differ on plugs and capacities). Plus a per-item provenance flag
+  from ticket 06, probably a cost writer from ticket 11, possibly a tombstone from ticket 07.
+  Whether that is one bump or four is not decidable until those tickets resolve. Room is at **v19**
+  and ticket 13's fix did **not** move it.
 - **What the fleet advisor does with a schedule Kevin owns.** `AdvisorProposalExecutor`'s
   `set_maintenance_item` is currently the *only* live interval writer. Once a UI edit path exists,
   the advisor's role changes from sole author to proposer, and its allowlist may need revisiting.

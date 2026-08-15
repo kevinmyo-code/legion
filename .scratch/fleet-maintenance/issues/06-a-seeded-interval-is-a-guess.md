@@ -49,10 +49,19 @@ Kevin's ruling at charting: **show it as a guess until I confirm it.**
    obviously does. Does tapping "yes that's right" on an unchanged 5,000 also? Is there a bulk
    "accept the whole seeded schedule" affordance, or is that exactly the rubber-stamp this ticket
    exists to prevent?
-6. **Should the seed prompt still ask for SEVERE?** Ticket 02 brings back both factory schedules.
-   Options: keep severe (conservative, over-services, produced the 3,000 complaint), switch to
-   normal, or **ask Kevin which schedule his use matches** during onboarding and seed accordingly.
-   The third is more honest and costs one question.
+6. ~~**Should the seed prompt still ask for SEVERE?**~~ **DECIDED 2026-08-15 (Kevin): normal
+   schedule, hard-coded. Severe is not offered as a setting.** Ticket 02 established that Schedule A
+   is 7,500 mi or 6 months and Schedule B is 3,000 mi with no time interval at all - so the prompt,
+   not the model, produced the 3,000. The cost was stated and accepted: a car living a short-trip,
+   dusty or towing life has no route back to severe except editing items by hand, which is what
+   this ticket's sibling (05) builds. Applied to `lookupServiceIntervals`
+   (`VehicleController.kt:740-742`) as a standalone fix; see ticket 14 for the deliberate
+   populate flow that replaces automatic seeding.
+
+   **Still open here**, and not settled by that decision: ticket 02 found that some seeded items
+   correspond to **nothing in the factory schedule at all** (`Brake Fluid Flush` on the XJ; the XJ
+   has no cabin air filter). Those are not severe-vs-normal disagreements - they are inventions,
+   and they are the strongest argument this ticket has for a provenance flag.
 7. **Should there be an LLM seed at all?** Kevin declined the "stop guessing entirely" option, so
    this is not reopened - but ticket 02 may return a schedule good enough to **bundle as an asset**
    for this specific car, and CLAUDE.md §7 prefers bundled to fetched. A bundled table is
