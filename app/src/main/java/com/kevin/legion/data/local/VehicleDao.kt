@@ -114,6 +114,34 @@ interface VehicleDao {
     suspend fun setIdentity(mac: String, year: Int, make: String, model: String, trim: String, name: String, now: Long)
 
     /**
+     * Fills in identity columns from a vPIC VIN decode (year/make/model/trim) - the write-back
+     * ticket 04 names (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`,
+     * `13-the-jeep-row-lost-its-identity.md`). Touches [Vehicle.name] and [Vehicle.confirmed]
+     * NOWHERE in this query - deliberately NOT [setIdentity], which always stamps
+     * `confirmed = 1`. That is correct for a DRIVER stating the car's identity (voice register,
+     * manual correction) but wrong for a vPIC lookup: [com.kevin.legion.vehicle.VinDecoder]'s own
+     * class doc says a decode is "a confirmable suggestion, never a silent overwrite", and
+     * [Vehicle.confirmed] gates recall lookups and the label surfaces ticket 04 is about on the
+     * DRIVER having actually said so - a decode filling in blanks on the driver's behalf must not
+     * silently claim that consent too.
+     *
+     * Every value passed here is the caller's ALREADY-DECIDED final value for that column (decoded
+     * where blank, left as the existing value otherwise) - see
+     * [com.kevin.legion.vehicle.VehicleController.applyDecodedIdentity], which computes them
+     * per-field before this query ever runs and never calls this at all when nothing changed.
+     *
+     * **Returns the number of rows affected, and the caller MUST check it** - same false-success
+     * shape [setOdometerBaseline]'s doc warns about: a targeted UPDATE against a vehicleId with no
+     * row (a `vehicle_specs` row can now exist with no matching `vehicles` row - ticket 04's
+     * "orphan-to-parent" note) succeeds at the SQL level while writing nothing.
+     */
+    @Query(
+        "UPDATE vehicles SET year = :year, make = :make, model = :model, trim = :trim, " +
+            "updatedAt = :now WHERE obdMac = :mac"
+    )
+    suspend fun applyDecodedIdentity(mac: String, year: Int, make: String, model: String, trim: String, now: Long): Int
+
+    /**
      * Hides/unhides a car from the roster and picker (touches [Vehicle.archived]
      * only). Replaces a read-then-whole-row-write round trip in
      * [com.kevin.legion.vehicle.VehicleController]'s `setArchived` that could

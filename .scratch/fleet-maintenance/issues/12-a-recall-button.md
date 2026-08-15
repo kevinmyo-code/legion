@@ -23,6 +23,43 @@ that guard already exists and is silent. It is **at the button**: year/make/mode
 present before the check is offered, and their absence must be **said in words** with a route to
 fixing it, rather than rendering as a clean "no recalls found".
 
+## The two recall paths disagree, and the VIN write-back just made it reachable
+
+Surfaced by senior-dev review of the identity write-back, 2026-08-15. **This is now the ticket's
+central question, ahead of the button itself.**
+
+| Path | Gate |
+|---|---|
+| Voice tool `check_recalls` (`LiveToolbox.kt:1884-1893`) | **Refuses** unless `Vehicle.confirmed` |
+| Proactive startup push (`AriaForegroundService.checkRecallsOnce` -> `VehicleSpecController.recalls`, `:136-139`) | **No `confirmed` check at all** - reads `v.year/make/model` directly |
+
+The split is pre-existing. It was **inert** while a decode-only car had blank make/model, because
+`fetchRecalls` then returned empty and nothing was said either way.
+
+The write-back changes that. A car whose identity arrives **only** from a vPIC decode now has real
+year/make/model and, deliberately, **`confirmed = false`** - because a decode filling in blanks
+must not claim the driver's confirmation on their behalf. So from now on such a car can have the
+assistant **proactively announce recalls at startup**, while **refusing to discuss those same
+recalls if asked directly.** Same car, same data, opposite answers, depending on who started the
+conversation.
+
+**Decide which gate is right and apply it to both**, rather than fixing whichever one is nearer:
+
+1. **`confirmed` gates both.** Consistent and conservative. Cost: a car the app has correctly
+   identified from its own VIN gets no recall information at all until the driver separately says
+   "yes, that's my car" - and nothing currently tells them that is what is holding it up.
+2. **Identity-present gates both** (year/make/model all non-blank), and `confirmed` stops being
+   the recall gate. Cost: this reopens what `confirmed` was originally introduced for
+   (`Vehicle.kt:42-48`) - stopping recall lookups reporting on the placeholder seed. Note the
+   premise has since changed: the placeholder is now blank (`a09aa68`), so it cannot pass an
+   identity-present test anyway. **Check that before assuming the original reason still holds.**
+3. **Different gates on purpose**, with the asymmetry stated: the app may answer when asked about
+   an unconfirmed car, but may not volunteer. Defensible, and the reverse of today's behaviour.
+
+Whichever wins, the `Applied` copy in `VehicleSpecsScreen.reconcileOutcomeText` needs revisiting:
+it currently says the identity was filled in and does not mention that recalls may still be
+refused, so a driver who just watched it work has no reason to expect a refusal.
+
 ## Question
 
 Kevin: the specs screen shows the VIN but there is no way to check recalls; Midnight AI had a button.

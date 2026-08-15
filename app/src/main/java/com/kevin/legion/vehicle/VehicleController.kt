@@ -507,6 +507,97 @@ object VehicleController {
         }
     }
 
+    /**
+     * Applies a vPIC-decoded [VinDecoder.DecodedVin] onto the stored [vehicleId] row - ticket 04's
+     * VIN identity write-back (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`,
+     * `13-the-jeep-row-lost-its-identity.md`). Before this, `VehicleSpecController.refreshFromVin`
+     * decoded and stored the `vehicle_specs` row and threw away [VinDecoder.decode]'s identity
+     * fields entirely - Kevin's `vehicle_specs` held a fully-decoded Jeep VIN since 2026-07-26
+     * while `vehicles` still read `make=''`, `model=''`, `year=0`.
+     *
+     * **Policy, verbatim from [VinDecoder]'s own class doc**: a decode is "a confirmable
+     * suggestion, never a silent overwrite of driver-entered facts." Applied per field,
+     * independently, across year/make/model/trim - never [com.kevin.legion.data.local.Vehicle.name],
+     * which a VIN decode has no way to supply:
+     *  - blank/zero on file -> filled from the decode.
+     *  - already set and the decode has nothing to say (year absent, trim absent) -> that field is
+     *    skipped entirely, neither a fill nor a conflict.
+     *  - already set and the decode AGREES -> left alone. A same-value write would be pointless
+     *    and would re-stamp the LWW sync clock for nothing, the same discipline [correctVehicle]'s
+     *    own no-op branch follows.
+     *  - already set and the decode DISAGREES -> **not written, anywhere.** A conflict on ANY
+     *    field aborts the WHOLE write, not just that field.
+     *
+     *    Two reasons, and the second is the load-bearing one. First, a half-applied identity
+     *    (some fields decoded-and-written, others left silently disagreeing) is exactly the
+     *    confused state ticket 04 exists to close, not a smaller version of it. Second, and more
+     *    importantly: **a disagreement is evidence the decode may not describe this car at all.**
+     *    A VIN misread off the OBD port, a transposed character, a dongle moved to another
+     *    vehicle - all present as "one field doesn't match". Filling the BLANK fields from a
+     *    decode you have concrete reason to distrust does not half-fix the row, it writes another
+     *    vehicle's facts into it, silently, and they would then read as this car's own. Declining
+     *    the whole write is the only option that cannot make the row less true than it was.
+     *
+     *    The driver resolves the conflict - by typing the correction, or by accepting vPIC's value
+     *    through [correctVehicle] - and reconciles again.
+     *
+     * **Never sets [com.kevin.legion.data.local.Vehicle.confirmed].** Deliberately does not reuse
+     * [VehicleDao.setIdentity] (which always stamps `confirmed = 1`, right for a DRIVER stating the
+     * car's identity) - see [VehicleDao.applyDecodedIdentity]'s own doc for why a vPIC lookup
+     * filling in blanks must not silently mark the car driver-confirmed on the driver's behalf.
+     */
+    suspend fun applyDecodedIdentity(
+        context: Context,
+        vehicleId: String,
+        decoded: VinDecoder.DecodedVin?,
+    ): IdentityWriteResult {
+        if (decoded == null || !decoded.isUsable) return IdentityWriteResult.Unusable
+        val dao = CarDatabase.getDatabase(context).vehicleDao()
+        val existing = dao.getByMac(vehicleId) ?: return IdentityWriteResult.NoSuchVehicle
+
+        data class Field(val name: String, val onFile: String, val decodedValue: String?)
+        val fields = listOf(
+            Field("year", existing.year.takeIf { it > 0 }?.toString().orEmpty(), decoded.year.takeIf { it > 0 }?.toString()),
+            Field("make", existing.make, decoded.make.takeIf { it.isNotBlank() }),
+            Field("model", existing.model, decoded.model.takeIf { it.isNotBlank() }),
+            Field("trim", existing.trim, decoded.trim.takeIf { it.isNotBlank() }),
+        )
+
+        val conflicts = mutableListOf<FieldConflict>()
+        val changed = mutableListOf<String>()
+        for (f in fields) {
+            val dv = f.decodedValue ?: continue // the decode has nothing to say about this field
+            when {
+                f.onFile.isBlank() -> changed += f.name
+                // Compared TRIMMED and case-insensitively. Both halves are load-bearing and
+                // neither is cosmetic, because a false conflict here is expensive: it aborts the
+                // whole write (see the doc above) and shows the driver a disagreement that is not
+                // one. Case covers "4WD" vs "4wd". Trim covers the asymmetry between the two
+                // sources - VinDecoder.parse trims and title-cases what it decodes, while
+                // correctVehicle stores driver-typed make/model/trim with no trim() at all
+                // (:488-490), so a stray trailing space from a text field would otherwise read as
+                // "Cherokee " != "Cherokee". Caught on review, 2026-08-15.
+                !f.onFile.trim().equals(dv.trim(), ignoreCase = true) ->
+                    conflicts += FieldConflict(f.name, onFile = f.onFile, decoded = dv)
+                // else: already agrees - no-op for this field
+            }
+        }
+
+        if (conflicts.isNotEmpty()) return IdentityWriteResult.Conflict(conflicts)
+        if (changed.isEmpty()) return IdentityWriteResult.NothingToDo
+
+        val finalYear = if ("year" in changed) decoded.year else existing.year
+        val finalMake = if ("make" in changed) decoded.make else existing.make
+        val finalModel = if ("model" in changed) decoded.model else existing.model
+        val finalTrim = if ("trim" in changed) decoded.trim else existing.trim
+        val written = dao.applyDecodedIdentity(vehicleId, finalYear, finalMake, finalModel, finalTrim, System.currentTimeMillis())
+        // The row existed a moment ago (the getByMac above) but a targeted UPDATE can still touch
+        // zero rows if it was archived/removed in between - report that honestly rather than claim
+        // Applied for a write that changed nothing (VehicleDao.applyDecodedIdentity's own doc).
+        if (written == 0) return IdentityWriteResult.NoSuchVehicle
+        return IdentityWriteResult.Applied(changed)
+    }
+
     /** Makes [vehicleId] the car every stored-data tool answers about. */
     suspend fun switchTo(context: Context, vehicleId: String): String {
         val vehicle = CarDatabase.getDatabase(context).vehicleDao().getByMac(vehicleId)

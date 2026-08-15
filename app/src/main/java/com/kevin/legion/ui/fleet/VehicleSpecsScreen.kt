@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -43,8 +46,10 @@ import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.shortDate
+import com.kevin.legion.vehicle.IdentityWriteResult
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleSpecController
+import com.kevin.legion.vehicle.VinRefreshResult
 import kotlinx.coroutines.launch
 
 /**
@@ -77,6 +82,11 @@ fun VehicleSpecsScreen(onBack: () -> Unit) {
     var reading by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<String?>(null) }
     var reloadKey by remember { mutableIntStateOf(0) }
+    // Ticket 04's stored-VIN reconcile - separate state from the RE-READ/READ VIN flow above:
+    // this one needs no adapter, only network, so it must be driveable while `reading` is false
+    // and independent of `connected`.
+    var reconciling by remember { mutableStateOf(false) }
+    var reconcileMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(reloadKey) {
         spec = VehicleSpecController.current(context)
@@ -89,17 +99,29 @@ fun VehicleSpecsScreen(onBack: () -> Unit) {
         connected = connectionState == ObdBluetoothManager.ConnectionState.CONNECTED,
         reading = reading,
         failure = failure,
+        reconciling = reconciling,
+        reconcileMessage = reconcileMessage,
         onBack = onBack,
         onCopyVin = { vin -> copyToClipboard(context, vin) },
         onReadVin = {
             reading = true
             failure = null
+            reconcileMessage = null
             scope.launch {
-                val ok = runCatching { VehicleSpecController.refreshFromObd(context) }
-                    .getOrDefault(false)
+                val result = runCatching { VehicleSpecController.refreshFromObd(context) }
+                    .getOrElse { VinRefreshResult.DecodeFailed }
                 reading = false
-                if (ok) {
+                if (result is VinRefreshResult.Decoded) {
                     reloadKey++
+                    // READ VIN performs the identity write-back too, as a side effect of the same
+                    // decode - so it must REPORT it, exactly as SYNC ID FROM VIN does. Without
+                    // this the two callers of the same write-back disagreed: one said every
+                    // outcome in words, the other said none of them, and a refused write (the
+                    // conflict case - "this decode may not describe this car") was invisible.
+                    // A write nobody is told about is the defect class this whole map is closing;
+                    // it does not stop being one because the button had another job as well.
+                    // Caught on review, 2026-08-15, before this reached the device.
+                    reconcileMessage = reconcileOutcomeText(result)
                 } else {
                     // Three different failures land here and the driver cannot
                     // act on "it didn't work": say which one it was.
@@ -112,6 +134,19 @@ fun VehicleSpecsScreen(onBack: () -> Unit) {
                                 "connection. Neither is a fault with the car."
                     }
                 }
+            }
+        },
+        onReconcileIdentity = {
+            reconciling = true
+            reconcileMessage = null
+            scope.launch {
+                val result = runCatching { VehicleSpecController.reconcileIdentityFromStoredVin(context) }
+                    .getOrElse { VinRefreshResult.DecodeFailed }
+                reconciling = false
+                reconcileMessage = reconcileOutcomeText(result)
+                // Reconciling re-decodes and re-saves the spec row too (decodedAt moves), so the
+                // pane above should pick that up the same way a fresh READ VIN does.
+                if (result is VinRefreshResult.Decoded) reloadKey++
             }
         },
     )
@@ -130,9 +165,12 @@ fun VehicleSpecsContent(
     connected: Boolean,
     reading: Boolean,
     failure: String?,
+    reconciling: Boolean,
+    reconcileMessage: String?,
     onBack: () -> Unit,
     onCopyVin: (String) -> Unit,
     onReadVin: () -> Unit,
+    onReconcileIdentity: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -218,6 +256,56 @@ fun VehicleSpecsContent(
                                 modifier = Modifier.padding(12.dp),
                             )
                         }
+
+                        // Ticket 04's stored-VIN reconcile: re-decodes whatever VIN is ALREADY on
+                        // file above and writes its identity onto the car - repairs a
+                        // `vehicle_specs` row that decoded weeks ago but never reached `vehicles`
+                        // (Kevin's Jeep, since 2026-07-26). Deliberately offered regardless of
+                        // `connected` or whether `vin` above is blank in this render pass - it
+                        // reads its own VIN fresh from storage when pressed, and needs network, not
+                        // a live dongle.
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (!reconciling) {
+                                SpecAction(
+                                    "SYNC ID FROM VIN",
+                                    onClick = onReconcileIdentity,
+                                    announce = reconcileMessage,
+                                )
+                            }
+                        }
+                        if (reconciling) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    "Re-decoding the VIN on file and reconciling the car's identity...",
+                                    style = LegionType.stamp,
+                                    color = sem.faint,
+                                )
+                            }
+                        }
+                        // Every outcome is said in words here - applied (and which fields),
+                        // nothing to change, a conflict (and which fields, both values), no VIN on
+                        // file, decode failed/offline. Never a bare spinner that ends in silence,
+                        // never colour- or glyph-only (CLAUDE.md §7).
+                        if (reconcileMessage != null) {
+                            Text(
+                                reconcileMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = sem.faint,
+                                modifier = Modifier.padding(12.dp),
+                            )
+                        }
                     }
                 }
 
@@ -290,16 +378,56 @@ internal fun specRows(spec: VehicleSpec?): List<Pair<String, String>> {
     }
 }
 
-/** Bordered stamp button, local to this screen - same call as ObdDeviceScreen's DeckAction. */
+/**
+ * Bordered stamp button, local to this screen - same call as ObdDeviceScreen's DeckAction.
+ *
+ * [announce] carries a [stateDescription] on top of the button's own click semantics
+ * (`ui/common/DeckControls.kt`'s [androidx.compose.ui.semantics.stateDescription] convention,
+ * used by ticket 04's SYNC ID action to speak its outcome - applied/conflict/nothing-to-change/
+ * etc - to TalkBack the same as it's shown on screen, never a colour- or glyph-only signal).
+ */
 @Composable
-private fun SpecAction(text: String, onClick: () -> Unit) {
+private fun SpecAction(text: String, onClick: () -> Unit, announce: String? = null) {
     Box(
         Modifier
+            .sizeIn(minHeight = 48.dp)
             .border(1.dp, MaterialTheme.colorScheme.primary)
             .clickable(onClick = onClick)
+            .let { if (announce != null) it.semantics { stateDescription = announce } else it }
             .padding(horizontal = 10.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(text, style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+    }
+}
+
+/**
+ * Renders a [VinRefreshResult] into the plain-language line ticket 04 §5 asks for - every
+ * outcome said in words, on the surface itself (not TalkBack-only), never a bare spinner that
+ * ends in silence and never a colour- or glyph-only signal.
+ *
+ * Internal so the outcome text is testable without Compose - CLAUDE.md §11's testing convention,
+ * matching [specRows]'s own reason for being `internal`.
+ */
+internal fun reconcileOutcomeText(result: VinRefreshResult): String = when (result) {
+    VinRefreshResult.NoStoredVin ->
+        "No VIN on file yet to reconcile. Read one off the adapter above first."
+    VinRefreshResult.DecodeFailed ->
+        "Couldn't re-decode the VIN. Check you're online - NHTSA vPIC needs a network " +
+            "connection - and try again."
+    is VinRefreshResult.Decoded -> when (val identity = result.identity) {
+        is IdentityWriteResult.Applied ->
+            "Filled in ${identity.changedFields.joinToString(", ")} from the VIN."
+        IdentityWriteResult.NothingToDo ->
+            "Already matches what's on file. Nothing to change."
+        is IdentityWriteResult.Conflict ->
+            "Conflict, nothing changed: " + identity.fields.joinToString("; ") {
+                "${it.field} on file is \"${it.onFile}\", the VIN says \"${it.decoded}\""
+            } + ". Correct it by hand under Cars if the VIN is right."
+        IdentityWriteResult.Unusable ->
+            "The decode didn't return enough (year, make, and model) to act on."
+        IdentityWriteResult.NoSuchVehicle ->
+            "This car isn't registered yet, so there's no row to write the identity onto."
     }
 }
 
@@ -329,7 +457,8 @@ private fun PreviewSpecsDecoded() = LegionTheme {
             decodedAt = 1785153923212L,
         ),
         loaded = true, connected = true, reading = false, failure = null,
-        onBack = {}, onCopyVin = {}, onReadVin = {},
+        reconciling = false, reconcileMessage = null,
+        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {},
     )
 }
 
@@ -338,7 +467,8 @@ private fun PreviewSpecsDecoded() = LegionTheme {
 private fun PreviewSpecsEmpty() = LegionTheme {
     VehicleSpecsContent(
         spec = null, loaded = true, connected = false, reading = false, failure = null,
-        onBack = {}, onCopyVin = {}, onReadVin = {},
+        reconciling = false, reconcileMessage = null,
+        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {},
     )
 }
 
@@ -349,6 +479,25 @@ private fun PreviewSpecsFailed() = LegionTheme {
         spec = null, loaded = true, connected = true, reading = false,
         failure = "No usable VIN came back. Cars built before roughly 2001 often do not report " +
             "one over OBD-II at all, and the decode also needs a network connection.",
-        onBack = {}, onCopyVin = {}, onReadVin = {},
+        reconciling = false, reconcileMessage = null,
+        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {},
+    )
+}
+
+/**
+ * The reconcile-specific outcome ticket 04 exists to surface: `vehicle_specs` had a VIN, the
+ * decode disagreed with a driver-entered field, and nothing was written anywhere - see
+ * [IdentityWriteResult.Conflict]'s doc for why a conflict on one field blocks the whole write.
+ */
+@Preview(name = "Specs: reconcile found a conflict", widthDp = 360, heightDp = 500)
+@Composable
+private fun PreviewSpecsReconcileConflict() = LegionTheme {
+    VehicleSpecsContent(
+        spec = VehicleSpec(vehicleId = "default", vin = "1FAKEVIN000000001", decodedAt = 1785153923212L),
+        loaded = true, connected = false, reading = false, failure = null,
+        reconciling = false,
+        reconcileMessage = "Conflict, nothing changed: model on file is \"Cherokee Sport\", the VIN " +
+            "says \"Cherokee\". Correct it by hand under Cars if the VIN is right.",
+        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {},
     )
 }

@@ -74,21 +74,35 @@ object VinDecoder {
         return decode(vin)
     }
 
-    /** Decodes a 17-char [vin] via vPIC into the lean year/make/model/trim. Null on failure. */
-    suspend fun decode(vin: String): DecodedVin? = withContext(Dispatchers.IO) {
+    /**
+     * Both [decode]'s lean identity AND [decodeSpecs]'s fuller factory-spec set, parsed from
+     * ONE vPIC response. Ticket 04
+     * (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`): [decode] and [decodeSpecs]
+     * used to each fire their own `httpGet` against the identical URL for the identical JSON -
+     * this is the shared fetch, and both of those functions now just narrow this result down to
+     * the one field their existing callers already expect, rather than doing the fetch again.
+     *
+     * Null only when the HTTP call itself failed or [vin] isn't 17 characters - a call that
+     * SUCCEEDS but whose response vPIC can't make sense of still returns a [DecodedAll] here
+     * (with [DecodedAll.decoded] and/or [DecodedAll.specs] individually null), because "no
+     * network" and "network worked, vPIC had nothing" are different failures a caller may want
+     * to report differently.
+     */
+    suspend fun decodeAll(vin: String): DecodedAll? = withContext(Dispatchers.IO) {
         val clean = vin.trim().uppercase()
         if (clean.length != 17) return@withContext null
         val raw = httpGet("$VPIC_URL/$clean?format=json") ?: return@withContext null
-        parse(clean, raw)
+        DecodedAll(decoded = parse(clean, raw), specs = parseSpecs(clean, raw))
     }
 
+    /** The result of [decodeAll] - see its doc. */
+    data class DecodedAll(val decoded: DecodedVin?, val specs: VinSpecs?)
+
+    /** Decodes a 17-char [vin] via vPIC into the lean year/make/model/trim. Null on failure. */
+    suspend fun decode(vin: String): DecodedVin? = decodeAll(vin)?.decoded
+
     /** Decodes a 17-char [vin] via vPIC into the fuller factory-spec set. Null on failure. */
-    suspend fun decodeSpecs(vin: String): VinSpecs? = withContext(Dispatchers.IO) {
-        val clean = vin.trim().uppercase()
-        if (clean.length != 17) return@withContext null
-        val raw = httpGet("$VPIC_URL/$clean?format=json") ?: return@withContext null
-        parseSpecs(clean, raw)
-    }
+    suspend fun decodeSpecs(vin: String): VinSpecs? = decodeAll(vin)?.specs
 
     /**
      * Fetches active NHTSA recalls for a year/make/model (not by VIN - the free
