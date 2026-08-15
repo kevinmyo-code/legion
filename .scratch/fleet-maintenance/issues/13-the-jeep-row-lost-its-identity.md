@@ -147,7 +147,7 @@ after the damage.**
 
 | Suspect | Verdict |
 |---|---|
-| Migrations 16Ã¢â€ â€™17, 17Ã¢â€ â€™18, 18Ã¢â€ â€™19 (ran 2026-08-13) | **Not it.** All three touch `ledger_transactions` and `category_rules` only |
+| Migrations 16Ã¢â€ '17, 17Ã¢â€ '18, 18Ã¢â€ '19 (ran 2026-08-13) | **Not it.** All three touch `ledger_transactions` and `category_rules` only |
 | `correctVehicle` (the rename, 2026-08-13 14:37:54) | **Not it.** `existing.copy(...)` coalescing every field. Could only have renamed an already-empty row |
 | `registerDirect` | **Not it.** Preserves the odometer (`:98-100`), rejects blank make/model (`:86`) |
 | `setOdometer` | **Not it.** Always stamps `odometerBaselineAt` alongside the baseline; the row has baseline 0 and `odometerBaselineAt` never - a pairing it cannot write |

@@ -59,6 +59,33 @@ his two existing service records on a screen.
 
 <!-- one line per closed ticket: gist + link -->
 
+- [One car label rule](issues/04-one-car-label-rule.md) - **counting reframed it a fourth time**:
+  charted as twelve surfaces, actually **24 `displayLabel` call sites, 4 `carLabel`, ~16 raw `name`
+  reads and FIVE different last-resort strings**, with two surfaces the chart missed entirely.
+  Resolved to **one rule everywhere, screen and speech alike**: `nickname (year make model)`,
+  falling back cleanly when either half is missing, **two lines where it does not fit** (the
+  `carLabel`/`carSpecPrefix` shape `CarRows` already has), and `"a car you haven't named yet"` as
+  the single last resort. Two refinements added on resolution rather than by Kevin: **trim is
+  excluded from the spec**, and a **de-duplication clause** for when the spec already contains the
+  nickname - his own row (`name` = `1998 Jeep Cherokee`, spec = `... Limited`) is the case that
+  forces both. **`"this car"` is deleted, not filtered**: the seed stops writing it and the two
+  archived rows carrying it get cleaned, because a magic value that must be filtered on read is how
+  twelve surfaces became twenty-four. Also rules that **chrome may be uppercased and driver-typed
+  data may not** (the driving-mode HUD is why the placeholder shouted). **Unblocks ticket 12.**
+  Records a stale-parent bug found on-device: after the identity write landed, FLEET still rendered
+  `THIS CAR` until the tab was switched - a write nobody could see, one layer up from the map's
+  core defect, and it names the check that would have missed it.
+- **[BUILT, shipped and verified on the phone: the VIN identity write-back]** (part of ticket 04,
+  commit `b499169`). `refreshFromVin` decoded the VIN, wrote sixteen spec fields and **discarded the
+  year/make/model/trim parsed from the same response**. Now `decodeAll` makes one call and the
+  identity is applied under a **fill-blanks, never-overwrite** policy, where **a conflict on any one
+  field aborts the whole write** - because a disagreement is evidence the decode may not describe
+  this car at all. Deliberately does **not** reuse `setIdentity`, which stamps `confirmed = 1`: a
+  lookup filling in blanks must not claim the driver's consent. **On Kevin's real Jeep: `make ''` ->
+  `Jeep`, `model ''` -> `Cherokee`, `year 0` -> `1998`, `trim ''` -> `Limited`, everything else
+  byte-identical, other four rows untouched.** Review caught two things first: `READ VIN` was doing
+  the write-back and **discarding the outcome**, and untrimmed comparison made false conflicts.
+
 - [The Jeep row lost its identity and its odometer](issues/13-the-jeep-row-lost-its-identity.md) -
   **the mechanism is certain, the trigger is not, and both statements are load-bearing.** Proof came
   off the disk, not off a timeline: `applyServiceIntervals` sets `onboarded = true` in the same call

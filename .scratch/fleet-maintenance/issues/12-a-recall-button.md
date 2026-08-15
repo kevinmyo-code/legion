@@ -2,7 +2,7 @@
 
 Type: task
 Status: open
-Blocked by: 04, 13
+Blocked by: 04, 13   # 04 resolved 2026-08-15, 13 resolved 2026-08-15 - UNBLOCKED
 
 ## Input from ticket 01 (2026-08-15) - this ticket got worse
 
