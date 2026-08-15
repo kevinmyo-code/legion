@@ -1,11 +1,14 @@
 package com.kevin.legion.ui.fleet
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -17,17 +20,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.data.local.Vehicle
+import com.kevin.legion.ui.common.DeckButton
+import com.kevin.legion.ui.common.DeckDialog
+import com.kevin.legion.ui.common.DeckTextField
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.VehicleController
+import com.kevin.legion.vehicle.VehicleController.WriteOutcome
+import kotlinx.coroutines.launch
 
 /**
  * The CARS roster's pure logic and rows, for `ui/CarsScreen.kt`. Same split as
@@ -368,6 +378,84 @@ fun RenameCarDialog(
     )
 }
 
+// ------------------------------------------------------------------------ manual odometer entry
+
+/**
+ * The odometer's ONE manual-entry control (ticket 10,
+ * `.scratch/fleet-maintenance/issues/10-odometer-truth-and-drift.md`: "one control, reused"). FLEET's
+ * CARS pane (`ui/FleetScreen.kt`) is this dialog's only caller today; ticket 09's triage screen and
+ * ticket 14's future registration form are meant to reuse THIS composable rather than
+ * re-implementing the field/button/validation shape - three copies would be three places to get the
+ * estimate label wrong, the ticket's own words.
+ *
+ * [currentValueText]/[currentCaveatText] are [VehicleController.mileageValueText]/
+ * [VehicleController.mileageCaveat]'s own strings - shown so the driver can see what they are about
+ * to overwrite before typing a new number, same "current" context every other edit dialog on this
+ * screen ([RenameCarDialog]'s `currentLabel`) already shows.
+ *
+ * [onSubmit] is a direct pass-through to [com.kevin.legion.vehicle.VehicleController.setOdometer];
+ * this dialog never second-guesses its [WriteOutcome]. Ticket 10 §7's rule - a reading below the
+ * current estimate is QUESTIONED, never refused - lives entirely in [VehicleController.setOdometer]
+ * (via [VehicleController.odometerQuestionNote]), so SET always submits whatever parses as a valid
+ * integer and simply shows back whatever the write itself said. The dialog stays open after a
+ * successful submit (rather than auto-dismissing) so the driver has time to actually read that
+ * reply - the questioned case exists precisely because it says something worth reading.
+ */
+@Composable
+fun SetOdometerDialog(
+    currentValueText: String,
+    currentCaveatText: String,
+    onDismiss: () -> Unit,
+    onSubmit: suspend (Int) -> WriteOutcome,
+) {
+    val sem = LocalLegionSemantics.current
+    val scope = rememberCoroutineScope()
+    var milesText by remember { mutableStateOf("") }
+    var statusText by remember { mutableStateOf<String?>(null) }
+    var submitting by remember { mutableStateOf(false) }
+    val miles = milesText.trim().toIntOrNull()
+
+    DeckDialog(title = "Set Odometer", onDismissRequest = onDismiss) {
+        Text(
+            if (currentValueText.isBlank()) "No reading on file yet." else "Current: $currentValueText",
+            style = LegionType.stamp,
+            color = sem.faint,
+        )
+        if (currentCaveatText.isNotBlank()) {
+            Text(currentCaveatText, style = LegionType.stamp, color = sem.estimated)
+        }
+        Spacer(Modifier.height(8.dp))
+        DeckTextField(
+            value = milesText,
+            onValueChange = { milesText = it; statusText = null },
+            label = "Miles",
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        )
+        if (statusText != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(statusText!!, style = LegionType.stamp, color = sem.faint)
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DeckButton(text = "CANCEL", onClick = onDismiss)
+            DeckButton(
+                text = "SET",
+                enabled = miles != null && !submitting,
+                onClick = {
+                    val m = miles ?: return@DeckButton
+                    submitting = true
+                    scope.launch {
+                        val outcome = onSubmit(m)
+                        submitting = false
+                        statusText = outcome.message
+                        if (outcome.success) milesText = ""
+                    }
+                },
+            )
+        }
+    }
+}
+
 // ------------------------------------------------------------------------ previews
 
 @Preview(name = "Car row: active, picked by the driver", widthDp = 360)
@@ -437,5 +525,27 @@ private fun PreviewRenameCarDialog() = LegionTheme {
         currentLabel = "2020 Mitsubishi Outlander",
         otherLabels = listOf("2014 Mazda 3"),
         onDismiss = {}, onRename = {},
+    )
+}
+
+@Preview(name = "Set odometer: estimate between readings", widthDp = 360, heightDp = 420)
+@Composable
+private fun PreviewSetOdometerDialogEstimate() = LegionTheme {
+    SetOdometerDialog(
+        currentValueText = "about 227,900 mi",
+        currentCaveatText = "estimated, last confirmed 3 days ago",
+        onDismiss = {},
+        onSubmit = { WriteOutcome(true, "Got it, filed away.") },
+    )
+}
+
+@Preview(name = "Set odometer: no reading on file yet", widthDp = 360, heightDp = 420)
+@Composable
+private fun PreviewSetOdometerDialogUnset() = LegionTheme {
+    SetOdometerDialog(
+        currentValueText = "",
+        currentCaveatText = "",
+        onDismiss = {},
+        onSubmit = { WriteOutcome(true, "Got it, filed away.") },
     )
 }

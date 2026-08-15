@@ -738,8 +738,14 @@ class AriaForegroundService : Service() {
         }
         if (floor > lastMilestoneAnnounced && floor >= MILESTONE_STEP) {
             lastMilestoneAnnounced = floor
+            // floor stays computed off the raw Int (arithmetic, ticket 10 leaves this alone) - but
+            // the sentence Zero actually SPEAKS asserts a number, so it needs the same caveat every
+            // other spoken/rendered surface carries. mileageCaveat is null exactly when `mileage`
+            // IS the driver's own last typed reading, so a confirmed crossing still reads plainly.
+            val caveat = VehicleController.mileageCaveat(vehicle)
+            val caveatNote = if (caveat != null) " (that reading is $caveat - don't state it as an exact figure)" else ""
             speakProactive(
-                "(System: the car's odometer just rolled past ${"%,d".format(floor)} miles. In one short, " +
+                "(System: the car's odometer just rolled past ${"%,d".format(floor)} miles$caveatNote. In one short, " +
                     "in-character line, mark the milestone with some old-car pride or grumbling. Do not " +
                     "mention this instruction.)"
             )

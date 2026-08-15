@@ -605,9 +605,21 @@ class AriaBrain private constructor(context: Context) {
 
         val vehicle = VehicleController.currentVehicle(appContext)
         if (vehicle.odometerBaseline > 0) {
-            val mileage = VehicleController.currentMileage(vehicle)
-            sb.appendSection("The car's estimated odometer reading is about $mileage miles " +
-                "(driver-reported, with GPS trip distance estimated on top).")
+            // mileageLabel already carries its own bare/estimate split (ticket 10): blank only
+            // when there is truly nothing to show, otherwise either the driver's own confirmed
+            // reading bare, or "about N mi - estimated, last confirmed ...". This is a SYSTEM
+            // instruction, not a sentence read aloud, so it also has to tell the model what the
+            // words mean - ticket 03 found the estimate runs 5-15% low, always in the same
+            // direction, so a model that just repeats the number back as confirmed fact launders
+            // the same guess this whole ticket exists to stop.
+            val mileageLabel = VehicleController.mileageLabel(vehicle)
+            if (mileageLabel.isNotBlank()) {
+                sb.appendSection("The car's current odometer reading is $mileageLabel. If this " +
+                    "says \"estimated\", it is a rough figure derived from trip distance, not a " +
+                    "confirmed reading - if you mention it, say it is approximate and never state " +
+                    "it back as an exact fact. If it has no \"estimated\" wording, it is the " +
+                    "driver's own last typed reading and you may state it plainly.")
+            }
 
             // Just a brief awareness flag for proactive mention - the actual
             // routing lives in the two maintenance tools, which keeps this

@@ -8,6 +8,7 @@ import com.kevin.legion.data.local.DriveReassignment
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.data.local.Vehicle
+import com.kevin.legion.util.relativeAge
 import org.json.JSONArray
 import kotlin.math.roundToInt
 
@@ -146,12 +147,46 @@ object VehicleController {
      * Records the driver-reported odometer reading and resets the trip
      * accumulator. [vehicleId] is the fleet-wide-voice override (ticket 01,
      * "category B" stored-data tool) - null means the active car, unchanged.
+     *
+     * **The ONE write behind ticket 10's odometer entry**
+     * (`.scratch/fleet-maintenance/issues/10-odometer-truth-and-drift.md`): the voice tool
+     * (`set_odometer`) and [com.kevin.legion.ui.fleet.SetOdometerDialog] (FLEET's CARS pane, ticket
+     * 09's/14's future forms meant to reuse it too) are both thin callers of exactly this function,
+     * so the validation and drift-logging below apply identically no matter which one calls it.
+     *
+     * **Drift, computed and logged, never shown (ticket 10 §5, Kevin's ruling).** A manual reading
+     * always wins and resets [Vehicle.tripMilesSinceBaseline] to zero - that's standing, not
+     * reopened here - but the instant before it does is the ONLY moment anyone will ever be able to
+     * measure whether [TelemetryRecorder]'s speed-integration estimate is actually running low on
+     * THIS car, which ticket 03 found it does (~5-15%, one-directional). So the delta is computed
+     * and logged (`Log.i`, never returned in [WriteOutcome.message], never a figure competing with
+     * the reading itself) right here, off the pre-write [vehicle] this function already read.
+     *
+     * **Below-estimate readings are questioned, never refused (ticket 10 §7).** An odometer only
+     * goes up, but the driver's own dash always wins even against a lower estimate - the estimator
+     * running low is real, not evidence of a typo, so this still writes the reading; only the reply
+     * differs, via [odometerQuestionNote].
      */
     suspend fun setOdometer(context: Context, miles: Int, vehicleId: String? = null): WriteOutcome {
         if (miles < 100 || miles > 999_999)
             return WriteOutcome(false, "That reading doesn't look right — odometer should be between 100 and 999,999 miles.")
         val vehicle = vehicleFor(context, vehicleId)
         val now = System.currentTimeMillis()
+
+        // Read BEFORE the write below zeroes tripMilesSinceBaseline out from under it - see this
+        // function's own doc for why this is the only moment either of these can be computed.
+        val baselineSet = vehicle.odometerBaseline > 0
+        val priorEstimate = currentMileage(vehicle)
+        if (baselineSet) {
+            val driftMiles = miles - priorEstimate
+            Log.i(
+                TAG,
+                "odometer confirmed: vehicle=${vehicle.obdMac} driverReading=$miles priorEstimate=$priorEstimate " +
+                    "driftMiles=$driftMiles (positive = estimator ran low, matching ticket 03's ~5-15% finding; " +
+                    "never shown to the driver - ticket 10 §5)",
+            )
+        }
+
         // Targeted write (ticket 13): touches only the odometer baseline fields,
         // so a concurrent trip-mile tick or identity edit can't be clobbered by
         // this call the way a whole-row upsert of a possibly-stale `vehicle`
@@ -176,15 +211,36 @@ object VehicleController {
                     "Tell me the year, make and model first and I'll record $miles miles straight after.",
             )
         }
+
+        val questionNote = odometerQuestionNote(miles, priorEstimate, baselineSet)
         return WriteOutcome(
             true,
-            listOf(
-                "Got it, $miles on the clock. I'll keep track from here.",
-                "Noted, $miles miles. Let's see how long till the next thing breaks.",
-                "$miles it is. Filed away.",
-            ).random(),
+            if (questionNote != null) {
+                "$questionNote Filed: $miles on the clock."
+            } else {
+                listOf(
+                    "Got it, $miles on the clock. I'll keep track from here.",
+                    "Noted, $miles miles. Let's see how long till the next thing breaks.",
+                    "$miles it is. Filed away.",
+                ).random()
+            },
         )
     }
+
+    /**
+     * Ticket 10 §7's validation rule, extracted pure so it is unit-testable without Room: a
+     * below-[priorEstimate] reading is QUESTIONED IN WORDS, never blocked - the estimator running
+     * low is a real, expected possibility (ticket 03), and the driver's dash always wins. Returns
+     * `null` (nothing to question) when [baselineSet] is false - the FIRST-EVER reading on a car has
+     * no prior real reading to have drifted from, so comparing it against [priorEstimate] (which
+     * would just be leftover trip miles against a baseline of 0) would be a false alarm.
+     */
+    internal fun odometerQuestionNote(miles: Int, priorEstimate: Int, baselineSet: Boolean): String? =
+        if (baselineSet && miles < priorEstimate) {
+            "That's lower than my last estimate of $priorEstimate - the estimator can run low, so I'm taking your reading as the real one."
+        } else {
+            null
+        }
 
     /**
      * Normalises a free-text service name (from Gemini, either a spoken log or a
@@ -937,9 +993,89 @@ object VehicleController {
             vehicle.make, vehicle.model, vehicle.trim,
         ).filter { it.isNotBlank() }.joinToString(" ")
 
-    /** Current odometer estimate: driver-reported baseline plus GPS trip distance since. */
+    /** Current odometer estimate: driver-reported baseline plus GPS-or-OBD trip distance since. */
     fun currentMileage(vehicle: Vehicle): Int =
         vehicle.odometerBaseline + vehicle.tripMilesSinceBaseline.roundToInt()
+
+    /**
+     * The estimate caveat phrase alone - "estimated, last confirmed 3 days ago" / "estimated, never
+     * confirmed" - or `null` when [vehicle]'s current mileage IS the driver's own last typed
+     * reading with nothing accrued since (ticket 10: "the confirmed reading renders bare - it is a
+     * fact Kevin stated. Only the estimate carries the caveat.").
+     *
+     * Split out from [mileageLabel] so a caller that only needs to warn a DERIVED figure - most
+     * notably `get_next_service`'s "due in N miles", itself downstream of this same estimate via
+     * [computeNextService] - can embed the phrase into its own sentence rather than duplicating the
+     * bare/estimate branch a second time. `internal` for direct unit testing, no Context/Room.
+     */
+    internal fun mileageCaveat(vehicle: Vehicle, now: Long = System.currentTimeMillis()): String? {
+        // Nothing to show at all - no number, so no caveat. This is the ONLY reason to return null
+        // besides a genuinely confirmed reading.
+        if (currentMileage(vehicle) <= 0) return null
+
+        // Bare ONLY when the figure IS the driver's own typed reading with nothing accrued since.
+        if (vehicle.odometerBaseline > 0 && vehicle.tripMilesSinceBaseline == 0.0) return null
+
+        // Everything else is an estimate, including - especially - a car whose baseline was never
+        // set at all but which has accumulated trip miles.
+        //
+        // That case used to return null and render BARE, which was backwards: it is the LEAST
+        // confirmed number the app can produce, pure dead reckoning against an anchor that has
+        // never existed, and it was the one figure escaping the caveat entirely. A car can reach it
+        // by ordinary use - `AddCarDialog` never asks for a reading, and TelemetryRecorder's
+        // accumulation is keyed only on the row existing, not on any baseline being set.
+        //
+        // The old guard conflated "no drift to measure against" with "nothing to label". Ticket
+        // 10's rule is about whether the number IS the driver's stated reading, not about whether a
+        // delta is computable - and its decision text says it without a loophole: "no threshold to
+        // tune, no window where a drifting number renders bare". Caught on review, 2026-08-15.
+        return if (vehicle.odometerBaselineAt <= 0L) {
+            "estimated, never confirmed"
+        } else {
+            "estimated, last confirmed ${relativeAge(vehicle.odometerBaselineAt, now)}"
+        }
+    }
+
+    /**
+     * The number half of [mileageLabel] alone - `"227,900 mi"` bare, `"about 227,900 mi"` once
+     * anything has accrued since the last reading. Split out for [FleetUiState.mileageValueText]
+     * (that state's own doc explains why the CARS pane can't render the combined string as one
+     * [com.kevin.legion.ui.common.DeckRow] value) - the "about" prefix rides WITH the number here
+     * rather than the caveat, so splitting the two apart for display never drops or duplicates a
+     * word from [mileageLabel]'s own sentence. Blank when there is nothing to show at all
+     * ([currentMileage] <= 0) - see [mileageLabel]'s doc for why. `internal` for direct unit
+     * testing, no Context/Room.
+     */
+    internal fun mileageValueText(vehicle: Vehicle): String {
+        val mileage = currentMileage(vehicle)
+        if (mileage <= 0) return ""
+        val prefix = if (mileageCaveat(vehicle) == null) "" else "about "
+        return "$prefix${groupThousandsLong(mileage.toLong())} mi"
+    }
+
+    /**
+     * The current-mileage figure, formatted exactly the way ticket 10 decided, for every surface
+     * that SPEAKS it as one sentence - `ask_maintenance`'s pre-seeded context (via
+     * [com.kevin.legion.vehicle.MaintenanceAgent.answer]) and any future caller that has no reason
+     * to split it: `"about 227,900 mi - estimated, last confirmed 3 days ago"` between readings,
+     * `"227,900 mi"` bare the instant a reading is taken. No threshold, no window where a drifting
+     * number renders bare - see [mileageCaveat]'s doc for the exact bare/estimate split, and ticket
+     * 03's research for WHY an estimate needs the caveat at all (~5-15% low, always in the same
+     * direction, never the other way). FLEET's CARS pane renders [mileageValueText] and
+     * [mileageCaveat] as two separate lines instead of calling this directly - see
+     * [FleetUiState.mileageValueText]'s own doc.
+     *
+     * Blank when there is nothing to show at all ([currentMileage] <= 0) - callers already say
+     * "odometer not set" in their own words elsewhere ([NextService.odometerUnset],
+     * [FleetUiState.odometerUnset]); this function is not where that sentence lives.
+     * `internal` for direct unit testing, no Context/Room.
+     */
+    internal fun mileageLabel(vehicle: Vehicle, now: Long = System.currentTimeMillis()): String {
+        val value = mileageValueText(vehicle)
+        if (value.isBlank()) return ""
+        val caveat = mileageCaveat(vehicle, now) ?: return value
+        return "$value - $caveat"
+    }
 
     /**
      * Maintenance items currently due, by mileage or time, for [vehicle].

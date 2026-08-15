@@ -35,17 +35,23 @@ object CarAspectSummaries {
     suspend fun fleet(context: Context): Pair<String, String> {
         val vehicle = VehicleController.currentVehicle(context)
         val label = vehicle.name.ifBlank { VehicleController.displayLabel(vehicle) }.ifBlank { "Fleet" }
-        val mileage = VehicleController.currentMileage(vehicle)
+        // Ticket 10: any mileage not the driver's own confirmed reading says so, in words, on every
+        // surface that renders OR speaks it - Android Auto reads this row's subtitle aloud on some
+        // head units, and there is no second line here to carry a caveat separately (unlike
+        // ui/FleetScreen's DeckRow, this row is one string), so the whole [mileageLabel] - bare
+        // reading or "about N mi - estimated, last confirmed ..." - is used rather than splitting
+        // it or dropping the caveat for brevity.
+        val mileageLabel = VehicleController.mileageLabel(vehicle).ifBlank { "odometer not set" }
         val next = VehicleController.nextService(context, vehicle)
         val subtitle = when {
-            next == null -> "$mileage mi · no maintenance schedule yet"
+            next == null -> "$mileageLabel · no maintenance schedule yet"
             next.odometerUnset -> "odometer not set · say your mileage to enable due-dates"
             next.byMiles != null ->
-                "$mileage mi · ${next.byMiles.serviceName} in ${next.byMiles.remaining} mi"
+                "$mileageLabel · ${next.byMiles.serviceName} in ${next.byMiles.remaining} mi"
             next.byTime != null ->
-                "$mileage mi · ${next.byTime.serviceName} in ${next.byTime.remaining} days"
-            next.allDue -> "$mileage mi · everything scheduled is already due"
-            else -> "$mileage mi · nothing due yet"
+                "$mileageLabel · ${next.byTime.serviceName} in ${next.byTime.remaining} days"
+            next.allDue -> "$mileageLabel · everything scheduled is already due"
+            else -> "$mileageLabel · nothing due yet"
         }
         return "Fleet · $label" to subtitle
     }

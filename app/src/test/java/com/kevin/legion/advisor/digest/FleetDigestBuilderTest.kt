@@ -178,6 +178,42 @@ class FleetDigestBuilderTest {
         assertTrue(text.contains("not logged"))
     }
 
+    // ------------------------------------------------------------------------- odometer labelling
+
+    @Test
+    fun `a confirmed reading renders the odometer bare, an estimate carries its caveat`() {
+        // Ticket 10: FleetDigestBuilder no longer formats currentMileage bare itself (the "VEHICLE
+        // ... odometer" and "ODOMETER TREND (current ...)" lines) - it renders whatever
+        // VehicleController.mileageLabel decided, so this test exercises the real function rather
+        // than re-deriving the bare/estimate split a second time.
+        val confirmed = vehicle(odometerBaseline = 50_000)
+        val confirmedText = FleetDigestBuilder.buildDigestText(
+            vehicle = confirmed, currentMileage = 50_000, items = emptyList(), unknownNames = emptyList(),
+            nextService = null, codeEvents = emptyList(), recentServices = emptyList(), now = now,
+            mileageLabel = VehicleController.mileageLabel(confirmed, now),
+        )
+        assertTrue(confirmedText.contains("odometer 50,000 mi"))
+        assertFalse("a confirmed reading must never carry an estimate caveat", confirmedText.contains("estimated"))
+
+        val estimated = confirmed.copy(tripMilesSinceBaseline = 42.0, odometerBaselineAt = now - 3 * DAY)
+        val estimatedText = FleetDigestBuilder.buildDigestText(
+            vehicle = estimated, currentMileage = 50_042, items = emptyList(), unknownNames = emptyList(),
+            nextService = null, codeEvents = emptyList(), recentServices = emptyList(), now = now,
+            mileageLabel = VehicleController.mileageLabel(estimated, now),
+        )
+        assertTrue(estimatedText.contains("odometer about 50,042 mi - estimated, last confirmed 3 days ago"))
+    }
+
+    @Test
+    fun `an unset odometer reads not logged, never a blank label`() {
+        val text = FleetDigestBuilder.buildDigestText(
+            vehicle = vehicle(), currentMileage = 0, items = emptyList(), unknownNames = emptyList(),
+            nextService = null, codeEvents = emptyList(), recentServices = emptyList(), now = now,
+            // mileageLabel intentionally omitted (defaults to "") - the odometer was never set.
+        )
+        assertTrue(text.contains("VEHICLE 2018 Honda Civic odometer not logged"))
+    }
+
     @Test
     fun `last service names up to three most recent, newest first as given`() {
         val records = listOf(

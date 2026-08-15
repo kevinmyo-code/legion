@@ -71,6 +71,12 @@ object FleetDigestBuilder : DigestBuilder {
         val db = CarDatabase.getDatabase(context)
         val now = System.currentTimeMillis()
         val currentMileage = VehicleController.currentMileage(vehicle)
+        // Same value [maintenanceLines]/[odometerTrendLine]'s DUE-axis math uses, formatted for the
+        // two lines this digest RENDERS rather than computes with (ticket 10: bare only when it is
+        // the driver's own confirmed reading, "about N mi - estimated, last confirmed ..." otherwise
+        // - a bare figure here would be the same laundering ticket 06 already named, one layer up
+        // from AdvisorBriefs' own consumer).
+        val mileageLabel = VehicleController.mileageLabel(vehicle, now)
 
         val items = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
         val unknownNames = items.filter { VehicleController.isUnknown(it) }.map { it.serviceName }
@@ -83,6 +89,7 @@ object FleetDigestBuilder : DigestBuilder {
         return buildDigestText(
             vehicle = vehicle,
             currentMileage = currentMileage,
+            mileageLabel = mileageLabel,
             items = items,
             unknownNames = unknownNames,
             nextService = nextService,
@@ -106,11 +113,16 @@ object FleetDigestBuilder : DigestBuilder {
         codeEvents: List<CodeEvent>,
         recentServices: List<ServiceRecord>,
         now: Long,
+        // Default "" so the many pure-logic tests exercising currentMileage's ARITHMETIC (due-axis
+        // math via buildDueRows, which stays an Int - see the class doc's "do not touch" list) don't
+        // all need updating for a param they aren't testing. "" renders as [DigestText.notLogged] in
+        // both places below, same as every other genuinely-absent figure in this file.
+        mileageLabel: String = "",
     ): String {
         val lines = mutableListOf<String>()
 
         lines += DigestText.withTier(
-            DigestText.line("VEHICLE ${vehicleLabel(vehicle)} odometer", "${groupThousands(currentMileage)} mi"),
+            DigestText.line("VEHICLE ${vehicleLabel(vehicle)} odometer", mileageLabel.ifBlank { DigestText.notLogged() }),
             TrustTier.REPORTED,
         )
 
@@ -120,7 +132,7 @@ object FleetDigestBuilder : DigestBuilder {
         }
         lines += nextServiceLine(nextService)
         lines += dtcLines(codeEvents)
-        lines += odometerTrendLine(recentServices, currentMileage, now)
+        lines += odometerTrendLine(recentServices, mileageLabel, now)
         lines += lastServiceLines(recentServices)
 
         return lines.joinToString("\n")
@@ -213,7 +225,7 @@ object FleetDigestBuilder : DigestBuilder {
      * [recentServices] read - never a rate estimate beyond what two real anchors give directly. A
      * bucket with nothing logged reads [DigestText.notLogged], never `0` (there is no such thing as
      * zero miles on an odometer that has moved). */
-    private fun odometerTrendLine(recentServices: List<ServiceRecord>, currentMileage: Int, now: Long): String {
+    private fun odometerTrendLine(recentServices: List<ServiceRecord>, mileageLabel: String, now: Long): String {
         if (recentServices.isEmpty()) return DigestText.line("ODOMETER TREND", DigestText.notLogged())
         val buckets = (0 until WINDOW_PERIODS).map { periodIndex ->
             val bucketEnd = now - periodIndex * MONTH_MS
@@ -236,8 +248,9 @@ object FleetDigestBuilder : DigestBuilder {
             DigestText.notLogged()
         }
 
+        val currentPhrase = mileageLabel.ifBlank { DigestText.notLogged() }
         return DigestText.withTier(
-            DigestText.line("ODOMETER TREND", "$bucketText, older-trend $olderTrend (current ${groupThousands(currentMileage)} mi)"),
+            DigestText.line("ODOMETER TREND", "$bucketText, older-trend $olderTrend (current $currentPhrase)"),
             TrustTier.REPORTED,
         )
     }

@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +65,7 @@ import com.kevin.legion.ui.fleet.MaintenanceDrilldownScreen
 import com.kevin.legion.ui.fleet.ObdDeviceScreen
 import com.kevin.legion.ui.fleet.OilAnalysisDrilldownScreen
 import com.kevin.legion.ui.fleet.RecapDrilldownScreen
+import com.kevin.legion.ui.fleet.SetOdometerDialog
 import com.kevin.legion.ui.fleet.VehicleSpecsScreen
 import com.kevin.legion.ui.fleet.buildDueRows
 import com.kevin.legion.ui.fleet.buildLastDriveSummary
@@ -72,7 +74,6 @@ import com.kevin.legion.ui.fleet.buildMilesSparkline
 import com.kevin.legion.ui.fleet.buildMpgSparkline
 import com.kevin.legion.ui.fleet.capFaultRows
 import com.kevin.legion.ui.fleet.distinctFaultsByFirstSeen
-import com.kevin.legion.ui.fleet.groupThousands
 import com.kevin.legion.ui.fleet.writeAddItem
 import com.kevin.legion.ui.fleet.writeConfirmAll
 import com.kevin.legion.ui.fleet.writeDeleteItem
@@ -142,7 +143,23 @@ import com.kevin.legion.location.PlaceController
 data class FleetUiState(
     val loading: Boolean = true,
     val vehicleLabel: String = "",
-    val mileageText: String = "",
+    /**
+     * The bare number half of [VehicleController.mileageLabel] - "227,900 mi" (confirmed) or "about
+     * 227,900 mi" (estimated) - blank when there is no reading at all yet. Split from
+     * [mileageCaveatText] rather than rendered as one [DeckRow] value (ticket 10's own combined
+     * string, "about 227,900 mi - estimated, last confirmed 3 days ago", does not fit [DeckRow]'s
+     * contract: its value column is `maxLines = 1` with `TextOverflow.Visible`, meant for a short
+     * reading, never a full sentence) - the caveat renders as its own line underneath instead, same
+     * "value plus a sub-line" shape [DueRowView] already uses elsewhere on this same screen.
+     */
+    val mileageValueText: String = "",
+    /**
+     * [VehicleController.mileageCaveat]'s own words ("estimated, last confirmed 3 days ago"), or
+     * blank when the reading IS the driver's own last typed one with nothing accrued since - see
+     * [mileageValueText]'s doc for why this renders as a separate line rather than folded into one
+     * string. Never a bare threshold or a colour standing in for the words (CLAUDE.md §4).
+     */
+    val mileageCaveatText: String = "",
     val connected: Boolean = false,
     val liveRows: List<LiveRowView> = emptyList(),
     val dueRows: List<DueRowView> = emptyList(),
@@ -154,7 +171,7 @@ data class FleetUiState(
     val maintenanceItems: List<MaintenanceItem> = emptyList(),
     /** Items with no anchor at all ([VehicleController.unknownItems]) - ticket 09's MAINTENANCE triage counts these, never lists them; [buildFleetTile] also needs this so the tile stops saying OK while they exist. */
     val maintenanceUnknownCount: Int = 0,
-    /** Raw current mileage - [mileageText] is display-formatted, ticket 09's due-figure math on FULL SCHEDULE/ITEM DETAIL needs the `Int`. */
+    /** Raw current mileage - [mileageValueText]/[mileageCaveatText] are display-formatted, ticket 09's due-figure math on FULL SCHEDULE/ITEM DETAIL needs the `Int`. */
     val currentMileageRaw: Int = 0,
     /**
      * `vehicle.odometerBaseline == 0` - the real "driver has never confirmed an odometer" signal
@@ -262,6 +279,9 @@ fun FleetScreen(
     // left and re-entered.
     var reloadKey by remember { mutableStateOf(0) }
 
+    // Ticket 10's manual-entry control - see CarsPane's own doc and the dialog's render site below.
+    var showOdometerDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(reloadKey) {
         val vehicle = VehicleController.currentVehicle(context)
         val currentMileage = VehicleController.currentMileage(vehicle)
@@ -316,7 +336,13 @@ fun FleetScreen(
         state = FleetUiState(
             loading = false,
             vehicleLabel = VehicleController.displayLabel(vehicle).ifBlank { "This car" },
-            mileageText = if (currentMileage > 0) "${groupThousands(currentMileage)} mi" else "",
+            // Ticket 10: bare "N mi" only when it IS the driver's own last reading with nothing
+            // accrued since; every drifting-estimate value carries the "estimated, last confirmed..."
+            // caveat in words, every time - see VehicleController.mileageCaveat's own doc for the
+            // exact bare/estimate split. This is the CARS pane row the ticket names explicitly; see
+            // FleetUiState.mileageValueText's own doc for why it's rendered as two fields, not one.
+            mileageValueText = VehicleController.mileageValueText(vehicle),
+            mileageCaveatText = VehicleController.mileageCaveat(vehicle, now).orEmpty(),
             connected = ObdBluetoothManager.isConnected,
             liveRows = buildLiveRows(samplesByPid, now),
             dueRows = buildDueRows(items, currentMileage, vehicle.odometerBaseline == 0, now),
@@ -485,8 +511,28 @@ fun FleetScreen(
         onOpenDrivingMode = onOpenDrivingMode,
         onOpenAdapter = { drilldown = FleetDrilldown.ADAPTER },
         onOpenSpecs = { drilldown = FleetDrilldown.SPECS },
+        onSetOdometer = { showOdometerDialog = true },
         onSweepActiveChanged = onSweepActiveChanged,
     )
+
+    // Ticket 10's manual-entry control (see CarsPane's own doc). Rendered as a sibling of
+    // FleetContent above rather than nested inside it - a Dialog is its own window regardless of
+    // where in the tree it's emitted, and keeping it here means it can call VehicleController and
+    // bump reloadKey directly, the same state-holder privileges every other write on this screen
+    // already has, without threading a suspend write callback down through FleetContent/
+    // FleetListing/CarsPane (which the split's own doc says stay plain UI + callbacks).
+    if (showOdometerDialog) {
+        SetOdometerDialog(
+            currentValueText = fullState.mileageValueText,
+            currentCaveatText = fullState.mileageCaveatText,
+            onDismiss = { showOdometerDialog = false },
+            onSubmit = { miles ->
+                val outcome = VehicleController.setOdometer(context, miles, fullState.vehicleId)
+                if (outcome.success) reloadKey++
+                outcome
+            },
+        )
+    }
 }
 
 /** How many recent daily logs the DRIVES panel/drilldown pulls - a sparkline needs more than a headline figure, but no reason to load the whole table for a panel-height chart. */
@@ -504,6 +550,7 @@ fun FleetContent(
     onOpenDrivingMode: () -> Unit = {},
     onOpenAdapter: () -> Unit = {},
     onOpenSpecs: () -> Unit = {},
+    onSetOdometer: () -> Unit = {},
     onSweepActiveChanged: (Boolean) -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
@@ -519,7 +566,7 @@ fun FleetContent(
             if (state.loading) {
                 Text("LOADING...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
             } else {
-                FleetListing(state, onOpenPlaces, onOpenCars, onOpenUplink, onOpenMaintenance, onOpenDrives, onOpenDrivingMode, onOpenAdapter, onOpenSpecs, onSweepActiveChanged)
+                FleetListing(state, onOpenPlaces, onOpenCars, onOpenUplink, onOpenMaintenance, onOpenDrives, onOpenDrivingMode, onOpenAdapter, onOpenSpecs, onSetOdometer, onSweepActiveChanged)
             }
         }
     }
@@ -536,6 +583,7 @@ private fun FleetListing(
     onOpenDrivingMode: () -> Unit,
     onOpenAdapter: () -> Unit,
     onOpenSpecs: () -> Unit,
+    onSetOdometer: () -> Unit,
     onSweepActiveChanged: (Boolean) -> Unit,
 ) {
     LazyColumn(Modifier.fillMaxSize()) {
@@ -581,7 +629,7 @@ private fun FleetListing(
 
         // ------------------------------------------------------------ CARS row
         item(key = "cars-pane") {
-            CarsPane(state, onOpenCars, onOpenPlaces, onOpenAdapter, onOpenSpecs)
+            CarsPane(state, onOpenCars, onOpenPlaces, onOpenAdapter, onOpenSpecs, onSetOdometer)
         }
 
         // ------------------------------------------------------------ GOALS (ticket 19)
@@ -861,6 +909,14 @@ private fun DriveModeOfferRow(onOpenDrivingMode: () -> Unit, linkUp: Boolean) {
  * of headroom UPLINK needed once the gauge-row density change alone still measured ~52dp short of
  * the tile row on the real device (see [UplinkPane]'s doc for the numbers). Still reachable, still
  * one tap each, just relocated one pane down rather than dropped.
+ *
+ * **The odometer's manual-entry control lives here too (ticket 10,
+ * `.scratch/fleet-maintenance/issues/10-odometer-truth-and-drift.md`), beside the reading it's
+ * already showing** - the SET ODOMETER row below opens [SetOdometerDialog], the ONE non-voice
+ * write path this ticket adds (`set_odometer`'s voice tool was the only caller before it). Ticket
+ * 09's triage screen and ticket 14's future registration form are meant to reuse
+ * [SetOdometerDialog] itself rather than re-implement the field/validation shape - not wired here,
+ * out of this ticket's scope, but the control is built to be reused, not duplicated.
  */
 @Composable
 private fun CarsPane(
@@ -869,14 +925,34 @@ private fun CarsPane(
     onOpenPlaces: () -> Unit,
     onOpenAdapter: () -> Unit,
     onOpenSpecs: () -> Unit,
+    onSetOdometer: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     DeckPane(header = "Cars") {
         DeckRow(
             label = state.vehicleLabel.ifBlank { "This car" },
-            value = state.mileageText.ifBlank { "-" },
+            value = state.mileageValueText.ifBlank { "-" },
             modifier = Modifier.clickable(onClick = onOpenCars),
         )
+        // The estimate caveat renders as its own line, never folded into the DeckRow value above -
+        // see FleetUiState.mileageValueText's own doc for why. Blank (nothing rendered) means the
+        // reading above IS the driver's own confirmed one - ticket 10's "renders bare" case - so
+        // there is deliberately no row at all here rather than an empty one.
+        if (state.mileageCaveatText.isNotBlank()) {
+            Text(
+                state.mileageCaveatText,
+                style = LegionType.stamp,
+                // sem.estimated (amber): CLAUDE.md §4 rule 5's own colour for "a value the source
+                // document never stated" - the odometer between readings is exactly that.
+                color = sem.estimated,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).clickable(onClick = onOpenCars),
+            )
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onSetOdometer) {
+                Text("SET ODOMETER", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+            }
+        }
         Text(
             if (state.otherCarCount > 0) {
                 "${state.otherCarCount} other car${if (state.otherCarCount == 1) "" else "s"} - " +
@@ -923,7 +999,7 @@ private fun PreviewFleetDisconnected() = LegionTheme {
         FleetUiState(
             loading = false,
             vehicleLabel = "2014 MAZDA 3",
-            mileageText = "138,204 mi",
+            mileageValueText = "138,204 mi",
             connected = false,
             liveRows = listOf(
                 LiveRowView("Coolant", "88 C", "3 days ago"),
@@ -958,7 +1034,7 @@ private fun PreviewFleetConnectedEmpty() = LegionTheme {
         FleetUiState(
             loading = false,
             vehicleLabel = "this car",
-            mileageText = "",
+            mileageValueText = "",
             connected = true,
             liveRows = emptyList(),
             dueRows = emptyList(),

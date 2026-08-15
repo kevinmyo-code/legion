@@ -23,21 +23,27 @@ object MaintenanceAgent {
         SubAgent(systemInstruction = system(context), useSearch = true)
 
     /**
-     * Answers [question] about [vehicleLabel]'s maintenance, pre-seeded with its
-     * current [mileage] and scheduled [items]. Investigates via the maintenance
-     * toolbelt; one-shot fallback on a soft failure.
+     * Answers [question] about [vehicleLabel]'s maintenance, pre-seeded with its current
+     * [mileageLabel] and scheduled [items]. Investigates via the maintenance toolbelt; one-shot
+     * fallback on a soft failure.
+     *
+     * [mileageLabel] is [VehicleController.mileageLabel]'s already-formatted string
+     * (`"227,900 mi"` / `"about 227,900 mi - estimated, last confirmed 3 days ago"`, or blank when
+     * there is no reading at all yet) - ticket 10: this used to take a raw `Int` and caption it
+     * `"(estimated)"` unconditionally here, which meant a driver's own just-typed reading was told
+     * back to them as an estimate seconds after they gave it. The label now carries whichever is
+     * actually true, computed once by the caller against the same rule every other surface uses.
      */
     suspend fun answer(
         context: Context,
         vehicleLabel: String,
-        mileage: Int,
+        mileageLabel: String,
         items: List<MaintenanceItem>,
         question: String,
     ): AgentResult {
         val ctx = buildString {
             if (vehicleLabel.isNotBlank()) append("Vehicle: ").append(vehicleLabel).append(".\n")
-            if (mileage > 0) append("Current odometer: about ").append("%,d".format(mileage))
-                .append(" miles (estimated).\n")
+            if (mileageLabel.isNotBlank()) append("Current odometer: ").append(mileageLabel).append(".\n")
 
             if (items.isNotEmpty()) {
                 append("\nScheduled maintenance (service: interval; last done):\n")
@@ -89,9 +95,10 @@ object MaintenanceAgent {
     private fun system(context: Context) =
         AssistantIdentity.shortClause(context) + " " +
             "You are reasoning about this car's maintenance - not an outside specialist consulted " +
-            "about a vehicle. You are given its current estimated mileage and its scheduled " +
-            "maintenance (each item's interval and when it was last done), plus the driver's " +
-            "question. Pull the logged service history with get_service_history when it matters. " +
+            "about a vehicle. You are given its current mileage - already labelled as an estimate " +
+            "when it is one, bare when it's the driver's own confirmed reading, never relabel it " +
+            "yourself - and its scheduled maintenance (each item's interval and when it was last " +
+            "done), plus the driver's question. Pull the logged service history with get_service_history when it matters. " +
             "Work out what is due now, what is overdue and by how much, and when the next service is " +
             "due (by miles and/or time). If the driver asks how to do a service or what it involves, " +
             "use web_lookup grounded to this exact year, make, and model for the real procedure, fluid " +

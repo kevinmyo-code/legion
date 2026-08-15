@@ -1851,8 +1851,12 @@ object LiveToolbox {
                 .put("trim", v.trim)
                 .put("active", v.obdMac == activeId)
                 .put("dongleConnected", connectedId != null && v.obdMac == connectedId)
-            val mileage = VehicleController.currentMileage(v)
-            if (mileage > 0) o.put("odometer", mileage)
+            // Ticket 10: this JSON goes straight to the model, which then speaks it - a bare Int
+            // here would let it state a possibly-5-15%-low estimate back as fact. mileageLabel
+            // already carries its own bare/estimate split ("227,900 mi" vs. "about 227,900 mi -
+            // estimated, last confirmed 3 days ago"), so the string itself is the caveat.
+            val mileageLabel = VehicleController.mileageLabel(v)
+            if (mileageLabel.isNotBlank()) o.put("odometer", mileageLabel)
             arr.put(o)
         }
         return JSONObject().put("success", true).put("count", vehicles.size).put("vehicles", arr)
@@ -3979,7 +3983,17 @@ object LiveToolbox {
             }
         } else ""
 
-        return result(true, body + unknownNote)
+        // Ticket 10: "any mileage not taken from the driver's own last reading says so, every time
+        // - spoken as well as rendered." The "due in N miles" figure above is itself downstream of
+        // TelemetryRecorder's speed-integration estimate whenever next.byMiles is non-null (its
+        // math is currentMileage minus a stored anchor), so it carries the same caveat the estimate
+        // itself does - never spoken when byMiles is null (nothing miles-derived was said) or when
+        // the mileage IS the driver's own confirmed reading (mileageCaveat returns null then).
+        val mileageNote = if (next.byMiles != null) {
+            VehicleController.mileageCaveat(vehicle)?.let { " Your mileage is $it." } ?: ""
+        } else ""
+
+        return result(true, body + unknownNote + mileageNote)
     }
 
     /**
@@ -4092,10 +4106,14 @@ object LiveToolbox {
         val label = VehicleController.displayLabel(vehicle)
 
         val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)
-        val mileage = VehicleController.currentMileage(vehicle)
+        // Ticket 10: the pre-seeded mileage carries its own bare/estimated-and-caveated label now
+        // (VehicleController.mileageLabel), not a raw Int the agent's own prompt had to caption
+        // "(estimated)" unconditionally - a confirmed reading with nothing accrued since renders
+        // bare here too, matching every other surface.
+        val mileageLabel = VehicleController.mileageLabel(vehicle)
 
         return agentResult("I couldn't reach the maintenance specialist just now - try again in a sec.") {
-            MaintenanceAgent.answer(context, label, mileage, items, question)
+            MaintenanceAgent.answer(context, label, mileageLabel, items, question)
         }
     }
 

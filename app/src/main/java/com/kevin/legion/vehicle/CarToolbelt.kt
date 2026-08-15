@@ -84,7 +84,24 @@ object CarToolbelt {
         return events.sortedByDescending { it.timestamp }.take(limit).joinToString("\n") { e ->
             buildString {
                 append(shortDate(e.timestamp)).append(": ").append(codesOf(e.codesJson))
-                e.mileage?.let { append(" at ${"%,d".format(it)} mi") }
+                // ALWAYS caveated, unconditionally - unlike every other mileage surface, which asks
+                // VehicleController.mileageLabel whether the figure is confirmed.
+                //
+                // It cannot ask. CodeEvent.mileage is a frozen Int snapshot taken at
+                // AriaForegroundService.recordCodeEvent from the same estimator everything else now
+                // labels, and nothing was captured alongside it - no odometerBaselineAt, no way to
+                // know how stale the estimate was at the moment the code tripped. A figure that can
+                // never be PROVEN confirmed must never be presented as if it were, so this one is
+                // labelled every time rather than conditionally.
+                //
+                // This is a live voice tool (get_code_history), so the unlabelled version was
+                // speaking a 5-15%-low estimate to the driver as bare fact. Found on review
+                // 2026-08-15, after the write site (AriaForegroundService:556) was correctly ruled
+                // storage-not-presentation and the reader one file over was missed.
+                //
+                // Capturing confirmed-ness at write time would be the stronger fix and needs a new
+                // column - out of ticket 10's scope, deliberately not built here.
+                e.mileage?.let { append(" at about ${"%,d".format(it)} mi (estimated)") }
                 val ff = freezeHighlights(e.freezeFrameJson)
                 if (ff.isNotBlank()) append(" [").append(ff).append("]")
             }
@@ -120,13 +137,18 @@ object CarToolbelt {
     suspend fun maintenanceSchedule(context: Context, vehicleId: String? = null): String {
         val vehicle = VehicleController.vehicleFor(context, vehicleId)
         val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)
-        val mileage = VehicleController.currentMileage(vehicle)
+        // mileageLabel (ticket 10) is the one place that decides bare-vs-estimated: a confirmed
+        // reading renders bare, only the estimate carries "estimated, last confirmed ...". This
+        // string feeds a sub-agent prompt (ticket 06's lesson), so an unlabelled figure here would
+        // let the model state a 5-15%-low guess back as if it were exact.
+        val mileage = VehicleController.mileageLabel(vehicle)
         if (items.isEmpty()) {
-            return "No maintenance schedule on file yet. Odometer about ${"%,d".format(mileage)} mi (estimated)."
+            return if (mileage.isBlank()) "No maintenance schedule on file yet. Odometer not set."
+                else "No maintenance schedule on file yet. Odometer $mileage."
         }
         val due = VehicleController.dueItems(context, vehicle).map { it.serviceName }.toSet()
         return buildString {
-            append("Odometer about ${"%,d".format(mileage)} mi (estimated).\n")
+            append(if (mileage.isBlank()) "Odometer not set.\n" else "Odometer $mileage.\n")
             append(items.joinToString("\n") { item ->
                 val interval = listOfNotNull(
                     item.intervalMiles?.let { "every ${"%,d".format(it)} mi" },

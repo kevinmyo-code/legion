@@ -21,14 +21,24 @@ import kotlinx.coroutines.delay
  *    PID reads never contend with voice on the mutex-guarded port.
  *  - A PID that fails [MAX_CONSECUTIVE_FAILS] reads in a row is dropped for
  *    the rest of the process — cheap supported-PID discovery for older ECUs.
+ *    **Speed (PID 010D) is the one exception** (ticket 10,
+ *    `.scratch/fleet-maintenance/issues/10-odometer-truth-and-drift.md`) - see [pidWanted]'s own doc
+ *    for why a genuinely-optional-PID discovery mechanism was silently killing the odometer's own
+ *    supply line.
  *  - MPG: fuel burn integrates MAF (grams/s / AFR / grams-per-gallon, gasoline
- *    assumed). Distance prefers the GPS trip-mile accumulator on the Vehicle row,
- *    and falls back to integrating OBD speed (PID 010D) when GPS produces nothing
- *    (2026-07-16: a head unit with no GPS antenna wired reports no location at
- *    all, which left driveMiles at 0, made finalizeDrive early-return, and wrote
- *    no TRIP_MILES/MPG_TRIP - so every recap read "0 drives, 0 miles" on a real
- *    drive). A finished drive (>1 mi, >0.05 gal) writes one MPG_TRIP summary
- *    sample.
+ *    assumed). **Distance prefers OBD speed (PID 010D) over GPS** (ticket 10/03 - this REVERSES
+ *    what shipped before it: GPS used to go first). Ticket 03's finding is why: the dash odometer
+ *    on a 1998 XJ is itself a PCM speed integration off the exact same VSS PID 010D reads (CCD
+ *    message `0x84`, "PCM TO BCM | INCREMENT MILEAGE") - so preferring OBD speed is not swapping in
+ *    a WORSE measurement, it puts this estimator and the manual dash reading that resets it in the
+ *    same reference frame, which GPS never shares. GPS is now the fallback, used only when 010D has
+ *    nothing to offer (unsupported PID, or the read failed this tick) - which is still needed: a
+ *    head unit with no GPS antenna wired is not the only no-signal case, and a 010D-less car (rare,
+ *    but PID support varies) must not lose distance entirely (2026-07-16: a head unit with no GPS
+ *    antenna wired reports no location at all, which left driveMiles at 0, made finalizeDrive
+ *    early-return, and wrote no TRIP_MILES/MPG_TRIP - so every recap read "0 drives, 0 miles" on a
+ *    real drive; the fallback exists for exactly the mirror image of that gap). A finished drive
+ *    (>1 mi, >0.05 gal) writes one MPG_TRIP summary sample.
  *  - A cold engine-on (coolant below [COLD_START_C]) triggers a 60-second
  *    burst at 10s cadence first — warm-up behavior (trims, idle, warm rate)
  *    is where O2 sensors, vacuum leaks, and cat aging show earliest.
@@ -61,7 +71,15 @@ object TelemetryRecorder {
     // 2026-07-19): below the floor is GPS jitter while parked, above the ceiling
     // is a teleport (cold fix landing after a long blackout), neither is driving.
     private const val METERS_PER_MILE = 1609.34
-    private const val MIN_TICK_MILES = 0.001
+    // Raised 0.001 -> 0.01 mi (1.61 m -> ~16.1 m), ticket 10/03: the old floor sat BELOW typical
+    // 2-5 m GPS static jitter, so an idling, engine-running car accrued "phantom miles" every tick
+    // - and (before this ticket's OBD-first reorder below) the GPS branch took precedence exactly
+    // when 010D correctly read 0, the worst possible case. 16.1 m is more than 3x the top of that
+    // jitter range - comfortably above the noise floor - while still well under a single tick's
+    // real distance at any speed worth counting (a 30s tick clears it above roughly 1.2 mph). GPS
+    // is the FALLBACK only now, so a slightly conservative floor here costs at most a few seconds
+    // of fallback-only tracking at a genuine crawl, never real driving.
+    private const val MIN_TICK_MILES = 0.01
     private const val MAX_TICK_MILES = 5.0
     private const val PREFS = "telemetry"
 
@@ -92,6 +110,36 @@ object TelemetryRecorder {
         val mi = p.getFloat("${vehicleId}_mi", 0f).toDouble()
         return if (gal > MIN_TRIP_GALLONS && mi > MIN_TRIP_MILES) mi / gal else null
     }
+
+    /**
+     * Whether [pid] should be requested THIS tick, given [failCounts] - the general "3 fails in a
+     * row -> drop for the rest of the process" discovery mechanism ([MAX_CONSECUTIVE_FAILS]), with
+     * ONE exemption: **speed (010D) is always wanted** (ticket 10 fix,
+     * `.scratch/fleet-maintenance/issues/10-odometer-truth-and-drift.md`).
+     *
+     * The general mechanism is legitimate supported-PID discovery for genuinely optional PIDs on an
+     * older ECU (coolant, fuel trims, MAF...) - a car that plainly does not publish one of those has
+     * no reason to be asked every 30 seconds forever. Speed is different: virtually every OBD-II car
+     * supports it, distance accrual is now the ODOMETER'S OWN preferred source (010D over GPS - see
+     * this object's class doc), and a real "this car doesn't support 010D" is not the failure mode
+     * that actually shows up. **Three transient misses in a row** (a busy port, a momentary
+     * Bluetooth hiccup - see `.scratch/android-auto/issues/13`'s quiet-link defect for one way that
+     * happens) used to LATCH 010D off for the rest of the process, and on a car with no GPS fix
+     * either, distance then stopped accruing with NO signal anywhere that it had happened - a silent
+     * zero in the odometer's own supply line, closed here.
+     *
+     * A top-level pure function (not nested inside [run]) so it is directly unit-testable without
+     * Room, Android, or a running sampling loop.
+     */
+    internal fun pidWanted(pid: String, failCounts: Map<String, Int>): Boolean =
+        pid == "010D" || (failCounts[pid] ?: 0) < MAX_CONSECUTIVE_FAILS
+
+    /**
+     * The per-tick GPS-distance acceptance window (ticket 10/03's floor raise - see [MIN_TICK_MILES]'s
+     * own doc for the reasoning). `internal` for direct unit testing without Room, Android, or a
+     * running sampling loop.
+     */
+    internal fun gpsTickMilesAccepted(gpsMiles: Double): Boolean = gpsMiles in MIN_TICK_MILES..MAX_TICK_MILES
 
     /** Infinite sampling loop; launch once from the foreground service. */
     suspend fun run(context: Context) {
@@ -154,7 +202,9 @@ object TelemetryRecorder {
                     )
                 )
             }
-            fun wanted(pid: String) = (failCounts[pid] ?: 0) < MAX_CONSECUTIVE_FAILS
+            // pidWanted's own doc explains the 010D exemption (ticket 10's latch fix) - kept as a
+            // top-level pure function so it's directly unit-testable without Room/Android.
+            fun wanted(pid: String) = pidWanted(pid, failCounts)
 
             add("010C", rpm!!.toDouble(), "rpm")
             if (wanted("0105")) add("0105", ObdBluetoothManager.getCoolantTemp()?.toDouble(), "°C")
@@ -162,10 +212,9 @@ object TelemetryRecorder {
             var maf: Double? = null
             if (wanted("0110")) { maf = ObdBluetoothManager.getMaf(); add("0110", maf, "g/s") }
             var speedKmh: Double? = null
-            if (wanted("010D")) {
-                speedKmh = ObdBluetoothManager.getSpeedKmh()?.toDouble()
-                add("010D", speedKmh, "km/h")
-            }
+            // Always true post-ticket-10 (see pidWanted's doc) - `if` kept rather than inlined so
+            // this call site reads identically to every other PID request above/below it.
+            if (wanted("010D")) { speedKmh = ObdBluetoothManager.getSpeedKmh()?.toDouble(); add("010D", speedKmh, "km/h") }
             if (wanted("012F")) add("012F", ObdBluetoothManager.getFuelLevel(), "%")
             if (wanted("0106")) add("0106", ObdBluetoothManager.getShortFuelTrim(), "%")
             if (wanted("0107")) add("0107", ObdBluetoothManager.getLongFuelTrim(), "%")
@@ -179,18 +228,25 @@ object TelemetryRecorder {
                 val dtSec = ((now - lastTickAt) / 1000.0).coerceAtMost(MAX_DT_SEC)
                 driveGallons += maf * dtSec / (AFR_GASOLINE * GRAMS_PER_GALLON)
             }
-            // --- Distance: GPS first, OBD speed as the fallback -------------
-            // GPS is preferred when present (it measures ground truth), but a head
-            // unit with no GPS antenna wired produces NO location at all - and the
-            // whole recap/MPG chain hangs off this number. Kevin's XJ (2026-07-16)
-            // has no fix; integrating PID 010D closes that with no GPS at all.
+            // --- Distance: OBD speed first, GPS as the fallback -------------
+            // REVERSED by ticket 10/03 - GPS used to go first. Ticket 03's finding: the dash
+            // odometer is itself a PCM speed integration off the exact same VSS PID 010D reads
+            // (CCD message 0x84, "PCM TO BCM | INCREMENT MILEAGE"), so 010D is not a worse substitute
+            // for GPS here - it puts this estimator and the manual dash reading that resets it
+            // (VehicleController.setOdometer) in the SAME reference frame, which GPS never shares.
+            //
+            // GPS remains the fallback for when 010D has nothing (unsupported PID, or this tick's
+            // read failed) - still needed: a head unit with no GPS antenna wired produces NO
+            // location at all, and the whole recap/MPG chain hangs off this number. Kevin's XJ
+            // (2026-07-16) has no fix; integrating PID 010D closes that with no GPS at all. The
+            // mirror-image gap (a 010D-less car) is why GPS has not been removed outright.
             //
             // (2026-07-19) This loop is now also the SINGLE odometer writer:
             // VehicleController.trackTripMileage used to be a separate GPS-only
             // service loop that wrote tripMilesSinceBaseline while this one read
             // the deltas back out - two loops, one dead on a no-GPS car, and the
             // persistent odometer never moved without a fix. The per-tick miles
-            // computed here (GPS-or-OBD) now feed BOTH the drive accumulator and
+            // computed here (OBD-or-GPS) now feed BOTH the drive accumulator and
             // the persisted odometer estimate, and the old loop is deleted.
             //
             // Same 30s granularity the MAF fuel integration above already accepts.
@@ -200,18 +256,29 @@ object TelemetryRecorder {
             var tickMiles = 0.0
             val prevLoc = lastLocation
             if (loc != null) lastLocation = loc
-            if (loc != null && prevLoc != null) {
+            if (speedKmh != null && speedKmh > 0.0 && dtSecDist > 0.0) {
+                tickMiles = speedKmh * dtSecDist / 3600.0 / KM_PER_MILE
+            }
+            if (tickMiles == 0.0 && loc != null && prevLoc != null) {
                 val out = FloatArray(1)
                 android.location.Location.distanceBetween(
                     prevLoc.latitude, prevLoc.longitude, loc.latitude, loc.longitude, out,
                 )
                 val gpsMiles = out[0] / METERS_PER_MILE
-                if (gpsMiles in MIN_TICK_MILES..MAX_TICK_MILES) tickMiles = gpsMiles
-            }
-            if (tickMiles == 0.0 && speedKmh != null && speedKmh > 0.0 && dtSecDist > 0.0) {
-                tickMiles = speedKmh * dtSecDist / 3600.0 / KM_PER_MILE
+                if (gpsTickMilesAccepted(gpsMiles)) tickMiles = gpsMiles
             }
             if (tickMiles > 0.0) {
+                // ticket 10 §6, Kevin's ruling: "doing nothing is acceptable, doing nothing
+                // silently is not." driveMiles (below) and Vehicle.tripMilesSinceBaseline (via
+                // addTripMiles, further below) are TWO SEPARATE accumulators fed by this SAME
+                // tickMiles, and they persist through DIFFERENT gates from here on: this one folds
+                // in unconditionally whenever tickMiles > 0, while driveMiles only ever becomes a
+                // TRIP_MILES sample (which is what DailyDriveLogController's daily-miles rollup
+                // actually reads) once finalizeDrive's own MIN_TRIP_MILES/MIN_TRIP_GALLONS gates
+                // both clear for the whole finished drive. On Kevin's Jeep that produced one
+                // TRIP_MILES row against 938 speed samples - the odometer estimate and the fleet
+                // miles sparkline CAN legitimately disagree, and that is left as-is rather than
+                // unified or reconciled; this comment is the "said so" half of that ruling.
                 driveMiles += tickMiles
                 // Targeted write (ticket 13,
                 // .scratch/fleet-maintenance/issues/13-the-jeep-row-lost-its-identity.md):
