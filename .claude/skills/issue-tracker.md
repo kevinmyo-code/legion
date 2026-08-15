@@ -85,6 +85,12 @@ ticket by its title, not `01`/`02`. The filename rides inside the name as its li
   eleven tickets. **Supersedes parts of `cyberdeck-ui`** (its tickets 01, 03, 04, builds 12-20, and
   its utility-screens-out-of-scope ruling); that map stays closed as history. Execution in scope.
   Reference photos live in `research/refs/`.
+- `.scratch/fleet-maintenance/` - the fleet aspect's maintenance layer rebuilt and shipped: a
+  schedule Kevin owns rather than one an LLM guessed, hand add/edit/delete, an odometer with a
+  manual entry path, a service-history screen, fleet spend, and a recall button. Charted
+  2026-08-15, twelve tickets, two research fired at charting. Execution in scope. **The core defect
+  class is the silent no-op** - the assistant reported changing an interval it could not have
+  written.
 - `.scratch/android-auto/` - LEGION in the car: an Android Auto media app whose play button places a
   self-managed telephony call, so the live session gets the car's microphone. Charted 2026-08-13,
   fifteen tickets. Destination is DECISIONS, not shipped. **All five research tickets resolved the
