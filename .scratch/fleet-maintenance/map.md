@@ -59,6 +59,24 @@ his two existing service records on a screen.
 
 <!-- one line per closed ticket: gist + link -->
 
+- [Hand-added items, and what delete means](issues/07-hand-added-items-and-what-delete-means.md) -
+  **the ticket's premise was wrong and the codebase already had the answer.** It was charted
+  believing a tombstone would have to be invented; `car_tasks` and `places` have carried one since
+  B19, the sync snapshot deliberately does not filter it, and it works **precisely because those
+  tables are LWW** - which `maintenance_items` also is. So delete is a **real delete via the
+  existing tombstone**, reusing `TOMBSTONE_HORIZON_MS` rather than inventing a second constant.
+  **Service records survive a deleted item**: a `ServiceRecord` is a fact about work actually done,
+  and deleting a schedule row does not un-do it. **A hand-typed name is stored verbatim**, and the
+  canonicaliser is demoted to a **comparator** that only raises "this looks like Oil Change - add
+  anyway?" - it must never rewrite a name Kevin chose, because
+  `canonicalizeServiceName("Oil filter change")` returns `"Oil Change"` and would silently merge two
+  items. **Three-way anchor picker** (never done / don't know / done at ...), which finally makes
+  `neverDone` reachable - it is `true` on **0 of 54 rows** because no control has ever set it.
+  Found the duplicate engine itself: the canonicaliser's fallback **titlecases only the first
+  character**, so hand-typed `"transfer case fluid"` and seeded `"Transfer Case Fluid"` are
+  different primary keys. **Rename ruled out of scope.** `deleted` is additive and **should ship as
+  ONE migration with ticket 06's `intervalSource`, v19 -> v20.** **Unblocks 08 and 14.**
+
 - [A seeded interval is a guess](issues/06-a-seeded-interval-is-a-guess.md) - **a `[GUESS]` DeckTag
   on the row**, which satisfies §4 rule 7 *because the tag carries the word* - so it may never
   degrade to a coloured dot or an icon under layout pressure. Counting found **six surfaces render
@@ -210,6 +228,11 @@ his two existing service records on a screen.
   hardcoded ones are a minority, so a blind sweep would do more harm than good.
 
 ## Out of scope
+
+- **Renaming a maintenance item.** Ruled out on ticket 07, 2026-08-15. The PK is
+  `(vehicleId, serviceName)`, so a rename is tombstone-plus-insert with the anchors carried by hand,
+  plus a migration path for `service_records` that reference the old name as a string. Kevin has not
+  asked for it and delete-and-re-add expresses it.
 
 - **Reconciling maintenance costs against the ledger.** Kevin ruled fleet spend stays fleet-local.
   Dragging CLAUDE.md §4's gate into fleet roughly doubles the map and buys a matching problem

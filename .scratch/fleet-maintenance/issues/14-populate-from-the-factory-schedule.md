@@ -2,7 +2,7 @@
 
 Type: prototype
 Status: open
-Blocked by: 05, 06, 07
+Blocked by: 05, 06, 07   # all resolved 2026-08-15 - UNBLOCKED
 
 ## Question
 
