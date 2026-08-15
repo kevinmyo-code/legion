@@ -38,6 +38,19 @@ pdfboxAndroid = "2.0.27.0"
 # as Android assets (not JVM classpath resources) - a plain unit test can't
 # reach them without something shadowing AssetManager.
 robolectric = "4.13"
+# Media3 session (`.scratch/android-auto/map.md`, Android Auto probe harness). CLAUDE.md §3 lists
+# Media3 as a dependency deliberately dropped at the pivot - it is back specifically for the
+# MediaLibraryService that puts LEGION in Android Auto's media list (research 02 section 1c). Only
+# media3-session is pulled in, not the ExoPlayer stack: LegionMediaLibraryService never plays audio,
+# it only needs a Player implementation the session can hold.
+media3 = "1.4.1"
+# androidx.media (legacy media-compat) is already pulled in TRANSITIVELY by media3-session (it is
+# how media3 talks to a legacy MediaBrowserCompat client like Android Auto), but transitive-only
+# is `implementation`-scoped in that library's own POM and not exposed on our compile classpath -
+# `androidx.media.utils.MediaConstants` (the root-hints/custom-action key constants research 02
+# section 5/6 documents) needs an explicit `implementation` dependency here to be resolvable.
+# Pinned to the version already resolved transitively so nothing double-loads at a different one.
+media-compat = "1.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -73,6 +86,8 @@ play-services-auth = { group = "com.google.android.gms", name = "play-services-a
 vosk-android = { group = "com.alphacephei", name = "vosk-android", version.ref = "vosk" }
 pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
+media-compat = { group = "androidx.media", name = "media", version.ref = "media-compat" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

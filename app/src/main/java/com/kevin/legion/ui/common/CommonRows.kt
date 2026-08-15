@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +58,48 @@ fun SectionHeader(left: String, right: String? = null) {
 }
 
 /**
+ * The sub-screen title bar: a `< BACK` stamp on the leading edge, a centred
+ * title, and a [Hairline] underneath.
+ *
+ * Extracted 2026-08-12 from the three deck-era screens that had each
+ * hand-rolled the identical Row ([com.kevin.legion.ui.TelemetryScreen],
+ * [com.kevin.legion.ui.CarsScreen], [com.kevin.legion.ui.CompanionsScreen]),
+ * at the point a fourth, fifth and sixth caller appeared - the three
+ * `settings/` screens, which until then still wore the plain M3 `Button("<
+ * Back")` from the ticket-07 era and read as a different app once Settings
+ * itself was restyled.
+ *
+ * The trailing [Text] is an intentional empty spacer that balances the back
+ * button's width so the title stays optically centred, carried over verbatim
+ * from the screens this was extracted from - not a slot for a third control.
+ *
+ * **Those first three screens are NOT yet converted to call this.** They are
+ * verified, working, and identical in output; changing them is a mechanical
+ * follow-up, not part of the restyle that motivated the extraction.
+ */
+@Composable
+fun DeckScreenHeader(title: String, onBack: () -> Unit) {
+    Column {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onBack) {
+                Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+            }
+            Text(
+                title.uppercase(),
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text("", style = LegionType.stamp, modifier = Modifier.padding(horizontal = 12.dp))
+        }
+        Hairline()
+    }
+}
+
+/**
  * Row-separator hairline, deliberately softer than [SectionHeader]'s rule so
  * a long list of rows doesn't stripe.
  */
@@ -76,12 +119,25 @@ fun Hairline() {
  * "most values are not a signal" posture from the theme doc - callers pass
  * [com.kevin.legion.ui.theme.LegionSemantics.credit]/`estimated`/`quarantined`
  * explicitly when the value IS one.
+ *
+ * [modifier] is applied to the row itself and exists so a caller can make one
+ * navigable (fleet's "Switch car" row) without a second near-identical row
+ * type. It is the first optional parameter per the repo's vendored
+ * `compose-modifier-and-layout-style` skill; the padding and width below are
+ * applied AFTER it so a caller's `clickable` covers the whole padded row
+ * rather than an unpadded rectangle inside it.
  */
 @Composable
-fun ReadingRow(label: String, value: String, sub: String? = null, valueColor: Color? = null) {
+fun ReadingRow(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    sub: String? = null,
+    valueColor: Color? = null,
+) {
     val sem = LocalLegionSemantics.current
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+        modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {

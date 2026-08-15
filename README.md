@@ -167,7 +167,7 @@ a fallback. Full design in `.claude/plans/wiggly-beaming-quasar.md`.
 Same as Midnight AI: `local.properties` needs `sdk.dir` (Android SDK path) and, for a
 convenience dev build, `GEMINI_API_KEY` (BYO; `-Pnokey` ships without one, exercising the
 real no-key first-run instead). Four `RELEASE_STORE_*` values are needed for a release
-build. No Mapbox download token needed anymore (nav dependency removed). `gradle.properties`
+build. `gradle.properties`
 deliberately does NOT hardcode a JDK path (`org.gradle.java.home`) - Midnight AI's did, which
 broke on any machine without Android Studio installed at that exact path, violating the
 pivot's clone-and-run requirement. Set `JAVA_HOME` in your own environment, or override

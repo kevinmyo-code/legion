@@ -31,4 +31,19 @@ interface VehicleDao {
     /** Every car including archived, for the roster's "Show archived" toggle. */
     @Query("SELECT * FROM vehicles")
     suspend fun getAllIncludingArchived(): List<Vehicle>
+
+    /**
+     * Every vehicle row. Exists so a test can isolate itself: Robolectric gives
+     * a fresh sandbox per test CLASS, not per method, so rows seeded by one
+     * method survive into the next and a roster assertion reads more cars than
+     * it seeded. `Room.clearAllTables()` is the obvious alternative and is worse
+     * here - it is a blocking main-thread call that also fights the open
+     * connection for the write lock (both observed, 2026-08-07). A suspend DAO
+     * delete runs on Room's own executor and does neither.
+     *
+     * No production caller. If one ever appears, it should go through a
+     * controller that also handles the per-device active-vehicle selection.
+     */
+    @Query("DELETE FROM vehicles")
+    suspend fun deleteAll()
 }

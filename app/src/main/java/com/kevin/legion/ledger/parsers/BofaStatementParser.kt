@@ -161,7 +161,11 @@ object BofaStatementParser {
         } ?: throw UnrecognizedLayoutException("section '$startMarker' not found in $fileName")
 
         val endIdx = (startIdx + 1 until lines.size).firstOrNull { lines[it].startsWith(totalMarker) }
-            ?: throw GenericStatementParseException("section '$startMarker' never closed with '$totalMarker' in $fileName")
+            ?: throw GenericStatementParseException(
+                "section '$startMarker' never closed with '$totalMarker' in $fileName",
+                userMessage = "The \"$startMarker\" section on this statement never states its own " +
+                    "total. Nothing was imported.",
+            )
 
         val body = (startIdx + 1 until endIdx).mapNotNull { idx ->
             val line = lines[idx]
@@ -255,10 +259,18 @@ object BofaStatementParser {
             val amountToken = findMoneyTokens(amountLine).last()
             val amount = parseMoneyCents(amountToken)
             if (positive && amount < 0) {
-                throw GenericStatementParseException("expected a positive amount in '$sectionName': '$line'")
+                throw GenericStatementParseException(
+                    "expected a positive amount in '$sectionName': '$line'",
+                    userMessage = "One of the lines in the \"$sectionName\" section is signed the wrong " +
+                        "way for that section. Nothing was imported.",
+                )
             }
             if (!positive && amount > 0) {
-                throw GenericStatementParseException("expected a negative amount in '$sectionName': '$line'")
+                throw GenericStatementParseException(
+                    "expected a negative amount in '$sectionName': '$line'",
+                    userMessage = "One of the lines in the \"$sectionName\" section is signed the wrong " +
+                        "way for that section. Nothing was imported.",
+                )
             }
             val txnDate = parseDate(firstToken)
 
@@ -272,7 +284,11 @@ object BofaStatementParser {
                 amountLine.substring(lastAmountIdx + amountToken.length)).trim()
             val description = rawLines.filter { it.isNotBlank() }.joinToString(" ")
             if (description.isBlank()) {
-                throw GenericStatementParseException("transaction row missing a description: '$line'")
+                throw GenericStatementParseException(
+                    "transaction row missing a description: '$line'",
+                    userMessage = "One of this statement's transaction lines doesn't show a description. " +
+                        "Nothing was imported.",
+                )
             }
 
             val txn = LedgerTransaction(
@@ -295,7 +311,11 @@ object BofaStatementParser {
     private fun singleMoneyToken(text: String, context: String): String {
         val tokens = findMoneyTokens(text)
         if (tokens.size != 1) {
-            throw GenericStatementParseException("expected exactly one amount in $context: '$text'")
+            throw GenericStatementParseException(
+                "expected exactly one amount in $context: '$text'",
+                userMessage = "The \"$context\" line on this statement doesn't show a single clear " +
+                    "amount. Nothing was imported.",
+            )
         }
         return tokens[0]
     }
@@ -303,6 +323,10 @@ object BofaStatementParser {
     private fun parseDate(token: String): Long = try {
         LocalDate.parse(token, DATE_FORMAT).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
     } catch (e: DateTimeParseException) {
-        throw GenericStatementParseException("unrecognized date: '$token'")
+        throw GenericStatementParseException(
+            "unrecognized date: '$token'",
+            userMessage = "One of this statement's transaction dates (\"$token\") doesn't look like a " +
+                "date LEGION knows how to read. Nothing was imported.",
+        )
     }
 }

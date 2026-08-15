@@ -28,6 +28,18 @@ object AssistantIdentity {
         return withName(persona.clause, persona, CompanionProfile.name(context))
     }
 
+    /**
+     * Accent and idiom for the active persona ([Persona.delivery]).
+     *
+     * Deliberately NOT folded into [clause]: that is who is speaking, this is
+     * how it should sound, and only the conversational (voice) path wants it.
+     * [shortClause]'s sub-agent callers are text-only - a one-shot JSON
+     * extraction has no accent - so spending tokens on delivery there would buy
+     * nothing.
+     */
+    fun delivery(context: Context): String =
+        personaFor(CompanionProfile.persona(context)).delivery
+
     /** Compressed clause for sub-agent one-shot prompts, where tokens are the budget. */
     fun shortClause(context: Context): String {
         val persona = personaFor(CompanionProfile.persona(context))

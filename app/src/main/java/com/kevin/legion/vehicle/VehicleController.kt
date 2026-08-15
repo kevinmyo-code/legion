@@ -3,6 +3,7 @@
 import android.content.Context
 import android.util.Log
 import com.kevin.legion.ai.AriaBrain
+import com.kevin.legion.data.MidnightImport
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.DriveReassignment
 import com.kevin.legion.data.local.MaintenanceItem
@@ -110,11 +111,15 @@ object VehicleController {
         }
     }
 
-    /** Records the driver-reported odometer reading and resets the trip accumulator. */
-    suspend fun setOdometer(context: Context, miles: Int): String {
+    /**
+     * Records the driver-reported odometer reading and resets the trip
+     * accumulator. [vehicleId] is the fleet-wide-voice override (ticket 01,
+     * "category B" stored-data tool) - null means the active car, unchanged.
+     */
+    suspend fun setOdometer(context: Context, miles: Int, vehicleId: String? = null): String {
         if (miles < 100 || miles > 999_999)
             return "That reading doesn't look right — odometer should be between 100 and 999,999 miles."
-        val vehicle = currentVehicle(context)
+        val vehicle = vehicleFor(context, vehicleId)
         CarDatabase.getDatabase(context).vehicleDao().upsert(
             vehicle.copy(
                 odometerBaseline = miles,
@@ -162,11 +167,15 @@ object VehicleController {
             ?: serviceName.trim().replaceFirstChar { it.titlecase() }
     }
 
-    /** Logs completed maintenance and clears the item's "due" status. */
-    suspend fun logServiceDirect(context: Context, serviceName: String): String {
+    /**
+     * Logs completed maintenance and clears the item's "due" status.
+     * [vehicleId] is the fleet-wide-voice override (ticket 01) - null means
+     * the active car, unchanged.
+     */
+    suspend fun logServiceDirect(context: Context, serviceName: String, vehicleId: String? = null): String {
         val canonical = canonicalizeServiceName(serviceName)
         val db = CarDatabase.getDatabase(context)
-        val vehicle = currentVehicle(context)
+        val vehicle = vehicleFor(context, vehicleId)
         val mileage = currentMileage(vehicle)
         val now = System.currentTimeMillis()
         db.serviceRecordDao().insert(ServiceRecord(vehicleId = vehicle.obdMac, serviceName = canonical, mileage = mileage, date = now))
@@ -196,6 +205,9 @@ object VehicleController {
      *
      * At least one of [mileage] / [milesAgo] / [date] / [neverDone] must be given;
      * with nothing concrete, nothing is written and the driver is asked again.
+     *
+     * [vehicleId] is the fleet-wide-voice override (ticket 01), last per the
+     * ticket's convention - null means the active car, unchanged.
      */
     suspend fun logPastServiceDirect(
         context: Context,
@@ -204,13 +216,14 @@ object VehicleController {
         milesAgo: Int? = null,
         date: Long? = null,
         neverDone: Boolean = false,
+        vehicleId: String? = null,
     ): String {
         if (!neverDone && mileage == null && milesAgo == null && date == null) {
             return "I need something to go on — a mileage, how long ago, a date, or that it's never been done."
         }
         val canonical = canonicalizeServiceName(serviceName)
         val db = CarDatabase.getDatabase(context)
-        val vehicle = currentVehicle(context)
+        val vehicle = vehicleFor(context, vehicleId)
         val existing = db.maintenanceItemDao().get(vehicle.obdMac, canonical)
         val base = existing ?: MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = canonical)
 
@@ -231,10 +244,27 @@ object VehicleController {
     /**
      * The active car - the driver's picked profile, else the connected adapter's,
      * else the default placeholder - creating it if needed. See [ActiveVehicle].
+     *
+     * **Signature is frozen** (fleet-wide voice, ticket 01): 35 call sites depend
+     * on this exact `(context) -> Vehicle` shape. [vehicleFor] is the sibling
+     * that adds an explicit override without touching any of them.
      */
-    suspend fun currentVehicle(context: Context): Vehicle {
-        val vehicleId = ActiveVehicle.current(context)
-        return CarDatabase.getDatabase(context).vehicleDao().getByMac(vehicleId) ?: seedVehicle(context, vehicleId)
+    suspend fun currentVehicle(context: Context): Vehicle = vehicleFor(context, null)
+
+    /**
+     * [currentVehicle] with an explicit override (fleet-wide voice, ticket 01,
+     * "category B" stored-data tools): [vehicleId] null falls back to today's
+     * [ActiveVehicle.current] behaviour exactly, so every existing caller of
+     * [currentVehicle] is unaffected. A non-null [vehicleId] is expected to
+     * already be a real, resolved id (normally from [VehicleResolver], which
+     * validated it against the actual roster before ever getting here) but
+     * this still seeds a placeholder on a miss rather than throwing, for the
+     * same defensive reason [currentVehicle] itself does - a caller handed a
+     * stale or hand-typed id should never crash the tool dispatch.
+     */
+    suspend fun vehicleFor(context: Context, vehicleId: String?): Vehicle {
+        val id = vehicleId ?: ActiveVehicle.current(context)
+        return CarDatabase.getDatabase(context).vehicleDao().getByMac(id) ?: seedVehicle(context, id)
     }
 
     /**
@@ -278,8 +308,12 @@ object VehicleController {
         )
     }
 
-    /** True once the driver has stated/confirmed the active car's identity (not the default seed). */
-    suspend fun isConfirmed(context: Context): Boolean = currentVehicle(context).confirmed
+    /**
+     * True once the driver has stated/confirmed the car's identity (not the
+     * default seed). [vehicleId] is the fleet-wide-voice override (ticket 01) -
+     * null means the active car, unchanged.
+     */
+    suspend fun isConfirmed(context: Context, vehicleId: String? = null): Boolean = vehicleFor(context, vehicleId).confirmed
 
     /** "2003 BMW 330i ZHP" from the driver-entered facts (blank parts dropped); "" if nothing set. */
     /** Active (non-archived) car profiles, for the picker and the CARS roster. */
@@ -314,6 +348,117 @@ object VehicleController {
         if (archived && ActiveVehicle.selected(context) == vehicleId) {
             ActiveVehicle.select(context, null)
         }
+    }
+
+    /**
+     * Adds a car to the fleet WITHOUT making it active or touching any existing
+     * row (fleet voice, 2026-08-09).
+     *
+     * **Why this is separate from [registerDirect].** `registerDirect` overwrites
+     * whichever car is currently active - it exists to answer "this car is a 2003
+     * BMW". Asked to ADD a car, the model called it anyway, and the driver's
+     * Outlander silently became a Ford F-150, taking 5242 stored readings with it
+     * under the wrong badge. Adding and correcting are different verbs and now
+     * have different entry points; nothing here can reach an existing row.
+     *
+     * Deliberately does NOT call [ActiveVehicle.select]. A driver naming a second
+     * car mid-drive has not stopped driving the first one, and silently moving the
+     * active selection is the same class of surprise as the overwrite above.
+     * Switching is its own explicit action.
+     */
+    suspend fun addVehicle(
+        context: Context,
+        year: Int,
+        make: String,
+        model: String,
+        trim: String = "",
+        name: String = "",
+    ): String {
+        if (make.isBlank() || model.isBlank()) return "I need at least a make and model to add a car."
+        val dao = CarDatabase.getDatabase(context).vehicleDao()
+        val label = listOf(year.takeIf { it >= 1900 }?.toString().orEmpty(), make, model, trim)
+            .filter { it.isNotBlank() }.joinToString(" ")
+
+        // Adding the car you already have on file is a correction, not a second
+        // car. Say so rather than quietly growing a duplicate fleet.
+        dao.getAllIncludingArchived().firstOrNull {
+            it.make.equals(make, true) && it.model.equals(model, true) &&
+                (year < 1900 || it.year == year)
+        }?.let {
+            return "You've already got a ${displayLabel(it)} on file. " +
+                "If that one's wrong, tell me to correct it instead of adding another."
+        }
+
+        val vehicle = Vehicle(
+            obdMac = ActiveVehicle.newVehicleId(),
+            name = name.ifBlank { model },
+            make = make,
+            model = model,
+            year = year,
+            trim = trim,
+            personaPrompt = "",
+            odometerBaseline = 0,
+            odometerBaselineAt = 0L,
+            tripMilesSinceBaseline = 0.0,
+            onboarded = false,
+            confirmed = true,
+        )
+        dao.upsert(vehicle)
+        val found = applyServiceIntervals(context, vehicle)
+        val active = currentVehicle(context)
+        return buildString {
+            append("Added the $label. ")
+            if (found > 0) append("Pulled up $found maintenance items for it. ")
+            append("You're still on the ${displayLabel(active)} - say switch to the $model when you want me on that one.")
+        }
+    }
+
+    /**
+     * Corrects the stored facts on ONE named car, leaving every other field and
+     * all of its history alone. Null means "don't touch".
+     *
+     * This is the repair path for a row that got the wrong badge written onto it -
+     * the readings stay put, only the identity changes.
+     */
+    suspend fun correctVehicle(
+        context: Context,
+        vehicleId: String,
+        year: Int? = null,
+        make: String? = null,
+        model: String? = null,
+        trim: String? = null,
+        name: String? = null,
+    ): String {
+        val dao = CarDatabase.getDatabase(context).vehicleDao()
+        val existing = dao.getByMac(vehicleId) ?: return "I couldn't find that car on file."
+        val updated = existing.copy(
+            year = year?.takeIf { it >= 1900 } ?: existing.year,
+            make = make?.takeIf { it.isNotBlank() } ?: existing.make,
+            model = model?.takeIf { it.isNotBlank() } ?: existing.model,
+            trim = trim ?: existing.trim,
+            name = name?.takeIf { it.isNotBlank() } ?: existing.name,
+            confirmed = true,
+            updatedAt = System.currentTimeMillis(),
+        )
+        if (updated == existing) return "Nothing to change there - it's already a ${displayLabel(existing)}."
+        dao.upsert(updated)
+        // Only re-pull intervals when the actual car changed, not on a rename.
+        val identityChanged = updated.year != existing.year ||
+            !updated.make.equals(existing.make, true) || !updated.model.equals(existing.model, true)
+        val found = if (identityChanged) applyServiceIntervals(context, updated) else 0
+        return buildString {
+            append("Fixed - that one's a ${displayLabel(updated)} now. Its history stayed with it. ")
+            if (found > 0) append("Refreshed $found maintenance items for the corrected car.")
+        }
+    }
+
+    /** Makes [vehicleId] the car every stored-data tool answers about. */
+    suspend fun switchTo(context: Context, vehicleId: String): String {
+        val vehicle = CarDatabase.getDatabase(context).vehicleDao().getByMac(vehicleId)
+            ?: return "I couldn't find that car on file."
+        if (vehicle.archived) return "The ${displayLabel(vehicle)} is archived - want me to bring it back first?"
+        ActiveVehicle.select(context, vehicleId)
+        return "You're on the ${displayLabel(vehicle)} now."
     }
 
     /**
@@ -840,6 +985,10 @@ object VehicleController {
      * "X is next, about today out.") since the surrounding sentence differs by
      * call site.
      */
+    /** Comma-grouped digits. Mirrors `ui/fleet/FleetRows.groupThousands` for `Long`. */
+    private fun groupThousandsLong(n: Long): String =
+        n.toString().reversed().chunked(3).joinToString(",").reversed()
+
     internal fun formatRemaining(remaining: Long, unit: ScheduleUnit): String = when (unit) {
         ScheduleUnit.MILES -> when {
             // Under 50 miles, report the exact figure: rounding would speak "50
@@ -849,8 +998,12 @@ object VehicleController {
             // overstating remaining service life is the one direction this must
             // never be wrong in. Flooring only ever tells the driver they have
             // less room than they do, which costs an early oil change at worst.
+            // Thousands are grouped because this string sits beside
+            // groupThousands()-formatted figures in the same row ("every 7,500
+            // mi - last at 73,500"), and an instrument that writes 7400 next to
+            // 7,500 looks broken. Observed on device 2026-08-07.
             remaining < 50L -> if (remaining == 1L) "1 mile" else "$remaining miles"
-            else -> "${(remaining / 50) * 50} miles"
+            else -> "${groupThousandsLong((remaining / 50) * 50)} miles"
         }
         ScheduleUnit.DAYS -> when {
             remaining <= 0L -> "today"
@@ -861,27 +1014,44 @@ object VehicleController {
 
     // --- Seeding -------------------------------------------------
 
-    /** Creates a placeholder [Vehicle] for an id we haven't seen before. */
+    /**
+     * Creates a placeholder [Vehicle] for an id we haven't seen before.
+     *
+     * A placeholder states nothing it does not know. Until 2026-08-03 the
+     * [DEFAULT_VEHICLE_ID] branch seeded a specific, fully-specified car - a 1998
+     * Jeep Cherokee named "Midnight", Midnight AI's own car, carried over by the
+     * port - which meant a fresh install asserted as fact that the driver owned a
+     * vehicle nobody had told it about.
+     *
+     * That is not cosmetic. `default` is a shared sentinel id, so the fabricated
+     * Cherokee became the row that real imported history attached itself to when
+     * the Midnight AI import collided with it (see
+     * [com.kevin.legion.data.MidnightImport.SENTINEL_VEHICLE_ID]): the database
+     * ended up asserting a 1998 Jeep with a 2020 Mitsubishi's VIN. A blank
+     * placeholder is still a placeholder and can still be collided with, but it
+     * cannot contribute a false claim of its own to the wreck.
+     *
+     * Every unknown id now seeds the same blank row.
+     */
     private suspend fun seedVehicle(context: Context, vehicleId: String): Vehicle {
-        val vehicle = if (vehicleId == DEFAULT_VEHICLE_ID) {
-            Vehicle(
-                obdMac = DEFAULT_VEHICLE_ID,
-                name = "Midnight",
-                make = "Jeep",
-                model = "Cherokee",
-                year = 1998,
-                personaPrompt = "",
-            )
-        } else {
-            Vehicle(
-                obdMac = vehicleId,
-                name = "this car",
-                make = "",
-                model = "",
-                year = 0,
-                personaPrompt = "",
-            )
-        }
+        val vehicle = Vehicle(
+            obdMac = vehicleId,
+            name = "this car",
+            make = "",
+            model = "",
+            year = 0,
+            personaPrompt = "",
+        )
+        // The sentinel is NEVER a car (2026-08-12). `default` is the fallback id
+        // ActiveVehicle.current returns when nothing is selected and no dongle is
+        // connected, and it is also MidnightImport's landing bucket - so persisting
+        // a row for it manufactures a vehicle out of the absence of one. On Kevin's
+        // device that produced two phantom "this car" entries in a three-car
+        // roster, and they reappeared after every deletion because this function
+        // re-created them on the next unresolved lookup. Returned unpersisted so
+        // callers still get a usable placeholder object without the roster growing
+        // a car nobody owns.
+        if (vehicleId == MidnightImport.SENTINEL_VEHICLE_ID) return vehicle
         CarDatabase.getDatabase(context).vehicleDao().upsert(vehicle)
         return vehicle
     }

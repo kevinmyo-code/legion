@@ -2,7 +2,7 @@
 <!--
   Legacy auto-backup rules (API 30 and below). Same intent as
   data_extraction_rules.xml: exclude the credential-bearing prefs
-  (companion_profile.xml = Gemini key + Mapbox token + Shelly Cloud auth_key,
+  (companion_profile.xml = Gemini key + Shelly Cloud auth_key,
   incl. their plaintext Keystore-failure fallback slots, + spend passphrase
   hash) so they never land in a device backup. Everything else backs up
   normally.

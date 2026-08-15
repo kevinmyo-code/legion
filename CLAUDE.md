@@ -100,7 +100,7 @@ repeat. Commit map and ticket changes like any other file.
 | Voice AI | Gemini Live WebSocket STS | `service/GeminiLiveSession.kt`, server VAD, half-duplex |
 | Sub-agents | Gemini Flash REST | `ai/SubAgent.kt`, one-shot + bounded investigate loop; now also takes an optional inline image part (`imageBytes`/`imageMimeType`) for pantry vision |
 | BYO key | Paste + 1-token validation ping | Ping is `ai/GeminiKeyValidator.kt` (`VALID`/`INVALID_KEY`/`NETWORK_ERROR`); storage is `ai/KeyVault.kt` (Keystore AES/GCM) via `CompanionProfile.saveGeminiKey`; resolution is `ai/GeminiKeyProvider.kt`. Direct to Google, no proxy |
-| Local DB | Room **v3** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). v1->v2 ledger, v2->v3 pantry, both real verbatim generated-SQL migrations with `exportSchema` |
+| Local DB | Room **v5** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). v1->v2 ledger, v2->v3 pantry, v3->v4 `ingested_files`, v4->v5 `companion_profiles`; all real verbatim generated-SQL migrations with `exportSchema` |
 | OBD | ELM327 Bluetooth RFCOMM + BLE | Unchanged from Midnight AI |
 | Music | Generic MediaSession transport (`media/MusicController`) + Spotify App Remote direct play | `MusicRouter`/`MusicSource`/mixtapes all retired |
 | Location | Android `Geocoder` | The Mapbox-backed `NavGeocoder`, embedded nav, and the phone-to-head-unit GPS beacon are all gone |
@@ -132,12 +132,39 @@ that makes ingestion trustworthy, and it is not negotiable per-feature.
    product name; a receipt never prints them. They are excluded from the reconciliation check and
    their tool descriptions must say "estimate".
 
+6. **A check that passes when nothing parsed is not a gate.** Every reconciliation layer must be
+   unsatisfiable by an empty or partial extraction. Inside a recognized section, every line that
+   is not the section's own total must parse, or the document quarantines - a line the parser does
+   not recognize is a hard failure, never a skip. This is rule 2 closed against its own blind spot:
+   BofA's card statement prints its interest rows in a different shape, all four silently failed to
+   match, and the section check reconciled zero parsed rows against a printed $0.00 and passed. It
+   only held because interest was zero that month. **Silently dropping a row you did not recognize
+   is the same sin as accepting one you could not verify.**
+
+7. **A source that states NO anchor may be stored PROVISIONALLY, never as fact.** Some documents
+   print nothing to reconcile against - no balances, no total, nothing (Bank of America's mid-cycle
+   card CSV export is the first). Rules 1-6 are unchanged and such a document can never pass them.
+   It may still be ingested, on four conditions, all of which are load-bearing together and none of
+   which is optional: extraction is **deterministic** (an LLM adds cost and nondeterminism to rows
+   that are already unverifiable, and cannot manufacture an anchor); every row is tagged
+   `IngestMethod.UNRECONCILED`; **every surface that renders one says so in words**, never by colour
+   or a glyph alone, and any figure containing one is labelled unverified; and the rows are
+   **transient** - when a file that DID pass the gate commits over the same account and dates, the
+   provisional rows in that window are deleted, so an unverified row can never outlive or
+   double-count against the verified one that supersedes it.
+
+   This narrows what "commit" means. It does not widen what "verified" means. Rule 2's real claim is
+   that nothing partial is written **as fact**, and a row the app openly reports as unverified is
+   not being asserted as fact. The failure this guards against is not storing a weak row - it is
+   storing one that later reads as strong. Decided 2026-08-06 (Kevin); ticket
+   `.scratch/ledger-drive-ingestion/issues/12-provisional-card-csv.md`.
+
 Rule 5 is the §7 safety thesis applied to data: agents and memory are safe to the degree they are
 anchored to external, falsifiable reality.
 
 ---
 
-## 5. Data Layer (Room v3)
+## 5. Data Layer (Room v5)
 
 Additive migrations only, verbatim generated SQL, `exportSchema = true`, schema JSON committed
 under `app/schemas/`, no destructive fallback on upgrade.
@@ -147,6 +174,14 @@ under `app/schemas/`, no destructive fallback on upgrade.
 - **v2** - `LedgerTransaction` + DAO.
 - **v3** - `PantryReceipt` + `PantryLineItem` + DAOs. No `ingestMethod` column on `PantryReceipt`:
   every row is LLM-extracted by construction, so it would always read the same value.
+- **v4** - `ingested_files` + DAO (the per-file ingestion ledger, ticket 03).
+- **v5** - `companion_profiles` + DAO.
+
+**Widening an enum stored as TEXT is not a migration.** `LedgerTransaction.ingestMethod` and
+friends are `TEXT NOT NULL` with no CHECK constraint, so adding a constant changes no SQL, leaves
+the identity hash alone, and needs no version bump - `IngestMethod.UNRECONCILED` was added at v5
+with zero schema change. Confirm it the same way rather than assuming: read the column's
+`createSql` in `app/schemas/`, and check the schema JSON is byte-unchanged after a kapt run.
 
 ---
 
@@ -228,6 +263,9 @@ export PATH="$JAVA_HOME/bin:$PATH"
 ### Feature-add checklist
 
 - [ ] Ingestion path? Reconciliation gate wired, quarantine on mismatch, provenance tagged.
+- [ ] Source states no anchor at all? §4 rule 7's four conditions, all of them: deterministic
+      extraction, `UNRECONCILED` tag, said in words on every surface, deleted when a gated file
+      covers it.
 - [ ] Anything the source document does not state? Labelled an estimate, excluded from the gate.
 - [ ] Pull-based tool, not a pre-injected context block.
 - [ ] Room change? Verbatim generated SQL, additive, `exportSchema`, migration test.

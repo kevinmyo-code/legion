@@ -1,79 +1,107 @@
 # MEMORY.md
 
-Dashboard for LEGION. Read before responding. **MEMORY.md wins for state, CLAUDE.md wins for
-rules.** Depth lives in the library, not here. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
+Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
+library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
-## Status as of 2026-08-02 (session 2)
+## Status as of 2026-08-13 (session 7)
 
-- **THE ASSISTANT TALKS.** Live socket, mic, audio out, VAD, full duplex, verified on the A17K.
-  Two switchable companions: Alfred (dry butler) and Dorothy (warm housekeeper), both heard.
-- **THE MAP IS BUILT.** All 11 tickets resolved, 03-09 implemented. Builds clean, 95 tests.
-- **Both LLM paths proven on hardware** on Kevin's key: ledger extraction (reconciled, and
-  separately REFUSED when a doc printed no total) and pantry receipt vision.
-- `feat/ledger-ingestion` is 20 commits, 7 UNPUSHED. `dev` is 14 ahead of `origin/dev`; `main` is
-  far behind. The merge is Kevin's.
+- **SIX domains: fleet, ledger, pantry, body, notes/lists/calendar, plus goals/advisors.** Tabs:
+  Today, Money, Body, Fleet, Notes, Setup. **955 unit tests green.**
+- **Room is v19.** Three data-only bumps on 2026-08-13 (16->17, 17->18, 18->19), each proven against
+  a COPY of Kevin's real data before touching the device, then verified on-device: v19, integrity
+  ok, 497 rows and 168,422 cents unchanged throughout.
+- **Device: OPPO A17k (`CPH2471`), wireless ADB working.** Not a OnePlus; an old note was wrong.
+- Branch **`feat/car-probe`** holds tonight's work. `dev`/`main` are far behind - **204 commits ahead
+  of `origin/main`.** CLAUDE.md §8: Claude never pushes `main`, never opens or merges that PR.
 
 ## Blocking
 
-- **Drive OAuth keyed to package + SHA-1 cert.** Stranger's build fails auth. Unresolved.
-- **Onboarding has no screen**; `OnboardingFlow` unwired, the picker replaced it for now.
-- **Firebase not wired.** `MidnightEvents` logs via `Log.d`; a swallowed exception is invisible.
-- **Crisis resource is US-only (988).** **`.claude/plans/wiggly-beaming-quasar.md` never existed.**
+- **Onboarding has no screen. Firebase not wired**, so a swallowed exception is invisible.
+  **Crisis resource is US-only (988).**
+- Google console work still needing Kevin: `.scratch/google-account-integration/` tickets 11
+  (publish consent screen) and 09 (add the Gmail scope). Drive OAuth itself CLEARED 2026-08-13.
+- **Ticket 07 on `.scratch/android-auto/` needs Kevin**: settled decision 1 was taken on a premise
+  since falsified, so "two surfaces, deliberately" has to be re-taken.
 
 ## Untested / unverified
 
-- **`sync/` has NEVER executed.** The only untested surface where a wrong ruling loses data silently.
-- **OBD, wake word, proactives never run.** Wake word CANNOT: `assets/vosk-model/` is a README only.
-- **`assets/dtc_descriptions_seed.json` has NEVER existed** in git; every fault reads "not
-  identified locally".
-- **The 30 voice clips have never been HEARD** (they resolve and play; judging them is Kevin's).
-- **Nobody has asked the assistant a QUESTION.** No tool call has ever run from voice;
-  `DEBUG_SAY` produced no turn, likely needs an active conversation.
-- **Also untested:** tab-switch-during-scan, the `+` fix, the nav graph, probe steps 7-9, ledger
-  dedup, pantry writes.
+- **NOTHING on the Android Auto surface has touched a head unit.** APK installed and hash-verified;
+  never plugged in.
+- **NO ALARM HAS EVER FIRED.** **`sync/` has never executed.** **OBD, wake word, proactives never
+  run**; wake word CANNOT (`assets/vosk-model/` is a README only).
+- **Compose previews have never been rendered**, any screen, ever - now including `CarProbeScreen`
+  and `ExcludedOwnAccountMovementsScreen`. `assets/dtc_descriptions_seed.json` has NEVER existed.
+  The 30 voice clips have never been HEARD.
+- **`CarDatabaseMigration15To16/17To18/18To19Test` compile but have NEVER RUN.**
+  `connectedAndroidTest` UNINSTALLS the app and would take Kevin's real data. The on-device
+  migration is the stronger evidence and it WAS performed.
+- **`get_monthly_spend` has never been spoken**, so the §4 rule 7 spend disclosure is verified on
+  screen only, never aloud.
 
 ## In-flight
 
-**PICK UP HERE: porting Kevin's Midnight AI data.** Fleet shows only the Cherokee because LEGION's
-DB has one vehicle; the old app has THREE. Investigated, not built - **a decision is owed on import
-shape** (one-time adb script vs in-app screen vs vehicles-only; options given, none chosen).
+**QUANT-VIZ + GLANCEABLE, branch `feat/quant-viz` off `feat/car-probe`, 34 commits, suite green.**
+Map `.scratch/quant-viz/`, 16 tickets, ALL landed and QA'd on-device with hash-verified installs.
+Full account in `library/decisions.md` (2026-08-13/14) and `library/lessons.md` L19.
+- **Kevin delegated the taste, then reversed my main call**: "inline viz across all tabs. im not
+  gonna read numbers. it has to be glancable." **Every tab face now carries inline viz** - that
+  reversal also kills cyberdeck ticket 06's chart-free Today. Treat it as standing.
+- Money face: 12-month spend sparkline + daily bars. Today: intake/sleep/cumulative-spend
+  sparklines. Fleet: mpg + miles captioned sparklines, due meters. Body unchanged (already wired).
+  Drilldowns: category daily bars, monthly spend trend, recap trends, oil-analysis small multiples,
+  pantry SPEND panel, goal meters.
+- **SET TARGET affordance shipped** (ticket 09) - `set_budget` was voice-only, so no meter could
+  ever fill from a screen. Groceries USD 300 written through it on the real phone; meter 69% with
+  the pace tick at day 14/31, hand-checked.
+- **LOG tab: month calendar** (dots for density, today filled, HIDE collapses) and **tapping a day
+  pops an AlertDialog of that day's entries**; `SHOW IN LIST` is now the only route to the day
+  filter. Popup renders from the SAME month list that draws the dots, so they cannot disagree.
+- **Still not rendered with real data** (nothing to render): pantry chart, goal meter, MISSED's
+  4-row cap, the dialog's internal scroll. Verified in code only.
+- Deferred nits: month-label formatting duplicated (`SpendTrendDrilldown`/`PantryRows`);
+  `dueFraction` treats a month as 30 days.
+- **CLAUDE.md §10 "almost all of `ui/` is clean slate" is badly stale (70+ files)** - needs a
+  Kevin-visible correction.
 
-- **Drive is NOT the route:** `appDataFolder` is per-application, LEGION cannot see Midnight AI's.
-- **`com.kevin.midnightai` is STILL INSTALLED and debuggable**, so its DB reads directly (needs
-  `MSYS_NO_PATHCONV=1`): `adb exec-out run-as com.kevin.midnightai cat /data/data/com.kevin.midnightai/databases/midnight_ai_database > out.db`
-- **12 of 13 tables are SCHEMA-IDENTICAL** v12 -> v5; only `build_entries` differs, by the dropped
-  `photoPath` (1 row). Portable: 3 vehicles, 11532 obd_samples, 34 drive logs, 41 code_events, 24
-  maintenance_items, 4 places, 14 car_tasks, 2 specs, 2 recaps, 41 memories, 1 service_record.
-  **Retired, do not port:** 527 `music_plays`.
+**LEDGER: FOUR BUGS FIXED 2026-08-13, ALL FOUND BY PULLING THE DB OFF THE PHONE, NONE BY THE SUITE.**
+Full account in `library/decisions.md`. All 497 rows were `Pets` (a SEEDING hole - Room builds a
+fresh schema from the entity set and NEVER replays migrations, so the model was starved, not
+wrong); `CHECKCARD` read as a merchant (`extractMerchantKey` split on the MMDD date, one rule then
+confirmed 48 unrelated rows); transfer detection was never wired to categorisation; ~$24k of own
+money counted as spend, now leaving `operating` with the exclusion disclosed in words.
 
-Then: **`sync/`** (still never executed), a **DTC seed dictionary**, then ledger insights.
+**ANDROID AUTO charted and probed.** Map `.scratch/android-auto/`, 16 tickets, all 6 research
+resolved the same day - read the map, not this line, before acting.
+- **Settled decision 3 FALSIFIED hours after charting**: the self-managed call is NOT the only route
+  to the car's HFP mic (`MODE_IN_COMMUNICATION` + `setCommunicationDevice` gets a plain foreground
+  service the same mic). **The risk is DISTRIBUTION, not telephony**; two gates, sideloading and
+  **category honesty** (no category fits LEGION) - the second is Kevin's judgement, not a fact.
+- Two shipped defects surfaced, both `traced` not `tested`, tickets 13/14/15: **OBD reports the car
+  fine when the Bluetooth link goes QUIET** (`Elm327Io` polls `available()`, never blocks on
+  `read()`), and the live session could be **silenced with zeroes and no callback**.
 
-- **Two prototypes, NEITHER to be merged:** `proto/ledger-ui`, `proto/fleet-pantry-ui`.
+**Still open from 2026-08-07:** `CategoryDao.insert` plus an add-category affordance. D14's fixed
+list exists to stop the MODEL inventing categories, not to stop Kevin adding one.
+
 ## Notes for next session
 
-- **RUN IT ON THE PHONE.** Five bugs survived compile, the full suite AND review: red body text,
-  an invisible saved key, every date a day early, a foreground-service type that made the
-  assistant unstartable since the port, and a picker leaving NO profile active.
-- **A date-only value and an instant must not share a formatter.** Dates store at UTC midnight;
-  render in UTC (`documentDate`). The other 8 call sites are instants, correct in local.
-- **Fixtures must carry KNOWN, DERIVED totals and dates** (`tools/`). Only reason the `+` bug and
-  the date bug were findable at all.
-- **L11 and L12 now live in CLAUDE.md §8** - verification steps are gates; process-wide init
-  belongs in `MidnightApplication.onCreate`, never a service.
-- **Verify what the librarian writes.** Four FILE passes, four hand corrections.
-- **Device quirks:** ADB after a reboot needs a FRESH `adb pair` (network is `192.168.4.x` now); `pm clear` is OEM-blocked; **`connectedAndroidTest` WIPES app data** (it cost
-  the ledger rows, pantry receipt, folder grant and Gemini key today); `adb push`ed files are
-  invisible to the Downloads provider; unsigned `.ps1` files are refused, pipe via
-  `Invoke-Expression`; `uiautomator dump` serves STALE content for popups - screenshot instead.
-## Library
+- **Four bugs this session were found by LOOKING AT THE DATA, none by 955 tests.** Same shape as
+  L15: each component individually correct, wrong in aggregate. Pull the DB and query it.
+- **A decision put to Kevin twice, with numbers in between, beat the first answer.** He first chose
+  to exclude everything the transfer keywords caught; measuring it first showed that also hides 40
+  `Zelle payment to <person>` rows worth $6,669.80 of real money. He changed his answer.
+- **`adb shell cat` CORRUPTS a binary pull** - use `adb exec-out`, and compare the pulled size
+  against `ls -l` on the device. **Verify every install by sha256**, never by "Success".
+- **Device quirks:** logcat filters the app's own logs (surface diagnostics in the UI); `adb push` to
+  `/data/local/tmp` is OEM-blocked, route via `/sdcard`; no `sqlite3` on device - pull the file;
+  `pm clear` OEM-blocked; unsigned `.ps1` refused; `uiautomator dump` serves STALE content.
+- **Real statements: copy in, run, DELETE.** Never commit money data; fixtures are invented.
 
-`memory/library/` (catalog: `INDEX.md`). Never bulk-read shelves; dispatch the librarian. **Most
-shelves are FROZEN Midnight AI history**, banner-marked. LIVE: `decisions.md`, `lessons.md`,
-`playbook-coding.md` (partly). CLAUDE.md §11.
+## Library + how to update this file
 
-## How to update this file
-
-- Under 80 lines. One-liners; narratives go to the library via the librarian (FILE).
-- Session end: dispatch librarian FILE, then refresh Blocking / In-flight / Notes.
-- A decision changing a CLAUDE.md rule is filed to `library/decisions.md` AND applied to CLAUDE.md
-  in the same commit.
+`memory/library/` (catalog: `INDEX.md`). Never bulk-read shelves; dispatch the librarian, then
+**verify what it writes** - it has invented content before. **Most shelves are FROZEN Midnight AI
+history.** LIVE: `decisions.md`, `lessons.md`, `playbook-coding.md` (partly). CLAUDE.md §11.
+- Under 80 lines. One-liners; narratives go to the library, then refresh Blocking / In-flight /
+  Notes. A decision changing a CLAUDE.md rule is filed to `library/decisions.md` AND applied to
+  CLAUDE.md in the same commit; a lesson graduates the same way (L14 -> §4 rule 6).

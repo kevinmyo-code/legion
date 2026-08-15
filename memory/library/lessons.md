@@ -263,3 +263,299 @@ own README documents the same lesson so a future session doesn't rediscover it f
 **Status:** CLOSED 2026-08-02. The rule now lives in **`playbook-coding.md`** under "Date handling and zone conversions", with the three call sites documented. The meta-lesson (invisible to tests, needs device-level verification on data with known ground truth) is noted in this entry and points to L10/L11/L12, the class of bugs that survive compile/test but not device-level observation.
 
 
+
+### L14 — architecture: a reconciliation check that passes on zero parsed rows is not a gate
+
+**What happened (session 2026-08-03, commit 4dad45f):** The new `BofaCardStatementParser` shipped
+its first round with three reconciliation layers, 163 unit tests green, and a clean senior-dev
+review. Run against Kevin's real July card statement it reported `SUCCESS ... DETERMINISTIC` with
+sums tying exactly. It had silently dropped four transactions.
+
+BofA prints the Interest Charged rows in a DIFFERENT shape from every other section - no reference
+number and no account number column, just `MM/DD MM/DD <description> <amount>`. The row regex
+required the trailing ref/acct pair, so all four failed to match and were skipped. The per-section
+subtotal check then compared **zero parsed rows against a printed $0.00** and passed. So did the
+other two layers, because interest was genuinely zero that month.
+
+**Why every gate missed it:** the fixtures were generated from the same spec the parser was written
+from, so parser and fixture shared the assumption that all rows carry ref/acct. 163 tests could not
+see it. The reviewer could not see it. The document's own arithmetic could not see it, because zero
+equals zero. It was found only by counting: a raw regex probe of the real PDF found 54 date-led
+lines and the parser had returned 50.
+
+**The latent failure it was hiding:** the first month a balance carries and interest is nonzero,
+those rows drop, the section check fails, and a completely valid statement quarantines. Fail-closed,
+so no bad money lands - but a good statement is blocked, and the reason would look like a bank
+formatting change rather than our own parser.
+
+**Root class:** a gate whose pass condition is satisfiable by the empty set. Summing extracted rows
+and comparing to a printed total is only a real check if extraction is also proven exhaustive.
+Reconciling to zero proves nothing.
+
+**Fix:** rows may now take a bare form as well as the full form, and - the part that matters -
+inside a recognized section every non-blank line that is not the section's own total MUST parse as
+a row, or the whole document quarantines. An unrecognized line shape is a hard failure, never a
+skip.
+
+**General rule (graduated into CLAUDE.md §4 as rule 6):** every reconciliation layer must be
+unsatisfiable by an empty or partial extraction, and a line the parser does not recognize is a hard
+failure. Silently dropping a row you did not recognize is the same sin as accepting one you could
+not verify - rule 2 forbids the second and said nothing about the first.
+
+**Verification discipline this reinforces:** fixtures written from the same spec as the parser test
+that the parser matches the spec, not that the spec matches reality (same shape as L10). For any
+extraction path, run the real document and **count the rows independently of the parser** before
+believing a green suite. That probe is what found this, and it is what found the two fatal bugs in
+`BofaStatementParser` the day before (commit c41dfc8).
+
+**Status:** CLOSED 2026-08-03. Rule 6 lives in CLAUDE.md §4; the independent-count discipline is
+recorded here and in the commit message.
+
+---
+
+### L15
+
+**Individually correct, wrong in aggregate. Four instances now; the suite cannot see any of them.**
+
+Found 2026-08-07, across one session, three of them on a real phone rather than by any test.
+
+1. **`sync/` was structurally unreachable** and passed every test (`setSyncEnabled` had zero callers).
+2. **Categorisation was fully built and never wired** - engine, agent, DAO queries, tests, all
+   correct, nothing outside the `ledger` package ever calling it. A month read "uncategorised USD
+   477.57" with no way to act on it.
+3. **The balances row omitted a term.** `get_balance` and `AccountBalanceRow` each computed the
+   available figure independently; the UI's copy left out `pendingDeltaCents`. Kevin logged three
+   pending charges, the note beneath the figure updated to mention them, and the headline did not.
+   Both call sites compiled, both were tested, they disagreed with each other.
+4. **Two accounts store opposite signs for the same meaning.** The BofA card parser stores a
+   purchase positive (the statement prints it that way); the checking parser stores it negative
+   (same reason). Each parser is internally correct and reconciles perfectly against its own
+   document. Category totals sum them naively, so Travel read **+124.30** - which looks like income
+   and is actually $124.30 spent camping.
+
+**What they share:** every component is right on its own terms. The defect lives in the seam - two
+implementations of one definition, a caller that does not exist, a convention that is local rather
+than global. Unit tests check pieces against their own spec and are structurally blind to this.
+
+**The tell.** Ask "is this figure computed in more than one place?" and "does this convention hold
+across every producer, or only within one?" Both questions found bugs today that three adversarial
+audits and 480 passing tests did not.
+
+**The sharpest instance of the blindness** is `RecurrenceTest`: 24 tests, every fixture built with
+`atStartOfDay(ZoneOffset.UTC)`. The suite never left UTC, so a UTC-versus-device-zone mismatch was
+invisible **by construction** - and the production code did all its day-maths in UTC while
+`startsAt` was written in device zone. Every voice-set reminder fired off by the device's whole UTC
+offset (five hours early in Kevin's own zone). The tests were not weak. They were *self-consistent*,
+which is harder to notice and exactly L10/L14's shape one layer up. Writing a test that crossed two
+zones then found a *third* bug nobody had reported: time-of-day carried as a millisecond offset from
+local midnight, so a daily 7am reminder became 8am across a DST boundary.
+
+**General rule (graduate into CLAUDE.md §7's checklist):** a figure must have ONE definition with
+callers, never two implementations. A sign, unit or timezone convention must be enforced where data
+ENTERS the system, not assumed at each reader. And a fixture built in the same frame as the code
+proves only self-consistency - vary the frame (zone, account type, currency) or the test cannot see
+the bug.
+
+**Status:** OPEN. Instances 1-4 are fixed; the rule is not yet in CLAUDE.md. Also unresolved: wake
+word and ambient listening are a FIFTH instance, built and permanently unreachable because no
+settings toggle exists (`WakeWordPreferences.setEnabled` has zero callers) - found in the same audit,
+not yet fixed, and not listed in CLAUDE.md §10's known gaps.
+
+## L16 (2026-08-13) - a controller that returns a failure SENTENCE makes every caller a silent-failure site
+
+Found by `bug-hunter` during the aspect-advisors build; two MAJOR defects, one of this shape.
+
+`WorkoutController.generatePlan`, `SleepController.setTarget` and `ReminderController.add` all
+signal failure by **returning a spoken failure sentence as an ordinary `String`** rather than
+throwing or returning a typed result. `LiveSessionController.handleToolCall` wraps every tool in
+try/catch and a timeout, which catches thrown failures honestly - and is completely defeated by a
+failure that arrives as a normal return value.
+
+The advisor accept path wrapped those strings as success, so `accept_proposal` returned
+`success: true` and marked the `advisor_advice` row **`accepted` permanently**. The row could never
+be retried, and the advice-log window showed an accepted proposal that had written nothing.
+**The database row itself became the false positive**, not merely a log line.
+
+**Rules.**
+1. Any new caller of a controller that returns `String` must verify the write by **reading it back
+   through the DAO**, never by inspecting the returned message. String-matching a failure sentence
+   rots the first time someone rewords it.
+2. A failed write must leave its record in a **retryable** state, not a terminal one.
+3. When adding a controller entry point, prefer a typed result over a spoken sentence. The spoken
+   sentence is a presentation concern and belongs at the tool layer.
+
+**Sibling defect, same commit:** `accept_proposal` had a check-then-act race (read row, check
+`pending`, execute, mark accepted, no transaction). Fixed with
+`UPDATE ... WHERE outcome = 'pending'` - **rows-affected is the mutual-exclusion point; a preceding
+read never is.** Applies to any claim-then-act path in this codebase.
+
+## L17 (2026-08-13) - a declared tool the system prompt never mentions is reached only by luck
+
+Kevin, on the day the advisors landed: *"i asked the ai what are my goals, i already set some with
+it, and also i manually typed in a goal in bio, but it couldnt see the goal."*
+
+The goal tools were correct. `list_goals` with no aspect returns every aspect; the handler was
+fine; the rows were really in Room. The transcript (`episodic_turns`) showed what actually
+happened:
+
+> driver: Let's set some goals. / companion: What goals did you have in mind?
+> driver: weight loss
+> companion: I have set a daily target of 2000 calories... 8 hours of sleep... a four-day workout plan.
+
+**It set three TARGETS and recorded no GOAL.** Then "look at the goals in the bio" (mis-transcribed
+"ghost") was answered with stored diagnostic codes.
+
+**Root cause: `AriaBrain.sharedInstructions` contained the word "goal" ZERO times.** Also zero
+mentions of advisor, budget, workout, meal, or sleep. The prompt still described only the car,
+while four domains and five advisors had been built around it. Every one of those tools was
+DECLARED, so the model could only find one by name-matching the driver's words - and when asked
+for a "goal" it reasonably picked the concrete-sounding target tools instead.
+
+**The advisors had the same disease, undetected:** `ask_advisor` was declared and nothing told the
+model when to call it, so the entire five-advisor feature would have sat unreachable.
+
+**Rules.**
+1. **Shipping a tool is half the work; the other half is teaching the orchestrator when to reach
+   for it.** A feature-add checklist item: does the system prompt mention this capability?
+2. **When two tools are near-synonyms to a user's ear, the prompt must draw the line.** Goal vs
+   target is the live example: a goal is the long-term intention in the driver's words, a target
+   is the per-period number serving it. Nothing in the tool descriptions alone conveyed that.
+3. **The transcript table is the diagnostic of first resort** for "the assistant did the wrong
+   thing" on a device whose logcat is filtered. `episodic_turns` held the answer in six lines.
+
+## L18 (2026-08-13) - a tool is only real when it is BOTH dispatchable and DECLARED to the right session
+
+Same day, same feature, second report from Kevin: *"it still doesnt see goals."* The transcript:
+
+> driver: No, no. I have one goal, don't I?
+> companion: I do not seem to have any recorded goals for you, sir.
+
+...while `SELECT` against the live device DB returned exactly one active goal, and the
+`allCurrentGoals()` DAO SQL run by hand returned it too.
+
+**Root cause: `set_goal`, `list_goals`, `close_goal`, `ask_advisor` and `accept_proposal` were all
+declared inside `LiveToolbox.onboardingDeclarations()` instead of `declarations()`.** In a normal
+session none of the five existed. Onboarding, meanwhile, was advertising five tools it has no
+dispatch path for (its dispatch lives in the onboarding screen, not `LiveToolbox.dispatch`).
+
+The mistake is mundane and will recur: two agents each appended a `fns.put(...)` block at the end
+of a 4,000-line file, and the nearest enclosing function was the wrong one.
+
+**Why nothing caught it.**
+- **13 unit tests for `ask_advisor`/`accept_proposal` passed**, every one calling `dispatch`
+  directly. Dispatch worked perfectly. No test asked whether the session is ever TOLD the tool
+  exists.
+- `senior-dev` and `bug-hunter` both reviewed the feature and neither looked at declaration-set
+  membership - they checked the handler, the allowlist, the enforcement.
+- The orchestrator (me) verified `dispatch` wiring by grep and called it wired.
+- L17's prompt fix the same day was real but treated the symptom: teaching the model to reach for
+  a tool that was not on the table.
+
+**Rules.**
+1. **Assert declaration-set membership in a test**, not just dispatch. `LiveToolboxDeclarationSetTest`
+   now pins: every goal/advisor tool is in `declarations()`, `onboardingDeclarations()` holds
+   exactly its five capture tools, and the two sets never overlap.
+2. **"The handler works" is not "the tool works."** The full chain is declared -> model calls ->
+   dispatched -> handled. A test that starts at dispatch skips the half that failed here.
+3. **When a user says the assistant cannot see data that exists, check declaration membership
+   before the prompt, the query, or the model.** Query and prompt were both innocent this time;
+   two rounds were spent on them.
+
+---
+
+## L19 - A layout claim is `on-device` or it is nothing (2026-08-14)
+
+Kevin: "i cant scroll down anymore. the visual obscures the scroll interface." The LOG tab's inbox
+list had become unreachable. The cause was mine: quant-viz ticket 13 put a 180dp `DeckBarChart`
+plus labels and a caption at the top of `ui/NotesScreen.kt`, whose root is a **non-scrolling
+`Column`**. Children take their heights in order and the LAST child gets only the remainder, so the
+list was measured down toward nothing.
+
+**The first fix failed, and failed in the most instructive way.** Ticket 14 wrapped the list in
+`Box(Modifier.weight(1f))`. That is a real fix for a real problem - a weighted child cannot be
+measured to ZERO - and it was reasoned correctly from the source. On the phone it changed nothing
+Kevin could feel: the LOG tab stacked ~770dp of fixed furniture (title, calendar, MISSED,
+`GoalsPanel`, mode toggle, then `InboxContent`'s OWN sync note and add-item row) above the list on a
+~948dp screen. `weight(1f)` guarantees non-zero height. **It does not guarantee USABLE height.**
+Only collapsing the calendar made the screen work, which is not a fix, it is a workaround the user
+has to perform.
+
+**Ticket 15 is the real fix, and it is architectural:** `InboxContent`'s `LazyColumn` is now the
+LOG/ITEMS tab's ONLY scroll surface, and `ui/NotesScreen.kt` feeds its furniture into it through a
+`LazyListScope` header slot (the vendored `compose-slot-api-pattern`). Everything scrolls together;
+the calendar scrolls away. **Any future LOG furniture goes into that header lambda as an item, never
+into a `Column` above `InboxScreen`.** MISSED also lost its nested same-direction `LazyColumn`
+(now 4 inline rows plus "+N more").
+
+**Rules.**
+1. **A layout/measurement claim carries the `on-device` tag or it is not a claim.** Both failures
+   this session (the dead fix, and the false-empty day below) were reasoned-correct from source and
+   wrong in the hand. This is L10 ("a grep-clean result is not a done result") pointed at layout:
+   the compiler cannot tell you a view is below the fold.
+2. **Suspect the container, not the child.** The instinct was "my chart is too tall". The defect was
+   that the screen had one scrollable region buried under fixed furniture. Shrinking the child only
+   postpones it - one more goal or MISSED row and it returns.
+3. **`Modifier.weight(1f)` answers "can this be squeezed to zero", not "can the user reach this."**
+
+**Two follow-on bugs QA caught in the same feature, both the same shape as §4 rule 6 - a surface
+reading complete when the data was never fetched:**
+- A calendar day with dots filtered to "Nothing here yet", because the grid counted a whole-month
+  window while `InboxScreen` fetched **90 days forward only**. The dots promised what the list
+  denied. Fixed by widening the fetch to cover a selected day.
+- The `ITEMS // N` badge counted the whole loaded set, so filtering to one day made the number go
+  UP (29 against three visible rows) once the widened day fetch added rows.
+- **The structural answer, adopted in ticket 16:** the day-events popup renders from the SAME
+  `merged` month list that draws the dots. Two renderings of one list cannot disagree. Prefer making
+  a class of bug impossible by construction over keeping two windows in sync.
+
+## L20 - Judging colour separation by eye is not a check (2026-08-14)
+
+**What happened:** Ticket 01 (palette-tokens) identified the exact risk in writing: "both takes put their green close enough to the mint that a credit did not separate from the seven debits above it." The ticket acted on it by eye, revised the green value, and shipped a corrected palette. Three tickets later (ticket 06), the `dataviz` skill's palette validator was run against the palette and returned: green fails normal-vision separation against mint (dE 10.4, floor 15) **and** CVD separation against amber (dE 5.5 deutan, floor 8). Four alternative greens were tested; all fail both. Green is geometrically squeezed and no value exists that clears both.
+
+**The failure.** Ticket 01 said "that is better" by eye. The arithmetic said it was still a hard fail, by a wide margin. The eye-based revision landed in production and would have shipped if the validator had not been run later. **The misdeed was not lowering the bar; it was treating eye judgment as a completed check rather than as a starting hypothesis.**
+
+**Root class:** unverified-visual-claim treated as verified. The risk was identified, addressed, re-checked by eye, and still wrong. This is the same family as L10/L14 (tests that prove only self-consistency), now at the pixel-judgment layer: a claim that "this color is better" requires arithmetic, not aesthetic judgment.
+
+**Rule (to graduate into playbook-coding.md and the mission-control map's Notes section):** Any palette decision in this repo runs `scripts/validate_palette.js` from the `dataviz` skill before it is recorded as resolved. It is one command, it is computable, and it caught both a wrong decision and a live shipped bug (DeckBarChart using green target line against amber fill at dE 5.5 under deuteranopia) in a single run. An eye-based revision is a starting point, never a conclusion.
+
+**Regression check:** a palette section in decisions.md without a line saying "validator run" or "run the validator as part of" the next measurement pass.
+
+**Status:** CLOSED 2026-08-14. The rule now lives in `playbook-coding.md` under "Palette validation" and in `.scratch/mission-control/map.md`'s Notes section (commit 3ebb0a7).
+
+## L21 - Category questions need a count before resolution (2026-08-14)
+
+**Pattern: three tickets, one shape.** Ticket 04 (assumed 5 red states, found 50 call sites across 6 unrelated uses). Ticket 07 (assumed motion budget was unspent, found shell animation already spending it on every surface). Ticket 09 (assumed controls were a utility-screens problem, found 142 of 191 controls in data surfaces). In each case the ticket's question named a category ("the states that need escalation", "the surfaces that animate", "the screens with controls") and the premise was falsified by the count: **the real scope was larger and less sorted than the mental model assumed.**
+
+**What was found:** each grep took under a minute. Ticket 04's grep (`sem.quarantined` and five colour-call patterns) found 50. Ticket 07's grep (animate/motion names) found the shell already budgeted. Ticket 09's grep (M3 control constructors) found 191 total, 49 in the stated scope, 142 outside it. In all three cases the count either confirmed the ticket was well-framed or reframed it into a larger/different shape. The first two forced the ticket resolution to widen; the third reframed "utility-screens form vocabulary" into "app-wide form vocabulary."
+
+**Root class:** mental-model assumption on scope validated by reading, not by counting.
+
+**Rule:** Before resolving a wayfinder ticket whose question names a category of thing ("the N things that...", "all the [feature] call sites", "surfaces with [behaviour]"), grep for that category and count it first. The count either confirms the ticket's framing is sound or forces a reframe before resolution. It is cheap enough that not doing it costs more (discovering the wrong scope in build tickets later).
+
+**Regression check:** a wayfinder ticket resolution whose question names a category, with no grep-count claim in the answer. Also check: `grep -rl` proved the absence of something by pattern, without separately running the real compile (this is L10 applied to scope).
+
+**Status:** CLOSED 2026-08-14. The rule now lives in **`.scratch/mission-control/map.md`'s Notes section** (commit `79032ed`), where it applies to all remaining surface inventories. The rule has paid off a fourth time: ticket 11 applied it and found the already-reversed cyberdeck decision, which is now step 7 of ticket 11's reusable method, and is recorded in the decisions entry above.
+
+---
+
+## L22 - A device measurement is only valid for the state the device was actually in (2026-08-14)
+
+**Found during mission-control ticket 16.** The verification method this map adopted escalates from reading the diff to installing and looking, to sampling pixels. Over the effort, three escalating steps each caught what the previous could not:
+
+1. Reading the diff caught nothing on the list of five bugs in ticket 16.
+2. **Installing and looking** caught the amber-instead-of-mint heroes and the buried FLEET tiles.
+3. **Sampling pixels** caught the bezel's 2dp error and the dropped word, both invisible to the eye on downscaled screenshots.
+
+The method works—but it has its own failure mode, and it bit twice in this effort:
+
+**Ticket 14:** I reported a bezel/key overlap from a downscaled screenshot, measured from visual inspection. Pixel sampling later showed no overlap ever existed. The result was a confident, specific, wrong finding.
+
+**Ticket 16, TalkBack audit:** A build agent reported the purge row as a "severe, real, reproducible defect" — measuring at 29dp unarmed and collapsing to 3dp and 1dp when armed, with empty `content-desc`. It spent a very large diagnostic budget (eight-plus rebuilds) on this "defect" before correctly reverting. Then: **the purge row sits last in a scrolling list, so the dump without scrolling measured a partially-clipped node. Scrolled into view, the node is exactly 48dp, matches ticket 04's spec, and carries the correct label.** An earlier audit had seen the same symptom (19dp unscrolled vs 54dp scrolled) and correctly dismissed it as ordinary list behaviour. That finding existed and was not consulted.
+
+**Root class:** measurement-state mismatch. A device measurement (pixel sample, node bounds dump, scroll state check) proves only what the device was actually doing at measurement time. If the target was offscreen, the measurement describes the clip, not the widget.
+
+**Rule (graduating into `playbook-coding.md`, section "Layout and measurement claims"):** Escalate to the device for anything visual, and sample rather than eyeball - but **put the target in the state you are claiming to measure first.** Scroll it into view, open the state that renders it, and state which state the measurement describes. Name your assumptions about device state in your findings. A measurement that does not name its state cannot be trusted to apply elsewhere.
+
+**Regression check:** A device-measurement finding (pixel sample, node bounds, animation frame) that does not state the device's condition (scroll position, expanded/collapsed, connected/disconnected) when measured. Also: a past measurement finding that is re-cited or acted on without confirming the device is still in that state.
+
+**Status:** OPEN, rule needs graduation. File to `playbook-coding.md` "Layout and measurement claims" section alongside the palette-validator rule from L20. This is cost-free to apply and caught a cascading diagnostic failure that consumed a very large budget over false evidence.

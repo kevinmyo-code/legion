@@ -42,11 +42,16 @@ object DailyDriveLogController {
      * invisible until tomorrow morning. Now today's log exists from the first
      * check of the day and updates as the day goes on, and the day is cut at
      * 23:59:59.999 (see [dayRange]).
+     *
+     * [vehicleId] is the fleet-wide-voice override (ticket 01 §2's literal
+     * controller-threading instruction) - null means the active car,
+     * unchanged. Not currently exercised: this is called from the service's
+     * own hourly loop with no car named by a driver, never from a Live tool.
      */
-    suspend fun refreshIfDue(context: Context) {
-        runCatching { finalizeYesterday(context) }
+    suspend fun refreshIfDue(context: Context, vehicleId: String? = null) {
+        runCatching { finalizeYesterday(context, vehicleId) }
             .onFailure { Log.w(TAG, "Daily drive log finalize failed: ${it.message}") }
-        runCatching { refreshToday(context) }
+        runCatching { refreshToday(context, vehicleId) }
             .onFailure { Log.w(TAG, "Daily drive log refresh failed: ${it.message}") }
     }
 
@@ -58,13 +63,13 @@ object DailyDriveLogController {
      * Gemini call when the day's numbers haven't moved - so a parked car costs one
      * call for the whole day, not one per check.
      */
-    private suspend fun refreshToday(context: Context) {
+    private suspend fun refreshToday(context: Context, vehicleIdOverride: String? = null) {
         val cal = Calendar.getInstance()
         val year = cal.get(Calendar.YEAR)
         val month = cal.get(Calendar.MONTH) + 1
         val day = cal.get(Calendar.DAY_OF_MONTH)
 
-        val id = vehicleId(context)
+        val id = vehicleIdOverride ?: vehicleId(context)
         val existing = CarDatabase.getDatabase(context).dailyDriveLogDao().getForDay(id, year, month, day)
         if (existing != null && System.currentTimeMillis() - existing.generatedAt < REFRESH_INTERVAL_MS) return
 
@@ -85,13 +90,13 @@ object DailyDriveLogController {
      * wasn't running yesterday at all, `existing` is null and this generates it
      * from scratch.
      */
-    private suspend fun finalizeYesterday(context: Context) {
+    private suspend fun finalizeYesterday(context: Context, vehicleIdOverride: String? = null) {
         val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, -1) }
         val year = cal.get(Calendar.YEAR)
         val month = cal.get(Calendar.MONTH) + 1
         val day = cal.get(Calendar.DAY_OF_MONTH)
 
-        val id = vehicleId(context)
+        val id = vehicleIdOverride ?: vehicleId(context)
         val existing = CarDatabase.getDatabase(context).dailyDriveLogDao().getForDay(id, year, month, day)
         val (_, dayEndMs) = dayRange(year, month, day)
         if (existing != null && existing.generatedAt > dayEndMs) return // already cut

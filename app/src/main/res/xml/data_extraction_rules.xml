@@ -3,8 +3,8 @@
   Backup / device-transfer rules (Android 12+ / API 31+). With
   android:allowBackup="true", everything is backed up unless excluded here.
 
-  companion_profile.xml holds all credential material - the BYO Gemini API key,
-  Mapbox token, and Shelly Cloud auth_key (each stored KeyVault-encrypted, but
+  companion_profile.xml holds all credential material - the BYO Gemini API key
+  and the Shelly Cloud auth_key (each stored KeyVault-encrypted, but
   with a plaintext fallback slot used when the device's Keystore is broken)
   plus the spend-gate passphrase hash. We exclude that whole prefs file from
   both cloud backup and
@@ -16,7 +16,7 @@
   persona-restore is ever wanted, split credentials into their own prefs file
   and exclude only that.
 
-  Everything else (settings, nav preference, OBD registry, logbook DB) still
+  Everything else (settings, OBD registry, logbook DB) still
   backs up normally.
 -->
 <data-extraction-rules>

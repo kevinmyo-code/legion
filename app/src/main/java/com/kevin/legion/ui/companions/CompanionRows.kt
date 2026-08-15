@@ -97,7 +97,11 @@ fun CompanionRow(
         // who taps a disabled DELETE at least learns why, instead of silently
         // wondering where the button went.
         TextButton(onClick = onDelete, enabled = canDelete) {
-            Text("DELETE", style = LegionType.stamp, color = if (canDelete) sem.quarantined else sem.ghost)
+            // DESTRUCTIVE (ticket 13 re-home, ticket 04 answer §4): neutral ink until a confirming
+            // step, never a standing alarm colour. [DeleteCompanionDialog] is the actual point of
+            // no return and does not currently spend chrome on its own confirm button - that is
+            // outside this call site's scope, noted for whoever next touches that dialog.
+            Text("DELETE", style = LegionType.stamp, color = if (canDelete) MaterialTheme.colorScheme.onSurface else sem.ghost)
         }
     }
 }

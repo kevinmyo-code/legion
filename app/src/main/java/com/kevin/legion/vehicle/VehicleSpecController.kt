@@ -12,20 +12,31 @@ import com.kevin.legion.data.local.VehicleSpec
  */
 object VehicleSpecController {
 
-    /** The stored encyclopedia row for the active car, or null if none yet. */
-    suspend fun current(context: Context): VehicleSpec? {
-        val id = VehicleController.currentVehicle(context).obdMac
+    /**
+     * The stored encyclopedia row for the active car, or null if none yet.
+     * [vehicleId] is the fleet-wide-voice override (ticket 01, "category B"
+     * stored-data tool) - null means the active car, unchanged.
+     */
+    suspend fun current(context: Context, vehicleId: String? = null): VehicleSpec? {
+        val id = VehicleController.vehicleFor(context, vehicleId).obdMac
         return CarDatabase.getDatabase(context).vehicleSpecDao().get(id)
     }
 
     /**
      * Decodes [vin] and saves the factory-spec fields for the active car, keeping
      * any manual paint/notes already entered. Returns true if specs were decoded
-     * and saved. (Decode is vPIC; partial/empty on some imports.)
+     * and saved. (Decode is vPIC; partial/empty on some imports.) [vehicleId]
+     * override (ticket 01) - null means the active car. In practice always
+     * null today: `lookup_vin` reads the OBD port directly (a live-hardware
+     * read, the same physical-reality constraint as CLAUDE.md-ticket-01 §0's
+     * "category A" tools), so it is never called with a named car - see
+     * `LiveToolbox.lookupVin`'s doc for why that tool takes no `vehicle`
+     * argument despite ticket 01's own §3 build spec listing it under
+     * "category B".
      */
-    suspend fun refreshFromVin(context: Context, vin: String): Boolean {
+    suspend fun refreshFromVin(context: Context, vin: String, vehicleId: String? = null): Boolean {
         val specs = VinDecoder.decodeSpecs(vin) ?: return false
-        val id = VehicleController.currentVehicle(context).obdMac
+        val id = VehicleController.vehicleFor(context, vehicleId).obdMac
         val dao = CarDatabase.getDatabase(context).vehicleSpecDao()
         val existing = dao.get(id)
         dao.upsert(
@@ -63,9 +74,15 @@ object VehicleSpecController {
         return refreshFromVin(context, vin)
     }
 
-    /** Saves the driver-entered fields, preserving the decoded ones (creates the row if needed). */
-    suspend fun saveManual(context: Context, paintColor: String, paintCode: String, buildNotes: String) {
-        val id = VehicleController.currentVehicle(context).obdMac
+    /**
+     * Saves the driver-entered fields, preserving the decoded ones (creates
+     * the row if needed). [vehicleId] override (ticket 01) - null means the
+     * active car; not currently exercised by any Live tool (this is a
+     * settings-form write, not one of ticket 01's 16 stored-data tools),
+     * added for the controller-threading consistency the ticket's §2 asks for.
+     */
+    suspend fun saveManual(context: Context, paintColor: String, paintCode: String, buildNotes: String, vehicleId: String? = null) {
+        val id = VehicleController.vehicleFor(context, vehicleId).obdMac
         val dao = CarDatabase.getDatabase(context).vehicleSpecDao()
         val existing = dao.get(id) ?: VehicleSpec(vehicleId = id)
         dao.upsert(
@@ -77,9 +94,13 @@ object VehicleSpecController {
         )
     }
 
-    /** Live recall lookup for the active car (year/make/model). Empty if none/unknown. */
-    suspend fun recalls(context: Context): List<VinDecoder.Recall> {
-        val v = VehicleController.currentVehicle(context)
+    /**
+     * Live recall lookup for the active car (year/make/model). Empty if
+     * none/unknown. [vehicleId] is the fleet-wide-voice override (ticket 01,
+     * "category B" stored-data tool) - null means the active car, unchanged.
+     */
+    suspend fun recalls(context: Context, vehicleId: String? = null): List<VinDecoder.Recall> {
+        val v = VehicleController.vehicleFor(context, vehicleId)
         return VinDecoder.fetchRecalls(v.year, v.make, v.model)
     }
 }

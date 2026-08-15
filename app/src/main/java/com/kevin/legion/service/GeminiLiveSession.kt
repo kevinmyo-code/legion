@@ -8,17 +8,21 @@ import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
+import android.media.AudioRecordingConfiguration
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.ai.CrisisDetector
 import com.kevin.legion.ai.GeminiKeyProvider
+import com.kevin.legion.car.CarProbeLog
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.EpisodicTurn
 import com.kevin.legion.media.MusicController
@@ -31,6 +35,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -162,6 +168,38 @@ class GeminiLiveSession(
     private var micJob: Job? = null
     private var idleJob: Job? = null
     private var audioTrack: AudioTrack? = null
+
+    /**
+     * Guards every transition of [audioTrack]'s lifecycle - create, play, flush, release.
+     *
+     * **Crash fix, 2026-08-11** (`IllegalStateException: Unable to retrieve AudioTrack pointer for
+     * start()`, reproduced on-device by tapping tap-to-talk while Zero was mid-sentence).
+     * [closeSession] cancels [audioPlaybackJob] and then calls [releaseTrack] - but
+     * [playAudio] is a plain blocking function, so cancelling the job that runs it does not
+     * interrupt it mid-body. That left this interleave wide open:
+     *
+     * 1. the playback consumer is inside [playAudio] and has just read a live track out of
+     *    [ensureTrack];
+     * 2. the tap runs [closeSession] on another thread, which releases that very track;
+     * 3. the consumer calls `play()` on the now-released track and the process dies.
+     *
+     * `@Volatile` on the field would not have helped: the bug is a torn read-then-use across two
+     * threads, not a stale value. Every section that touches the track is short and non-blocking
+     * and runs under this lock; the one genuinely blocking call ([AudioTrack.write]) deliberately
+     * stays OUTSIDE it, so a barge-in never has to wait out a full ~0.5s output buffer to tear the
+     * session down. That write is instead made safe by re-checking identity each iteration.
+     */
+    private val trackLock = Any()
+
+    /**
+     * True once [releaseTrack] has run, until a new session explicitly reopens playback.
+     *
+     * Without this, a playback coroutine still draining [audioQueue] after teardown would call
+     * [ensureTrack], find `audioTrack` null, and helpfully build a BRAND NEW track for a session
+     * that is already closed - speaking the tail of a reply the driver interrupted, out of a
+     * session that no longer exists, holding audio focus nothing will ever release.
+     */
+    @Volatile private var playbackClosed = false
     // Frames handed to [audioTrack] since it was created or last flushed, compared
     // against its playback head to know when Zero's speech has really finished
     // (see awaitPlaybackDrained). Volatile: written on the playback consumer,
@@ -221,6 +259,21 @@ class GeminiLiveSession(
     // buffer (e.g. audio a backgrounded device replayed). See openMicForUser.
     @Volatile private var flushCapture = false
 
+    // Ticket 15 (.scratch/android-auto/issues/15-the-live-session-can-be-silenced.md):
+    // the platform can silence our capture with NO exception and NO AudioRecord state
+    // change - a privacy-sensitive capture elsewhere (the Android Auto Assistant is the
+    // motivating case) wins arbitration and AudioRecord.read() keeps returning zeroes
+    // while the record stays ACTIVE. There is no way to detect this from AudioRecord
+    // itself; the only signal is AudioManager.AudioRecordingCallback +
+    // AudioRecordingConfiguration.isClientSilenced() (API 29+), registered/unregistered
+    // around each capture in micLoop (see recordingCallback below). Exposed here so any
+    // UI surface (the car probe screen, a future in-app indicator) can say "I am being
+    // silenced" instead of quietly appearing to listen. False on API < 29, where the
+    // platform gives no way to know either way - that is a real gap, not a claim of
+    // safety, and micLoop logs it once to CarProbeLog so a field session says so.
+    private val _isSilenced = MutableStateFlow(false)
+    val isSilenced: StateFlow<Boolean> = _isSilenced
+
     // Bytes of mic audio forwarded to Gemini since the current turn began.
     // Logged on turnComplete as a capture-health trace: a turn that forwards ~0
     // bytes means Gemini got no new audio. A healthy turn forwards tens of KB.
@@ -237,6 +290,15 @@ class GeminiLiveSession(
     // partial transcript delta, and the transcript only grows within a turn, so a
     // match on one delta matches on every delta after it. Reset on turnComplete.
     @Volatile private var crisisFiredThisTurn = false
+
+    // Ticket 15 (google-account-integration), ticket 07's read-through rule: a mail tool
+    // called anywhere in this turn means the driver's transcript AND whatever Alfred says in
+    // reply (which may itself be a subject line read out loud) must not land in the episodic
+    // log - see captureEpisodicTurn's doc comment. Set from handleToolCall the moment a
+    // functionCall named in LiveToolbox's mail-tool set arrives (before dispatch even runs,
+    // since we only need to know a mail tool was ASKED for, not what it returned), cleared on
+    // turnComplete alongside every other per-turn accumulator.
+    @Volatile private var mailToolCalledThisTurn = false
 
     // Zero's own speech this turn, from outputAudioTranscription - only requested
     // when the debug subtitle toggle is on, and emitted as LiveEvent.Subtitle.
@@ -306,6 +368,9 @@ class GeminiLiveSession(
         if (!prewarmOnly) ConversationState.setBusy(true)
         // Build the playback track up front so the first audio chunk plays without
         // paying AudioTrack setup latency mid-reply (pre-warming the output path).
+        // Undo any previous teardown's latch before the consumer starts pulling chunks, then
+        // pre-warm the output path so the first chunk plays without AudioTrack setup latency.
+        reopenPlayback()
         io.launch { ensureTrack() }
         // Consumer for audioQueue - see its declaration for why playback runs on
         // its own coroutine instead of inline in the WebSocket callback.
@@ -612,10 +677,21 @@ class GeminiLiveSession(
      * [episodicSessionId] hasn't been minted yet (start() never ran - shouldn't
      * happen mid-turnComplete, but this is transcript capture, not the
      * conversation itself, so it fails silent rather than throwing).
+     *
+     * **Also skips the WHOLE turn when [mailToolCalledThisTurn] is set (ticket 15, ticket 07's
+     * read-through rule).** Not just the companion half - the driver's own line can be "what's
+     * unread in my inbox" and Alfred's reply can literally be a subject line he just read out
+     * loud, and either half landing here is a mail-shaped fact leaving the device the moment
+     * sync's whole-database backup next runs (commit 7c3822f, 2026-08-12). Dropping the entire
+     * turn rather than trying to redact just the mail-bearing half is deliberate: there is no
+     * reliable way to tell "the reply that used the mail tool" apart from "the reply that also
+     * mentioned something else" from plain transcript text, and the guarantee this rule exists
+     * to give is that mail was never stored - not that something remembered to scrub it.
      */
     private fun captureEpisodicTurn(driverText: String, companionText: String) {
         val sessionId = episodicSessionId
         if (sessionId.isBlank() || driverText.isBlank()) return
+        if (mailToolCalledThisTurn) return
         io.launch {
             try {
                 val dao = CarDatabase.getDatabase(appContext).episodicTurnDao()
@@ -726,6 +802,7 @@ class GeminiLiveSession(
                 MidnightEvents.silentMicTurn(heard, bytesThisTurn)
             }
             captureEpisodicTurn(heard, companionTurnText.toString().trim())
+            mailToolCalledThisTurn = false
             userTurnText.setLength(0)
             companionTurnText.setLength(0)
             emit(LiveEvent.TurnComplete)
@@ -778,9 +855,15 @@ class GeminiLiveSession(
         val calls = toolCall.optJSONArray("functionCalls") ?: return
         for (i in 0 until calls.length()) {
             val call = calls.optJSONObject(i) ?: continue
+            val name = call.optString("name")
+            // Ticket 15: flag the whole turn as mail-shaped the moment the ASK arrives, not
+            // once dispatch returns - captureEpisodicTurn (below) checks this on turnComplete,
+            // which can land before the owner's own dispatch/response round trip finishes in
+            // some orderings, and the exclusion must hold regardless of that race.
+            if (isEpisodicExcludedTool(name)) mailToolCalledThisTurn = true
             emit(LiveEvent.ToolCall(
                 id = call.optString("id"),
-                name = call.optString("name"),
+                name = name,
                 args = call.optJSONObject("args") ?: JSONObject(),
             ))
         }
@@ -822,18 +905,85 @@ class GeminiLiveSession(
         val minBuf = AudioRecord.getMinBufferSize(
             INPUT_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
         )
-        val record = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
-            INPUT_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            maxOf(minBuf, INPUT_RATE) // >= ~0.5s headroom
-        )
+        // Ticket 15 (.scratch/android-auto/issues/15-the-live-session-can-be-silenced.md):
+        // VOICE_RECOGNITION (the old source) is not on Android's privacy-sensitive list,
+        // so when another app opens a privacy-sensitive capture - the Android Auto
+        // Assistant on "Hey Google" is the motivating case - the platform silences ours
+        // with no exception and no callback of its own; see the class doc and the ticket
+        // for the citation trail. VOICE_COMMUNICATION *is* privacy-sensitive, so an
+        // ordinary Assistant capture cannot preempt ours once we're already running, and
+        // it also carries platform echo cancellation (the ticket's research Q4), which
+        // the car surface wants anyway since Zero speaks through the car's own speakers
+        // while still listening. setPrivacySensitive(true) (API 30+) is the
+        // belt-and-braces version of the same guarantee, stated explicitly rather than
+        // inferred from the source constant - AudioRecord.Builder is used instead of the
+        // legacy constructor specifically so this call has somewhere to attach.
+        //
+        // This is a real behavioural change to the core voice path, not a car-only one:
+        // every phone session goes through this same micLoop. Kept surgical - sample
+        // rate/channel/format are unchanged (still INPUT_RATE/CHANNEL_IN_MONO/
+        // ENCODING_PCM_16BIT), only the source and the privacy flag move - but that is a
+        // traced-safe claim about what changed, not a tested-safe claim about how the
+        // phone call path behaves with it; unverified until a real session runs.
+        val format = AudioFormat.Builder()
+            .setSampleRate(INPUT_RATE)
+            .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+            .build()
+        val recordBuilder = AudioRecord.Builder()
+            .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+            .setAudioFormat(format)
+            .setBufferSizeInBytes(maxOf(minBuf, INPUT_RATE)) // >= ~0.5s headroom
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            recordBuilder.setPrivacySensitive(true)
+        }
+        val record = recordBuilder.build()
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             Log.w(TAG, "AudioRecord init failed")
             record.release()
             closeSession("microphone unavailable")
             return
+        }
+        CarProbeLog.log(
+            "MIC_SOURCE",
+            "capture opened: source=VOICE_COMMUNICATION privacySensitive=" +
+                "${Build.VERSION.SDK_INT >= Build.VERSION_CODES.R} " +
+                "sessionId=${record.audioSessionId} state=${record.state}",
+        )
+        Log.d(TAG, "AudioRecord opened: source=VOICE_COMMUNICATION sessionId=${record.audioSessionId}")
+
+        // Ticket 15: the platform silences a losing capture with no exception and
+        // no AudioRecord state change, so the only way to know it happened is to
+        // ask AudioManager directly. isClientSilenced() needs API 29; below that
+        // there is no equivalent signal at all, and _isSilenced simply stays
+        // false (a real gap, logged once below rather than pretended away).
+        var recordingCallback: AudioManager.AudioRecordingCallback? = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val callback = object : AudioManager.AudioRecordingCallback() {
+                override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>) {
+                    val ours = configs.firstOrNull { it.clientAudioSessionId == record.audioSessionId }
+                    val silenced = ours?.isClientSilenced ?: false
+                    if (silenced != _isSilenced.value) {
+                        _isSilenced.value = silenced
+                        val message = if (silenced) {
+                            "capture silenced by platform arbitration (another privacy-sensitive " +
+                                "capture is active, sessionId=${record.audioSessionId})"
+                        } else {
+                            "capture no longer silenced (sessionId=${record.audioSessionId})"
+                        }
+                        CarProbeLog.log("MIC_SILENCED", message)
+                        Log.w(TAG, message)
+                    }
+                }
+            }
+            recordingCallback = callback
+            audioManager.registerAudioRecordingCallback(callback, Handler(Looper.getMainLooper()))
+        } else {
+            CarProbeLog.log(
+                "MIC_SILENCED",
+                "isClientSilenced() needs API 29 (device is ${Build.VERSION.SDK_INT}); " +
+                    "silencing cannot be detected on this device",
+            )
         }
 
         // Cancel the device's own speaker output (Maps turn-by-turn guidance,
@@ -921,6 +1071,8 @@ class GeminiLiveSession(
         } catch (e: Exception) {
             Log.w(TAG, "Mic loop error: ${e.message}")
         } finally {
+            recordingCallback?.let { audioManager.unregisterAudioRecordingCallback(it) }
+            _isSilenced.value = false
             try {
                 if (recording) record.stop()
             } catch (_: Exception) {
@@ -952,8 +1104,21 @@ class GeminiLiveSession(
 
     // --- Audio playback --------------------------------------------------
 
-    private fun ensureTrack(): AudioTrack {
+    /**
+     * The playback track, building it on first use. **Null once playback is closed** - see
+     * [playbackClosed] for why a post-teardown caller must never be handed a fresh track.
+     */
+    private fun ensureTrack(): AudioTrack? = synchronized(trackLock) { ensureTrackLocked() }
+
+    /** Must be called holding [trackLock]. */
+    private fun ensureTrackLocked(): AudioTrack? {
+        if (playbackClosed) return null
         audioTrack?.let { return it }
+        return buildTrackLocked()
+    }
+
+    /** Must be called holding [trackLock]. */
+    private fun buildTrackLocked(): AudioTrack {
         val minBuf = AudioTrack.getMinBufferSize(
             OUTPUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT
         )
@@ -991,11 +1156,32 @@ class GeminiLiveSession(
     }
 
     private fun playAudio(data: ByteArray) {
-        val track = ensureTrack()
-        if (track.playState != AudioTrack.PLAYSTATE_PLAYING) track.play()
+        // Acquire-and-start under the lock, as one step. Reading the track and then starting it as
+        // two separate steps is precisely the crash this fixes - see [trackLock].
+        val track = synchronized(trackLock) {
+            val t = ensureTrackLocked() ?: return
+            try {
+                if (t.playState != AudioTrack.PLAYSTATE_PLAYING) t.play()
+            } catch (_: IllegalStateException) {
+                // Lost the race anyway (released between the null check and play()). Dropping the
+                // chunk is correct: the only reason this track is gone is that the driver
+                // interrupted or the session closed, and both mean stop talking.
+                return
+            }
+            t
+        }
         var offset = 0
         while (offset < data.size) {
-            val written = track.write(data, offset, data.size - offset)
+            // write() blocks when the output buffer is full, so it stays outside the lock (a
+            // barge-in must not wait out ~0.5s of buffered speech). Re-check identity each pass
+            // instead: if the track was released or swapped while we were blocked, this chunk
+            // belongs to a turn that no longer exists and must not be written to its replacement.
+            if (audioTrack !== track) break
+            val written = try {
+                track.write(data, offset, data.size - offset)
+            } catch (_: IllegalStateException) {
+                break // released mid-write - same barge-in/teardown case as above
+            }
             if (written <= 0) break // paused/flushed (barge-in) or error
             offset += written
         }
@@ -1018,16 +1204,18 @@ class GeminiLiveSession(
         // already in its hardware buffer - otherwise stale queued audio could
         // still play out after the "interruption" once the consumer catches up.
         while (audioQueue.tryReceive().isSuccess) { /* drain */ }
-        audioTrack?.let { track ->
-            try {
-                track.pause()
-                track.flush()
-                track.play()
-                // flush() resets the playback head to 0, so the frame counter it's
-                // compared against has to reset with it or awaitPlaybackDrained
-                // would wait for frames that will never play.
-                framesWritten = 0
-            } catch (_: Exception) {
+        synchronized(trackLock) {
+            audioTrack?.let { track ->
+                try {
+                    track.pause()
+                    track.flush()
+                    track.play()
+                    // flush() resets the playback head to 0, so the frame counter it's
+                    // compared against has to reset with it or awaitPlaybackDrained
+                    // would wait for frames that will never play.
+                    framesWritten = 0
+                } catch (_: Exception) {
+                }
             }
         }
     }
@@ -1056,11 +1244,22 @@ class GeminiLiveSession(
     private suspend fun awaitPlaybackDrained() {
         val deadline = System.currentTimeMillis() + PLAYBACK_DRAIN_TIMEOUT_MS
         while (System.currentTimeMillis() < deadline) {
-            val track = audioTrack ?: break
-            if (track.playState != AudioTrack.PLAYSTATE_PLAYING) break
-            // Head position is frames since play()/flush(); mask so a wrap past
-            // Int.MAX_VALUE reads as a large positive rather than negative.
-            val head = track.playbackHeadPosition.toLong() and 0xFFFF_FFFFL
+            // Read the head under the lock (2026-08-11, same fix as [playAudio]): this loop runs on
+            // the mic coroutine while teardown can release the track from another thread, so
+            // reading `audioTrack` and then querying it as two steps is the same torn
+            // read-then-use that crashed playback. Returning null here breaks the wait, which is
+            // the right answer - a released track has nothing left to drain.
+            val head = synchronized(trackLock) {
+                val track = audioTrack ?: return@synchronized null
+                if (track.playState != AudioTrack.PLAYSTATE_PLAYING) return@synchronized null
+                // Head position is frames since play()/flush(); mask so a wrap past
+                // Int.MAX_VALUE reads as a large positive rather than negative.
+                try {
+                    track.playbackHeadPosition.toLong() and 0xFFFF_FFFFL
+                } catch (_: IllegalStateException) {
+                    null
+                }
+            } ?: break
             if (head >= framesWritten) break
             delay(PLAYBACK_DRAIN_POLL_MS)
         }
@@ -1069,7 +1268,10 @@ class GeminiLiveSession(
         delay(MIC_REOPEN_SETTLE_MS)
     }
 
-    private fun releaseTrack() {
+    private fun releaseTrack() = synchronized(trackLock) {
+        // Set the flag BEFORE releasing: a playback coroutine that is between chunks must see
+        // "closed" rather than a null track it would rebuild for a dead session ([playbackClosed]).
+        playbackClosed = true
         audioTrack?.let { track ->
             try {
                 track.pause()
@@ -1079,6 +1281,18 @@ class GeminiLiveSession(
             }
         }
         audioTrack = null
+    }
+
+    /**
+     * Reopens playback for a new session, undoing [releaseTrack]'s latch.
+     *
+     * Deliberately NOT folded into [ensureTrack]: if reopening were a side effect of asking for a
+     * track, a stale coroutine from the previous session could reopen playback simply by draining
+     * one more queued chunk, which is the exact thing [playbackClosed] exists to prevent. Only
+     * starting a session may clear it.
+     */
+    private fun reopenPlayback() = synchronized(trackLock) {
+        playbackClosed = false
     }
 
     // --- Idle auto-close -------------------------------------------------
@@ -1278,6 +1492,23 @@ class GeminiLiveSession(
 
     companion object {
         private const val TAG = "GeminiLiveSession"
+
+        /**
+         * Pure decision behind [mailToolCalledThisTurn]'s skip inside [captureEpisodicTurn]
+         * (ticket 15, google-account-integration): true when [toolName] is one this repo has
+         * decided must never let its own turn reach [com.kevin.legion.data.local.EpisodicTurn]/
+         * [com.kevin.legion.data.local.CompanionMemory] (ticket 07's read-through rule).
+         *
+         * Pulled out to its own top-level-testable function, not inlined into [handleToolCall],
+         * **specifically so it is a plain JVM unit test target.** This class needs a live
+         * [Context], a real [OkHttpClient] websocket, [AudioTrack], and Room to instantiate at
+         * all, so nothing about the class itself can be exercised from a fast JVM test - this
+         * function is deliberately the one seam that can, and it is the exact production
+         * decision [handleToolCall] uses, not a re-implementation a test could pass while the
+         * real path drifts.
+         */
+        internal fun isEpisodicExcludedTool(toolName: String): Boolean =
+            toolName in LiveToolbox.EPISODIC_EXCLUDED_TOOLS
 
         // Live caption tail length (see captionTail). Sized for the caption
         // boxes' ~2-3 line, ~13-15sp, ~460dp-max-width rendering - long enough

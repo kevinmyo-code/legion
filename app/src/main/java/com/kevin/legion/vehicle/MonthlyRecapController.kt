@@ -42,8 +42,14 @@ object MonthlyRecapController {
     // between two cars used to make them the same vehicle. See ActiveVehicle.
     private fun vehicleId(context: Context): String = ActiveVehicle.current(context)
 
-    /** Generates last month's recap if it doesn't already exist and we're still in the grace window. */
-    suspend fun generateIfDue(context: Context) {
+    /**
+     * Generates last month's recap if it doesn't already exist and we're
+     * still in the grace window. [vehicleId] is the fleet-wide-voice override
+     * (ticket 01 §2's literal controller-threading instruction) - null means
+     * the active car, unchanged. Not currently exercised: called from the
+     * service's own periodic loop, never from a Live tool.
+     */
+    suspend fun generateIfDue(context: Context, vehicleIdOverride: String? = null) {
         val now = Calendar.getInstance()
         if (now.get(Calendar.DAY_OF_MONTH) > GRACE_DAYS) return
 
@@ -51,7 +57,7 @@ object MonthlyRecapController {
         val year = cal.get(Calendar.YEAR)
         val month = cal.get(Calendar.MONTH) + 1 // Calendar months are 0-based
 
-        val id = vehicleId(context)
+        val id = vehicleIdOverride ?: vehicleId(context)
         val dao = CarDatabase.getDatabase(context).monthlyRecapDao()
         if (dao.getForMonth(id, year, month) != null) return
 

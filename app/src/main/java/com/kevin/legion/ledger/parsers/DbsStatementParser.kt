@@ -207,7 +207,18 @@ object DbsStatementParser {
                     continue
                 }
 
+                // The terminator checks above (`Total Balance Carried
+                // Forward:`, `Balance Carried Forward`, `Balance Brought
+                // Forward`) all `continue` BEFORE this point and reset
+                // `currentTxnIndex = -1` - that is the structural guard: a
+                // real section/page boundary can never fall through to the
+                // continuation accumulator below it. What it does NOT catch
+                // is a stray line that sits INSIDE a transaction's
+                // continuation range without matching any of those markers -
+                // see [isArtifactLine]'s doc for the real case that slipped
+                // through.
                 if (currentTxnIndex >= 0) {
+                    if (isArtifactLine(text)) continue
                     val current = transactions[currentTxnIndex]
                     val updated = current.copy(description = "${current.description} $text".trim())
                     transactions[currentTxnIndex] = updated
@@ -225,6 +236,30 @@ object DbsStatementParser {
         }
 
         return transactions
+    }
+
+    /**
+     * True for a PDF-artifact line: every whitespace-separated token on it is
+     * exactly one character (`"4 4 4 4 4"`, `"S"`, `"1 4 8 A"`). Found on
+     * Kevin's real consolidated DBS/POSB statement - PdfBox-Android emits
+     * rotated/sidebar watermark text as its own line, and when one of those
+     * lines happens to land between a transaction row and the next section
+     * marker, the description-continuation accumulator has no other way to
+     * tell it apart from a real multi-line description. A legitimate DBS
+     * description continuation (reference numbers, approval codes, payee
+     * names) is never all one-character tokens, so this is a safe
+     * discriminator without touching the reconciliation arithmetic at all.
+     *
+     * Deliberately narrow: it skips ONLY the offending line, not the rest of
+     * the accumulation range, so a genuine continuation line sandwiched on
+     * the far side of an artifact line is still captured (the real
+     * statement's watermark could in principle land mid-description on a
+     * future page, not just right before the totals line where this one
+     * happened to fall - "luck, not safety" per the bug report).
+     */
+    private fun isArtifactLine(text: String): Boolean {
+        val tokens = text.trim().split(Regex("\\s+"))
+        return tokens.isNotEmpty() && tokens.all { it.length == 1 }
     }
 
     /** Groups words into lines by near-equal `top` (y), sorted top-to-bottom then left-to-right. */

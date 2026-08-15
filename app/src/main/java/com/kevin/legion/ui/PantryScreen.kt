@@ -33,10 +33,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.data.PantryPhotoStore
 import com.kevin.legion.data.local.LedgerCurrency
+import com.kevin.legion.data.local.PantryCurrencyTotal
 import com.kevin.legion.data.local.PantryLineItem
 import com.kevin.legion.data.local.PantryReceipt
+import com.kevin.legion.data.local.PantryReceiptSummary
 import com.kevin.legion.pantry.PantryController
+import com.kevin.legion.ui.pantry.PantryOpsStatusRow
 import com.kevin.legion.ui.pantry.PantryReceiptSection
+import com.kevin.legion.ui.pantry.PantrySpendPanel
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -55,10 +59,20 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
  * (talks to [PantryController], owns the one side effect - the load),
  * [PantryContent] is plain UI state plus callbacks and is what the
  * `@Preview`s below exercise.
+ *
+ * Reskinned under cyberdeck-ui ticket 19 (ticket 10 answer #1: "inherit the panels, skip the
+ * charts"): [PantryOpsStatusRow] reads [PantryUiState.receipts] - already loaded, no new query -
+ * and every receipt below renders through [PantryReceiptSection]'s own [com.kevin.legion.ui.common.DeckPane].
+ * [onOpenImport] is unchanged - the only tap this screen offers, same as pre-ticket-19.
  */
 data class PantryUiState(
     val loading: Boolean = true,
     val receipts: List<Pair<PantryReceipt, List<PantryLineItem>>> = emptyList(),
+    // Quant-viz ticket 07: the SPEND panel's own reads, batched into this same load rather than a
+    // second LaunchedEffect - [currencyTotals] backs the per-currency rows, [allReceiptSummaries]
+    // (deliberately NOT [receipts], which is capped) backs the monthly bar chart.
+    val currencyTotals: List<PantryCurrencyTotal> = emptyList(),
+    val allReceiptSummaries: List<PantryReceiptSummary> = emptyList(),
 )
 
 @Composable
@@ -70,6 +84,8 @@ fun PantryScreen(onOpenImport: () -> Unit) {
         state = PantryUiState(
             loading = false,
             receipts = PantryController.recentReceiptsWithItems(context),
+            currencyTotals = PantryController.totalSpendCentsByCurrency(context),
+            allReceiptSummaries = PantryController.allReceiptSummaries(context),
         )
     }
 
@@ -91,6 +107,13 @@ fun PantryContent(state: PantryUiState, onOpenImport: () -> Unit) {
                 TextButton(onClick = onOpenImport) {
                     Text("IMPORT", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
                 }
+            }
+            PantryOpsStatusRow(receiptCount = if (state.loading) null else state.receipts.size)
+            if (!state.loading) {
+                PantrySpendPanel(
+                    currencyTotals = state.currencyTotals,
+                    allReceipts = state.allReceiptSummaries,
+                )
             }
 
             when {

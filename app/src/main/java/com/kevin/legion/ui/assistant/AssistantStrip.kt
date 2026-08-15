@@ -163,7 +163,9 @@ private const val NOTICE_DISPLAY_MS = 4_000L
 @Composable
 private fun AssistantStripContent(state: AssistantStripResolver.State, onTap: () -> Unit) {
     val sem = LocalLegionSemantics.current
-    val labelColor = if (state.micBlocked) sem.quarantined else MaterialTheme.colorScheme.onSurface
+    // ADVISORY (mission-control ticket 13 re-home): a blocked capability, not a failed gate or
+    // an active fault - amber, not chrome. See ticket 04's answer, section 1.
+    val labelColor = if (state.micBlocked) sem.estimated else MaterialTheme.colorScheme.onSurface
 
     Surface(
         modifier = Modifier
@@ -198,8 +200,9 @@ private fun AssistantStripContent(state: AssistantStripResolver.State, onTap: ()
 @Composable
 private fun PhaseDot(active: Boolean, blocked: Boolean) {
     val sem = LocalLegionSemantics.current
+    // ADVISORY, same re-home as [labelColor] above - mic-blocked is a blocked capability.
     val color = when {
-        blocked -> sem.quarantined
+        blocked -> sem.estimated
         else -> MaterialTheme.colorScheme.primary
     }
     // The transition is CONSTRUCTED conditionally, not merely read

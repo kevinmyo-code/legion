@@ -98,10 +98,11 @@ private fun AccountFolderRow(
                 Text(
                     mappedAccountId ?: "Not mapped",
                     style = LegionType.stamp,
-                    // Unmapped reads as a flagged state (sem.quarantined) -
-                    // a CSV in this folder will quarantine on import until
-                    // this is set, per StatementDispatcher's UnmappedAccountException.
-                    color = if (mappedAccountId == null) sem.quarantined else sem.faint,
+                    // Unmapped reads as ADVISORY, not ALARM (ticket 13 re-home): it is a blocked
+                    // capability today - a CSV in this folder will quarantine on import until this
+                    // is set, per StatementDispatcher's UnmappedAccountException - but the mapping
+                    // itself has not failed anything yet.
+                    color = if (mappedAccountId == null) sem.estimated else sem.faint,
                 )
             }
             if (mappedAccountId != null) {

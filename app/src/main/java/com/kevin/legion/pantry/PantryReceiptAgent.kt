@@ -5,6 +5,7 @@ import com.kevin.legion.ai.SubAgent
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.PantryLineItem
 import com.kevin.legion.data.local.PantryReceipt
+import com.kevin.legion.ledger.formatCents
 import com.kevin.legion.ledger.parsers.parseMoneyCents
 import org.json.JSONObject
 
@@ -14,18 +15,54 @@ import org.json.JSONObject
  * [com.kevin.legion.ledger.LedgerStatementAgent] this is the PRIMARY path, not
  * a fallback - there is no deterministic layout for a photographed receipt the
  * way bank statements have one. Same reconciliation discipline though:
- * extracted line totals must sum to the receipt's own printed total before
- * anything is accepted; a mismatch quarantines rather than silently writing a
- * wrong number. Per-item macro estimates are never reconciled against
- * anything - there's nothing on a receipt to check them against - and must
- * always be surfaced as estimates, never fact (CLAUDE.md §9.1).
+ * extracted line totals must reconcile against the receipt's own printed
+ * figures before anything is accepted; a mismatch quarantines rather than
+ * silently writing a wrong number. Per-item macro estimates are never
+ * reconciled against anything - there's nothing on a receipt to check them
+ * against - and must always be surfaced as estimates, never fact (CLAUDE.md §9.1).
+ *
+ * **The gate reconciles against SUBTOTAL, not the grand total (fixed
+ * 2026-08-07).** It originally asked only for `total` and checked
+ * `sum(items) == total`, which is unsatisfiable on any receipt that prints
+ * sales tax as a separate line - i.e. every US receipt. Kevin's real Walmart
+ * receipt quarantined at 12084 vs 12886 cents, the 802-cent gap being Texas
+ * sales tax. The failure was invisible for four sessions because all eight
+ * unit tests fed canned JSON whose items happened to sum to the total, so the
+ * fixtures proved the parser matched its own spec rather than matching a
+ * till (`memory/library/lessons.md` L14, same shape as the card parser
+ * dropping four interest rows).
+ *
+ * The fix is a STRONGER gate, not a relaxed one: two anchors instead of one,
+ * both read off the receipt's own printed figures.
+ * 1. `sum(items) == subtotal`
+ * 2. `subtotal + tax + otherCharges == total`
+ *
+ * Splitting them is what makes a quarantine message diagnostic - a dropped
+ * item fails anchor 1 and a misread tax line fails anchor 2, and the driver
+ * is told which. When the receipt prints no subtotal at all the two collapse
+ * into the single `sum(items) + tax + otherCharges == total`, which is still
+ * a real anchor. **A missing figure never loosens the check**: `tax` absent
+ * means zero is added, so a receipt that really did charge tax fails loudly
+ * against its own total rather than being waved through (CLAUDE.md §4 rule 6
+ * - a check satisfiable by an omission is not a gate).
  */
 object PantryReceiptAgent {
     private const val TAG = "PantryReceiptAgent"
 
+    /**
+     * Thrown when a money field is PRESENT on the extraction but unparseable.
+     * Deliberately distinct from the field being absent: absent means the
+     * receipt didn't print it and the gate adapts, whereas present-but-garbage
+     * means the model saw something it couldn't read, and treating that as
+     * absent would silently drop a figure the gate depends on.
+     */
+    private class UnreadableFigureException(val field: String, val token: String) : Exception()
+
     private val SYSTEM_INSTRUCTION = "You read grocery receipt photos and extract structured data. " +
-        "Never invent, round, or estimate a PRICE or the store/date/total - if a value isn't legible " +
-        "in the photo, leave it null. You may ESTIMATE per-item nutrition (calories, protein, carbs, " +
+        "Never invent, round, or estimate a PRICE or the store/date/total/subtotal/tax - if a value " +
+        "isn't legible in the photo, leave it null. Report money figures ONLY as the receipt prints " +
+        "them; never derive a subtotal by adding up the items yourself, and never derive tax by " +
+        "applying a rate. You may ESTIMATE per-item nutrition (calories, protein, carbs, " +
         "fat) from your general knowledge of the named product, since a receipt never prints those - " +
         "but never estimate money figures. You are not being asked for advice, only structured extraction."
 
@@ -34,6 +71,13 @@ object PantryReceiptAgent {
         "{\"store\": string, \"purchaseDate\": string (YYYY-MM-DD, guess from context if not printed), " +
         "\"currency\": \"SGD\" or \"USD\" (guess from store/context if not stated), " +
         "\"total\": string (the receipt's own printed grand total, exact decimal like \"45.67\"), " +
+        "\"subtotal\": string or null (the receipt's own printed subtotal BEFORE tax, exact " +
+        "decimal - null ONLY if the receipt genuinely doesn't print one; never compute it yourself), " +
+        "\"tax\": string or null (the SUM of every printed tax line, exact decimal - null ONLY if " +
+        "the receipt prints no tax line at all; never estimate or derive a tax figure), " +
+        "\"otherCharges\": string or null (the sum of any other printed charge that is neither a " +
+        "line item nor tax, such as a bag fee, bottle deposit or delivery fee; negative for a " +
+        "printed discount or coupon; null if there are none), " +
         "\"items\": [{\"name\": string, \"quantity\": number (default 1), " +
         "\"unitPrice\": string or null (exact decimal), \"totalPrice\": string (exact decimal, this " +
         "item's line total), \"caloriesKcal\": number or null (your best estimate for this item), " +
@@ -103,6 +147,41 @@ object PantryReceiptAgent {
             )
         }
 
+        // Absent is a legitimate state for all three (a receipt need not print
+        // a subtotal, and a tax-free basket prints no tax line); present but
+        // unreadable is not, and quarantines - see UnreadableFigureException.
+        val subtotalCents: Long?
+        val taxCents: Long?
+        val otherChargesCents: Long?
+        try {
+            subtotalCents = optionalMoneyCents(root, "subtotal")
+            taxCents = optionalMoneyCents(root, "tax")
+            otherChargesCents = optionalMoneyCents(root, "otherCharges")
+        } catch (e: UnreadableFigureException) {
+            return PantryIngestResult.Quarantined(
+                "Couldn't read this receipt's printed ${e.field} ('${e.token}') - couldn't verify " +
+                    "its numbers, so nothing was saved."
+            )
+        }
+
+        // A non-positive subtotal or a negative tax is not a figure any till
+        // prints; it means the extraction misread something, and letting
+        // either through would make the anchors below satisfiable by garbage.
+        // otherCharges is deliberately allowed to be negative - that's how a
+        // printed coupon or discount line arrives.
+        if (subtotalCents != null && subtotalCents <= 0L) {
+            return PantryIngestResult.Quarantined(
+                "This receipt's subtotal came back as $subtotalCents cents, which no receipt prints - " +
+                    "couldn't verify its numbers, so nothing was saved."
+            )
+        }
+        if (taxCents != null && taxCents < 0L) {
+            return PantryIngestResult.Quarantined(
+                "This receipt's tax came back negative ($taxCents cents) - couldn't verify its " +
+                    "numbers, so nothing was saved."
+            )
+        }
+
         val itemsArray = root.optJSONArray("items")
             ?: return PantryIngestResult.Quarantined("No line items found on this receipt.")
 
@@ -148,16 +227,54 @@ object PantryReceiptAgent {
             return PantryIngestResult.Quarantined("No line items found on this receipt.")
         }
 
-        // The reconciliation gate: money must sum exactly. Macro estimates are
-        // never part of this check - they're not verifiable against anything
-        // on the receipt.
-        val actualTotal = items.sumOf { it.totalPriceCents }
-        if (actualTotal != totalCents) {
-            return PantryIngestResult.Quarantined(
-                "This receipt's extracted items ($actualTotal cents) don't sum to its own printed " +
-                    "total ($totalCents cents) - couldn't verify the numbers, so nothing was saved. " +
-                    "Try a clearer photo."
-            )
+        // The reconciliation gate: money must sum exactly, against the
+        // receipt's own printed figures. Macro estimates are never part of
+        // this check - they're not verifiable against anything on the
+        // receipt. See this object's doc comment for why it reconciles
+        // against the SUBTOTAL rather than the grand total.
+        val money = { cents: Long -> "${currency.name} ${formatCents(cents)}" }
+        val itemsTotal = items.sumOf { it.totalPriceCents }
+        val taxTotal = taxCents ?: 0L
+        val otherTotal = otherChargesCents ?: 0L
+
+        if (subtotalCents != null) {
+            // Anchor 1: the items are all of, and only, what the subtotal covers.
+            if (itemsTotal != subtotalCents) {
+                val missing = subtotalCents - itemsTotal
+                return PantryIngestResult.Quarantined(
+                    "This receipt's ${items.size} extracted items come to ${money(itemsTotal)}, but it " +
+                        "prints a subtotal of ${money(subtotalCents)} - ${money(kotlin.math.abs(missing))} " +
+                        (if (missing > 0) "is missing, so an item was probably not read. " else "too much was read. ") +
+                        "Couldn't verify the numbers, so nothing was saved. Try a clearer photo."
+                )
+            }
+            // Anchor 2: subtotal, tax and any other printed charge account for
+            // the grand total with nothing left over.
+            val computed = subtotalCents + taxTotal + otherTotal
+            if (computed != totalCents) {
+                return PantryIngestResult.Quarantined(
+                    "This receipt's own figures don't tie out: a subtotal of ${money(subtotalCents)} " +
+                        "plus ${money(taxTotal)} tax" +
+                        (if (otherTotal != 0L) " plus ${money(otherTotal)} in other charges" else "") +
+                        " lands at ${money(computed)}, not the ${money(totalCents)} it prints as the " +
+                        "total. Couldn't verify the numbers, so nothing was saved. Try a clearer photo."
+                )
+            }
+        } else {
+            // No printed subtotal to split the check on, so the two anchors
+            // collapse into one. Still a real gate: the items plus every
+            // printed non-item charge must account for the total exactly.
+            val computed = itemsTotal + taxTotal + otherTotal
+            if (computed != totalCents) {
+                return PantryIngestResult.Quarantined(
+                    "This receipt's ${items.size} extracted items come to ${money(itemsTotal)}" +
+                        (if (taxTotal != 0L) " plus ${money(taxTotal)} tax" else "") +
+                        (if (otherTotal != 0L) " plus ${money(otherTotal)} in other charges" else "") +
+                        ", which lands at ${money(computed)}, not the ${money(totalCents)} it prints " +
+                        "as the total. Couldn't verify the numbers, so nothing was saved. " +
+                        "Try a clearer photo."
+                )
+            }
         }
 
         return PantryIngestResult.Success(
@@ -170,5 +287,23 @@ object PantryReceiptAgent {
             ),
             items = items,
         )
+    }
+
+    /**
+     * Reads an optional printed money field. Returns null when the key is
+     * absent, JSON-null or blank - all of which mean "the receipt didn't
+     * print this" - and throws [UnreadableFigureException] when the key IS
+     * present but doesn't parse, so an unreadable figure can never be
+     * mistaken for an absent one.
+     */
+    private fun optionalMoneyCents(root: JSONObject, field: String): Long? {
+        if (!root.has(field) || root.isNull(field)) return null
+        val token = root.optString(field).trim()
+        if (token.isBlank()) return null
+        return try {
+            parseMoneyCents(token)
+        } catch (e: Exception) {
+            throw UnreadableFigureException(field, token)
+        }
     }
 }

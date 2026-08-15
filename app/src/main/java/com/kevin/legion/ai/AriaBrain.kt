@@ -12,7 +12,7 @@ import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.media.NowPlayingController
-import com.kevin.legion.vehicle.CarTaskController
+import com.kevin.legion.notes.NotesController
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
 import kotlinx.coroutines.Dispatchers
@@ -90,7 +90,37 @@ class AriaBrain private constructor(context: Context) {
         "Only if the driver asks to set up, fill in, or go through their maintenance schedule, walk " +
         "its unknown items one at a time in a multi-turn conversation, calling log_past_service for " +
         "each concrete answer; stop the moment they want to stop. Never start this walkthrough " +
-        "unprompted - it's driver-initiated only."
+        "unprompted - it's driver-initiated only. " +
+        // 2026-08-13: the record grew four domains and five advisors while this prompt still only
+        // described the car. Every goal/advisor/body/ledger tool was DECLARED and none of them was
+        // ever mentioned here, so the model could only find one by name-matching a request. It did
+        // not: asked to "set some goals", it set a meal target, a sleep target and a workout plan
+        // and recorded no goal at all, because targets are the concrete-sounding tools and nothing
+        // said a goal was a separate thing. A declared tool the instructions never mention is a
+        // tool the model reaches only by luck.
+        "The driver's record has five aspects: bio (training, food, sleep, bodyweight), log (notes, " +
+        "lists, reminders, calendar), fleet (the car), cred (money), and a cross-aspect view. " +
+        "A GOAL and a TARGET are different things and are not interchangeable. A goal is the " +
+        "long-term intention in the driver's own words - 'lose fat and recomp', 'save thirty " +
+        "thousand by 2028' - and it lives in set_goal, list_goals and close_goal. A target is the " +
+        "per-period number that serves it: daily calories, a monthly budget, hours of sleep. " +
+        "When the driver says goal, call the goal tools. Setting a target is NOT recording a goal, " +
+        "so if they ask for a goal, record the goal itself even when you also set targets that " +
+        "serve it. A goal needs no number - most are prose only. " +
+        "When they ask for judgement rather than fact - am I on track, what should I do about " +
+        "this, plan something for me, how am I doing - call ask_advisor with the matching aspect, " +
+        "or home for a question spanning several. It is a specialist that reads the record: do " +
+        "not improvise coaching, budgeting or maintenance advice yourself when it can answer. " +
+        "It takes a moment, so say you are looking into it before you call it. If it returns a " +
+        "proposal, read the proposal out and call accept_proposal only after the driver says yes. " +
+        // 2026-08-07 currency audit: a tool CAN now hand back every money figure tagged with its
+        // own currency (or explicitly say none was recorded), but a persona-primed model still
+        // guesses whenever a bare number slips past that - Alfred read every unlabelled figure as
+        // pounds sterling, purely from his own manner of speaking. This is the second, model-side
+        // half of that fix; the tool-side half alone was proven not to hold on its own.
+        "State every amount in the currency code you were given. Never convert between currencies, " +
+        "never assume one from your own manner of speaking, and if a figure arrives without a " +
+        "currency, say the number without naming a currency at all."
 
     /**
      * Companion-safety rules (CLAUDE.md sec 9.1). Appended to every system
@@ -201,32 +231,136 @@ class AriaBrain private constructor(context: Context) {
         val today = java.time.LocalDate.now()
             .format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
 
-        val persona = CompanionProfile.persona(appContext).ifBlank { VehicleController.DEFAULT_PERSONA }
         // Identity first and from ONE source (AssistantIdentity - single global
         // identity, no per-car branch). safetyInstructions goes last: it says it
         // overrides the persona's tone, and a rule that overrides another reads
         // more reliably after the thing it overrides than before it.
-        val sb = StringBuilder(persona)
-            .append(" ").append(AssistantIdentity.clause(appContext))
+        //
+        // `CompanionProfile.persona()` is NOT prepended here anymore (fixed
+        // 2026-08-06). It stores the persona KEY, not prose - see
+        // AssistantIdentity's doc comment, which resolves that key through
+        // `personaFor()`. Prepending it raw meant every system instruction
+        // opened with the literal token "alfred" before the register it names.
+        // The legacy VehicleController.DEFAULT_PERSONA prose is still the
+        // fallback, but only when no profile is active at all, which is the
+        // one case where there is no key to resolve.
+        val sb = StringBuilder()
+        if (CompanionProfile.persona(appContext).isBlank()) {
+            sb.append(VehicleController.DEFAULT_PERSONA).append(" ")
+        }
+        sb.append(AssistantIdentity.clause(appContext))
+        // Accent and idiom for the active persona (Personas.kt `delivery`).
+        // Sits with the delivery notes below rather than inside the register,
+        // because it steers how the voice SOUNDS, not who is speaking. Natural
+        // language is the only lever the Live API offers for this - there is no
+        // accent parameter and the voice presets are not documented by accent -
+        // so this is model behaviour to be listened to, not a setting to trust.
+        AssistantIdentity.delivery(appContext).takeIf { it.isNotBlank() }?.let {
+            sb.append(" ").append(it)
+        }
         // Delivery notes (pace/tone/energy, VoiceStyle.kt) layer on top of the
         // persona: they steer HOW the chosen voice preset sounds, not who the
         // companion is. Blank until the driver has used the voice-style picker.
+        // Ordered AFTER the persona's own delivery so an explicit user pick
+        // wins over the persona's default where the two disagree.
         CompanionProfile.voiceStyle(appContext).takeIf { it.isNotBlank() }?.let {
             sb.append(" ").append(it)
         }
         sb.append(" ").append(sharedInstructions)
             .append(" ").append(safetyInstructions)
-        sb.append("\n\nToday's date is $today.")
+        // The date, and an explicit statement that there is NO clock here.
+        //
+        // This block used to be the bare line "Today's date is ...", which left
+        // the time of day unstated - and an unstated fact does not read as
+        // absent to the model, it reads as free to invent. Asked the time it
+        // answered 4:13 AM at 11:13 PM local: UTC, five hours out (Kevin,
+        // 2026-08-07). Naming the gap and pointing at the tool that closes it
+        // is the fix; the zone is stated too so nothing has to fall back on
+        // UTC as a default.
+        sb.append("\n\nToday's date is $today. The driver's timezone is ")
+            .append(ZoneId.systemDefault().id).append(".")
+        sb.append(" You do NOT have a clock and cannot tell the time on your own. " +
+            "Whenever the driver asks the time, or the answer depends on it, call the " +
+            "get_current_time tool and use what it returns. Never guess a time - a confidently " +
+            "wrong one is worse than a moment's pause.")
 
         // Driver's self-set profile (control panel -> About You): name + anything
         // they chose to share. Kept prominent near the top so the assistant addresses them
         // correctly from the first word.
         DriverProfile.promptFragment(appContext)?.let { sb.append("\n\n").append(it) }
 
+        // Fleet-wide voice (ticket 01, 2026-08-06). Deliberately the ONE
+        // pre-injected context block this file adds despite CLAUDE.md §7's
+        // "pull-based tools, not pre-injected context" default - justified
+        // narrowly, not as a precedent: a pull-based tool (list_vehicles)
+        // cannot bootstrap its OWN discovery. Before this existed, the base
+        // instruction never named a car at all (no make/model/name/count), so
+        // the model had no reason to suspect a second car existed and would
+        // never think to call list_vehicles to check. This fragment is kept to
+        // just names + which one is active - two rows today, changes only when
+        // a car is added or renamed - specifically so it stays cheap.
+        // Everything else about a car (specs, schedule, history, live
+        // readings) stays pull-based via list_vehicles plus the 11
+        // `vehicle`-argument tools (LiveToolbox's "category B"). See
+        // [buildFleetFragment]'s own doc for why it is built from the real
+        // roster rather than illustrated with invented cars.
+        buildFleetFragment()?.let { sb.append("\n\n").append(it) }
+
         // Long-term memories are NOT dumped here anymore - they're pulled on demand
         // via the recall_memory tool (search over the memory table), so the prompt
         // stays lean no matter how many memories accumulate. See [recallMemories].
         return sb.toString()
+    }
+
+    /**
+     * The fleet fragment [assembleBase] appends (ticket 01) - see that call
+     * site's comment for why this is a deliberate exception to the
+     * pull-based-tools rule.
+     *
+     * Built from [com.kevin.legion.data.local.VehicleDao.getAll] (non-archived
+     * only, matching what `list_vehicles` and the CARS roster show). **Never
+     * hardcoded or illustrated with invented cars** - what is actually
+     * registered on a given install is not something this file can assume, so
+     * every name/make/model here comes straight off the read.
+     *
+     * Degrades honestly rather than emitting a misleading or empty fragment:
+     * - zero cars -> null (omit the fragment entirely; nothing to say yet).
+     * - one car -> a plain one-line mention with NO "fleet" framing (a driver
+     *   with one car should never be told they have a "fleet").
+     * - two or more -> the full fleet line, naming which one is active.
+     *
+     * [AriaBrain.invalidateBase] is already called on every car-switch and
+     * car-roster change ([com.kevin.legion.vehicle.ActiveVehicle.notifyResolutionChanged]
+     * plus the ordinary vehicle-DAO upsert paths), so this fragment is never
+     * more than [BASE_TTL_MS] stale.
+     */
+    private suspend fun buildFleetFragment(): String? {
+        val vehicles = CarDatabase.getDatabase(appContext).vehicleDao().getAll()
+        if (vehicles.isEmpty()) return null
+
+        fun describe(v: com.kevin.legion.data.local.Vehicle): String {
+            val ymm = listOf(v.year.takeIf { it > 0 }?.toString().orEmpty(), v.make, v.model)
+                .filter { it.isNotBlank() }.joinToString(" ")
+            val label = ymm.ifBlank { "an unregistered car" }
+            val named = v.name.isNotBlank() && v.name != "this car"
+            return if (named) "$label (\"${v.name}\")" else label
+        }
+
+        if (vehicles.size == 1) {
+            return "The driver has one car on file: ${describe(vehicles.first())}. Tools that read " +
+                "stored records take an optional `vehicle` argument (harmless with only one car); " +
+                "tools that read the OBD dongle only ever answer for the car it is plugged into."
+        }
+
+        val activeId = ActiveVehicle.current(appContext)
+        val active = vehicles.firstOrNull { it.obdMac == activeId }
+        val activeName = active?.name?.takeIf { it.isNotBlank() && it != "this car" }
+            ?: active?.let { describe(it) } ?: "this car"
+
+        return "The driver's fleet: ${vehicles.joinToString(", ") { describe(it) }}. They are " +
+            "currently driving $activeName. Tools that read stored records take a `vehicle` " +
+            "argument; tools that read the OBD dongle only ever answer for the car it is plugged " +
+            "into. Never assume there is only one car."
     }
 
     /**
@@ -378,14 +512,28 @@ class AriaBrain private constructor(context: Context) {
 
     /**
      * The volatile half: live OBD codes, location, current saved place,
-     * now-playing, active navigation, odometer/maintenance, and the car to-do
+     * now-playing, odometer/maintenance, and the car to-do
      * list. Always built fresh (cheap, mostly cached reads), so it's current at
-     * the moment a conversation starts. Returns "" when there's nothing live to
-     * say. Phrased as a standalone context note so it can be injected per
+     * the moment a conversation starts. **No longer ever returns ""** - the wall
+     * clock below is unconditional, so callers branching on `isBlank()` (see
+     * [com.kevin.legion.service.LiveSessionController]'s greeting) now always
+     * take the with-context path. Phrased as a standalone context note so it can be injected per
      * conversation on a warm session, or appended to the base for a cold one.
      */
     suspend fun buildLiveContext(): String = withContext(Dispatchers.IO) {
         val sb = StringBuilder()
+
+        // The wall clock, first and unconditional. It belongs in the VOLATILE
+        // half, not the cached base: the base is served for up to BASE_TTL_MS
+        // and a stale time is exactly the failure being fixed here. This is
+        // only accurate as of the moment a conversation opens, which is why
+        // get_current_time exists as well - a long conversation must re-read
+        // the clock rather than trust this note.
+        val zone = ZoneId.systemDefault()
+        val stamp = java.time.ZonedDateTime.now(zone)
+            .format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy 'at' h:mm a"))
+        sb.appendSection("Right now it is $stamp (${zone.id}). Call get_current_time rather " +
+            "than reusing this if the conversation has been going a while.")
 
         buildContinuityNote()?.let { sb.appendSection(it) }
 
@@ -399,10 +547,25 @@ class AriaBrain private constructor(context: Context) {
                     "diagnostics specialist. Don't explain or look up codes yourself.")
             } else {
                 sb.append("The car's OBD-II port is connected and reports no stored trouble " +
-                    "codes right now. If the driver asks what's wrong with the car or about a " +
-                    "check engine light, tell them there's nothing on file at the moment.")
+                    "codes in the ECU right now. If the driver asks what's wrong with the car or " +
+                    "about a check engine light, tell them nothing is stored at the moment - but " +
+                    "that says nothing about PAST codes, which are a separate question (below).")
             }
         }
+
+        // Outside the isConnected gate on purpose (2026-08-11). Stored code history is a database
+        // read that works for any car with nothing plugged in, and the assistant previously had no
+        // way to reach it at all - asked to "check the historical codes for the Cherokee" it
+        // answered that it could not see them, while the rows sat in `code_events`. Anything said
+        // here about the live port is silent about history, and vice versa; conflating the two is
+        // what makes "no codes" sound like "this has never happened".
+        sb.appendSection(
+            "Past trouble codes are recorded per car and readable at any time, dongle connected or " +
+                "not. If the driver asks what codes a car HAS thrown, whether something has " +
+                "happened before, or about a code from the past, call get_code_history (it takes a " +
+                "vehicle name). Never answer a question about past codes from the live-port " +
+                "readings above, and never say you cannot see a car's code history."
+        )
 
         val location = LocationController.state.value
         if (location != null) {
@@ -462,14 +625,21 @@ class AriaBrain private constructor(context: Context) {
             }
         }
 
-        // Just the count as an awareness flag - the items themselves are pulled on
-        // demand via list_car_tasks, keeping this prompt lean.
-        val openTasks = CarTaskController.openCount(appContext)
-        if (openTasks > 0) {
-            sb.appendSection("The driver has $openTasks open item(s) on their car to-do / wishlist. " +
-                "Call list_car_tasks to read them out, and use the car-task tools to add, check off, or " +
-                "remove items - always use the tools, don't just claim you did. If it feels natural, you " +
-                "may occasionally offer to run through the list.")
+        // Just the count as an awareness flag - the items themselves are pulled on demand via
+        // read_list, keeping this prompt lean.
+        //
+        // Counts the WHOLE list now, not a "Car" sub-list (2026-08-11: "dissolve the car list,
+        // merge everything into one list model"). There is one list; naming a sub-list here would
+        // be telling the model about a structure that no longer exists, which is how it ends up
+        // passing a `list` argument no tool accepts any more.
+        val openItems = NotesController.openItemCount(appContext)
+        if (openItems > 0) {
+            sb.appendSection("The driver has $openItems open item(s) on their list - car to-dos, " +
+                "errands, appointments and reminders all live on the one list. Call read_list to " +
+                "read them out, and use manage_item to add, tick off, or remove items - always use " +
+                "the tools, don't just claim you did. When an item has a date or a time, pass it on " +
+                "the SAME manage_item add call; never add it first and schedule it after. If it " +
+                "feels natural, you may occasionally offer to run through the list.")
         }
 
         sb.toString()

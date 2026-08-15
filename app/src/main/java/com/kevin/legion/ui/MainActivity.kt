@@ -1,30 +1,60 @@
 package com.kevin.legion.ui
 
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.kevin.legion.ai.GeminiKeyProvider
+import com.kevin.legion.media.SpotifyController
+import com.kevin.legion.media.SpotifyWebApi
+import com.kevin.legion.service.ReminderAlarmReceiver
+import com.kevin.legion.sync.SyncCapability
 import com.kevin.legion.sync.SyncEngine
 import com.kevin.legion.ui.assistant.AssistantStrip
+import com.kevin.legion.ui.common.DeckBezel
+import com.kevin.legion.ui.common.StatusLine
+import com.kevin.legion.ui.sync.GoogleAccessScreen
 import com.kevin.legion.ui.theme.LegionTheme
+import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.util.clockTime
+import com.kevin.legion.vehicle.ObdBluetoothManager
+import kotlinx.coroutines.delay
 
 /**
  * Single-activity shell (ticket 07 resolution). Everything the app shows -
@@ -58,13 +88,39 @@ class MainActivity : ComponentActivity() {
     private var deepLinkRoute by mutableStateOf<String?>(null)
     private var deepLinkNonce by mutableStateOf(0)
 
+    // The notification-tap deep link (ticket 12: "tapping the notification opens the item").
+    // ReminderAlarmReceiver.postNotification sets both EXTRA_ROUTE (= LegionRoute.NOTES, so the
+    // bottom nav actually lands on Notes) and EXTRA_OPEN_ITEM_ID on the same Intent - deepLinkRoute
+    // above drives the navigation, openItemId drives what NotesScreen does once it's there. Nonce-
+    // keyed for the same reason deepLinkNonce is: a REPEAT tap on the same item's notification while
+    // the app is already foregrounded delivers onNewIntent with an unchanged extra value, and a
+    // plain state read would be skipped as a no-op change.
+    private var openItemId by mutableStateOf<Long?>(null)
+    private var openItemNonce by mutableStateOf(0)
+
+    // The Spotify OAuth redirect (2026-08-12). Unlike the two deep links above this arrives as
+    // the intent's DATA on an ACTION_VIEW, not as an extra - the manifest's
+    // com.kevin.legion://spotify-callback intent-filter routes Spotify's browser redirect here,
+    // and singleTask means it lands in onNewIntent while the app is already up. Nothing read
+    // intent.data at all before this, so the redirect was delivered and silently dropped.
+    //
+    // Nulled by [LegionShell] once consumed, because the PKCE code verifier behind the exchange
+    // is single-use: a re-fired LaunchedEffect on a URI already exchanged would take a verifier
+    // that is no longer there and report a spurious failure over a grant that actually worked.
+    private var spotifyRedirect by mutableStateOf<Uri?>(null)
+    private var spotifyRedirectNonce by mutableStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        deepLinkRoute = intent?.getStringExtra(EXTRA_ROUTE)
-        deepLinkNonce++
+        readDeepLinkExtras(intent)
         setContent {
             LegionTheme {
-                LegionShell(deepLinkRoute = deepLinkRoute, deepLinkNonce = deepLinkNonce)
+                LegionShell(
+                    deepLinkRoute = deepLinkRoute, deepLinkNonce = deepLinkNonce,
+                    openItemId = openItemId, openItemNonce = openItemNonce,
+                    spotifyRedirect = spotifyRedirect, spotifyRedirectNonce = spotifyRedirectNonce,
+                    onSpotifyRedirectConsumed = { spotifyRedirect = null },
+                )
             }
         }
     }
@@ -72,8 +128,24 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        deepLinkRoute = intent.getStringExtra(EXTRA_ROUTE)
+        readDeepLinkExtras(intent)
+    }
+
+    private fun readDeepLinkExtras(intent: Intent?) {
+        deepLinkRoute = intent?.getStringExtra(EXTRA_ROUTE)
         deepLinkNonce++
+        val itemId = intent?.getLongExtra(ReminderAlarmReceiver.EXTRA_OPEN_ITEM_ID, -1L) ?: -1L
+        openItemId = if (itemId >= 0) itemId else null
+        openItemNonce++
+
+        // Only a URI that is actually ours is carried forward. SpotifyWebApi.handleRedirect
+        // re-checks the same prefix and is safe to call with anything, but filtering here keeps
+        // an ordinary launcher intent from bumping the nonce and waking the exchange effect at all.
+        val data = intent?.data
+        if (data != null && data.toString().startsWith(SpotifyController.REDIRECT_URI)) {
+            spotifyRedirect = data
+            spotifyRedirectNonce++
+        }
     }
 
     /**
@@ -106,6 +178,19 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         SyncEngine.maybeAutoSync(applicationContext)
+        // Silent App Remote re-attach (2026-08-12). App Remote drops on its own whenever the
+        // Spotify app is killed or backgrounded long enough, and nothing reconnected it - so
+        // after the first drop the link stayed dead for the rest of the process and `play_music`
+        // paid a wasted round trip through ensureConnected on every request.
+        //
+        // connectSilently, never connect: onResume fires on essentially every foreground return
+        // (back from a call, screen unlock, any full-screen app exit), and popping Spotify's auth
+        // sheet on one of those is exactly the failure mode SpotifyController's own doc warns
+        // about. No-ops immediately when no client ID is saved, so a driver who never set Spotify
+        // up pays nothing here. SpotifyController's doc comment has always DESCRIBED this call
+        // site (its @Synchronized rationale names the race between it and the voice tool
+        // dispatch); it just never existed until now.
+        SpotifyController.connectSilently(applicationContext)
     }
 
     companion object {
@@ -122,8 +207,28 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun LegionShell(deepLinkRoute: String? = null, deepLinkNonce: Int = 0) {
+private fun LegionShell(
+    deepLinkRoute: String? = null,
+    deepLinkNonce: Int = 0,
+    openItemId: Long? = null,
+    openItemNonce: Int = 0,
+    spotifyRedirect: Uri? = null,
+    spotifyRedirectNonce: Int = 0,
+    onSpotifyRedirectConsumed: () -> Unit = {},
+) {
     val navController = rememberNavController()
+    val context = LocalContext.current
+
+    // Today's category drill-down link (Kevin, 2026-08-07: "let me press it and drill down
+    // transactions there"). Lives HERE, above the NavHost, not inside either destination's own
+    // composable - the same reason [deepLinkRoute]/[openItemId] do: the Today->Money hop crosses a
+    // NavHost boundary that disposes each destination's own `remember`ed state, so the instruction
+    // has to be held somewhere that survives the navigation itself. See [LedgerScreen]'s
+    // `openCategory` parameter doc comment for why this needs a nonce AND a consumed-reset (the
+    // Notes deep link gets away with nonce-only because a null payload there already means "nothing
+    // to do"; here `null` is the uncategorised bucket, a real request).
+    var pendingMoneyCategory by remember { mutableStateOf<String?>(null) }
+    var pendingMoneyCategoryNonce by remember { mutableStateOf(0) }
 
     // Keyed on the nonce, not the route string, so a repeat deep link to the
     // same sub-route (onNewIntent while already on top) still re-navigates -
@@ -133,52 +238,282 @@ private fun LegionShell(deepLinkRoute: String? = null, deepLinkNonce: Int = 0) {
         deepLinkRoute?.let { navController.navigate(it) }
     }
 
-    Scaffold(
-        // AssistantStrip sits ABOVE the bottom nav inside this one slot,
-        // rather than in the Scaffold's main `content` lambda - the strip
-        // occupies zero space when the assistant is off (see its own doc),
-        // and a Scaffold's `content` padding is sized for a bottomBar whose
-        // height doesn't change; anchoring the strip to the bottomBar slot
-        // instead keeps that padding correct in both states. Assistant is
-        // still NOT a tab (ticket 07 resolution §5) - nothing here adds a
-        // NavHost destination or changes the back stack.
-        bottomBar = {
-            Column {
-                AssistantStrip(onOpenSettings = {
-                    navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
-                })
-                LegionBottomBar(navController)
+    // The Spotify OAuth token exchange (2026-08-12). Runs HERE, above the NavHost, not inside
+    // SpotifyScreen: the approval happens in a browser, so the app is backgrounded for the whole
+    // round trip and can be killed during it. On return there is no guarantee `settings/spotify`
+    // is still in the back stack - on a cold restart it certainly is not - and an exchange owned
+    // by a composable that no longer exists is an exchange that never happens, leaving the
+    // verifier stranded and CONNECT looking broken for no visible reason.
+    //
+    // SpotifyWebApi.handleRedirect is suspend and does real network I/O; LaunchedEffect's scope
+    // is the composition's, so a user who navigates away mid-exchange cancels it rather than
+    // leaking it. The outcome is handed to SpotifyScreen through spotifyAuthOk/Nonce below,
+    // which is the same nonce-carried-payload shape the notes deep link already uses.
+    var spotifyAuthOk by remember { mutableStateOf<Boolean?>(null) }
+    var spotifyAuthNonce by remember { mutableStateOf(0) }
+    LaunchedEffect(spotifyRedirectNonce) {
+        val uri = spotifyRedirect ?: return@LaunchedEffect
+        val ok = SpotifyWebApi.handleRedirect(context, uri)
+        onSpotifyRedirectConsumed()
+        spotifyAuthOk = ok
+        spotifyAuthNonce++
+        // Navigate AFTER the exchange, so the screen composes with the answer already in hand
+        // rather than rendering a stale "Not approved" for one frame and then correcting itself.
+        navController.navigate(LegionRoute.SETTINGS_SPOTIFY) { launchSingleTop = true }
+    }
+
+    // Global StatusLine state (cyberdeck-ui ticket 13). Polled rather than
+    // pushed - none of [shellStatusLine]'s three reads is exposed as a
+    // Flow/StateFlow today, and all three are cheap, synchronous, on-device
+    // reads (see that function's own doc for exactly what each one is and is
+    // not claiming), so a short poll is honest and costs nothing worth
+    // avoiding. STATUS_POLL_MS is well under the OBD/Drive/key state going
+    // stale in a way anyone would notice on a status line, not a live meter.
+    val statusLeft by produceState(initialValue = shellStatusLine(context)) {
+        while (true) {
+            value = shellStatusLine(context)
+            delay(STATUS_POLL_MS)
+        }
+    }
+    // Once a minute, not once a second (this ticket's build brief) - a status
+    // line clock answers "what minute is it", not a stopwatch, and ticket
+    // 04's "ambient motion is exactly ONE element" rule (StatusLine's own
+    // cursor, which is draw-phase-only) is exactly the discipline a
+    // per-second recomposition of the whole shell's top row would violate.
+    val clock by produceState(initialValue = clockTime(System.currentTimeMillis())) {
+        while (true) {
+            value = clockTime(System.currentTimeMillis())
+            delay(CLOCK_POLL_MS)
+        }
+    }
+
+    // Ticket 20: DRIVING is "a destination outside the shell chrome" (build
+    // brief item 2) - no StatusLine, no hard-key row, no AssistantStrip. Read
+    // here, once, above the Scaffold, rather than inside DrivingModeScreen
+    // itself: the chrome this route hides belongs to LegionShell, not to any
+    // one destination, and DrivingModeScreen has no way to reach into
+    // Scaffold's own bottomBar/content slots from inside the NavHost. Mirrors
+    // [LegionHardKeyRow]'s own `currentBackStackEntryAsState` read below,
+    // which still runs (for its own highlight logic) on every OTHER route.
+    val shellBackStackEntry by navController.currentBackStackEntryAsState()
+    val isDrivingMode = shellBackStackEntry?.destination?.route == LegionRoute.DRIVING
+
+    // Mission-control ticket 07's uplink sweep ("the cursor yields"): [FleetScreen]'s own
+    // `UplinkPane` reports whether ITS sweep is genuinely animating right now - see that pane's
+    // doc for the two-effect mechanism (a value-changed report while mounted, plus a guaranteed
+    // `false` the instant it leaves composition, which covers both "any FLEET drilldown opened"
+    // and "navigated off FLEET entirely"). Held HERE, above the NavHost, for the same reason
+    // [statusLeft]/[clock] are: [StatusLine] is mounted once above the NavHost, not inside any one
+    // destination, so the one composable that could ever own `UplinkPane`'s live state is
+    // [FleetScreen] itself, reporting up through a plain callback - there is no shared ViewModel
+    // or singleton flow this shell already reads that carries "is a specific pane's own ambient
+    // element on screen right now", and inventing one would be more machinery than a single
+    // boolean threaded down one nav entry needs.
+    var fleetSweepActive by remember { mutableStateOf(false) }
+
+    // Outer Box, not the Scaffold directly, so [GlanceCardOverlay] can be drawn
+    // LAST - on top of the Scaffold's bottom bar and whatever destination is
+    // showing - rather than occupying a slot inside the layout flow. Boot is
+    // a full-screen takeover (ticket 04 answer #1), not a panel.
+    Box(Modifier.fillMaxSize()) {
+        // Mission-control ticket 14: the whole Scaffold - content AND the
+        // pinned status line / Alfred strip / hard-key row inside it - sits
+        // inside ONE [DeckBezel], drawn once at shell level (ticket 03's
+        // charting decision: "one global bezel drawn once in the shell").
+        // Deliberately NOT gated on [isDrivingMode] - ticket 08 answer #1
+        // ruled driving mode gets the full deck language too, bezel included,
+        // unlike the StatusLine/bottomBar carve-outs below which ARE gated
+        // (those are ticket 20's earlier, narrower ruling: no status line, no
+        // Alfred strip, no hard keys while driving - the bezel was not yet
+        // built when that call was made).
+        //
+        // Insets: this app is NOT edge-to-edge (`themes.xml` sets opaque
+        // `android:statusBarColor`/`android:navigationBarColor`, and there is
+        // no `enableEdgeToEdge`/`WindowCompat` call anywhere in the tree -
+        // grep-confirmed) and `targetSdk` is 34, below the API 35 level where
+        // Android starts enforcing edge-to-edge regardless. So the system
+        // status bar (with the notch) and the 3-button nav bar are drawn by
+        // Android OUTSIDE this Compose tree entirely, in their own opaque
+        // bars - `DeckBezel` never has the option of drawing under either one
+        // and needs no `windowInsetsPadding` of its own to stay clear of them.
+        DeckBezel(Modifier.fillMaxSize()) {
+        Scaffold(
+            // Explicit fillMaxSize (2026-08-14 fix, coordinator-reported defect): without this,
+            // Scaffold - given only BOUNDED/loose constraints by DeckBezel's Box, since Box does
+            // not force a child to fill unless the child asks to - sized itself by its own content
+            // (bottomBar height + NavHost's wrapped height) rather than by the space DeckBezel
+            // actually gave it, so the bottomBar (AssistantStrip + LegionHardKeyRow) rendered at
+            // its own natural height flush against the OUTER Box's bottom edge, past DeckBezel's
+            // 12dp bottom content padding entirely. Confirmed on-device: the hard-key row's own
+            // opaque background was painting directly over the bezel's bottom line (drawn earlier
+            // in DeckBezel's modifier chain, so it sits BEHIND anything Scaffold draws), reading as
+            // the frame passing behind the keys. Forcing Scaffold to fillMaxSize makes it occupy
+            // EXACTLY the constraints DeckBezel's padding already computed, so its bottomBar is
+            // placed relative to that padded box, not the unpadded one.
+            modifier = Modifier.fillMaxSize(),
+            // AssistantStrip sits ABOVE the hard-key row inside this one
+            // slot, rather than in the Scaffold's main `content` lambda - the
+            // strip occupies zero space when the assistant is off (see its
+            // own doc), and a Scaffold's `content` padding is sized for a
+            // bottomBar whose height doesn't change; anchoring the strip to
+            // the bottomBar slot instead keeps that padding correct in both
+            // states. Assistant is still NOT a tab (ticket 07 resolution §5)
+            // - nothing here adds a NavHost destination or changes the back
+            // stack.
+            //
+            // Renders nothing at all on DRIVING (ticket 20) - same "occupies
+            // zero space" shape AssistantStrip already uses for its own off
+            // state, applied to the whole bottomBar slot rather than one row
+            // inside it.
+            bottomBar = {
+                if (!isDrivingMode) {
+                    Column {
+                        AssistantStrip(onOpenSettings = {
+                            navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
+                        })
+                        LegionHardKeyRow(navController)
+                    }
+                }
+            },
+        ) { innerPadding ->
+            // The StatusLine is mounted HERE, once, above the NavHost - not
+            // inside any one destination's own composable - so every screen
+            // in the NavHost below shows it (ticket 13's build brief) without
+            // any of the nine data-surface screen files changing. The Column
+            // absorbs Scaffold's own innerPadding (system bars, the bottom
+            // bar's measured height) exactly as the bare NavHost used to;
+            // NavHost itself now just weights to fill what's left under the
+            // status line instead of taking the whole padded area.
+            //
+            // Skipped on DRIVING (ticket 20 build brief item 2: "full-bleed
+            // ground color, NO status line") - innerPadding still applies
+            // (with an empty bottomBar it collapses to just the system bars),
+            // so DrivingModeScreen still respects the status/nav bar insets,
+            // it just never draws the SYNC/OBD/KEY/clock row above itself.
+            Column(Modifier.padding(innerPadding).fillMaxSize()) {
+                // The SETUP stamp is the app's only way into settings/ - see StatusLine's own
+                // doc for the closed loop it breaks. Absent on DRIVING along with the rest of
+                // the status line, which is correct: nothing about driving mode should invite
+                // you into a settings tree.
+                if (!isDrivingMode) {
+                    StatusLine(
+                        left = statusLeft,
+                        clock = clock,
+                        onOpenSettings = {
+                            navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
+                        },
+                        // Ticket 07 answer §1, "the cursor yields": solid, not blinking, for
+                        // exactly as long as FLEET's own uplink sweep is genuinely running -
+                        // see [fleetSweepActive]'s own doc above for how that boolean gets here.
+                        cursorSolid = fleetSweepActive,
+                    )
+                }
+                NavHost(
+                    navController = navController,
+                    // Today is the start destination (2026-08-07 brief) - was FLEET
+                    // under ticket 07's original four-tab shape. See LegionRoute's
+                    // doc comment for the full before/after route map.
+                    startDestination = LegionRoute.TODAY,
+                    modifier = Modifier.weight(1f),
+                ) {
+            composable(LegionRoute.TODAY) {
+                TodayScreen(
+                    onOpenNotes = {
+                        navController.navigate(LegionRoute.NOTES) { launchSingleTop = true }
+                    },
+                    onOpenCategory = { category ->
+                        pendingMoneyCategory = category
+                        pendingMoneyCategoryNonce++
+                        navController.navigate(LegionRoute.MONEY) { launchSingleTop = true }
+                    },
+                    // Ticket 06 answer #4: every home pane taps through to its module.
+                    // Wired at the ticket-15 merge; the build agent stopped at the
+                    // screen boundary and named this gap rather than editing here.
+                    onOpenBody = {
+                        navController.navigate(LegionRoute.BODY) { launchSingleTop = true }
+                    },
+                    onOpenFleet = {
+                        navController.navigate(LegionRoute.FLEET) { launchSingleTop = true }
+                    },
+                    // Ticket 16: ALERTS' "no Gemini key" advisory row - the same
+                    // settings/key screen KeyScreen already renders, reached everywhere
+                    // else in the app only through Settings' SETUP stamp.
+                    onOpenKeySettings = {
+                        navController.navigate(LegionRoute.SETTINGS_KEY) { launchSingleTop = true }
+                    },
+                )
             }
-        },
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = LegionRoute.FLEET,
-            modifier = Modifier.padding(innerPadding),
-        ) {
+
+            composable(LegionRoute.BODY) {
+                BodyScreen()
+            }
+
+            composable(LegionRoute.NOTES) {
+                NotesScreen(openItemId = openItemId, openItemNonce = openItemNonce)
+            }
+
             composable(LegionRoute.FLEET) {
-                FleetScreen(onOpenPlaces = { navController.navigate(LegionRoute.FLEET_PLACES) })
+                // Ticket 18: FLEET absorbed TELEMETRY as an in-screen drilldown off the
+                // UPLINK panel (ticket 09 answer §1) - FleetScreen no longer takes an
+                // onOpenTelemetry callback at all, see FLEET_TELEMETRY's own comment below
+                // for where the old nav entry point now lands.
+                FleetScreen(
+                    onOpenPlaces = { navController.navigate(LegionRoute.FLEET_PLACES) },
+                    onOpenCars = { navController.navigate(LegionRoute.FLEET_CARS) },
+                    // Ticket 20: the UPLINK panel's DRIVE MODE row, inert since ticket 18,
+                    // gets its click wired here - ticket 11 answer §1's OFFER, never auto.
+                    onOpenDrivingMode = { navController.navigate(LegionRoute.DRIVING) { launchSingleTop = true } },
+                    // Ticket 07: feeds [fleetSweepActive] above, which [StatusLine]'s
+                    // `cursorSolid` reads.
+                    onSweepActiveChanged = { fleetSweepActive = it },
+                )
+            }
+            // Ticket 20: full-bleed, no shell chrome (see isDrivingMode above) - a plain
+            // popBackStack covers both exit paths DrivingModeScreen itself drives (the
+            // EXIT key, and the automatic exit when ObdBluetoothManager.isConnected drops).
+            composable(LegionRoute.DRIVING) {
+                DrivingModeScreen(onExit = { navController.popBackStack() })
             }
             composable(LegionRoute.FLEET_PLACES) {
                 SavedPlacesScreen(onBack = { navController.popBackStack() })
             }
+            composable(LegionRoute.FLEET_CARS) {
+                CarsScreen(onBack = { navController.popBackStack() })
+            }
+            // Ticket 18: FLEET's UPLINK panel now opens this exact composable as an
+            // in-screen drilldown (no nav hop) - see ui/FleetScreen.kt's file doc. This route
+            // stays wired to the SAME [TelemetryScreen] rather than being deleted, so an old
+            // EXTRA_ROUTE deep link (grep-confirmed 2026-08-08: none exist today, but the
+            // route itself is public API on MainActivity per its own doc comment) still lands
+            // on real content instead of a 404. onBack pops the nav stack here (this is a
+            // route, not the in-screen drilldown's `onBack = { drilldown = null }`).
+            composable(LegionRoute.FLEET_TELEMETRY) {
+                TelemetryScreen(onBack = { navController.popBackStack() })
+            }
 
-            composable(LegionRoute.LEDGER) {
+            composable(LegionRoute.MONEY) {
                 LedgerScreen(
-                    onOpenImport = { navController.navigate(LegionRoute.LEDGER_IMPORT) },
+                    onOpenImport = { navController.navigate(LegionRoute.MONEY_IMPORT) },
                     // The spend gate (ticket 08 Part 6 item 3) routes here when no
                     // Gemini key is stored, rather than failing silently.
                     onOpenKeySettings = { navController.navigate(LegionRoute.SETTINGS_KEY) },
+                    // A grocery receipt is a purchase (2026-08-07 brief) - the
+                    // pantry read screen moved under Money as a reachable
+                    // sub-route rather than staying its own tab.
+                    onOpenGroceries = { navController.navigate(LegionRoute.MONEY_PANTRY) },
+                    openCategory = pendingMoneyCategory,
+                    openCategoryNonce = pendingMoneyCategoryNonce,
+                    onCategoryDrilldownConsumed = { pendingMoneyCategoryNonce = 0 },
                 )
             }
-            composable(LegionRoute.LEDGER_IMPORT) {
+            composable(LegionRoute.MONEY_IMPORT) {
                 LedgerImportScreen(onBack = { navController.popBackStack() })
             }
 
-            composable(LegionRoute.PANTRY) {
-                PantryScreen(onOpenImport = { navController.navigate(LegionRoute.PANTRY_IMPORT) })
+            composable(LegionRoute.MONEY_PANTRY) {
+                PantryScreen(onOpenImport = { navController.navigate(LegionRoute.MONEY_PANTRY_IMPORT) })
             }
-            composable(LegionRoute.PANTRY_IMPORT) {
+            composable(LegionRoute.MONEY_PANTRY_IMPORT) {
                 PantryImportScreen(onBack = { navController.popBackStack() })
             }
 
@@ -186,6 +521,9 @@ private fun LegionShell(deepLinkRoute: String? = null, deepLinkNonce: Int = 0) {
                 SettingsScreen(
                     onOpenKeyScreen = { navController.navigate(LegionRoute.SETTINGS_KEY) },
                     onOpenCompanions = { navController.navigate(LegionRoute.SETTINGS_COMPANIONS) },
+                    onOpenGoogleAccess = { navController.navigate(LegionRoute.SETTINGS_GOOGLE) },
+                    onOpenSpotify = { navController.navigate(LegionRoute.SETTINGS_SPOTIFY) },
+                    onOpenCarProbe = { navController.navigate(LegionRoute.SETTINGS_CAR_PROBE) },
                 )
             }
             composable(LegionRoute.SETTINGS_KEY) {
@@ -194,49 +532,194 @@ private fun LegionShell(deepLinkRoute: String? = null, deepLinkNonce: Int = 0) {
             composable(LegionRoute.SETTINGS_COMPANIONS) {
                 CompanionsScreen(onBack = { navController.popBackStack() })
             }
+            // The GOOGLE row's destination (ticket 12) - one place to read the status of all
+            // three Google grants. Drive's own action still opens SETTINGS_DRIVE_SYNC, which
+            // keeps owning the actual connect/disconnect/backup flow.
+            composable(LegionRoute.SETTINGS_GOOGLE) {
+                GoogleAccessScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenDriveSync = { navController.navigate(LegionRoute.SETTINGS_DRIVE_SYNC) },
+                )
+            }
+            composable(LegionRoute.SETTINGS_DRIVE_SYNC) {
+                DriveSyncScreen(onBack = { navController.popBackStack() })
+            }
+            // Android Auto probe harness readout (`.scratch/android-auto/map.md` wave 1) -
+            // see CarProbeScreen's own doc for why this exists at all.
+            composable(LegionRoute.SETTINGS_CAR_PROBE) {
+                CarProbeScreen(onBack = { navController.popBackStack() })
+            }
+            // authOk/authNonce carry the browser round trip's outcome down from the exchange
+            // effect above - see its own comment for why the exchange cannot live in this screen.
+            composable(LegionRoute.SETTINGS_SPOTIFY) {
+                SpotifyScreen(
+                    onBack = { navController.popBackStack() },
+                    authOk = spotifyAuthOk,
+                    authNonce = spotifyAuthNonce,
+                )
+            }
+                }
+            }
         }
+        } // closes DeckBezel's content lambda opened above the Scaffold call - the intervening
+          // ~200 lines are the unchanged Scaffold/NavHost tree, left at their original indent
+          // rather than re-flowed a level deeper for this diff.
+
+        // Drawn LAST inside the outer Box (see its own comment above) so it
+        // paints over the Scaffold - bottom bar, status line, and whatever
+        // destination is currently showing - rather than taking a slot in
+        // the layout flow.
+        // Above the Scaffold so it paints over the bottom bar and the status
+        // line rather than taking a slot in the layout flow. It used to be
+        // ordered against BootOverlay; boot was dropped 2026-08-14 and this is
+        // now the only overlay.
+        GlanceCardOverlay()
     }
 }
 
 /**
- * Four top-level tabs. Tapping one collapses the back stack down to the
- * start destination and pushes the tapped tab on top - "standard
- * single-activity back stack" (resolution §5): back pops sub-routes within
- * the current tab, then lands on the start destination (Fleet), then exits.
- * Deliberately NOT the multi-back-stack-per-tab pattern (`saveState`/
- * `restoreState`) - that preserves scroll/nav position per tab across
- * switches, which is a real UX call ticket 07 does not make; it is not
- * needed to satisfy the resolution's back-stack wording.
+ * Global StatusLine's left segment (cyberdeck-ui ticket 13): `SYNC`, `OBD`,
+ * `KEY`, each a worded state, never colour-only (CLAUDE.md §4/§7).
+ *
+ * All three reads are cheap, synchronous, and on-device - no network call is
+ * made here, matching the ticket's "read-only, no network ping" instruction:
+ *  - **SYNC** reads [SyncCapability.syncAvailable] - Play Services present
+ *    AND the driver has connected their own Drive. This is a CONNECTED/NOT
+ *    CONNECTED signal, not a last-sync-succeeded signal - [SyncEngine] has no
+ *    persisted "last sync outcome" today (`lastAutoSyncAt` is an in-memory,
+ *    private, process-lifetime volatile, not a state anything durable can
+ *    read), and inventing a stronger claim than "sync is connected" here
+ *    would violate the same worded-truth discipline this line exists to
+ *    surface. See this ticket's report for the follow-up this leaves open.
+ *  - **OBD** reads [ObdBluetoothManager.isConnected] directly - a plain
+ *    Boolean, not a Flow, so this function is re-invoked by the poll in
+ *    [LegionShell] rather than observed.
+ *  - **KEY** reads [GeminiKeyProvider.hasKey] - the same process-cached
+ *    check the assistant and every LLM call path already uses; no key
+ *    material is read or logged, only presence.
+ */
+private fun shellStatusLine(context: Context): String {
+    val sync = if (SyncCapability.syncAvailable(context)) "ON" else "OFF"
+    val obd = if (ObdBluetoothManager.isConnected) "LINK" else "NO LINK"
+    val key = if (GeminiKeyProvider.hasKey()) "ARMED" else "NOT SET"
+    return "SYNC $sync   OBD $obd   KEY $key"
+}
+
+/** [LegionShell]'s StatusLine left-segment poll interval - see [shellStatusLine]'s doc for why this is a poll, not a push. */
+private const val STATUS_POLL_MS = 4_000L
+
+/** [LegionShell]'s clock poll interval - once a minute, per this ticket's build brief, not once a second. */
+private const val CLOCK_POLL_MS = 60_000L
+
+/**
+ * The five deck hard-keys (cyberdeck-ui ticket 05's Answer: "Bottom bar
+ * reskinned as five physical hard-keys: HOME / BIO / LOG / FLEET / CRED").
+ * [LegionRoute]'s constants and [LegionRoute.label] are UNCHANGED - this is
+ * presentation-only relabeling of five of the six routes in
+ * [LegionRoute.TOP_LEVEL] (all but SETTINGS), so nothing about navigation,
+ * deep links, or the back stack moves. SETTINGS deliberately has no key here:
+ * ticket 05's Answer -
+ * "Utility screens stay reachable through the existing settings route, no
+ * bespoke key" - it stays reachable from [AssistantStrip]'s settings hop and
+ * anywhere else that already navigates there.
+ *
+ * Order is the hard-key sequence from the Answer, not [LegionRoute.TOP_LEVEL]'s
+ * bottom-nav order (which keeps Settings in its list for [LegionRoute.topLevelOf]'s
+ * prefix matching elsewhere).
+ */
+private val HARD_KEYS = listOf(
+    LegionRoute.TODAY to "HOME",
+    LegionRoute.BODY to "BIO",
+    LegionRoute.NOTES to "LOG",
+    LegionRoute.FLEET to "FLEET",
+    LegionRoute.MONEY to "CRED",
+)
+
+/**
+ * The deck hard-key row (cyberdeck-ui ticket 05's Answer), replacing the M3
+ * `NavigationBar`/`NavigationBarItem` presentation this function (formerly
+ * `LegionBottomBar`) used to be. Full-width equal flex, five keys, stencil
+ * caps (Type.kt's `labelLarge`), 1px [LegionSemantics.ruleFaint] separators
+ * between keys, a 2px [LegionSemantics.rule] edge rule across the top of the
+ * whole row, and the active key INVERTED - amber fill, ground-colour text
+ * (ticket 05: "active key inverts to amber"). Inactive keys read in
+ * [LegionSemantics.faint].
+ *
+ * All navigation wiring is UNCHANGED from the old `NavigationBarItem` version:
+ * same tap-to-navigate-with-popUpTo-to-start-destination behaviour, same
+ * [LegionRoute.topLevelOf] selection derivation (so a sub-route like
+ * `fleet/places` still lights the FLEET key), same back-stack shape. Only the
+ * presentation changed.
  */
 @Composable
-private fun LegionBottomBar(navController: NavHostController) {
+private fun LegionHardKeyRow(navController: NavHostController) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     // The TAB the current route sits under, not the route itself - a
     // sub-route like `settings/key` keeps Settings lit. See
-    // LegionRoute.topLevelOf.
+    // LegionRoute.topLevelOf. (Settings has no hard key of its own, but
+    // topLevelOf is still used here for FLEET's own sub-routes - fleet/places,
+    // fleet/cars, fleet/telemetry - to keep the FLEET key lit under them.)
     val selectedTab = LegionRoute.topLevelOf(currentRoute)
+    val sem = LocalLegionSemantics.current
+    val density = LocalDensity.current
+    val edgeStroke = with(density) { 2.dp.toPx() }
+    val sepStroke = with(density) { 1.dp.toPx() }
 
-    NavigationBar {
-        LegionRoute.TOP_LEVEL.forEach { route ->
-            NavigationBarItem(
-                selected = selectedTab == route,
-                onClick = {
-                    if (currentRoute != route) {
-                        navController.navigate(route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = false
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(HARD_KEY_ROW_HEIGHT)
+            .background(MaterialTheme.colorScheme.surface)
+            // The 2px edge rule across the TOP of the whole row (ticket 05) -
+            // drawn on the Row itself, not per-key, so it reads as one panel
+            // seam rather than five separate top borders.
+            .drawBehind {
+                drawLine(sem.rule, Offset(0f, 0f), Offset(size.width, 0f), edgeStroke)
+            },
+    ) {
+        HARD_KEYS.forEachIndexed { index, (route, keyLabel) ->
+            val active = selectedTab == route
+            val bg = if (active) MaterialTheme.colorScheme.primary else Color.Transparent
+            val fg = if (active) MaterialTheme.colorScheme.onPrimary else sem.faint
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(bg)
+                    // 1px separators BETWEEN keys only - no separator after
+                    // the last key, which would just double the row's own
+                    // edge/border and isn't what "between keys" asked for.
+                    .let { base ->
+                        if (index < HARD_KEYS.lastIndex) {
+                            base.drawBehind {
+                                drawLine(sem.ruleFaint, Offset(size.width, 0f), Offset(size.width, size.height), sepStroke)
                             }
-                            launchSingleTop = true
-                        }
+                        } else base
                     }
-                },
-                // No icon set chosen yet (ui/ is a clean slate - CLAUDE.md §6);
-                // a letterform stands in rather than pulling in a Material
-                // Icons dependency for a placeholder that ticket 08/09 will replace.
-                icon = { Text(LegionRoute.label(route).take(1)) },
-                label = { Text(LegionRoute.label(route)) },
-            )
+                    .clickable {
+                        if (currentRoute != route) {
+                            navController.navigate(route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = false
+                                }
+                                launchSingleTop = true
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                // Stencil caps per Type.kt's label style (labelLarge is the
+                // tracked, bold-medium caps role every other header in the
+                // deck already reads through) - .uppercase() explicit per the
+                // repo's "callers format case, styles don't" convention (see
+                // DeckPanels.kt), even though every HARD_KEYS label is
+                // already upper.
+                Text(keyLabel.uppercase(), style = MaterialTheme.typography.labelLarge, color = fg)
+            }
         }
     }
 }
+
+/** The hard-key row's fixed height - matches M3 `NavigationBar`'s default so this ticket's swap doesn't change the Scaffold's measured bottomBar footprint. */
+private val HARD_KEY_ROW_HEIGHT = 56.dp

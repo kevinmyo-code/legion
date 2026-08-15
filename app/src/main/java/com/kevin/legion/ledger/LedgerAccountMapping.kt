@@ -3,6 +3,7 @@ package com.kevin.legion.ledger
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -10,10 +11,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
 /**
- * One subfolder directly under the connected statements folder - Kevin's
- * real Drive layout puts `checking/` and `credit/` folders under one
- * connected root, each holding both a PDF (which prints its own account) and
- * a CSV (BofA's mid-cycle export, which prints none). [folderId] is the SAF
+ * One subfolder directly under the connected statements folder. Kevin's
+ * real Drive layout does NOT split per account - `USA Bank Statements/`
+ * mixes BofA checking PDFs, BofA card PDFs, and the checking CSV together,
+ * and `Singapore Statements/` holds DBS PDFs. Only the CSV needs a mapping
+ * at all (it prints no account of its own); every PDF layout prints its own
+ * account and ignores this mapping entirely - see
+ * [LedgerAccountMappingPreferences]'s doc comment. [folderId] is the SAF
  * document id, never a name - see [LedgerAccountMappingPreferences]'s doc
  * comment for why that matters.
  */
@@ -35,10 +39,16 @@ fun resolveAccountHint(folderId: String?, mapping: Map<String, String>): String?
  * gap-filler [com.kevin.legion.ledger.parsers.StatementDispatcher] reads for
  * any file that states no account of its own (BofA's mid-cycle CSV export,
  * confirmed on Kevin's real file to print none - see
- * [com.kevin.legion.ledger.parsers.BofaCsvStatementParser]'s doc comment). A
- * PDF's own printed account always wins over this mapping; see
+ * [com.kevin.legion.ledger.parsers.BofaCsvStatementParser]'s doc comment).
+ * **Fills a gap only, never overrides a stated fact.** A PDF's own printed
+ * account is a document-stated, falsifiable fact and is used as-is - PDF
+ * parsers are never even handed this mapping (see
  * [com.kevin.legion.ledger.parsers.StatementDispatcher.dispatchDeterministic]'s
- * `accountConflict` check for what happens when the two disagree.
+ * doc comment). This is deliberate: Kevin's real Drive layout puts every
+ * BofA file type (checking PDF, card PDF, and the checking CSV) in ONE
+ * subfolder rather than splitting per account, so a mapping describing one
+ * account in that folder is expected to be irrelevant to files that state a
+ * different account of their own - that is not a conflict, it is normal.
  *
  * **Keyed on the folder's SAF DOCUMENT ID, never its display name.** A
  * folder RENAME must not silently orphan an existing mapping - the same
@@ -115,13 +125,43 @@ object LedgerAccountMappingPreferences {
                 DocumentsContract.Document.COLUMN_MIME_TYPE,
             )
             val out = mutableListOf<DiscoveredAccountFolder>()
-            context.contentResolver.query(childrenUri, columns, null, null, null)?.use { c ->
-                while (c.moveToNext()) {
-                    if (c.getString(2) != DocumentsContract.Document.MIME_TYPE_DIR) continue
-                    val id = c.getString(0) ?: continue
-                    val name = c.getString(1) ?: continue
-                    out += DiscoveredAccountFolder(id, name)
+            // GUARDED (crash fix, 2026-08-07, found on Kevin's phone).
+            //
+            // This query was bare, and a SAF grant can vanish without this app
+            // doing anything - an uninstall drops every persisted permission,
+            // the driver can revoke one in Settings, the Drive account can sign
+            // out. When it does, `query` does not return null here, it THROWS
+            // SecurityException, and this runs on a Compose LaunchedEffect, so
+            // the throw reached the main thread and killed the app on opening
+            // the Money screen. It crash-looped: every relaunch reopened the
+            // same screen.
+            //
+            // The permission check is live rather than cached because that is
+            // the only honest way to ask (see LedgerFolderPreferences.
+            // isPermissionGranted), and the catch is still required on top of
+            // it: a grant can disappear between the check and the query, and a
+            // stale document id throws IllegalArgumentException rather than
+            // SecurityException.
+            //
+            // Returning empty is safe here, and specifically NOT the
+            // "empty folder and unreadable folder look identical" bug that
+            // IngestScanner.queryChildDocuments exists to avoid: the revoked
+            // state is already surfaced, in words, by the folder-connection row
+            // above this list. This function feeds a subfolder PICKER, and a
+            // picker with no options next to a banner saying the folder is
+            // unreadable is coherent.
+            if (!LedgerFolderPreferences.isPermissionGranted(context, treeUri)) return@withContext out
+            try {
+                context.contentResolver.query(childrenUri, columns, null, null, null)?.use { c ->
+                    while (c.moveToNext()) {
+                        if (c.getString(2) != DocumentsContract.Document.MIME_TYPE_DIR) continue
+                        val id = c.getString(0) ?: continue
+                        val name = c.getString(1) ?: continue
+                        out += DiscoveredAccountFolder(id, name)
+                    }
                 }
+            } catch (e: Exception) {
+                Log.w("LedgerAccountMapping", "listAccountFolders failed (grant revoked or tree gone): ${e.message}")
             }
             out
         }

@@ -231,49 +231,54 @@ object BofaCsvStatementParser {
         return parseMoneyCents(fields[2].trim())
     }
 
-    /**
-     * Minimal RFC-4180-shaped splitter: handles quoted fields, commas inside
-     * quotes, and `""` as an escaped literal quote. BofA quotes every amount
-     * field and any description containing a comma, exactly the two things
-     * this needs to get right.
-     */
-    private fun parseCsvLine(line: String): List<String> {
-        val fields = mutableListOf<String>()
-        val current = StringBuilder()
-        var inQuotes = false
-        var i = 0
-        while (i < line.length) {
-            val c = line[i]
-            if (inQuotes) {
-                if (c == '"') {
-                    if (i + 1 < line.length && line[i + 1] == '"') {
-                        current.append('"')
-                        i++
-                    } else {
-                        inQuotes = false
-                    }
-                } else {
-                    current.append(c)
-                }
-            } else {
-                when (c) {
-                    '"' -> inQuotes = true
-                    ',' -> {
-                        fields.add(current.toString())
-                        current.setLength(0)
-                    }
-                    else -> current.append(c)
-                }
-            }
-            i++
-        }
-        fields.add(current.toString())
-        return fields
-    }
-
     private fun parseDate(token: String): Long = try {
         LocalDate.parse(token.trim(), DATE_FORMAT).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
     } catch (e: DateTimeParseException) {
         throw GenericStatementParseException("unrecognized date: '$token'")
     }
+}
+
+/**
+ * Minimal RFC-4180-shaped splitter: handles quoted fields, commas inside
+ * quotes, and `""` as an escaped literal quote. BofA quotes every amount
+ * field and any description containing a comma, exactly the two things
+ * this needs to get right.
+ *
+ * Promoted from a private member of [BofaCsvStatementParser] to a top-level
+ * function in this package (ticket 12 §2) so [BofaCardCsvStatementParser]
+ * can reuse it for its own `Payee`/`Address` fields instead of duplicating
+ * the same quoting logic a second time.
+ */
+internal fun parseCsvLine(line: String): List<String> {
+    val fields = mutableListOf<String>()
+    val current = StringBuilder()
+    var inQuotes = false
+    var i = 0
+    while (i < line.length) {
+        val c = line[i]
+        if (inQuotes) {
+            if (c == '"') {
+                if (i + 1 < line.length && line[i + 1] == '"') {
+                    current.append('"')
+                    i++
+                } else {
+                    inQuotes = false
+                }
+            } else {
+                current.append(c)
+            }
+        } else {
+            when (c) {
+                '"' -> inQuotes = true
+                ',' -> {
+                    fields.add(current.toString())
+                    current.setLength(0)
+                }
+                else -> current.append(c)
+            }
+        }
+        i++
+    }
+    fields.add(current.toString())
+    return fields
 }

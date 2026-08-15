@@ -10,6 +10,7 @@ import com.kevin.legion.vehicle.DriveReassigner
 import com.kevin.legion.vehicle.TelemetryRecorder
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.DriveReassignment
+import com.kevin.legion.ui.sync.GoogleGrantResolver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -19,6 +20,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 private typealias Mode = SyncMerge.Mode
 
@@ -163,7 +165,11 @@ object SyncEngine {
         Spec("drive_reassignments", listOf("syncId"), Mode.LWW, naturalPk = false, hasSyncId = true),
         // High-volume append-only, sharded by month, natural composite identity.
         Spec("obd_samples", listOf("vehicleId", "pid", "timestamp"), Mode.UNION, naturalPk = false, shardTs = "timestamp"),
-        Spec("music_plays", listOf("vehicleId", "timestamp", "title"), Mode.UNION, naturalPk = false, shardTs = "timestamp"),
+        // music_plays was registered here until 2026-08-03. The table was dropped in
+        // the v1 port with the rest of the music-taste ledger (CLAUDE.md sec 5), so
+        // every sync pass threw `no such table: music_plays` from monthsToSync and
+        // counted a failure. Nothing caught it because sync/ had never actually run
+        // on a device - it was structurally unreachable until 7ea4725.
         // Append-only logbook, portable syncId identity.
         Spec("memories", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         Spec("service_records", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
@@ -266,8 +272,31 @@ object SyncEngine {
             if (!SyncCapability.syncAvailable(context)) {
                 return@withContext Result(false, "Cross-device sync isn't connected.")
             }
-            DriveAuth.accessTokenOrNull(context)
-                ?: return@withContext Result(false, "Couldn't reach your Google Drive - try again.")
+            // tokenOrReason, not accessTokenOrNull: a lapsed/revoked grant (TokenResult.NeedsConsent)
+            // used to collapse into the exact same null as a real error, so a driver whose Drive
+            // access had been revoked read the identical "couldn't reach your Google Drive - try
+            // again" as someone briefly offline - ticket 06 point 4's live defect. NeedsConsent now
+            // says so by name; a genuine Failed still routes through GoogleGrantResolver.diagnose so
+            // a DEVELOPER_ERROR reads as a config problem rather than a generic failure either.
+            when (val outcome = DriveAuth.tokenOrReason(context)) {
+                is DriveAuth.TokenResult.Token -> outcome.accessToken
+                DriveAuth.TokenResult.NeedsConsent ->
+                    return@withContext Result(
+                        false,
+                        GoogleGrantResolver.needsReauthorisingMessage(GoogleGrantResolver.Grant.DRIVE),
+                    )
+                is DriveAuth.TokenResult.Failed -> {
+                    val failure = GoogleGrantResolver.diagnose(
+                        grant = GoogleGrantResolver.Grant.DRIVE,
+                        statusCode = DriveAuth.statusCodeOf(outcome.error),
+                        isNetworkException = DriveAuth.looksLikeNetworkFailure(outcome.error),
+                        fallbackMessage = outcome.error.message,
+                    )
+                    Log.w(TAG, "couldn't get a Drive token", outcome.error)
+                    MidnightEvents.recordError("sync_auth", outcome.error)
+                    return@withContext Result(false, failure.message)
+                }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "couldn't get a Drive token", e)
             MidnightEvents.recordError("sync_auth", e)
@@ -483,8 +512,62 @@ object SyncEngine {
         }
     }
 
+    /**
+     * The column names this device's schema actually has for [table], cached for
+     * the process lifetime (the schema cannot change without a migration, which
+     * runs before any sync pass).
+     *
+     * Exists because a payload's columns and the local schema's columns are NOT
+     * the same set and never were. A row can arrive from an older app version, a
+     * newer one, or - as on 2026-08-03 - from the Midnight AI import assets, whose
+     * `build_entries` rows still carry the `photoPath` column that the v1 port
+     * dropped. [insertRow] built its INSERT from the payload's own keys, so every
+     * such row threw `table build_entries has no column named photoPath` and the
+     * whole table imported as zero rows.
+     *
+     * Stripping `photoPath` from the seed assets would have fixed that one case
+     * and left the next dropped column to do it again. Intersecting here makes an
+     * unknown column degrade instead of throw, which is what a sync layer that
+     * spans app versions has to do.
+     */
+    private val columnCache = ConcurrentHashMap<String, Set<String>>()
+
+    /** `table.column` pairs already reported, so an 11k-row import logs once, not 11k times. */
+    private val reportedDrops = ConcurrentHashMap.newKeySet<String>()
+
+    private fun knownColumns(db: SupportSQLiteDatabase, table: String): Set<String> =
+        columnCache.getOrPut(table) {
+            val cols = LinkedHashSet<String>()
+            db.query("PRAGMA table_info(`$table`)").use { c ->
+                val nameIdx = c.getColumnIndex("name")
+                while (c.moveToNext()) c.getString(nameIdx)?.let { cols.add(it) }
+            }
+            cols
+        }
+
+    /**
+     * Payload columns this schema has, in payload order. Anything the local table
+     * does not define is dropped and reported - silently discarding a column we
+     * were sent is the same sin as writing one we can't verify (CLAUDE.md sec 4
+     * rule 6), so it goes through [MidnightEvents.syncColumnsDropped] rather than
+     * vanishing.
+     */
+    private fun writableColumns(
+        db: SupportSQLiteDatabase,
+        table: String,
+        row: JSONObject,
+        omit: Set<String>,
+    ): List<String> {
+        val known = knownColumns(db, table)
+        val candidates = row.keys().asSequence().filter { it !in omit }.toList()
+        val usable = candidates.filter { it in known }
+        val dropped = candidates.filter { it !in known && reportedDrops.add("$table.$it") }
+        if (dropped.isNotEmpty()) MidnightEvents.syncColumnsDropped(table, dropped)
+        return usable
+    }
+
     private fun insertRow(db: SupportSQLiteDatabase, table: String, row: JSONObject, omit: Set<String>) {
-        val cols = row.keys().asSequence().filter { it !in omit }.toList()
+        val cols = writableColumns(db, table, row, omit)
         if (cols.isEmpty()) return
         val sql = "INSERT OR REPLACE INTO `$table` (${cols.joinToString(",") { "`$it`" }}) " +
             "VALUES (${cols.joinToString(",") { "?" }})"
@@ -493,7 +576,7 @@ object SyncEngine {
 
     private fun updateRow(db: SupportSQLiteDatabase, table: String, row: JSONObject, keyCol: String?, keyVal: Long) {
         val col = keyCol ?: "rowid"
-        val cols = row.keys().asSequence().filter { it != "id" }.toList()
+        val cols = writableColumns(db, table, row, omit = setOf("id"))
         if (cols.isEmpty()) return
         val sql = "UPDATE `$table` SET ${cols.joinToString(",") { "`$it`=?" }} WHERE `$col`=?"
         db.execSQL(sql, (cols.map { SyncCodec.sqlArg(row, it) } + keyVal).toTypedArray())

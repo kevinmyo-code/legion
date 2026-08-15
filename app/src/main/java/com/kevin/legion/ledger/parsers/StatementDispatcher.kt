@@ -16,6 +16,22 @@ sealed class DeterministicResult {
     data class Success(val transactions: List<LedgerTransaction>) : DeterministicResult()
     data class Quarantined(val reason: String) : DeterministicResult()
     data class NeedsLlm(val statementText: String) : DeterministicResult()
+
+    /**
+     * The file parsed and reconciled perfectly - **every numeric anchor passed**
+     * - and the only thing missing is which account it belongs to. Distinct
+     * from [Quarantined] because it is not a failure of the document: nothing
+     * is wrong with the numbers, and re-running with an account is all it needs.
+     *
+     * It is a separate case because **the right thing to say depends on how the
+     * file arrived**, and the parser cannot know that. On a folder scan the
+     * answer is "map the folder to an account". On a hand-picked single file
+     * there IS no folder, and sending the user to a folder-mapping screen is
+     * nonsense - the caller asks which account instead. Encoding that as a
+     * string message inside the parser produced exactly that wrong instruction
+     * on the pick path (reported on device, 2026-08-07).
+     */
+    data class NeedsAccount(val reason: String) : DeterministicResult()
 }
 
 /**
@@ -52,11 +68,20 @@ object StatementDispatcher {
      * (null when the file sat directly in the connected root, or its folder
      * has no mapping yet) - [com.kevin.legion.service.IngestScanner] resolves
      * it via [com.kevin.legion.ledger.LedgerAccountMappingPreferences] before
-     * calling this. Threaded to [BofaCsvStatementParser] to fill in the
-     * account a CSV never prints, and checked against every OTHER parser's
-     * own printed account via [accountConflict] - a PDF's own account always
-     * wins; a hint can only fill a gap, never override one (see
-     * [accountConflict]'s doc comment).
+     * calling this. **It fills a gap, it never overrides a stated fact.**
+     * Kevin's real Drive layout mixes multiple accounts' files in one
+     * subfolder (`USA Bank Statements/` holds BofA checking PDFs, BofA card
+     * PDFs, AND the checking CSV together), so [accountHint] cannot be
+     * assumed to describe every file it is threaded past. Only
+     * [BofaCsvStatementParser] actually consumes it - that CSV export prints
+     * no account of its own anywhere, verified on Kevin's real file, so the
+     * hint is the ONLY source for `accountId` there. Every PDF parser
+     * (`DbsStatementParser`, `BofaStatementParser`, `BofaCardStatementParser`)
+     * derives `accountId` from the document's own printed account and is
+     * never handed [accountHint] at all - a stated, falsifiable fact in the
+     * document always wins, and a folder mapping that happens to describe a
+     * *different* account in the same mixed folder is simply irrelevant to
+     * it, not a conflict to quarantine over.
      */
     fun dispatchDeterministic(fileName: String, bytes: ByteArray, accountHint: String? = null): DeterministicResult {
         // BofaCsvStatementParser MUST run first, before either PDF parser
@@ -71,14 +96,37 @@ object StatementDispatcher {
         // that this catch chain does not handle, instead of falling through.
         try {
             val transactions = BofaCsvStatementParser.parse(fileName, ByteArrayInputStream(bytes), accountHint)
-            accountConflict(accountHint, transactions)?.let { return it }
             return DeterministicResult.Success(transactions)
         } catch (e: UnrecognizedLayoutException) {
             // fall through to the next parser
+        } catch (e: UnmappedAccountException) {
+            // MUST be caught before StatementParseException below, which it
+            // subclasses - otherwise it collapses into a generic quarantine and
+            // the caller loses the one distinction that matters here: the
+            // numbers were fine, only the account is unknown.
+            return DeterministicResult.NeedsAccount(e.userMessage ?: e.message ?: "Which account is this for?")
         } catch (e: StatementParseException) {
             // userMessage first: `message` is the diagnostic, and it went in
             // front of a user verbatim on the first device render of a
             // quarantine row. See StatementParseException.userMessage.
+            return DeterministicResult.Quarantined(
+                e.userMessage ?: e.message ?: "This statement's numbers didn't reconcile."
+            )
+        }
+
+        // BofaCardCsvStatementParser (ticket 12): a real parser now, not a
+        // named rejection - the mid-cycle card export states no balance or
+        // total to reconcile against, so its rows commit UNRECONCILED
+        // (CLAUDE.md §4 rule 7) rather than quarantining outright. It must
+        // still run here, before looksLikePdf, on the same "distinct exact
+        // header line, cannot shadow the other CSV parser or a PDF" footing
+        // as BofaCsvStatementParser above.
+        try {
+            val transactions = BofaCardCsvStatementParser.parse(fileName, ByteArrayInputStream(bytes))
+            return DeterministicResult.Success(transactions)
+        } catch (e: UnrecognizedLayoutException) {
+            // fall through to the next parser
+        } catch (e: StatementParseException) {
             return DeterministicResult.Quarantined(
                 e.userMessage ?: e.message ?: "This statement's numbers didn't reconcile."
             )
@@ -105,7 +153,6 @@ object StatementDispatcher {
 
         try {
             val transactions = DbsStatementParser.parse(fileName, ByteArrayInputStream(bytes))
-            accountConflict(accountHint, transactions)?.let { return it }
             return DeterministicResult.Success(transactions)
         } catch (e: UnrecognizedLayoutException) {
             // fall through to the next parser
@@ -120,10 +167,9 @@ object StatementDispatcher {
 
         try {
             val transactions = BofaStatementParser.parse(fileName, ByteArrayInputStream(bytes))
-            accountConflict(accountHint, transactions)?.let { return it }
             return DeterministicResult.Success(transactions)
         } catch (e: UnrecognizedLayoutException) {
-            // fall through to the LLM path
+            // fall through to BofaCardStatementParser
         } catch (e: StatementParseException) {
             // userMessage first: `message` is the diagnostic, and it went in
             // front of a user verbatim on the first device render of a
@@ -133,34 +179,25 @@ object StatementDispatcher {
             )
         }
 
+        // Ordered strictly AFTER BofaStatementParser (checking), never
+        // before it - BofaStatementParser's own recognition anchors
+        // ("Account number"/"Account #" plus "Beginning balance on ...")
+        // never appear on a card statement, so this ordering is what
+        // guarantees BofaCardStatementParser can never shadow the checking
+        // parser, not the reverse.
+        try {
+            val transactions = BofaCardStatementParser.parse(fileName, ByteArrayInputStream(bytes))
+            return DeterministicResult.Success(transactions)
+        } catch (e: UnrecognizedLayoutException) {
+            // fall through to the LLM path
+        } catch (e: StatementParseException) {
+            return DeterministicResult.Quarantined(
+                e.userMessage ?: e.message ?: "This statement's numbers didn't reconcile."
+            )
+        }
+
         val text = PdfText.extractText(ByteArrayInputStream(bytes))
         return DeterministicResult.NeedsLlm(text)
-    }
-
-    /**
-     * A PDF's own printed account always wins over a folder mapping - the
-     * mapping only fills a gap for a file that states no account of its own
-     * (CLAUDE.md §4: never silently trust a guess over a stated fact, and
-     * never silently trust one source over another either). Returns null
-     * (no conflict) when [accountHint] is null (folder unmapped - nothing to
-     * disagree with) or matches [transactions]' own account - the common
-     * case, since for a CSV [accountHint] is exactly what filled the account
-     * in ([BofaCsvStatementParser] already remapped every row to it, so the
-     * two are trivially equal there).
-     *
-     * When they DO disagree, that means this file is most likely sitting in
-     * the wrong per-account subfolder - silently trusting either side would
-     * misfile money into the wrong account, so this quarantines instead of
-     * picking one.
-     */
-    private fun accountConflict(accountHint: String?, transactions: List<LedgerTransaction>): DeterministicResult.Quarantined? {
-        if (accountHint == null || transactions.isEmpty()) return null
-        val stated = transactions.first().accountId
-        if (stated == accountHint) return null
-        return DeterministicResult.Quarantined(
-            "This statement's own account ($stated) doesn't match the account its folder is mapped " +
-                "to ($accountHint). It's probably filed in the wrong folder. Nothing was imported."
-        )
     }
 
     /**

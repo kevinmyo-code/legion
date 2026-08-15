@@ -157,6 +157,16 @@ dependencies {
     // Custom wake word ("hey <name>"), ported from Midnight AI.
     implementation(libs.vosk.android)
 
+    // Media3 session (`.scratch/android-auto/map.md`). CLAUDE.md §3 lists Media3 as deliberately
+    // dropped at the pivot - it is back for the Android Auto media surface only
+    // (LegionMediaLibraryService), NOT the ExoPlayer stack. Kevin approved re-adding it 2026-08-13.
+    implementation(libs.media3.session)
+    // androidx.media (legacy media-compat) - see libs.versions.toml's media-compat entry for why an
+    // explicit dependency is needed even though media3-session already pulls this in transitively:
+    // MediaConstants (root-hints and custom-action key constants) isn't exposed on the compile
+    // classpath from a transitive-only, implementation-scoped dependency.
+    implementation(libs.media.compat)
+
     // Spotify App Remote SDK (BYO client ID): the driver registers their own
     // Spotify dev app; nothing ships a shared Kevin client ID. The .aar is
     // vendored in app/libs/ (not on Maven); needs Gson at runtime.

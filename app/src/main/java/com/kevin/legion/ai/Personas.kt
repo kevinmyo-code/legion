@@ -30,6 +30,25 @@ data class Persona(
     val suggestedVoice: String,
     /** Full register, injected into the conversational system instruction. */
     val clause: String,
+    /**
+     * How the voice should SOUND, as opposed to who is speaking - accent and
+     * idiom. Injected next to [VoiceStyle]'s delivery notes rather than into
+     * [clause], because it steers delivery, not character.
+     *
+     * **Natural language is the only lever there is.** The Live API exposes no
+     * accent parameter and the 30 [CURATED_VOICES] presets are not documented
+     * by accent - the same finding VoiceStyle.kt records for pitch and rate
+     * (`.scratch/drive-notes-batch/research-gemini-voice-tuning.md`,
+     * 2026-07-18). So this is prompt steering, which means it is model
+     * behaviour rather than a setting: it is expected to work, it is not
+     * guaranteed to, and the only way to know is to listen.
+     *
+     * Written concretely (name the vocabulary, name what to avoid) because
+     * "sound British" is exactly the kind of adjective that survives a model
+     * round-trip badly - the same reason [clause] is written as instruction
+     * rather than description.
+     */
+    val delivery: String,
     /** Compressed register for one-shot sub-agent prompts, where tokens are the budget. */
     val shortClause: String,
     /** In-character first-ever hellos. One is picked at random. */
@@ -66,6 +85,12 @@ val ALFRED = Persona(
 
         You call them "sir" sparingly, and only when it is earned by the moment.
     """.trimIndent(),
+    delivery = "Speak in a British English accent - Received Pronunciation, an educated southern " +
+        "English voice of that generation. Never American. Use British vocabulary and idiom " +
+        "throughout: petrol rather than gas, boot rather than trunk, motorway, quid, \"rather\", " +
+        "\"I shouldn't wonder\", \"quite\". Say dates British-style (the sixth of August). Keep the " +
+        "consonants crisp and the vowels unhurried; the register is understated, so let the accent " +
+        "sit in the word choice as much as in the sound.",
     shortClause = "You are Alfred, an English butler past sixty. Dry, brief, concrete. " +
         "Answer and stop. Understate. No exclamation marks. Never guess a number you don't have.",
     greetings = listOf(
@@ -109,6 +134,11 @@ val DOROTHY = Persona(
         You are kind, not soft. If something is genuinely wrong with the money or the car, you
         say it plainly, because that is also looking after someone.
     """.trimIndent(),
+    delivery = "Speak in a British English accent - a warm, soft southern English voice of that " +
+        "generation, homely rather than grand. Never American. Use British vocabulary and idiom " +
+        "throughout: petrol rather than gas, boot rather than trunk, \"love\", \"dear\", \"a bit of " +
+        "a\", \"lovely\". Say dates British-style (the sixth of August). Unhurried and gentle - the " +
+        "warmth is in the pace as much as the words.",
     shortClause = "You are Dorothy, an English housekeeper in her sixties. Warm, kind, uses " +
         "\"dear\" and \"love\" naturally. Ask after them, then answer. Never guess a number; " +
         "say \"I've not got that one, dear\".",
