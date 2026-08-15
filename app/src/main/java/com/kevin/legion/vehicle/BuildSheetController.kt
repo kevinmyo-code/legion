@@ -72,10 +72,15 @@ object BuildSheetController {
      * currently exercised by any Live tool (`get_spend` is not in ticket 01's
      * category B list), added for the controller-threading consistency the
      * ticket's §2 asks for.
+     *
+     * [ServiceRecordDao.totalCost] returns cents (ticket 11, CLAUDE.md §4 rule 3);
+     * this function's own return type stays dollars to match [BuildEntry.cost] and
+     * every existing caller, so the cents figure is divided by 100 right here at the
+     * boundary rather than propagated further as an ambiguous raw number.
      */
     suspend fun totalSpend(context: Context, vehicleId: String? = null): Double {
         val id = VehicleController.vehicleFor(context, vehicleId).obdMac
-        return dao(context).totalSpend(id) + serviceDao(context).totalCost(id)
+        return dao(context).totalSpend(id) + serviceDao(context).totalCost(id) / 100.0
     }
 
     /**
@@ -90,7 +95,8 @@ object BuildSheetController {
             val sum = dao(context).spendByType(id, type)
             if (sum > 0) map[type] = sum
         }
-        val maintenance = serviceDao(context).totalCost(id)
+        // Cents -> dollars at the boundary, same reasoning as totalSpend above.
+        val maintenance = serviceDao(context).totalCost(id) / 100.0
         if (maintenance > 0) map["maintenance"] = maintenance
         return map
     }

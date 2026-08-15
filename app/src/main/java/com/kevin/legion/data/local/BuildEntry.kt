@@ -13,6 +13,13 @@ import androidx.room.PrimaryKey
  * [cost] is nullable on purpose: the driver can log *what* was done without a
  * dollar figure, and the money layer is hidden/gated separately. Cost is in
  * dollars (this is a personal spend log, not accounting).
+ *
+ * **[cost] is the deliberate odd one out.** Ticket 11 (`.scratch/fleet-maintenance/
+ * issues/11-*`) migrated [ServiceRecord.costCents] to `Long` cents per CLAUDE.md §4
+ * rule 3, because that column was provably empty (no writer, null on every row) and
+ * the migration was free. This column is NOT empty in the same sense - it has real,
+ * if sparse, driver-entered data - and ticket 11 scoped the fix to `service_records`
+ * only. Left as `Double` on purpose, not a second convention nobody chose.
  */
 @Entity(tableName = "build_entries")
 data class BuildEntry(

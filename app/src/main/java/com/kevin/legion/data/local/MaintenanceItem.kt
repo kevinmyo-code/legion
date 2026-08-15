@@ -29,4 +29,27 @@ data class MaintenanceItem(
     // as due the moment it was seeded, because every freshly-looked-up interval
     // starts with null anchors. See VehicleController.dueItems/unknownItems.
     @ColumnInfo(defaultValue = "0") val neverDone: Boolean = false,
+    // Who put this interval on the schedule: "SEEDED" (LEGION's LLM lookup guessed
+    // it) or "CONFIRMED" (the driver typed it, accepted it, or confirmed it as-is).
+    // Ticket 06 (`.scratch/fleet-maintenance/issues/06-*`): an LLM-guessed interval
+    // never enters CLAUDE.md §4's reconciliation gate - there is nothing to reconcile
+    // it against - so this is deliberately NOT [IngestMethod] (that vocabulary
+    // describes what survived the gate). Plain TEXT, no enum column type: CLAUDE.md
+    // §5's "widening an enum stored as TEXT is not a migration" - a future FACTORY
+    // state (a bundled schedule, declined for now) costs no schema change this way.
+    // Every row migrated in at v20 defaults to SEEDED, correctly - all 54 rows on
+    // Kevin's phone were LLM-produced and updatedAt cannot reveal authorship (its
+    // Kotlin default stamps construction). DEFAULT 'SEEDED' mirrors the migration.
+    @ColumnInfo(defaultValue = "SEEDED") val intervalSource: String = "SEEDED",
+    // Soft-delete tombstone (ticket 07, v19->v20). maintenance_items syncs
+    // Mode.LWW/naturalPk (SyncEngine.kt) so a hard DELETE cannot propagate - the
+    // other device's un-deleted copy would win the next merge and resurrect the
+    // row. Reuses the same pattern car_tasks/places have carried since B19: the
+    // sync snapshot deliberately does NOT filter on this column (a tombstone must
+    // ship to Drive to propagate), every other reader (DAOs, controllers, tools,
+    // UI) DOES filter deleted = 0. A tombstoned row is still a row, so re-seeding
+    // via insertAll's @Insert(IGNORE) cannot resurrect a deleted item - the
+    // existing (tombstoned) row blocks the IGNORE, which is correct and now
+    // deliberate rather than a happy accident. DEFAULT '0' mirrors the migration.
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

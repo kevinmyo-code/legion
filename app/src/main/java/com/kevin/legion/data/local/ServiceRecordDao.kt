@@ -27,9 +27,14 @@ interface ServiceRecordDao {
     @Query("SELECT * FROM service_records WHERE vehicleId = :vehicleId ORDER BY date DESC LIMIT :limit")
     suspend fun getRecentForVehicle(vehicleId: String, limit: Int): List<ServiceRecord>
 
-    /** Total logged maintenance spend (ignores null costs) - feeds the build-sheet grand total. */
-    @Query("SELECT COALESCE(SUM(cost), 0) FROM service_records WHERE vehicleId = :vehicleId")
-    suspend fun totalCost(vehicleId: String): Double
+    /**
+     * Total logged maintenance spend, in cents (ignores null costs) - feeds the
+     * build-sheet grand total. Cents, never dollars (CLAUDE.md §4 rule 3) - callers
+     * that combine this with a dollar figure (e.g. [BuildEntry.cost]) must divide by
+     * 100 themselves; this DAO stays in the same unit as the column it sums.
+     */
+    @Query("SELECT COALESCE(SUM(costCents), 0) FROM service_records WHERE vehicleId = :vehicleId")
+    suspend fun totalCost(vehicleId: String): Long
 
     /** Count of services logged in a time range - feeds MonthlyRecapController's aggregation. */
     @Query(

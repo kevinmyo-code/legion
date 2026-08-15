@@ -866,3 +866,73 @@ val MIGRATION_18_19 = object : Migration(18, 19) {
         }
     }
 }
+
+/**
+ * v19 -> v20: the fleet-maintenance map's schema
+ * (`.scratch/fleet-maintenance/map.md`, "THE MIGRATION", tickets 06/07/11/14, all resolved
+ * 2026-08-15). Four changes, three additive and one the map's stated exception to CLAUDE.md §5's
+ * additive-only rule. Verbatim from the generated schema JSON
+ * (`app/schemas/com.kevin.legion.data.local.CarDatabase/20.json`), confirmed against it after a
+ * kapt run rather than assumed - see CarDatabase's v20 doc comment for the full reasoning behind
+ * each column and [MaintenanceItem.intervalSource]/[MaintenanceItem.deleted]/[Vehicle.engine]/
+ * [ServiceRecord.costCents]'s own doc comments.
+ *
+ * **`maintenance_items.intervalSource` and `.deleted`** (tickets 06/07) are plain
+ * `ALTER TABLE ... ADD COLUMN`, additive, no data touched.
+ *
+ * **`vehicles.engine`** (ticket 14) is the same shape, a different table, riding the same version
+ * bump per that ticket's own instruction not to hold 06/07 for it.
+ *
+ * **`service_records.cost REAL` -> `.costCents INTEGER`** (ticket 11) cannot be an `ALTER TABLE`
+ * at all - SQLite has no `ALTER COLUMN`, so this is the standard create-new-table / copy / drop /
+ * rename sequence, done here rather than a separate migration because doing all four changes once
+ * is cheaper than three additive bumps plus one non-additive one (ticket 06's own text). The new
+ * table's shape otherwise matches the old one exactly: same `id INTEGER PRIMARY KEY AUTOINCREMENT`,
+ * same `syncId TEXT NOT NULL DEFAULT ''`. The copy selects a literal `NULL` for `costCents` on
+ * every row, never `cost * 100` - **`cost` is provably empty** (ticket 11 verified
+ * `SELECT COUNT(*) FROM service_records WHERE cost IS NOT NULL` = 0 against a copy of Kevin's real
+ * database before this was written, 0 of 2 rows), so there is nothing to convert and a conversion
+ * expression would be dead code implying data that was never there. `sqlite_sequence` is not
+ * touched - Room's own generated migrations for a REPLACE-style table rebuild never carry the old
+ * autoincrement counter forward either, and this table's PK has no cross-table foreign-key
+ * dependents relying on a specific next-`id` value.
+ */
+val MIGRATION_19_20 = object : Migration(19, 20) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // maintenance_items: two additive columns (tickets 06/07).
+        db.execSQL(
+            "ALTER TABLE `maintenance_items` ADD COLUMN `intervalSource` TEXT NOT NULL DEFAULT 'SEEDED'"
+        )
+        db.execSQL(
+            "ALTER TABLE `maintenance_items` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0"
+        )
+
+        // vehicles: one additive column (ticket 14).
+        db.execSQL(
+            "ALTER TABLE `vehicles` ADD COLUMN `engine` TEXT NOT NULL DEFAULT ''"
+        )
+
+        // service_records: cost REAL -> costCents INTEGER (ticket 11). Not additive - SQLite
+        // cannot retype a column in place, so this is create/copy/drop/rename. The column being
+        // copied is provably empty (verified against Kevin's real database before writing this),
+        // so every row's costCents comes over as a literal NULL, never cost * 100.
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `service_records_new` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`vehicleId` TEXT NOT NULL, " +
+                "`serviceName` TEXT NOT NULL, " +
+                "`mileage` INTEGER NOT NULL, " +
+                "`date` INTEGER NOT NULL, " +
+                "`costCents` INTEGER, " +
+                "`syncId` TEXT NOT NULL DEFAULT '')"
+        )
+        db.execSQL(
+            "INSERT INTO `service_records_new` " +
+                "(`id`, `vehicleId`, `serviceName`, `mileage`, `date`, `costCents`, `syncId`) " +
+                "SELECT `id`, `vehicleId`, `serviceName`, `mileage`, `date`, NULL, `syncId` " +
+                "FROM `service_records`"
+        )
+        db.execSQL("DROP TABLE `service_records`")
+        db.execSQL("ALTER TABLE `service_records_new` RENAME TO `service_records`")
+    }
+}

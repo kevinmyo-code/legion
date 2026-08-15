@@ -130,6 +130,29 @@ import androidx.room.RoomDatabase
  * [MIGRATION_18_19] is the data-only third leg, undoing whatever damage already landed on disk - see
  * that migration's own doc comment for the full story and why it is deliberately UNSCOPED to any one
  * rule's category, unlike [MIGRATION_17_18]'s category-matched repair.
+ *
+ * v20: the fleet-maintenance map's schema (`.scratch/fleet-maintenance/map.md`, "THE MIGRATION",
+ * tickets 06/07/11/14, all resolved 2026-08-15). Three additive columns plus one deliberate
+ * exception to the additive-only rule:
+ * - `maintenance_items.intervalSource TEXT NOT NULL DEFAULT 'SEEDED'` (ticket 06) - provenance flag
+ *   for a seeded-vs-confirmed maintenance interval. See [MaintenanceItem.intervalSource]'s doc
+ *   comment for why this is plain TEXT and not [IngestMethod].
+ * - `maintenance_items.deleted INTEGER NOT NULL DEFAULT 0` (ticket 07) - the soft-delete tombstone,
+ *   reusing the pattern `car_tasks`/`places` have carried since B19. See
+ *   [MaintenanceItem.deleted]'s doc comment.
+ * - `vehicles.engine TEXT NOT NULL DEFAULT ''` (ticket 14) - driver-entered engine, for a factory
+ *   schedule that can differ by engine on the same year/make/model/trim. See [Vehicle.engine]'s doc
+ *   comment.
+ * - `service_records.cost REAL` -> `service_records.costCents INTEGER` (ticket 11) - **the map's
+ *   one stated exception to CLAUDE.md §5's additive-only rule.** SQLite cannot retype a column in
+ *   place, so this is a create-new-table/copy/drop/rename, not an `ALTER TABLE ... ADD COLUMN`.
+ *   Justified ONLY because the column was verified provably empty first - ticket 11's own text:
+ *   "`SELECT COUNT(*) FROM service_records WHERE cost IS NOT NULL` must be 0" against a copy of
+ *   Kevin's real database, confirmed 0 of 2 rows before this migration was written. The copy
+ *   therefore inserts NULL for every row, never a `cost * 100` conversion - there is nothing to
+ *   convert, and a conversion expression would imply data that never existed. See
+ *   [MIGRATION_19_20]'s own doc comment for the table rebuild and [ServiceRecord.costCents]'s for
+ *   why this is a `Long` (CLAUDE.md §4 rule 3) while [BuildEntry.cost] deliberately stays `Double`.
  */
 @Database(
     entities = [
@@ -154,7 +177,7 @@ import androidx.room.RoomDatabase
         VehicleCapability::class,
         Goal::class, AdvisorAdvice::class,
     ],
-    version = 19,
+    version = 20,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -233,7 +256,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 19
+        const val SCHEMA_VERSION = 20
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -252,7 +275,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
                         MIGRATION_11_12, MIGRATION_12_13,
                         MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
-                        MIGRATION_17_18, MIGRATION_18_19,
+                        MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

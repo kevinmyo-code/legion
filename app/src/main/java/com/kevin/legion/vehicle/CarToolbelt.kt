@@ -105,7 +105,9 @@ object CarToolbelt {
             buildString {
                 append(shortDate(r.date)).append(": ").append(r.serviceName)
                 append(" at ${"%,d".format(r.mileage)} mi")
-                r.cost?.let { append(" ($").append("%.0f".format(it)).append(")") }
+                // costCents is cents (ticket 11, CLAUDE.md §4 rule 3) - divide by 100
+                // here at the formatting edge, never carry a raw cents figure further.
+                r.costCents?.let { append(" ($").append("%.0f".format(it / 100.0)).append(")") }
             }
         }
     }

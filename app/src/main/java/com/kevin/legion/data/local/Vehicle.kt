@@ -60,4 +60,13 @@ data class Vehicle(
     // "Manage apps -> Delete hidden app data". Rides the LWW path on `updatedAt`
     // like any other edit, so archiving propagates across devices for free.
     @ColumnInfo(defaultValue = "0") val archived: Boolean = false,
+    // Driver-entered engine (e.g. "4.0L I6", "2.5L I4") - ticket 14
+    // (`.scratch/fleet-maintenance/issues/14-*`): a factory maintenance schedule
+    // can differ by engine on the same year/make/model/trim (a 4.0L XJ and a 2.5L
+    // XJ differ on plugs and capacities), so the populate-from-factory-schedule
+    // flow's manual-input path asks for it alongside year/make/model/trim/mileage.
+    // Added v19->v20 alongside MaintenanceItem's intervalSource/deleted columns -
+    // a different table, riding the same version bump per the ticket's own
+    // instruction not to hold 06/07 for it. DEFAULT '' mirrors the migration.
+    @ColumnInfo(defaultValue = "''") val engine: String = "",
 )
