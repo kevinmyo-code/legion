@@ -105,7 +105,10 @@ his two existing service records on a screen.
   **three rows out of ten** - `buildDueRows` silently drops all seven unanchored items - and reports
   **the oil due in 121,450 miles**. The identity is not lost, only unwritten: `vehicle_specs` holds
   a fully decoded VIN from 2026-07-26 that never wrote back to `vehicles`, **so `check_recalls`
-  passes its `confirmed` gate and queries NHTSA with empty parameters.** Ticket 08's orphan rows
+  passes its `confirmed` gate and then returns an empty list that reads exactly like "no open
+  recalls"** (corrected 2026-08-15: `fetchRecalls` guards on blank year/make/model and makes no
+  request at all - the earlier claim that it queried NHTSA with empty parameters was wrong in
+  mechanism, though not in consequence). Ticket 08's orphan rows
   exist in the wild (`Brake Fluid` + `Brake Pads`, anchor-only, beside the seeded `Brake Fluid
   Flush`), `cost` is null on both service records, `neverDone` has **never been used once** in 54
   rows, and the odometer estimator has **never accumulated a single mile** on this car despite 938

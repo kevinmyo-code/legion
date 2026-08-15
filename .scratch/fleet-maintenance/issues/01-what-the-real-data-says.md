@@ -128,10 +128,16 @@ preference, an empty identity.**
 | `decodedAt` | 2026-07-26 14:19:49 |
 
 **The VIN decode succeeded three weeks ago and never wrote back to the vehicle's identity row.**
-That is the root cause of the label bug *and* of ticket 12's recall problem: `check_recalls` queries
-NHTSA by year/make/model, so it will send empty make, empty model, model year 0. `confirmed = 1`
-means the gate **passes** and the query runs on empty parameters - **worse than refusing, because it
-will report "no open recalls" on a car it never asked about.**
+That is the root cause of the label bug *and* of ticket 12's recall problem.
+
+**Corrected 2026-08-15** (the original wording here asserted a mechanism I had not read):
+`check_recalls`' `confirmed` gate passes, because `confirmed = 1`. What follows is **not** an HTTP
+request with empty parameters - `VinDecoder.fetchRecalls` guards at its own entry
+(`if (year <= 0 || make.isBlank() || model.isBlank()) return@withContext emptyList()`,
+`VinDecoder.kt:98-99`), so no request is made and an empty list comes back.
+
+The consequence is the same and is the reason it matters: **an empty list is indistinguishable from
+"no open recalls."** The app would report a clean bill of health on a car it never asked about.
 
 ### 3. `maintenance_items` - 54 rows across 5 cars; the Jeep's 10
 

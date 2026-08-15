@@ -7,12 +7,21 @@ Blocked by: 04, 13
 ## Input from ticket 01 (2026-08-15) - this ticket got worse
 
 The `confirmed` gate in question 4 below **does not protect anything on Kevin's actual car**.
-`confirmed = 1` on the Jeep row, but `make`, `model` and `year` are **empty**. So the gate passes
-and `fetchRecalls` queries NHTSA with an empty make, an empty model and model year 0.
+`confirmed = 1` on the Jeep row, but `make`, `model` and `year` are **empty**. So the gate passes.
 
-**A button that reports "no open recalls" after asking about no car is worse than no button.**
-This ticket must not ship until the identity is restored (ticket 13) - and the guard it needs is
-not `confirmed`, it is **year/make/model all actually present**.
+**Correction, 2026-08-15** (I asserted the mechanism twice before reading `VinDecoder`): what
+happens next is *not* a query with empty parameters. `fetchRecalls` guards at its own front door -
+`if (year <= 0 || make.isBlank() || model.isBlank()) return@withContext emptyList()`
+(`VinDecoder.kt:98-99`) - so **no HTTP request is made at all** and an empty list comes back.
+
+The user-visible outcome is unchanged and is still the reason this ticket is blocked: **an empty
+list is indistinguishable from "this car has no open recalls."** A button reporting no recalls
+after asking about no car is worse than no button.
+
+So the guard this ticket needs is not `confirmed`, and it is not inside `fetchRecalls` either -
+that guard already exists and is silent. It is **at the button**: year/make/model must all be
+present before the check is offered, and their absence must be **said in words** with a route to
+fixing it, rather than rendering as a clean "no recalls found".
 
 ## Question
 
