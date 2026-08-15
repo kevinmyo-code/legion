@@ -559,3 +559,17 @@ The method works—but it has its own failure mode, and it bit twice in this eff
 **Regression check:** A device-measurement finding (pixel sample, node bounds, animation frame) that does not state the device's condition (scroll position, expanded/collapsed, connected/disconnected) when measured. Also: a past measurement finding that is re-cited or acted on without confirming the device is still in that state.
 
 **Status:** OPEN, rule needs graduation. File to `playbook-coding.md` "Layout and measurement claims" section alongside the palette-validator rule from L20. This is cost-free to apply and caught a cascading diagnostic failure that consumed a very large budget over false evidence.
+
+---
+
+## L23 - WAL file is required when pulling database state (2026-08-15)
+
+**Context:** Fleet maintenance ticket 01 pulled the device database to understand current vehicle state. `ls -l` on the device showed `legion_database` last written the previous evening and **`legion_database-wal` at 428KB, written that morning** - so the main file alone was a day stale, and all eight of ticket 01's findings would have been wrong. All three files were pulled in the first command; **this is a near-miss recorded before it bit, not a mistake corrected after the fact.** The margin was one `ls -l` that happened to get read.
+
+**Root class:** database-pull procedure incomplete. A write-ahead log is part of the checkpoint state and cannot be omitted.
+
+**Rule:** Any pull of a Room database file for verification/inspection must include all three files: the main database file, `-wal` (write-ahead log), and `-shm` (shared-memory lock). Check modification times: if `-wal` is newer than the main file, the main file's state is stale. Read all three or the database state is not current.
+
+**Regression check:** A database finding from a device pull that does not mention whether `-wal` and `-shm` were present. Also: an unsourced claim about device database state made without confirming the WAL was included.
+
+**Status:** CLOSED. Rule is recorded here and in ticket 01's verification accounting. Next session: graduate this into `playbook-coding.md` or a database procedures section if database pulls become routine.

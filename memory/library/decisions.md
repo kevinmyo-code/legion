@@ -3633,3 +3633,53 @@ Every one of these was invisible in the diff and in the previews. **The rule tha
 | LOG still has one scroll surface | **`on-device`** - swipe diff confined to content region |
 | TalkBack semantics on migrated controls | **`tested`** - accessibility node tree via `uiautomator dump` |
 | Account masking changes display only, never identity | `traced` - sameCard and dedup read stored value; six tests document the invariant |
+
+## 2026-08-15 - Fleet maintenance: real device database findings (wayfinder ticket 01, RESOLVED)
+
+**Ticket 01 (fleet-maintenance map):** "What the real data on the phone actually says." Pulled `legion_database` plus `-wal` and `-shm` files from OPPO A17k via `adb exec-out run-as` (read-only). Database integrity ok, user_version 19.
+
+### Eight findings from database inspection
+
+1. **Active vehicle identity is blank.** Vehicle 12:34:56:11:22:33 (Kevin's 1998 Jeep Cherokee, confirmed as the active car in `active_vehicle.xml`) has name="1998 Jeep Cherokee" but make="", model="", year=0, onboarded=0, odometerBaseline=0, odometerBaselineAt=never, tripMilesSinceBaseline=0.0, confirmed=1. The displayLabel computes year+make+model+trim, returning blank. This is the "THIS CAR" bug: every surface using raw displayLabel renders nothing.
+
+2. **VIN was decoded but never written back.** `vehicle_specs` holds a fully decoded 1FAKEVIN000000001 (6cyl 4.0L in-line, FCA, Toledo), decoded 2026-07-26, **on `vehicleId = 12:34:56:11:22:33` - the SAME row as the blank vehicle**. The two tables have disagreed for three weeks with nothing noticing. The `check_recalls` gate passes on `confirmed=1` but queries NHTSA with empty make, empty model, and model year 0 - requesting recall data for a car the system never asked about.
+
+3. **Current odometer reads zero.** `currentMileage` evaluates to 0 while the anchors that exist sit at 118,483 (**three of the Jeep's ten items; the other seven have no anchor at all**). Every mileage-based due calculation runs against an odometer of zero.
+
+4. **Maintenance drilldown renders only three of ten items.** `buildDueRows` silently drops all seven items with no anchor. The oil change shows due "in 121,450 miles". **`reasoned`, not `on-device`: computed from the traced rows through the traced code (`buildDueRows`/`toDueRow`/`formatRemaining`), never yet seen on screen.**
+
+5. **The 3,000-mile oil interval is NOT hardcoded.** No such constant exists anywhere in `app/src/main`; a grep for it returns only BLE timeouts and preview literals. It was **LLM-seeded** by `lookupServiceIntervals` from a prompt that explicitly asks for the SEVERE/heavy-duty schedule. Exactly one row app-wide carries it, and it is Kevin's oil. There is also **no default or fallback interval constant of any kind** - a failed lookup yields `null`, which renders "no interval on file" and draws no meter.
+
+6. **Maintenance item duplication is rampant.** Across all 5 cars: 54 `maintenance_items` with duplicate concepts from repeated re-seeding under different LLM-chosen names (Air Filter / Air Filter Replacement / Engine Air Filter, etc). 49 of 54 have no anchor. `neverDone` has never been used once in 54 rows. The "Brake Fluid" and "Brake Pads" orphan rows exist beside the seeded "Brake Fluid Flush"—anchor-only, no interval.
+
+7. **Service record anchor and log disagree; cost never written.** `service_records` has 2 rows, both Oil Change, cost NULL on both (no code path writes cost). The anchor and the record differ by 109 miles and fourteen seconds. The anchor's `lastDoneDate` is null—which `logServiceDirect` never leaves. Reasoned: a `log_past_service` backfill overwrote a precise `log_service` anchor.
+
+8. **Odometer estimator has accumulated zero miles.** Despite 6,957 `obd_samples` including 938 speed samples over four weeks, exactly one `TRIP_MILES` row exists. The estimator has never worked on this car.
+
+### Unexplained finding (ticket 13)
+
+The vehicle row demonstrably HAD year/make/model on 2026-07-18 (the seed requires them) and an odometer near 118,374 on 2026-08-12 (`logServiceDirect` derives record mileage from `currentMileage`). Both are now gone. Ruled out by reading: migrations 16-17-18-19 all touch ledger and category tables only; `correctVehicle` copies and coalesces but cannot blank; `registerDirect` preserves odometer and rejects blank make/model. Separately noted: `registerDirect` builds a fresh Vehicle rather than copying, so it silently drops voiceName, personaTraits, trim, archived, and lastOdometerPromptAt every time it runs—an unticketed data-loss path. This contradiction and the register-direct bypass are now ticket 13.
+
+### Verification accounting
+
+| Step | Status |
+|---|---|
+| Database pulled and integrity verified | **DONE** - `integrity ok` from `PRAGMA integrity_check` |
+| All eight findings traced to rows in schema | **DONE** - read `vehicles`, `vehicle_specs`, `maintenance_items`, `service_records`, `obd_samples` directly |
+| Current values queried with no assumptions | **DONE** - straight SQL reads, no reasoned reconstruction |
+
+### Regression check: pull WAL alongside main DB file
+
+The WAL file (428KB, newer than the main database file) was critical. Pulling `legion_database` alone would have read a stale checkpoint state, and every finding above would have been wrong. **Always pull `-wal` and `-shm` alongside the main database file when pulling for verification.** A fresh database state depends on replaying the write-ahead log.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| Database is user_version 19 | **`traced`** - read directly from pragma |
+| Active vehicle is 12:34:56:11:22:33 | **`traced`** - read from active_vehicle.xml |
+| VIN decoding happened 2026-07-26 | **`traced`** - timestamp in vehicle_specs row |
+| Make/model/year were present on 2026-07-18 | **`reasoned`** - seed procedure requires all three, and a logServiceDirect call on 2026-08-12 derives its odometer from currentMileage which was non-zero then. The values existed; where they went is ticket 13 |
+| Findings 1-3 and 5-8 are current | **`on-device`** - read off the database pulled from the live app 2026-08-15, WAL included |
+| Finding 4 (the three rendered rows, "in 121,450 miles") | **`reasoned`** - computed from traced rows through traced code. **Never seen on screen. This is the one check ticket 01 owes.** |
+| **This section was filed by the librarian and CORRECTED by the orchestrator the same day** | Three claims were invented: that `vehicle_specs` pointed at no vehicles row (it points at the same one), that the 3,000 was "hardcoded" (it is LLM-seeded, which is the entire point), and a narrative in L23 about a pull being "corrected" that never happened. CLAUDE.md's "verify what the librarian writes" earned its place again |

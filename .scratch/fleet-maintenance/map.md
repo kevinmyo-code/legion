@@ -59,6 +59,44 @@ his two existing service records on a screen.
 
 <!-- one line per closed ticket: gist + link -->
 
+- [The Jeep row lost its identity and its odometer](issues/13-the-jeep-row-lost-its-identity.md) -
+  **the mechanism is certain, the trigger is not, and both statements are load-bearing.** Proof came
+  off the disk, not off a timeline: `applyServiceIntervals` sets `onboarded = true` in the same call
+  that writes the schedule, so **ten seeded items alongside `onboarded = 0` cannot coexist** on a row
+  that was never overwritten. Cause: `VehicleDao.upsert` is `@Insert(REPLACE)` and `seedVehicle`
+  **persists an all-defaults row on any `getByMac` miss** - one miss is permanent, total and silent.
+  `TelemetryRecorder` calls that path **every 30 seconds while driving**, and `withDatabaseLock`'s own
+  doc named that exact thread as a hazard on 2026-08-13, the day of the damage; **the guard landed
+  2026-08-15, two days late.** Six suspects eliminated by evidence, including `DatabaseSnapshot.restore`
+  - **that file did not exist yet.** Kevin took the deepest fix: seeding never persists, whole-row
+  REPLACE stops being how a vehicle is edited, `registerDirect`'s silent field loss goes with it, and
+  trip miles accumulate in SQL. Odometer restored as **~118,374 derived from the service record,
+  stamped with that record's own date so it carries its staleness** - an estimate, never a reading.
+  **No schema change.** Also records a confound: the old placeholder was itself a 1998 Jeep Cherokee,
+  so **no row written before 2026-08-15 can be told from a placeholder by make/model/year.**
+- [Can the adapter read a real odometer?](issues/03-reading-a-real-odometer-over-obd.md) - **No.
+  Two independent kills**: the XJ's odometer is on Chrysler's **CCD bus** and the ELM327 has no CCD
+  transceiver, and the Cherokee **kept CCD to end of production** while the rest of Chrysler moved to
+  the J1850 the ELM327 does speak. PID `$A6` postdates it by 21 years. `$21` is permanently 0 on a
+  healthy car **by definition**; `$31` is optional in 1998, resets on battery disconnect, and
+  saturates at ~40,700 mi without wrapping. **The dash odometer is itself a speed integration off the
+  same VSS** - so LEGION computes the same measurement, far more sparsely, and should therefore
+  **prefer OBD speed over GPS** (it currently prefers GPS). Accuracy is a **~10% one-directional
+  undercount**, from five named losses that only ever lose miles. Two live defects surfaced: the
+  0.001-5.0 mi window lets **idling accrue phantom miles**, and `wanted("010D")` **latches off
+  permanently** after 3 failures.
+- [What a 1998 Jeep Cherokee actually needs](issues/02-what-a-1998-xj-actually-needs.md) - **Kevin's
+  7,500 IS the factory number.** Schedule A (normal) is 7,500 mi or 6 months; Schedule B (severe) is
+  3,000 mi with **no time interval at all**. The 3,000 on his phone is the correct answer to a
+  question nobody meant to ask - `lookupServiceIntervals` hardcodes SEVERE into its prompt. **The LLM
+  was not wrong; the prompt was**, and fixing it yields 7,500 with no further intervention. Four
+  findings bite other tickets: Schedule B publishing no time intervals means **the data model must
+  tolerate a mileage-only item**; **brake fluid is not in the factory schedule at all**, so the
+  seeded `Brake Fluid Flush` was invented rather than retrieved; **the XJ has no cabin air filter**;
+  and **it never used HOAT** - the trap runs opposite to the folklore this map's own ticket repeated.
+  **26 distinct factory strings against `SERVICE_KEYWORDS`' ten** - the canonical list fails the test
+  this ticket existed to run.
+
 - [What the real data on the phone actually says](issues/01-what-the-real-data-says.md) - **the
   Jeep has no identity and no odometer.** `make`/`model`/`year` are empty and `odometerBaseline` is
   0, so `displayLabel` returns blank (that is the `THIS CAR` bug - **not** resolution order, and
