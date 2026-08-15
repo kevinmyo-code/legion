@@ -72,7 +72,10 @@ ticket by its title, not `01`/`02`. The filename rides inside the name as its li
 ## Active efforts
 
 - `.scratch/ledger-drive-ingestion/` - Drive-folder batch ingestion for the ledger aspect plus a
-  basic UI across all three aspects. Charted 2026-08-01, ten tickets.
+  basic UI across all three aspects. Charted 2026-08-01, ten tickets; 12 and **13** added later.
+  **Ticket 13 (`categoryPending` default drift) was found by the fleet-maintenance map**, not by
+  this one - a schema audit against Kevin's real device turned up the only drifted default in 44
+  entities. Filed here because it is a ledger table.
 - `.scratch/legion-shape/` - what LEGION actually is. Charted 2026-08-06/07, twelve tickets.
 - `.scratch/notes-lists-calendar/` - notes, lists and a local calendar, absorbing `CarTask` and
   `PlaceReminder`. Charted 2026-08-07, ten tickets. No external blockers, deliberately.
