@@ -326,19 +326,33 @@ fun buildCredTile(budget: BudgetVsActual?, monthLabel: String): CredTileData {
  * FLEET tile: [rows] is [com.kevin.legion.ui.fleet.buildDueRows]'s already-sorted (overdue-first)
  * output, re-shaped rather than recomputed, same posture [buildMaintenanceGapRowData] states for
  * its own row above. `NO LINK` (no maintenance schedule at all) is the silent-domain wording the
- * old FLEET sweep row used, carried over unchanged.
+ * old FLEET sweep row used, carried over unchanged - now gated on [unknownCount] too, since a car
+ * whose entire schedule is unknown-anchor still HAS a schedule, just nothing anchored yet.
+ *
+ * **Ticket 09's fix: the tile must stop saying `OK` while unknowns exist.** On Kevin's real Jeep
+ * this used to read `OK / NEXT BRAKE FLUID -` with seven of ten items unanchored and the "next"
+ * row an orphan with no interval at all - not true, and it was the surface he saw most.
+ *
+ * [unknownCount] comes from [com.kevin.legion.vehicle.VehicleController.unknownItems] - a genuinely
+ * separate count from [rows], which [buildDueRows]'s own doc says never contains an unknown-anchor
+ * item at all (they are excluded, not merely unsorted). `OK` is reserved for the one state that is
+ * actually true: nothing overdue AND nothing unknown. Any other state names the overdue count as the
+ * hero - honestly `"0 DUE"` when every unknown item happens to sit alongside zero overdue ones,
+ * never `OK` - and the caption states the unknown count in words (`"3 due - 7 unknown"`) rather than
+ * a colour or a glyph (CLAUDE.md §4 rule 7). Seven characters of hero max (mission-control ticket 05)
+ * - `"N DUE"` fits at any single or double-digit N.
  */
 data class FleetTileData(val hero: String, val caption: String)
 
-fun buildFleetTile(rows: List<DueRowView>): FleetTileData {
-    if (rows.isEmpty()) return FleetTileData(hero = "NO LINK", caption = "no maintenance schedule")
+fun buildFleetTile(rows: List<DueRowView>, unknownCount: Int): FleetTileData {
+    if (rows.isEmpty() && unknownCount == 0) return FleetTileData(hero = "NO LINK", caption = "no maintenance schedule")
     val overdueCount = rows.count { it.overdue }
-    return if (overdueCount > 0) {
-        FleetTileData(hero = "$overdueCount DUE", caption = "overdue - see fleet")
-    } else {
+    if (overdueCount == 0 && unknownCount == 0) {
         val next = rows.first()
-        FleetTileData(hero = "OK", caption = "next ${next.label} ${next.value}")
+        return FleetTileData(hero = "OK", caption = "next ${next.label} ${next.value}")
     }
+    val caption = if (unknownCount > 0) "$overdueCount due - $unknownCount unknown" else "overdue - see fleet"
+    return FleetTileData(hero = "$overdueCount DUE", caption = caption)
 }
 
 // -------------------------------------------------- mission-control ticket 16: BIO/FLEET surfaces

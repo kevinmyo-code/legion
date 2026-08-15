@@ -21,8 +21,8 @@ class FleetDigestBuilderTest {
     private val now = 1_700_000_000_000L
     private val monthMs = 30L * 24 * 60 * 60 * 1000L
 
-    private fun vehicle(make: String = "Honda", model: String = "Civic", year: Int = 2018) =
-        Vehicle(obdMac = vehicleId, name = "Car", make = make, model = model, year = year, personaPrompt = "")
+    private fun vehicle(make: String = "Honda", model: String = "Civic", year: Int = 2018, odometerBaseline: Int = 0) =
+        Vehicle(obdMac = vehicleId, name = "Car", make = make, model = model, year = year, personaPrompt = "", odometerBaseline = odometerBaseline)
 
     // ------------------------------------------------------------------------------ empty domain
 
@@ -64,11 +64,18 @@ class FleetDigestBuilderTest {
             vehicleId = vehicleId, serviceName = "Oil Change",
             intervalMiles = 5000, lastDoneMileage = 100_000,
         )
+        // odometerBaseline must be non-zero here - the miles axis this test exercises is refused
+        // outright when the vehicle's own odometer is unset (senior-dev review fix, mission-control
+        // ticket 09 follow-up: chooseDueAxis gates on vehicle.odometerBaseline == 0, not on
+        // currentMileage, so a default-zero-baseline vehicle() would read "odometer not set" instead
+        // of the overdue-miles phrase this test asserts).
         val text = FleetDigestBuilder.buildDigestText(
-            vehicle = vehicle(), currentMileage = 106_000, items = listOf(item), unknownNames = emptyList(),
+            vehicle = vehicle(odometerBaseline = 100_000), currentMileage = 106_000, items = listOf(item), unknownNames = emptyList(),
             nextService = null, codeEvents = emptyList(), recentServices = emptyList(), now = now,
         )
-        assertTrue(text.contains("DUE Oil Change overdue (every 5,000 mi - last at 100,000)"))
+        // ticket 09 rewrote DueRowView.sub to name the axis(es) AND the due-ness in one phrase -
+        // FleetDigestBuilder now uses that phrase bare rather than wrapping it in a second "overdue (...)".
+        assertTrue(text.contains("DUE Oil Change every 5,000 mi - overdue"))
     }
 
     @Test

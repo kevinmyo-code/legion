@@ -114,7 +114,7 @@ object FleetDigestBuilder : DigestBuilder {
             TrustTier.REPORTED,
         )
 
-        lines += maintenanceLines(items, currentMileage, now)
+        lines += maintenanceLines(items, currentMileage, vehicle.odometerBaseline == 0, now)
         if (unknownNames.isNotEmpty()) {
             lines += DigestText.line("UNKNOWN ${unknownNames.size} items no anchor:", unknownNames.joinToString(", "))
         }
@@ -136,17 +136,16 @@ object FleetDigestBuilder : DigestBuilder {
      * re-derived. `neverDone` items read "overdue-now (never logged)" per the ticket's explicit
      * wording; anchored overdue items name the axis that fired via [DueRowView.sub]. An empty
      * [items] reads [DigestText.notLogged] - no schedule was ever seeded for this car. */
-    private fun maintenanceLines(items: List<MaintenanceItem>, currentMileage: Int, now: Long): List<String> {
+    private fun maintenanceLines(items: List<MaintenanceItem>, currentMileage: Int, odometerUnset: Boolean, now: Long): List<String> {
         if (items.isEmpty()) return listOf(DigestText.line("MAINTENANCE", DigestText.notLogged()))
-        val overdue = buildDueRows(items, currentMileage, now).filter { it.overdue }
+        val overdue = buildDueRows(items, currentMileage, odometerUnset, now).filter { it.overdue }
         if (overdue.isEmpty()) return listOf(DigestText.line("MAINTENANCE DUE", "none"))
         val neverDoneNames = items.filter { it.neverDone }.map { it.serviceName }.toSet()
         return overdue.map { row ->
-            val phrase = if (row.label in neverDoneNames) {
-                "overdue-now (never logged)"
-            } else {
-                "overdue (${row.sub})"
-            }
+            // ticket 09 rewrote DueRowView.sub to name the axis(es) AND the due-ness in one phrase
+            // ("every 5,000 mi - overdue"), so wrapping it in a second "overdue (...)" here would say
+            // it twice - [row.sub] is used bare now, not composed into a second sentence.
+            val phrase = if (row.label in neverDoneNames) "overdue-now (never logged)" else row.sub
             DigestText.withTier(DigestText.line("DUE ${row.label}", phrase), TrustTier.REPORTED)
         }
     }

@@ -50,11 +50,14 @@ import com.kevin.legion.ui.common.DeckTag
 import com.kevin.legion.ui.common.DeckTagStyle
 import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.HalfTile
+import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.ui.fleet.DriveHistoryDrilldownScreen
 import com.kevin.legion.ui.fleet.DriveSummaryView
 import com.kevin.legion.ui.fleet.DueRowView
 import com.kevin.legion.ui.fleet.FaultRow
 import com.kevin.legion.ui.fleet.FaultRowView
+import com.kevin.legion.ui.fleet.FullScheduleScreen
+import com.kevin.legion.ui.fleet.ItemDetailScreen
 import com.kevin.legion.ui.fleet.LIVE_GAUGE_PIDS
 import com.kevin.legion.ui.fleet.LiveRowView
 import com.kevin.legion.ui.fleet.MaintenanceDrilldownScreen
@@ -70,6 +73,11 @@ import com.kevin.legion.ui.fleet.buildMpgSparkline
 import com.kevin.legion.ui.fleet.capFaultRows
 import com.kevin.legion.ui.fleet.distinctFaultsByFirstSeen
 import com.kevin.legion.ui.fleet.groupThousands
+import com.kevin.legion.ui.fleet.writeAddItem
+import com.kevin.legion.ui.fleet.writeConfirmAll
+import com.kevin.legion.ui.fleet.writeDeleteItem
+import com.kevin.legion.ui.fleet.writeSetAnchor
+import com.kevin.legion.ui.fleet.writeSetInterval
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -80,6 +88,7 @@ import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.ObdDeviceRegistry
 import com.kevin.legion.vehicle.VehicleController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import com.kevin.legion.location.PlaceController
 
@@ -137,6 +146,35 @@ data class FleetUiState(
     val connected: Boolean = false,
     val liveRows: List<LiveRowView> = emptyList(),
     val dueRows: List<DueRowView> = emptyList(),
+    /**
+     * Every non-deleted [MaintenanceItem] for the vehicle, raw - ticket 09's FULL SCHEDULE and ITEM
+     * DETAIL both need the whole row, not [dueRows]' already-formatted-and-filtered subset
+     * ([buildDueRows]'s own doc: unknown-anchor items are excluded entirely, not merely unsorted).
+     */
+    val maintenanceItems: List<MaintenanceItem> = emptyList(),
+    /** Items with no anchor at all ([VehicleController.unknownItems]) - ticket 09's MAINTENANCE triage counts these, never lists them; [buildFleetTile] also needs this so the tile stops saying OK while they exist. */
+    val maintenanceUnknownCount: Int = 0,
+    /** Raw current mileage - [mileageText] is display-formatted, ticket 09's due-figure math on FULL SCHEDULE/ITEM DETAIL needs the `Int`. */
+    val currentMileageRaw: Int = 0,
+    /**
+     * `vehicle.odometerBaseline == 0` - the real "driver has never confirmed an odometer" signal
+     * (senior-dev review fix, mission-control ticket 09 follow-up). [currentMileageRaw] can read
+     * positive even in this state (accumulated trip miles against a still-zero baseline - see
+     * [chooseDueAxis]'s doc), so [FullScheduleScreen] needs this carried separately rather than
+     * re-deriving it from `currentMileageRaw > 0`, the same fix applied to [dueRows] above.
+     * Defaults `true` (the safe/conservative reading - refuse the miles axis) so a not-yet-loaded
+     * [FleetUiState] never opens the miles axis on a mileage this default (`0`) would otherwise make
+     * look plausible.
+     */
+    val odometerUnset: Boolean = true,
+    /** The active vehicle's own id ([Vehicle.obdMac]) - every ticket 09 write goes through this exact id, not a re-resolved [ActiveVehicle.current] that could race a car switch mid-screen. */
+    val vehicleId: String = "",
+    /**
+     * Every [ServiceRecord] for the vehicle, unfiltered - [FleetDrilldown.ITEM_DETAIL]'s own
+     * `serviceHistory` param filters this by name in Kotlin (see the call site's own comment for
+     * why: no per-name DAO query exists and ticket 09 adds none).
+     */
+    val allServiceRecords: List<ServiceRecord> = emptyList(),
     val faults: List<Pair<FaultRow, String?>> = emptyList(),
     val serviceHistoryCount: Int = 0,
     val buildSheetCount: Int = 0,
@@ -185,12 +223,17 @@ data class FleetUiState(
 
 /**
  * The in-screen drilldown selection (ticket 18: "in-screen drilldown... not a nav route",
- * following [com.kevin.legion.ui.ledger.CategoryDrilldownScreen]'s pattern). Unlike that screen's
- * `CategoryDrilldownSelection`, none of these three needs a payload - each drilldown reads
- * straight off [FleetUiState], the same list its panel already rendered - so a plain enum is
- * enough and there is no null-vs-"a real null request" ambiguity to guard against here.
+ * following [com.kevin.legion.ui.ledger.CategoryDrilldownScreen]'s pattern). Most of these need no
+ * payload - each drilldown reads straight off [FleetUiState], the same list its panel already
+ * rendered - so a plain enum is enough. **Ticket 09's two new values are the exception**:
+ * [FULL_SCHEDULE] needs to remember whether it was entered filtered-to-unknowns, and [ITEM_DETAIL]
+ * needs to remember which item (or whether this is ADD ITEM) - rather than promoting this to a
+ * sealed class carrying a payload, that state lives in two small sibling `var`s
+ * (`fullScheduleFilterUnknown`, `itemDetailTarget`/`itemDetailIsAdd`) right beside `drilldown` in
+ * [FleetScreen] below, so returning from ITEM DETAIL to FULL SCHEDULE preserves the filter without
+ * threading it back through the enum itself.
  */
-private enum class FleetDrilldown { UPLINK, MAINTENANCE, DRIVES, ADAPTER, SPECS, RECAPS, OIL }
+private enum class FleetDrilldown { UPLINK, MAINTENANCE, FULL_SCHEDULE, ITEM_DETAIL, DRIVES, ADAPTER, SPECS, RECAPS, OIL }
 
 @Composable
 fun FleetScreen(
@@ -244,6 +287,11 @@ fun FleetScreen(
         val yearlyWrapped = db.yearlyWrappedDao().getAll(vehicle.obdMac).firstOrNull()
         val oilAnalyses = db.oilAnalysisDao().getAll(vehicle.obdMac)
 
+        // ITEM DETAIL's read-only service-history list (ticket 09): one collect of the whole
+        // vehicle's history, filtered by name at the ITEM_DETAIL call site - see that call site's
+        // own comment for why this is not a second, per-name DAO query.
+        val allServiceRecords = db.serviceRecordDao().getRecordsForVehicle(vehicle.obdMac).first()
+
         val selectedAdapter = ObdBluetoothManager.getActiveDeviceMac(context)
         val adapterLabel = selectedAdapter?.let { mac ->
             if (ObdDeviceRegistry.isBle(context, mac)) "$mac · BLE" else mac
@@ -271,7 +319,12 @@ fun FleetScreen(
             mileageText = if (currentMileage > 0) "${groupThousands(currentMileage)} mi" else "",
             connected = ObdBluetoothManager.isConnected,
             liveRows = buildLiveRows(samplesByPid, now),
-            dueRows = buildDueRows(items, currentMileage, now),
+            dueRows = buildDueRows(items, currentMileage, vehicle.odometerBaseline == 0, now),
+            maintenanceItems = items,
+            maintenanceUnknownCount = items.count { VehicleController.isUnknown(it) },
+            currentMileageRaw = currentMileage,
+            odometerUnset = vehicle.odometerBaseline == 0,
+            vehicleId = vehicle.obdMac,
             faults = faults,
             serviceHistoryCount = db.serviceRecordDao().countForVehicle(vehicle.obdMac),
             buildSheetCount = db.buildEntryDao().countForVehicle(vehicle.obdMac),
@@ -290,6 +343,7 @@ fun FleetScreen(
             monthlyRecaps = monthlyRecaps,
             yearlyWrapped = yearlyWrapped,
             oilAnalyses = oilAnalyses,
+            allServiceRecords = allServiceRecords,
         )
     }
 
@@ -298,38 +352,102 @@ fun FleetScreen(
     // live flow onto an async-loaded state" shape as LedgerScreen's fullState.
     val fullState = state.copy(connected = connectionState == ObdBluetoothManager.ConnectionState.CONNECTED)
 
-    // The three in-screen drilldowns (see FleetDrilldown's own doc). Kept
-    // OUTSIDE `state` (same split LedgerScreen's `drilldownCategory` uses) so
+    // The in-screen drilldowns (see FleetDrilldown's own doc). Kept OUTSIDE
+    // `state` (same split LedgerScreen's `drilldownCategory` uses) so
     // opening/closing one never fights the LaunchedEffect above over
     // ownership of the same var.
     var drilldown by remember { mutableStateOf<FleetDrilldown?>(null) }
 
+    // Ticket 09: FULL SCHEDULE's own filter state and ITEM DETAIL's target service name both live
+    // OUTSIDE the FleetDrilldown value itself (a plain enum, not a sealed class carrying a payload)
+    // so returning from ITEM DETAIL to FULL SCHEDULE preserves whichever filter got it there -
+    // MAINTENANCE's UnknownCountRow sets filterUnknownOnly = true before navigating in; the triage
+    // screen's own unconditional FULL SCHEDULE button leaves it false. `itemDetailTarget = null`
+    // means ADD ITEM (ItemDetailScreen's own `item == null` shape); a non-null value is an existing
+    // item's service name, looked up fresh out of `fullState.maintenanceItems` on each render so an
+    // edit made moments ago is what the screen actually shows.
+    var fullScheduleFilterUnknown by remember { mutableStateOf(false) }
+    var itemDetailTarget by remember { mutableStateOf<String?>(null) }
+    var itemDetailIsAdd by remember { mutableStateOf(false) }
+
     val currentDrilldown = drilldown
     if (currentDrilldown != null) {
-        // Physical back returns to the panel list, EXCEPT from RECAPS/OIL,
-        // which are reached from inside the MAINTENANCE drilldown (their
-        // count rows live there, not on FleetScreen's own panel list - see
-        // MaintenanceDrilldownScreen's doc) and so hand back to MAINTENANCE
-        // rather than skipping past it to the panel list a tap never left.
+        // Physical back returns to the panel list, EXCEPT from RECAPS/OIL (reached from inside
+        // MAINTENANCE, so back returns there) and ITEM DETAIL (reached from inside FULL SCHEDULE,
+        // so back returns there, filter preserved via fullScheduleFilterUnknown above).
         val backTarget = when (currentDrilldown) {
             FleetDrilldown.RECAPS, FleetDrilldown.OIL -> FleetDrilldown.MAINTENANCE
+            FleetDrilldown.ITEM_DETAIL -> FleetDrilldown.FULL_SCHEDULE
             else -> null
         }
-        BackHandler { drilldown = backTarget }
+        // Ticket 09 verification #3: "confirm the drilldown-return path refreshes the parent"
+        // (mission-control ticket 04's stale-parent bug). FULL SCHEDULE and ITEM DETAIL are the two
+        // screens on this map that can write, so both bump reloadKey on every way out - physical
+        // back (below) and each screen's own onBack callback (further down) - rather than trying to
+        // track whether a write actually happened on this particular visit.
+        BackHandler {
+            if (currentDrilldown == FleetDrilldown.FULL_SCHEDULE || currentDrilldown == FleetDrilldown.ITEM_DETAIL) reloadKey++
+            drilldown = backTarget
+        }
         when (currentDrilldown) {
             FleetDrilldown.UPLINK -> TelemetryScreen(onBack = { drilldown = null })
             FleetDrilldown.MAINTENANCE -> MaintenanceDrilldownScreen(
                 dueRows = fullState.dueRows,
-                serviceHistoryCount = fullState.serviceHistoryCount,
-                buildSheetCount = fullState.buildSheetCount,
+                unknownCount = fullState.maintenanceUnknownCount,
                 recapCount = fullState.recapCount,
                 // The RECAPS row's inline strip (quant-viz ticket 12) reads the
                 // SAME monthlyRecaps list recapCount is .size of - no second query.
                 monthlyRecaps = fullState.monthlyRecaps,
                 oilAnalysisCount = fullState.oilAnalyses.size,
+                onOpenUnknown = {
+                    fullScheduleFilterUnknown = true
+                    drilldown = FleetDrilldown.FULL_SCHEDULE
+                },
+                onOpenFullSchedule = {
+                    fullScheduleFilterUnknown = false
+                    drilldown = FleetDrilldown.FULL_SCHEDULE
+                },
                 onOpenRecaps = { drilldown = FleetDrilldown.RECAPS },
                 onOpenOilAnalysis = { drilldown = FleetDrilldown.OIL },
                 onBack = { drilldown = null },
+            )
+            FleetDrilldown.FULL_SCHEDULE -> FullScheduleScreen(
+                items = fullState.maintenanceItems,
+                currentMileage = fullState.currentMileageRaw,
+                odometerUnset = fullState.odometerUnset,
+                now = System.currentTimeMillis(),
+                filterUnknownOnly = fullScheduleFilterUnknown,
+                onOpenItem = { serviceName ->
+                    itemDetailTarget = serviceName
+                    itemDetailIsAdd = false
+                    drilldown = FleetDrilldown.ITEM_DETAIL
+                },
+                onAddItem = {
+                    itemDetailTarget = null
+                    itemDetailIsAdd = true
+                    drilldown = FleetDrilldown.ITEM_DETAIL
+                },
+                onConfirmAll = { items -> writeConfirmAll(context, fullState.vehicleId, items) },
+                onBack = { reloadKey++; drilldown = FleetDrilldown.MAINTENANCE },
+            )
+            FleetDrilldown.ITEM_DETAIL -> ItemDetailScreen(
+                // Looked up fresh out of fullState rather than carried by value from the tap that
+                // opened this screen - fullState only actually refreshes on the NEXT reloadKey bump
+                // (i.e. after leaving), so within one visit this is a stable snapshot the same way
+                // every other drilldown here reads fullState once; the ADD case (itemDetailIsAdd)
+                // never had a row to look up in the first place.
+                item = if (itemDetailIsAdd) null else fullState.maintenanceItems.firstOrNull { it.serviceName == itemDetailTarget },
+                // Filtered here, in Kotlin, off the ONE unfiltered load below - MaintenanceItemDao
+                // has no per-name query and ticket 09's brief is explicit that no DAO method gets
+                // added for this build, so "every ServiceRecord whose name matches this item" reads
+                // the whole vehicle's history once and filters client-side rather than adding one.
+                serviceHistory = fullState.allServiceRecords.filter { it.serviceName == itemDetailTarget },
+                checkDuplicate = { typed -> VehicleController.looksLikeExistingItem(typed, fullState.maintenanceItems.map { it.serviceName }) },
+                onSetInterval = { serviceName, miles, months -> writeSetInterval(context, fullState.vehicleId, serviceName, miles, months) },
+                onSetAnchor = { serviceName, mode, mileage, date -> writeSetAnchor(context, fullState.vehicleId, serviceName, mode, mileage, date) },
+                onDelete = { serviceName -> writeDeleteItem(context, fullState.vehicleId, serviceName) },
+                onAddItem = { name, miles, months, mode, mileage, date -> writeAddItem(context, fullState.vehicleId, name, miles, months, mode, mileage, date) },
+                onBack = { reloadKey++; drilldown = FleetDrilldown.FULL_SCHEDULE },
             )
             FleetDrilldown.RECAPS -> RecapDrilldownScreen(
                 recapsNewestFirst = fullState.monthlyRecaps,
@@ -436,7 +554,7 @@ private fun FleetListing(
         // already contributes its usual 8dp label-pill pad on top of this, and that combination is
         // what HOME's shipped, on-device-checked spacing already uses in this exact slot.
         item(key = "tile-row-maintenance-drives") {
-            val maintenanceTile = buildFleetTile(state.dueRows)
+            val maintenanceTile = buildFleetTile(state.dueRows, state.maintenanceUnknownCount)
             val drivesTile = buildDrivesTile(state.driveSummary, state.recentDriveLogs)
             EqualHeightRow(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalGap = 9.dp) {
                 HalfTile(

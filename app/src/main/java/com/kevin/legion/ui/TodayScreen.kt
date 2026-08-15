@@ -134,6 +134,9 @@ data class TodayUiState(
      * fetch. */
     val ledgerCumulativeSparkline: List<Float?> = emptyList(),
     val maintenanceRows: List<DueRowView> = emptyList(),
+    /** FLEET tile (ticket 09): items with no anchor at all - [buildFleetTile] must know this to stop
+     * reading OK while the schedule has unanchored items, see that function's own doc comment. */
+    val maintenanceUnknownCount: Int = 0,
     /** LOG tile (ticket 16): open-task count, reminders overdue, and whether any
      * [com.kevin.legion.data.local.ListItem] has ever existed - see
      * [TodayGapResolvers.buildLogTile]'s doc for exactly what "silent" means here. */
@@ -314,7 +317,8 @@ fun TodayScreen(
             bioTile = bioTile,
             budget = budget,
             ledgerCumulativeSparkline = ledgerCumulativeSparkline,
-            maintenanceRows = buildDueRows(items, currentMileage, now),
+            maintenanceRows = buildDueRows(items, currentMileage, vehicle.odometerBaseline == 0, now),
+            maintenanceUnknownCount = items.count { VehicleController.isUnknown(it) },
             openTaskCount = openTaskCount,
             logHasAnyItems = logHasAnyItems,
             agendaEntries = mergeAgenda(oneOff + recurringToday, googleEvents),
@@ -395,7 +399,7 @@ private fun TodayListing(
         item(key = "tile-row-bio-cred") {
             val monthLabel = ledgerSweepMonthLabel(YearMonth.now())
             val credTile = buildCredTile(state.budget, monthLabel)
-            val fleetTile = buildFleetTile(state.maintenanceRows)
+            val fleetTile = buildFleetTile(state.maintenanceRows, state.maintenanceUnknownCount)
             val logTile = buildLogTile(state.openTaskCount, state.notesMissedCount, state.logHasAnyItems)
             // Equal-height tiles (ticket 05's grammar treats HALF as ONE shape, not two shapes
             // that happen to sit side by side) via EqualHeightRow, NOT `Row(...).height(IntrinsicSize.Min)`

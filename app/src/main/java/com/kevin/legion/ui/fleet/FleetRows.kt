@@ -98,13 +98,25 @@ data class DueRowView(
      * test construction sites that predate this field keep compiling.
      */
     val fraction: Float? = null,
+    /**
+     * True only when [MaintenanceItem.intervalSource] is `SEEDED` AND the item carries an interval
+     * on at least one axis (ticket 06 refinement c, `.scratch/fleet-maintenance/issues/06-a-seeded-interval-is-a-guess.md`:
+     * "the tag renders only when there is an interval to qualify" - a null interval already reads
+     * "no interval on file", and tagging that `[GUESS]` would be a claim about a number that does
+     * not exist). See [isGuessTag]. Defaults to `false` for the same preview/test-compat reason
+     * [fraction] defaults to `null`.
+     */
+    val isGuess: Boolean = false,
 )
 
 /**
  * Builds the DUE block's rows from a vehicle's [MaintenanceItem]s. Items with
  * no anchor at all ([VehicleController.isUnknown]) are excluded - they are
  * not "due", they are "we don't know yet", a different state this block does
- * not speak to (see [VehicleController.unknownItems]'s doc).
+ * not speak to (see [VehicleController.unknownItems]'s doc, and ticket 09's
+ * FULL SCHEDULE / [buildScheduleRows], which is where they are counted on
+ * MAINTENANCE's triage screen and then actually listed, rather than silently
+ * dropped the way this function's own output always has been).
  *
  * **Ordering.** Overdue items first (stable order, not re-sorted among
  * themselves), then not-yet-due items in their original order. Deliberately
@@ -116,87 +128,274 @@ data class DueRowView(
  * axis and lets the reader compare, rather than picking a winner for them.
  *
  * `internal` rather than `private` so [FleetRowsTest] can drive it directly.
+ *
+ * [odometerUnset] is the caller's own `vehicle.odometerBaseline == 0` (see [chooseDueAxis]'s doc for
+ * why this, and never `currentMileage > 0`, is the real "driver has never confirmed an odometer"
+ * signal) - threaded through explicitly rather than re-derived from [currentMileage] here, since
+ * [currentMileage] alone can read positive (accumulated trip miles against a still-zero baseline)
+ * while the odometer itself is still unconfirmed.
  */
-internal fun buildDueRows(items: List<MaintenanceItem>, currentMileage: Int, now: Long): List<DueRowView> {
+internal fun buildDueRows(items: List<MaintenanceItem>, currentMileage: Int, odometerUnset: Boolean, now: Long): List<DueRowView> {
     val anchored = items.filterNot { VehicleController.isUnknown(it) }
     val (overdue, upcoming) = anchored.partition { VehicleController.isDue(it, currentMileage, now) }
-    return overdue.map { toDueRow(it, currentMileage, now, overdue = true) } +
-        upcoming.map { toDueRow(it, currentMileage, now, overdue = false) }
+    return overdue.map { toDueRow(it, currentMileage, odometerUnset, now, overdue = true) } +
+        upcoming.map { toDueRow(it, currentMileage, odometerUnset, now, overdue = false) }
 }
 
 /**
- * One item's DUE row. Prefers the miles axis for both the headline value and
- * the subtitle when the item is anchored on both miles and time (matches
- * [buildDueRows]'s "report each item's own remaining value" posture - miles
- * is picked as the single axis shown per item only for column tidiness, never
- * because it is judged "more due"). Falls back to the time axis, then to a
- * bare "no interval" when the item has an anchor but no interval was ever
- * looked up for it (a lookup miss, or a driver-logged service with nothing
- * from [VehicleController.lookupServiceIntervals] to pair it with).
+ * True only when LEGION produced this interval (`intervalSource == "SEEDED"`) AND the item carries
+ * an interval on at least one axis - ticket 06 refinement c. A `Brake Fluid`/`Brake Pads` orphan
+ * (created by [VehicleController.logServiceDirect] with no interval at all) is `SEEDED` by the
+ * entity's own column default but has nothing to doubt, and its sub-line already says "no interval
+ * on file" honestly - tagging it `[GUESS]` would be a claim about a number that does not exist.
+ * `internal` for direct unit testing, same posture as every other pure builder in this file.
  */
-private fun toDueRow(item: MaintenanceItem, currentMileage: Int, now: Long, overdue: Boolean): DueRowView {
-    val milesAxis = item.intervalMiles != null && item.lastDoneMileage != null
-    val timeAxis = item.intervalMonths != null && item.lastDoneDate != null
+internal fun isGuessTag(item: MaintenanceItem): Boolean =
+    item.intervalSource == "SEEDED" && (item.intervalMiles != null || item.intervalMonths != null)
 
-    val sub = when {
-        milesAxis -> "every ${groupThousands(item.intervalMiles!!)} mi - last at ${groupThousands(item.lastDoneMileage!!)}"
-        timeAxis -> "every ${item.intervalMonths} mo - last ${shortDate(item.lastDoneDate!!)}"
-        item.neverDone -> "never logged"
-        else -> "no interval on file"
+/**
+ * [fromEpochMs] plus [months] calendar months, via [java.time.ZonedDateTime.plusMonths] in the
+ * device zone - ticket 09's mandated fix for the old `months * 30 days` approximation, which "stops
+ * being cosmetic once months can drive due-ness": a 6-month interval computed as 180 days drifts
+ * almost 6 days a year against a real calendar, and every month length (28/29/30/31 days) and DST
+ * transition is handled correctly by [java.time] rather than approximated. [fromEpochMs] is read as
+ * a LOCAL-midnight instant, matching [MaintenanceItem.lastDoneDate]'s own convention
+ * (`playbook-coding.md`'s "Date handling and zone conversions" already names this exact field as
+ * local-midnight), so the same device zone interprets it on both ends of this round trip.
+ */
+internal fun addCalendarMonths(fromEpochMs: Long, months: Int): Long =
+    java.time.Instant.ofEpochMilli(fromEpochMs)
+        .atZone(ZoneId.systemDefault())
+        .plusMonths(months.toLong())
+        .toInstant()
+        .toEpochMilli()
+
+/** Which of [MaintenanceItem]'s two clocks a row's headline value/meter is drawn from. */
+internal enum class DueAxis { MILES, TIME }
+
+/**
+ * The axis CLOSER to being due, not whichever axis merely happens to be non-null (ticket 09: "a row
+ * shows the axis that is closer to due... the sub-line names it"). "Closer" is measured on the SAME
+ * 0..1 elapsed/interval scale [dueFraction] itself computes for a single axis - a mileage clock 90%
+ * through its own interval is closer than a time clock 40% through its own, even though the raw
+ * units are incomparable. This is NOT the cross-ITEM "miles per day" rate estimate
+ * [VehicleController.NextService]'s doc rejects - both fractions here are already normalized to the
+ * SAME item's own two intervals, so no rate conversion happens anywhere in this comparison.
+ *
+ * Falls back to whichever single axis actually exists when only one does; `null` when neither does
+ * (mirrors [dueFraction]'s own three-way split - [dueFraction] calls this function directly so the
+ * two can never silently disagree about which axis a row is reporting).
+ *
+ * **The miles axis requires `!odometerUnset`** - [odometerUnset] is the caller's own
+ * `vehicle.odometerBaseline == 0`, the SAME signal [VehicleController.computeNextService] already
+ * gates its own `odometerUnset` on, threaded in here rather than re-derived from [currentMileage].
+ * **`currentMileage > 0` is NOT the same signal and must never stand in for it**: `currentMileage` is
+ * `odometerBaseline + tripMilesSinceBaseline.roundToInt()`
+ * ([VehicleController.currentMileage]), and [com.kevin.legion.vehicle.TelemetryRecorder]'s trip-mile
+ * accumulation loop runs unconditionally on `odometerBaseline` (gated only on connected + rpm>0 +
+ * not-in-conversation) - so a car can accumulate real trip miles against a still-zero, never-confirmed
+ * baseline, reading `currentMileage > 0` while the odometer itself remains unset. On a car in exactly
+ * that state, `item.intervalMiles - (currentMileage - item.lastDoneMileage)` still computes a remaining
+ * figure against an odometer nobody ever confirmed - a smaller-magnitude instance of the same "due in
+ * 121,450 miles" absurdity named in ticket 09's own constraints section, this fix's whole reason for
+ * being (senior-dev review, mission-control ticket 09 follow-up: the two signals coincide only by
+ * accident of a device's current snapshot having both fields at zero, not as a property of the code).
+ * A time-only item, or an item that also carries a time axis, is unaffected - only the miles figure
+ * itself is untrustworthy while the odometer is unset, not the whole row.
+ */
+internal fun chooseDueAxis(item: MaintenanceItem, currentMileage: Int, odometerUnset: Boolean, now: Long): DueAxis? {
+    val milesAxis = item.intervalMiles != null && item.lastDoneMileage != null && !odometerUnset
+    val timeAxis = item.intervalMonths != null && item.lastDoneDate != null
+    return when {
+        milesAxis && timeAxis -> {
+            val milesFraction = (currentMileage - item.lastDoneMileage!!).toFloat() / item.intervalMiles!!.toFloat()
+            val dueAt = addCalendarMonths(item.lastDoneDate!!, item.intervalMonths!!)
+            val timeFraction = (now - item.lastDoneDate!!).toFloat() / (dueAt - item.lastDoneDate!!).toFloat()
+            if (milesFraction >= timeFraction) DueAxis.MILES else DueAxis.TIME
+        }
+        milesAxis -> DueAxis.MILES
+        timeAxis -> DueAxis.TIME
+        else -> null
     }
+}
+
+/**
+ * One item's DUE row. The headline [DueRowView.value] and the axis named in [DueRowView.sub] both
+ * come from [chooseDueAxis] - the axis closer to due, never a hardcoded miles-first preference
+ * (ticket 09's rewrite of this function's old, admittedly-cosmetic bias). The sub-line states BOTH
+ * intervals when the item carries both - `"every 7,500 mi or 6 mo - due in 1,100 mi"`, ticket 09's
+ * own example, reproduced here verbatim - because Kevin ruled due = whichever comes first and a row
+ * now has to express two clocks without hiding either one. Falls back to naming just the one
+ * interval the item has, then to "never logged"/"no interval on file" when there is nothing to name
+ * at all - the exact wording ticket 06 refinement c relies on to mean "no number to doubt".
+ *
+ * **A mileage-only item with no odometer reading says so, in words** (ticket 09's constraints
+ * section): [chooseDueAxis] already refuses the miles axis when [odometerUnset], but a bare
+ * `"no interval on file"` in that state would be a LIE - there IS an interval, the app just cannot
+ * currently compute a due figure against it. [milesBlockedByOdometer] catches exactly that case (an
+ * item that carries a real miles interval+anchor, has no time axis to fall back to, and would
+ * otherwise read as if it had no schedule at all) and names the real reason.
+ */
+private fun toDueRow(item: MaintenanceItem, currentMileage: Int, odometerUnset: Boolean, now: Long, overdue: Boolean): DueRowView {
+    val axis = chooseDueAxis(item, currentMileage, odometerUnset, now)
+    val intervalPhrase = intervalWords(item)
+    val milesBlockedByOdometer = axis == null && odometerUnset &&
+        item.intervalMiles != null && item.lastDoneMileage != null
 
     val value = when {
         overdue -> "OVERDUE"
-        milesAxis -> {
+        axis == DueAxis.MILES -> {
             val remaining = (item.intervalMiles!! - (currentMileage - item.lastDoneMileage!!)).toLong()
             "in " + VehicleController.formatRemaining(remaining, VehicleController.ScheduleUnit.MILES)
         }
-        timeAxis -> {
-            val intervalMs = item.intervalMonths!!.toLong() * 30L * 24 * 60 * 60 * 1000
-            val remainingDays = (intervalMs - (now - item.lastDoneDate!!)) / (24 * 60 * 60 * 1000)
+        axis == DueAxis.TIME -> {
+            val dueAt = addCalendarMonths(item.lastDoneDate!!, item.intervalMonths!!)
+            val remainingDays = (dueAt - now) / (24 * 60 * 60 * 1000)
             "in " + VehicleController.formatRemaining(remainingDays, VehicleController.ScheduleUnit.DAYS)
         }
         else -> "-"
     }
 
-    return DueRowView(item.serviceName, value, sub, overdue, dueFraction(item, currentMileage, now, overdue))
+    val sub = when {
+        intervalPhrase != null && axis != null -> "$intervalPhrase - " + if (overdue) "overdue" else "due $value"
+        intervalPhrase != null && milesBlockedByOdometer -> "$intervalPhrase - odometer not set"
+        intervalPhrase != null -> intervalPhrase
+        item.neverDone -> "never logged"
+        else -> "no interval on file"
+    }
+
+    return DueRowView(item.serviceName, value, sub, overdue, dueFraction(item, currentMileage, odometerUnset, now, overdue), isGuessTag(item))
 }
 
 /**
- * [DueRowView.fraction]'s pure math (quant-viz ticket 05 part C): elapsed
- * over interval, on the SAME axis [toDueRow] picked for that row's headline
- * value - miles when the item is anchored on both [MaintenanceItem.intervalMiles]
- * and [MaintenanceItem.lastDoneMileage], else the time axis, `null` when
- * neither anchor/interval pair is present (nothing to divide by).
+ * The schedule's own words for an item's interval(s), independent of whether either axis has an
+ * anchor to compute a due figure from - `"every 7,500 mi or 6 mo"` / `"every 7,500 mi"` /
+ * `"every 6 mo"` / `null` when neither [MaintenanceItem.intervalMiles] nor
+ * [MaintenanceItem.intervalMonths] is set. Shared by [toDueRow] (anchored rows) and
+ * [toScheduleRow] (FULL SCHEDULE's unknown-anchor rows, which have an interval to name but nothing
+ * to compute a due figure from at all).
+ */
+internal fun intervalWords(item: MaintenanceItem): String? {
+    val parts = listOfNotNull(
+        item.intervalMiles?.let { "${groupThousands(it)} mi" },
+        item.intervalMonths?.let { "$it mo" },
+    )
+    return if (parts.isEmpty()) null else "every " + parts.joinToString(" or ")
+}
+
+/**
+ * [DueRowView.fraction]'s pure math (quant-viz ticket 05 part C, corrected by ticket 09): elapsed
+ * over interval, on [chooseDueAxis]'s chosen axis - never a hardcoded miles-first preference, so the
+ * meter drawn under a row always matches the axis its own value/sub line names. Delegates its axis
+ * choice to [chooseDueAxis] directly so the two can never independently drift out of sync, and its
+ * time-axis math to [addCalendarMonths] rather than the old `months * 30 days` approximation.
  *
- * [overdue] short-circuits to `1f` rather than letting the ratio run past 1.0
- * for a badly-overdue item - a meter drawing past its own right edge would
- * read as a bug, not as "very overdue"; [DueRowView.overdue]'s existing flag
- * and wording already carry that signal, so the meter only needs to stop
- * where its track ends. `internal` for direct unit testing, same posture as
+ * [overdue] short-circuits to `1f` rather than letting the ratio run past 1.0 for a badly-overdue
+ * item - a meter drawing past its own right edge would read as a bug, not as "very overdue";
+ * [DueRowView.overdue]'s existing flag and wording already carry that signal, so the meter only
+ * needs to stop where its track ends. `internal` for direct unit testing, same posture as
  * [buildDueRows].
  */
-internal fun dueFraction(item: MaintenanceItem, currentMileage: Int, now: Long, overdue: Boolean): Float? {
+internal fun dueFraction(item: MaintenanceItem, currentMileage: Int, odometerUnset: Boolean, now: Long, overdue: Boolean): Float? {
     if (overdue) return 1f
-    val milesAxis = item.intervalMiles != null && item.lastDoneMileage != null
-    val timeAxis = item.intervalMonths != null && item.lastDoneDate != null
-    return when {
-        milesAxis -> {
+    return when (chooseDueAxis(item, currentMileage, odometerUnset, now)) {
+        DueAxis.MILES -> {
             val elapsed = (currentMileage - item.lastDoneMileage!!).toFloat()
             (elapsed / item.intervalMiles!!.toFloat()).coerceIn(0f, 1f)
         }
-        timeAxis -> {
-            val intervalMs = item.intervalMonths!!.toLong() * 30L * 24 * 60 * 60 * 1000
+        DueAxis.TIME -> {
+            val dueAt = addCalendarMonths(item.lastDoneDate!!, item.intervalMonths!!)
             val elapsedMs = (now - item.lastDoneDate!!).toFloat()
-            (elapsedMs / intervalMs.toFloat()).coerceIn(0f, 1f)
+            (elapsedMs / (dueAt - item.lastDoneDate!!).toFloat()).coerceIn(0f, 1f)
         }
-        else -> null
+        null -> null
     }
 }
 
 /** "132400" -> "132,400". No currency, no decimals - a mileage/interval figure, not money. */
 internal fun groupThousands(n: Int): String =
     n.toString().reversed().chunked(3).joinToString(",").reversed()
+
+// ----------------------------------------------------- FULL SCHEDULE (pure, ticket 09)
+
+/** Which of the FULL SCHEDULE inventory's three sections a row belongs to. */
+enum class ScheduleGroup { OVERDUE, UPCOMING, UNKNOWN }
+
+/**
+ * One row of the FULL SCHEDULE inventory - every non-deleted item, unlike [DueRowView] which only
+ * ever covers the anchored subset [buildDueRows] keeps.
+ */
+data class ScheduleRowView(
+    val serviceName: String,
+    val group: ScheduleGroup,
+    val value: String,
+    val sub: String,
+    val isGuess: Boolean,
+    val fraction: Float?,
+)
+
+/**
+ * Every non-deleted [MaintenanceItem] for a vehicle (ticket 09's FULL SCHEDULE), grouped OVERDUE /
+ * UPCOMING / UNKNOWN - the third group [buildDueRows] deliberately excludes and MAINTENANCE (triage)
+ * only ever counts, never lists. [items] is expected already filtered to `deleted = 0`
+ * ([com.kevin.legion.data.local.MaintenanceItemDao.getForVehicle] does this at the query, not here -
+ * this function has no opinion about tombstones). `internal` for direct unit testing, same posture
+ * as every other pure builder in this file.
+ */
+internal fun buildScheduleRows(items: List<MaintenanceItem>, currentMileage: Int, odometerUnset: Boolean, now: Long): List<ScheduleRowView> {
+    val unknown = items.filter { VehicleController.isUnknown(it) }
+    val known = items.filterNot { VehicleController.isUnknown(it) }
+    val (overdue, upcoming) = known.partition { VehicleController.isDue(it, currentMileage, now) }
+    return overdue.map { toScheduleRow(it, currentMileage, odometerUnset, now, ScheduleGroup.OVERDUE) } +
+        upcoming.map { toScheduleRow(it, currentMileage, odometerUnset, now, ScheduleGroup.UPCOMING) } +
+        unknown.map { toScheduleRow(it, currentMileage, odometerUnset, now, ScheduleGroup.UNKNOWN) }
+}
+
+/**
+ * An UNKNOWN-group row has an interval to name (usually - most seeded items keep their interval
+ * even with no anchor logged yet) but nothing to compute a due figure from, so [ScheduleRowView.value]
+ * is always "-" and [ScheduleRowView.fraction] is always `null` - there is nothing to meter. OVERDUE/
+ * UPCOMING rows reuse [toDueRow] wholesale rather than re-deriving the same due-figure math a second
+ * time.
+ */
+private fun toScheduleRow(item: MaintenanceItem, currentMileage: Int, odometerUnset: Boolean, now: Long, group: ScheduleGroup): ScheduleRowView {
+    if (group == ScheduleGroup.UNKNOWN) {
+        return ScheduleRowView(
+            serviceName = item.serviceName,
+            group = group,
+            value = "-",
+            sub = intervalWords(item) ?: "no interval on file",
+            isGuess = isGuessTag(item),
+            fraction = null,
+        )
+    }
+    val row = toDueRow(item, currentMileage, odometerUnset, now, overdue = group == ScheduleGroup.OVERDUE)
+    return ScheduleRowView(item.serviceName, group, row.value, row.sub, row.isGuess, row.fraction)
+}
+
+/**
+ * Every item CONFIRM-ALL is allowed to bless in one pass - ticket 06 decision 2: "a list of what is
+ * about to be blessed, read before agreeing... a plain accept-all was declined, correctly."
+ * [isGuessTag]'s own "an interval must exist" rule applies here too: there is nothing to confirm on
+ * a `SEEDED` row with no interval, so it never appears in the review list.
+ */
+internal fun confirmableSeededItems(items: List<MaintenanceItem>): List<MaintenanceItem> =
+    items.filter { isGuessTag(it) }
+
+// -------------------------------------------------------- ITEM DETAIL (pure, ticket 09/07)
+
+/**
+ * The three-way anchor picker (ticket 07, `.scratch/fleet-maintenance/issues/07-hand-added-items-and-what-delete-means.md`):
+ * `never done on this car` / `don't know` / `done at mileage/date`. Maps directly onto
+ * [MaintenanceItem]'s existing three logical states - see that entity's own doc comment -
+ * [NEVER_DONE] sets `neverDone = true` and clears both anchors, [DONT_KNOW] clears both anchors and
+ * leaves `neverDone = false` (a legitimate "I don't know" state,
+ * [com.kevin.legion.data.local.MaintenanceItemDao.setAnchor]'s own doc names this explicitly), and
+ * [DONE_AT] sets one or both anchors. `neverDone` is `true` on 0 of 54 rows on Kevin's real phone as
+ * of ticket 01's audit **because no control has ever been able to set it** - this enum, and the
+ * picker built on it, is that control.
+ */
+enum class AnchorMode { NEVER_DONE, DONT_KNOW, DONE_AT }
 
 // ---------------------------------------------------------- FAULTS (pure)
 

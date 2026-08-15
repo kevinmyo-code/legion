@@ -286,7 +286,19 @@ his two existing service records on a screen.
   alone; estimates labelled; "no recalls" must read as a completed check) but the exact wording is
   written inside each build ticket.
 - **The ship pass.** A final on-device sweep once the builds land, including the checks each ticket
-  named as owed.
+  named as owed. **Nothing on this map has been seen on a screen yet** beyond the two fixes that
+  shipped 2026-08-15 (the vehicle-row overwrite, the VIN write-back). Compose previews have never
+  rendered on this project, any screen, ever - installing and looking is the substitute and it has
+  caught every real bug so far.
+- **[Ticket 15](issues/15-isdue-and-the-digest-inherit-the-same-two-gaps.md), charted 2026-08-15
+  from ticket 09's review.** Two pre-existing gaps this map closed elsewhere but not here:
+  `VehicleController.isDue` has **no odometer-unset guard**, so an item can sort into OVERDUE off an
+  odometer nobody confirmed - the render path would then say `OVERDUE` and `odometer not set` on the
+  same row. And `FleetDigestBuilder` **was never one of ticket 06's six audited surfaces**, so its
+  maintenance lines carry no `[GUESS]` while feeding `AdvisorBriefs`. Both deliberately left out of
+  ticket 09's diff: `isDue`'s contract has callers across the digests, `nextService` and the advisor.
+  The audit lesson is on the ticket - ticket 06 grepped the raw interval fields, and this consumer
+  reads an already-formatted string, so it never matched.
 - **What the fleet advisor does with a schedule Kevin owns.** `AdvisorProposalExecutor`'s
   `set_maintenance_item` is currently the *only* live interval writer. Once a UI edit path exists,
   the advisor's role changes from sole author to proposer, and its allowlist may need revisiting.

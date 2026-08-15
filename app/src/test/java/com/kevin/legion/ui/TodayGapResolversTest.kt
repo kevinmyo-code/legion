@@ -386,8 +386,8 @@ class TodayGapResolversTest {
     }
 
     @Test
-    fun `FLEET tile - no schedule is NO LINK`() {
-        val tile = buildFleetTile(emptyList())
+    fun `FLEET tile - no schedule at all is NO LINK`() {
+        val tile = buildFleetTile(emptyList(), unknownCount = 0)
         assertEquals("NO LINK", tile.hero)
     }
 
@@ -397,16 +397,48 @@ class TodayGapResolversTest {
             DueRowView("Oil Change", "OVERDUE", "every 5,000 mi", overdue = true),
             DueRowView("Tire Rotation", "in 3 mo", "every 6 mo", overdue = false),
         )
-        val tile = buildFleetTile(rows)
+        val tile = buildFleetTile(rows, unknownCount = 0)
         assertEquals("1 DUE", tile.hero)
     }
 
     @Test
-    fun `FLEET tile - nothing overdue reads OK with the next item named`() {
+    fun `FLEET tile - nothing overdue and nothing unknown reads OK with the next item named`() {
         val rows = listOf(DueRowView("Tire Rotation", "in 3 mo", "every 6 mo", overdue = false))
-        val tile = buildFleetTile(rows)
+        val tile = buildFleetTile(rows, unknownCount = 0)
         assertEquals("OK", tile.hero)
         assertTrue(tile.caption.contains("Tire Rotation"))
+    }
+
+    @Test
+    fun `FLEET tile - ticket 09 Jeep case, unknowns present, never reads OK`() {
+        // Kevin's real phone, 2026-08-15: seven of ten items unanchored. Old logic read
+        // "OK / NEXT BRAKE FLUID -" here, which was not true.
+        val rows = listOf(DueRowView("Tire Rotation", "in 3 mo", "every 6 mo", overdue = false))
+        val tile = buildFleetTile(rows, unknownCount = 7)
+        assertTrue("hero must never be OK while unknowns exist, was ${tile.hero}", tile.hero != "OK")
+        assertEquals("0 DUE", tile.hero)
+        assertEquals("0 due - 7 unknown", tile.caption)
+    }
+
+    @Test
+    fun `FLEET tile - overdue and unknown both non-zero states both in the caption`() {
+        val rows = listOf(DueRowView("Oil Change", "OVERDUE", "every 5,000 mi", overdue = true))
+        val tile = buildFleetTile(rows, unknownCount = 7)
+        assertEquals("1 DUE", tile.hero)
+        assertEquals("1 due - 7 unknown", tile.caption)
+    }
+
+    @Test
+    fun `FLEET tile - entirely unknown schedule is not NO LINK, a schedule does exist`() {
+        val tile = buildFleetTile(emptyList(), unknownCount = 3)
+        assertTrue("hero must never be NO LINK when a schedule exists, was ${tile.hero}", tile.hero != "NO LINK")
+        assertEquals("0 DUE", tile.hero)
+    }
+
+    @Test
+    fun `FLEET tile - hero never exceeds the seven-character half-tile budget`() {
+        val tile = buildFleetTile(listOf(DueRowView("Oil Change", "OVERDUE", "every 5,000 mi", overdue = true)), unknownCount = 12)
+        assertTrue("hero '${tile.hero}' exceeds 7 characters", tile.hero.length <= 7)
     }
 
     @Test

@@ -45,16 +45,16 @@ class FleetRowsTest {
     }
 
     @Test
-    fun `an overdue item reports OVERDUE with the mileage-axis subtitle`() {
+    fun `an overdue item reports OVERDUE with the interval-words subtitle`() {
         val item = MaintenanceItem(
             vehicleId = vehicleId, serviceName = "Oil Change",
             intervalMiles = 5000, lastDoneMileage = 132_400,
         )
-        val rows = buildDueRows(listOf(item), currentMileage = 138_000, now = now)
+        val rows = buildDueRows(listOf(item), currentMileage = 138_000, odometerUnset = false, now = now)
         assertEquals(1, rows.size)
         assertEquals("OVERDUE", rows[0].value)
         assertEquals(true, rows[0].overdue)
-        assertEquals("every 5,000 mi - last at 132,400", rows[0].sub)
+        assertEquals("every 5,000 mi - overdue", rows[0].sub)
     }
 
     @Test
@@ -69,7 +69,7 @@ class FleetRowsTest {
         // Grouped as "1,800" since 2026-08-07: this string sits beside the
         // groupThousands()-formatted sub-line in the same row, and 1800 next to
         // 25,000 read as a formatting bug on device.
-        val rows = buildDueRows(listOf(item), currentMileage = 138_200, now = now)
+        val rows = buildDueRows(listOf(item), currentMileage = 138_200, odometerUnset = false, now = now)
         assertEquals("in 1,800 miles", rows[0].value)
         assertEquals(false, rows[0].overdue)
     }
@@ -80,7 +80,7 @@ class FleetRowsTest {
             vehicleId = vehicleId, serviceName = "Cabin Air Filter",
             intervalMonths = 12, lastDoneDate = now - monthMs,
         )
-        val rows = buildDueRows(listOf(item), currentMileage = 100_000, now = now)
+        val rows = buildDueRows(listOf(item), currentMileage = 100_000, odometerUnset = false, now = now)
         assertEquals(1, rows.size)
         assertEquals(false, rows[0].overdue)
         assert(rows[0].value.startsWith("in ")) { "expected a remaining-days value, got ${rows[0].value}" }
@@ -93,7 +93,7 @@ class FleetRowsTest {
     fun `unknown items - no anchor at all - are excluded entirely`() {
         val known = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, lastDoneMileage = 1000)
         val unknown = MaintenanceItem(vehicleId = vehicleId, serviceName = "Spark Plugs")
-        val rows = buildDueRows(listOf(known, unknown), currentMileage = 2000, now = now)
+        val rows = buildDueRows(listOf(known, unknown), currentMileage = 2000, odometerUnset = false, now = now)
         assertEquals(1, rows.size)
         assertEquals("Oil Change", rows[0].label)
     }
@@ -103,14 +103,14 @@ class FleetRowsTest {
         val overdueA = MaintenanceItem(vehicleId = vehicleId, serviceName = "A", intervalMiles = 100, lastDoneMileage = 0)
         val upcoming = MaintenanceItem(vehicleId = vehicleId, serviceName = "B", intervalMiles = 100, lastDoneMileage = 990)
         val overdueC = MaintenanceItem(vehicleId = vehicleId, serviceName = "C", intervalMiles = 100, lastDoneMileage = 0)
-        val rows = buildDueRows(listOf(overdueA, upcoming, overdueC), currentMileage = 1000, now = now)
+        val rows = buildDueRows(listOf(overdueA, upcoming, overdueC), currentMileage = 1000, odometerUnset = false, now = now)
         assertEquals(listOf("A", "C", "B"), rows.map { it.label })
     }
 
     @Test
     fun `an anchored item with no interval on file reports honestly rather than a bogus remaining value`() {
         val item = MaintenanceItem(vehicleId = vehicleId, serviceName = "Something Logged Once", lastDoneMileage = 50_000)
-        val rows = buildDueRows(listOf(item), currentMileage = 60_000, now = now)
+        val rows = buildDueRows(listOf(item), currentMileage = 60_000, odometerUnset = false, now = now)
         assertEquals("-", rows[0].value)
         assertEquals("no interval on file", rows[0].sub)
     }
@@ -143,28 +143,203 @@ class FleetRowsTest {
     @Test
     fun `dueFraction is always 1f for an overdue item, regardless of how far past the interval`() {
         val item = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, lastDoneMileage = 100_000)
-        assertEquals(1f, dueFraction(item, currentMileage = 200_000, now = now, overdue = true))
+        assertEquals(1f, dueFraction(item, currentMileage = 200_000, odometerUnset = false, now = now, overdue = true))
     }
 
     @Test
     fun `dueFraction reports 0_5f for a mileage item exactly half elapsed`() {
         val item = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, lastDoneMileage = 100_000)
-        val fraction = dueFraction(item, currentMileage = 102_500, now = now, overdue = false)
+        val fraction = dueFraction(item, currentMileage = 102_500, odometerUnset = false, now = now, overdue = false)
         assertEquals(0.5f, fraction)
     }
 
     @Test
     fun `dueFraction is null for an item with no interval on file`() {
         val item = MaintenanceItem(vehicleId = vehicleId, serviceName = "Something Logged Once", lastDoneMileage = 50_000)
-        assertNull(dueFraction(item, currentMileage = 60_000, now = now, overdue = false))
+        assertNull(dueFraction(item, currentMileage = 60_000, odometerUnset = false, now = now, overdue = false))
     }
 
     @Test
     fun `dueFraction resolves the time axis when the item has no mileage anchor`() {
         val item = MaintenanceItem(vehicleId = vehicleId, serviceName = "Cabin Air Filter", intervalMonths = 12, lastDoneDate = now - monthMs)
-        val fraction = dueFraction(item, currentMileage = 100_000, now = now, overdue = false)
+        val fraction = dueFraction(item, currentMileage = 100_000, odometerUnset = false, now = now, overdue = false)
         // 1 month elapsed of a 12-month (360-day) interval - about 0.083.
         assert(fraction != null && fraction > 0.05f && fraction < 0.12f) { "expected roughly 1/12, got $fraction" }
+    }
+
+    // ------------------------------------------------ calendar months (ticket 09)
+
+    private fun localMidnight(year: Int, month: Int, day: Int): Long =
+        java.time.LocalDate.of(year, month, day).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    @Test
+    fun `addCalendarMonths lands on the real calendar date, not 30 days later`() {
+        // January has 31 days - the old months*30-day approximation would have landed one day
+        // short of February 1st.
+        val jan1 = localMidnight(2026, 1, 1)
+        assertEquals(localMidnight(2026, 2, 1), addCalendarMonths(jan1, 1))
+    }
+
+    @Test
+    fun `dueFraction does not prematurely saturate to 1f across a 31-day month`() {
+        // 30 days elapsed of a 1-month interval starting Jan 1 - the real due date is Feb 1 (31
+        // days out), so this is NOT yet fully elapsed. The old months*30-day approximation treated
+        // one month as exactly 30 days, which would have read this as fraction == 1f (exactly
+        // saturated) a full day early.
+        val item = MaintenanceItem(vehicleId = vehicleId, serviceName = "Coolant Flush", intervalMonths = 1, lastDoneDate = localMidnight(2026, 1, 1))
+        // odometerUnset = true here matches currentMileage = 0's own real-world reading (no odometer
+        // confirmed yet); the item has no miles axis at all, so it has no bearing on this test's
+        // time-axis saturation math either way.
+        val fraction = dueFraction(item, currentMileage = 0, odometerUnset = true, now = localMidnight(2026, 1, 31), overdue = false)
+        assert(fraction != null && fraction < 1f) { "expected a fraction short of full saturation, got $fraction" }
+    }
+
+    // --------------------------------------------------- axis-closer-to-due (ticket 09)
+
+    @Test
+    fun `chooseDueAxis picks miles when the miles clock is further along than the time clock`() {
+        val item = MaintenanceItem(
+            vehicleId = vehicleId, serviceName = "Oil Change",
+            intervalMiles = 5000, lastDoneMileage = 100_000,
+            intervalMonths = 6, lastDoneDate = now,
+        )
+        // Miles: 4,500/5,000 = 0.90 elapsed. Time: 0 elapsed (lastDoneDate == now). Miles is closer.
+        val axis = chooseDueAxis(item, currentMileage = 104_500, odometerUnset = false, now = now)
+        assertEquals(DueAxis.MILES, axis)
+    }
+
+    @Test
+    fun `chooseDueAxis picks time when the time clock is further along than the miles clock`() {
+        val item = MaintenanceItem(
+            vehicleId = vehicleId, serviceName = "Oil Change",
+            intervalMiles = 5000, lastDoneMileage = 100_000,
+            intervalMonths = 1, lastDoneDate = localMidnight(2026, 1, 1),
+        )
+        // Miles: 0 elapsed (currentMileage == lastDoneMileage). Time: ~29/31 elapsed. Time is closer.
+        val axis = chooseDueAxis(item, currentMileage = 100_000, odometerUnset = false, now = localMidnight(2026, 1, 30))
+        assertEquals(DueAxis.TIME, axis)
+    }
+
+    @Test
+    fun `a row with both axes names both intervals and the due figure from the closer one`() {
+        val item = MaintenanceItem(
+            vehicleId = vehicleId, serviceName = "Oil Change",
+            intervalMiles = 7500, lastDoneMileage = 100_000,
+            intervalMonths = 6, lastDoneDate = now,
+        )
+        // Miles is the closer axis here (6,400/7,500 elapsed vs. 0 elapsed on time), so the due
+        // figure in the sub-line comes from miles - matching ticket 09's own worked example shape
+        // ("every 7,500 mi or 6 mo - due in 1,100 mi"). The due figure itself is spelled out via
+        // VehicleController.formatRemaining, the SAME phrase-builder every other due-in figure in
+        // the app uses ("1,100 miles", full word) rather than the ticket's illustrative "mi" - read
+        // as an example of the STRUCTURE (both intervals, then the due figure), not a literal string
+        // to reproduce against this app's own established wording convention.
+        val rows = buildDueRows(listOf(item), currentMileage = 106_400, odometerUnset = false, now = now)
+        assertEquals("every 7,500 mi or 6 mo - due in 1,100 miles", rows[0].sub)
+    }
+
+    // --------------------------------------------------- odometer unset (ticket 09 constraints)
+
+    @Test
+    fun `chooseDueAxis refuses the miles axis when odometerUnset is true, even with currentMileage 0`() {
+        val item = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, lastDoneMileage = 132_400)
+        assertNull(chooseDueAxis(item, currentMileage = 0, odometerUnset = true, now = now))
+    }
+
+    @Test
+    fun `chooseDueAxis falls back to time when the odometer is unset but a time axis exists`() {
+        val item = MaintenanceItem(
+            vehicleId = vehicleId, serviceName = "Oil Change",
+            intervalMiles = 5000, lastDoneMileage = 132_400,
+            intervalMonths = 6, lastDoneDate = now,
+        )
+        assertEquals(DueAxis.TIME, chooseDueAxis(item, currentMileage = 0, odometerUnset = true, now = now))
+    }
+
+    @Test
+    fun `a miles-only item says odometer not set instead of an absurd remaining figure when currentMileage is 0`() {
+        // The exact shape of Kevin's real bug (ticket 09 constraints): "the drilldown reports the
+        // oil due 'in 121,450 miles'" because 0 - lastDoneMileage produced a deeply negative
+        // "elapsed", inflating remaining past the interval itself.
+        val item = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, lastDoneMileage = 132_400)
+        val rows = buildDueRows(listOf(item), currentMileage = 0, odometerUnset = true, now = now)
+        assertEquals(1, rows.size)
+        assertEquals("-", rows[0].value)
+        assertEquals("every 5,000 mi - odometer not set", rows[0].sub)
+        assertNull(rows[0].fraction)
+    }
+
+    @Test
+    fun `the miles axis stays refused even once accumulated trip miles make currentMileage positive, as long as the odometer itself is unset`() {
+        // Senior-dev review fix (mission-control ticket 09 follow-up): currentMileage is
+        // odometerBaseline + tripMilesSinceBaseline.roundToInt(), and TelemetryRecorder's trip-mile
+        // accumulation loop runs unconditionally on odometerBaseline (gated only on connected + rpm>0
+        // + not-in-conversation) - so a car can genuinely reach odometerBaseline == 0,
+        // tripMilesSinceBaseline == 40.0, i.e. currentMileage == 40 > 0, while the driver has never
+        // confirmed an odometer reading at all. The OLD guard (`currentMileage > 0`) would have opened
+        // the miles axis right here - the exact smaller-magnitude reproduction of the "due in 121,450
+        // miles" absurdity this whole guard exists to close. The real signal (odometerUnset, threaded
+        // from vehicle.odometerBaseline == 0) must refuse it regardless of what currentMileage reads.
+        val item = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, lastDoneMileage = 132_400)
+        assertNull(chooseDueAxis(item, currentMileage = 40, odometerUnset = true, now = now))
+
+        val rows = buildDueRows(listOf(item), currentMileage = 40, odometerUnset = true, now = now)
+        assertEquals(1, rows.size)
+        assertEquals("-", rows[0].value)
+        assertEquals("every 5,000 mi - odometer not set", rows[0].sub)
+        assertNull(rows[0].fraction)
+    }
+
+    // -------------------------------------------------------- [GUESS] tag (ticket 06/09)
+
+    @Test
+    fun `isGuessTag is true only for a SEEDED item that actually carries an interval`() {
+        val seededWithInterval = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, intervalSource = "SEEDED")
+        val seededNoInterval = MaintenanceItem(vehicleId = vehicleId, serviceName = "Brake Fluid", intervalSource = "SEEDED")
+        val confirmedWithInterval = MaintenanceItem(vehicleId = vehicleId, serviceName = "Tire Rotation", intervalMiles = 7500, intervalSource = "CONFIRMED")
+        assertEquals(true, isGuessTag(seededWithInterval))
+        assertEquals(false, isGuessTag(seededNoInterval))
+        assertEquals(false, isGuessTag(confirmedWithInterval))
+    }
+
+    @Test
+    fun `a DUE row carries isGuess only when the underlying item is an unconfirmed SEEDED guess`() {
+        val guess = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, lastDoneMileage = 100_000, intervalSource = "SEEDED")
+        val confirmed = MaintenanceItem(vehicleId = vehicleId, serviceName = "Tire Rotation", intervalMiles = 5000, lastDoneMileage = 100_000, intervalSource = "CONFIRMED")
+        val rows = buildDueRows(listOf(guess, confirmed), currentMileage = 100_100, odometerUnset = false, now = now)
+        assertEquals(true, rows.first { it.label == "Oil Change" }.isGuess)
+        assertEquals(false, rows.first { it.label == "Tire Rotation" }.isGuess)
+    }
+
+    // ------------------------------------------------- FULL SCHEDULE (ticket 09)
+
+    @Test
+    fun `buildScheduleRows puts every non-deleted item into exactly one of three groups`() {
+        val overdue = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 100, lastDoneMileage = 0)
+        val upcoming = MaintenanceItem(vehicleId = vehicleId, serviceName = "Brake Pads", intervalMiles = 100, lastDoneMileage = 990)
+        val unknown = MaintenanceItem(vehicleId = vehicleId, serviceName = "Spark Plugs", intervalMiles = 30_000)
+        val rows = buildScheduleRows(listOf(overdue, upcoming, unknown), currentMileage = 1000, odometerUnset = false, now = now)
+        assertEquals(ScheduleGroup.OVERDUE, rows.first { it.serviceName == "Oil Change" }.group)
+        assertEquals(ScheduleGroup.UPCOMING, rows.first { it.serviceName == "Brake Pads" }.group)
+        assertEquals(ScheduleGroup.UNKNOWN, rows.first { it.serviceName == "Spark Plugs" }.group)
+    }
+
+    @Test
+    fun `an unknown-anchor row in FULL SCHEDULE has no due figure or meter but still names its interval`() {
+        val unknown = MaintenanceItem(vehicleId = vehicleId, serviceName = "Spark Plugs", intervalMiles = 30_000, intervalSource = "SEEDED")
+        val rows = buildScheduleRows(listOf(unknown), currentMileage = 1000, odometerUnset = false, now = now)
+        assertEquals("-", rows[0].value)
+        assertNull(rows[0].fraction)
+        assertEquals("every 30,000 mi", rows[0].sub)
+        assertEquals(true, rows[0].isGuess)
+    }
+
+    @Test
+    fun `confirmableSeededItems excludes a SEEDED item with no interval to confirm`() {
+        val guess = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, intervalSource = "SEEDED")
+        val orphan = MaintenanceItem(vehicleId = vehicleId, serviceName = "Brake Fluid", intervalSource = "SEEDED")
+        val confirmed = MaintenanceItem(vehicleId = vehicleId, serviceName = "Tire Rotation", intervalMiles = 7500, intervalSource = "CONFIRMED")
+        assertEquals(listOf("Oil Change"), confirmableSeededItems(listOf(guess, orphan, confirmed)).map { it.serviceName })
     }
 
     // --------------------------------------------------- RECAPS month slots (ticket 05 part A)
