@@ -1,7 +1,7 @@
-# A recall button
+﻿# A recall button
 
 Type: task
-Status: open
+Status: resolved (2026-08-15)
 Blocked by: 04, 13   # 04 resolved 2026-08-15, 13 resolved 2026-08-15 - UNBLOCKED
 
 ## Input from ticket 01 (2026-08-15) - this ticket got worse
@@ -117,3 +117,85 @@ car-identity question decide whether the button works at all on Kevin's actual c
 
 On the device: tap it on the real Jeep and get a real NHTSA answer. Then tap it with the phone in
 airplane mode and confirm the failure is worded, not blank. Screenshot both.
+
+---
+
+## Answer (2026-08-15)
+
+### Identity-present gates both paths. `confirmed` stops gating recalls.
+
+**Decision (Kevin).** The test is `year > 0 && make.isNotBlank() && make.isNotBlank()` - the same
+condition `VinDecoder.fetchRecalls` already applies silently at its own entry (`:98-99`). It becomes
+explicit, applied once, at both call sites, and **said in words when it fails.**
+
+`check_recalls`' `confirmed` check (`LiveToolbox.kt:1884-1893`) comes out.
+`VehicleSpecController.recalls` (`:136-139`), which had no check at all, gets the same one. **Same
+car, same data, same answer, whoever started the conversation** - which is not true today.
+
+**The original justification is checked, not assumed.** `confirmed` was introduced
+(`Vehicle.kt:42-48`) so recall lookups would not report on the default seed - *"a placeholder 1998
+Jeep Cherokee"*. **That premise expired in `a09aa68` (2026-08-15)**: seeding is now blank for every
+id, and a blank row cannot pass an identity-present test. The guard's job is done by the new test,
+by construction rather than by a flag.
+
+`confirmed` is **not deleted** - it still records that the driver stated the identity, which the VIN
+write-back deliberately does not claim (ticket 04). It simply stops being the recall gate.
+
+### The button
+
+On `VehicleSpecsScreen`, beside COPY / RE-READ / SYNC ID FROM VIN. Mission-control's control
+vocabulary: deck-native look, M3 machinery, 48dp target, real `stateDescription`.
+
+**Four outcomes, all in words** (§7: network calls degrade gracefully):
+
+| Outcome | Requirement |
+|---|---|
+| Recalls found | campaign, component, summary, remedy - a paragraph each, so list-then-detail |
+| **None found** | **must read as a completed check**, never as an empty state that looks like a failure to load. This is the important one: an empty list is exactly what a blank identity produced, and the whole point is that the two must never look alike |
+| Identity missing | says which of year/make/model is absent, and offers SYNC ID FROM VIN right there |
+| Lookup failed | offline / NHTSA unreachable / malformed, distinct from "none found" |
+
+**Zero recalls is the expected answer on a 28-year-old vehicle**, so the no-recalls state is the
+one most likely to be seen and the one most easily mistaken for a broken button.
+
+### Do not imply a VIN-specific check
+
+The button sits next to the VIN, but `fetchRecalls` is keyed **year/make/model** (`:94-96`). The
+copy must not suggest otherwise. Recalls are also **never stored** (`VehicleSpec.kt:15`) - each tap
+is live, which is correct and worth saying on screen, because a stale cached recall is worse than
+none.
+
+### `recallAlertsEnabled` gets a toggle or gets deleted
+
+`DebugSettings.recallAlertsEnabled` defaults **false** and its setter has **zero callers**
+(`DebugSettings.kt:22-24`) - a preference nobody can change, gating a proactive nobody has seen.
+**Give it a Settings toggle**, now that the proactive path has a coherent gate. A preference with no
+setter is dead code that reads like a feature - the same category as `refreshServiceIntervals`,
+which ticket 05 deleted.
+
+### Copy correction owed
+
+`VehicleSpecsScreen.reconcileOutcomeText`'s `Applied` line says the identity was filled in and
+says nothing about recalls. Under this decision that is now **correct as written** - filling in
+year/make/model is exactly what makes recalls work - so the note raised on review is resolved by the
+gate choice rather than by new copy. Confirm it reads that way once both land.
+
+### Verification
+
+1. On the device, on the real Jeep (now `1998 Jeep Cherokee`): tap it, get a real NHTSA answer,
+   screenshot.
+2. **Airplane mode**: confirm the failure is worded and distinct from "no recalls found".
+   Screenshot both, side by side - if they look alike the ticket is not done.
+3. On a car with blank make/model: confirm it says which field is missing and offers the fix.
+4. Confirm the proactive path and the voice tool now agree on the same car.
+
+### Assumptions ledger
+
+- `traced`: `fetchRecalls`' existing entry guard; `check_recalls`' `confirmed` gate;
+  `VehicleSpecController.recalls` having none; `DebugSettings`' default and zero-caller setter;
+  recalls never being stored; the keyed-by-year/make/model comment.
+- `traced`: that `a09aa68` made seeding blank for every id, which is what expires `confirmed`'s
+  original justification.
+- `on-device`: Kevin's row now carries `1998 / Jeep / Cherokee`, so it passes the new gate.
+- **Not built.**
+

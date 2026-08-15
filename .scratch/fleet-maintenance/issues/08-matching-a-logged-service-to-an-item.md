@@ -1,7 +1,7 @@
-# Matching a logged service to the item it satisfies
+﻿# Matching a logged service to the item it satisfies
 
 Type: grilling
-Status: open
+Status: resolved (2026-08-15)
 Blocked by: 07   # resolved 2026-08-15 - UNBLOCKED
 
 ## Question
@@ -61,3 +61,76 @@ On the device: log a service whose name exactly matches an item and confirm the 
 log one whose name matches nothing, and confirm the chosen behaviour from (1) actually happens
 **and is visible**. Pull the DB both times. Check `service_records` and `maintenance_items`
 together - the bug class here is precisely one where one table looks right on its own.
+
+---
+
+## Answer (2026-08-15)
+
+**Decision (Kevin): record the service, add the missing item, and SAY SO.**
+
+The `ServiceRecord` is always written - work done is a fact regardless of what the schedule knows.
+The new schedule row is then **announced**, never created silently:
+
+> "Logged the transmission flush at 227,900. Nothing on your schedule matched, so I've added
+> Transmission Flush as an item - it has no interval yet, tell me one when you want it tracked."
+
+**That announcement is the entire fix.** Kevin's `Brake Fluid` and `Brake Pads` rows (ticket 01)
+were created by exactly this path, silently, on 2026-08-12, and he learned of them from a database
+pull three days later. The behaviour is unchanged; the silence is what goes.
+
+### How matching works, given ticket 07
+
+Ticket 07 demoted `canonicalizeServiceName` from a rewriter to a **comparator**. That applies here
+literally:
+
+1. Canonicalise the spoken name and every existing item's name, and compare **case-insensitively**.
+2. A match resets that item's anchor via `setAnchor` (ticket 05's targeted write), row count checked.
+3. No match creates a new item under the **canonical** form of what was said - and the reply states
+   the name it used, so a bad canonicalisation is visible immediately rather than discovered later.
+
+**Deterministic only.** No LLM disambiguation: CLAUDE.md §4 rule 1 is deterministic-first where a
+deterministic path exists, and string comparison is one. An LLM here would make the same match
+non-reproducible across two identical utterances.
+
+**Fix the titlecase bug first** (found on ticket 07): the fallback at `VehicleController.kt:201`
+titlecases only the first character, so `"transfer case fluid"` becomes `"Transfer case fluid"` and
+collides with nothing while looking like `"Transfer Case Fluid"`. Proper title case, or this
+ticket's "create a new item" path becomes the duplicate generator it is meant to avoid.
+
+### The read-back is already law
+
+Ticket 05 made it so: the reply re-reads the row after writing. `"Oil Change is now due at
+235,000"` cannot be produced if the anchor did not move, which turns a silent miss into an audible
+one. That is the guard Kevin accepted the name-matching risk against, and it is what makes the risk
+survivable.
+
+### `log_past_service` keeps its distinction, and it caused real damage
+
+`logPastServiceDirect` writes **only** an anchor, never a `ServiceRecord` (`:199-204`) - a
+remembered approximation does not belong in the precise ledger. Keep that.
+
+But ticket 01 found it doing harm: on 2026-08-12 at 15:50:02 a `log_service` wrote a record at
+118,374 **and** the Oil Change anchor; fourteen seconds later a backfill **overwrote that anchor to
+118,483 and nulled its date.** A remembered figure silently beat a precise one.
+
+**Rule: a backfill may not overwrite an anchor that a `ServiceRecord` supports without saying so.**
+If a precise record exists at or after the backfill's date, the backfill reports the conflict and
+leaves the anchor alone. Same shape as the VIN write-back's conflict rule, for the same reason.
+
+### Verification
+
+1. Log a service matching an existing item; confirm the anchor moved **and** the read-back states
+   the new due figure. Pull the database.
+2. Log one matching nothing; confirm the new item is **announced by name**, and that its name is
+   properly title-cased.
+3. Backfill over an item that has a `ServiceRecord`; confirm it refuses and says why.
+4. Confirm a zero-row write is reported (ticket 05's law).
+
+### Assumptions ledger
+
+- `traced`: `canonicalizeServiceName`'s comparison and titlecase fallback; `logServiceDirect` /
+  `logPastServiceDirect`'s split; that only the latter writes an anchor without a date.
+- `on-device`: the 118,374 vs 118,483 anchor conflict and its fourteen-second gap, from the
+  2026-08-15 pull.
+- **Not built.**
+

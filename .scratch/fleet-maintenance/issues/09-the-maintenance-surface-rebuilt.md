@@ -1,7 +1,7 @@
-# The maintenance surface, rebuilt
+﻿# The maintenance surface, rebuilt
 
 Type: prototype
-Status: open
+Status: resolved (2026-08-15)
 Blocked by: 05, 06   # both resolved 2026-08-15 - UNBLOCKED
 
 ## Question
@@ -19,8 +19,8 @@ MAINTENANCE half-tile on FLEET (`ui/FleetScreen.kt:442-447`). Top to bottom:
    `"every 3,000 mi - last at 132,400"`. **None of these rows is clickable.**
 3. Two dead ghost lines: `"2 service records on file, no screen yet"` and
    `"N build sheet entries on file, no screen yet"` - **not tappable**
-4. `Recaps` row → recaps drilldown, with an inline miles sparkline
-5. `Oil Analyses` row → oil-analysis drilldown
+4. `Recaps` row -> recaps drilldown, with an inline miles sparkline
+5. `Oil Analyses` row -> oil-analysis drilldown
 
 Three interactions exist on the entire surface: open the drilldown, open recaps, open oil.
 
@@ -75,3 +75,92 @@ prototype is about information and action, not about looks.
 On the device, with Kevin's real schedule. **Compose previews have never been rendered on this
 project, any screen, ever** - installing and looking at it is the substitute, and it is the one that
 has caught every real bug so far.
+
+---
+
+## Answer (2026-08-15)
+
+**Three surfaces, not one.** Kevin: triage screen, full schedule behind it, and a row taps into its
+own detail screen.
+
+```
+FLEET tile  ->  MAINTENANCE (triage)  ->  FULL SCHEDULE  ->  ITEM DETAIL
+                     what needs doing      every item        one item, editable
+```
+
+### 1. MAINTENANCE - triage, and it stays glanceable
+
+Overdue first, then upcoming. **What it must NOT do is what it does today**: silently drop the
+seven of Kevin's ten items that have no anchor (`buildDueRows` filters `isUnknown` at
+`FleetRows.kt:120`).
+
+They do not belong in a due list - they genuinely are not due, and `VehicleController.unknownItems`
+exists unused for exactly this. So they are **counted, not listed**:
+
+> `7 items with no history - see full schedule`
+
+One line, tappable, straight into the full schedule filtered to them. **They stop being invisible
+without pretending to be urgent**, and that line is the natural prompt for backfill.
+
+### 2. FULL SCHEDULE - the complete, editable inventory
+
+Every item including the unknowns and the `[GUESS]`-tagged ones (ticket 06). Add, and the
+confirm-all flow, live here. Deleted (tombstoned) items do not appear.
+
+### 3. ITEM DETAIL - one item, and where every action lives
+
+Interval (editable), anchor (the three-way picker from ticket 07), the `[GUESS]` tag and its
+confirm, every `ServiceRecord` matching this item, and delete.
+
+**This is what makes the density work.** Mission-control ticket 03: a dense feed row cannot be
+tapped, and a tappable row costs 48dp against a 560dp content budget - about 11 rows a screen.
+Putting edit/log/add/delete inline on every row would have blown that. A detail screen keeps the
+lists dense and gives per-item history a home, answering questions 5 and 6 with one shape.
+
+### The tile must stop saying OK
+
+`buildFleetTile` reads `"OK"` when nothing is overdue. On Kevin's phone it currently says
+**`OK / NEXT BRAKE FLUID -`** while seven items are unknown and the next-up row is an orphan with no
+interval. That is not true and it is the surface he sees most.
+
+- Hero: the overdue count, or `OK` **only when nothing is overdue and nothing is unknown**.
+- Otherwise the caption carries the unknowns: `"3 due - 7 unknown"`.
+- Seven characters of hero (mission-control ticket 05) - `"3 DUE"` fits, and the caption does the rest.
+
+### Miles-or-months, on screen
+
+Kevin ruled due = whichever comes first. A row shows **the axis that is closer to due**, not
+whichever is non-null, and the sub-line names it: `"every 7,500 mi or 6 mo - due in 1,100 mi"`.
+
+**`dueFraction`'s month-is-30-days approximation stops being cosmetic here** and must be fixed: once
+months can drive due-ness, a 6-month interval computed as 180 days drifts almost 6 days a year
+against a real calendar.
+
+### The two dead ghost lines
+
+`"N service records on file, no screen yet"` becomes ticket 11's screen. The build-sheet line is
+**out of scope for this map** - remove it rather than leave a dead pointer on a rebuilt surface.
+
+### Method and verification
+
+Prototype as a claude.ai artifact before Compose - the mechanism that worked for every
+mission-control decision. Mission-control's visual language is settled and reused, not reopened:
+`DeckPane`, `DeckRow`, `DeckMeter`, `DeckTag`, the tiling grammar.
+
+1. On the device with Kevin's real schedule: **all ten of the Jeep's items reachable**, the seven
+   unknowns counted on triage and listed in full schedule, `[GUESS]` on every one with an interval.
+2. The tile does not say `OK` while unknowns exist.
+3. Every action reachable from a row tap; **confirm the drilldown-return path refreshes the parent**
+   (ticket 04's stale-parent bug - press BACK, do not switch tabs).
+4. Row count against the 560dp budget, measured not assumed.
+5. **Compose previews have never rendered on this project.** Installing and looking is the
+   substitute, and it has caught every real bug so far.
+
+### Assumptions ledger
+
+- `traced`: `buildDueRows`' `isUnknown` filter; `unknownItems` being unused; `buildFleetTile`'s
+  strings; `dueFraction`'s 30-day month; mission-control's 48dp/560dp budget.
+- `on-device`: the tile reading `OK / NEXT BRAKE FLUID -` on 2026-08-15 with seven unknowns.
+- `reasoned`: that ~11 rows per screen follows from 48dp against 560dp; not measured on the device.
+- **Not built. Unblocks 11.**
+

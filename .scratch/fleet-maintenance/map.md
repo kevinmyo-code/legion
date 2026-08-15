@@ -59,6 +59,63 @@ his two existing service records on a screen.
 
 <!-- one line per closed ticket: gist + link -->
 
+- [Service history, cost and fleet spend](issues/11-service-history-cost-and-fleet-spend.md) -
+  **`cost` migrates `Double` -> `Long` cents** (§4 rule 3, no exception), and the migration is free
+  **because the column is provably empty** - null on both records, no writer anywhere. Every later
+  moment costs more. `BuildEntry.cost` becomes the deliberate odd one out and gets a note saying so.
+  All four spend figures, **two carrying caveats that are the whole point**: the total must state
+  **how many records it covers** (both of Kevin's are cost-less, so the honest answer today is "no
+  costs logged", not "$0"), and **cost per mile must REFUSE while the odometer is 0** rather than
+  divide by an estimate. Spend-by-type groups on the **canonicalised** name or the duplicate rows
+  split one category in two. Edit and delete both, **but a service-record delete is LOCAL ONLY** -
+  `service_records` syncs UNION, and the sync doc is explicit that tombstones cannot work under it.
+  Acceptable only because it is stated rather than discovered.
+- [Populate from the factory schedule](issues/14-populate-from-the-factory-schedule.md) - **the
+  automatic seed is DELETED; a new car starts empty** and says "no schedule yet - populate it?".
+  That removes the mechanism that put 54 rows and 49 empty anchors on the roster without Kevin
+  asking, and makes `Vehicle.onboarded` vestigial (left in place, stopped being written, documented
+  as dead so it is not the next `refreshServiceIntervals`). The diff has **three categories**:
+  would-add, would-change (with **who authored the current value**), and **"not in the factory
+  schedule"** with a delete offered - which is what finally catches the invented `Brake Fluid Flush`.
+  It must word an invented row differently from one Kevin added himself. The **titlecase fix is a
+  hard prerequisite**, or this feature multiplies duplicates instead of reducing them. `engine`
+  column additive; the VIN path is **already built and verified on the device**.
+- [A recall button](issues/12-a-recall-button.md) - **identity-present gates both paths**;
+  `confirmed` stops being the recall gate. Its original justification **expired in `a09aa68`**: it
+  existed to block a placeholder that was itself a 1998 Jeep Cherokee, and seeding is now blank for
+  every id, so a blank row cannot pass an identity test anyway. Checked rather than assumed. The
+  voice tool and the proactive push now agree on the same car. **"No recalls found" must read as a
+  completed check, never as an empty state** - it is the expected answer on a 28-year-old vehicle
+  and the one most easily mistaken for a broken button, so it and the failure state get screenshotted
+  side by side. `recallAlertsEnabled` gets a Settings toggle or gets deleted.
+- [Odometer truth and drift](issues/10-odometer-truth-and-drift.md) - **always labelled between
+  readings**, no threshold and no window where a drifting number renders bare, because ticket 03
+  measured the estimate at **~5-15% low, always one-directional**. The confirmed reading renders
+  bare; only the estimate carries the caveat, spoken as well as rendered. **The estimator now
+  prefers OBD speed over GPS, reversing shipped behaviour** - the dash odometer is itself a PCM
+  speed integration off the same VSS, so this puts the estimate and the reading that resets it in
+  one reference frame. Two live defects fixed: the **0.001-mile floor is 1.61 m**, below GPS jitter,
+  so idling accrued phantom miles; and **`wanted("010D")` latches off permanently** after 3
+  failures, a silent zero in the odometer's own supply line. One entry control, reused by tickets 09
+  and 14. Drift is **logged, not shown**.
+- [The maintenance surface, rebuilt](issues/09-the-maintenance-surface-rebuilt.md) - **three
+  surfaces**: triage, full schedule, item detail. Unknown-anchor items are **counted on triage, not
+  listed** (`7 items with no history - see full schedule`) - they stop being invisible without
+  pretending to be urgent, and that line is the natural backfill prompt. **Every action lives on the
+  item detail screen**, which is what makes the density work: a tappable row costs 48dp against a
+  560dp budget, so inline edit/log/add/delete on every row would have blown it. **The tile must stop
+  saying `OK`** while seven items are unknown - it currently reads `OK / NEXT BRAKE FLUID -` on
+  Kevin's phone, off an orphan row with no interval. `dueFraction`'s month-is-30-days approximation
+  **stops being cosmetic** once months drive due-ness. **Unblocks 11.**
+- [Matching a logged service to an item](issues/08-matching-a-logged-service-to-an-item.md) -
+  **record it, add the missing item, and SAY SO.** The behaviour is unchanged; **the silence is what
+  goes** - Kevin's `Brake Fluid` and `Brake Pads` orphans were created by this exact path and he
+  learned of them from a database pull three days later. Matching is **deterministic**, using ticket
+  07's comparator, never an LLM - which would make two identical utterances match differently.
+  New finding: **a backfill silently overwrote a precise record's anchor** (118,374 -> 118,483,
+  fourteen seconds apart, date nulled), so **a backfill may not overwrite an anchor a `ServiceRecord`
+  supports without saying so.** The titlecase fix is a prerequisite here too.
+
 - [Hand-added items, and what delete means](issues/07-hand-added-items-and-what-delete-means.md) -
   **the ticket's premise was wrong and the codebase already had the answer.** It was charted
   believing a tombstone would have to be invented; `car_tasks` and `places` have carried one since
@@ -201,16 +258,35 @@ his two existing service records on a screen.
 
 ## Not yet specified
 
-- **The build tickets.** Shape is known - schema bump, DAO surface, edit affordances, the rebuilt
-  drilldown, the service-history screen, the odometer entry, the recall button - but each one's
-  contents depend on the decision ticket above it. They graduate as decisions land, the way
-  `mission-control` tickets 13-16 did.
-- **Room migration plan.** At least one bump is coming, and ticket 14 has now named a concrete one:
-  **an `engine` column on `vehicles`** (Kevin asked for it in the manual-input set, and ticket 02
-  showed why - a 4.0L XJ and a 2.5L differ on plugs and capacities). Plus a per-item provenance flag
-  from ticket 06, probably a cost writer from ticket 11, possibly a tombstone from ticket 07.
-  Whether that is one bump or four is not decidable until those tickets resolve. Room is at **v19**
-  and ticket 13's fix did **not** move it.
+- **The build tickets.** **Every decision on this map is now made** - what remains is execution, and
+  it graduates into build tickets the way `mission-control` tickets 13-16 did. Rough order, dictated
+  by the schema and by what gates what:
+  1. **The migration** (below) - gates almost everything else.
+  2. **DAO + write paths**: targeted writes on `maintenance_items`, the no-op guard, delete
+     `refreshServiceIntervals`, the titlecase fix, the `success` flags on write tools. (05, 07, 08)
+  3. **The label rule** across 24+ call sites, and `"this car"` deleted. (04)
+  4. **Odometer**: OBD-first, the acceptance floor, the `wanted()` latch, the entry control and its
+     labelling. (10)
+  5. **Screens**: triage / full schedule / item detail, then history and spend. (09, 11)
+  6. **Populate** with its three-category diff, and the auto-seed removed. (14)
+  7. **Recall button**, small and mostly reachability. (12)
+- **THE MIGRATION, v19 -> v20**, now fully specified by the resolved tickets and best done **once**:
+  | Table | Column | From |
+  |---|---|---|
+  | `maintenance_items` | `intervalSource TEXT NOT NULL DEFAULT 'SEEDED'` | ticket 06 |
+  | `maintenance_items` | `deleted INTEGER NOT NULL DEFAULT 0` | ticket 07 |
+  | `vehicles` | `engine TEXT NOT NULL DEFAULT ''` | ticket 14 |
+  | `service_records` | `cost` REAL -> `costCents` INTEGER | ticket 11 |
+  The first three are additive. **The fourth is not**, and is the map's one stated exception to §5's
+  additive-only rule, justified by the column being provably empty - **verify that with
+  `SELECT COUNT(*) FROM service_records WHERE cost IS NOT NULL` against a copy of Kevin's real
+  database before writing it.** Everything else §5 requires still applies: verbatim generated SQL,
+  `exportSchema`, committed schema JSON, migration test, no destructive fallback.
+- **Empty / offline / loading copy per surface.** The rules are law (worded, never colour or glyph
+  alone; estimates labelled; "no recalls" must read as a completed check) but the exact wording is
+  written inside each build ticket.
+- **The ship pass.** A final on-device sweep once the builds land, including the checks each ticket
+  named as owed.
 - **What the fleet advisor does with a schedule Kevin owns.** `AdvisorProposalExecutor`'s
   `set_maintenance_item` is currently the *only* live interval writer. Once a UI edit path exists,
   the advisor's role changes from sole author to proposer, and its allowlist may need revisiting.

@@ -1,7 +1,7 @@
-# Populate the schedule from the factory recommendation
+﻿# Populate the schedule from the factory recommendation
 
 Type: prototype
-Status: open
+Status: resolved (2026-08-15)
 Blocked by: 05, 06, 07   # all resolved 2026-08-15 - UNBLOCKED
 
 ## Question
@@ -95,3 +95,117 @@ On the device, on Kevin's real Jeep: run a populate, confirm the diff shows the 
 accepted, accept it, force-stop, reopen, and pull the DB to confirm the rows. **The service anchors
 at 118,483 must survive untouched** - that is the check that matters most, because losing them is
 the failure this map already suffered once.
+
+---
+
+## Answer (2026-08-15)
+
+### The automatic seed is deleted. A new car starts empty.
+
+**Decision (Kevin), and it is the largest change on this ticket.** Nothing is written to a car's
+schedule until a populate is run and its diff accepted. A new car reads:
+
+> `No schedule yet - populate from the factory recommendation?`
+
+**One write path instead of two.** `onboardPendingVehicles` (`VehicleController.kt:653-659`), which
+fires on every service start, goes - and with it the mechanism that put **54 rows and 49 empty
+anchors** across Kevin's roster (ticket 01) without him ever asking for one. `applyServiceIntervals`'
+automatic callers in `registerDirect` / `addVehicle` / `correctVehicle` go too; registering a car
+stops being a thing that silently produces a schedule.
+
+**`Vehicle.onboarded` becomes vestigial.** It exists to mean "the one-time lookup has run"
+(`Vehicle.kt:28-30`) and there is no longer a one-time lookup. Leave the column (removing it is a
+destructive migration for no gain) but **stop writing it, and say in its doc that it is dead** -
+otherwise it is the next `refreshServiceIntervals`, a field that looks live and is not.
+
+### The diff has three categories, not two
+
+**Decision (Kevin).**
+
+| Category | What it means |
+|---|---|
+| **Would add** | in the factory schedule, not on file |
+| **Would change** | on file with a different interval - shows current beside proposed, **and who authored the current value** (ticket 06's flag) |
+| **Not in the factory schedule** | on file, factory does not list it - with a delete offered per row |
+
+That third category is the one Kevin chose and it is the one that cleans up. On his Jeep it will
+catch `Brake Fluid Flush`, which ticket 02 proved **is not in the XJ's factory schedule at all**
+(brake fluid appears only as a monthly level check), and it would catch a `Cabin Air Filter` if one
+were ever seeded - **the XJ does not have one.**
+
+**It must distinguish LEGION's inventions from Kevin's own additions.** A hand-added
+`Transmission Flush` and an invented `Brake Fluid Flush` look identical in this category unless
+`intervalSource` says which is `SEEDED` and which is `CONFIRMED`. **That is why this ticket needed
+ticket 06**, and the delete offer must be worded differently for the two - proposing to delete
+something Kevin added himself is a different act from proposing to delete something LEGION invented.
+
+**Nothing writes until accepted.** Per-row, not all-or-nothing.
+
+### Name matching, resolved by ticket 07
+
+Ticket 02 counted **26 distinct factory service names** against `SERVICE_KEYWORDS`' ten. Ticket 07
+settled the mechanism: **the canonicaliser is a comparator, never a rewriter.** So the diff
+canonicalises both sides and compares case-insensitively to decide whether "Drain and refill front
+and rear axles" is the existing "Differential Fluid Service", and **a near-miss is shown as a
+question**, not resolved silently in either direction.
+
+**The titlecase bug is a hard prerequisite** (`VehicleController.kt:201` titlecases only the first
+character). Without that fix this feature multiplies duplicates rather than reducing them - which is
+this ticket's own stated risk, and it now has a named cause rather than a vague worry.
+
+### `engine` column, and the migration
+
+`Vehicle` has no engine field and Kevin wants it in manual input (a 4.0L XJ and a 2.5L differ on
+plugs and capacities - ticket 02). Additive, `TEXT NOT NULL DEFAULT ''`.
+
+**Tickets 06 (`intervalSource`) and 07 (`deleted`) already share a bump to v20.** This is a
+different table, so it can ride the same migration or take v21 - **do not hold 06/07 for it.**
+CLAUDE.md §5 either way: verbatim generated SQL, additive, `exportSchema`, schema JSON committed,
+migration test, no destructive fallback. Confirm the `createSql` in `app/schemas/` afterwards.
+
+### Mileage at registration reuses ticket 10's control
+
+Kevin asked for mileage in the manual-input set, and it closes the exact hole that broke his Jeep -
+a fresh car computing due dates against odometer zero. **It reuses ticket 10's odometer control
+rather than duplicating it**; two implementations would be two places to get the estimate label
+wrong.
+
+### The VIN path is already built
+
+Question 7 is **resolved by shipped code** (commit `b499169`, verified on the device 2026-08-15).
+`VinDecoder.decodeAll` returns identity and specs from one call; `refreshFromVin` applies the
+identity under fill-blanks-never-overwrite; `reconcileIdentityFromStoredVin` repairs from a stored
+VIN without the adapter. This ticket **consumes** that rather than rebuilding it.
+
+Correcting the ticket's own premise: `vehicle_specs` does not carry year/make/model, but
+**`VinDecoder.decode` does** - it parses them from the same vPIC response `decodeSpecs` reads.
+
+### Where the trigger lives
+
+Two entry points, one implementation: the **specs screen** (beside SYNC ID FROM VIN, where a VIN
+already lives) and the **full schedule screen** from ticket 09 (where an empty schedule is visible).
+Both call the same function.
+
+### Verification
+
+1. On Kevin's real Jeep: run a populate, confirm the diff shows **oil moving 3,000 -> 7,500** and
+   lists `Brake Fluid Flush` under "not in the factory schedule".
+2. **Confirm nothing is written until accepted** - pull the database mid-diff.
+3. Accept, force-stop, reopen, pull again. **The service anchors at 118,483 must survive untouched** -
+   losing them is the failure this map already suffered once, and it is the check that matters most.
+4. Re-run the populate immediately and confirm it produces **no duplicates** - the risk this ticket
+   was charted against.
+5. Register a fresh car and confirm it starts **empty**, with the populate prompt.
+
+### Assumptions ledger
+
+- `traced`: `onboardPendingVehicles`' service-start trigger and its callers; `Vehicle.onboarded`'s
+  stated purpose; that `VinDecoder.decode` parses year/make/model from the same response;
+  the titlecase fallback.
+- `on-device`: the 54 rows / 49 empty anchors; the identity write-back working on the real Jeep.
+- `sourced` (ticket 02): brake fluid absent from the XJ schedule; no cabin air filter; 26 names.
+- `reasoned`: that deleting the auto-seed removes the duplicate-generation path entirely. It removes
+  the *automatic* one; the populate can still generate duplicates if the matching is weak, which is
+  why (4) above is a gate.
+- **Not built.**
+
