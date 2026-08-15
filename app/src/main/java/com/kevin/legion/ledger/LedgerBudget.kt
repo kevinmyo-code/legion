@@ -55,6 +55,17 @@ data class BudgetLine(
  * being trusted to render it conditionally: a screen that skips rendering it AT ZERO can silently
  * become a screen that skips rendering it whenever it stops being zero, the exact failure D11
  * warns against.
+ *
+ * **AMENDED 2026-08-15 (Kevin): this bucket is NOT counted in spend.** [BudgetVsActual.spentCents]
+ * - the one figure every "how much have I spent" surface reads - is the category lines' actuals
+ * only; this bucket sits outside it. D11's actual claim is unchanged and still binding: the bucket
+ * is never spread across categories, never folded into a category total, and never hidden. What
+ * changed is which figure it feeds. The condition that makes the amendment honest rather than the
+ * exact failure D11 warned about is [uncategorizedExcludedSentence]: **every surface that states a
+ * spend figure states this bucket next to it, in words** (the same "any figure that excluded
+ * something discloses it in words" rule [ExcludedOwnAccountMovements] already follows). An
+ * excluded-and-announced figure is a different thing from a hidden one - a total that quietly
+ * absorbed rows nobody has classified is what "the total lied" meant.
  */
 data class UncategorizedSpend(val spentCents: Long, val hasProvisionalRows: Boolean)
 
@@ -97,13 +108,36 @@ data class BudgetVsActual(
      * can fail (CLAUDE.md §4 rule 6) - the explicit `isNotEmpty() &&` is what closes it.
      */
     val isComplete: Boolean get() = coverage.isNotEmpty() && coverage.all { it.coversWholeMonth }
+
+    /**
+     * **Spend for [month]: every category line's actual, and nothing else (Kevin, 2026-08-15 -
+     * "don't count uncategorized in spend").** THE definition - the CRED tile, the SPEND hero, the
+     * monthly trend, the advisor digest and the voice path all read this one property rather than
+     * each summing the lines themselves, which is exactly how the five call sites that previously
+     * wrote `lines.sumOf { it.gap.actual } + uncategorized.spentCents` by hand could have drifted
+     * apart under this change.
+     *
+     * [UncategorizedSpend] is excluded, never hidden: a caller rendering this figure states
+     * [uncategorizedExcludedSentence] beside it whenever that bucket is non-zero. See that bucket's
+     * own doc comment for why exclusion-with-disclosure is not the failure D11 named.
+     */
+    val spentCents: Long get() = lines.sumOf { it.gap.actual }
+
+    /**
+     * Every operating-expense cent this month, categorised or not - what [spentCents] meant before
+     * 2026-08-15. Kept because two questions genuinely differ: "what did I spend" (the driver's
+     * question, [spentCents]) and "did this month have ANY activity at all" (an emptiness test,
+     * this). Only used for the latter - [monthSpendFrom]'s gap-versus-real-zero rule and the tiles'
+     * "NOT LOGGED" branch - never rendered as a spend figure.
+     */
+    val allOperatingSpendCents: Long get() = spentCents + uncategorized.spentCents
 }
 
 /**
  * Ticket 04 (quant-viz): one month's total spend, for [com.kevin.legion.ui.ledger.SpendTrendDrilldown]'s
- * month-over-month bar chart. [totalCents] is [BudgetVsActual.lines]' actuals plus
- * [BudgetVsActual.uncategorized] summed - the SAME "true total" [LedgerBudgetTest]'s own D11 test
- * already recovers by adding every line's actual to the uncategorised bucket, not a parallel figure.
+ * month-over-month bar chart. [totalCents] is [BudgetVsActual.spentCents] - the ONE spend
+ * definition, categorised lines only, uncategorised excluded (Kevin, 2026-08-15) - never a
+ * parallel figure summed here.
  * [isComplete]/[hasProvisionalRows] mirror [BudgetVsActual]'s own fields for that month, so the
  * trend list can state the identical caveats [BudgetSection] states for the single month it shows.
  *
@@ -125,8 +159,11 @@ data class MonthSpend(val month: YearMonth, val totalCents: Long, val isComplete
  * that would read as a real zero to something with no way to tell the two apart.
  */
 internal fun monthSpendFrom(month: YearMonth, budget: BudgetVsActual): MonthSpend? {
-    val totalCents = budget.lines.sumOf { it.gap.actual } + budget.uncategorized.spentCents
-    if (budget.coverage.isEmpty() && totalCents == 0L) return null
+    val totalCents = budget.spentCents
+    // The omission test reads allOperatingSpendCents, NOT totalCents (2026-08-15): a month whose
+    // only rows are uncategorised has zero spend but is emphatically not a month nothing was ever
+    // imported for, and dropping it from the trend entirely would state the stronger claim.
+    if (budget.coverage.isEmpty() && budget.allOperatingSpendCents == 0L) return null
     val hasProvisionalRows = budget.lines.any { it.hasProvisionalRows } || budget.uncategorized.hasProvisionalRows
     return MonthSpend(month, totalCents, budget.isComplete, hasProvisionalRows)
 }
@@ -146,6 +183,23 @@ fun excludedOwnAccountMovementsSentence(excluded: ExcludedOwnAccountMovements, c
     val plural = if (excluded.count == 1) "transaction" else "transactions"
     return "${excluded.count} $plural moving money to your own accounts (${formatMoney(excluded.totalCents, currency)}) " +
         "excluded from spend."
+}
+
+/**
+ * The words every surface states beside a [BudgetVsActual.spentCents] figure whenever the
+ * uncategorised bucket is non-zero (Kevin, 2026-08-15) - the counterpart to
+ * [excludedOwnAccountMovementsSentence], defined ONCE here so the screen, the HOME tile, the
+ * advisor digest and the voice path cannot word the same exclusion four different ways.
+ *
+ * This sentence is what makes excluding the bucket honest rather than hidden (see
+ * [UncategorizedSpend]'s own doc comment), so it is not optional trim on any surface that has room
+ * for it. Empty-safe: at zero it states the absence rather than lying by omission, matching
+ * [excludedOwnAccountMovementsSentence]'s own posture for callers that render it unconditionally.
+ */
+fun uncategorizedExcludedSentence(uncategorized: UncategorizedSpend, currency: LedgerCurrency): String {
+    if (uncategorized.spentCents == 0L) return "Nothing uncategorised this month - spend counts every operating expense."
+    return "${formatMoney(uncategorized.spentCents, currency)} is not assigned to a category and is NOT counted in spend. " +
+        "Categorise it to have it counted."
 }
 
 /** ticket 02: DETERMINISTIC/LLM_RECONCILED both passed a real reconciliation gate (PROVEN); UNRECONCILED never faced one at all (REPORTED). Ticket 07: a still-pending category guess makes the ROW's contribution to a category total reported too, regardless of what the amount's own ingest method says. */

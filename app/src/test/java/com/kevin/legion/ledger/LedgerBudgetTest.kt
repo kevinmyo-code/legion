@@ -135,11 +135,34 @@ class LedgerBudgetTest {
         // Never spread across categories: Groceries only sees its own row.
         val groceriesLine = result.lines.first { it.category == "Groceries" }
         assertEquals(80_00L, groceriesLine.gap.actual)
-        // Never silently dropped: the total the driver actually spent is
-        // recoverable by adding every line's actual plus the uncategorised
-        // bucket, not by trusting the category lines alone.
-        val trueTotal = result.lines.sumOf { it.gap.actual } + result.uncategorized.spentCents
-        assertEquals(114_12L, trueTotal)
+        // Kevin 2026-08-15: spend is the category lines only - the uncategorised bucket sits
+        // outside it (and every surface rendering `spentCents` says so in words, see
+        // `uncategorizedExcludedSentence`).
+        assertEquals(80_00L, result.spentCents)
+        // Never silently dropped either: every operating-expense cent is still recoverable, which
+        // is what keeps "excluded" from becoming "hidden".
+        assertEquals(114_12L, result.allOperatingSpendCents)
+    }
+
+    @Test
+    fun `spend excludes the uncategorised bucket even when every row this month is uncategorised`() {
+        val mystery = txn("checking", -55_00, description = "UNKNOWN MERCHANT", category = null)
+
+        val result = buildBudgetVsActual(
+            entity = LedgerEntity.US,
+            month = MONTH,
+            inPeriod = listOf(mystery),
+            pairingWindow = listOf(mystery),
+            targets = emptyMap(),
+            coverage = completeCoverage("checking"),
+        )
+
+        assertEquals(0L, result.spentCents)
+        assertEquals(55_00L, result.allOperatingSpendCents)
+        // ...and the exclusion is stated in words, with the figure in it - never colour or silence.
+        val sentence = uncategorizedExcludedSentence(result.uncategorized, LedgerCurrency.USD)
+        assertTrue(sentence.contains("55.00"))
+        assertTrue(sentence.contains("NOT counted in spend"))
     }
 
     @Test
@@ -429,7 +452,7 @@ class LedgerBudgetTest {
     }
 
     @Test
-    fun `totalCents is the exact Long sum of every line's actual plus the uncategorised bucket`() {
+    fun `totalCents is the exact Long sum of every category line's actual, uncategorised excluded`() {
         val groceries = txn("checking", -184_212, description = "KROGER", category = "Groceries")
         val mystery = txn("checking", -55_00, description = "UNKNOWN MERCHANT", category = null)
 
@@ -443,7 +466,25 @@ class LedgerBudgetTest {
         )
 
         val spend = monthSpendFrom(MONTH, budget)
-        assertEquals(184_212L + 55_00L, spend!!.totalCents)
+        assertEquals(184_212L, spend!!.totalCents)
+    }
+
+    @Test
+    fun `a month whose only rows are uncategorised is a real zero-spend month, never omitted as a gap`() {
+        // Zero SPEND, but emphatically not "nothing was ever imported for this month" - the trend
+        // must still carry the month rather than leaving a hole that reads as missing data.
+        val mystery = txn("checking", -55_00, description = "UNKNOWN MERCHANT", category = null)
+        val budget = buildBudgetVsActual(
+            entity = LedgerEntity.US,
+            month = MONTH,
+            inPeriod = listOf(mystery),
+            pairingWindow = listOf(mystery),
+            targets = emptyMap(),
+            coverage = emptyList(),
+        )
+
+        val spend = monthSpendFrom(MONTH, budget)
+        assertEquals(0L, spend!!.totalCents)
     }
 
     @Test

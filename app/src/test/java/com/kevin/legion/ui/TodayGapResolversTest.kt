@@ -364,8 +364,24 @@ class TodayGapResolversTest {
 
     @Test
     fun `CRED tile - spend with no target set says so`() {
-        val tile = buildCredTile(budgetFixture(emptyList(), uncategorizedCents = 5_000L), "AUG")
+        val line = BudgetLine(
+            category = "Groceries",
+            gap = PlanGap(target = 0L, actual = 5_000L, gap = -5_000L, tier = TrustTier.PROVEN),
+            hasProvisionalRows = false,
+            hasPendingCategoryGuesses = false,
+        )
+        val tile = buildCredTile(budgetFixture(listOf(line)), "AUG")
         assertEquals("$50", tile.hero)
+        assertEquals("NO TARGET SET", tile.caption)
+    }
+
+    @Test
+    fun `CRED tile - uncategorised spend is not counted in the hero figure`() {
+        // Kevin 2026-08-15: spend is categorised lines only. A month holding ONLY uncategorised
+        // rows reads a real $0 - not "NOT LOGGED", which would claim nothing was ever imported -
+        // and TodayScreen states the excluded figure beside the tile in words.
+        val tile = buildCredTile(budgetFixture(emptyList(), uncategorizedCents = 5_000L), "AUG")
+        assertEquals("$0", tile.hero)
         assertEquals("NO TARGET SET", tile.caption)
     }
 

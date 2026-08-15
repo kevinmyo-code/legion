@@ -81,7 +81,9 @@ object CarAspectSummaries {
     }
 
     /**
-     * Money row: this month's total spend across [LedgerEntity.US] - the exact figure
+     * Money row: this month's spend across [LedgerEntity.US] ([BudgetVsActual.spentCents] -
+     * categorised lines only since 2026-08-15, with the uncategorised bucket stated separately in
+     * words) - the exact figure
      * `ui/TodayScreen.kt`'s SYSTEMS SWEEP ledger row and `ui/LedgerScreen.kt`'s budget section both
      * read from [LedgerController.budgetVsActual]. `Long` cents throughout (CLAUDE.md §4 rule 3);
      * formatted here, never converted to a `Double`.
@@ -93,15 +95,20 @@ object CarAspectSummaries {
     suspend fun money(context: Context): Pair<String, String> {
         val month = YearMonth.now()
         val budget = LedgerController.budgetVsActual(context, LedgerEntity.US, month)
-        val totalCents = budget.uncategorized.spentCents + budget.lines.sumOf { it.gap.actual }
+        val totalCents = budget.spentCents
         val unverified = budget.uncategorized.hasProvisionalRows ||
             budget.lines.any { it.hasProvisionalRows || it.hasPendingCategoryGuesses } ||
             !budget.isComplete
         val amount = formatCents(totalCents)
+        // The uncategorised bucket is excluded from `spentCents` (Kevin, 2026-08-15) and therefore
+        // has to be said out loud here too - a car row that quietly reported the smaller figure
+        // would be the one surface that hid what every other one discloses.
+        val uncategorised = budget.uncategorized.spentCents
+        val excludedNote = if (uncategorised > 0L) ", ${formatCents(uncategorised)} uncategorised not counted" else ""
         val subtitle = if (unverified) {
-            "$amount spent this month (unverified)"
+            "$amount spent this month (unverified)$excludedNote"
         } else {
-            "$amount spent this month"
+            "$amount spent this month$excludedNote"
         }
         return "Money" to subtitle
     }

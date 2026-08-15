@@ -424,6 +424,19 @@ private fun TodayListing(
                     if (state.ledgerCumulativeSparkline.any { it != null }) {
                         DeckSparkline(state.ledgerCumulativeSparkline, modifier = Modifier.padding(horizontal = 12.dp))
                     }
+                    // The uncategorised bucket is NOT in the hero figure above (Kevin, 2026-08-15) -
+                    // stated here in the tile's own `extra` slot rather than appended to `caption`,
+                    // which is one ellipsised line and would silently swallow half the sentence. See
+                    // buildCredTile's doc comment.
+                    val budget = state.budget
+                    if (budget != null && budget.uncategorized.spentCents > 0L) {
+                        Text(
+                            "${compactMoneyHero(budget.uncategorized.spentCents, budget.entity.currency)} UNCATEGORISED, NOT COUNTED",
+                            style = LegionType.stamp,
+                            color = LocalLegionSemantics.current.estimated,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        )
+                    }
                 }
             }
             EqualHeightRow(Modifier.fillMaxWidth().padding(top = 9.dp), horizontalGap = 9.dp) {

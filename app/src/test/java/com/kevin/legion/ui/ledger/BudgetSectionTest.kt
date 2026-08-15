@@ -4,7 +4,15 @@ import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
 import com.kevin.legion.ledger.AccountCoverage
+import com.kevin.legion.ledger.BudgetLine
+import com.kevin.legion.ledger.BudgetVsActual
+import com.kevin.legion.ledger.ExcludedOwnAccountMovements
+import com.kevin.legion.ledger.LedgerEntity
 import com.kevin.legion.ledger.MonthSpend
+import com.kevin.legion.ledger.UncategorizedSpend
+import com.kevin.legion.plan.PlanGap
+import com.kevin.legion.plan.TrustTier
+import com.kevin.legion.ui.common.DeckMarkerType
 import java.time.YearMonth
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
@@ -84,5 +92,80 @@ class BudgetSectionTest {
     fun `a covered day with no rows across any category is a genuine zero, never a gap`() {
         val bars = categoryDailySpendBars(listOf(txn(1, -1000, "Groceries")), month, fullCoverage())
         assertEquals(0f, bars[1]!!.value) // day 2, index 1 - covered, nothing spent that day
+    }
+
+    // ---- categorySpendBars: the SPEND hero chart (Kevin, 2026-08-15) ---------------------------
+
+    private fun line(category: String, actualCents: Long, targetCents: Long = 0L, provisional: Boolean = false) =
+        BudgetLine(
+            category = category,
+            gap = PlanGap(target = targetCents, actual = actualCents, gap = targetCents - actualCents, tier = TrustTier.PROVEN),
+            hasProvisionalRows = provisional,
+            hasPendingCategoryGuesses = false,
+        )
+
+    private fun budget(lines: List<BudgetLine>, uncategorizedCents: Long = 0L) = BudgetVsActual(
+        entity = LedgerEntity.US,
+        month = month,
+        lines = lines,
+        uncategorized = UncategorizedSpend(spentCents = uncategorizedCents, hasProvisionalRows = false),
+        coverage = fullCoverage(),
+        excludedOwnAccountMovements = ExcludedOwnAccountMovements(0, 0L, emptyList()),
+    )
+
+    @Test
+    fun `the bars sum to exactly the spend figure above them, with uncategorised in neither`() {
+        val b = budget(
+            lines = listOf(line("Groceries", 41_200L), line("Dining Out", 24_500L)),
+            uncategorizedCents = 3_412L,
+        )
+
+        val bars = categorySpendBars(b)
+
+        assertEquals(65_700L, bars.sumOf { it.value.toLong() })
+        assertEquals(b.spentCents, bars.sumOf { it.value.toLong() })
+        assertTrue(bars.none { it.label.contains("ncategoris", ignoreCase = true) })
+    }
+
+    @Test
+    fun `bars are biggest first and only the biggest carries a value label`() {
+        val bars = categorySpendBars(budget(listOf(line("Dining Out", 10_00L), line("Groceries", 90_00L))))
+
+        assertEquals(listOf("Groceries", "Dining Out"), bars.map { it.label })
+        assertEquals("90.00", bars[0].valueLabel)
+        assertNull(bars[1].valueLabel)
+    }
+
+    @Test
+    fun `a category with a budget but no spend this month draws no bar`() {
+        val bars = categorySpendBars(budget(listOf(line("Groceries", 90_00L), line("Pets", 0L, targetCents = 50_00L))))
+
+        assertEquals(listOf("Groceries"), bars.map { it.label })
+    }
+
+    @Test
+    fun `past the cap the tail folds into OTHER - never truncated, the sum still holds`() {
+        val many = (1..9).map { line("Cat$it", it * 1_000L) }
+
+        val bars = categorySpendBars(budget(many), maxBars = 6)
+
+        assertEquals(6, bars.size)
+        assertEquals("OTHER 4", bars.last().label)
+        // 1+2+3+4 thousand cents folded; nothing dropped.
+        assertEquals(10_000L, bars.last().value.toLong())
+        assertEquals(many.sumOf { it.gap.actual }, bars.sumOf { it.value.toLong() })
+    }
+
+    @Test
+    fun `a category holding unreconciled rows is marked by SHAPE, and a target draws its own tick`() {
+        val bars = categorySpendBars(budget(listOf(line("Groceries", 41_200L, targetCents = 60_000L, provisional = true))))
+
+        assertEquals(DeckMarkerType.PROVISIONAL, bars.single().mark)
+        assertEquals(60_000f, bars.single().targetValue)
+    }
+
+    @Test
+    fun `a month with no categorised spend has no chart at all`() {
+        assertTrue(categorySpendBars(budget(emptyList(), uncategorizedCents = 3_412L)).isEmpty())
     }
 }

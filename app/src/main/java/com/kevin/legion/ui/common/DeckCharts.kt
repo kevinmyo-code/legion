@@ -42,6 +42,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ui.theme.DRAW_IN_MS
 import com.kevin.legion.ui.theme.LegionTheme
@@ -530,7 +531,7 @@ private fun DrawScope.drawEndpointLabel(
  * [DeckPanels.DeckMeter]'s fill-in treatment of a single bar.
  */
 @Composable
-fun DeckBarChart(bars: List<DeckBar?>, modifier: Modifier = Modifier) {
+fun DeckBarChart(bars: List<DeckBar?>, modifier: Modifier = Modifier, height: Dp = 180.dp) {
     val sem = LocalLegionSemantics.current
     val fillColor = sem.data
     val targetColor = MaterialTheme.colorScheme.primary
@@ -548,7 +549,7 @@ fun DeckBarChart(bars: List<DeckBar?>, modifier: Modifier = Modifier) {
     val labelStyle = LegionType.stamp.copy(color = sem.faint)
     val scale = computeBarScale(bars)
 
-    Canvas(modifier.fillMaxWidth().height(180.dp).padding(horizontal = 12.dp, vertical = 8.dp)) {
+    Canvas(modifier.fillMaxWidth().height(height).padding(horizontal = 12.dp, vertical = 8.dp)) {
         if (bars.isEmpty()) return@Canvas
         val gapPx = 2.dp.toPx()
         val n = bars.size
@@ -589,15 +590,20 @@ fun DeckBarChart(bars: List<DeckBar?>, modifier: Modifier = Modifier) {
                     pathEffect = targetDash,
                 )
             }
+            val markRadius = 3.dp.toPx()
+            // A bar carrying BOTH a value label and a marker used to draw them at the same height,
+            // straight through each other ("238.06" reading "238✕06" on the SPEND hero, caught on
+            // device 2026-08-15 - the category chart is the kit's first caller to set both on one
+            // bar). The label clears the marker's own band instead of sharing it.
+            val markReserve = if (bar.mark != null) markRadius * 2f + 3.dp.toPx() else 0f
             val label = bar.valueLabel
             if (label != null) {
                 val layout = textMeasurer.measure(AnnotatedString(label), style = labelStyle)
                 val labelX = (x + (barWidth - layout.size.width) / 2f).coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f))
-                val labelY = (size.height - height - layout.size.height - 2.dp.toPx()).coerceIn(0f, size.height)
+                val labelY = (size.height - height - markReserve - layout.size.height - 2.dp.toPx()).coerceIn(0f, size.height)
                 drawText(layout, topLeft = Offset(labelX, labelY))
             }
             if (bar.mark != null) {
-                val markRadius = 3.dp.toPx()
                 val markY = (size.height - height - markRadius - 3.dp.toPx()).coerceAtLeast(markRadius)
                 drawDeckMarker(bar.mark, Offset(x + barWidth / 2f, markY), markerColor, markRadius)
             }

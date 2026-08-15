@@ -21,6 +21,7 @@ import com.kevin.legion.ledger.excludedOwnAccountMovementsSentence
 import com.kevin.legion.ledger.formatCents
 import com.kevin.legion.ledger.formatMoney
 import com.kevin.legion.ledger.sameCard
+import com.kevin.legion.ledger.uncategorizedExcludedSentence
 import com.kevin.legion.pantry.PantryController
 import com.kevin.legion.meals.MealController
 import com.kevin.legion.workouts.WorkoutController
@@ -705,12 +706,15 @@ object LiveToolbox {
         // than it looks on screen.
         fns.put(fn(
             name = "get_monthly_spend",
-            description = "Report this month's total operating spend for the US ledger entity - " +
-                "the SAME figure the Money screen's US BUDGET section shows. Money moved between " +
+            description = "Report this month's categorised operating spend for the US ledger " +
+                "entity - the SAME figure the Money screen's SPEND pane shows. Money moved between " +
                 "the driver's own accounts (a card payment, a savings transfer) is excluded from " +
                 "this total; ALWAYS say how many transactions and how much were excluded, exactly " +
                 "as the response's excluded_own_account_movements fields state - never present the " +
-                "total as if nothing was left out. If the response's verified field is false, say " +
+                "total as if nothing was left out. Transactions with no category are ALSO excluded " +
+                "from this total: whenever uncategorized_cents is above zero, say so out loud using " +
+                "uncategorized_note - that money was spent, it is simply not classified yet, and a " +
+                "total presented without it would understate the month. If the response's verified field is false, say " +
                 "the figure is not fully confirmed (pending bank data, an unconfirmed AI-guessed " +
                 "category, or a month not fully covered by an imported statement).",
             params = obj(),
@@ -2533,11 +2537,16 @@ object LiveToolbox {
         // "This month" is the driver's month, not UTC's - matches setBudget's own reasoning above.
         val month = YearMonth.now(java.time.ZoneId.systemDefault())
         val budget = LedgerController.budgetVsActual(context, LedgerEntity.US, month)
-        val totalCents = budget.uncategorized.spentCents + budget.lines.sumOf { it.gap.actual }
+        val totalCents = budget.spentCents
         val unverified = budget.uncategorized.hasProvisionalRows ||
             budget.lines.any { it.hasProvisionalRows || it.hasPendingCategoryGuesses } ||
             !budget.isComplete
         val excluded = budget.excludedOwnAccountMovements
+        // Two separate exclusions, two separate sentences, both handed over (2026-08-15): own-account
+        // movements were never spend at all, while uncategorised rows ARE spend the driver has not
+        // classified yet - the model must be able to say which is which rather than reading one
+        // merged caveat.
+        val uncategorizedNote = uncategorizedExcludedSentence(budget.uncategorized, budget.entity.currency)
         return JSONObject()
             .put("success", true)
             .put("currency", budget.entity.currency.name)
@@ -2546,6 +2555,8 @@ object LiveToolbox {
             .put("verified", !unverified)
             .put("excluded_own_account_movements_count", excluded.count)
             .put("excluded_own_account_movements_cents", excluded.totalCents)
+            .put("uncategorized_cents", budget.uncategorized.spentCents)
+            .put("uncategorized_note", uncategorizedNote)
             .put("note", excludedOwnAccountMovementsSentence(excluded, budget.entity.currency))
     }
 

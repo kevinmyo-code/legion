@@ -98,7 +98,7 @@ class HomeDigestBuilderTest {
         val overspendUsd = LedgerTransaction(
             sourceFile = "f", accountId = "a", currency = LedgerCurrency.USD, txnDate = now,
             description = "Whole Foods", amountCents = -50000, lineRef = "1",
-            ingestMethod = com.kevin.legion.data.local.IngestMethod.DETERMINISTIC,
+            ingestMethod = com.kevin.legion.data.local.IngestMethod.DETERMINISTIC, category = "Groceries",
         )
         val txns = mapOf(LedgerCurrency.USD to listOf(overspendUsd), LedgerCurrency.SGD to emptyList())
         val line = HomeDigestBuilder.credHeadline(targets, txns)
@@ -119,7 +119,7 @@ class HomeDigestBuilderTest {
         val provenTxn = LedgerTransaction(
             sourceFile = "f", accountId = "a", currency = LedgerCurrency.USD, txnDate = now,
             description = "Whole Foods", amountCents = -5000, lineRef = "1",
-            ingestMethod = com.kevin.legion.data.local.IngestMethod.DETERMINISTIC,
+            ingestMethod = com.kevin.legion.data.local.IngestMethod.DETERMINISTIC, category = "Groceries",
         )
         val line = HomeDigestBuilder.credHeadline(targets, mapOf(LedgerCurrency.USD to listOf(provenTxn)))
         assertTrue("every contributing row reconciled, so the headline must read [proven]", line.contains("[proven]"))
@@ -135,7 +135,7 @@ class HomeDigestBuilderTest {
         val unreconciledTxn = LedgerTransaction(
             sourceFile = "f", accountId = "a", currency = LedgerCurrency.USD, txnDate = now,
             description = "Card CSV row", amountCents = -5000, lineRef = "1",
-            ingestMethod = com.kevin.legion.data.local.IngestMethod.UNRECONCILED,
+            ingestMethod = com.kevin.legion.data.local.IngestMethod.UNRECONCILED, category = "Groceries",
         )
         val line = HomeDigestBuilder.credHeadline(targets, mapOf(LedgerCurrency.USD to listOf(unreconciledTxn)))
         assertTrue("one unreconciled row taints the whole gap REPORTED, D6's own rule", line.contains("[reported]"))
@@ -146,10 +146,30 @@ class HomeDigestBuilderTest {
         val txn = LedgerTransaction(
             sourceFile = "f", accountId = "a", currency = LedgerCurrency.USD, txnDate = now,
             description = "Whole Foods", amountCents = -5000, lineRef = "1",
-            ingestMethod = com.kevin.legion.data.local.IngestMethod.DETERMINISTIC,
+            ingestMethod = com.kevin.legion.data.local.IngestMethod.DETERMINISTIC, category = "Groceries",
         )
         val line = HomeDigestBuilder.credHeadline(emptyMap(), mapOf(LedgerCurrency.USD to listOf(txn)))
         assertTrue(line.contains("no budget set"))
+    }
+
+    @Test
+    fun `credHeadline leaves uncategorized rows out of spend and says so in words`() {
+        // Kevin 2026-08-15: spend is categorised rows only, everywhere - including here, where the
+        // headline sums raw rows rather than reading a built BudgetVsActual.
+        val categorised = LedgerTransaction(
+            sourceFile = "f", accountId = "a", currency = LedgerCurrency.USD, txnDate = now,
+            description = "Whole Foods", amountCents = -5000, lineRef = "1",
+            ingestMethod = com.kevin.legion.data.local.IngestMethod.DETERMINISTIC, category = "Groceries",
+        )
+        val mystery = LedgerTransaction(
+            sourceFile = "f", accountId = "a", currency = LedgerCurrency.USD, txnDate = now,
+            description = "UNKNOWN MERCHANT", amountCents = -3412, lineRef = "2",
+            ingestMethod = com.kevin.legion.data.local.IngestMethod.DETERMINISTIC,
+        )
+        val line = HomeDigestBuilder.credHeadline(emptyMap(), mapOf(LedgerCurrency.USD to listOf(categorised, mystery)))
+
+        assertTrue("only the categorised row is spend", line.contains("spent 50.00"))
+        assertTrue("what was left out is stated, never silently dropped", line.contains("34.12 uncategorized not counted"))
     }
 
     // -------------------------------------------------------------------------------- FLEET

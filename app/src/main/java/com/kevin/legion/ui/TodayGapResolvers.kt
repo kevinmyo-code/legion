@@ -70,7 +70,7 @@ private fun budgetLineTierNote(hasProvisionalRows: Boolean, hasPendingCategoryGu
 fun buildUncategorizedGapRowData(uncategorized: UncategorizedSpend, currency: LedgerCurrency): GapRowData =
     GapRowData(
         label = "Uncategorised",
-        actualOverTarget = "not assigned to any category - excluded from every budget line above",
+        actualOverTarget = "not assigned to a category - not counted in spend, and in no budget line above",
         gapValue = formatMoney(uncategorized.spentCents, currency),
         gapCaption = "spent",
         sign = GapSign.NEUTRAL,
@@ -290,19 +290,28 @@ fun compactMoneyHero(cents: Long, currency: LedgerCurrency): String {
 }
 
 /**
- * CRED tile: this month's spend (every budget line's actual plus the uncategorised bucket - D11's
- * loud bucket is never dropped from a total, see [UncategorizedSpend]'s own doc comment), against
- * its target when one is set. Silent (no budget AND no spend at all this month) reads `NOT LOGGED`,
- * mirroring [com.kevin.legion.advisor.digest.HomeDigestBuilder.credHeadline]'s own silent branch.
+ * CRED tile: this month's spend ([BudgetVsActual.spentCents] - categorised lines only, the
+ * uncategorised bucket excluded per Kevin 2026-08-15, see [UncategorizedSpend]'s own doc comment),
+ * against its target when one is set. Silent (no budget AND no spend at all this month) reads
+ * `NOT LOGGED`, mirroring [com.kevin.legion.advisor.digest.HomeDigestBuilder.credHeadline]'s own
+ * silent branch - and that emptiness test reads [BudgetVsActual.allOperatingSpendCents], not
+ * [BudgetVsActual.spentCents], so a month holding only uncategorised rows reads an honest `$0`
+ * with the exclusion stated beside it rather than the much stronger "nothing was imported".
+ *
+ * **The exclusion's own words are NOT in [caption]** - a HALF tile's caption is one ellipsised
+ * line, so a sentence appended there would be silently truncated, which is worse than not stating
+ * it. [com.kevin.legion.ui.TodayScreen]'s CRED tile renders
+ * [com.kevin.legion.ledger.uncategorizedExcludedSentence] in the tile's own `extra` slot instead,
+ * and [com.kevin.legion.ui.LedgerScreen]'s full-width SPEND pane states it under the chart.
  */
 data class CredTileData(val hero: String, val caption: String)
 
 fun buildCredTile(budget: BudgetVsActual?, monthLabel: String): CredTileData {
     if (budget == null) return CredTileData(hero = "...", caption = "loading")
-    if (budget.lines.isEmpty() && budget.uncategorized.spentCents == 0L) {
+    if (budget.lines.isEmpty() && budget.allOperatingSpendCents == 0L) {
         return CredTileData(hero = "NOT LOGGED", caption = "no spend $monthLabel")
     }
-    val spentCents = budget.lines.sumOf { it.gap.actual } + budget.uncategorized.spentCents
+    val spentCents = budget.spentCents
     val targetCents = budget.lines.sumOf { it.gap.target }
     val hero = compactMoneyHero(spentCents, budget.entity.currency)
     val caption = when {

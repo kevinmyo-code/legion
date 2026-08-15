@@ -133,7 +133,7 @@ object HomeDigestBuilder : DigestBuilder {
         val gaps = targetsByCurrency.mapNotNull { (currency, targets) ->
             if (targets.isEmpty()) return@mapNotNull null
             val targetCents = targets.sumOf { it.amountCents }
-            val spendTxns = txnsByCurrency[currency].orEmpty().filter { it.amountCents < 0 }
+            val spendTxns = txnsByCurrency[currency].orEmpty().filter(::countsAsSpend)
             val spendCents = -(spendTxns.sumOf { it.amountCents })
             // Ticket 08: computed VIA combinedTier() over the exact rows summed into spendCents -
             // an unspent budget line (no rows at all) reduces to PROVEN per [combinedTier]'s own
@@ -153,13 +153,28 @@ object HomeDigestBuilder : DigestBuilder {
         val anySpend = txnsByCurrency.entries.firstOrNull { it.value.isNotEmpty() }
         if (anySpend == null) return DigestText.line("CRED", DigestText.notLogged())
         val (currency, txns) = anySpend
-        val spendTxns = txns.filter { it.amountCents < 0 }
+        val spendTxns = txns.filter(::countsAsSpend)
         val spendCents = -(spendTxns.sumOf { it.amountCents })
+        val uncategorizedCents = -(txns.filter { it.amountCents < 0 && it.category == null }.sumOf { it.amountCents })
+        // The exclusion, said out loud rather than left for the advisor to infer from a figure that
+        // is smaller than it expects (CLAUDE.md §4 rule 7, and see UncategorizedSpend's own doc
+        // comment) - only when there IS something excluded, this being a token-budgeted line.
+        val excludedNote = if (uncategorizedCents > 0L) ", ${formatCents(uncategorizedCents)} uncategorized not counted" else ""
         return DigestText.withTier(
-            DigestText.line("CRED $currency", "no budget set, spent ${formatCents(spendCents)} this month"),
+            DigestText.line("CRED $currency", "no budget set, spent ${formatCents(spendCents)} this month$excludedNote"),
             spendTxns.map(::rowTier).combinedTier(),
         )
     }
+
+    /**
+     * What counts toward a CRED spend figure: an expense row (negative) that someone has actually
+     * classified. **Uncategorised rows are excluded (Kevin, 2026-08-15)** - the same rule
+     * [com.kevin.legion.ledger.BudgetVsActual.spentCents] applies on every screen, restated here
+     * because this headline sums raw rows rather than reading a built `BudgetVsActual` (see this
+     * function's callers), and a HOME line that quietly used the wider definition would disagree
+     * with the CRED tile sitting inches from it.
+     */
+    private fun countsAsSpend(row: LedgerTransaction): Boolean = row.amountCents < 0 && row.category != null
 
     /** Mirrors [CredDigestBuilder]'s own private `rowTier` exactly (not visible outside its file -
      * that one already mirrors [com.kevin.legion.ledger.LedgerBudget]'s for the same reason). See

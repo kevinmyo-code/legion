@@ -54,23 +54,24 @@ import com.kevin.legion.ledger.LedgerEntity
 import com.kevin.legion.ledger.BudgetVsActual
 import com.kevin.legion.ledger.groupAccountBalances
 import com.kevin.legion.ledger.LedgerFolderPreferences
+import com.kevin.legion.ledger.uncategorizedExcludedSentence
 import com.kevin.legion.service.FileResults
 import com.kevin.legion.service.IngestScanner
 import com.kevin.legion.service.LedgerIngestService
 import com.kevin.legion.service.ScanState
 import com.kevin.legion.service.SpendEstimate
 import com.kevin.legion.ui.common.DeckPane
-import com.kevin.legion.ui.common.DeckSparkline
 import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.HalfTile
 import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.SectionHeader
-import com.kevin.legion.ui.common.bucketDailySumCents
 import com.kevin.legion.ui.ledger.AccountMappingSection
 import com.kevin.legion.ui.ledger.BalancesDrilldownScreen
 import com.kevin.legion.ui.ledger.BudgetDrilldownScreen
 import com.kevin.legion.ui.ledger.CategorizeDrilldownScreen
 import com.kevin.legion.ui.ledger.CategoryDrilldownScreen
+import com.kevin.legion.ui.ledger.CategorySpendChart
+import com.kevin.legion.ui.ledger.categorySpendBars
 import com.kevin.legion.ui.ledger.dollarsParseErrorMessage
 import com.kevin.legion.ui.ledger.ExcludedOwnAccountMovementsScreen
 import com.kevin.legion.ui.ledger.monthLabel
@@ -88,8 +89,6 @@ import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import java.time.YearMonth
-import java.time.ZoneOffset
-import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import com.kevin.legion.ledger.maskedAccountLabel
@@ -157,14 +156,6 @@ data class LedgerUiState(
     // `budgetVsActual` in the SAME effect since both are keyed on the same picked month.
     val spendTrend: List<com.kevin.legion.ledger.MonthSpend>? = null,
     val monthDailyExpenses: List<LedgerTransaction> = emptyList(),
-    // Mission-control ticket 16's CRED rebuild: the SPEND hero's own sparkline - "the LEDGER
-    // cumulative sparkline that already ships" (the ticket's own wording), i.e. the SAME
-    // bucketDailySumCents -> cumulativeDailySpendCents construction ui.TodayScreen's CRED tile
-    // already uses, reused wholesale rather than re-derived - only difference is this one is keyed
-    // to whatever month `pnlMonth` is picked to, not always the current month. Built alongside
-    // `monthDailyExpenses`/`budgetVsActual` in the SAME pnlMonth/reloadNonce effect below, since all
-    // three are per-picked-month figures.
-    val spendCumulativeSparkline: List<Float?> = emptyList(),
     // Voice-logged pending transactions - the driver's own report, never a
     // file. See LedgerTransaction.pendingLoggedAt's doc comment.
     val pending: List<LedgerTransaction> = emptyList(),
@@ -343,33 +334,10 @@ fun LedgerScreen(
         // sibling of `categoryTransactions` (see that function's own doc comment), never a second
         // aggregate that could drift from `budget`'s own category lines.
         val monthExpenses = if (month != null) LedgerController.monthOperatingExpenses(context, LedgerEntity.US, month) else emptyList()
-        // Mission-control ticket 16: the SPEND hero's cumulative sparkline - the SAME
-        // bucketDailySumCents -> cumulativeDailySpendCents pipeline ui.TodayScreen's CRED tile
-        // already runs (see LedgerUiState.spendCumulativeSparkline's own doc comment), just against
-        // whichever month is picked here. `endMs` clips to min(now, this month's own last day) - a
-        // PAST month must never walk buckets past its own end (TodayScreen never has to worry about
-        // this since it only ever looks at the current month), and the CURRENT month must still
-        // truncate at today, never rendering days that have not happened yet.
-        val spendCumulativeSparkline = if (month != null) {
-            val monthStartMs = month.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-            val monthEndMs = month.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1
-            val endMs = minOf(System.currentTimeMillis(), monthEndMs)
-            val coveredRanges = budget?.coverage.orEmpty().mapNotNull { c ->
-                val from = c.coveredFromMs
-                val to = c.coveredToMs
-                if (from != null && to != null) from..to else null
-            }
-            val samples = monthExpenses.map { it.txnDate to abs(it.amountCents) }
-            val dailyCents = bucketDailySumCents(samples, monthStartMs, endMs, coveredRanges, zone = ZoneOffset.UTC)
-            cumulativeDailySpendCents(dailyCents).map { it?.toFloat() }
-        } else {
-            emptyList()
-        }
         state = state.copy(
             budgetVsActual = budget,
             pnlMonth = month,
             monthDailyExpenses = monthExpenses,
-            spendCumulativeSparkline = spendCumulativeSparkline,
         )
     }
 
@@ -731,6 +699,11 @@ fun LedgerScreen(
         onOpenBudget = { showBudget = true },
         onOpenBalances = { showBalances = true },
         onOpenTrend = { showSpendTrend = true },
+        // The SPEND pane's uncategorised-excluded disclosure taps straight into the uncategorised
+        // bucket's own drilldown - the SAME CategoryDrilldownSelection(null) the BUDGET drilldown's
+        // uncategorised row already opens (see that wrapper class's own doc comment for why `null`
+        // here is a real request, not "nothing requested").
+        onOpenUncategorized = { drilldownCategory = CategoryDrilldownSelection(null) },
     )
 }
 
@@ -790,6 +763,9 @@ fun LedgerContent(
     onOpenBudget: () -> Unit,
     onOpenBalances: () -> Unit,
     onOpenTrend: () -> Unit,
+    // The SPEND pane's uncategorised-excluded disclosure (2026-08-15) - opens the uncategorised
+    // bucket's own drilldown, so the exclusion is inspectable, never merely asserted.
+    onOpenUncategorized: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -869,7 +845,10 @@ fun LedgerContent(
                 state.transactions.isEmpty() && state.quarantined.isEmpty() &&
                     (state.scanState is ScanState.Idle || state.scanState is ScanState.Finished) ->
                     LedgerEmptySection(state, onOpenImport, onScanNow)
-                else -> LedgerListing(state, onPrevPnlMonth, onNextPnlMonth, onOpenCategorize, onOpenQuarantine, onOpenBudget, onOpenBalances, onOpenTrend)
+                else -> LedgerListing(
+                    state, onPrevPnlMonth, onNextPnlMonth, onOpenCategorize, onOpenQuarantine,
+                    onOpenBudget, onOpenBalances, onOpenTrend, onOpenUncategorized,
+                )
             }
         }
     }
@@ -930,6 +909,7 @@ private fun LedgerListing(
     onOpenBudget: () -> Unit,
     onOpenBalances: () -> Unit,
     onOpenTrend: () -> Unit,
+    onOpenUncategorized: () -> Unit,
 ) {
     LazyColumn(Modifier.fillMaxSize()) {
         // Ticket 19's GOALS panel - CRED aspect (personal-finance advisor's own key, see
@@ -958,6 +938,7 @@ private fun LedgerListing(
                     onNextMonth = onNextPnlMonth,
                     onOpenTrend = onOpenTrend,
                     onOpenQuarantine = onOpenQuarantine,
+                    onOpenUncategorized = onOpenUncategorized,
                 )
             }
 
@@ -1002,10 +983,20 @@ private fun LedgerListing(
 
 /**
  * SPEND - CRED's FULL hero pane (mission-control ticket 16's root rebuild): month spend against
- * target ([buildCredTile], the SAME resolver HOME's own CRED tile already uses) plus "the LEDGER
- * cumulative sparkline that already ships" (the ticket's own wording) -
- * [LedgerUiState.spendCumulativeSparkline], built alongside `budgetVsActual`/`monthDailyExpenses`
- * in the pnlMonth/reloadNonce effect above. The month nav (`< AUGUST 2026 >`) that used to sit atop
+ * target ([buildCredTile], the SAME resolver HOME's own CRED tile already uses) over a bar chart of
+ * this month's categories.
+ *
+ * **The hero visual is [com.kevin.legion.ui.ledger.categorySpendBars] (Kevin, 2026-08-15).** It
+ * replaces the month-to-date cumulative sparkline this pane carried since ticket 16 - one hero
+ * visual, and the question the pane answers is "where did the money go", which a running total
+ * cannot show. The sparkline itself is not retired: HOME's own CRED tile still renders it
+ * ([TodayScreen]'s `ledgerCumulativeSparkline`), and the month-over-month trend is one tap in via
+ * [onOpenTrend]. Uncategorised spend is in neither the hero figure nor the chart, and the sentence
+ * under the chart says so in words whenever there is any - see
+ * [com.kevin.legion.ledger.UncategorizedSpend]'s own doc comment for why that disclosure is what
+ * makes the exclusion honest rather than hidden.
+ *
+ * The month nav (`< AUGUST 2026 >`) that used to sit atop
  * the always-inline `BudgetSection` lives here instead - the root's own natural home for "what
  * month am I looking at", now that the full category-by-category breakdown moved one tap in to the
  * BUDGET tile.
@@ -1027,6 +1018,7 @@ private fun SpendPane(
     onNextMonth: () -> Unit,
     onOpenTrend: () -> Unit,
     onOpenQuarantine: () -> Unit,
+    onOpenUncategorized: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     val month = state.pnlMonth
@@ -1057,8 +1049,34 @@ private fun SpendPane(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         )
         Text(credTile.caption, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp))
-        if (state.spendCumulativeSparkline.any { it != null }) {
-            DeckSparkline(state.spendCumulativeSparkline, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+        val budget = state.budgetVsActual
+        if (budget != null) {
+            val bars = categorySpendBars(budget)
+            if (bars.isEmpty()) {
+                Text(
+                    "no categorised spend this month",
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            } else {
+                CategorySpendChart(bars, modifier = Modifier.padding(vertical = 4.dp))
+            }
+            // The exclusion, in words, directly under the figure and the chart it describes
+            // (CLAUDE.md §4 rule 7's disclosure posture, and the condition that makes excluding the
+            // bucket honest at all - see UncategorizedSpend's own doc comment). Tapping it opens the
+            // uncategorised bucket's own drilldown, the same "inner click wins" nesting the
+            // quarantine notice below already uses inside this clickable pane.
+            if (budget.uncategorized.spentCents > 0L) {
+                Text(
+                    uncategorizedExcludedSentence(budget.uncategorized, budget.entity.currency),
+                    style = LegionType.stamp,
+                    color = sem.estimated,
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .clickable(onClick = onOpenUncategorized),
+                )
+            }
         }
         if (state.quarantined.isNotEmpty()) {
             Text(

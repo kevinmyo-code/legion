@@ -25,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.data.local.IngestMethod
@@ -38,8 +40,11 @@ import com.kevin.legion.ledger.LedgerEntity
 import com.kevin.legion.ledger.MonthSpend
 import com.kevin.legion.ledger.UncategorizedSpend
 import com.kevin.legion.ledger.displayDescription
+import com.kevin.legion.ledger.formatCents
 import com.kevin.legion.ledger.formatMoney
+import com.kevin.legion.ui.common.DeckBar
 import com.kevin.legion.ui.common.DeckBarChart
+import com.kevin.legion.ui.common.DeckMarkerType
 import com.kevin.legion.ui.common.DeckMeter
 import com.kevin.legion.ui.common.DeckSparkline
 import com.kevin.legion.ui.common.Hairline
@@ -170,7 +175,7 @@ fun BudgetSection(
                 "Loading...", style = LegionType.stamp, color = sem.ghost,
                 modifier = Modifier.padding(top = 6.dp),
             )
-            budget.lines.isEmpty() && budget.uncategorized.spentCents == 0L -> Text(
+            budget.lines.isEmpty() && budget.allOperatingSpendCents == 0L -> Text(
                 "No spending this month.", style = MaterialTheme.typography.bodySmall, color = sem.faint,
                 modifier = Modifier.padding(top = 6.dp),
             )
@@ -284,7 +289,8 @@ private fun UncategorizedRow(uncategorized: UncategorizedSpend, entity: LedgerEn
             // D11: its own bucket, never folded into a category total and
             // never rendered as if it had a budget line of its own - no
             // "remaining"/"over" label, because there is no target to be
-            // over or under.
+            // over or under. Since 2026-08-15 it is also outside the spend
+            // total, which the line underneath states in words.
             Text("Uncategorised", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             Text(
                 formatMoney(uncategorized.spentCents, entity.currency),
@@ -293,7 +299,7 @@ private fun UncategorizedRow(uncategorized: UncategorizedSpend, entity: LedgerEn
             )
         }
         Text(
-            "not assigned to any category - excluded from every budget line above",
+            "not assigned to a category - not counted in spend, and in no budget line above",
             style = LegionType.stamp, color = sem.faint,
         )
         if (uncategorized.hasProvisionalRows) {
@@ -353,6 +359,89 @@ fun AddCategoryRow(errorText: String?, successNonce: Int, onAdd: (String) -> Uni
  */
 internal fun spendTrendSparklinePoints(spendTrend: List<MonthSpend>): List<Float?> =
     monthlySpendBars(spendTrend).map { it?.value }
+
+/**
+ * **The SPEND hero's own chart (Kevin, 2026-08-15: "spend hero visual should be bar chart of
+ * categories for the month minus the uncategorized").** One bar per category that actually spent
+ * something this month, biggest first, uncategorised never among them - the chart is a picture of
+ * [BudgetVsActual.spentCents], and its bars sum to exactly that figure, which is the invariant
+ * [BudgetSectionTest] pins. A category the driver budgeted but did not spend from this month draws
+ * no bar: this is a chart of where money went, and its own zero is already stated in words on the
+ * BUDGET drilldown's [BudgetLineRow] ("$0 of $400 - remaining").
+ *
+ * **Nothing is ever dropped.** Past [maxBars] categories the tail is FOLDED into a single `OTHER`
+ * bar carrying the remainder's exact cents and its own count, never truncated away - a chart whose
+ * bars silently stopped summing to the hero above it would be the same lie in picture form that
+ * CLAUDE.md §4 rule 7 refuses in words. The fold exists only because bar labels stop being legible
+ * past roughly six columns at phone width, not because the tail is uninteresting.
+ *
+ * [DeckBar.targetValue] carries the category's own budget when one is set (the kit's amber dashed
+ * tick), so the hero reads as spend-against-target per category, not just relative sizes. `OTHER`
+ * carries none: the folded lines' targets are a mix of set and unset, and summing them would draw a
+ * tick that understates itself. [DeckBar.mark] flags a category holding
+ * [com.kevin.legion.data.local.IngestMethod.UNRECONCILED] rows with the kit's own
+ * [DeckMarkerType.PROVISIONAL] cross - shape, never colour alone.
+ *
+ * `internal`, not `private`, so a plain JUnit test can pin the sum invariant without Compose.
+ */
+internal fun categorySpendBars(budget: BudgetVsActual, maxBars: Int = 6): List<DeckBar> {
+    val spent = budget.lines.filter { it.gap.actual > 0L }.sortedByDescending { it.gap.actual }
+    if (spent.isEmpty()) return emptyList()
+
+    fun bar(line: BudgetLine, isLargest: Boolean) = DeckBar(
+        label = line.category,
+        value = line.gap.actual.toFloat(),
+        targetValue = line.gap.target.takeIf { it > 0L }?.toFloat(),
+        valueLabel = if (isLargest) formatCents(line.gap.actual) else null,
+        mark = if (line.hasProvisionalRows) DeckMarkerType.PROVISIONAL else null,
+    )
+
+    if (spent.size <= maxBars) return spent.mapIndexed { i, line -> bar(line, isLargest = i == 0) }
+
+    val named = spent.take(maxBars - 1)
+    val folded = spent.drop(maxBars - 1)
+    return named.mapIndexed { i, line -> bar(line, isLargest = i == 0) } + DeckBar(
+        label = "OTHER ${folded.size}",
+        value = folded.sumOf { it.gap.actual }.toFloat(),
+        valueLabel = null,
+        mark = if (folded.any { it.hasProvisionalRows }) DeckMarkerType.PROVISIONAL else null,
+    )
+}
+
+/**
+ * [categorySpendBars] drawn, plus the label row [DeckBarChart] itself does not draw (that component
+ * renders [DeckBar.label] nowhere - only the selective [DeckBar.valueLabel] above a bar - so an
+ * unlabelled category chart would be six anonymous columns). One equal-weight cell per bar, in the
+ * SAME order, so a label sits under its own column; long category names ellipsise rather than
+ * wrapping the row to two lines and pushing the columns out of alignment.
+ *
+ * Renders nothing at all when [bars] is empty - a month with no categorised spend has no chart to
+ * draw, and the pane's own words say so instead.
+ */
+@Composable
+internal fun CategorySpendChart(bars: List<DeckBar>, modifier: Modifier = Modifier) {
+    if (bars.isEmpty()) return
+    val sem = LocalLegionSemantics.current
+    Column(modifier.fillMaxWidth()) {
+        // 140dp, not the kit's 180dp drilldown default: measured on device (360x806dp, 2026-08-15),
+        // the taller chart pushed the category labels and the uncategorised sentence under the
+        // mic bar, so the figure and what it is made of could not be read in one glance.
+        DeckBarChart(bars = bars, height = 140.dp)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            for (bar in bars) {
+                Text(
+                    bar.label.uppercase(),
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
 
 /** D10's colour: green-equivalent (credit) when there's still room, debit when over. Only used when [com.kevin.legion.plan.TrustTier] is PROVEN - a REPORTED gap always reads `sem.estimated` regardless of sign, per [BudgetLineRow]. */
 private fun colorForGap(gapCents: Long, sem: com.kevin.legion.ui.theme.LegionSemantics): Color =
@@ -792,6 +881,61 @@ private fun PreviewExcludedOwnAccountMovementsEmpty() = LegionTheme {
         excluded = ExcludedOwnAccountMovements(0, 0L, emptyList()),
         onBack = {},
     )
+}
+
+// The SPEND hero chart (Kevin, 2026-08-15). Two previews on purpose: the ordinary case, and the
+// folded case, since `OTHER n` only appears past the cap and is the branch most likely to look
+// wrong at phone width. Same provisional status as every preview above - written to be rendered in
+// Studio, not rendered from this session.
+
+@Preview(name = "Spend hero: four categories, biggest labelled", widthDp = 360)
+@Composable
+private fun PreviewCategorySpendChart() = LegionTheme {
+    Surface {
+        CategorySpendChart(
+            categorySpendBars(
+                BudgetVsActual(
+                    entity = LedgerEntity.US,
+                    month = previewMonth,
+                    lines = listOf(
+                        BudgetLine("Groceries", com.kevin.legion.plan.PlanGap(60_000L, 41_200L, 18_800L, TrustTier.PROVEN), false, false),
+                        BudgetLine("Dining Out", com.kevin.legion.plan.PlanGap(20_000L, 24_500L, -4_500L, TrustTier.PROVEN), false, false),
+                        BudgetLine("Shopping", com.kevin.legion.plan.PlanGap(0L, 12_000L, -12_000L, TrustTier.REPORTED), true, false),
+                        BudgetLine("Fuel", com.kevin.legion.plan.PlanGap(15_000L, 8_400L, 6_600L, TrustTier.PROVEN), false, false),
+                    ),
+                    uncategorized = UncategorizedSpend(spentCents = 3_412L, hasProvisionalRows = false),
+                    coverage = previewCoverage(),
+                    excludedOwnAccountMovements = ExcludedOwnAccountMovements(0, 0L, emptyList()),
+                ),
+            ),
+        )
+    }
+}
+
+@Preview(name = "Spend hero: nine categories, the tail folded into OTHER", widthDp = 360)
+@Composable
+private fun PreviewCategorySpendChartFolded() = LegionTheme {
+    Surface {
+        CategorySpendChart(
+            categorySpendBars(
+                BudgetVsActual(
+                    entity = LedgerEntity.US,
+                    month = previewMonth,
+                    lines = (1..9).map { i ->
+                        BudgetLine(
+                            "Category $i",
+                            com.kevin.legion.plan.PlanGap(0L, i * 5_000L, -(i * 5_000L), TrustTier.PROVEN),
+                            hasProvisionalRows = false,
+                            hasPendingCategoryGuesses = false,
+                        )
+                    },
+                    uncategorized = UncategorizedSpend(spentCents = 0L, hasProvisionalRows = false),
+                    coverage = previewCoverage(),
+                    excludedOwnAccountMovements = ExcludedOwnAccountMovements(0, 0L, emptyList()),
+                ),
+            ),
+        )
+    }
 }
 
 @Preview(name = "Add category: empty, no error", widthDp = 360)

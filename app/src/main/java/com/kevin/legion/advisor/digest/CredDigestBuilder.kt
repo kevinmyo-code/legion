@@ -94,7 +94,9 @@ class CredDigestBuilder : DigestBuilder {
     private fun uncategorizedLine(current: BudgetVsActual): String {
         if (current.coverage.isEmpty()) return DigestText.line("UNCATEGORIZED", DigestText.notLogged())
         val u = current.uncategorized
-        val value = "actual ${formatCents(u.spentCents)}"
+        // Says "excluded from SPEND" only when there IS something excluded (2026-08-15) - at a real
+        // zero the phrase would be noise in a token-budgeted digest, and nothing is being withheld.
+        val value = "actual ${formatCents(u.spentCents)}" + if (u.spentCents > 0L) " excluded from SPEND" else ""
         val marked = if (u.hasProvisionalRows) DigestText.unverified(value) else value
         val tier = if (u.hasProvisionalRows) TrustTier.REPORTED else TrustTier.PROVEN
         return DigestText.withTier(DigestText.line("UNCATEGORIZED", marked), tier)
@@ -130,10 +132,12 @@ class CredDigestBuilder : DigestBuilder {
     }
 
     /**
-     * The window's aggregate series (see class doc comment) - total operating spend (every
-     * category's actual plus the uncategorised bucket) for each of the 4 months, oldest-to-current
-     * trend. Months with no ingested coverage at all are dropped from the series entirely (never
-     * rendered as a $0.00 that would misstate "nothing was ever imported" as "nothing was spent").
+     * The window's aggregate series (see class doc comment) - categorised operating spend
+     * ([BudgetVsActual.spentCents], the ONE definition; the uncategorised bucket is excluded from
+     * it since 2026-08-15 and reaches the advisor through [uncategorizedLine]'s own always-present
+     * line instead) for each of the 4 months, oldest-to-current trend. Months with no ingested
+     * coverage at all are dropped from the series entirely (never rendered as a $0.00 that would
+     * misstate "nothing was ever imported" as "nothing was spent").
      */
     private fun spendLine(monthly: List<BudgetVsActual>): String {
         val withData = monthly.withIndex().filter { it.value.coverage.isNotEmpty() }
@@ -158,8 +162,7 @@ class CredDigestBuilder : DigestBuilder {
         return DigestText.withTier(DigestText.line("SPEND", parts.joinToString(" ") + trend), tiers.combinedTier())
     }
 
-    private fun monthTotalCents(bva: BudgetVsActual): Long =
-        bva.lines.sumOf { it.gap.actual } + bva.uncategorized.spentCents
+    private fun monthTotalCents(bva: BudgetVsActual): Long = bva.spentCents
 
     /**
      * Ticket 16: "top merchants" - a few named exemplars (ticket 08 answer call 4), never the full
