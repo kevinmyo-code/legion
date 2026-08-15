@@ -59,6 +59,22 @@ his two existing service records on a screen.
 
 <!-- one line per closed ticket: gist + link -->
 
+- [What the real data on the phone actually says](issues/01-what-the-real-data-says.md) - **the
+  Jeep has no identity and no odometer.** `make`/`model`/`year` are empty and `odometerBaseline` is
+  0, so `displayLabel` returns blank (that is the `THIS CAR` bug - **not** resolution order, and
+  **not** the wrong active car, which is an explicit pick and correct) and **`currentMileage`
+  evaluates to 0 against service anchors at 118,483**. The maintenance drilldown therefore renders
+  **three rows out of ten** - `buildDueRows` silently drops all seven unanchored items - and reports
+  **the oil due in 121,450 miles**. The identity is not lost, only unwritten: `vehicle_specs` holds
+  a fully decoded VIN from 2026-07-26 that never wrote back to `vehicles`, **so `check_recalls`
+  passes its `confirmed` gate and queries NHTSA with empty parameters.** Ticket 08's orphan rows
+  exist in the wild (`Brake Fluid` + `Brake Pads`, anchor-only, beside the seeded `Brake Fluid
+  Flush`), `cost` is null on both service records, `neverDone` has **never been used once** in 54
+  rows, and the odometer estimator has **never accumulated a single mile** on this car despite 938
+  speed samples. **The 3,000 is confirmed - exactly one row app-wide has it.** How the row lost its
+  identity is unexplained; migrations 16-19, `correctVehicle` and `registerDirect` are all ruled out
+  by reading. Charted as ticket 13.
+
 ## Not yet specified
 
 - **The build tickets.** Shape is known - schema bump, DAO surface, edit affordances, the rebuilt

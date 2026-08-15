@@ -4,6 +4,20 @@ Type: grilling
 Status: open
 Blocked by: 01
 
+## Input from ticket 01 (2026-08-15) - cause identified, question narrowed
+
+**The active vehicle is correct** (`active_vehicle.xml` is an explicit pick resolving to the Jeep),
+so cause #3 below is **eliminated**. Cause #1 is not it either: `name` holds `1998 Jeep Cherokee`.
+
+**It is cause #4.** `make`, `model` and `year` are all empty on the row, so `displayLabel` returns
+the empty string and every raw-`displayLabel` surface falls through to its literal. The rename
+worked; the identity underneath it is blank.
+
+That means **question 2's resolution rule is necessary but not sufficient** - a name-preferring rule
+fixes the twelve surfaces, and the car still has no make or model for `check_recalls` (ticket 12),
+the maintenance seed, or any year/make/model lookup. The identity write-back is ticket 13.
+Question 6's placeholder-collision worry is **closed**: the two `this car` rows are both archived.
+
 ## Question
 
 Kevin renamed his car. The screen still says `THIS CAR`.

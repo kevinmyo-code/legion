@@ -2,7 +2,17 @@
 
 Type: task
 Status: open
-Blocked by: 04
+Blocked by: 04, 13
+
+## Input from ticket 01 (2026-08-15) - this ticket got worse
+
+The `confirmed` gate in question 4 below **does not protect anything on Kevin's actual car**.
+`confirmed = 1` on the Jeep row, but `make`, `model` and `year` are **empty**. So the gate passes
+and `fetchRecalls` queries NHTSA with an empty make, an empty model and model year 0.
+
+**A button that reports "no open recalls" after asking about no car is worse than no button.**
+This ticket must not ship until the identity is restored (ticket 13) - and the guard it needs is
+not `confirmed`, it is **year/make/model all actually present**.
 
 ## Question
 
