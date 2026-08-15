@@ -1,0 +1,92 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 1282 >>
+stream
+BT
+/F1 10 Tf
+14 TL
+1 0 0 1 48 744 Tm
+(Account# 5555 5555 5555 4146) Tj
+T*
+(December 27 - January 26, 2027) Tj
+T*
+(New Balance Total 7,996.50) Tj
+T*
+(Account Summary/Payment Information) Tj
+T*
+(Previous Balance 8,421.50) Tj
+T*
+(Payments and Other Credits -800.00) Tj
+T*
+(Purchases and Adjustments 375.00) Tj
+T*
+(Fees Charged 0.00) Tj
+T*
+(Interest Charged 0.00) Tj
+T*
+(New Balance Total 7,996.50) Tj
+T*
+() Tj
+T*
+(Transactions) Tj
+T*
+(Transaction / Date / Posting / Date Description / Reference / Number / Account / Number Amount  Total) Tj
+T*
+(Payments and Other Credits) Tj
+T*
+(12/27 12/28 PAYMENT FROM CHK 5521 CONF#dec27xyz 4410 4146 -800.00) Tj
+T*
+(TOTAL PAYMENTS AND OTHER CREDITS FOR THIS PERIOD -800.00) Tj
+T*
+() Tj
+T*
+(Purchases and Adjustments) Tj
+T*
+(12/29 12/30 WINTER MARKET DOWNTOWN 4501 4146 150.00) Tj
+T*
+(01/03 01/04 NEW YEAR HARDWARE CO 4602 4146 225.00) Tj
+T*
+(TOTAL PURCHASES AND ADJUSTMENTS FOR THIS PERIOD 375.00) Tj
+T*
+() Tj
+T*
+(Transactions Continued) Tj
+T*
+(Transaction / Date / Posting / Date Description / Reference / Number / Account / Number Amount  Total) Tj
+T*
+(2026 Totals Year-to-Date) Tj
+T*
+(Total fees charged in 2026 $0.00) Tj
+T*
+(Total interest charged in 2026 0.00) Tj
+T*
+(06/08 06/09 SAMPLE YTD ROW THAT MUST NOT COUNT 9999 4146 -999.99) Tj
+T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001575 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1672
+%%EOF

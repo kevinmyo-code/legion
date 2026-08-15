@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <!--
+        Push-to-talk custom action, ACTIVE state (research 02 section 6a). A
+        filled square, the universal "stop" glyph - tapping this ENDS the
+        current turn (see LegionMediaLibraryService's PTT_COMMAND handling).
+        Distinct from the idle mic icon (ic_car_talk_start.xml) is required:
+        settled decision 5 is tap-to-start/tap-to-stop, and a driver who
+        cannot look twice needs the icon itself to say which one this tap does.
+    -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M6,6h12v12H6z" />
+</vector>

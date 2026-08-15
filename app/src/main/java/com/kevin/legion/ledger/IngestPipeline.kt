@@ -3,6 +3,7 @@ package com.kevin.legion.ledger
 import android.content.Context
 import androidx.room.withTransaction
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.IngestState
 import com.kevin.legion.data.local.IngestedFile
 import java.security.MessageDigest
@@ -187,7 +188,28 @@ object IngestPipeline {
 
     /** Outcome of committing a parsed file - phase 2a (Success/Quarantined) or phase 2b. */
     sealed class CommitOutcome {
-        data class Ingested(val transactionCount: Int, val duplicatesSkipped: Int) : CommitOutcome()
+        /**
+         * [restatementsSkipped] is the subset of [duplicatesSkipped] dropped
+         * by the overlapping-statement pass rather than by an exact match -
+         * see [LedgerDedupResolution.restatementsSkipped]. Carried out to the
+         * import message so a driver whose two statements overlap can see WHY
+         * a file that looked like it held 40 transactions contributed 37.
+         */
+        data class Ingested(
+            val transactionCount: Int,
+            val duplicatesSkipped: Int,
+            val restatementsSkipped: Int = 0,
+            /**
+             * How many [com.kevin.legion.data.local.IngestMethod.UNRECONCILED]
+             * rows this commit superseded (ticket 12 §3/§5) - zero for a
+             * provisional commit itself (the guard in [commit] never lets an
+             * UNRECONCILED file delete anything), and zero for a reconciled
+             * commit whose window had no provisional rows waiting. Carried out
+             * so the import surface can say "12 pending transactions replaced
+             * by the statement" rather than silently shrinking a total.
+             */
+            val provisionalSuperseded: Int = 0,
+        ) : CommitOutcome()
         data class Quarantined(val reason: String) : CommitOutcome()
     }
 
@@ -243,6 +265,8 @@ object IngestPipeline {
 
                 var inserted = 0
                 var duplicatesSkipped = 0
+                var restatementsSkipped = 0
+                var provisionalSuperseded = 0
                 db.withTransaction {
                     if (staged.isReplace) {
                         txnDao.deleteBySourceFileId(driveFileId)
@@ -257,11 +281,39 @@ object IngestPipeline {
                         }
                     }
 
+                    // Ticket 12 §5 - three load-bearing properties, in order:
+                    //
+                    // 1. THE GUARD. Without `ingestMethod != UNRECONCILED`, importing
+                    //    the card CSV twice would make the second import delete the
+                    //    first's own rows and then re-insert them - churn that looks
+                    //    like data loss to any observer. A provisional file must
+                    //    never supersede anything, including its own prior import.
+                    // 2. BEFORE getForAccountInRange. That read feeds resolveDedup
+                    //    below. If stale provisional rows were still present, a
+                    //    reconciled statement's genuine rows would match them as
+                    //    duplicates and get DROPPED - the verified row deleted in
+                    //    favour of the unverified one it was meant to replace,
+                    //    precisely backwards.
+                    // 3. INSIDE the transaction. A crash between the delete and the
+                    //    insert below must never leave the account with neither.
+                    if (stamped.first().ingestMethod != IngestMethod.UNRECONCILED) {
+                        provisionalSuperseded = txnDao.deleteSupersededProvisional(accountId, minDate, maxDate)
+                    }
+
                     val existingRows = txnDao.getForAccountInRange(accountId, minDate, maxDate)
-                    val resolution = resolveDedup(existingRows, stamped)
+                    // Read INSIDE the transaction and AFTER the replace-flow
+                    // reset above: that reset can knock an overlapping file out
+                    // of INGESTED, and a window from a file that is no longer
+                    // committed would let this drop rows nothing else is going
+                    // to put back.
+                    val enumerated = ingestedDao
+                        .enumeratedWindows(accountId, driveFileId, minDate, maxDate)
+                        .map { LedgerCoveredWindow(it.fromMs, it.toMs) }
+                    val resolution = resolveDedup(existingRows, stamped, enumerated)
                     if (resolution.toInsert.isNotEmpty()) txnDao.insertAll(resolution.toInsert)
                     inserted = resolution.toInsert.size
                     duplicatesSkipped = resolution.duplicatesSkipped
+                    restatementsSkipped = resolution.restatementsSkipped
 
                     ingestedDao.upsert(
                         blank(existing, driveFileId, treeUri, displayName, now).copy(
@@ -275,7 +327,7 @@ object IngestPipeline {
                         )
                     )
                 }
-                CommitOutcome.Ingested(inserted, duplicatesSkipped)
+                CommitOutcome.Ingested(inserted, duplicatesSkipped, restatementsSkipped, provisionalSuperseded)
             }
         }
     }

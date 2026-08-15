@@ -48,9 +48,6 @@ object MidnightEvents {
     /** Gemini Live session closed. [reason] is the close string from the socket. */
     fun sessionEnd(reason: String) = safe { Log.d(TAG, "session_end: $reason") }
 
-    /** Navigation intent fired to a nav app with this destination query. */
-    fun navStart(destination: String) = safe { Log.d(TAG, "nav_start: $destination") }
-
     /** ELM327 OBD adapter connected at this Bluetooth MAC. */
     fun obdConnected(mac: String) = safe { Log.d(TAG, "obd_connected: $mac") }
 
@@ -75,6 +72,21 @@ object MidnightEvents {
     /** REFRESH SCHEDULE in the logbook's DUE tab threw. */
     fun maintenanceRefreshFailed(e: Throwable) = safe {
         Log.w(TAG, "maintenance_refresh ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /**
+     * One of [com.kevin.legion.MidnightApplication]'s process-start jobs threw
+     * (audit fix, 2026-08-07). [stage] names which one.
+     *
+     * These run on a `SupervisorJob` scope with no `CoroutineExceptionHandler`,
+     * so before they were wrapped an exception here killed the process at cold
+     * start with nothing recorded. They are also gated off under Robolectric, so
+     * **no test can catch a regression in this code** - which makes a log line
+     * the only evidence that will ever exist when one of them fails on a real
+     * device.
+     */
+    fun appStartWorkFailed(stage: String, e: Throwable) = safe {
+        Log.w(TAG, "app_start_failed stage=$stage ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
     /** A voice tool was dispatched. Useful for tracing what tool ran before a crash. */
@@ -102,6 +114,26 @@ object MidnightEvents {
 
     /** The mic was opened for the driver, or closed. */
     fun micState(open: Boolean, why: String) = safe { Log.d(TAG, "mic_${if (open) "open" else "closed"}: $why") }
+
+    /**
+     * A synced or imported row carried columns this device's schema does not have,
+     * and they were dropped so the rest of the row could still be written. Warn,
+     * not debug: this is data arriving that we chose not to store, and the only
+     * signal that a payload and the local schema have drifted apart. Reported once
+     * per table+column, not per row.
+     */
+    fun syncColumnsDropped(table: String, columns: List<String>) = safe {
+        Log.w(TAG, "sync_columns_dropped[$table]: ${columns.joinToString(",")}")
+    }
+
+    /**
+     * The Midnight AI import moved rows off the shared `"default"` vehicle id onto
+     * a portable one. Warn: this rewrites rows already on disk and should happen
+     * exactly once per device, so a second sighting means something is wrong.
+     */
+    fun importRekeyed(rows: Int, remap: Map<String, String>) = safe {
+        Log.w(TAG, "import_rekeyed: $rows row(s), $remap")
+    }
 
     // --- Handled errors -------------------------------------------------------
 

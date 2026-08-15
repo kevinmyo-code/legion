@@ -1,5 +1,6 @@
 package com.kevin.legion.data
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -89,5 +90,57 @@ class MidnightImportTest {
 
         assertEquals(exportedTables, MidnightImport.importOrder(exportedTables).map { it.table }.toSet())
         assertEquals(exportedTables, knownTables)
+    }
+
+    // --- syntheticVehicleId (the 2026-08-03 sentinel-collision fix) ------------
+
+    @Test
+    fun `syntheticVehicleId rebuilds the real Outlander row's id`() {
+        // The exact row from assets/midnight_import/vehicles.json.gz that collided
+        // with LEGION's placeholder and lost.
+        val outlander = JSONObject(
+            """{"obdMac":"default","name":"Midnight","make":"Mitsubishi","model":"Outlander","year":2020}""",
+        )
+
+        assertEquals("imported-mitsubishi-outlander-2020", MidnightImport.syntheticVehicleId(outlander))
+    }
+
+    @Test
+    fun `syntheticVehicleId is stable across calls so a re-run cannot duplicate`() {
+        // The property the whole repair depends on: identity-keyed dedup only
+        // holds if the id is derived, not minted. A UUID here would insert a
+        // second Outlander on every pass.
+        val row = JSONObject("""{"obdMac":"default","make":"Mitsubishi","model":"Outlander","year":2020}""")
+
+        assertEquals(MidnightImport.syntheticVehicleId(row), MidnightImport.syntheticVehicleId(row))
+    }
+
+    @Test
+    fun `syntheticVehicleId never returns the sentinel it exists to replace`() {
+        val blank = JSONObject("""{"obdMac":"default","make":"","model":"","year":0}""")
+
+        val id = MidnightImport.syntheticVehicleId(blank)
+
+        assertEquals("imported-vehicle", id)
+        assertTrue(id != MidnightImport.SENTINEL_VEHICLE_ID)
+    }
+
+    @Test
+    fun `syntheticVehicleId slugs punctuation and spacing out of make and model`() {
+        val row = JSONObject("""{"make":"Mercedes-Benz ","model":"C 300 (W205)","year":2018}""")
+
+        assertEquals("imported-mercedes-benz-c-300-w205-2018", MidnightImport.syntheticVehicleId(row))
+    }
+
+    @Test
+    fun `syntheticVehicleId distinguishes two cars that share the sentinel id`() {
+        // Two devices, each with its own "default" car, exported and imported into
+        // one database - the case that must never collapse into a single row.
+        val outlander = JSONObject("""{"make":"Mitsubishi","model":"Outlander","year":2020}""")
+        val cherokee = JSONObject("""{"make":"Jeep","model":"Cherokee","year":1998}""")
+
+        assertTrue(
+            MidnightImport.syntheticVehicleId(outlander) != MidnightImport.syntheticVehicleId(cherokee),
+        )
     }
 }

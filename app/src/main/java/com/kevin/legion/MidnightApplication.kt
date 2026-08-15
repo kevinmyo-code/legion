@@ -74,22 +74,70 @@ class MidnightApplication : Application() {
         // kotlin-coroutines-structured-concurrency skill names, and we removed
         // exactly that from SyncEngine's foreground trigger two commits ago.
         // Application IS the process-lifetime owner, so the scope belongs to it.
-        appScope.launch {
-            CompanionProfileStore.ensureSeeded(this@MidnightApplication)
-            CompanionProfileStore.materializeActive(this@MidnightApplication)
-        }
+        //
+        // GATED OFF UNDER ROBOLECTRIC (see isRunningUnderRobolectric's doc comment) - all three
+        // blocks below touch Room, appScope has no lifecycle hook a JUnit @Before/@After can
+        // cancel, and MidnightApplication is this app's declared manifest Application, so every
+        // Robolectric test in this module runs onCreate() and would otherwise race real writes
+        // (Kevin's own imported fleet, via MidnightImport) into whatever CarDatabase instance a
+        // concurrently-running test happens to be asserting against. Found 2026-08-07: adding the
+        // third block (AlarmScheduler.rescheduleAll) shifted IO-dispatcher timing enough to flip a
+        // previously-losing race into a winning one, leaking extra vehicle rows into
+        // VehicleResolverTest/LiveToolboxVehicleScopingTest - see MEMORY.md/lessons.md for the
+        // full incident. Gating the whole block, not just the new call, because all three are
+        // equally exposed to the identical race and a narrower gate would leave the landmine live
+        // for the next addition here.
+        if (!isRunningUnderRobolectric()) {
+            // Every block below is wrapped (audit fix, 2026-08-07). appScope is a
+            // SupervisorJob with NO CoroutineExceptionHandler, so an uncaught throw
+            // from a root coroutine here reaches the thread's default handler and
+            // kills the process - at cold start, before any UI, on every launch,
+            // for as long as the underlying condition persists. With no Crashlytics
+            // (MidnightEvents is Log.d only) the driver sees "app won't open" and
+            // nothing anywhere records why.
+            //
+            // SyncEngine already reached this conclusion independently and wraps
+            // CompanionProfileStore.materializeActive in runCatching for exactly
+            // this reason, so the risk was known - it just had not been applied
+            // here. MidnightImport was already hardened internally; the other two
+            // were not. The Robolectric gate above means no test can catch a
+            // regression in any of this, which makes belt-and-braces the right
+            // posture rather than an over-reaction.
+            appScope.launch {
+                runCatching {
+                    CompanionProfileStore.ensureSeeded(this@MidnightApplication)
+                    CompanionProfileStore.materializeActive(this@MidnightApplication)
+                }.onFailure { MidnightEvents.appStartWorkFailed("companion_seed", it) }
+            }
 
-        // One-time Midnight AI fleet-history import (see MidnightImport's class
-        // doc). Process-start work, same L12 reasoning as the caches above: it
-        // must run unconditionally, not from a service that might not be
-        // running. It is its own launch{}, not folded into the one above,
-        // because it is unrelated work with its own independent failure mode -
-        // a companion-profile hiccup must not skip the fleet import or vice
-        // versa. No-ops in one SharedPreferences read on every launch after
-        // the bundle either was never present (every clone but Kevin's own
-        // machine) or has already imported once.
-        appScope.launch {
-            MidnightImport.run(this@MidnightApplication)
+            // One-time Midnight AI fleet-history import (see MidnightImport's class
+            // doc). Process-start work, same L12 reasoning as the caches above: it
+            // must run unconditionally, not from a service that might not be
+            // running. It is its own launch{}, not folded into the one above,
+            // because it is unrelated work with its own independent failure mode -
+            // a companion-profile hiccup must not skip the fleet import or vice
+            // versa. No-ops in one SharedPreferences read on every launch after
+            // the bundle either was never present (every clone but Kevin's own
+            // machine) or has already imported once.
+            appScope.launch {
+                // Already hardened internally ("never throws" per its own class doc),
+                // wrapped anyway so the guarantee is enforced here rather than trusted.
+                runCatching { MidnightImport.run(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("midnight_import", it) }
+
+            }
+
+            // One of the notes/lists/calendar domain's three callers of the one idempotent
+            // rescheduleAll() (`.scratch/notes-lists-calendar/issues/03-android-alarm-mechanism.md`) -
+            // the other two are BootReceiver and ExactAlarmPermissionReceiver. Must run unconditionally
+            // on every process start, same L12 reasoning as the caches above: a reminder scheduled last
+            // session needs its alarm confirmed live (or, for a one-off whose time already passed while
+            // the process was dead, reported MISSED - ticket 12) before the driver ever opens a screen
+            // or taps the assistant.
+            appScope.launch {
+                runCatching { com.kevin.legion.notes.AlarmScheduler.rescheduleAll(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("reschedule_alarms", it) }
+            }
         }
 
         MidnightEvents.setBuildContext(
@@ -121,4 +169,14 @@ class MidnightApplication : Application() {
             model.contains("Emulator") || model.contains("Android SDK built for") ||
             product.contains("sdk_gphone") || product == "google_sdk"
     }
+
+    /**
+     * True only inside a Robolectric JVM unit test, never on a real device or emulator.
+     * Robolectric's shadow layer sets `Build.FINGERPRINT` to the literal string `"robolectric"` -
+     * **confirmed by running a throwaway `RobolectricTestRunner` test and printing it**, not
+     * assumed, since main source cannot depend on the `org.robolectric` classes themselves
+     * (Robolectric is `testImplementation`-only - see `app/build.gradle.kts`) to check some other
+     * way. See [onCreate]'s doc comment at the call site for why this gate exists at all.
+     */
+    private fun isRunningUnderRobolectric(): Boolean = android.os.Build.FINGERPRINT == "robolectric"
 }

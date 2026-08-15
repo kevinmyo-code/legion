@@ -109,7 +109,8 @@ fun FolderConnectionRow(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Folder permission was revoked", style = MaterialTheme.typography.bodyMedium, color = sem.quarantined)
+                        // ADVISORY (ticket 13 re-home): a blocked capability, not a failed gate.
+                        Text("Folder permission was revoked", style = MaterialTheme.typography.bodyMedium, color = sem.estimated)
                         Text(folder.displayName, style = LegionType.stamp, color = sem.faint)
                     }
                     TextButton(onClick = onConnect) {

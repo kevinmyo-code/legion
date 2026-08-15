@@ -73,3 +73,20 @@ ticket by its title, not `01`/`02`. The filename rides inside the name as its li
 
 - `.scratch/ledger-drive-ingestion/` - Drive-folder batch ingestion for the ledger aspect plus a
   basic UI across all three aspects. Charted 2026-08-01, ten tickets.
+- `.scratch/legion-shape/` - what LEGION actually is. Charted 2026-08-06/07, twelve tickets.
+- `.scratch/notes-lists-calendar/` - notes, lists and a local calendar, absorbing `CarTask` and
+  `PlaceReminder`. Charted 2026-08-07, ten tickets. No external blockers, deliberately.
+- `.scratch/google-account-integration/` - Gmail (read-only, pull-only) and Google Calendar
+  (Google owns timed events). Charted 2026-08-13, ten tickets, three of them research fired at
+  charting. Unblocked by the OAuth client finally being registered; **reverses**
+  `notes-lists-calendar`'s ruling that Google Calendar mirroring was out of scope.
+- `.scratch/mission-control/` - full visual re-do of every LEGION screen in a mission-control
+  aesthetic (red-orange chrome, mint data, global CRT bezel, tiled roots). Charted 2026-08-14,
+  eleven tickets. **Supersedes parts of `cyberdeck-ui`** (its tickets 01, 03, 04, builds 12-20, and
+  its utility-screens-out-of-scope ruling); that map stays closed as history. Execution in scope.
+  Reference photos live in `research/refs/`.
+- `.scratch/android-auto/` - LEGION in the car: an Android Auto media app whose play button places a
+  self-managed telephony call, so the live session gets the car's microphone. Charted 2026-08-13,
+  fifteen tickets. Destination is DECISIONS, not shipped. **All five research tickets resolved the
+  same day**; they falsified one settled decision, corrected a charting claim, and surfaced two
+  defects in shipped code (tickets 13 and 15).

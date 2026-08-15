@@ -11,9 +11,8 @@ object PlaceController {
     /**
      * Tags the current GPS location under [rawLabel] (normalized). Returns a spoken ack.
      *
-     * Address-based tagging (resolving a spoken address via geocoding) was dropped along
-     * with embedded nav - it depended on Mapbox's geocoding API, which the new app doesn't
-     * carry a dependency on. Only "tag where I am right now" is supported.
+     * Address-based tagging (resolving a spoken address via forward geocoding) is not
+     * supported - only "tag where I am right now".
      */
     suspend fun tagPlace(context: Context, rawLabel: String): String {
         val label = normalizeLabel(rawLabel)

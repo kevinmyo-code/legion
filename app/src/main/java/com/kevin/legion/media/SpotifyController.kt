@@ -31,11 +31,13 @@ import java.util.concurrent.TimeUnit
  * the mixtape stack in the 2026-07-31 pivot) - callers check [isConnected] directly.
  * Everything is defensively guarded - a Spotify failure must never crash the app.
  *
- * NOT YET WIRED: the Setup UI that captures the client ID and calls [connect], and
- * the manifest redirect scheme. This controller is the transport/lifecycle seam;
- * the trigger + UI are the next slice. Policy caveat: the BYO-own-dev-app pattern's
- * compliance with Spotify's developer terms is GRAY and under review
- * (.scratch/spotify-byo/); risk accepted by Kevin 2026-07-21.
+ * WIRED 2026-08-12: [com.kevin.legion.ui.SpotifyScreen] (`settings/spotify`) captures
+ * the client ID and drives both grants, the manifest declares the redirect scheme and
+ * the `<queries>` entry App Remote needs to see the Spotify package at all, and
+ * [com.kevin.legion.ui.MainActivity]'s `onResume` calls [connectSilently]. Before that
+ * date every one of those was absent and this whole object was unreachable in practice.
+ * Policy caveat: the BYO-own-dev-app pattern's compliance with Spotify's developer terms
+ * is GRAY and under review (.scratch/spotify-byo/); risk accepted by Kevin 2026-07-21.
  */
 object SpotifyController {
     private const val TAG = "SpotifyController"
@@ -48,6 +50,30 @@ object SpotifyController {
      * though the client ID does.
      */
     const val REDIRECT_URI = "com.kevin.legion://spotify-callback"
+
+    /**
+     * The Spotify app's package. App Remote is an app-to-app binding, so this
+     * being absent means nothing in [SpotifyController] can work, no matter
+     * what is saved or authorized.
+     */
+    private const val SPOTIFY_PACKAGE = "com.spotify.music"
+
+    /**
+     * Whether the Spotify app is installed on this device.
+     *
+     * **Requires the `<queries>` entry in the manifest.** On API 30+ package
+     * visibility is filtered by default, so without that declaration this
+     * returns false even when Spotify IS installed - and, worse, the App Remote
+     * bind itself fails for the same reason. Added to the manifest 2026-08-12
+     * alongside the Setup screen; the SDK's own docs require it and this app
+     * had never declared it.
+     */
+    fun isInstalled(context: Context): Boolean = try {
+        context.packageManager.getPackageInfo(SPOTIFY_PACKAGE, 0)
+        true
+    } catch (e: Exception) {
+        false
+    }
 
     @Volatile private var remote: SpotifyAppRemote? = null
 

@@ -57,6 +57,27 @@ object SpotifyWebApi {
     // it's consumed or the flow is abandoned.
     private const val PREFS = "spotify_auth"
     private const val KEY_VERIFIER = "pending_verifier"
+    private const val KEY_GRANTED_SCOPE = "granted_scope"
+
+    /**
+     * The scopes the authorize request asks for.
+     *
+     * **This used to be nothing at all, and that was the bug** (found on-device
+     * 2026-08-12: `/v1/search` answered `403 Insufficient client scope`). The
+     * previous code omitted the `scope` parameter deliberately, reasoning that
+     * search needs no particular scope and that a narrower consent screen is
+     * better. The first half is true of a *client-credentials* token; it is not
+     * true of a **user** token, which is what the PKCE flow mints. A user token
+     * carrying an empty scope set is refused by search outright.
+     *
+     * `user-read-private` is the narrowest scope that fixes it, and it is needed
+     * a second time over: `market=from_token` on the search call is defined in
+     * terms of the token's own account country, which Spotify will only disclose
+     * under this scope. It grants no access to playlists, listening history,
+     * playback control, or anything else - the original instinct to ask for as
+     * little as possible is right, this is just the actual floor rather than zero.
+     */
+    const val SCOPES = "user-read-private"
 
     private fun authPrefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -73,9 +94,24 @@ object SpotifyWebApi {
         return v
     }
 
-    /** True once the driver has authorized and a refresh token is on file. */
+    /**
+     * True once the driver has authorized and a refresh token **granted under the
+     * current [SCOPES]** is on file.
+     *
+     * The scope check is not belt-and-braces, it is load-bearing (2026-08-12). A
+     * refresh token remembers the scopes it was minted with, so a grant obtained
+     * before [SCOPES] existed keeps minting scope-less access tokens indefinitely
+     * - every search failing `403 Insufficient client scope`, with the setup
+     * screen cheerfully reporting "Set up" because a refresh token was present.
+     * Comparing against the recorded grant makes that stale grant read as
+     * unauthorized, which is what puts the AUTHORIZE button back in front of the
+     * driver. Same shape as [CompanionProfile.saveSpotifyClientId] discarding
+     * tokens when the client ID changes, for the same underlying reason: a
+     * credential is only valid for the thing it was issued against.
+     */
     fun isAuthorized(context: Context): Boolean =
-        CompanionProfile.spotifyRefreshToken(context).isNotBlank()
+        CompanionProfile.spotifyRefreshToken(context).isNotBlank() &&
+            authPrefs(context).getString(KEY_GRANTED_SCOPE, null) == SCOPES
 
     /**
      * Opens the Spotify consent page in a browser. The redirect comes back to
@@ -99,11 +135,9 @@ object SpotifyWebApi {
             .appendQueryParameter("redirect_uri", SpotifyController.REDIRECT_URI)
             .appendQueryParameter("code_challenge_method", "S256")
             .appendQueryParameter("code_challenge", challengeFor(verifier))
-            // Search needs a valid user token but no particular scope. Ask for
-            // nothing extra - the narrower the consent screen, the better. The
-            // parameter is OMITTED rather than sent empty (2026-07-29): Spotify
-            // documents absent scope as "publicly available information only",
-            // and a literal `scope=` is not that documented case.
+            // See SCOPES: omitting this entirely is what produced "Insufficient
+            // client scope" on every search.
+            .appendQueryParameter("scope", SCOPES)
             .build()
 
         val intent = Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -140,23 +174,47 @@ object SpotifyWebApi {
             .add("client_id", clientId)
             .add("code_verifier", verifier)
             .build()
-        return postForTokens(context, form) == TokenResult.SUCCESS
+        val ok = postForTokens(context, form) == TokenResult.SUCCESS
+        // Record what this grant was issued under, so a later SCOPES change
+        // invalidates it rather than silently producing tokens search will refuse.
+        // Written only on success - a failed exchange must not look authorized.
+        if (ok) authPrefs(context).edit().putString(KEY_GRANTED_SCOPE, SCOPES).apply()
+        return ok
     }
 
     /**
-     * A usable access token, refreshing if the stored one has expired. Null when the
-     * driver has never authorized or the refresh failed (in which case the stored
-     * tokens are cleared so the UI can offer a clean re-connect).
+     * Why a token could not be produced. Separated 2026-08-12 from the single
+     * nullable String this used to return: "never authorized", "Spotify refused
+     * the refresh", and "we are offline" need three different things from the
+     * driver, and collapsing them meant [searchTrack] could not tell them apart
+     * either. Same fix, same reasoning, as
+     * [com.kevin.legion.ui.sync.GoogleGrantResolver.diagnose] (2026-08-03).
      */
-    suspend fun accessToken(context: Context): String? {
+    sealed interface TokenOutcome {
+        data class Token(val value: String) : TokenOutcome
+
+        /** No refresh token on file - the browser grant was never completed. */
+        object NeverAuthorized : TokenOutcome
+
+        /** Spotify rejected the refresh (revoked, client mismatch). Tokens have been cleared; re-authorize. */
+        object Rejected : TokenOutcome
+
+        /** Could not reach Spotify. Tokens kept - the next attempt with signal will work. */
+        object Unreachable : TokenOutcome
+    }
+
+    /**
+     * A usable access token, refreshing if the stored one has expired.
+     */
+    suspend fun accessToken(context: Context): TokenOutcome {
         val stored = CompanionProfile.spotifyAccessToken(context)
         if (stored.isNotBlank() && System.currentTimeMillis() < CompanionProfile.spotifyTokenExpiry(context)) {
-            return stored
+            return TokenOutcome.Token(stored)
         }
         val refresh = CompanionProfile.spotifyRefreshToken(context)
-        if (refresh.isBlank()) return null
+        if (refresh.isBlank()) return TokenOutcome.NeverAuthorized
         val clientId = CompanionProfile.spotifyClientId(context)
-        if (clientId.isBlank()) return null
+        if (clientId.isBlank()) return TokenOutcome.NeverAuthorized
 
         val form = FormBody.Builder()
             .add("grant_type", "refresh_token")
@@ -164,20 +222,28 @@ object SpotifyWebApi {
             .add("client_id", clientId)
             .build()
         return when (postForTokens(context, form)) {
-            TokenResult.SUCCESS -> CompanionProfile.spotifyAccessToken(context).ifBlank { null }
+            TokenResult.SUCCESS ->
+                CompanionProfile.spotifyAccessToken(context)
+                    .ifBlank { null }
+                    ?.let { TokenOutcome.Token(it) }
+                    // Exchange reported success but nothing readable landed - only
+                    // reachable if KeyVault.encrypt failed (there is no plaintext
+                    // fallback slot for tokens, unlike the client ID). Treat as
+                    // never-authorized so the UI offers a clean re-connect.
+                    ?: TokenOutcome.NeverAuthorized
             // Spotify actually rejected the refresh token (revoked, expired past its
             // grace, client mismatch). Only NOW is a full re-authorization the right
             // answer, so clear and let the UI offer CONNECT again.
             TokenResult.REJECTED -> {
                 CompanionProfile.clearSpotifyTokens(context)
-                null
+                TokenOutcome.Rejected
             }
             // Network blip - a dead zone mid-drive, exactly when this is likely.
             // Keep the tokens; the next play attempt with signal refreshes fine.
             // Nuking them here (the old behavior) forced a full browser re-auth for
             // a transient failure, which is the §9 "degrades gracefully offline" rule
             // getting it backwards.
-            TokenResult.TRANSIENT -> null
+            TokenResult.TRANSIENT -> TokenOutcome.Unreachable
         }
     }
 
@@ -226,42 +292,158 @@ object SpotifyWebApi {
         return IMPOSTER_MARKERS.any { it in haystack }
     }
 
-    suspend fun searchTrackUri(context: Context, query: String): String? = withContext(Dispatchers.IO) {
-        val token = accessToken(context) ?: return@withContext null
-        val url = Uri.parse(SEARCH_URL).buildUpon()
+    /**
+     * Outcome of a track search. Replaces the nullable String (2026-08-12): that
+     * null meant "no token" OR "offline" OR "Spotify said no" OR "nothing
+     * matched", and `play_music` reported every one of them to the driver as
+     * "I couldn't find that on Spotify" - which is actively misleading for
+     * three of the four, and left no way to tell from the outside which had
+     * happened. Found in the field the day the setup screen shipped.
+     */
+    sealed interface SearchOutcome {
+        data class Found(val uri: String) : SearchOutcome
+
+        /** The browser grant was never completed, or the stored credentials are gone. */
+        object NeedsAuthorization : SearchOutcome
+
+        /**
+         * Spotify rejected the credentials outright (401/403, or a refused refresh).
+         * [detail] is Spotify's own `error.message`, which is the only thing that
+         * distinguishes an expired token from "this app is in Development Mode and
+         * your account is not on its allowlist" - two 403s that need completely
+         * different fixes.
+         */
+        data class Unauthorized(val detail: String?) : SearchOutcome
+
+        /** Could not reach Spotify at all - offline, DNS, timeout. */
+        object Unreachable : SearchOutcome
+
+        /** Spotify answered, and genuinely had nothing for this query. */
+        object NoMatch : SearchOutcome
+
+        /**
+         * Spotify answered with an error this code does not map. [code] is the HTTP
+         * status, [detail] its parsed `error.message`, and [raw] the untouched body -
+         * carried because the parsed message alone proved to be misleading in the
+         * field (a `400 Invalid limit` against a request whose limit was plainly
+         * valid), and on this device logcat cannot be used to see the rest.
+         */
+        data class Failed(val code: Int, val detail: String?, val raw: String? = null) : SearchOutcome
+    }
+
+    /**
+     * Spotify's own `{"error":{"status":..,"message":".."}}` message, or a trimmed
+     * slice of the raw body when it is not that shape. Never the whole body - an
+     * HTML error page from an intercepting proxy would otherwise be pasted into a
+     * spoken reply.
+     */
+    private fun errorDetail(body: String): String? = runCatching {
+        JSONObject(body).optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
+    }.getOrNull() ?: body.trim().take(200).takeIf { it.isNotEmpty() }
+
+    /**
+     * The exact URL [searchTrack] requests, exposed so the setup screen's search
+     * test can display it. Split out 2026-08-12 while chasing a `400 Invalid
+     * limit` that the parameters, read on their own, could not explain - on this
+     * device app logs never reach logcat, so the only way to see the request as
+     * actually sent is to put it on screen.
+     */
+    fun searchUrlFor(query: String, limit: Int? = SEARCH_LIMIT): String =
+        Uri.parse(SEARCH_URL).buildUpon()
             .appendQueryParameter("q", query)
             .appendQueryParameter("type", "track")
-            .appendQueryParameter("limit", "20")
+            .apply { if (limit != null) appendQueryParameter("limit", limit.toString()) }
             .build()
+            .toString()
+
+    /**
+     * Results asked for per search. **Ten, not the documented maximum of fifty.**
+     *
+     * Measured on-device 2026-08-12 against this account's own token, one request
+     * per value: no limit and `limit=10` both return 200; 11, 12, 14, 15, 16, 18,
+     * 20 and 50 every one return `400 Invalid limit`. The same URLs return 401
+     * (not 400) when sent without a token, and a hand-built URL fails identically
+     * to the `Uri.Builder` one, so this is neither an encoding artifact nor a
+     * malformed request - Spotify is enforcing a ceiling of 10 that its own
+     * documented 1..50 range does not mention.
+     *
+     * Most likely the reduced quota applied to apps still in Development mode
+     * (this is a BYO dev app by design - CLAUDE.md §2 - so it will stay there).
+     * That is the best available explanation, NOT a verified one; what is
+     * verified is the measurement above.
+     *
+     * Costs the search a little discrimination: [looksLikeImposter] and the
+     * popularity ranking pick from ten candidates rather than twenty, so an
+     * obscure original buried under many karaoke cuts is likelier to be missed.
+     * Ten is still comfortably enough for the ranking to do its job, and the
+     * alternative is every search returning 400.
+     */
+    private const val SEARCH_LIMIT = 10
+
+    /** One GET with the bearer token, returning (status, body) so the caller can branch and retry. */
+    private fun getSearch(url: String, token: String): Pair<Int, String> {
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $token")
+            .get()
+            .build()
+        return http.newCall(request).execute().use { response ->
+            response.code to response.body?.string().orEmpty()
+        }
+    }
+
+    suspend fun searchTrack(context: Context, query: String): SearchOutcome = withContext(Dispatchers.IO) {
+        val token = when (val outcome = accessToken(context)) {
+            is TokenOutcome.Token -> outcome.value
+            TokenOutcome.NeverAuthorized -> return@withContext SearchOutcome.NeedsAuthorization
+            TokenOutcome.Rejected -> return@withContext SearchOutcome.Unauthorized(
+                "Spotify refused the stored refresh token. It has been cleared.",
+            )
+            TokenOutcome.Unreachable -> return@withContext SearchOutcome.Unreachable
+        }
         try {
-            val request = Request.Builder()
-                .url(url.toString())
-                .addHeader("Authorization", "Bearer $token")
-                .get()
-                .build()
-            http.newCall(request).execute().use { response ->
-                val body = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "Search failed ${response.code}")
-                    return@withContext null
+            var (code, body) = getSearch(searchUrlFor(query), token)
+            // Self-heal a tightened limit ceiling. SEARCH_LIMIT is a measured value, not a
+            // documented one (see its doc), so Spotify lowering it again would silently
+            // break every search exactly as limit=20 did. Retrying once with the parameter
+            // dropped falls back to Spotify's own default page size, which by construction
+            // can never be out of range. Narrow on purpose: only a 400 that actually names
+            // the limit retries, so this cannot mask an unrelated bad request.
+            if (code == 400 && errorDetail(body)?.contains("limit", ignoreCase = true) == true) {
+                Log.w(TAG, "limit=$SEARCH_LIMIT rejected; retrying without it")
+                val retry = getSearch(searchUrlFor(query, limit = null), token)
+                code = retry.first
+                body = retry.second
+            }
+            if (code !in 200..299) {
+                val detail = errorDetail(body)
+                Log.w(TAG, "Search failed $code: $detail")
+                return@withContext when (code) {
+                    401, 403 -> SearchOutcome.Unauthorized(detail)
+                    else -> SearchOutcome.Failed(code, detail, body.trim().take(300))
                 }
+            }
+            run {
                 val items = JSONObject(body).optJSONObject("tracks")?.optJSONArray("items")
-                    ?: return@withContext null
+                    ?: return@withContext SearchOutcome.NoMatch
                 val candidates = (0 until items.length()).mapNotNull { items.optJSONObject(it) }
                     .filter { it.optString("uri").isNotBlank() }
-                if (candidates.isEmpty()) return@withContext null
+                if (candidates.isEmpty()) return@withContext SearchOutcome.NoMatch
 
                 val clean = candidates.filterNot { looksLikeImposter(it) }
                 // If filtering leaves nothing, the query genuinely WAS for a
                 // karaoke/tribute cut - honour it rather than returning nothing.
-                (clean.ifEmpty { candidates })
+                val uri = (clean.ifEmpty { candidates })
                     .maxByOrNull { it.optInt("popularity", 0) }
                     ?.optString("uri")
                     ?.takeIf { it.isNotBlank() }
+                if (uri != null) SearchOutcome.Found(uri) else SearchOutcome.NoMatch
             }
         } catch (e: Exception) {
+            // A thrown IOException here is a transport failure, never a verdict on
+            // the query - the old code reported it as "not found".
             Log.w(TAG, "Search error: ${e.message}")
-            null
+            SearchOutcome.Unreachable
         }
     }
 

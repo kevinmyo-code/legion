@@ -26,12 +26,13 @@ import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
 import com.kevin.legion.ledger.AccountBalance
 import com.kevin.legion.ledger.displayDescription
-import com.kevin.legion.ledger.formatCents
 import com.kevin.legion.ledger.formatMoney
+import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.documentDateCompact
+import com.kevin.legion.ledger.maskedAccountLabel
 
 /**
  * Ledger-specific read-surface rows for ticket 08 Parts 4-7 (resolution:
@@ -92,6 +93,16 @@ fun LedgerTransactionRow(txn: LedgerTransaction) {
                 Spacer(Modifier.width(8.dp))
                 Text("read by AI", style = LegionType.stamp, color = sem.faint)
             }
+            // Ticket 12 §7: a distinct claim from "read by AI", never reused
+            // for it - an UNRECONCILED row was extracted deterministically
+            // and never faced a reconciliation gate at all (no anchor
+            // existed to check it against), which is a WEAKER claim than
+            // LLM_RECONCILED's "passed the same gate a deterministic row
+            // did, only the extraction method differed".
+            if (txn.ingestMethod == IngestMethod.UNRECONCILED) {
+                Spacer(Modifier.width(8.dp))
+                Text("pending, not verified", style = LegionType.stamp, color = sem.faint)
+            }
         }
     }
 }
@@ -125,16 +136,174 @@ fun BalancesSection(balances: List<AccountBalance>) {
 @Composable
 private fun AccountBalanceRow(balance: AccountBalance) {
     val sem = LocalLegionSemantics.current
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-        Text(balance.currency.name, style = LegionType.stamp, color = sem.faint, modifier = Modifier.width(38.dp))
-        Text(balance.accountId, style = LegionType.stamp, color = sem.faint, modifier = Modifier.weight(1f))
-        // null means the source statement format never printed a running
-        // balance at all (Bank of America's section layout) - that is a
-        // distinct, honest "not stated" state, never rendered as 0.00.
-        if (balance.balanceCents != null) {
-            Text(formatCents(balance.balanceCents), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-        } else {
-            Text("not stated", style = MaterialTheme.typography.bodySmall, color = sem.faint)
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+            Text(balance.currency.name, style = LegionType.stamp, color = sem.faint, modifier = Modifier.width(38.dp))
+            Text(maskedAccountLabel(balance.accountId), style = LegionType.stamp, color = sem.faint, modifier = Modifier.weight(1f))
+            // Ticket 12 §4/§6: provisional rows count toward what's shown so
+            // the figure is actually current.
+            //
+            // A figure containing one takes `sem.estimated`, the same role
+            // pantry macros use, because it is the same kind of claim: a
+            // number no source document ever stated. The label beneath is
+            // still what carries the meaning - CLAUDE.md §4 rule 7 says "in
+            // words", and colour alone fails for colour-blind users and in
+            // greyscale. The colour makes the distinction visible at a
+            // glance; it never carries it alone.
+            when {
+                // formatMoney, not bare formatCents (2026-08-07 currency audit):
+                // the currency code to the LEFT of this row (line above) is a
+                // separate Text node a screen reader or a glanced screenshot can
+                // miss - the figure itself must carry its own currency too, same
+                // "never rely on an adjacent label alone" posture CLAUDE.md §4
+                // rule 7 already states for a provisional/unverified stamp.
+                // BOTH deltas, never just one (fixed 2026-08-07, found on
+                // Kevin's phone). [AccountBalance]'s own doc comment defines
+                // available as `balanceCents + provisionalDeltaCents +
+                // pendingDeltaCents`; this row computed only the first two, so
+                // three voice-logged pending charges totalling 123.79 changed
+                // the note underneath but left the headline figure at 440.68
+                // while his bank said 316.89. The data was right the whole
+                // time - only this arithmetic was short a term.
+                // AccountBalance.availableCents, never a local sum - see that
+                // property's doc comment for the bug this closes. When
+                // balanceCents is null (Bank of America's card layout prints
+                // none) it returns the unposted movement alone, which must
+                // never be rendered as if it were a stated balance; the
+                // `estimated` colour plus the words below carry that.
+                balance.hasAnyFigure -> Text(
+                    formatMoney(balance.availableCents, balance.currency),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = if (balance.isUnconfirmed) {
+                        sem.estimated
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                )
+                // null means the source statement format never printed a
+                // running balance at all (Bank of America's section layout)
+                // and no provisional rows exist either - that is a distinct,
+                // honest "not stated" state, never rendered as 0.00.
+                else -> Text("not stated", style = MaterialTheme.typography.bodySmall, color = sem.faint)
+            }
+        }
+        if (balance.isProvisional) {
+            // Review finding 5: this used to branch on `balance.balanceCents
+            // != null`, which reads as "has this account ever been
+            // reconciled" but actually only asks "did the LATEST reconciled
+            // statement happen to print a balance". BofaCardCsvStatementParser
+            // never sets balanceCents on ANY row it produces
+            // (BofaCardStatementParser.kt:350), so once a driver imports the
+            // monthly card PDF, this branch still landed on the false "no
+            // statement yet" copy every month after - the account had in
+            // fact just been reconciled. `hasReconciledRows` asks the correct
+            // question directly instead of inferring it from balanceCents.
+            val label = when {
+                balance.balanceCents != null -> "includes pending transactions not yet on a statement"
+                balance.hasReconciledRows -> "pending card activity only - this account's statements never print a balance"
+                else -> "no statement yet - pending transactions only, unverified"
+            }
+            Text(label, style = LegionType.stamp, color = sem.faint)
+        }
+        // Voice-logged pending transactions (the driver's OWN report, never a
+        // file) - a distinct claim from isProvisional's "a file said this,
+        // unconfirmed" above, so it renders as its own line, never merged
+        // into the sentence above it. Words, never colour alone, per
+        // CLAUDE.md §4 rule 7 - see LedgerPendingResolver.balanceNote's doc
+        // comment for why the number shown is the magnitude, not the signed sum.
+        if (balance.hasPendingRows) {
+            Text(LedgerPendingResolver.balanceNote(balance.pendingDeltaCents), style = LegionType.stamp, color = sem.faint)
+        }
+    }
+}
+
+// ------------------------------------------------------------ voice-logged pending transactions
+
+/**
+ * The driver's own reports of still-processing charges/credits, never confirmed by any statement
+ * or export - REPORTED tier (CLAUDE.md §4 rule 7). Only rendered by the caller when [pending] is
+ * non-empty (`LedgerScreen`'s `LedgerListing`, matching every other conditional section there).
+ * Each row can be cleared individually via [onClear] - the row doesn't know or care how the
+ * removal is actually persisted, same callback-out discipline [QuarantineRow]'s RETRY uses.
+ */
+@Composable
+fun PendingTransactionsSection(pending: List<LedgerTransaction>, onClear: (id: Long) -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Column(Modifier.fillMaxWidth()) {
+        for (row in pending) {
+            PendingTransactionRow(row, onClear)
+            Hairline()
+        }
+    }
+}
+
+@Composable
+private fun PendingTransactionRow(row: LedgerTransaction, onClear: (id: Long) -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(displayDescription(row.description), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.height(3.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(documentDateCompact(row.txnDate), style = LegionType.stamp, color = sem.faint)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    formatMoney(row.amountCents, row.currency),
+                    style = LegionType.amount,
+                    color = if (row.amountCents > 0) sem.credit else sem.debit,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("pending, not verified", style = LegionType.stamp, color = sem.faint)
+            }
+        }
+        TextButton(onClick = { onClear(row.id) }) {
+            Text("REMOVE", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+// -------------------------------------------------------- category guesses (ticket B2, 2026-08-07)
+
+/**
+ * One merchant's pending AI-guessed category, up for confirm or correction. Never a colour-only
+ * "guessed" indicator (CLAUDE.md §4 rule 7) - the word "guessed" and "not confirmed" both appear
+ * in the row's own text.
+ */
+@Composable
+fun CategoryGuessesSection(guesses: List<LedgerCategoryResolver.MerchantGuess>, onConfirm: (merchantKey: String, category: String) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        for (guess in guesses) {
+            CategoryGuessRow(guess, onConfirm)
+            Hairline()
+        }
+    }
+}
+
+@Composable
+private fun CategoryGuessRow(guess: LedgerCategoryResolver.MerchantGuess, onConfirm: (merchantKey: String, category: String) -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                "${guess.merchantKey} (${guess.transactionCount})",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                "guessed: ${guess.category} - not confirmed",
+                style = LegionType.stamp,
+                color = sem.estimated,
+            )
+        }
+        TextButton(onClick = { onConfirm(guess.merchantKey, guess.category) }) {
+            Text("CONFIRM", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -170,6 +339,37 @@ fun QuarantineRow(file: IngestedFile, onRetry: (driveFileId: String) -> Unit) {
         Spacer(Modifier.width(8.dp))
         TextButton(onClick = { onRetry(file.driveFileId) }) {
             Text("RETRY", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+/**
+ * The bulk counterpart to [QuarantineRow]'s RETRY, sat directly under the
+ * quarantine section header.
+ *
+ * It says what it will and will not do, because a quarantine reason describes
+ * the build that wrote it: a parser fix does not re-examine the statements the
+ * previous build rejected, so a list this long is usually stale rather than
+ * genuinely unreadable. Flipping the records is the cheap half; the scan that
+ * actually re-reads them stays a separate explicit tap, exactly as it is for a
+ * single file, so this button never silently spends anything.
+ */
+@Composable
+fun RetryAllQuarantineRow(count: Int, onRetryAll: () -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Row(
+        Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Re-check all $count after a parser fix, then scan again.",
+            style = MaterialTheme.typography.bodySmall,
+            color = sem.faint,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        TextButton(onClick = onRetryAll) {
+            Text("RETRY ALL", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -261,6 +461,22 @@ private fun PreviewTransactionRowLlm() = LegionTheme {
     }
 }
 
+@Preview(name = "Ledger row: card CSV, pending and not verified", widthDp = 360)
+@Composable
+private fun PreviewTransactionRowUnreconciled() = LegionTheme {
+    Surface {
+        LedgerTransactionRow(
+            previewTxn.copy(
+                accountId = "7823",
+                description = "NORTHWIND OUTFITTERS 07/13 PURCHASE SEATTLE WA",
+                amountCents = -6000,
+                balanceCents = null,
+                ingestMethod = IngestMethod.UNRECONCILED,
+            ),
+        )
+    }
+}
+
 @Preview(name = "Balances: SGD + USD, no FX", widthDp = 360)
 @Composable
 private fun PreviewBalances() = LegionTheme {
@@ -269,6 +485,62 @@ private fun PreviewBalances() = LegionTheme {
             listOf(
                 AccountBalance("BOFA ****4471", LedgerCurrency.USD, 119_80),
                 AccountBalance("DBS ****8802", LedgerCurrency.SGD, 216_582),
+            ),
+        )
+    }
+}
+
+@Preview(name = "Balances: provisional card CSV rows included, marked unverified", widthDp = 360)
+@Composable
+private fun PreviewBalancesProvisional() = LegionTheme {
+    Surface {
+        BalancesSection(
+            listOf(
+                AccountBalance("BOFA ****4471", LedgerCurrency.USD, 119_80),
+                // Card PDF never arrived yet - accountId is the bare
+                // filename last-4 (ticket 12 call 2) and there is no
+                // printed balance to add the delta onto, only the delta
+                // itself, clearly marked. hasReconciledRows is false here:
+                // no statement has EVER covered this card, not just "the
+                // latest one didn't print a balance" - the "no statement
+                // yet" copy is the correct one for this exact case.
+                AccountBalance(
+                    accountId = "7823",
+                    currency = LedgerCurrency.USD,
+                    balanceCents = null,
+                    provisionalDeltaCents = -7500,
+                    isProvisional = true,
+                    hasReconciledRows = false,
+                ),
+            ),
+        )
+    }
+}
+
+/**
+ * Review finding 5's exact regression case: the card PDF for a prior month
+ * HAS landed (so this account is reconciled - [AccountBalance.hasReconciledRows]
+ * is true), but Bank of America's card statement format never prints a
+ * running balance, so [AccountBalance.balanceCents] is still null even
+ * though a real statement exists. This must read "pending card activity
+ * only - this account's statements never print a balance", never "no
+ * statement yet" - that copy would be stating something false about an
+ * account that has, in fact, been reconciled.
+ */
+@Preview(name = "Balances: card CSV pending, but the account HAS been reconciled before", widthDp = 360)
+@Composable
+private fun PreviewBalancesProvisionalReconciledCard() = LegionTheme {
+    Surface {
+        BalancesSection(
+            listOf(
+                AccountBalance(
+                    accountId = "4111111111117823",
+                    currency = LedgerCurrency.USD,
+                    balanceCents = null,
+                    provisionalDeltaCents = -1500,
+                    isProvisional = true,
+                    hasReconciledRows = true,
+                ),
             ),
         )
     }

@@ -10,7 +10,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.data.local.CodeEvent
+import com.kevin.legion.data.local.DailyDriveLog
 import com.kevin.legion.data.local.MaintenanceItem
+import com.kevin.legion.data.local.MonthlyRecap
 import com.kevin.legion.data.local.OdbSample
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -18,6 +20,8 @@ import com.kevin.legion.util.relativeAge
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.VehicleController
 import org.json.JSONArray
+import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * FLEET-specific pure logic and rows for ticket 09 (resolution §1: LIVE / DUE
@@ -31,8 +35,17 @@ import org.json.JSONArray
 
 // --------------------------------------------------------------- LIVE (pure)
 
-/** One row of the LIVE block: a label, its last-seen value, and how stale that value is. */
-data class LiveRowView(val label: String, val value: String, val sub: String)
+/**
+ * One row of the LIVE block: a label, its last-seen value, and how stale that value is.
+ *
+ * [pid] (mission-control ticket 16 follow-up, "get FLEET's tile row above the fold") is the raw
+ * OBD PID this reading came from - "0105", "ATRV", "0107" - carried through so [UplinkPane] can
+ * render these as [com.kevin.legion.ui.common.DeckFeedRow]'s `code` column, same PID-as-code shape
+ * [ThemePreview.kt]'s own "Live PIDs" section already demonstrates. Defaults to `""` so every
+ * pre-existing 3-arg `LiveRowView(label, value, sub)` construction site (previews, tests) keeps
+ * compiling unchanged.
+ */
+data class LiveRowView(val label: String, val value: String, val sub: String, val pid: String = "")
 
 /**
  * The fixed, small set of slow-changing PIDs [com.kevin.legion.vehicle.TelemetryRecorder]
@@ -63,7 +76,7 @@ internal val LIVE_GAUGE_PIDS: List<String> = LIVE_GAUGES.map { it.pid }
 internal fun buildLiveRows(samplesByPid: Map<String, OdbSample?>, now: Long): List<LiveRowView> =
     LIVE_GAUGES.mapNotNull { gauge ->
         val sample = samplesByPid[gauge.pid] ?: return@mapNotNull null
-        LiveRowView(gauge.label, gauge.format(sample.value), relativeAge(sample.timestamp, now))
+        LiveRowView(gauge.label, gauge.format(sample.value), relativeAge(sample.timestamp, now), pid = gauge.pid)
     }
 
 // ------------------------------------------------------------- DUE (pure)
@@ -74,6 +87,17 @@ data class DueRowView(
     val value: String,
     val sub: String,
     val overdue: Boolean,
+    /**
+     * elapsed/interval on the row's own axis (miles when [toDueRow] chose the
+     * miles axis, else time), for [com.kevin.legion.ui.common.DeckMeter] drawn
+     * under the row's text on `FleetScreen`'s MAINTENANCE panel (quant-viz
+     * ticket 05 part C). `null` when the item has no interval on file to
+     * divide by - no meter is drawn, never a meter frozen at zero, matching
+     * [toDueRow]'s own "-" for a value with the same cause. See [dueFraction]
+     * for the math. Defaults to `null` so the many `DueRowView(...)` preview/
+     * test construction sites that predate this field keep compiling.
+     */
+    val fraction: Float? = null,
 )
 
 /**
@@ -135,7 +159,39 @@ private fun toDueRow(item: MaintenanceItem, currentMileage: Int, now: Long, over
         else -> "-"
     }
 
-    return DueRowView(item.serviceName, value, sub, overdue)
+    return DueRowView(item.serviceName, value, sub, overdue, dueFraction(item, currentMileage, now, overdue))
+}
+
+/**
+ * [DueRowView.fraction]'s pure math (quant-viz ticket 05 part C): elapsed
+ * over interval, on the SAME axis [toDueRow] picked for that row's headline
+ * value - miles when the item is anchored on both [MaintenanceItem.intervalMiles]
+ * and [MaintenanceItem.lastDoneMileage], else the time axis, `null` when
+ * neither anchor/interval pair is present (nothing to divide by).
+ *
+ * [overdue] short-circuits to `1f` rather than letting the ratio run past 1.0
+ * for a badly-overdue item - a meter drawing past its own right edge would
+ * read as a bug, not as "very overdue"; [DueRowView.overdue]'s existing flag
+ * and wording already carry that signal, so the meter only needs to stop
+ * where its track ends. `internal` for direct unit testing, same posture as
+ * [buildDueRows].
+ */
+internal fun dueFraction(item: MaintenanceItem, currentMileage: Int, now: Long, overdue: Boolean): Float? {
+    if (overdue) return 1f
+    val milesAxis = item.intervalMiles != null && item.lastDoneMileage != null
+    val timeAxis = item.intervalMonths != null && item.lastDoneDate != null
+    return when {
+        milesAxis -> {
+            val elapsed = (currentMileage - item.lastDoneMileage!!).toFloat()
+            (elapsed / item.intervalMiles!!.toFloat()).coerceIn(0f, 1f)
+        }
+        timeAxis -> {
+            val intervalMs = item.intervalMonths!!.toLong() * 30L * 24 * 60 * 60 * 1000
+            val elapsedMs = (now - item.lastDoneDate!!).toFloat()
+            (elapsedMs / intervalMs.toFloat()).coerceIn(0f, 1f)
+        }
+        else -> null
+    }
 }
 
 /** "132400" -> "132,400". No currency, no decimals - a mileage/interval figure, not money. */
@@ -167,6 +223,155 @@ internal fun distinctFaultsByFirstSeen(events: List<CodeEvent>): List<FaultRow> 
     // relevant to the driver than one first seen a year ago.
     return firstSeen.entries.sortedByDescending { it.value }.map { FaultRow(it.key, it.value) }
 }
+
+/** The visible slice of the UPLINK STORED CODES list plus a worded overflow count - same shape
+ * [com.kevin.legion.ui.AlertsSummary]/`capAlertRows` uses for HOME's ALERTS pane. */
+data class FaultRowsSummary(val visible: List<Pair<FaultRow, String?>>, val overflowCount: Int)
+
+/**
+ * Caps STORED CODES at [max] (two, mission-control ticket 16 - Kevin's call). UPLINK's list was
+ * unbounded and on his real car (6 DTCs) overran the whole FLEET root, pushing MAINTENANCE,
+ * DRIVES and CARS below the fold - breaking ticket 05's "a root shows its hero plus one full row
+ * of tiles without scrolling". Never a silent truncation: [FaultRowsSummary.overflowCount] is
+ * rendered as a worded "AND N MORE" row (CLAUDE.md §4's "said in words" rule - never a bare count
+ * badge), same "reported, never silent" posture `capAlertRows` already set for HOME. `internal`
+ * for direct unit testing, same reasoning as [distinctFaultsByFirstSeen].
+ */
+internal fun capFaultRows(faults: List<Pair<FaultRow, String?>>, max: Int = 2): FaultRowsSummary =
+    if (faults.size <= max) FaultRowsSummary(faults, 0) else FaultRowsSummary(faults.take(max), faults.size - max)
+
+// ------------------------------------------------------------- DRIVES (pure)
+
+/**
+ * The DRIVES panel's fixed reading, built from [com.kevin.legion.data.local.DailyDriveLogDao.getRecent]
+ * (ticket 18: "reuse existing data loading" - [com.kevin.legion.vehicle.DailyDriveLogController]
+ * already aggregates TRIP_MILES/MPG_TRIP into this table every hour, so this
+ * panel adds no new query, only a display shape over rows that already exist).
+ */
+data class DriveSummaryView(val headline: String, val sub: String, val hasData: Boolean)
+
+/**
+ * The most recent day with at least one finished drive - a day with a
+ * [DailyDriveLog] row but `driveCount == 0` (the hourly refresh writes one for
+ * every day, driven or not, see that controller's own doc) is not a "last
+ * drive" and is skipped rather than reported as one.
+ *
+ * [now] anchors [relativeAge] against the day's own local midnight, not
+ * [DailyDriveLog.generatedAt] - the driver cares how long ago they drove, not
+ * how long ago the rollup last recomputed itself.
+ */
+internal fun buildLastDriveSummary(logsNewestFirst: List<DailyDriveLog>, now: Long): DriveSummaryView {
+    val last = logsNewestFirst.firstOrNull { it.driveCount > 0 }
+        ?: return DriveSummaryView("NO DRIVES LOGGED", "nothing recorded yet", hasData = false)
+    val dayMs = LocalDate.of(last.year, last.month, last.day)
+        .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val mpgPart = last.avgMpg?.let { " · %.1f mpg".format(it) }.orEmpty()
+    val driveWord = if (last.driveCount == 1) "drive" else "drives"
+    return DriveSummaryView(
+        headline = "${last.milesDriven.toInt()} mi$mpgPart",
+        sub = "${last.driveCount} $driveWord · ${relativeAge(dayMs, now)}",
+        hasData = true,
+    )
+}
+
+/**
+ * The DRIVES panel's MPG trend, oldest-first (matches [com.kevin.legion.ui.common.DeckSparkline]'s
+ * index-ordered contract - see that composable's doc for why a sparkline
+ * never carries timestamps). [logsNewestFirst] comes straight off
+ * `getRecent`'s own ordering, so this only reverses it, no new query and no
+ * new aggregation (ticket 18 scope: MPG history reuses what
+ * [com.kevin.legion.vehicle.TelemetryRecorder]'s per-drive `MPG_TRIP` write
+ * already rolled into the daily log, not a fresh average).
+ *
+ * A day that logged driving but never finished a fuel-integrated trip (too
+ * short - see [DailyDriveLog.avgMpg]'s own nullability) is a GAP, not a zero,
+ * same rule [DeckSparkline]'s file doc states for every deck chart.
+ */
+internal fun buildMpgSparkline(logsNewestFirst: List<DailyDriveLog>): List<Float?> =
+    logsNewestFirst.asReversed().map { it.avgMpg?.toFloat() }
+
+/**
+ * The DRIVES panel's second, sibling sparkline (quant-viz ticket 12): daily
+ * [DailyDriveLog.milesDriven], oldest-first, off the exact same [logsNewestFirst]
+ * rows [buildMpgSparkline] already receives - no second query, matching that
+ * function's own doc.
+ *
+ * Unlike [buildMpgSparkline]'s `avgMpg` (nullable - a day can log driving with
+ * no fuel-integrated trip finished), [DailyDriveLog.milesDriven] is a
+ * non-null `Double` that the hourly rollup writes for every day whether or
+ * not it was driven (see [buildLastDriveSummary]'s doc), so a day inside this
+ * window is never a genuine gap here - `0.0` on an undriven day is a real
+ * zero, the same "gap-vs-zero" distinction CLAUDE.md §4 rule 6 states for
+ * money, read onto miles: nothing in [logsNewestFirst] is missing, so nothing
+ * here is `null`. The `Float?` return type still matches [DeckSparkline]'s
+ * general contract rather than narrowing to `Float`, so a future caller that
+ * feeds a genuinely sparse window (e.g. a car with days it did not exist yet)
+ * is not silently miscompiled into treating an absent day as zero.
+ */
+internal fun buildMilesSparkline(logsNewestFirst: List<DailyDriveLog>): List<Float?> =
+    logsNewestFirst.asReversed().map { it.milesDriven.toFloat() }
+
+// ------------------------------------------------------------- RECAPS (pure)
+
+/**
+ * One calendar month's slot in the RECAPS trend charts (quant-viz ticket 05
+ * part A). [milesDriven]/[avgMpg] are `null` when no [MonthlyRecap] exists
+ * for that month - a GAP, never a `0f`, matching [DeckChartData.kt]'s file
+ * doc invariant applied here without going through `dailyBuckets` (recaps are
+ * monthly, not daily, so this module builds its own month axis rather than
+ * reusing that day-grained helper).
+ */
+internal data class RecapMonthSlot(val year: Int, val month: Int, val milesDriven: Float?, val avgMpg: Float?)
+
+/**
+ * Every calendar month from the EARLIEST recap on file through the LATEST,
+ * inclusive, one [RecapMonthSlot] per month - a month with no [MonthlyRecap]
+ * row (the generator skipped a month, or the car did not exist yet) is a
+ * `null`-valued gap slot rather than being omitted from the axis, so the
+ * chart's x-spacing stays evenly monthly. `internal` for direct unit testing
+ * (ticket 05's "month-slot builder (missing month -> null)").
+ */
+internal fun buildRecapMonthSlots(recaps: List<MonthlyRecap>): List<RecapMonthSlot> {
+    if (recaps.isEmpty()) return emptyList()
+    val byKey = recaps.associateBy { it.year * 12 + (it.month - 1) }
+    val minKey = byKey.keys.min()
+    val maxKey = byKey.keys.max()
+    return (minKey..maxKey).map { key ->
+        val year = key / 12
+        val month = key % 12 + 1
+        val recap = byKey[key]
+        RecapMonthSlot(year, month, recap?.milesDriven?.toFloat(), recap?.avgMpg?.toFloat())
+    }
+}
+
+/**
+ * Maps [slots] into [com.kevin.legion.ui.common.DeckPoint]`?` for
+ * [com.kevin.legion.ui.common.DeckLineChart], picking [value] per slot ([RecapMonthSlot.milesDriven]
+ * or [RecapMonthSlot.avgMpg]) - a `null` field stays a `null` point, the same
+ * gap the slot itself already carries. `xMs` is each month's local
+ * calendar-day-1 start; [DeckLineChart] plots by index, not by this
+ * timestamp, but every other [com.kevin.legion.ui.common.DeckPoint] producer
+ * in the kit carries a real one and this keeps the type honest rather than
+ * stuffing in a sentinel.
+ */
+internal fun recapMonthPoints(slots: List<RecapMonthSlot>, value: (RecapMonthSlot) -> Float?): List<com.kevin.legion.ui.common.DeckPoint?> =
+    slots.map { slot ->
+        val y = value(slot) ?: return@map null
+        val xMs = LocalDate.of(slot.year, slot.month, 1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        com.kevin.legion.ui.common.DeckPoint(xMs = xMs, y = y)
+    }
+
+/** "JAN" style short month name for [recapMonthXLabels] - `java.time.Month` avoids a manual 12-entry table. */
+private fun monthAbbrev(month: Int): String =
+    java.time.Month.of(month).getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.US).uppercase()
+
+/**
+ * [slots]' x-axis labels, thinned to January and July (ticket 05 part A) -
+ * every other index is blank, per [com.kevin.legion.ui.common.DeckLineChart]'s
+ * own "callers thin their own labels" contract.
+ */
+internal fun recapMonthXLabels(slots: List<RecapMonthSlot>): List<String> =
+    slots.map { slot -> if (slot.month == 1 || slot.month == 7) "${monthAbbrev(slot.month)} ${slot.year}" else "" }
 
 // ------------------------------------------------------------------ rows
 

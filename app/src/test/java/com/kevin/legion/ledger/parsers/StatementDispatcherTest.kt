@@ -1,6 +1,7 @@
 package com.kevin.legion.ledger.parsers
 
 import com.kevin.legion.data.local.IngestMethod
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -82,18 +83,44 @@ class StatementDispatcherTest {
     }
 
     @Test
-    fun `a folder mapping that contradicts a PDF's own printed account quarantines rather than picking one`() {
+    fun `a folder mapping that disagrees with a PDF's own printed account is ignored, not quarantined`() {
         // dbs_happy_path.pdf prints account 1234567890 (DbsStatementParserTest).
-        // A folder mapped to a DIFFERENT account means this file is most
-        // likely filed in the wrong subfolder - CLAUDE.md §4: never silently
-        // trust either side over the other.
+        // A folder hint naming a DIFFERENT account no longer quarantines -
+        // Kevin's real Drive layout mixes multiple accounts' files in one
+        // subfolder on purpose (see StatementDispatcher.dispatchDeterministic's
+        // doc comment), so a hint that happens to describe some OTHER file in
+        // the same folder is simply irrelevant here. The document's own
+        // stated account always wins.
         val bytes = File("src/test/resources/ledger_fixtures/dbs_happy_path.pdf").readBytes()
         val result = StatementDispatcher.dispatchDeterministic("dbs_happy_path.pdf", bytes, "SOME-OTHER-ACCOUNT")
-        assertTrue(result is DeterministicResult.Quarantined)
-        val reason = (result as DeterministicResult.Quarantined).reason
-        assertTrue(reason.contains("1234567890"))
-        assertTrue(reason.contains("SOME-OTHER-ACCOUNT"))
-        assertTrue(reason.contains("Nothing was imported."))
+        assertTrue(result is DeterministicResult.Success)
+        assertTrue((result as DeterministicResult.Success).transactions.all { it.accountId == "1234567890" })
+    }
+
+    @Test
+    fun `Kevin's real layout - a checking PDF and a card PDF under the same accountHint each keep their own account`() {
+        // The exact shape of USA Bank Statements/: one mapped folder holding
+        // both a checking statement and a card statement, each printing a
+        // DIFFERENT account of its own. Neither should be disturbed by the
+        // shared folder-level hint, and neither should quarantine.
+        val checkingBytes = File("src/test/resources/ledger_fixtures/bofa_happy_path.pdf").readBytes()
+        val checkingResult = StatementDispatcher.dispatchDeterministic("bofa_happy_path.pdf", checkingBytes, "BOFA-CHECKING")
+        assertTrue(checkingResult is DeterministicResult.Success)
+        val checkingTxns = (checkingResult as DeterministicResult.Success).transactions
+        assertTrue(checkingTxns.isNotEmpty())
+        // 123456789012 per BofaStatementParserTest - its own printed account,
+        // NOT the "BOFA-CHECKING" hint, proving the hint was never even
+        // consulted for a file that states its own account.
+        assertTrue(checkingTxns.all { it.accountId == "123456789012" })
+
+        val cardBytes = File("src/test/resources/ledger_fixtures/bofa_card_happy_path.pdf").readBytes()
+        val cardResult = StatementDispatcher.dispatchDeterministic("bofa_card_happy_path.pdf", cardBytes, "BOFA-CHECKING")
+        assertTrue(cardResult is DeterministicResult.Success)
+        val cardTxns = (cardResult as DeterministicResult.Success).transactions
+        // 5555555555557823 per this file's own happy-path test above - a
+        // DIFFERENT account than the checking PDF's, sharing the same
+        // "BOFA-CHECKING" folder hint, and neither one quarantined.
+        assertTrue(cardTxns.all { it.accountId == "5555555555557823" })
     }
 
     @Test
@@ -105,11 +132,27 @@ class StatementDispatcherTest {
     }
 
     @Test
-    fun `an unmapped CSV quarantines with the mapping message, not a crash`() {
+    fun `a CSV with no account reports NeedsAccount, not a quarantine`() {
+        // Changed 2026-08-07. It used to assert Quarantined carrying the
+        // parser's "Map the folder..." wording, which forced every caller to
+        // repeat that instruction - including the single-file pick path, where
+        // there IS no folder and the advice was impossible to follow. The
+        // distinction is now typed: the numbers reconciled and only the account
+        // is unknown, so each caller supplies wording that fits how the file
+        // arrived.
         val bytes = File("src/test/resources/ledger_fixtures/bofa_csv_happy_path.csv").readBytes()
         val result = StatementDispatcher.dispatchDeterministic("bofa_csv_happy_path.csv", bytes, null)
-        assertTrue(result is DeterministicResult.Quarantined)
-        assertTrue((result as DeterministicResult.Quarantined).reason.contains("Map the folder"))
+        assertTrue(result is DeterministicResult.NeedsAccount)
+    }
+
+    @Test
+    fun `the same CSV parses cleanly once an account is supplied`() {
+        // The other half of the above: NeedsAccount must mean "ask and retry",
+        // not "this file is broken". Pins that the retry actually succeeds.
+        val bytes = File("src/test/resources/ledger_fixtures/bofa_csv_happy_path.csv").readBytes()
+        val result = StatementDispatcher.dispatchDeterministic("bofa_csv_happy_path.csv", bytes, "BOFA-CHECKING")
+        assertTrue(result is DeterministicResult.Success)
+        assertTrue((result as DeterministicResult.Success).transactions.all { it.accountId == "BOFA-CHECKING" })
     }
 
     @Test
@@ -122,6 +165,53 @@ class StatementDispatcherTest {
         val result = StatementDispatcher.dispatchDeterministic("mystery.csv", garbage)
         assertTrue(result is DeterministicResult.Quarantined)
         assertTrue((result as DeterministicResult.Quarantined).reason.contains("Nothing was imported."))
+    }
+
+    @Test
+    fun `a happy-path card statement resolves through the dispatcher as DETERMINISTIC`() {
+        val bytes = File("src/test/resources/ledger_fixtures/bofa_card_happy_path.pdf").readBytes()
+        val result = StatementDispatcher.dispatchDeterministic("bofa_card_happy_path.pdf", bytes)
+        assertTrue(result is DeterministicResult.Success)
+        val txns = (result as DeterministicResult.Success).transactions
+        assertEquals(6, txns.size)
+        assertTrue(txns.all { it.ingestMethod == IngestMethod.DETERMINISTIC })
+        assertTrue(txns.all { it.accountId == "5555555555557823" })
+    }
+
+    /** Test 11: card CSV bytes -> DeterministicResult.Success, not Quarantined. */
+    @Test
+    fun `the card's mid-cycle CSV export succeeds as UNRECONCILED, not quarantined`() {
+        // Ticket 12 (2026-08-06): BofaCardCsvStatementParser stopped being a
+        // named rejection. This fixture (invented rows, see
+        // tools/make_ledger_fixture.py) now commits as a real, if
+        // unverified, import instead of quarantining.
+        val bytes = File("src/test/resources/ledger_fixtures/currentTransaction_7823.csv").readBytes()
+        val result = StatementDispatcher.dispatchDeterministic("currentTransaction_7823.csv", bytes)
+        assertTrue(result is DeterministicResult.Success)
+        val txns = (result as DeterministicResult.Success).transactions
+        assertTrue(txns.isNotEmpty())
+        assertTrue(txns.all { it.ingestMethod == com.kevin.legion.data.local.IngestMethod.UNRECONCILED })
+        assertTrue(txns.all { it.accountId == "7823" })
+    }
+
+    /** Test 12: checking CSV bytes still route to BofaCsvStatementParser (no shadowing, either direction). */
+    @Test
+    fun `checking CSV bytes still route to BofaCsvStatementParser, not the card CSV parser`() {
+        val bytes = File("src/test/resources/ledger_fixtures/bofa_csv_happy_path.csv").readBytes()
+        val result = StatementDispatcher.dispatchDeterministic("bofa_csv_happy_path.csv", bytes, "BOFA-CHECKING")
+        assertTrue(result is DeterministicResult.Success)
+        val txns = (result as DeterministicResult.Success).transactions
+        assertTrue(txns.all { it.ingestMethod == IngestMethod.DETERMINISTIC })
+        assertTrue(txns.all { it.accountId == "BOFA-CHECKING" })
+    }
+
+    /** Test 13: real PDF bytes still reach the PDF parsers untouched. */
+    @Test
+    fun `real PDF bytes still reach the PDF parsers, untouched by either CSV parser`() {
+        val bytes = File("src/test/resources/ledger_fixtures/dbs_happy_path.pdf").readBytes()
+        val result = StatementDispatcher.dispatchDeterministic("dbs_happy_path.pdf", bytes)
+        assertTrue(result is DeterministicResult.Success)
+        assertTrue((result as DeterministicResult.Success).transactions.all { it.ingestMethod == IngestMethod.DETERMINISTIC })
     }
 
     @Test

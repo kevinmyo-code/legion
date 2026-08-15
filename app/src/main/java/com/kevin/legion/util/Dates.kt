@@ -11,6 +11,17 @@ import java.time.format.DateTimeFormatter
  */
 private val SHORT_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy")
 private val COMPACT_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d")
+/** Cyberdeck-ui ticket 13: the global [com.kevin.legion.ui.common.StatusLine]'s clock segment. */
+private val CLOCK_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+/**
+ * Device-local HH:mm, 24h, e.g. "14:07" - the global status line's clock
+ * (cyberdeck-ui ticket 13). Deliberately not locale-formatted (no AM/PM, no
+ * user locale short-time style): the deck reads as instrument output, and an
+ * instrument's clock does not localize.
+ */
+fun clockTime(epochMs: Long): String =
+    Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalTime().format(CLOCK_TIME)
 
 /** Formats an epoch-millis timestamp as a short local date, e.g. "Jun 29, 2026". */
 fun shortDate(epochMs: Long): String =

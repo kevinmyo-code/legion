@@ -16,8 +16,8 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * Tracks the driver's current GPS location. Two modes:
  * - Normal (30s / 100m): background default. Battery-friendly.
- * - Fast (1s / 1m): activated via [startNavMode] while a screen needs live speed/position
- *   tracking. Reverted via [stopNavMode] on exit so we don't drain battery in the background.
+ * - Fast (1s / 1m): activated via [startFastMode] while a screen needs live speed/position
+ *   tracking. Reverted via [stopFastMode] on exit so we don't drain battery in the background.
  *
  * Phone-only app, so this is just the device's own GPS - no beacon/relay logic (that existed
  * only for Midnight AI's head-unit hardware, which had no working GPS of its own).
@@ -26,7 +26,7 @@ object LocationController {
     private val _state = MutableStateFlow<Location?>(null)
     val state: StateFlow<Location?> = _state.asStateFlow()
 
-    private const val NAV_INTERVAL_MS = 1_000L
+    private const val FAST_INTERVAL_MS = 1_000L
     private const val NORMAL_INTERVAL_MS = 30_000L
 
     private var initialized = false
@@ -34,9 +34,9 @@ object LocationController {
     /** How many callers currently want the fast cadence, not a bare on/off flag - so two
      * independent callers (e.g. two screens) don't have one release drop the other back
      * to the 30s background cadence. */
-    private var navModeHolders = 0
+    private var fastModeHolders = 0
     private var locationManager: LocationManager? = null
-    private val navListener = LocationListener { location -> _state.value = location }
+    private val fastListener = LocationListener { location -> _state.value = location }
     private val normalListener = LocationListener { location -> _state.value = location }
 
     fun hasPermission(context: Context): Boolean {
@@ -63,28 +63,28 @@ object LocationController {
     }
 
     /**
-     * Switches to 1s / 1m updates for map-follow and nav-progress tracking.
-     * Call from a Compose `DisposableEffect` so [stopNavMode] is guaranteed on exit.
+     * Switches to 1s / 1m updates for any screen that needs live speed/position.
+     * Call from a Compose `DisposableEffect` so [stopFastMode] is guaranteed on exit.
      */
     @SuppressLint("MissingPermission")
     @Synchronized
-    fun startNavMode(context: Context) {
-        navModeHolders++
-        if (navModeHolders > 1) return
+    fun startFastMode(context: Context) {
+        fastModeHolders++
+        if (fastModeHolders > 1) return
         if (!initialized) return
         val lm = locationManager ?: return
         for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
             if (!lm.isProviderEnabled(provider)) continue
-            lm.requestLocationUpdates(provider, NAV_INTERVAL_MS, 1f, navListener, Looper.getMainLooper())
+            lm.requestLocationUpdates(provider, FAST_INTERVAL_MS, 1f, fastListener, Looper.getMainLooper())
         }
     }
 
-    /** Releases one nav-mode request. Safe to call if this caller never took one. */
+    /** Releases one fast-mode request. Safe to call if this caller never took one. */
     @Synchronized
-    fun stopNavMode() {
-        if (navModeHolders == 0) return
-        navModeHolders--
-        if (navModeHolders > 0) return
-        locationManager?.removeUpdates(navListener)
+    fun stopFastMode() {
+        if (fastModeHolders == 0) return
+        fastModeHolders--
+        if (fastModeHolders > 0) return
+        locationManager?.removeUpdates(fastListener)
     }
 }

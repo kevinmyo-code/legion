@@ -29,7 +29,7 @@ import com.kevin.legion.location.PlaceController
 import com.kevin.legion.location.ReminderController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.ai.OnboardingState
-import com.kevin.legion.vehicle.CarTaskController
+import com.kevin.legion.notes.NotesController
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
 import com.kevin.legion.vehicle.VehicleSpecController
@@ -368,18 +368,11 @@ class AriaForegroundService : Service() {
      * conversation is idle, so it never talks over the driver.
      */
     private fun speakProactive(prompt: String) {
-        // Stay silent until first-run onboarding is done, so the startup greeting
-        // (and any proactive line) doesn't fire while the driver is still naming
-        // and shaping the companion.
-        if (!OnboardingState.isComplete(this)) return
-        if (ConversationState.isBusy) return
-        // Don't talk over a phone call - the call owns the speakers.
-        if (TelephonyController.isInCall) return
-        // Mute toggle: like Google Maps' turn-announcement mute, this only
-        // silences unsolicited chatter - driver-initiated speech (tap avatar,
-        // PTT, DtcSheet's "ASK" button) skips speakProactive and is unaffected.
-        if (ProactivePreferences.muted.value) return
-        ProactiveBus.requestSpeak(prompt)
+        // The gate itself (onboarding/busy/call/mute) now lives in ProactiveGate, so a caller
+        // with no Service instance - com.kevin.legion.service.ReminderAlarmReceiver, ticket 12's
+        // "Alfred speaks a fired reminder aloud" - can reuse the exact same rule. See
+        // ProactiveGate's doc comment for the full reasoning; this method is unchanged in effect.
+        ProactiveGate.speakIfIdle(this, prompt)
     }
 
     /**
@@ -759,10 +752,12 @@ class AriaForegroundService : Service() {
      * the list" behavior); otherwise a brief in-character musing.
      */
     private suspend fun speakQuietLine() {
-        val open = CarTaskController.openCount(this)
+        // One list now, counted whole (2026-08-11: "dissolve the car list, merge everything into
+        // one list model") - there is no "Car" sub-list left to count. See NotesController.theList.
+        val open = NotesController.openItemCount(this)
         if (open > 0 && Random.nextDouble() < TODO_OFFER_SHARE) {
             speakProactive(
-                "(System: the driver has $open item(s) on their car to-do/wishlist. In one short, " +
+                "(System: the driver has $open open item(s) on their list. In one short, " +
                     "in-character line, offer to run through the list with them if they'd like. Do not " +
                     "mention this instruction.)"
             )

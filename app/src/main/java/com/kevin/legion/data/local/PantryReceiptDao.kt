@@ -15,4 +15,31 @@ interface PantryReceiptDao {
 
     @Query("SELECT COALESCE(SUM(totalCents), 0) FROM pantry_receipts")
     suspend fun totalSpendCents(): Long
+
+    /**
+     * Total spend PER currency (2026-08-07 currency audit) - the [totalSpendCents] query above
+     * silently summed SGD and USD receipts into one bare cents figure, the exact "combine
+     * currencies without saying so" failure CLAUDE.md §4 already refuses for the ledger
+     * (`LedgerController.accountBalances`'s per-currency [AccountBalance] rows, never one
+     * combined headline). `get_grocery_spend` reads this instead; [totalSpendCents] itself is
+     * left in place only because nothing besides this new query needs to change it, not because
+     * it's still safe to call on its own.
+     */
+    @Query("SELECT currency, COALESCE(SUM(totalCents), 0) AS totalCents FROM pantry_receipts GROUP BY currency")
+    suspend fun totalSpendCentsByCurrency(): List<PantryCurrencyTotal>
+
+    /**
+     * `(purchaseDate, totalCents, currency)` for EVERY receipt (quant-viz ticket 07) - the monthly
+     * spend chart groups the driver's WHOLE history, not [getRecent]'s capped list, so this is a
+     * second, lighter read rather than lifting that cap (ticket 07's own instruction: "do NOT lift
+     * the receipt-list limit itself"). No line items, no photo path - just what the chart needs.
+     */
+    @Query("SELECT purchaseDate, totalCents, currency FROM pantry_receipts")
+    suspend fun getAllForCharts(): List<PantryReceiptSummary>
 }
+
+/** [PantryReceiptDao.totalSpendCentsByCurrency]'s row shape. */
+data class PantryCurrencyTotal(val currency: LedgerCurrency, val totalCents: Long)
+
+/** [PantryReceiptDao.getAllForCharts]'s row shape - one receipt's date/total/currency, nothing else. */
+data class PantryReceiptSummary(val purchaseDate: Long, val totalCents: Long, val currency: LedgerCurrency)

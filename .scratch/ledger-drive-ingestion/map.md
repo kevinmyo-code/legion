@@ -158,6 +158,17 @@ BEFORE this effort ends. Do not let this directory be the only copy of anything.
   narrowed to one thing: retry exhaustion `check(...)`s and **throws**, unreported; making that
   log-and-skip is in scope. **None of `sync/` has ever run in this app** - all `traced`, none
   `tested`.
+- [Can the mid-cycle card CSV be ingested at all?](issues/12-provisional-card-csv.md) (added
+  2026-08-06, outside the original 11) - **yes, as a PROVISIONAL TIER, not a §4 exemption.** The
+  file prints no balance and no total (`tested` against Kevin's real export), so an LLM cannot help:
+  it would extract all 40 rows correctly and hit the same "nothing to verify against" refusal, paid
+  for. `BofaCardCsvStatementParser` therefore stops being a named rejection and becomes a real
+  **deterministic** parser writing `IngestMethod.UNRECONCILED` rows - labelled in every surface,
+  included in the balance with the balance marked provisional, and **deleted when a reconciled
+  statement covers their dates**. That deletion is the INVERSE of `enumeratedWindows` and is new
+  logic. **No Room migration** (`ingestMethod` is TEXT, no CHECK). `accountId` comes from the
+  filename's last-4, which does NOT equal the card PDF's full account - resolved by a last-4 suffix
+  match in exactly three places, never in `resolveDedup`. See the ticket's §0.
 
 ## Not yet specified
 

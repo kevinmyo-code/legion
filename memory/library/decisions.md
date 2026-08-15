@@ -1769,3 +1769,1867 @@ depends on it.
 **Reason, traced by reading `AriaForegroundService.onCreate()`:** That method unconditionally boots the entire voice stack on every process start - mic prewarm, a Gemini Live socket, GPS, telephony, a weather loop - with NO check of `AssistantIgnition`. Binding `IngestScanner` (which lives at Ledger tab tap time) from the voice service would have started the assistant with the toggle explicitly OFF, violating ticket 07's resolution: "a refusal means assistant off, nothing else affected." The original placement was harmless only because nothing bound to the service; once the Ledger tab wired `startService()` + `bindService()`, the architecture became unsustainable.
 
 **The general principle:** Do not place feature-triggered services inside an unconditionally-started infrastructure service. Separation of concerns. A user flipping a toggle must not side-effect unrelated infrastructure.
+
+## 2026-08-03 - Ledger ingestion complete: BofaCardStatementParser, folder mapping, DBS verified, overlap risk open
+
+**Status: All three of Kevin's real statement formats now parse deterministically.** BofA checking PDF, BofA credit card PDF, BofA mid-cycle checking CSV, and DBS/POSB Singapore PDF all ship with zero LLM spend on real files (commits `4dad45f`, `537bd49`, `ac40183`).
+
+**BofaCardStatementParser: three reconciliation anchors, all verified exact on real July statement.** Per-section subtotals; the summary identity `Previous + Payments + Purchases + Fees + Interest == New Balance Total`; all rows summing to net movement. Real result: 54 rows, −940.68, DETERMINISTIC. **Kevin's explicit call, same session: statement-only for the credit card.** Daily expenses move to debit. The card's mid-cycle CSV export is refused outright rather than parsed or sent to the LLM — it prints no balance and no total, so it carries zero reconciliation anchors and can never pass the gate.
+
+**First round of the card parser shipped with L14's vacuous-gate bug** (see `library/lessons.md` L14 for full write-up; rule 6 graduated into CLAUDE.md §4). BofA prints Interest Charged rows in a different shape with no reference or account column. The row regex missed all four, the section check compared zero parsed rows to a printed $0.00 and passed. Found by counting: raw regex probe of the real PDF found 54 date-led lines where the parser returned 50. Fixed with a bare form for unmatched rows and a hard-fail rule: every non-blank line inside a recognized section MUST parse as a row.
+
+**Folder mapping: changed from "conflicts quarantine" to "fills a gap only" (commit `537bd49`).** Kevin moved his statements into Drive as `Bank Statements > USA Bank Statements / Singapore Statements` and stated he will not split per account. The old `accountConflict` check quarantined any file whose printed account disagreed with its folder mapping, assuming one account per folder. Now the hint only reaches `BofaCsvStatementParser`, the one parser with no printed account; the distinction is structural, not a comparison. A document's own printed account is a stated falsifiable fact and always wins.
+
+**First real DBS run verified exact (commit `ac40183`).** All 14 transactions found, page-split table handled. Money: withdrawals 15,424.58, deposits 5,350.44, opening 14,715.02, closing 4,640.88, parser sum ties to the cent. One cosmetic defect fixed: PdfBox emits the statement's rotated sidebar text as lines of single characters. One landed between the last transaction and totals where the description accumulator absorbed it, producing `Interest Earned 4 4 4 4 4`. Fixed with an all-single-char-token artifact guard that skips the line without ending description.
+
+**Open finding, not yet fixed: PDF/CSV overlap double-counting.** Measured on Kevin's real files: the July checking PDF covers 06/05–07/06 (16 rows), the CSV covers 07/01–07/31 (12 rows). Three transactions overlap; `resolveDedup` caught 2 of 3. One slipped through because `dedupKey` includes the normalized description and BofA words the same transaction differently: `PURCHASE 0706 VPN24.ME EDINBURGH 00` (PDF) vs `VPN24.ME 07/06 PURCHASE EDINBURGH 00` (CSV), same date, same −8.99. This will recur monthly. Options under consideration: drop description from dedup key (risks genuine duplicates); match on account+date+amount only for CSV-vs-existing; or record each statement's covered period and treat a CSV row inside a reconciled statement's period as already accounted for. The third is the only one that is stated fact rather than guess, per §4.
+
+**Architectural note: sync/ was found structurally unreachable (commit `7ea4725`).** `CompanionProfile.setSyncEnabled` had zero callers, so `SyncCapability.syncAvailable` was always false and `SyncEngine.maybeAutoSync` returned immediately. Nothing launched the Drive consent PendingIntent either; `DriveAuth.tokenFromConsent` had no callers outside its own file. `MainActivity.onResume` had been calling `maybeAutoSync` into a closed door. Built a Connect Google Drive screen (modelled on `KeyScreen`) plus manual "Sync now". Sync only enables once a token is actually in hand, never optimistically. **Still device-unverified**: the consent round trip, a real Drive pass, and Play Services on the A17K.
+
+**Process findings worth keeping for next session:** The working loop that found every bug: run the user's real file, count rows independently of the parser, fix, make the fixture match reality, re-run. Four real-statement bugs in two days, all found this way, none by any other gate. Real statements are copied into `app/src/test/resources/ledger_fixtures/` temporarily, run, then deleted — never committed. A subagent committed a 419-line parser alone, without its tests/fixtures/wiring, leaving HEAD with unreferenced code. Caught and restructured into two coherent commits via `git reset --soft`. Kevin's standing decision: no card-number masking for now (full PAN lands in Room and syncs to Drive as `accountId`).
+
+### 2026-08-03 (session 3, addendum) - Drive OAuth blocks the owner, not only strangers
+
+The clone-and-run blocker "Drive's Android OAuth client is keyed to package + SHA-1" was recorded as
+a problem for a STRANGER building their own copy. First real device attempt showed it blocks Kevin
+too: Connect Google Drive brought up the account picker, sign-in succeeded, and nothing enabled.
+`com.kevin.legion` is a new package and its debug keystore was created 2026-08-01, so no OAuth
+client existed for that package + cert pair, and there is no `google-services.json`. Debug SHA-1
+`AEC022FB19028BB466490D9E2F7BC725EE84F55B`. Kevin created a client id the same day; it is NOT yet
+confirmed to be an Android-type client, which is the thing that matters (a Web client cannot work -
+the id string has nowhere to live in the app, Google matches on package + signing cert alone).
+Still needs the Drive API enabled, the `drive.appdata` scope on the consent screen, and his own
+account as a test user while the app is in Testing.
+
+Second, separable finding: the screen could not say ANY of that. `DriveAuth.tokenFromConsent` was
+`runCatching{}.getOrNull()`, so DEVELOPER_ERROR (status 10) was indistinguishable from the user
+dismissing the dialog. Fixed in `7a9acc6` - Token/Cancelled/Failed carrying the real Throwable, and
+plain-language categories on the screen plus a `MidnightEvents` log, since there is no crash
+reporter. The status-10 diagnosis itself is INFERRED from the API shape and has never been read off
+a device; the next connect attempt is what confirms or refutes it.
+
+
+### 2026-08-06 (session 5) - A provisional tier under the reconciliation gate
+
+Kevin asked for LLM ingestion of a CSV of recent transactions. Reading his real file
+(`currentTransaction_7823.csv`, read then left alone, never copied into the repo) showed it is the
+one case already refused BY NAME: Bank of America's mid-cycle card export, which
+`BofaCardCsvStatementParser` existed solely to reject. 40 data rows, 38 debits, 2 credits, CRLF, no
+balance column, no total row, no account number anywhere in the body (only in the filename).
+
+**Two findings reframed the ask.** First, an LLM cannot help: the gate was never failing on
+extraction, it was failing on the absence of anything to extract against. A model would read all 40
+rows correctly and hit the same "prints no balances or a total to verify against" refusal, having
+spent tokens; the format is a fixed 5-column CSV that needs no model to parse. Second, the ask was
+therefore not an ingestion problem at all but a request for a §4 rule 2 exemption, which is Kevin's
+call and not the executor's. Surfaced as such rather than built.
+
+**Kevin's four calls (all recommendations taken except the last):** deterministic parser, not LLM
+and not both; `accountId` from the filename's last-4; provisional rows deleted when a reconciled
+file commits over the same window; and provisional rows INCLUDED in the displayed balance with the
+balance marked provisional (he declined the recommended "excluded from sums" - the mid-cycle figure
+being current is worth more to him than a total that is verified by construction).
+
+**Rule 7 graduated into CLAUDE.md §4** in the same commit: a source that states no anchor may be
+stored provisionally, never as fact, on four conditions that only work together - deterministic
+extraction, an `UNRECONCILED` tag, said in words on every surface that renders one, and deletion
+when a gated file covers the same dates. It narrows what "commit" means without widening what
+"verified" means. The failure being guarded against is not storing a weak row; it is storing one
+that later reads as strong.
+
+**The collision worth remembering.** Calls 2 and 3+4 do not compose: the CSV's `accountId` is
+`"7823"` and the card PDF's is `"4111111111117823"`, and every ledger mechanism keys on equality, so
+supersede would never fire and one card would render as two accounts - the same bug the whitespace
+strip in `LedgerStatementAgent` was written to fix, through a different door. Resolved by a last-4
+suffix relation (`ledger/LedgerAccountIdentity.kt`, `sameCard`) in exactly three places - the
+supersede delete, the balance pairing, the balances grouping - and deliberately NOT in
+`resolveDedup`, where loosening the key would let a checking account ending 4146 absorb card rows.
+Documented weakness: two accounts sharing a last-4 collide. Four accounts today, no collision.
+
+**Ordering property that is load-bearing and invisible.** The supersede delete runs inside
+`db.withTransaction`, guarded so a provisional file never supersedes anything, and strictly BEFORE
+`getForAccountInRange` feeds `resolveDedup`. Wrong order and the reconciled statement's genuine rows
+match the provisional rows as duplicates and get dropped - the verified row discarded in favour of
+the unverified one, exactly backwards.
+
+**Widening a TEXT-stored enum is not a migration.** `ingestMethod` is `TEXT NOT NULL` with no CHECK
+constraint, so `UNRECONCILED` changed no SQL, the identity hash held, and the DB stayed at v5 - the
+schema JSON was byte-unchanged after a kapt run. Also corrected while in CLAUDE.md: it claimed Room
+v3 for a database that has been at v5 since `companion_profiles`.
+
+Ticket: `.scratch/ledger-drive-ingestion/issues/12-provisional-card-csv.md` (added outside the
+original 11). **Device-unverified**: the previews were never rendered and nothing has run on the
+phone, both carried as named follow-ups rather than closed.
+
+### 2026-08-06 (session 5, addendum) - Fleet-wide voice: three calls closed
+
+**Car tasks stay GLOBAL (Kevin).** `CarTask` has no `vehicleId` column - the to-do list has never
+been per-car - so `add_car_task`/`complete_car_task`/`remove_car_task`/`list_car_tasks` cannot take
+the `vehicle` argument the other 11 stored-data tools got. Making them per-car needs a Room v6
+migration. Ruled not worth it; the four tools stay unscoped and say so in their descriptions. This
+closes the blocking item the fleet ticket surfaced rather than leaving it open.
+
+**Persona survived the per-car-to-global promotion (Kevin, on device).** This was the highest-risk
+unverified claim in the fleet work - `CompanionProfile` moved from per-car keys to flat keys with a
+one-time promotion, and Kevin's configured Alfred/Dorothy setup was the real data at stake. He
+confirmed it. Verification gate 5 is CLOSED, `on-device`, not inferred from the unit tests.
+
+**Alfred and Dorothy now carry an explicit British delivery.** `Persona` gains a `delivery` field -
+accent and idiom, separate from `clause` (who is speaking) because it steers how the voice sounds.
+Injected by `AriaBrain.assembleBase` next to VoiceStyle's notes, ordered BEFORE them so an explicit
+user pick still wins. Not added to `shortClause`: sub-agents are text-only and an accent buys a
+one-shot JSON extraction nothing.
+
+**Natural language is the only lever.** The Live API exposes no accent parameter, and the 30
+`CURATED_VOICES` presets are not documented by accent - the same finding VoiceStyle.kt already
+recorded for pitch and rate. So this is prompt steering: expected to work, not guaranteed, and only
+listening settles it. Written concretely (name the vocabulary, name what to avoid) rather than as
+"sound British", for the same reason the registers are written as instruction rather than
+description.
+
+**Defect found and fixed while in there:** `assembleBase` prepended `CompanionProfile.persona()` raw
+to every system instruction. That field holds the persona KEY, not prose (`AssistantIdentity`
+resolves it through `personaFor()`), so every instruction opened with the literal token `alfred`
+before the register naming him. The legacy `VehicleController.DEFAULT_PERSONA` prose now applies
+only when no profile is active at all, which is the one case with no key to resolve.
+
+**Note for the next session:** the base instruction is cached for 2 minutes (`BASE_TTL_MS`), so a
+persona or delivery edit is not audible until the cache lapses or `invalidateBase()` fires. A cold
+app start is the reliable way to hear a change.
+
+---
+
+## 2026-08-07 - Notes, lists and a local calendar: charting decisions
+
+Charted as `.scratch/notes-lists-calendar/map.md` (10 tickets). Filed at charting time, not at
+effort end, per `issue-tracker.md`'s standing warning. All eight settled with Kevin in one grilling
+session; none is re-openable by a ticket without him.
+
+**Absorb, don't sit alongside.** `CarTask` and `PlaceReminder` fold into one general notes/lists
+domain rather than becoming a fourth system. Kevin's words: "absorb it. basically expand cartask to
+include other things. and also the ability to make different lists." Consequence: a `car_tasks`
+migration is mandatory, and `syncId` + `deleted` tombstones must survive it or the next sync
+resurrects deleted rows from a remote snapshot that never saw them go.
+
+**One model.** A list owns items; a note is a list whose items do not tick. Chosen over two entities
+because photo ingestion yields lines either way, voice editing needs one grammar either way, and
+`ui/` is the thin part of this app. Accepted cost, stated at the time: a real prose paragraph becomes
+one long item.
+
+**The human is the reconciliation gate for a photographed list.** It lands as a draft; nothing is
+written until Kevin confirms. **This is a narrowing of CLAUDE.md §4, not an exemption from it**, and
+the distinction that does the work is BLAST RADIUS: a misread checklist line is visible, correctable
+and poisons nothing downstream, whereas a misread receipt total silently becomes a fact inside a
+spend figure that is later trusted. Ticket 06 owns the exact wording, precisely so this cannot be
+cited later as "notes didn't need a gate, so neither do we." Rejected alternative: OCR twice and
+require agreement - a genuine automatic gate, but it doubles the cost of every photo to catch errors
+visible on screen for free.
+
+**An item carries at most one optional trigger**, a time or a tagged place, never both.
+
+**Alarms are local, not Google Calendar.** Kevin initially wanted Google Calendar to BE the
+mechanism, which is the better design in a world where the OAuth client works - it outsources all
+alarm plumbing. Rejected because that client has never authorized once, so the feature would ship
+unusable. Accepted cost: Android alarm plumbing is this map's largest new-platform surface, and the
+app has never scheduled an alarm or posted a notification.
+
+**A calendar event is the same entity as a list item**, with optional `startsAt`/`endsAt`. The
+calendar screen is a view over rows that have a `startsAt`.
+
+**Recurrence is IN scope**, against the recommendation to defer it. Kevin's call, on the argument
+that retrofitting recurrence onto a flat events table is materially harder than designing for it -
+which is correct. It is the most expensive decision on the map and it makes the effort larger than
+the camping checklist that prompted it. He was shown the cheaper second-wave alternative and
+declined it.
+
+**All Google integration is OUT of scope.** Both the Calendar mirror and the Gmail access Kevin
+raised mid-charting ("i wanted the ai to have my gmail etc. via mcp or api"). Split off as a future
+map. Two facts established while ruling it out:
+- **Multi-user needs no backend.** Each install does its own OAuth against its own Google account;
+  §7 survives intact. It is the same BYO shape as the Gemini key. The "one shared Google account"
+  lock in §2 is about the Drive sync STORE; Gmail/Calendar identities would be per-person, so that
+  lock needs amending whenever that map is charted.
+- **Gmail read scopes are RESTRICTED**, a different tier from `drive.appdata`. `reasoned`, not
+  verified: an OAuth client in Testing status with external user type may expire refresh tokens
+  after 7 days, which would force weekly hand re-authorization and probably kills the idea. **That
+  is the first research ticket of that future map** and must not be planned around until checked.
+
+**The OAuth client now blocks three things, not one:** Drive sync, any Calendar mirror, and any
+Gmail access. Open since 2026-08-01. It is the highest-leverage unblock in the project.
+
+**2026-08-07, later the same day - two amendments to the notes/calendar map.**
+
+**Alarms resolved (ticket 03, research).** Reminders do NOT need an exact alarm, so charting
+decision 5's expected cost mostly evaporates: `setAndAllowWhileIdle` is inexact, permission-free AND
+Doze-exempt, which is what a personal reminder actually needs. Plain `set()` would have been wrong
+for exactly the overnight-into-morning case. `setExactAndAllowWhileIdle` only where the user marks an
+item exact, gated on `canScheduleExactAlarms()`, downgrading IN WORDS when refused. Declare
+`SCHEDULE_EXACT_ALARM` + `RECEIVE_BOOT_COMPLETED`, NOT `USE_EXACT_ALARM` - identical capability, but
+non-revocable, and its Play restriction is a publish-time gate a sideloaded app never reaches.
+WorkManager ruled out on facts: Doze blocks JobScheduler outright, so it has no Doze exemption while
+`setAndAllowWhileIdle` does. Local facts verified in-repo, not taken on the researcher's word:
+`targetSdk 34` (so Android 14 denial-by-default applies), `POST_NOTIFICATIONS` already declared AND
+already requested at runtime, zero `AlarmManager` references, and a `BootReceiver` that existed and
+was deleted in `legion-shape` ticket 07. **Unverified and load-bearing:** whether the documented
+one-hour lateness bound covers `setAndAllowWhileIdle` specifically - the guide never restates it for
+that call. Do not promise any delivery figure until it is measured on the device.
+
+**Photo ingestion CUT (Kevin, mid-effort).** "screw it. we dont want the photo ingestion for the
+list." It was the origin of the entire idea - a paper camping checklist - and it is gone. Two
+tickets closed as OUT OF SCOPE rather than resolved, so neither is a step on the route.
+
+**This WITHDRAWS charting decision 3** (the human as reconciliation gate for a photographed list).
+That matters beyond this map: it was the only narrowing of CLAUDE.md §4 anywhere in this effort, and
+the only thing on it carrying precedent risk. **Nothing on this map now ingests an outside document
+at all**, so no §4 narrowing is needed and none is claimed. Decision 3 was withdrawn before anything
+was ever built on it and **must not be cited by a future feature** as licence to skip a gate.
+
+Worth recording honestly: **nothing was learned about whether the model can read handwriting.** The
+probe harness was written and compiled against the app's real `SubAgent` path, but was never run - no
+photo ever arrived. The question is untouched, not answered. The harness was deleted rather than left
+as dead scaffolding. Pantry's receipt vision path is unaffected and stays.
+
+**2026-08-07 - notes/lists/calendar map RESOLVED (all remaining tickets, one batched session).**
+
+Kevin: "lets solve all the tickets at once if possible." Done as a batch of decisions put to him,
+not answered for him - the wayfinder one-ticket-per-session rule exists so the agent does not stand
+in for the human's side of a HITL ticket, and batching the questions does not breach that. Eight
+contested calls put to him; the rest settled on recommendation. **One exception, flagged: the agenda
+-vs-month-grid choice in ticket 08 was NOT put to him.**
+
+The three answers that reshaped the map, all Kevin's, none of them my recommendation:
+
+**A recurring item cannot be ticked.** I offered per-occurrence ticking as the recommended answer;
+he took "not tickable" instead. It is the single most valuable decision on the map. It deletes
+per-occurrence completion state, which deletes the "edit this one or all of them" prompt, which is
+the thing that makes recurrence expensive in every calendar app. Recurrence went from the map's
+biggest cost to a small stored rule with a skip list. **A repeat is an event you attend, not a chore
+you complete.**
+
+**One "Car" list, `category` dropped entirely.** I recommended three lists preserving the
+maintenance/project/wishlist split; he took the single pile. Accepted cost, stated at the time:
+"what do I need to buy for the car" stops being separately answerable.
+
+**Photo ingestion cut** (earlier the same day, recorded above) - which had already withdrawn charting
+decision 3 and with it the map's only §4 narrowing.
+
+Settled on recommendation and accepted: local-only, no sync (`sync/` has never executed, Drive has
+no CAS, and two people ticking one packing list is the worst first test of unrun machinery - accepted
+cost is that a shared list is not shared, and the UI must SAY so); all four car-task tools retired
+(safe, checked: zero `ui/` references, they were always voice-only); alarms per ticket 03; one new
+"Notes" destination with the calendar as a view inside it; fuzzy-match voice addressing that refuses
+rather than guesses on ambiguity, defaulting to the most recently used list and always saying which.
+
+**Standing constraint that came out of this and outlives the map:** `LiveToolbox` carries 60+ tools
+and every one is prompt tokens on every live session, on Kevin's own key. Absorption must be
+net-neutral or better on tool count. If a map that retires four tools ends with more than it started,
+absorption did not happen - it just moved.
+
+**Map state:** 8 resolved, 2 out of scope, 0 open. One fog patch left (archiving/searching/deleting
+an old list). The destination is reached: nothing remains to decide before building.
+
+**2026-08-07 - archiving and list reuse (ticket 11), plus a correction.**
+
+Kevin: *"archived. eventually we want to have a master camping list that we can reproduce for
+subsequent trips."* One sentence closed two fog patches, which graduated together into one ticket.
+
+**Archived, not deleted**, behind a SHOW ARCHIVED toggle - reusing `ui/CarsScreen.kt`'s existing
+pattern rather than inventing one. Archiving is a separate axis from the `deleted` sync tombstone.
+
+**A "master list" is NOT a new concept: it is an archived list you copy.** Rejected a template flag
+(a third state per list) and a separate template entity (a second table duplicating `ListItem`, which
+would have been the first real crack in the one-model decision). The cheapest answer that fully does
+the job.
+
+**A copy carries text and order; it resets ticks and drops dates, repeats and place triggers - and
+gets a NEW `syncId`.** That last one is not cosmetic: inheriting a `syncId` would make two different
+rows claim one cross-device identity, and the next sync would read one as a stale edit of the other.
+Resetting `done` is the load-bearing part - a packing list that starts half-done is the one failure
+a packing list must not have.
+
+**The master does not learn.** Copy and original are independent from the moment of copying.
+Rejected automatic write-back (editing one list silently changing another) and an offer-at-archive
+prompt (needs provenance, arrives when you least want a question). **Accepted cost, said plainly at
+the time: packing up a wet tent, Kevin will not remember to write the lesson back, and it will be
+lost.**
+
+**Correction to the previous entry.** It claimed archiving was "the only decision left on the map".
+Wrong - "what a fired reminder actually does" was also still fog, and ticket 03 settling the alarm
+mechanism had made it specifiable. Now charted as ticket 12 and **it is the genuine last open
+decision.** Filed here rather than silently fixed, because the previous entry's claim was the kind
+of tidy-sounding overstatement this library exists to prevent.
+
+**2026-08-07 - what a fired reminder does (ticket 12). THE MAP IS COMPLETE.**
+
+Last open decision. All four calls went to Kevin and all four took the recommendation.
+
+**A fired reminder changes nothing on the item** - it stays open until ticked. Firing is a
+notification, not an action: "call the plumber" reminding you does not mean you called them.
+Rejected auto-tick (a list that claims you did something you did not is worse than no list) and a
+third fired-but-not-done state.
+
+**A missed reminder is reported, never silent.** Ticket 03 established boot recovery recomputes
+forward from now, so a one-off due while the phone was off is genuinely gone. It goes in a MISSED
+section on next open. **This was rejected on the repo's own history rather than on taste**: silent
+vanishing is the exact failure shape of `sync/` (structurally unreachable, passed every test) and
+categorization (fully built, never wired, a month reading "uncategorized" with no way to act). A
+reminder that quietly does not happen would be the third instance of the same bug. Consequence: the
+missed state must be STORED, because it cannot be recomputed afterwards.
+
+**Its own notification channel at `IMPORTANCE_DEFAULT`+.** Both existing channels are
+`IMPORTANCE_LOW`, which makes no sound; a silent reminder is not a reminder.
+
+**Snooze lives on the notification**, one fixed interval, no picker - and must not be labelled with
+false precision while `setAndAllowWhileIdle`'s real lateness is unmeasured. **Alfred speaks a
+reminder aloud** at a turn boundary when a live session is active, because that is when a posted
+notification is invisible (driving), and the notification still posts regardless.
+
+**MAP STATE: 10 resolved, 2 out of scope, 0 open. Destination reached** - nothing remains to decide
+before building. One fog patch survives and it is a build-time VERIFICATION, not a decision: measure
+`setAndAllowWhileIdle`'s real lateness on the device.
+
+**ADB is back up 2026-08-07** (OnePlus CPH2471). Two facts established immediately:
+- **The real database on Kevin's phone is at `user_version = 7`**, read from the file header (no
+  `sqlite3` on device; `run-as` + `dd` + `od`). So installing the current build runs v7 -> v8 -> v9
+  against his real data - 5,279 fleet rows, his statements, the Outlander - for the first time.
+- **A backup of the v7 database (main + `-shm` + `-wal`) was pulled to the scratchpad**, deliberately
+  OUTSIDE the repo so real financial data can never be committed.
+
+**Sequencing trap, recorded because getting it backwards is unrecoverable:** `connectedAndroidTest`
+WIPES app data (existing device quirk). Running the migration tests first would destroy the genuine
+v7 database those migrations most need proving against, leaving synthetic tests passing on invented
+data. Correct order: back up, install over the top to exercise the REAL migration, verify row counts,
+and only then run `connectedAndroidTest` and restore.
+
+---
+
+## 2026-08-07 - Cyberdeck UI overhaul charted; charts are hand-rolled Canvas
+
+**The front end is being overhauled** (Kevin): new aesthetic (diegetic cyberpunk cyberdeck,
+biohacking frame), new visualization layer, shipped on-device before the map closes. **The
+2026-08-01 Instrument design-language decision is superseded.** Grilled and locked at charting:
+diegetic dial at 2-of-3 with rationed theatre; dark-only; chrome speaks deck, Alfred's register
+untouched; utility screens inherit tokens only; no new data collection. Map:
+`.scratch/cyberdeck-ui/map.md`, ten tickets.
+
+**Chart rendering: hand-rolled Canvas/DrawScope, no library** (ticket 02, research subagent).
+`TelemetryChart` already proves the pattern; libraries fight the aesthetic and force
+Kotlin/Compose bumps (KoalaPlot needs Compose 1.10/Kotlin 2.3 vs repo's 2024.05.00/2.1.0,
+`traced`). Escape hatch recorded: Vico v2.5.2 if pan/zoom/markers ever needed. Estimate 350-550
+lines for `DeckLineChart`/`DeckBarChart`/`DeckSparkline` (`reasoned`).
+
+---
+
+## 2026-08-07 - The deck is MILSPEC
+
+**Design language for the cyberdeck overhaul: MILSPEC** (Kevin, from a three-direction artifact
+comparison; CLINICAL and STREET declined, no hybrid). Avionics console: phosphor amber `#FFB000`
+on green-black `#0A0D08`, warm-bone ink, stencil caps, 1px borders with 2px corner brackets,
+dashed row rules, chunky meters with pace ticks, checklist status copy (`NO LINK`, `0
+QUARANTINED`). Green `#7FBF3F` and red `#FF5330` exist in the palette but their SEMANTIC mapping
+is deliberately deferred to the semantic-color ticket. Full token table:
+`.scratch/cyberdeck-ui/issues/01-deck-design-language.md`. This supersedes Instrument as the
+thing `ui/theme` implements.
+
+---
+
+## 2026-08-07 - Deck semantics: amber = data, green = good, red = needs you
+
+**Semantic color for the MILSPEC deck** (grilled, Kevin). Red `#FF5330` means intervention
+required EXCLUSIVELY (quarantine, failed ingest, crisis) - never debits, never over-budget.
+Green `#7FBF3F` is the good/armed family including credits. Amber `#FFB000` is every other
+value; amber inverted tags carry advisories. **Exception tagging**: verified rows are untagged,
+sections state the default (`ALL ROWS RECONCILED`); tags mark drops in confidence
+(`EST`/`REPORTED` muted outline, `UNRECONCILED` amber inverted + worded aggregates per §4 rule 7,
+quarantine red inverted). Universal states (Body = all REPORTED) stated once in the panel header.
+`LLM_RECONCILED` = `DETERMINISTIC` at list level. Ticket:
+`.scratch/cyberdeck-ui/issues/03-semantic-color.md`.
+
+---
+
+## 2026-08-07 - Deck motion: boot on cold start, one ambient cursor, three theatre moments
+
+**Motion vocabulary for the deck** (grilled, Kevin). Boot sequence on COLD START ONLY (~800ms,
+tap-to-skip; warm returns instant). One-shot ~350ms draw-ins for meters/charts on screen entry,
+never looping. Exactly ONE continuously animating element app-wide: the top-bar block cursor.
+Full-theatre effects spent on exactly three moments: boot (scan sweep), ingest commit (panel
+sweep), quarantine (red glitch - §4's arresting state). Reduced-motion/animator-scale-0 collapses
+everything to instant and must still render a complete UI. Ticket:
+`.scratch/cyberdeck-ui/issues/04-motion-vocabulary.md`.
+
+---
+
+## 2026-08-07 - Shell is a hard-key row; driving mode enters the map
+
+**Navigation shell** (Kevin, two-option artifact comparison): the bottom bar becomes five
+stencil hard-keys - HOME / BIO / LOG / FLEET / CRED - active key inverted amber, existing
+NavigationBar wiring underneath. Global status line (`SYNC OK · OBD NO LINK · KEY ARMED` + clock
+and the one blinking cursor) tops every screen; Alfred's strip stays pinned above the keys.
+Module-launcher home declined (two taps per move, duplicated Today).
+
+**Driving mode is new scope** (Kevin, same session): when the OBD dongle is connected, the
+OPTION (not auto-switch) of a driving-style UI. Ticket 11 on the cyberdeck map; glance-first,
+voice-primary, GlanceCardController/Phase heritage may be reusable.
+
+---
+
+## 2026-08-07 - The deck home: INTAKE hero, fixed order, no charts
+
+**Today as the deck home** (grilled, Kevin). INTAKE (kcal + meter) is the hero; fixed order
+INTAKE -> SYSTEMS SWEEP -> AGENDA -> ALERTS; silent domains stated as rows (`NOT LOGGED`), never
+hidden; zero charts on home (trends live in modules); attention travels by advisory tag, never by
+reordering. Rotating hero explicitly declined. Ticket:
+`.scratch/cyberdeck-ui/issues/06-today-deck-home.md`.
+
+**SUPERSEDED 2026-08-14:** zero charts on home was reversed by Kevin during quant-viz (commits 087d8f9, f1c396d), before mission-control existed. INTAKE, SLEEP, and LEDGER month-to-date sparklines ship on HOME. Mission-control ticket 11 confirms this as the baseline.
+
+---
+
+## 2026-08-07 - BIO module: sparkline panels, drilldown depth
+
+**Body surface** (grilled, Kevin). Four fixed panels - MASS / INTAKE / SLEEP / TRAINING - each a
+hero number + small sparkline, full axis-labeled charts and history lists one tap in. TRAINING
+drills twice, ending at per-exercise progression (weight x reps over weeks). Range selectors in
+drilldowns only. `UPLINK: SELF-REPORT` stated once in the header. Not-logged days are chart GAPS,
+never zeros. Ticket: `.scratch/cyberdeck-ui/issues/07-body-surface.md`.
+
+---
+
+## 2026-08-08 - CRED module: monitor first, plumbing is one row
+
+**Ledger surface** (grilled, Kevin). BIO grammar: BURN / BALANCES / FLOW sparkline panels with
+chart drilldowns (per-category bars + burn-down, balance trajectory, monthly trends); ingestion
+plumbing (scan/mapping/pending/guesses) collapses to ONE exception-tagged OPS checklist row that
+turns red on quarantine; the transaction STREAM stays an inline list with existing
+drilldown/recategorize flows re-skinned. §4 rule 7 wording restated for BURN/BALANCES
+aggregates. Ticket: `.scratch/cyberdeck-ui/issues/08-ledger-surface.md`.
+
+---
+
+## 2026-08-08 - Cyberdeck decisions COMPLETE; build tickets graduated
+
+Kevin delegated the last three grilling tickets to the recommended defaults ("resolve them all
+with ur default recs"). **FLEET** (ticket 09): Fleet+Telemetry merge; UPLINK panel leads always,
+staleness worded; driving-mode offer lives on UPLINK + Alfred strip. **Pantry/LOG** (ticket 10):
+Pantry inherits panels, skips charts (grocery spend already in CRED FLOW); Agenda becomes a
+mission-log timeline; lists stay lists. **Driving mode** (ticket 11): offered on OBD connect
+never auto, three giant readouts max, one EXIT key, exits on link drop, no dialogs, no theatre.
+
+**MAP STATE: all 11 decision tickets resolved. Fog graduated into build tickets 12-21**
+(theme -> shell + chart kit -> five surface rebuilds + driving mode -> ship pass 21, which is
+the destination gate: this map's destination is SHIPPED, not specced). Frontier: ticket 12
+(theme). Remaining fog is intra-build detail only (state copy, measured contrast floors).
+
+---
+
+## 2026-08-13 - Gmail scope floor: `gmail.readonly`, and restricted tier was never avoidable
+
+**Wayfinder ticket:** `.scratch/google-account-integration/issues/03-gmail-scope-floor.md`
+(research, resolved from an agent report; tags below are the agent's, not orchestrator-verified).
+
+LEGION's Gmail integration is read-only and pull-only, doing two jobs: brief the inbox on request,
+and search it on request. The narrowest scope that does both is **`gmail.readonly`**.
+
+- `q` search is **forbidden** under `gmail.metadata` - stated verbatim in the Gmail discovery doc and
+  enforced server-side, along with `format=FULL`/`format=RAW`. Search is `q`, so `q` sets the floor.
+- **`gmail.metadata` is itself RESTRICTED tier.** Choosing metadata-only buys privacy and **zero**
+  tier relief. There is no sensitive-tier read scope for a standalone app - the sensitive Gmail
+  scopes are `gmail.addons.*`, live only while an add-on runs inside Gmail's UI.
+- Consequence for the app as a whole: **LEGION can never be published without a Google security
+  assessment.** That is forced by wanting Gmail at all, not a choice made carelessly. Clone-and-run
+  was already dead for anything OAuth-shaped (package + SHA-1 keying).
+- Quota is a non-constraint: ~405 units per briefing against 6,000/min/user. Cost is per-method not
+  per-format, so metadata and readonly cost identically. Batching does not reduce quota.
+- Play Services grants Gmail scopes exactly as it grants `drive.appdata` - no new client type, no
+  Web client (that is only for `requestOfflineAccess`, which needs a server LEGION must not have).
+
+**Open, handed to that map's ticket 07 rather than decided here:** Google's User Data Policy Limited
+Use section bars transferring restricted data to third parties and **says nothing about LLM
+providers** (`inferred`). Under `gmail.readonly`, "no mail bodies reach Gemini" is a rule only LEGION
+enforces. `gmail.metadata` would make it technically impossible at the same tier, at the price of
+search. That trade is live and must be ruled on deliberately.
+
+**Context:** this map exists at all because the `com.kevin.legion` OAuth client was finally
+registered on 2026-08-13, clearing a blocker open since 2026-08-01.
+
+---
+
+## 2026-08-13 - Testing-status OAuth expires the GRANT weekly; Production is the free exit
+
+**Wayfinder ticket:** `.scratch/google-account-integration/issues/01-testing-status-token-lifetime.md`
+(research, resolved from an agent report; tags below are the agent's, not orchestrator-verified).
+
+The 7-day expiry on a Testing-status OAuth client is documented at the **grant** layer -
+"authorizations by a test user will expire seven days from the time of consent" - not at the token
+layer. `DriveAuth` holding no refresh token and asking Play Services for a fresh access token each
+time therefore does **not** dodge it. **That last step is `inferred`: Google's docs never mention
+Android or Play Services in connection with the rule, in either direction.**
+
+- **Drive sync is already exposed**, today, not just the unbuilt Gmail/Calendar features.
+  `drive.appdata` is outside the rule's only exception (name/email/profile).
+- **And it would fail SILENTLY.** Expected surface is `authorize` returning `Outcome.NeedsConsent`
+  with no exception; `DriveAuth.accessTokenOrNull()` collapses that to `null` and `SyncEngine`
+  swallows a null by design. A lapsed grant reads exactly like never having connected - the same
+  failure shape `DriveConnectResolver` was written to kill, surviving in the one path that still
+  discards the reason.
+- **Internal user type is unavailable** - it needs a Cloud Organization and a personal Gmail account
+  has none. **Production is the exit, and publishing is NOT verification.** Published-but-unverified
+  is a documented supported state: 100-user lifetime cap, a one-off interstitial per account, no
+  7-day expiry. Google states an explicit exemption from verification, restricted scopes included,
+  for an app whose users are all known personally to the developer.
+- **This corrects a claim made the same day**, while charting: that accepting Gmail's restricted
+  scope meant the app "can never be published without a security assessment". That conflated
+  publishing status with verification. Amended on the map as settled decision 5.
+- **Still open** (`needs-a-spike`): whether the console gates Publish behind a verification
+  submission once a restricted scope is configured. Probe pressed forward as its own unblocked
+  ticket 11 - press Publish while only `drive.appdata` is on the client, so the answer arrives before
+  anything commits to Gmail.
+
+---
+
+## 2026-08-13 - Google Calendar goes through CalendarContract, not the REST API
+
+**Wayfinder ticket:** `.scratch/google-account-integration/issues/02-calendar-api-choice.md`
+(research, resolved from an agent report; tags are the agent's, not orchestrator-verified).
+
+LEGION reads and writes Google Calendar through **Android's `CalendarContract` provider**, with a
+`READ_CALENDAR`/`WRITE_CALENDAR` runtime permission pair and **no Calendar OAuth scope at all**.
+
+- **The folklore that an app can only write local calendars is wrong** (`documented`, from AOSP
+  source). `CalendarProvider2.insertInTransactionInner` flags a non-sync-adapter insert `DIRTY` and
+  calls `notifyChange(..., syncToNetwork)` with `syncToNetwork` true precisely when the caller is
+  **not** a sync adapter. That is the intended upload path and the one the AOSP Calendar app uses.
+  The real restriction is on the **`Calendars`** table (an app may write only `NAME`,
+  `CALENDAR_DISPLAY_NAME`, `VISIBLE`, `SYNC_EVENTS`) and does not touch `Events` rows.
+  `ACCOUNT_TYPE_LOCAL` is an opt-in "do not sync", not a fallback.
+- **Never append `CALLER_IS_SYNCADAPTER`** on an app write. Nothing prevents it and it is the one way
+  to silently break upload.
+- **REST lost on two hard points, not on taste.** `events.watch` push requires an HTTPS webhook with
+  a valid certificate; LEGION has no backend and CLAUDE.md §7 forbids one, so REST's two-way story
+  degrades to a `syncToken` poll. And every panel render becomes a network round trip, where the
+  provider's `Instances` time-range URI is local, offline, free, and already the agenda query shape
+  chosen by `notes-lists-calendar` ticket 08.
+- Recurrence fidelity is a **tie** - the provider carries `RRULE`/`RDATE`/`EXRULE`/`EXDATE`, real
+  exception rows, and `Events.CONTENT_EXCEPTION_URI` for single-occurrence edits.
+- **Correction to an assumption made while charting: Calendar scopes are `sensitive`, not
+  `restricted`.** REST's marginal OAuth cost was smaller than the map implied. It still loses.
+- **One load-bearing inference, deliberately carried into the build** (`needs-a-spike`): Google's
+  closed-source sync adapter performing the final upload. A ~20 minute on-device spike settles it.
+  It blocks the build, not the decision.
+
+**Note on agent disagreement, kept deliberately.** This agent also argued the 7-day Testing-status
+expiry does not reach LEGION because `DriveAuth` stores no refresh token - contradicting the same
+day's ticket 01, which found the rule stated at the **grant** layer. It further mis-read the
+2026-08-03 device run as a successful Drive connect when `DriveAuth`'s own doc comment records it
+FAILING with `DEVELOPER_ERROR`, so its "free 10-day-old data point" does not exist. **Its correction
+was discounted, not adopted.** The disagreement is settled by observation, not argument - see the
+Publish ticket. Two agents, same day, opposite conclusions from the same public docs: relay the tag,
+never the confidence.
+
+---
+
+## 2026-08-13 - Gmail + Calendar decisions COMPLETE; an appointment stops being a reminder
+
+**Map:** `.scratch/google-account-integration/`. Kevin delegated the last six grilling tickets to
+the recommended defaults ("resolve them all with your default recs"), the same move he made on the
+cyberdeck map. **None of the six was individually put to him; all are reopens.**
+
+**The load-bearing one (ticket 04), and it re-reads a decision made six days earlier.**
+`ListItem.startsAt` stops meaning "this is a calendar event" (`notes-lists-calendar` charting
+decision 6) and starts meaning "remind me about this task at T". **Google owns appointments,
+LEGION owns reminders, and nothing is ever written to both stores.** Consequences:
+
+- **No mirror, no migration, no cached event row, no Room change at all.** There is no sync problem
+  because the two stores never hold the same row. Settled decision 2 ("Google owns a timed event")
+  bought the removal of a recurrence translation layer; taken one step further it removes the sync
+  layer too.
+- Recurrence, `ListItemSkip`, `AlarmScheduler`, MISSED, `exact`/`exactDowngraded` and place triggers
+  **all survive untouched**, applying to reminders only. Google's `RRULE`/`EXDATE` is read-only to
+  LEGION via the `Instances` URI.
+- **LEGION will NOT notify for a Google Calendar event.** Google already does, on every device.
+  Reading an event onto a surface is not owning its alarm; building a second notification is the
+  double-fire the split exists to avoid.
+- Named cost: Alfred must pick a store per utterance ("dentist Tuesday at 3" vs "remind me to change
+  the oil Tuesday"). Mitigation is the notes domain's existing rule - **he says which he did** - and
+  ambiguity defaults to reminder, being local, private and trivially undone.
+
+**The others.** Gmail: two tools, app owns the briefing query (`is:unread in:inbox category:primary
+newer_than:2d`, cap 10), model owns the search query passed to `q` unchanged, **guarded by
+disclosure - Alfred says the query he ran** - rather than by the app second-guessing Gmail's parser.
+**Read-through only**: no Room table for mail, and mail results explicitly excluded from
+`EpisodicTurn`/`CompanionMemory`, because since 2026-08-12 sync backs up all 42 tables and the only
+defence that survives a later feature is that the content was never stored. No durable memories from
+mail. Deck: **no new module, no Gmail surface at all** - voice-only; Google events merge into the
+existing agenda. Consent: incremental, one GOOGLE row, three independent states, and `SyncEngine`
+starts recording *why* it failed so a revoked grant stops reading as "never connected".
+
+**Proposed CLAUDE.md §7 guardrail, NOT yet applied and not yet put to Kevin:** *third-party content
+is read-through only* - anything other people wrote TO Kevin, rather than anything he created or
+chose to import, may be read to answer a question and must then be dropped. Never persisted, never
+synced, never remembered. **The guarantee is that it was never stored, not that something remembered
+to exclude it.** To be applied in the same commit as the build, per MEMORY.md's rule, if he accepts.
+
+**MAP STATE: all eight decision tickets resolved. Fog graduated into build tickets 12-16** (grant
+plumbing -> calendar read -> calendar write + Gmail tools -> ship pass 16, the destination gate).
+**Two tickets are Kevin's console work and block the build: 11 (press Publish) and 09 (add the Gmail
+scope).** Nothing remains in the fog.
+
+---
+
+## 2026-08-13 - Verification gates DISTRIBUTION, not the owner using their own app
+
+**Settled empirically, on the device, not by reading docs.** Two research agents disagreed and the
+Google Cloud console appeared to contradict the policy. All of it is resolved by one observation.
+
+**The setup.** `gmail.readonly` is a RESTRICTED scope. Adding it to the (published, unverified)
+`com.kevin.legion` client made the console raise *"Verification required. A restricted scope was
+added"*, and Data Access then listed it under **"Your restricted scopes - Approval required"** with
+a warning triangle and an unfilled verification submission form.
+
+**The observation.** No submission was made. The app requested the scope on-device, **Google
+presented a normal consent screen, Kevin tapped Allow, and the grant was issued.**
+
+**The rule this establishes for LEGION.** Google's verification process gates **distributing an app
+to strangers**. It does not gate the developer using their own app on their own account. Google's
+own docs carry the exemption in writing - no verification *"if you are the only user of your app or
+if your app is used by only a few users, all of whom are known personally to you"*, restricted
+scopes included. **The console's banner describes what verification would require; it is not a
+precondition for consent.** A future session hitting that banner should not treat it as a blocker.
+
+**Related, same day:** the consent screen was moved from `Testing` to `In production`, which removed
+the 7-day grant expiry. Publishing status and verification are different things and conflating them
+cost an incorrect claim earlier in the session (map settled decision 5, since amended).
+
+**Still unproven, deliberately recorded as such:** that a Gmail API *call* returns data. A granted
+scope and a 200 response are different claims, and an unverified app with a restricted scope is
+exactly where a call-time 403 could still appear. One voice command settles it.
+
+---
+
+## 2026-08-13 - Gmail works. The 403 was SERVICE_DISABLED, not verification
+
+**Ticket:** `.scratch/google-account-integration/issues/20-gmail-says-granted-but-cannot-read.md`.
+
+Setup said "Gmail: Granted" while the assistant said it could not read mail. Both were true. The
+grant was real; **the Gmail API was never enabled in the Cloud project**, so every call returned
+403 `SERVICE_DISABLED` / `PERMISSION_DENIED`. Enabling `gmail.googleapis.com` in
+`midnight-ai-c7421` fixed it, and a real briefing call now returns 200.
+
+**Three lessons, in order of how much they will cost next time.**
+
+1. **A scope appearing in the OAuth scope picker does NOT mean its API is enabled.** The
+   orchestrator saw `gmail.readonly` in the picker, concluded the API was on, and stated that as a
+   finding rather than an inference. It was false, and it made the later failure look mysterious.
+   The console's own note - "only scopes for enabled APIs are listed below" - is what made the
+   inference tempting; it is not reliable.
+2. **The predicted failure was the wrong failure.** A call-time 403 had been flagged as the
+   outstanding risk of using a restricted scope on an unverified app. A 403 duly arrived, from an
+   unrelated cause. Being right that something would break is not the same as knowing why, and the
+   plausible explanation would have sent the fix in the wrong direction.
+3. **On a handset that filters the app's own logcat, a verbatim on-screen diagnostic is not a
+   luxury.** LEGION's four friendly spoken failure messages would have said "Gmail returned an
+   error" forever. The permanent TEST panel on the GOOGLE screen printed Google's raw response body
+   and the answer was in it. **Friendly messages for the driver, verbatim ones for the developer -
+   both, not either.** Pattern to reuse: `GmailTestOutcome`/`GmailTestPanel` in
+   `ui/sync/GoogleAccessScreen.kt`.
+
+**Also verified in the same pass:** ticket 17's read/write calendar split works (the Notes stream
+went from 10 to 24 items once read-only calendars stopped being filtered out), and a new defect was
+found by looking - the `CAL` tag vanishes when an event title wraps to two lines, leaving a Google
+event distinguishable only by the absence of a checkbox. Ticket 21.
+
+## 2026-08-13 - Aspect advisors charted: five pull-only coaches, playbooks baked in
+
+**Map:** `.scratch/aspect-advisors/` (11 tickets). Kevin's ask: a recommendation sub-agent per
+aspect - BIO coach, LOG planner, FLEET maintenance advisor, CRED financial advisor - called by
+the voice orchestrator. Grilled at charting, all Kevin's calls:
+
+1. **Shipped on-device is the destination** (execution in scope, cyberdeck-style override), and
+   scope is all four aspect advisors PLUS a cross-aspect HOME advisor.
+2. **Pull-only.** Advisor speaks only when asked. On-screen advisor panels and proactive delivery
+   (notifications, ProactiveBus) were offered and DECLINED - they are out of scope, not fog.
+3. **Baked-in playbooks**, researched at dev time, shipped in the brief. Runtime search grounding
+   declined. LLM advises, app computes: advisors get deterministic digests, never do arithmetic.
+4. **Goals are new stored data** per aspect, outside the trust tiers like targets (an intention
+   is not a claim). Room migration to come.
+5. **Propose -> accept -> write.** An advisor's plan lands in the record only on Kevin's spoken
+   yes, through the existing tool layer, tagged advisor-proposed.
+
+All four playbook research tickets resolved same day (drafts in
+`.scratch/aspect-advisors/research/`, sources in each). Notable: scheduled deloads scored neutral
+in a 2024 RCT so BIO prescribes reactive-only; GTD's hard-landscape rule makes "Google owns
+appointments" the orthodox split; FLEET's rules were checked against `MaintenanceItem`'s actual
+due-axis semantics; CRED bakes hard referral boundaries (tax, investment selection, insurance).
+§7 tension to settle deliberately: the no-compulsion line for a coach is its own ticket
+(`issues/10-safety-and-labelling.md`), not left to prompt vibes. Frontier next: the advisor
+contract, then the goal store.
+
+## 2026-08-13 - The advisor contract: one harness, one tool, one POST, and a persisted advice log
+
+**Ticket:** `.scratch/aspect-advisors/issues/01-advisor-contract.md`. Grilled with Kevin.
+
+1. **One `AdvisorAgent` harness, five briefs** (playbook + digest builder + writable-proposal
+   schema per aspect). Shared rules - estimate wording, no-compulsion, crisis stop - live once in
+   the harness prompt, the tier-tagging-at-the-tool-layer trick applied to safety copy.
+2. **One `ask_advisor(aspect, question)` tool** on the live session; accepts reuse existing write
+   tools.
+3. **One-shot `askTyped`**: precomputed digest, one POST returns prose + structured proposal.
+   `investigate` ruled out - Flash cannot combine structured output with tool declarations
+   (SubAgent's own docs, traced).
+4. **Advice log kept** (Kevin, against the record-only recommendation): every advisor exchange
+   persists (question, gist, proposal, accepted/rejected); last ~3 per aspect ride the digest;
+   schema folded into the goal-store ticket; the "I've told you three times" compulsion edge is
+   assigned to the safety ticket.
+
+**Segue with legs:** Kevin flagged live-session context bloat - ~69 tool declarations ride every
+Gemini Live session - and asked for tool DISCOVERY instead. Charted as research ticket
+`issues/12-lean-toolbox.md`: can Live-API tool declarations change mid-session, does a
+discover+dispatch pattern work, what do 69 declarations actually cost. Reaches well beyond the
+advisors effort if it pans out.
+
+## 2026-08-13 - Lean toolbox researched: Gemini Live cannot swap tools mid-session; dispatch can
+
+**Ticket:** `.scratch/aspect-advisors/issues/12-lean-toolbox.md`; findings in
+`.scratch/aspect-advisors/research/lean-toolbox.md`. Research only - the adoption decision is
+folded into the token-budget ticket (11).
+
+Facts: the v1beta BidiGenerateContent WebSocket LEGION uses fixes tool declarations at session
+setup ("You cannot update the configuration while the connection is open" - researched); OpenAI
+Realtime allows it, Gemini does not. Session resumption as a reconfigure path is UNVERIFIED
+(reasoned, needs a spike). Measured: `LiveToolbox.declarations()` holds **71 tools** (MEMORY.md's
+69 is stale), ~43.8k non-comment source chars, estimated **~10-11k prompt tokens riding every
+socket including prewarms**. A 12-15-tool core plus `discover_tools(domain)` +
+`call_tool(name, args_json)` estimates ~2.2-2.7k tokens, **~75-80% saved**, and needs no API
+support - schemas ride back in a function response (MCP's tools/list -> tools/call contract).
+
+Risks named: one extra model turn of voice latency on first domain use; undeclared-tool
+hallucination; lost server-side arg validation (call_tool must validate against the real registry
+and return corrective errors); no published reliability data for this pattern on flash-live audio
+models; and the mail episodic-exclusion check must key on the INNER tool name, not `call_tool`.
+Recommendation: 6-8 static aspect buckets, no RAG retriever, spike one domain before migrating.
+
+## 2026-08-13 - The goal store: one table, prose-first, revision trail, metric-keyed progress
+
+**Ticket:** `.scratch/aspect-advisors/issues/02-goal-store.md`. Grilled with Kevin.
+
+1. **ONE `goals` table with an aspect column**, not per-domain tables. Targets are separate
+   because their shapes genuinely differ (cents+category vs calories+macros vs miles+date); a
+   goal is uniformly statement + aspect + optional number, so fragmenting it buys nothing and
+   costs the HOME advisor a fan-out read. Legion-shape's "separate storage per domain" governed
+   plan-versus-actual mechanics, not every new concept.
+2. **Prose required, numbers optional.** Forcing a number manufactures fake metrics for real
+   goals ("ship the deck"). Measurable goals get gap math; the rest are coached qualitatively.
+3. **Optional `metricKey`** (TEXT) names a metric the app already tracks; when set, deterministic
+   code supplies current value, trend and projection and the LLM only interprets. **Widening the
+   key list is not a migration** (§5's IngestMethod precedent) - and the ticket says to CONFIRM
+   that by reading `createSql` and diffing the schema JSON, not assume it.
+4. **Revision trail, house pattern.** `lineageId` + supersede + status, nothing deleted, matching
+   `BudgetTarget`/`MealTarget` copy-forward (traced). Coaching payoff: a goal that quietly got
+   easier is visible, and it is §7-safe because it is a fact about the record.
+5. **Voice tools + a GOALS panel per aspect screen** (targets already work this way).
+6. **Goal-to-target links inferred, never stored** - a stored link is hand-maintained bookkeeping
+   that goes stale on every target edit.
+7. **Advice log** stores gist + full advice text + proposal JSON + outcome; only gist and
+   proposal ride the digest.
+
+**Schema fact corrected:** the database is at **Room v15** (traced, `CarDatabase.kt` line 109).
+MEMORY.md said v11 and the ticket had guessed v12+; both stale, and a session that trusted either
+would have written the wrong migration. MEMORY.md corrected in the same commit. The goal store is
+**v15 -> v16**, two additive tables.
+
+## 2026-08-13 - Propose-accept-write: the mechanism is the consent, and advisors never write actuals
+
+**Ticket:** `.scratch/aspect-advisors/issues/03-propose-accept-write.md`. Grilled with Kevin.
+
+1. **Stored proposal + `accept_proposal(id)`.** The advisor's structured proposal persists as
+   `pending`; the accept tool executes the STORED json. The live model names a proposal, it never
+   supplies the values, so nothing drifts between what was read aloud and what lands.
+2. **A modification re-asks the advisor** for a fresh proposal. Accept-time overrides were
+   rejected: they put the model back in the business of supplying numbers.
+3. **Intentions only, per-aspect allowlist.** Goals, targets, plans, maintenance items,
+   reminders. **Never an actual, never a delete, never a recategorise.** An actual is a claim
+   about what happened and only Kevin can make it - an advisor logging one manufactures
+   `reported`-tier data from an inference, exactly what the two-trust-tiers decision forbids.
+4. **Provenance in the advice log only.** No `source` column on the five target tables - five
+   migrations for a field nothing reads on the hot path, plus five write paths to keep correct.
+5. **Proposals expire** (conversation + ~24h, reasoned starting number). `accept_proposal`
+   refuses past that **in words**, and the assistant re-checks. Re-verifying by rebuilding the
+   digest at accept time was rejected as a second Gemini call to save a cheap re-ask.
+
+**Scope note that matters for anyone reading LiveToolbox:** this protocol is the EXCEPTION.
+The ~15 existing `log_*`/`set_*` tools keep their deliberate no-confirm behaviour (voice-logging:
+"no confirm step; the assistant states what it wrote"; `log_workout_set` says so in its own
+description, traced). Direct dictation is unchanged; only advisor-authored writes are gated.
+
+## 2026-08-13 - Aspect digests: text not JSON, four periods, aggregates plus exemplars
+
+**Ticket:** `.scratch/aspect-advisors/issues/08-aspect-digests.md`. Grilled with Kevin (batched).
+
+1. **Five `DigestBuilder`s in `advisor/`**, read-only over existing controllers and DAOs -
+   advisor concerns stay out of the domain controllers, and one place audits per-question cost.
+2. **Compact labelled text, not JSON** (`BUDGET groceries target 400.00 actual 312.45 remaining
+   87.55 [proven]`). JSON spends a real share of every digest on punctuation and repeated keys.
+   The ~30-40% saving is ESTIMATED, not measured - the token-budget ticket must confirm it.
+3. **Window: current period + 3 prior, then trends.** Older history arrives as one precomputed
+   trend figure, never rows, so cost does not grow with Kevin's history.
+4. **Aggregates plus named exemplars** (biggest merchants, the stalled lift, the overdue item) -
+   specific without shipping the ledger into every prompt.
+
+**Stated from existing law rather than asked:** every figure carries its `TrustTier` (reusing
+`plan/Plan.kt`'s `combinedTier()`, traced), `UNRECONCILED`-touching figures are marked unverified
+IN WORDS (§4 rule 7) and macro figures marked estimate (§4 rule 5); an empty domain reads
+"not logged", never zero - a digest reporting 0 kcal for an unlogged day would have the coach
+scolding Kevin for a day he simply did not record. Per-aspect contents are specced on the ticket.
+
+## 2026-08-13 - Advisor safety: persona owns tone, harness owns rules; no code floors
+
+**Ticket:** `.scratch/aspect-advisors/issues/10-safety-and-labelling.md`. Grilled with Kevin.
+
+1. **Candid about facts, neutral about Kevin.** "You planned four, you logged one" is always
+   allowed. Banned: disappointment, guilt, streaks, "don't give up on me" - any framing where the
+   app's feelings are the reason to comply. §7's serve-the-user-or-the-retention test, made
+   applicable.
+2. **Data NEVER triggers the crisis path.** `CrisisDetector` stays speech-only (traced: it reads
+   driver speech, is precision-tuned, and its own doc calls it the second line behind the prompt).
+   Inferring distress from a weight trend is the unfalsifiable inference §7 forbids. Speech-borne
+   distress mid-advisor-conversation still fires the existing path and the coach stops performing.
+   The advisor may **decline to help in words** instead - a refusal, not an escalation.
+3. **The advisor speaks in whatever persona is ACTIVE** (Kevin's call, against "always Alfred").
+   `Personas.kt` bundles alfred + dorothy plus custom (traced). **Load-bearing consequence:
+   persona owns TONE, the harness owns the RULES** - every safety rule lives in the `AdvisorAgent`
+   harness prompt, never a persona fragment, so switching persona changes how advice sounds and
+   never what it may say. Any build that puts safety copy in a persona has broken this.
+4. **NO hard numeric floors** (Kevin's call, against enforcing playbook safe ranges at accept
+   time). Cost recorded honestly: a hallucinated number CAN reach a written target and no code
+   stops it. Standing in its place: propose-accept-write reads every number to Kevin and writes
+   only on his yes; playbooks still carry safe ranges as advice; the advisor can decline. Personal
+   app, one adult, §7's framing. Revisit if a bad number ever lands.
+
+**Estimate labels ride a structural `basis` field** (`record`/`estimate`/`playbook`) that the
+harness renders from, not prose the model might omit - the enforce-at-the-tool-layer pattern
+again. Per-playbook professional-referral boundaries stay binding.
+
+## 2026-08-13 - The HOME advisor: synthesis only, read-only, one digest not four
+
+**Ticket:** `.scratch/aspect-advisors/issues/09-home-advisor.md`. Grilled with Kevin.
+
+1. **Its own condensed cross-aspect digest** - one headline line per aspect (the gap that
+   matters, trend direction, goals off track) plus goals and exceptions, ~1x an aspect digest.
+   Four raw digests (~4x prompt) and running the four advisors first (5 calls, 5x latency) were
+   both rejected on cost.
+2. **Synthesis brief, no fifth playbook.** It connects - eating out hitting macros AND budget, a
+   repair hitting the emergency fund, an overloaded week explaining missed sessions - and
+   **defers domain depth to the aspect advisor** instead of improvising.
+3. **Routed as `ask_advisor(aspect = "home")`** - just another aspect value, no new mechanism.
+4. **Read-only.** It hands proposals off to the advisor that owns the aspect and its allowlist,
+   so the author of a proposal is always the one holding the relevant playbook.
+
+**Harness consequence worth carrying into the build:** the one-harness-five-briefs contract holds,
+but HOME's brief has NO playbook and NO writable operations. The harness must treat both as
+OPTIONAL parts of a brief; one that assumes every brief has both would need reworking to admit it.
+
+## 2026-08-13 - Advisor cost ceiling MEASURED; three inherited estimates confirmed
+
+**Ticket:** `.scratch/aspect-advisors/issues/11-token-latency-budget.md`. Analyst pass, real
+tokenizer (`countTokens`, free tier only - no billed generateContent calls made).
+
+**Three estimates carried from earlier sessions, all confirmed rather than inherited:**
+1. Compact text vs JSON digests: **38.5% mean saving** (33.7-44.6% across five aspects).
+   Ticket 08's "30-40%" holds, and slightly undersold BIO and FLEET.
+2. chars/4 as a token heuristic: measured **4.15 chars/token** on the real LiveToolbox slice, so
+   ticket 12's ~10-11k figure was accurate to ~4%, NOT the 20-30% hot it flagged as a risk.
+3. Advice-log window of 3 exchanges: **194 tokens**, the cheapest line in the budget. The
+   PLAYBOOK, not the log, is what the budget must watch.
+
+**Per-question totals:** BIO 3,233 / CRED 3,183 / FLEET 3,806 / LOG 2,821 / HOME 1,038.
+
+**CEILING (binding on build tickets): 2,500 tokens per playbook, 4,000 per aspect question,
+1,500 for HOME.** FLEET's playbook is 2,909 and **must be trimmed by ~409 tokens** (the 17-row
+interval table and the seasonal/DIY prose are the candidates). BIO/CRED/LOG already fit.
+
+**Do not ship a playbook's `## Sources` section to the model** - dev-facing licensing docs,
+500-700 tokens per aspect, zero coaching value.
+
+**Standing socket cost:** `ask_advisor` alone +239 tokens (+2%, ship it); all five advisor/goal
+tools +872 (+7-8%). The number that should drive the lean-toolbox decision: **the declared
+toolbox is already ~a third of a 32k Live context window before a word of conversation**, and
+this effort is the first concrete proposal to grow it - the segue that opened ticket 12 was
+worrying about exactly this addition.
+
+**Latency is UNMEASURED and stays that way here** (would need billed calls). It is a ship-pass
+verification step. Note: `ask_advisor` is a sub-agent hand-off like the existing `diagnose_codes`,
+which already tells the model to say "digging into it" before the wait - reuse that pattern.
+
+## 2026-08-13 - Aspect advisors BUILT: six tickets, 905 tests, two majors caught by review
+
+All six code build tickets of `.scratch/aspect-advisors/` are landed on `feat/cyberdeck`
+(`e0fc5e6` goal store, `bc27ef8` harness + playbooks, `76ea3a4` digests + goal tools,
+`7602003` ask_advisor + accept, `c8c5fff` review fixes). **905 unit tests, 0 failures**, re-run
+by the orchestrator on every wave rather than relayed. Only the ship pass (ticket 20) remains.
+
+**Built in three dependency waves, deliberately not all at once**: tickets 18 and 19 both edit
+`LiveToolbox.kt`, and two agents writing one 3,900-line file concurrently is a silent bad merge.
+Wave 1 harness + playbooks, wave 2 five digests + goal tools, wave 3 the wiring.
+
+**Two MAJOR defects found by `bug-hunter` reading call chains end to end, both fixed:**
+1. **A failed write was recorded `accepted` and reported success.** `WorkoutController.generatePlan`,
+   `SleepController.setTarget` and `ReminderController.add` all signal failure by **returning a
+   spoken failure sentence as an ordinary String** rather than throwing. The executor wrapped
+   those as success, so the row was marked `accepted` permanently - unretryable, and shown as
+   accepted forever in the advice log. **The DB row itself became the false positive.** Fixed by
+   DAO read-back verification, never string-matching (a matched sentence rots on first rewording);
+   `WriteFailed` leaves the row `pending` so Kevin can say yes again.
+2. **Check-then-act race in `accept_proposal`** - a double tap, or a model retry racing the
+   original past `TOOL_TIMEOUT_MS` whose orphaned coroutine still completes, could write twice.
+   Fixed with `claimIfPending` (`UPDATE ... WHERE outcome = 'pending'`); **rows-affected is the
+   mutual-exclusion point, the plain read never was.**
+
+**Lesson worth graduating: a controller that returns a failure SENTENCE instead of throwing turns
+every caller into a silent-failure site.** Three separate controllers in this codebase do it. Any
+new caller of `generatePlan`/`setTarget`/`ReminderController.add` must verify by read-back.
+
+`senior-dev` found no hole in the four safety-critical properties (intentions-only, consent
+enforcement, said-in-words, persona-owns-tone) and confirmed the v16 migration SQL byte-verbatim.
+Its one finding (HOME hardcoding its trust tier) is fixed for BIO/CRED; FLEET stays a documented
+hardcode because `MaintenanceItem` carries no per-row tier to combine.
+
+**A correction to the contract, found in build:** `SubAgent.askTyped` enforces NO output schema -
+no `generationConfig`/`responseSchema` in the request body. Structured output is prompt-plus-parser,
+best-effort. `ParseFailed` now carries the raw text and the tool RELAYS the prose, because the
+coaching is usually fine and only the JSON envelope failed. Hardening filed as ticket 21.
+
+---
+
+## 2026-08-13 - Android Auto: charted, and the map's own premise falsified within hours
+
+Effort `.scratch/android-auto/`. Kevin asked to use LEGION in the car "as a widget". **Android Auto
+has no third-party widget surface**; a projected phone app has exactly two doors, the Car App Library
+templates and `MediaBrowserService`. Grilling turned the ask into a shape: **a media app whose play
+button places a self-managed telephony call**, media being the door and the call the room, because a
+calling app has no entry point in Android Auto's app grid. Same brain, all 69 tools, one car-aware
+prompt variant. Destination is DECISIONS; fifteen tickets.
+
+All five research tickets were fired at charting and all five resolved the same day. They rearranged
+the map rather than confirming it.
+
+1. **Settled decision 3 falsified.** The call was chosen because it was believed to be the only route
+   to the car's echo-cancelled HFP microphone. It is not. Android keys "a call is active" off
+   `AudioManager.getMode()`, so `MODE_IN_COMMUNICATION` + `setCommunicationDevice(TYPE_BLUETOOTH_SCO)`
+   gets a plain foreground service the same mic; Telecom is a managed wrapper, **not a privilege
+   gate**. Separately, a self-managed call **is** surfaced to connected Bluetooth devices, so it
+   reaches the car mic over SCO whether or not Android Auto draws anything. **Two routes, neither
+   needing projection to render.** Settled decision 1 ("two surfaces, deliberately") was taken on the
+   dead premise and is re-opened for Kevin.
+2. **A charting claim corrected.** `onPlayFromSearch` does **not** deliver the raw spoken sentence.
+   Google documents `query` as music entities re-joined; "Play Live from Moderat on SoundCloud"
+   arrives as `"live moderat"`. The full sentence sits at the **undocumented**
+   `android.intent.extra.user_query`. Worse, routing "on LEGION" to a sideloaded, never-Play-indexed
+   name is **unsettled**, and Google's only primary statement on name invocation is Play-Console-keyed.
+3. **The risk moved from telephony to distribution.** Android Auto 17.2's own
+   `CarProjectionInCallServiceImpl` declares both flags AOSP needs to hand it a self-managed call
+   (verified on Kevin's phone by pulling gearhead's APK). But the in-call view Google documents is
+   attached to `androidx.car.app.category.CALLING`, an Internal/Closed-Play-track-only programme, and
+   Android Auto's unknown-sources developer option verbatim "doesn't apply to apps built using the
+   Android for Cars App Library". **Sideloading may structurally exclude LEGION from that surface.**
+   Developer mode does explicitly cover **media** apps, which independently vindicates the disguise
+   choice for a reason nobody had while charting.
+
+**Two defects in shipped code fell out of research, neither of them Android Auto work:**
+
+- **OBD reports the car as fine when the Bluetooth link goes quiet.** `Elm327Io.readUntilPrompt`
+  polls `available()` and never blocks on `read()` - and AOSP raises the disconnect from `read()`. So
+  a quiet link returns `""`, `isFailureResponse` reads that as a car fault, LEGION runs its ISO
+  9141-2 K-line recovery ritual against a **Bluetooth** problem and leaves `_connectionState` at
+  `CONNECTED`. **`ACTION_ACL_DISCONNECTED` has zero matches across `app/src/main`.** BLE is worse:
+  `GattInputStream.closed` is written and never read. Fix is local to `sendCommand`: `""` means
+  nothing arrived on the socket, `"NO DATA"` means the adapter answered and the car did not.
+  **`traced`, not `tested`** - ticket 13 proves it before anything is built on it.
+- **The live session can be silenced with no error.** `GeminiLiveSession.kt:888` captures with
+  `VOICE_RECOGNITION`, which is not privacy-sensitive, so a privacy-sensitive capture elsewhere (the
+  Android Auto Assistant) hands LEGION **zeroes - no exception, no callback**. Fix is
+  `VOICE_COMMUNICATION` / `setPrivacySensitive(true)` plus
+  `AudioRecordingConfiguration.isClientSilenced()` so it can say it is being silenced.
+  `MODIFY_AUDIO_SETTINGS` is also missing from the manifest and both routing paths need it. Ticket 15.
+
+**Standing worth carrying:** all five findings came from research agents, are tagged
+`documented`/`inferred`/`field-report`/`traced` in the resolutions, and **none was verified on
+device** except the gearhead manifest dump. Ticket 14 is one 30-minute head-unit session that settles
+rendering, audio route and Assistant preemption together; `dumpsys telecom`'s bound-services list
+separates "gearhead never got it" from "gearhead got it and declined to draw", which are **different
+rulings**.
+
+---
+
+## 2026-08-13 - Only OWN-ACCOUNT movements leave spend, and every figure says so
+
+**Reverses, and then narrows, Kevin's 2026-08-07 ruling** documented in `LedgerTransfers.kt`: that a
+`SUSPECTED_TRANSFER` is flagged but stays in `operating` spend, because only a matched pair is safe
+to pull out and an unimported second statement is routine. That reasoning was sound and the new rule
+keeps its spirit by replacing the weak test rather than lowering the bar.
+
+**The problem, measured on Kevin's real data (497 rows), not argued:** 75 `PAYMENT TO CRD` rows on
+checking total a five-figure sum of his own card payments (in cents), and only 10 `PAYMENT FROM CHK` legs on the card were ever imported.
+So tens of thousands of dollars of his own money moving between his own accounts was counted as spending, on top
+of the purchases it was paying for.
+
+**Why the obvious fix was wrong, and how it was caught.** Excluding everything
+`TRANSFER_KEYWORDS` matches was Kevin's first answer. Measuring it first showed the keyword list
+catches three different things: card payments (75 rows, a five-figure sum in cents), own SAV/CHK transfers (19 rows,
+several thousand dollars in cents), and **40 `Zelle payment to <person>` rows worth several thousand dollars across 40 person-to-person rows, which are real money leaving,
+not transfers at all**. The blunt rule would have hidden thousands of dollars of genuine payments - the
+opposite of the bug being fixed, and precisely what the 2026-08-07 note anticipated. **Kevin was
+shown the breakdown and changed his answer.** A decision put to him twice, with numbers in between,
+is worth more than the first answer executed faithfully.
+
+**The rule now:**
+1. A row leaves `operating` only when its description resolves to **an account Kevin holds** (last
+   four of a known `accountId`, via the existing `LedgerAccountIdentity`/`LedgerAccountMapping`
+   notion). **A keyword is not the test; an owned account is.** Ambiguous means NOT excluded -
+   wrongly excluding real spend is the failure that matters, wrongly including a transfer is only
+   the status quo.
+2. **Every figure that excluded something says so in words**, with count and amount, on the ledger
+   surfaces AND in the voice path. This is §4 rule 7's "said in words on every surface" applied to
+   an aggregate rather than a row. A spoken total that omits what the screen discloses is the same
+   bug in a different surface - see `memory/MEMORY.md`'s L15, where three bugs were found by looking
+   at the phone and none by the suite, all of them one figure computed in more than one place.
+3. **The excluded rows are inspectable**, or the disclosure is a claim rather than a fact.
+4. **The categorisation gate deliberately stays broader than the spend gate.** Transfers AND Zelle
+   rows both stay out of merchant guessing, because a person is not a merchant either; only the
+   SPEND rule narrows to own-account. The two rules now differ on purpose and the code says so, so a
+   future reader does not "fix" the divergence.
+
+**Related, same day, same session:** the seeding hole that put all 497 rows in `Pets`
+(`MIGRATION_16_17`), and the `CHECKCARD` merchant-key bug that let one rule confirm 48 unrelated rows
+into Subscriptions (`MIGRATION_17_18`). All three were found by looking at real data pulled off the
+device, none by the test suite.
+
+---
+
+## 2026-08-13/14 - Quantitative visualization, then GLANCEABLE (Kevin)
+
+**Delegated taste.** Kevin: "lets take a moment to review the app... personally i feel the data can
+be presented in a better way. think visualization of quantitative data (book). the UI can be
+improved" then "leave me out of it. plan the ui improvement and data visualization. hand it off to
+the team to build after. i trust ur taste." Map `.scratch/quant-viz/`, branch `feat/quant-viz`.
+
+**The finding.** The Deck chart kit (`ui/common/DeckCharts.kt` + `DeckChartData.kt`) was complete,
+tested and Tufte-native (sparklines, gap-never-zero, exact Long-cents labels) but wired into ONE
+module. Money - the most chart-ready data in the app, dated, signed, categorised, with explicit
+targets - had zero visualization. `MonthlyRecap`, `YearlyWrapped` and `OilAnalysis` were write-only.
+`DeckMeter` was used once against four target-vs-actual pairs printed as sentences.
+
+**Taste call 1, and Kevin's reversal of it.** The map originally locked "pane -> drilldown: inline
+surfaces get at most a sparkline; Today stays chart-free (cyberdeck ticket 06 answer #4)." After the
+first pass Kevin said: **"inline viz across all tabs. im not gonna read numbers. it has to be
+glancable."** That reverses my restrained-inline call AND cyberdeck-ui ticket 06's chart-free Today,
+both on his own authority. Tickets 10-13 followed. **Standing rule: every tab face carries inline
+visualization; numbers support the graphic, not the reverse.**
+
+**Other locked calls that survived:** no new chart types (no pies/donuts); charts are ADDED next to
+disclosure words, never replacing them; one definition of spend (the monthly trend calls the same
+`budgetVsActual` per month, never a parallel SQL aggregate); ledger coverage rule (an empty day
+INSIDE a covered statement window is a real 0 bar, a day outside every window is a gap slot).
+
+**A gap of my own making, closed:** `BudgetTarget`/`set_budget` existed only by voice, so no meter
+could ever fill from the screen. Ticket 09 added the SET TARGET affordance to the category
+drilldown (Double-free dollars-to-cents parser). Verified by writing Groceries = USD 300 through it
+on the real phone: meter filled 69% with the pace tick at day 14 of 31, both hand-checked.
+
+**LOG tab shape (tickets 14-16).** The WEEK AHEAD density strip is retired in favour of a month
+calendar: dots for density (1-2 events = 1 dot, 3-4 = 2, 5+ = 3), today's cell filled, a selected
+cell outlined, HIDE collapses the grid. **Tapping a day opens an `AlertDialog` listing that day's
+entries** (Kevin: "tapping the date with event on it should pop up a UI showing things due on that
+date") - `SHOW IN LIST` is now the only route to the list filter, since a tap that silently filtered
+a list below the fold read as doing nothing. The popup renders from the same month list that draws
+the dots, on purpose - see L19. `AlertDialog` was chosen over a bottom sheet because every existing
+modal in the app is one.
+
+**Deferred, deliberately:** month-label formatting is duplicated between `SpendTrendDrilldown` and
+`PantryRows`; `dueFraction` approximates a month as 30 days; the dialog's internal scroll is
+untested because no day in Kevin's real data is busy enough to overflow it; MISSED's 4-row cap is
+untested for the same reason.
+
+---
+
+## 2026-08-14 - Mission Control UI: full visual re-do, new wayfinder effort
+
+**Chart.** New map `.scratch/mission-control/map.md` (wayfinder:map), eleven tickets. **Destination is
+SHIPPED on-device, not a spec.** Rebuilds nine data surfaces, shell, nav, boot chrome, driving mode,
+and utility screens on a mission-control aesthetic: red-orange chrome (bezel, pill outlines, alarms),
+mint-green data readouts, amber highlights and markers, CRT bezel with flat content, tiled console
+modules with roomy drilldowns, bundled monospace face. Four reference photos in `.scratch/mission-control/research/refs/` are the brief.
+
+**Supersedes parts of `.scratch/cyberdeck-ui/`.** That map stays closed as history. Tickets from
+cyberdeck-ui that are reopened by this one: ticket 01 (MILSPEC palette), 03 (semantic colour), 04
+(motion escalation), build tickets 12-20, utility-screens scope. **The reversal that matters most:**
+cyberdeck-ui ticket 03 locked "amber = data, green = good, red = needs-you EXCLUSIVELY". Mission-control
+reverses it. Red-orange is now ordinary chrome (pill outlines, bezel, frames); mint carries data; amber
+is highlights and markers. **Consequence:** alarm can no longer announce itself by hue and must escalate
+by solid fill + motion + the word. Ticket 04 of the new map owns that escalation and it is unresolved.
+
+**Still binding, not reopened:** dark-only, no new data collection, CLAUDE.md §4's worded
+provenance/quarantine/estimate/`UNRECONCILED`, money stays `Long` cents, Alfred's register locked.
+
+**Charting decisions (all grilled 2026-08-14, Kevin).**
+1. Destination is a full visual re-do including screen layout, not a repaint.
+2. Refs-faithful colour: red is chrome.
+3. Global bezel, flat content.
+4. Hybrid density: module roots tiled, drilldowns roomy, tappable keeps 48dp target.
+5. Ambient motion raised and budgeted: at most one continuously-animating element per visible surface,
+   low frequency; three theatre moments survive (boot, ingest commit, quarantine).
+6. One open-licensed monospace bundled in `res/font`, app-wide.
+7. Everything relayable, incl. utility screens and driving mode.
+
+## 2026-08-14 - Palette, ground, and the two-hue token table (mission-control ticket 01, RESOLVED)
+
+**Question:** What are the actual colour values, and what does each one mean? Three mocked takes of
+REAL LEGION screens (HOME, BIO, LOG) with real logged data, varied ground and hue pairs. Kevin reacted,
+one won.
+
+**Answer: VACUUM with a tinge of SENTRY** (Kevin, 2026-08-14). Artifact preserves the three takes and
+full reasoning at `https://claude.ai/code/artifact/23c1949c-69d1-46b1-af82-58611b7255cd`. HANGAR
+(warm brown-black from ref-a) declined outright: warmth costs contrast, daylight readability is the
+hard rule in exchange for dark-only.
+
+Ground settled to pure black `#000000` (unlit OLED pixels); SENTRY's navy-black `#05070C` demoted to
+panel tier. Shipping table:
+
+| Token | Value | Role |
+|---|---|---|
+| `ground` | `#000000` | Screen ground |
+| `panel` | `#05070C` | Pane fill |
+| `panelAlarm` | `#170604` | Sunken alarm (M3 `errorContainer`) |
+| `ink` | `#E4E9EF` | Reading text, descriptions |
+| `faint` | `#8E97A3` | Labels, units, provenance. Ticket 10 checks this FIRST |
+| `ghost` | `#58606C` | Timestamps, gaps, disabled |
+| `chrome` | `#FF5330` | Pill outline, bezel, alarm border/fill |
+| `chromeText` | `#FF8A6B` | Pill label, section rule |
+| `chromeDim` | `#5A2317` | Bezel line, pane outline. Structural tier |
+| `rule` | `#1E2530` | Section boundary |
+| `ruleFaint` | `#141A22` | Row separator, meter track, gridline |
+| `data` | `#57EFC6` | Every value |
+| `amber` | `#FFBA1F` | Highlights, active key, estimate tag |
+| `marker` | `#FFD84A` | Chart endpoint, typed markers |
+| `good` | `#7BE86A` | Money in, system ok. Revised away from both takes' greens |
+
+`LegionSemantics` mapping: `credit` = `good`, `debit` = `data` (was `ink`, real change), `estimated`
+= `amber`, `quarantined` = `chrome` (provisional until ticket 04), `rule`/`ruleFaint`/`faint`/`ghost`
+as mapped. New fields `chrome`, `chromeText`, `chromeDim`, `marker`, `data` are build-ticket concern.
+
+**Sub-questions answered:**
+
+1. **Chrome tiers: three, two load-bearing.** `chromeDim` does structural work (bezel line, pane
+   outline); `chrome` reserved for pills, ticks, alarm; `chromeText` for labels. **Finding: full-strength
+   chrome on every pane edge turns the screen into a grid of alarms.** This was the clearest finding.
+2. **Dim-mint token?** No. Ticks, axes, units read as `faint` or `ghost`. Diluting mint dilutes the
+   claim that mint means "this is a value".
+3. **Marker yellow separate from amber?** Yes, `#FFD84A` vs `#FFBA1F` (barely), but **typed markers
+   should differ by SHAPE not hue.** The yellow is a nudge.
+4. **Green survives?** Yes, rare hue, only money-in and system-ok. Under a mint-dominant palette, green
+   is now a rare accent.
+5. **Debits.** Not red, not dimmed. Ordinary values in mint with a minus sign. Preserves shipped
+   `debit` posture; hue changes from `ink` to `data`.
+
+**Deliberately left open:**
+
+- **Quarantine/`UNRECONCILED`/`OVERDUE` placeholder.** Set in chrome red in the mocks; visibly fight
+  the red chrome around them. Ticket 04's problem.
+- **M3 `contentColorFor` collision audit.** The hard invariant from `Theme.kt` (no two of twelve early
+  roles may share a raw value) is NOT satisfied by this palette as written, because it is a palette,
+  not a scheme. Build-ticket verification step with its own history (CLAUDE.md §8 L11).
+- **Contrast ratios unmeasured.** Nothing was computed or read on a device. Ticket 10 owns it.
+
+**Unverified and flagged:**
+
+- No contrast ratio was computed, nothing was read on a device, assumptions about daylight readability
+  are reasoned not measured.
+- "Pure black is unlit pixels" assumes the Oppo A17K has an OLED panel, which was NOT checked. Ticket 10.
+
+**Findings worth preserving in the library (generalizable past this palette):**
+
+1. Full-strength chrome on every pane edge turns the screen into a grid of alarms, so structural tier
+   and label/alarm tier must be different values.
+2. Dim-mint is not a token—diluting the data hue dilutes the claim that mint means "this is a value".
+3. Marker yellow barely separates from amber; typed markers should differ by SHAPE not hue.
+4. Green had to be revised away from both takes' values because a credit did not separate from
+   surrounding mint debits (common problem under mint-dominant palettes).
+
+## 2026-08-14 - Bundled monospace: Martian Mono Condensed (mission-control ticket 02, RESOLVED)
+
+**Bundles Martian Mono Condensed** (OFL 1.1, Evil Martians) in `res/font`, replacing `FontFamily.Monospace`. Runner-ups: JetBrains Mono, IBM Plex Mono. Full measurements and source analysis: `.scratch/mission-control/research/bundled-mono.md`.
+
+Five constraints worth preserving:
+
+1. **Variable fonts unusable at `minSdk = 24`.** Compose gates `setFontVariationSettings` behind `SDK_INT >= 26`, silently returns unmodified typeface below. One variable file = default instance at every weight with faked bold. Ship statics.
+2. **All credible open-mono faces are OFL 1.1; none Apache 2.0.** Roboto Mono relicensed. OFL has no NOTICE mechanism; `OFL.txt` to `third_party/`.
+3. **IBM Plex reserves its name.** Subsetting makes a Modified Version requiring rename. Why Plex placed third.
+4. **`isFixedPitch` flag is unreliable.** Measure `hmtx` instead. Tabular alignment is the mechanism LEGION's money columns depend on—Compose has no `font-variant-numeric: tabular-nums`.
+5. **Type-scale swap IS a type-scale change.** Martian cap height 0.800em; existing `Type.kt` sizes need ~10% pass down. Not optional.
+
+Closes map fog: Martian's four in-family widths mean a condensed cut costs a weight file, not a second face.
+
+**Not verified:** deflated sizes via `gzip -9` proxy only, no APK built; small-size caps judgements via FreeType, not on-device text stack (Oppo A17K).
+
+## 2026-08-14 - Bezel, label pills, and panel chrome (mission-control ticket 03, RESOLVED)
+
+**Dimensioned spec** at `https://claude.ai/code/artifact/ff4efeb1-20b4-4c1d-9154-da2be719254f`, all values in dp at ticket 01's palette. Cite the spec for dimension tables; this entry preserves findings that do not live in the numbers.
+
+**Load-bearing findings:**
+
+1. **A 22dp feed row cannot be tappable.** Dense-feed row and tappable row are **different components, not one with a flag.** 48dp is the floor for anything that navigates. Any alarm needing a tag inside a dense feed must promote that row to 48dp.
+2. **The global bezel costs 32dp of width, 8.9% of a 360dp phone.** Not tunable away—most of it is the 9dp content padding, which cannot drop much below 8dp without the pill colliding with the frame. Downstream layout work gets 328dp, not 360.
+3. **Twenty rows is the phone's ceiling at 22dp.** The reference photos' wall of forty rows is unreachable and should stop being the target.
+4. **The label pill paints the PARENT's ground, not the pane fill.** That is what makes the pane's top rule appear to break around it, and it is an implementation constraint: the pill cannot be a child of the pane's clipped content.
+5. **Long pill labels truncate; the copy gets shortened instead of the type.** A pill at 8sp on one pane and 9sp on the next destroys the grid rhythm. Build tickets shorten copy; they do not add a second pill size.
+6. **No zebra striping.** Every fill on this ground already does semantic work; grouping is the section rule's job.
+7. **`DeckTag`/`QuarantineTag`'s API shape survives untouched, and the reason generalizes.** Keeping red out of the `DeckTagStyle` enum so the only path to a red tag is `QuarantineTag`, auditable in one grep, is **more** load-bearing now that red is ordinary chrome than it was when red was rare. Reinforces earlier ee201c3 finding: a comment-only guard on an enum value is not enough for a rule CLAUDE.md treats as load-bearing.
+8. `StatusLine` survives; the deferred-read cursor stays the one ambient animation. `DeckPane`, `DeckRow`, `DeckMeter` change but keep signatures. `DeckBezel` and `DeckSectionRule` are new.
+
+**Not verified:** nothing was rendered in Compose or on the device; every value is a CSS approximation of a dp. The notch and gesture-bar cases are untested. Corner arc rendering, dashed-hairline phase, and the pill's knockout against the pane rule are named as most likely to need a nudge in the build.
+
+## 2026-08-14 - Alarm escalation when red is chrome (mission-control ticket 04, RESOLVED)
+
+**The premise was false. Red was never exclusive.** Ticket written believing `sem.quarantined` was limited to failed reconciliation gates and crisis states, reserving red as a signal. Grep found **50 call sites across 25 files** using it for six unrelated things: failed gates, DTC faults, destructive-action labels (DELETE/PURGE/END CALL/CLEAR), form validation errors, not-configured states (no key, no Drive, no Spotify, no mic), and UNRECONCILED provisional rows. `QuarantineTag` guarded the tag API but not the field it reads. The doc comment claiming exclusivity was trusted for months without audit. **Sorting this unsorted pile was the real work.**
+
+**Three tiers, DESTRUCTIVE excluded** (Kevin, 2026-08-14).
+
+| Tier | Contains | Treatment |
+|---|---|---|
+| **ALARM** | Failed gate, active fault (DTC) | Inverted pill: solid chrome fill + ground text, panelAlarm pane fill + chrome border, word, ~0.5Hz pulse on pill, persistent ALARM segment in status line replaces SYNC/OBD. While present: surface's ambient element stops, pulse is the only animating element. Tapping segment navigates to alarm. |
+| **ADVISORY** | Not configured, validation error, blocked capability, UNRECONCILED, SET PLAN, PACING HOT | Reuses shipped `DeckTagStyle` ladder: INVERTED_AMBER (solid) for "act on this", OUTLINE_MUTED for "just know this". UNRECONCILED sits filled tier deliberately (§4 rule 7 requires every surface to say so). No status-line segment. |
+| **DESTRUCTIVE** | DELETE, PURGE LEDGER, END CALL, CLEAR | **Outside alarm scheme.** Neutral outline every day, full chrome only on the confirm step (point of no return). A control, not a state. |
+
+**Reduced motion:** alarm pulse collapses to solid. Safe ONLY because the static pill+word already carry the whole meaning; never make motion load-bearing here again.
+
+**Crisis leaves the scheme.** No pill, no pulse, no chrome. Plain text on ground. CLAUDE.md §7 applies: the persona stops performing at crisis; a crisis screen looking like a quarantined statement is the persona still performing. Known gap carried forward: resource is US-only (988).
+
+**Handed onward:** ticket 07 gets the precedence rule (ambient stops while alarm is present). Ticket 05 gets the pill+word fit constraint at 9sp. Ticket 03's feed-row finding stands with consequence: **alarm in a dense 22dp feed promotes that row to 48dp.** All 50 `sem.quarantined` call sites must be re-homed to a tier. Mechanical but not small; skipping leaves the app unsorted.
+
+**Not verified:** 0.5Hz pulse was never rendered or on-device. Status line segment width (328dp) is measured from ticket 03's unmeasured figure. Advisories-don't-reach-status-line was derived, not grilled.
+
+## 2026-08-14 - Console tiling grammar: grid, panel sizes, 48dp floor (mission-control ticket 05, RESOLVED)
+
+**Destination:** dimensioned grammar every build ticket reads. Everything below is measured, not guessed, from the target phone connected on 2026-08-14. Artifact link: `https://claude.ai/code/artifact/ca212901-36ad-4b3f-94d1-b7062ac2afc8` - HOME at 1dp=1px inside the phone's real insets.
+
+### Device profile (on-device 2026-08-14)
+
+| Reading | Value |
+|---|---|
+| Model | CPH2471 (Oppo A17K) |
+| Physical | 720 x 1612 px |
+| In dp | **360 x 806 dp, 2.0x density** |
+| Notch | 38 x 32 dp, centred |
+| Nav mode | 0 (three-button, 48dp bar) |
+| Font scale | 1.0 |
+
+### Two corrections to ticket 03
+
+1. **Nav bar is 48dp, not 24dp gesture bar.** Ticket 03 reasoned about a gesture bar and left it untested. Costs 24dp straight off the content budget.
+2. **There is a notch, untested in ticket 03.** Sits exactly where the bezel's 64dp top break is - harmless because the bezel is inside the insets - but coincidence, not design.
+
+**Ticket 03's 360dp assumption holds.** Interior figure 328dp stands.
+
+### Vertical budget and the content figure
+
+| Band | dp |
+|---|---|
+| System status / cutout | 32 |
+| Bezel top | 17 |
+| Status line | 29 |
+| **Content** | **584** |
+| Alfred strip | 31 |
+| Hard key row | 46 |
+| Bezel bottom | 19 |
+| Nav bar | 48 |
+
+**584dp is 72% of the screen.** Everything tiled fits in this one viewport. A root must show hero plus one full row of tiles without scrolling.
+
+### The grid: two columns, thirds rejected on arithmetic
+
+| Shape | Width | Content | Hero chars at 30sp | Notes |
+|---|---|---|---|---|
+| FULL | 328dp | 310dp | 17 | hero numbers, feeds, charts |
+| HALF | 159dp | 141dp | 7 | one figure + one qualifier |
+| THIRD | 103dp | 85dp | 4 | rejected |
+
+**Thirds are rejected on arithmetic.** Mono advance 18dp per character at 30sp. `82.4` fits; `$2,418` does not. A tile shape that cannot hold this app's most common content is not a tile shape.
+
+**Hard content constraint: half tile holds at most 7 characters of hero.** This is `DeckRow`'s never-truncate-a-value rule read onto layout. `+4,200.00` is nine characters and cannot go in a half tile at 30sp. Either full-width, abbreviate at call site, or step to 19sp secondary (fits 12). Pick deliberately. Never ellipsize.
+
+### Tap targets and interaction state
+
+Whole panel is the target. Every shape clears 48dp by construction (shortest half tile is ~62dp).
+
+**Pressed state: fill change, not border brightness.** Brightening the border to full chrome is exactly ticket 04's alarm pane border - a press would momentarily make an ordinary panel look alarming. Pressed fills `panel` to `rule` instead (cool lift vs alarm's warm fill). Pill paints whatever is behind it.
+
+### Scrolling, pinning, and the bezel
+
+- **Pinned:** status line (top), Alfred strip and hard-key row (bottom). Shell, not content.
+- **Scrolls:** tiled area between, 584dp viewport.
+- **Bezel frames the whole shell,** not a container.
+
+### Drilldown counterpart
+
+| | |
+|---|---|
+| Columns | 1, full-width only |
+| Chart height | >= 120dp (vs 74dp root sparkline) |
+| Hero | 40sp (vs 30sp) |
+| Pane gap | 14dp (vs 9dp) |
+| Rows | 48dp |
+
+**Gap and row height carry the mode change, not panel count.** Drilldown using 22dp rows and 9dp gaps would just be a root with fewer panels.
+
+### Floors no build ticket may undercut
+
+| | |
+|---|---|
+| Body text | 11sp |
+| Label / pill | 9sp |
+| Feed row | 22dp |
+| Tap target | 48dp |
+| Tile width | 159dp |
+| Pane padding | 9 / 13 / 9 / 9 |
+
+These are layout floors. Daylight legibility (ticket 10's measurement) may raise them; nothing undercuts.
+
+### Landscape and large text
+
+`MainActivity.screenOrientation="unspecified"` traced in manifest.
+
+- **Landscape keeps two columns capped at 480dp, centred.** Four columns across 806dp = 190dp tiles nobody designed or will check.
+- **Above font scale 1.15, tiled roots collapse to one column.** Half tile cannot hold its own label at 1.3.
+- **Feed row height scales with its text.** Never pinned in dp while content grows.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| 360 x 806dp, 2.0x, notch 38x32, 3-button nav 48dp, font_scale 1.0 | `on-device` - ADB CPH2471 2026-08-14 |
+| `screenOrientation="unspecified"` | `traced` - AndroidManifest.xml |
+| 328dp interior, 159dp half, 103dp third | `reasoned` - arithmetic on measured width |
+| Hero chars (17/7/4) | `reasoned` - 0.6em mono advance, ticket 02 measured for Martian Mono |
+| Shell band heights (29/31/46dp) | `reasoned` - estimates from current components |
+| **584dp content budget** | `reasoned` - derived from estimates. **First number to re-measure once shell is built** - every budget here depends on it. NOT rendered in Compose. |
+| Pressed-state alarm collision | `reasoned` - follows ticket 04, not rendered |
+
+## 2026-08-14 - Chart kit under two hues: green is dropped (mission-control ticket 06, RESOLVED)
+
+**Ticket 01's decision "green survives as a rare hue" is SUPERSEDED.** Green is dropped entirely. The palette is now genuinely two-hue: mint `#57EFC6` is every value, amber `#FFBA1F` is every highlight, red `#FF5330` is chrome. A credit is mint with a leading `+` and the word CREDIT. `LegionSemantics.credit` keeps its field name and now resolves to `data`, the same value as `debit` - intended, since the field still documents intent at the call site.
+
+**Why:** the `dataviz` skill's palette validator was run instead of judging by eye. Green fails normal-vision separation against mint (dE 10.4, floor 15) AND CVD separation against amber (dE 5.5 deutan, floor 8). Four alternative greens were tested (`#9BE85A`, `#5FD93F`, `#B4E832`, `#3FCF7A`); all fail both. Green is geometrically squeezed between mint and amber.
+
+**A live bug in shipped code, found by the same run:** `DeckBarChart` (DeckCharts.kt lines 326-327) draws an amber `primary` fill against a green `credit` target line, dE 5.5 under deuteranopia, in the app as it stands. Not introduced by this effort; fixed incidentally by the recolour.
+
+**Hue can never carry series identity in LEGION.** The validator's lightness-band check fails on every pair, and that is structural: the dark-only daylight rule forces uniformly high lightness (0.68-0.86), while categorical palettes need lightness spread. Consequence: small multiples are the default, overlay is capped at two direct-labelled series (mint and amber), never three.
+
+**Chrome does not enter the plot** - a deliberate, stated scoped exception to the effort's "red is chrome" rule. Gridlines stay `ruleFaint` and axis labels `faint`, both unchanged from shipped. Red inside a plot means an ALARM annotation and nothing else.
+
+**Markers become shape-typed** because hue can no longer carry meaning: filled dot = logged reading, hollow dot = latest/endpoint, diamond = estimate, cross = provisional/UNRECONCILED, amber dashed = threshold. Nothing drawn = a gap, never a zero (that invariant and its 18 tests are untouched).
+
+**The refs' radial forms (radar, helio map) are ruled out** - no LEGION data honestly needs a radial axis. Bars answer every comparison they serve.
+
+### Handed onward
+
+- **Ticket 01 is revised**: `good` `#7BE86A` is removed. Recorded as a named revision on that ticket.
+- **Ticket 10** should run the validator as part of its measurement pass rather than only computing WCAG contrast.
+- The shipped `DeckBarChart` target-line bug needs no separate ticket; the recolour fixes it.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| Every dE figure in the comparison table | **`tested`** - `node scripts/validate_palette.js`, dataviz skill, run this session |
+| Lightness-band failure is structural to a daylight-bright palette | `reasoned` - the validator reports the failure; the causal explanation is inferred |
+| `DeckBarChart` uses amber fill + green target line | `traced` - read DeckCharts.kt lines 326-327 |
+| The shipped kit is single-series throughout | `traced` - read all composables in DeckCharts.kt |
+| No LEGION data justifies a radial form | `reasoned` - judgement, not a survey |
+
+## 2026-08-14 - Ambient motion budget, one element per surface (mission-control ticket 07, RESOLVED)
+
+**The charting decision's raise was already fully spent.** Ticket 04 set a budget: "at most one continuously-animating element per visible surface, low frequency." The shipped code shows `StatusLine`'s blinking cursor lives in the pinned shell, visible on every surface at once, already consuming the per-surface budget. Any surface-defined ambient element would be the second moving thing in view, not the first. The raise intended to budget motion per-surface; the shell's cursor needed budgeting per-app.
+
+**Resolution: the cursor yields.** A surface that defines its own ambient element renders the cursor solid. Exactly one element moves in view at any moment. The shell defers to content. This preserves the raise's intent without stacking two ambient animations on screen.
+
+**FLEET only, OBD-connected only.** Uplink sweep animates only on FLEET when OBD is connected. The principle (load-bearing): **an ambient element not tied to genuinely live data is decoration.** The sweep announces "something is arriving" (the link is actively polling); disconnected, there is nothing to sweep for. Nothing else in the app has genuinely live data—everything else is logged history, and history does not move. This deliberately spends far less than the raise permits.
+
+| Element | Value |
+|---|---|
+| Cursor blink | 1Hz (450ms on / 500ms off) |
+| Uplink sweep | period >= 4s |
+| Alarm pulse | ~0.5Hz |
+| **Ceiling** | **nothing ambient above 1Hz** |
+| **Amplitude** | **alpha and translation only** (draw phase, not layout) |
+
+**Containment is named and becomes a verification step.** No ambient element may read its animation State during composition. Mechanisms per element:
+- **Status cursor:** `Modifier.graphicsLayer { alpha = cursorAlpha.value }` (lambda overload, read deferred to draw). Already correct; carry verbatim.
+- **Uplink sweep:** leaf `Canvas` or `Modifier.drawBehind { }` reading State in the draw lambda.
+- **Alarm pulse:** same `graphicsLayer` lambda pattern.
+
+Every build ticket landing an ambient element must open Layout Inspector, animate the element, confirm recomposition counts flat for element and ancestors.
+
+**Precedence (one stack):** alarm pulse > surface ambient > shell cursor. Exactly one runs at any moment. Resolves ticket 04's handoff: alarming FLEET does not sweep; cursor stays solid.
+
+**Reduced motion:** `deckMotionEnabled()` remains the single gate. Nothing conveys information only by moving. Sweep's absence is never the only sign OBD is disconnected—status line says `OBD --` in words. Battery/lifecycle lever is data condition (sweep stops when OBD disconnects). No further lifecycle work specified.
+
+**Boot unchanged:** 800ms total, bezel traces on 0-250ms, registration ticks 250ms, status line types 250-450ms, panels/meters draw 450-800ms. Theatre ration stays at three moments (boot, ingest commit, quarantine). Warm resume instant.
+
+**Cleanup task:** `DeckMotion.kt`'s doc comment says "ambient motion is exactly ONE element app-wide", which section 1 supersedes (cursor is one per-surface; surfaces can have one more). Update the comment and fix ticket references to old cyberdeck-ui map.
+
+### Not verified
+
+- **Not rendered, not on a device:** 4s sweep and 1Hz ceiling are reasoned calm, not seen. No battery profiling of animation loop.
+- **Not exhaustively audited:** "nothing else in the app has genuinely live data" is judgement across nine surfaces, not an exhaustive audit.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| Cursor is pinned and visible on every surface | `traced` - StatusLine in DeckPanels.kt + ticket 05's pinned-shell decision |
+| Cursor's deferred-read `graphicsLayer` lambda is correct | `traced` - read implementation and doc comment |
+| `deckMotionEnabled()` is the single existing gate | `traced` - read DeckMotion.kt in full |
+| Alpha and translation are draw-phase; size is not | `reasoned` - standard Compose phase behaviour, compose-recomposition-performance docs |
+| 4s sweep and 1Hz ceiling read as calm | `reasoned` - **not rendered or seen on a device** |
+| No lifecycle work needed beyond data condition | `reasoned` - **not measured; no battery profiling** |
+| Nothing else in the app has genuinely live data | `reasoned` - **judgement across nine surfaces, not exhaustive audit** |
+
+## 2026-08-14 - Driving mode: sunlit legibility and the zero-theatre rule (mission-control ticket 08, RESOLVED)
+
+**The ticket's first question was falsified by measurement.** Asked whether mint survives a sunlit windscreen better than amber; measured WCAG relative luminance against `#000000`:
+
+| Token | Contrast |
+|---|---|
+| `ink` | 17.20:1 |
+| `data` (mint) | **14.57:1** |
+| `amber` | 12.30:1 |
+| `chromeText` | 9.10:1 |
+| `faint` | 7.11:1 |
+| `chrome` | 6.53:1 |
+| `ghost` | 3.30:1 |
+| `chromeDim` | 1.69:1 |
+
+Mint is the higher-contrast choice. No palette split for driving mode; it keeps mint like every other surface.
+
+**App-wide structural finding:** `chromeDim` at 1.69:1 fails WCAG non-text floor (3:1). Bezel lines and pane outlines carry it, so **the entire structural language may vanish in direct sun.** Not a driving-mode problem; a daylight legibility problem carried to ticket 10. `ghost` clears non-text only and must never carry body text.
+
+**Chrome reaches driving mode, full deck language.** Kevin's call, charted with the burden on the aesthetic. Concern raised: glance complexity. Quantified on 806dp screen, three ~190dp panes leave digits at 120sp vs. 140sp bare—mild cost, testable in verification. Bezel, pills, corner ticks, section rules all reach the car.
+
+**Alarm takes a readout with inverted pill, solid chrome fill, word, and 0.5Hz pulse** (ticket 04's full treatment). One moving element, highest-risk per the verification step. Pulse halts if the alarm itself moves, only alarm animates during faults.
+
+**Uplink sweep runs** (FLEET, OBD-connected). Consistent with ticket 07: genuinely live data. The sweep stops when a fault arrives; exactly one non-data element moves at any moment. Precedence: alarm > ambient > cursor.
+
+**Only vehicle-domain alarms surface.** Quarantined statements, expired credentials, unconfigured integrations wait until session end. The gate: an alarm reaches driving mode only if acting on it is a driving decision. Theatre remains fully suppressed.
+
+**Unchanged from cyberdeck-ui ticket 11:** offer on OBD connect (never auto-switch), one EXIT key, three readouts maximum, voice primary.
+
+**Verification is binding (CLAUDE.md §8, L11).** Read on-device, in daylight, in a car, at a glance. Three specific calls against the conservative default:
+
+1. Glance complexity: can the number read in one glance with chrome present?
+2. Alarm pulse: does it pull the eye off the road? (Highest-risk element.)
+3. `chromeDim` at 1.69:1: does the frame survive direct sun, or does structure disappear? (App-wide finding.)
+
+If any cannot be performed, it is a blocking item to surface, not a footnote.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| Every contrast figure | **`tested`** - WCAG 2.x relative luminance computed this session against `#000000` |
+| Mint higher contrast than amber | `tested` - derived from measured figures |
+| ~190dp per pane, ~120sp vs ~140sp digits | `reasoned` - arithmetic on ticket 05's measured 806dp, not rendered |
+| Peripheral motion pulls eyes off road | `reasoned` - general claim, not measured for this UI |
+| Only vehicle-domain alarms should interrupt | `reasoned` - derived from the surface's purpose |
+| Uplink sweep is genuinely live | `traced` - ticket 07's principle, OBD is actively polling |
+| 0.5Hz pulse is the right frequency | `reasoned` - alarm escalation priority, not measured on-device |
+| Nothing rendered, installed, or driven | - |
+
+## 2026-08-14 - Control vocabulary: app-wide, deck-native on M3 machinery (mission-control ticket 09, RESOLVED)
+
+**The premise was too narrow. 191 M3 controls exist app-wide; only 49 live in the five utility screens.** The other 142 are in the nine data surfaces. Ticket reframes from "what do utility screens need" to "what does the whole app need for its form controls", because every build ticket will need the answer.
+
+**Controls: deck-native look, M3 machinery underneath** (Kevin, 2026-08-14).
+
+| Control | Deck form | M3 machinery kept |
+|---|---|---|
+| Switch | Two-state segmented toggle, `ON` / `OFF`, active segment inverted. Not a sliding thumb | `Modifier.toggleable(role = Role.Switch)`, `stateDescription`, 48dp target (ticket 05) |
+| Checkbox | `[X]` / `[ ]` stencil-caps label | `selectable(role = Role.RadioButton)` (when grouped), `stateDescription` |
+| Radio | `(*)` / `( )` stencil-caps label | `selectable(role = Role.RadioButton)`, `stateDescription` |
+| Button | Outlined rectangle, hard-key shape at row scale, stencil caps | Touch target 48dp |
+| Text field | Label above, value on rule, block cursor at caret | Keyboard integration, caret animation |
+| Dropdown | Pane with 48dp rows, not floating Material menu | Touch target per row |
+| Dialog | Pane with pill title, inside bezel | Keyboard escape, dismiss affordance |
+
+**The constraint.** `Theme.kt` states M3 is kept for component behaviour, touch targets and accessibility semantics; only the token layer changes. A custom shape built as a bare `Box` with an `onClick` is a regression: it loses TalkBack semantics and is invisible in a screenshot. Destructive controls follow ticket 04: `ink` outline normally, full `chrome` fill only on the confirming step.
+
+**Utility screens: two get panels, four stay lists.**
+
+| Screen | Treatment | Rationale |
+|---|---|---|
+| `DriveSyncScreen` + `sync/DriveSyncRows` + `GoogleAccessScreen` | Panels | Sync status, last-success time, failure states are genuine telemetry |
+| `KeyScreen` | Panel | `GeminiKeyValidator` has three real outcomes; they are state |
+| `SettingsScreen` + `SettingsRows` | List, new chrome | Toggles do not earn tiling |
+| `CarsScreen` + `fleet/CarRows` | List, new chrome | Metadata, no state to render as panels |
+| `CompanionsScreen` + `companions/CompanionRows` | List, new chrome | Selection list, no telemetry |
+| `SpotifyScreen` + `spotify/SpotifyRows` | List, new chrome | Auth and metadata, no active state |
+
+**`KeyScreen`'s three outcomes, mapped to ticket 04 tiers:** `VALID` gets no tag (silence is the strong state). `INVALID_KEY` and `NETWORK_ERROR` both map to ADVISORY `INVERTED_AMBER`. None are ALARM—a key not yet pasted is the fresh-install state, not a failure.
+
+**First-run legibility is a constraint.** `KeyScreen` and the consent surfaces are what a stranger sees first under clone-and-run, before learning any deck vocabulary. They must be legible cold. Also exactly where the last theme's contrast bug shipped (CLAUDE.md §8, L11). Whoever builds this renders these screens on the device, not in a preview.
+
+**Handed onward:**
+- The control vocabulary is a **prerequisite for every build ticket**, not just utility screens, and pairs naturally with theme building.
+- **A verification step for every build ticket landing a control:** confirm M3 role, `stateDescription`, and 48dp target with TalkBack on. Screenshots cannot show this.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| 191 M3 controls app-wide, 49 in utility screens, 142 elsewhere | **`traced`** - grepped `app/src/main/java/com/kevin/legion/ui/` this session |
+| Per-type split (191 total across 5 control types) | `traced` - same grep |
+| `GeminiKeyValidator` returns `VALID` / `INVALID_KEY` / `NETWORK_ERROR` | `traced` - named in CLAUDE.md §3 and shipped `KeyScreen` |
+| M3 is kept for behaviour, touch targets and semantics | `traced` - `Theme.kt` doc comment |
+| A bare `Box` + `onClick` loses TalkBack semantics | `reasoned` - standard Compose behaviour |
+| Which screens have "real state worth a panel" | `reasoned` - judgement from reading contents, not an exhaustive inventory |
+| Nothing rendered or on a device, no TalkBack pass run | - |
+
+## 2026-08-14 - Per-surface panel inventory: HOME first (mission-control ticket 11, RESOLVED)
+
+**Correction leading the entry:** Cyberdeck-ui ticket 06 decided "zero charts on home." The shipped app already has three sparklines (INTAKE, SLEEP, LEDGER month-to-date), added by `quant-viz` effort in commits `087d8f9` and `f1c396d`, both titled "ticket 11" of that map. Ticket 11's own question 3 ("does zero charts on home survive?") is moot. A session trusting the cyberdeck answer instead of grepping would have written a decision reversing something already reversed. The cyberdeck entry (2026-08-07) is now annotated as superseded.
+
+### Inventory: from five domain headlines to six tiles
+
+`HomeDigestBuilder` computes five domain headlines (bio, cred, fleet, log, goals). The shipped screen renders four panes (INTAKE hero, SYSTEMS SWEEP one-row, AGENDA, ALERTS). **SYSTEMS SWEEP dissolves into four half-tiles: BIO, CRED, FLEET, LOG.** This is the only change on HOME that actually uses the grid.
+
+| Panel | Shape | Contents | Earns it |
+|---|---|---|---|
+| INTAKE | FULL, hero | kcal vs target, meter, sparkline | checked most often; most frequent decision |
+| BIO | HALF | latest mass, trend | one figure + qualifier = half-tile shape |
+| CRED | HALF | month spend against target, LEDGER cumulative sparkline | same |
+| FLEET | HALF | due count or link state | same |
+| LOG | HALF | unfiled inbox count or today's item count | same |
+| AGENDA | FULL | timed events | rows; needs width |
+| ALERTS | FULL | everything needing action (see section 3) | rows + tags; needs width |
+
+All four half-tile figures clear ticket 05's 7-character hero limit: `82.4`, `$2,418`, `3 DUE`, `4 NEW` (checked, not assumed).
+
+### Silent domains: full-size tile, worded empty state
+
+A silent domain keeps full size and says so in words. Grid position never changes. This is the tiled equivalent of the shipped never-reorder rule: you learn where BIO is and it stays there whether or not you logged. A fresh install shows four honest empty tiles rather than a layout that changes shape with what you have done.
+
+### ALERTS: "everything needing you"
+
+ALERTS holds ALARM items, ADVISORY items and goal exceptions, each carrying its tier tag from ticket 04, **ALARM always first**. HOME is the single place you see everything asking for action. Capped at five with a worded overflow line (`AND 2 MORE`); the cap stops it becoming a wall.
+
+Resolves a gap ticket 09 left: `KeyScreen`'s outcomes are ADVISORY, so a fresh install with no Gemini key **now says so on HOME** rather than silently not working. Rows are 48dp (ticket 03: a tag needs 48dp tap height; a 22dp feed row cannot carry one).
+
+### Attention: unchanged from shipped, re-confirmed
+
+- **Attention shown by tag, never by reordering.** Grid makes this stronger: a tile that moves is a tile you have to find again.
+- **Fixed order and fixed grid position, always.**
+- Ticket 04's status-line ALARM segment is not redundant with the ALERTS pane. The segment says *that* something is wrong from any surface; the pane says *what*.
+
+### Tap-through
+
+| Tile | Goes to | Surface |
+|---|---|---|
+| INTAKE | INTAKE drilldown | `body` |
+| BIO | BIO root | `body` |
+| CRED | ledger root | `money` |
+| FLEET | FLEET root | `fleet` |
+| LOG | inbox / calendar | `notes` |
+| AGENDA | calendar view | `notes` |
+| ALERTS row | the thing that needs action | varies by row |
+
+Every tile is tappable (48dp satisfied by construction at these shapes, ticket 05).
+
+### Hard keys: the six destinations
+
+Hard-key labels do not map their names to surfaces. Traced in `ui/MainActivity.kt` lines 569-573:
+
+| Hard key | Route to | Surface | Contents |
+|---|---|---|---|
+| HOME | `today` | HOME | Inventory above |
+| BIO | `body` | BODY | Mass, intake, sleep, training panels |
+| LOG | `notes` | NOTES | Inbox, events list, calendar, agenda |
+| FLEET | `fleet` | FLEET | OBD, maintenance, telemetry |
+| CRED | `money` | MONEY | Ledger transactions, categories, targets; also `money/pantry` for receipts |
+
+**Six top-level destinations exist, but only five hard keys.** `settings` is reachable only through the SETUP stamp in `StatusLine`. **Pantry is not its own surface.** A grocery receipt is a purchase, so pantry ingestion lands under `money` as `money/pantry`. This taxonomy is the stable schema for all future screens.
+
+### The reusable method: so remaining surfaces can graduate
+
+This part outlives HOME. For each remaining surface:
+
+1. **Count what the data source can supply**, not what the screen shows. `HomeDigestBuilder` offered five domains where the screen showed four. The delta is the candidate set. Read the controller or digest builder first.
+2. **Count what the shipped screen shows.** Make each candidate earn its tile by naming the decision it supports. Adding panels because there is room is the trap.
+3. **Assign shapes from ticket 05's two-shape vocabulary.** Check every hero figure against the 7-character half-tile limit.
+4. **Fix grid positions. Never reorder; silent entries keep full-size tiles with worded empties.**
+5. **Name the tap-through per tile.**
+6. **Check the budget:** hero plus one full row of tiles must fit above the fold in ticket 05's 584dp.
+7. **Grep the shipped screen's history before trusting any prior decision about it.** This entry's correction is why: trusting the cyberdeck answer without checking the code would have led to re-reversing an already-reversed call.
+
+### Fog graduated into new tickets
+
+Ticket 11 resolves the HOME inventory. Four new tickets now graduate from fog: **12 per-surface inventories** (BIO / LOG / FLEET / CRED using the seven-step method above), **13 build theme/tokens/typeface/controls** (unblocks ticket 10's outdoor pass), **14 build bezel and shell**, **15 build chart kit**.
+
+### Not verified
+
+No surfaces rendered or seen on device. The cap of five on ALERTS is judgement, not measured against real alert load.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| `HomeDigestBuilder` computes five domain headlines | `traced` - read the builder |
+| Shipped screen renders four panes | `traced` - read `TodayScreen.kt` |
+| All four half-tile figures fit the 7-character limit | `tested` - counted against ticket 05's measured limit |
+| Tiles clear 48dp at these shapes | `traced` - ticket 05 by construction |
+| Three sparklines already shipped by quant-viz | **`traced`** - read `TodayScreen.kt` and `git log` for commits 087d8f9 and f1c396d |
+| Hard key to surface mapping (HOME/BIO/LOG/FLEET/CRED) | **`traced`** - `ui/MainActivity.kt` lines 569-573 |
+| Six destinations, five hard keys, settings only via SETUP stamp | `traced` - same source and reasoning |
+| Pantry is under `money`, not its own surface | `traced` - receipt is a purchase, same reasoning tree |
+| Cap of five is the right cap | `reasoned` - judgement, not measured against real alert load |
+| The cyberdeck decision survives as a baseline | `reasoned` - mental model, now annotated as superseded |
+
+## 2026-08-14 - Per-surface panel inventory: BIO, LOG, FLEET, CRED (mission-control ticket 12, RESOLVED)
+
+**Grilled with Kevin, 2026-08-14, following ticket 11's method rather than re-deriving it.**
+
+### Structural split: two pane-shaped, two fundamentally lists
+
+| Surface | Route | Shipped shape |
+|---|---|---|
+| BIO | `body` | **four** `DeckPane`s: MASS, INTAKE, SLEEP, TRAINING |
+| FLEET | `fleet` | **four** `DeckPane`s: Uplink, Maintenance, Drives, Cars |
+| LOG | `notes` | **one** pane (MISSED). Otherwise a LISTS/CALENDAR toggle over an inbox list |
+| CRED | `money` | **zero** panes. Section headers over a transaction list |
+
+BIO and FLEET drop onto the 2x2 grammar without argument. LOG is a calendar over an inbox and CRED is a ledger; both are fundamentally lists. **One shape rule resolves all four without a special case: hero, then tiles, then full-width lists.** Figures get tiles, rows get width. This is the shape HOME uses.
+
+### Inventories
+
+**BIO** (`body`). Hero: MASS full, latest and trend and sparkline.
+
+| Panel | Shape |
+|---|---|
+| MASS | FULL, hero |
+| INTAKE | HALF |
+| SLEEP | HALF |
+| TRAINING | FULL, list |
+
+**FLEET** (`fleet`). Hero: UPLINK full, link state and live values plus surface's ambient sweep (ticket 07).
+
+| Panel | Shape |
+|---|---|
+| UPLINK | FULL, hero |
+| MAINTENANCE | HALF |
+| DRIVES | HALF |
+| CARS | FULL, list |
+
+UPLINK leading and FAULTS folded into UPLINK are unchanged from cyberdeck-ui ticket 09.
+
+**CRED** (`money`). Hero: SPEND full, month spend against target with LEDGER cumulative sparkline.
+
+| Panel | Shape |
+|---|---|
+| SPEND | FULL, hero |
+| BUDGET | HALF |
+| BALANCES | HALF |
+| RECENT ACTIVITY | FULL, list |
+
+**LOG** (`notes`). Hero: TODAY full, today's items.
+
+| Panel | Shape |
+|---|---|
+| TODAY | FULL, hero |
+| MISSED | HALF |
+| LISTS | HALF, count of open items across lists |
+| CALENDAR / INBOX | FULL, existing LISTS/CALENDAR toggle and its content |
+
+### CRED sheds three sections
+
+Four of seven sections stay; three move with named reasons beyond room:
+
+| Section | Goes to | Why |
+|---|---|---|
+| `PENDING (LOGGED BY VOICE)` | CATEGORIZE drilldown | Same job as next row |
+| `CATEGORY GUESSES, NOT CONFIRMED` | Same drilldown | Confirming a guess and confirming a voice entry are one task |
+| `NEEDS ATTENTION` | Stops being a section | Ticket 04 makes it tier tags on rows themselves, plus HOME's ALERTS pane. Section duplicates what tags already say |
+| `START OVER` | Setup | **Destructive purge does not belong on a surface you open daily.** Ticket 04 gives it neutral-until-commit; Setup is where it belongs |
+
+### LOG is the least-evidenced
+
+BIO, FLEET, and CRED were read from their screens. **LOG's inventory is derived from the shape rule rather than from a close reading.** `NotesScreen` is toggle-based not pane-based; the quant-viz effort changed it recently (month calendar replaced a WEEK AHEAD strip, day-filtering added, scroll regression fixed by making its `LazyColumn` the only scroll surface).
+
+**That scroll fix is a live constraint.** Ticket 05 says a tiled root scrolls inside a pinned shell. Reconciling that with LOG's single-scroll-surface fix must happen or the regression comes back. **The LOG build ticket re-reads `NotesScreen` and the quant-viz map before touching it.**
+
+### Unchanged and not re-decided
+
+- **Drilldowns** follow ticket 05 counterpart rules: one column, 14dp gaps, 48dp rows, 120dp charts, 40sp hero.
+- **Pantry** sits under `money/pantry` and keeps cyberdeck-ui ticket 10's ruling: inherits panels, skips charts.
+- **Settings** has no hard key or tile, reached only through SETUP stamp in `StatusLine`.
+- **Silent entries** keep full-size tiles with worded empties; grid positions never move.
+
+### Not verified
+
+Nothing rendered or seen on device. 7-character half-tile limit not checked per figure; build tickets check each against ticket 05.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| Pane counts and headers for all four surfaces | `traced` - grepped `BodyScreen`, `NotesScreen`, `FleetScreen`, `LedgerScreen` |
+| `LedgerScreen`'s seven section headers | `traced` - read from the file |
+| Hard key to route mapping | `traced` - `MainActivity.kt` 569-573 |
+| UPLINK leads, FAULTS folded in | `traced` - cyberdeck-ui ticket 09's answer |
+| quant-viz changed `NotesScreen` recently | `traced` - `git log` |
+| **LOG's inventory** | **`reasoned`** - derived from the shape rule, NOT from a close reading. Weakest part of this answer |
+| 7-character half-tile limit checked per figure | **not checked** - build ticket verifies each against ticket 05 |
+
+## 2026-08-14 - Build: theme, tokens, typeface and the control vocabulary (mission-control ticket 13, BUILT)
+
+**Code landing: palette, LegionSemantics, M3 scheme, bundled Martian Mono Condensed, and the app-wide control vocabulary landed in four commits on `feat/mission-control`.**
+
+| Commit | What |
+|---|---|
+| `24c40e6` | palette, `LegionSemantics`, M3 scheme, bundled typeface |
+| `68c9f75` | bezel, label pills, split row, meter, section rule |
+| `43a9eb1` | the app-wide control vocabulary |
+| `fc34d9c` | the 50 red call sites sorted into tiers, `DeckMotion` doc |
+
+### The headline result
+
+**Red went from 50 call sites to exactly 3**, verified by grep. All three are genuine ALARM: `QuarantineTag` itself, the ledger quarantine row's bar, and the DTC fault code. 42 sites were re-homed to other tiers.
+
+### Verification accounting
+
+| Step | Status |
+|---|---|
+| `compileDebugKotlin -Pnokey` and `testDebugUnitTest` | **DONE**, both green, run directly |
+| Render the five `ThemePreview.kt` previews | **IMPOSSIBLE headlessly, mitigated.** Compose previews cannot render from this environment. `ThemePreview.kt` was updated and compiles. Mitigation is strictly stronger than the gate: APK was installed and the running app screenshotted, which is how the L11 bug was originally caught. Two surfaces inspected, bug class absent |
+| Install and verify by hash | **DONE.** Local and on-device SHA-256 both `b22523fb75061de12dab596d0954154410cb4453abb3bc7629765ddc9b064b7c` |
+| `dataviz` validator regression over final values | **DONE** |
+| TalkBack pass on rebuilt controls | **DEFERRED, named owner.** Nothing migrated to `DeckControls` yet—by design. Moves to first surface build ticket that adopts one. Ticket 09 records that a control lacking semantics is invisible in screenshot |
+
+### On-device observations
+
+**Working:** pure black ground, mint values, red-orange pills, inverted-amber advisory tags (`BEHIND`, `COVERAGE GAP`), Martian Mono Condensed throughout, status line's block cursor.
+
+**Re-homing is visibly correct.** Setup shows `Gemini key: Set`, `Google: Drive connected`, `Spotify: Set up` — all three previously drawn in `sem.quarantined`, all now neutral.
+
+**Two honest observations:**
+
+1. **The Assistant switch is still a Material sliding thumb.** Correct per scope. Now reads as visibly foreign, which is the right signal that migration is not cosmetic.
+2. **`panel` against `ground` is clearly perceptible in practice** despite 1.04:1 ratio. Rows are clearly distinguishable on device. This partly softens ticket 10's structural alarm: WCAG luminance ratio measures text legibility, not surface separation on OLED black. Sunlight untested.
+
+### Finding from validator regression
+
+`marker` `#FFD84A` sits at dE 7.0 from `amber`. **`DeckMarker`'s hue carries no information.** Tickets 01 and 06 both made markers shape-typed, so mitigation exists. Token left in place because two tickets decided it exists; flagged for ticket 15 build.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| Compile and unit tests green | **`tested`** - both run directly |
+| Exactly 3 `sem.quarantined` reads remain, all ALARM | **`tested`** - grepped after change |
+| Installed APK is byte-identical to built one | **`on-device`** - SHA-256 compared both sides |
+| Theme renders without L11-class contrast failure | **`on-device`** - two surfaces screenshotted and inspected |
+| `panel` is perceptible against `ground` in practice | **`on-device`**, indoors only. Sunlight untested |
+| Every control carries correct TalkBack semantics | **`reasoned`** - inferred from modifiers used. Not observed |
+| Bezel arc geometry and pill straddle math are correct | **`reasoned`** - neither wired into screen yet, so neither observed |
+| Tier assignments for 42 re-homed sites | **`reasoned`** - classified against ticket 04's categories; three ambiguous ones named in `fc34d9c` |
+
+## 2026-08-14 - Ticket 05 content budget corrected: 560dp, not 584dp
+
+**Ticket 05 named 584dp as "the first number to re-measure once the shell is built, since every other budget here depends on it." Ticket 14 built the shell and measured 560dp. The mechanism worked as designed.**
+
+Measured via `uiautomator` bounds dump of scrollable NavHost region, cross-checked against `dumpsys window`'s `mFullConfiguration`. Bands sum to exactly 806dp, self-check confirmed.
+
+### Where the 24dp went
+
+| Band | Ticket 05 assumed | Measured |
+|---|---|---|
+| System chrome (status bar + cutout + nav bar) | 80 | **76** |
+| Shell bands (bezel, status line, Alfred strip, hard keys) | 142 | **170** |
+| **Content** | **584** | **560** |
+
+**Direction matters.** System chrome was **4dp pessimistic**: app window is 730dp against 806dp screen, so bars take 76dp combined, slightly less than the 80dp assumed. The error is entirely in ticket 05's own shell band estimates, which consume 170dp measured against 142dp guessed. Ticket 05's assumptions ledger already tagged this as `reasoned` and flagged it as the first number to re-measure.
+
+### What changes downstream
+
+- **Half-tile width unaffected.** 360dp, the 32dp bezel cost and resulting 328dp interior are horizontal and were measured, not estimated. **The 7-character hero limit stands.**
+- **Vertical budgets move.** Build tickets laying out against 584dp get 560dp instead. Roughly one 22dp feed row's worth, small but real.
+- **"Hero plus one full row of tiles above fold" check still passes** comfortably at 560dp.
+
+### Device fact: app is not edge-to-edge
+
+`themes.xml` sets opaque `statusBarColor` and `navigationBarColor`, no `enableEdgeToEdge` or `WindowCompat` call, `targetSdk` is 34. Android reserves both system bars entirely outside the Compose tree, so shell-level chrome needs no `windowInsetsPadding` of its own. Tagged `traced` plus `on-device`.
+
+## 2026-08-14 - Build: all five surfaces (mission-control ticket 16, RESOLVED)
+
+**All five surfaces rebuilt, installed and verified on the phone, 2026-08-14.** Nine commits plus three supporting commits (bezel padding, account masking, uplink sweep).
+
+| Surface | Commits | Shape |
+|---|---|---|
+| HOME | `6347bfd` | SYSTEMS SWEEP dissolved into four half-tiles; ALERTS consolidated |
+| BIO + FLEET | `9a42f09`, `2e1008d`, `14ef1ee` | MASS hero, INTAKE/SLEEP tiles, TRAINING full; UPLINK hero, MAINTENANCE/DRIVES tiles, CARS full |
+| CRED | `2e1008d` | SPEND hero, BUDGET/BALANCES tiles, RECENT ACTIVITY full |
+| LOG | `de6af8c` | TODAY hero, MISSED/LISTS tiles, CALENDAR/INBOX full |
+| Supporting | `82055e4`, `5a67b7e`, `d5e037c` | Bezel padding fix, account masking, uplink sweep (last unbuilt decision on map) |
+
+### The shape rule that held across all five
+
+**Hero, then tiles, then full-width lists.** Figures get tiles, rows get width. Every surface leads with a hero: BIO/MASS, FLEET/UPLINK, CRED/SPEND, LOG/TODAY.
+
+### What the device caught that review could not
+
+Every one of these was invisible in the diff and in the previews. **The rule that produced them is: install it and sample the pixels.**
+
+1. **A full 16-digit card number rendered on the CRED root.** The BALANCES tile printed `accountId` raw, and on real data that is the PAN from a BofA statement. Every preview uses `"BOFA ****4471"`, which already looks masked, so the code read correctly until real data went through it. Fixed with `maskedAccountLabel` at all three display sites, six tests pinning the rule, and the principle recorded: **a stored identifier and a displayed one are not the same string.**
+
+2. **`DeckBezel`'s content padding was measured from the wrong edge**, leaving content 7dp short on every side. It had already been found twice and misfiled both times - ticket 14 called it a bottom-padding deviation, this ticket's HOME build called it horizontal drift in the planning doc. One bug, two symptoms, three sightings before it was understood. Ticket 03's own arithmetic ("32dp, 6 + 1 + 9, doubled") was the proof the whole time.
+
+3. **`HalfTileHero` silently dropped the second word** of a two-word hero: `NOT LOGGED` rendered as `NOT`, because `softWrap` defaulted true and `maxLines = 1` then ate the overflow line.
+
+4. **The amber-instead-of-mint bug shipped four times** - chart series, HOME tiles, BIO's MASS, nearly CRED - every instance from reading `MaterialTheme.colorScheme.primary` instead of `LocalLegionSemantics.current.data`.
+
+5. **FLEET's UPLINK buried its own tiles** under six real DTCs. The first fix misestimated the height by 40dp (estimated 12dp, measured 52dp), and the second was needed because the first fix only postponed the regression - six more fault rows and the tiles disappear again.
+
+### Deviations from ticket 12 inventories, each reported rather than taken silently
+
+- **LOG keeps MISSED's full-detail rows** alongside its new tile. Ticket 12's inventory implied replacing them, but this domain has no drilldown to route a tap to, so collapsing working per-row controls into a passive figure would have been a functional regression.
+- **CRED gained a BALANCES drilldown** beyond ticket 12's list. One tile cannot show four accounts across two currencies, and CLAUDE.md §4 forbids inventing an FX rate to combine them.
+- **FLEET's ADAPTER and SPECS/VIN moved to CARS.** They are configuration, not telemetry.
+
+### Verification accounting (CLAUDE.md §8, L11)
+
+| Step | Status |
+|---|---|
+| Compile and unit tests | **DONE**, green after every commit |
+| Install with `install -r` and hash-verify | **DONE**, SHA-256 compared on every install |
+| Install and look at it | **DONE**, all five plus Setup and drilldowns |
+| Sample pixels for anything visual | **DONE** - caught items 1-4 above and prevented 5's recurrence |
+| LOG scroll regression test | **DONE**, one scroll surface held under expand/collapse |
+| Screen audit beyond the five surfaces | **DONE**, every drilldown and utility screen opened |
+| **TalkBack on migrated controls** | **DONE.** `DeckControls` passes the accessibility node tree; `DeckButton` (Setup purge, CRED CATEGORIZE, LOG calendar-grant) tested via `uiautomator dump`. One false positive recorded: a build agent reported purge row at 29dp / 3dp / 1dp (severe defect), but the row is scrolled off-screen in the unscrolled dump—scrolled into view it measures 48dp exactly. **The lesson: a device measurement is only valid for the state the device was actually in** (see L22 below). |
+| Layout Inspector on ambient element | **NOT APPLICABLE.** The FLEET uplink sweep was deliberately not built; it is the only ambient element and ticket 07 requires a flat-recomposition check that cannot run headlessly. |
+| QUARANTINE drilldown on-device | **NOT REACHABLE** - no quarantined document exists. Source reviewed instead. |
+
+### Still open
+
+- **The FLEET uplink sweep** (ticket 07). The last unbuilt decision on the map.
+- **Ticket 10's daylight pass.** Kevin ruled it fine without measuring; the computed matrix on that ticket stands as the only evidence, and four tokens fail their floors on paper.
+- `DeckBar`'s label/mark collision and `DeckLineOverlay`'s endpoint crowding (ticket 15). Still no live caller.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| Compile and tests green at every commit | **`tested`** - run directly |
+| Every install byte-identical | **`on-device`** - SHA-256 both sides |
+| Five surfaces render as described | **`on-device`** - screenshotted and inspected |
+| Hero colours are mint | **`on-device`** - pixel-sampled |
+| Bezel interior 327dp vs 328dp spec | **`on-device`** - 267 scanlines |
+| LOG still has one scroll surface | **`on-device`** - swipe diff confined to content region |
+| TalkBack semantics on migrated controls | **`tested`** - accessibility node tree via `uiautomator dump` |
+| Account masking changes display only, never identity | `traced` - sameCard and dedup read stored value; six tests document the invariant |

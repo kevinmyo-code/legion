@@ -95,13 +95,76 @@ import java.util.UUID
  * imported cars connects (or a future car picker selects one explicitly),
  * `ActiveVehicle.current` already resolves to it. [ActiveVehicle] itself
  * needs no change.
+ *
+ * AMENDED 2026-08-03: that holds for a car identified by a real dongle MAC.
+ * It does NOT hold for one re-keyed off [SENTINEL_VEHICLE_ID], because a
+ * synthetic id matches no dongle and is not the `"default"` fallback either.
+ * The Outlander is therefore in the database, correct and self-consistent,
+ * and unreachable from the Fleet screen until a vehicle picker exists - and
+ * `ui/` has none today (`FleetScreen` renders `currentVehicle`, singular).
+ * That is a known, deliberate gap, not a silent one: the alternative was
+ * leaving its history welded to the wrong car.
  */
 object MidnightImport {
     private const val TAG = "MidnightImport"
     private const val ASSET_DIR = "midnight_import"
     private const val MANIFEST_FILE = "manifest.json"
     private const val PREFS = "midnight_import"
-    private const val KEY_COMPLETED = "completed"
+
+    /**
+     * Versioned deliberately, and bumped twice on 2026-08-03 for two different
+     * false "clean" passes:
+     *
+     * - `completed` (v1) latched after a pass that imported ZERO rows. Every
+     *   shard failed to open under its `.json.gz` name (see [SHARD_SUFFIXES]) and
+     *   a missing shard returned `TableResult(0, 0)` without incrementing the
+     *   failure count, so thirteen tables reported success having moved nothing.
+     * - `completed_v2` latched the same way minutes later, during the fix for
+     *   [SENTINEL_VEHICLE_ID], because the shard-name fix and the reconciliation
+     *   gate were not yet in the build being tested.
+     *
+     * v3 is the first version where latching means something: a table only counts
+     * as imported if its row count reconciles against the manifest's own stated
+     * count. Bumping is safe because the whole import is identity-keyed and
+     * idempotent - a re-run never duplicates a row that already landed.
+     */
+    private const val KEY_COMPLETED = "completed_v3"
+
+    /**
+     * `"default"` is the placeholder vehicle id on EVERY device that has ever run
+     * this codebase or Midnight AI, which makes it the one `obdMac` value that is
+     * NOT a portable identity - it means "this device's unpaired car", and it names
+     * a different car on each one.
+     *
+     * On 2026-08-03 that bit. Midnight AI used `default` for the Mitsubishi
+     * Outlander (no dongle ever paired to it). LEGION seeds its own fresh-install
+     * placeholder - a 1998 Jeep Cherokee named "Midnight" - at the same key. The
+     * import ran, [loadExistingKeys] found `default` already present, and the
+     * Outlander's `vehicles` row was skipped as a duplicate.
+     *
+     * Its CHILDREN were not skipped. They key on `vehicleId = "default"`, which
+     * matched nothing locally, so all of them imported and attached themselves to
+     * the placeholder Cherokee: 5,242 obd_samples, 21 daily_drive_logs, 2
+     * monthly_recaps, and a `vehicle_specs` row carrying the Outlander's VIN. The
+     * database then asserted that a 1998 Jeep Cherokee was a 2.4L Mitsubishi.
+     *
+     * Nothing caught it. Every insert succeeded, so the pass reported clean and
+     * latched its flag - the CLAUDE.md sec 4 rule 6 shape, where no step was
+     * capable of failing. An incoming vehicle at this id is therefore always
+     * re-keyed to a [syntheticVehicleId] before anything looks at it.
+     */
+    const val SENTINEL_VEHICLE_ID = "default"
+
+    /** The column every child table names its vehicle by (`vehicles` uses `obdMac`). */
+    private const val VEHICLE_COL = "vehicleId"
+
+    /**
+     * Names a table's shard can arrive under, most specific first. `.json.gz` is
+     * what `tools/export_midnight_ai.py` writes; `.json` is what the packaged APK
+     * actually contains, because the asset pipeline inflates and renames it. Both
+     * are read, and the bytes are sniffed either way.
+     */
+    private val SHARD_SUFFIXES = listOf(".json.gz", ".json")
 
     /**
      * @param table SQLite table name, matches the `.json.gz` file name.
@@ -142,6 +205,30 @@ object MidnightImport {
     )
 
     /**
+     * A stable, portable id for a vehicle arriving under [SENTINEL_VEHICLE_ID].
+     *
+     * Derived from the car's own make/model/year rather than minted randomly, so
+     * that re-running the import produces the SAME id and the identity-keyed dedup
+     * still holds - a UUID here would insert a second Outlander on every pass.
+     *
+     * The Outlander yields `imported-mitsubishi-outlander-2020`. A row with no
+     * usable make/model/year at all yields `imported-vehicle`, which is still
+     * better than `default`: it collides only with another equally blank imported
+     * car, never with the local placeholder.
+     */
+    fun syntheticVehicleId(row: JSONObject): String {
+        val year = row.optInt("year", 0)
+        val slug = listOf(
+            row.optString("make", ""),
+            row.optString("model", ""),
+            if (year > 0) year.toString() else "",
+        ).joinToString("-") { it.trim().lowercase() }
+            .replace(Regex("[^a-z0-9]+"), "-")
+            .trim('-')
+        return if (slug.isBlank()) "imported-vehicle" else "imported-$slug"
+    }
+
+    /**
      * Parses `manifest.json`'s `"tables": {name: rowCount}` map. Pure (no
      * Android calls) - unit tested directly rather than through an
      * instrumented asset read.
@@ -172,7 +259,15 @@ object MidnightImport {
      */
     suspend fun run(context: Context) = withContext(Dispatchers.IO) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (prefs.getBoolean(KEY_COMPLETED, false)) return@withContext
+        val alreadyDone = prefs.getBoolean(KEY_COMPLETED, false)
+        // Instrumentation, added 2026-08-12. On Kevin's device 5,263 obd_samples reappeared under
+        // SENTINEL_VEHICLE_ID after every launch, with fresh autoincrement ids, proving a re-insert
+        // - yet this object logged NOTHING across a full captured process log, which is only
+        // possible if it returned here. Observed behaviour and control flow disagreed, so the gate
+        // state is now stated out loud rather than inferred. If this line reports completed=true on
+        // a launch that still re-seeds, the importer is exonerated and the caller is elsewhere.
+        Log.i(TAG, "midnight_import gate: completed=$alreadyDone (key=$KEY_COMPLETED)")
+        if (alreadyDone) return@withContext
 
         val assets = context.assets
         val manifestBytes = try {
@@ -184,20 +279,26 @@ object MidnightImport {
             return@withContext
         }
 
-        val manifestTables = try {
-            parseManifest(manifestBytes).keys
+        val manifestCounts = try {
+            parseManifest(manifestBytes)
         } catch (e: Exception) {
             Log.w(TAG, "manifest.json present but unreadable, aborting import", e)
             MidnightEvents.recordError("midnight_import_manifest", e)
             return@withContext
         }
+        val manifestTables = manifestCounts.keys
 
         val db = CarDatabase.getDatabase(context).openHelper.writableDatabase
         var totalInserted = 0
         var totalSkipped = 0
+        var totalRekeyed = 0
         var failedTables = 0
+        // Filled while `vehicles` imports (it is first, see the class doc's ORDER
+        // section), consumed by every table after it: old sentinel id -> the
+        // synthetic id its rows must actually carry.
+        val remap = mutableMapOf<String, String>()
         for (spec in importOrder(manifestTables)) {
-            val result = runCatching { importTable(db, assets, spec) }
+            val result = runCatching { importTable(db, assets, spec, remap, manifestCounts.getValue(spec.table)) }
                 .getOrElse {
                     failedTables++
                     Log.w(TAG, "midnight_import ${spec.table} failed", it)
@@ -206,7 +307,19 @@ object MidnightImport {
                 } ?: continue
             totalInserted += result.inserted
             totalSkipped += result.skipped
-            Log.i(TAG, "midnight_import ${spec.table}: inserted=${result.inserted} skipped=${result.skipped}")
+            totalRekeyed += result.rekeyed
+            Log.i(
+                TAG,
+                "midnight_import ${spec.table}: inserted=${result.inserted} " +
+                    "skipped=${result.skipped} rekeyed=${result.rekeyed}",
+            )
+        }
+        if (totalRekeyed > 0) {
+            // Loud on purpose: this is rows already on disk being moved off the
+            // wrong car, not routine import traffic. It should appear exactly once
+            // per device and never again.
+            Log.w(TAG, "midnight_import: re-keyed $totalRekeyed row(s) off '$SENTINEL_VEHICLE_ID' -> $remap")
+            MidnightEvents.importRekeyed(totalRekeyed, remap)
         }
         Log.i(
             TAG,
@@ -221,22 +334,61 @@ object MidnightImport {
         else Log.w(TAG, "midnight_import: $failedTables table(s) failed, will retry next launch")
     }
 
-    private data class TableResult(val inserted: Int, val skipped: Int)
+    private data class TableResult(val inserted: Int, val skipped: Int, val rekeyed: Int = 0)
 
     /** One table's worth of rows, in one transaction (CLAUDE.md L11/spec: not
      * one transaction per row - 11.5k of those on a phone is a full minute). */
-    private fun importTable(db: SupportSQLiteDatabase, assets: AssetManager, spec: TableSpec): TableResult {
-        val bytes = try {
-            assets.open("$ASSET_DIR/${spec.table}.json.gz").use { it.readBytes() }
-        } catch (e: IOException) {
-            // manifest.json claimed this table but its shard is missing - the
-            // export script always writes both together, so this would mean a
-            // corrupted or hand-edited bundle. Skip it, don't crash the rest.
-            Log.w(TAG, "manifest listed ${spec.table} but its .json.gz is missing, skipping")
-            return TableResult(0, 0)
+    private fun importTable(
+        db: SupportSQLiteDatabase,
+        assets: AssetManager,
+        spec: TableSpec,
+        remap: MutableMap<String, String>,
+        expectedRows: Int,
+    ): TableResult {
+        // The exporter writes `<table>.json.gz`, but the Android asset pipeline
+        // INFLATES gzipped assets and drops the `.gz` from the packaged name -
+        // verified by listing the built APK on 2026-08-03, where a 170-byte
+        // `build_entries.json.gz` on disk arrives as a 199-byte
+        // `assets/midnight_import/build_entries.json`. Opening only the `.gz`
+        // name therefore threw IOException for EVERY table on EVERY device, which
+        // is why this import had never moved a single row. Try both names, and let
+        // SyncCodec sniff the bytes rather than trust either extension.
+        val bytes = SHARD_SUFFIXES.firstNotNullOfOrNull { suffix ->
+            try {
+                assets.open("$ASSET_DIR/${spec.table}$suffix").use { it.readBytes() }
+            } catch (e: IOException) {
+                null
+            }
+        } ?: throw IOException(
+            "manifest lists ${spec.table} but no shard exists under any of " +
+                SHARD_SUFFIXES.joinToString(" / ") { "${spec.table}$it" },
+        )
+        val rows = SyncCodec.rowsFromNdjsonAuto(bytes)
+
+        // Re-key BEFORE identity keys are computed or dedup runs, so every step
+        // below sees only the portable id and never the sentinel.
+        if (spec.table == "vehicles") {
+            for (row in rows) {
+                if (row.optString("obdMac", "") != SENTINEL_VEHICLE_ID) continue
+                val synthetic = syntheticVehicleId(row)
+                remap[SENTINEL_VEHICLE_ID] = synthetic
+                row.put("obdMac", synthetic)
+            }
+        } else if (remap.isNotEmpty()) {
+            for (row in rows) {
+                val mapped = remap[row.optString(VEHICLE_COL, "")] ?: continue
+                row.put(VEHICLE_COL, mapped)
+            }
         }
-        val rows = SyncCodec.rowsFromGzipNdjson(bytes)
-        if (rows.isEmpty()) return TableResult(0, 0)
+
+        // Rows a PREVIOUS (v1) pass already inserted under the sentinel id are on
+        // disk pointing at the wrong car. Move them before dedup, so they are then
+        // recognised as already-present rather than inserted a second time.
+        val rekeyed = if (spec.table != "vehicles" && remap.isNotEmpty()) {
+            rekeyExistingRows(db, spec, rows, remap)
+        } else {
+            0
+        }
 
         // A handful of Midnight AI rows may predate the `syncId` column and
         // carry a blank value (the column was backfilled lazily there too,
@@ -272,8 +424,79 @@ object MidnightImport {
         } finally {
             db.endTransaction()
         }
-        return TableResult(inserted, skipped)
+
+        // Reconcile against the bundle's OWN stated count, CLAUDE.md sec 4 rule 2
+        // pointed at the import path. Every row the manifest claims must be
+        // accounted for as either inserted now or already present; a shortfall
+        // means rows were dropped, and dropping them quietly is what let this
+        // import report thirteen clean tables while moving nothing at all.
+        //
+        // Rule 6 matters as much as rule 2 here: this check is deliberately
+        // unsatisfiable by an empty extraction. Zero rows against a manifest that
+        // claims 11,511 fails, where the old `return TableResult(0, 0)` passed.
+        val accounted = inserted + skipped
+        if (accounted != expectedRows) {
+            throw IllegalStateException(
+                "${spec.table}: manifest claims $expectedRows row(s), accounted for $accounted " +
+                    "(inserted=$inserted skipped=$skipped) - refusing to call this table imported",
+            )
+        }
+        return TableResult(inserted, skipped, rekeyed)
     }
+
+    /**
+     * Moves rows a v1 pass already wrote under [SENTINEL_VEHICLE_ID] onto the
+     * synthetic id, in place.
+     *
+     * Precision matters more than speed here: the sentinel id is shared with
+     * LEGION's own placeholder car, so `UPDATE ... WHERE vehicleId = 'default'`
+     * would drag the user's OWN locally-recorded rows onto an imported vehicle
+     * they have nothing to do with. Instead each bundle row is matched
+     * individually on its full identity - with the vehicle column forced back to
+     * the sentinel - so only rows this import is known to have created are
+     * touched. Anything the driver generated locally under `default` stays put.
+     *
+     * Returns the number of rows actually moved. Zero on a fresh device, which is
+     * the normal case; non-zero exactly once on a device that ran the v1 import.
+     */
+    private fun rekeyExistingRows(
+        db: SupportSQLiteDatabase,
+        spec: TableSpec,
+        rows: List<JSONObject>,
+        remap: Map<String, String>,
+    ): Int {
+        val reverse = remap.entries.associate { (old, new) -> new to old }
+        var moved = 0
+        db.beginTransaction()
+        try {
+            for (row in rows) {
+                if (!row.has(VEHICLE_COL)) continue
+                val newId = row.optString(VEHICLE_COL, "")
+                val oldId = reverse[newId] ?: continue
+                // Identity as it would have been written by the v1 pass: the same
+                // columns, but still carrying the sentinel vehicle id.
+                val where = spec.identity.joinToString(" AND ") { "`$it`=?" }
+                val args = spec.identity.map { col ->
+                    if (col == VEHICLE_COL) oldId else SyncCodec.sqlArg(row, col)
+                }
+                // The trailing guard is redundant when the vehicle column is part
+                // of the identity and load-bearing when it is not (syncId tables).
+                db.execSQL(
+                    "UPDATE `${spec.table}` SET `$VEHICLE_COL`=? WHERE $where AND `$VEHICLE_COL`=?",
+                    (listOf<Any?>(newId) + args + oldId).toTypedArray(),
+                )
+                moved += changes(db)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return moved
+    }
+
+    /** Rows affected by the last statement on this connection. */
+    private fun changes(db: SupportSQLiteDatabase): Int =
+        db.query("SELECT changes()").use { if (it.moveToFirst()) it.getInt(0) else 0 }
 
     /** Every existing row's identity tuple, so incoming rows can be checked
      * against the local DB before insert (see class doc's IDENTITY section). */

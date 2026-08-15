@@ -12,7 +12,7 @@ import java.util.UUID
  * server host is likewise not a secret, so none of it goes through
  * [com.kevin.legion.ai.KeyVault]. The account's `auth_key` IS a secret -
  * that lives in [com.kevin.legion.ai.CompanionProfile], encrypted, same
- * as the Gemini/Mapbox keys.
+ * as the Gemini key.
  */
 object GaragePreferences {
     private const val PREFS = "garage_preferences"

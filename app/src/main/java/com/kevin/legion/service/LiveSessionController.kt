@@ -9,6 +9,7 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.ai.firstGreetingOpener
+import com.kevin.legion.car.CarProbeLog
 import com.kevin.legion.ui.LegionRoute
 import com.kevin.legion.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
@@ -107,6 +108,24 @@ class LiveSessionController(context: Context) {
     // LISTENING (wait for the driver) or IDLE.
     private var conversationMode = false
 
+    /**
+     * Constructs a fresh [GeminiLiveSession] and, alongside the caller's own wiring, starts
+     * mirroring its [GeminiLiveSession.isSilenced] transitions to [CarProbeLog] (ticket 15 wave 2's
+     * signal, ticket 08's wave 3 consumer - `.scratch/android-auto/issues/15-the-live-session-can-be-silenced.md`).
+     * The three construction sites below ([prewarm], [startConversation], [startProactive]) all
+     * route through here so the car probe session can see silencing regardless of which door opened
+     * the socket, without each call site remembering to wire it separately.
+     */
+    private fun newSession(): GeminiLiveSession {
+        val s = GeminiLiveSession(appContext) { handleEvent(it) }
+        scope.launch {
+            s.isSilenced.collect { silenced ->
+                CarProbeLog.log("CarProbeMicSilenced", "GeminiLiveSession.isSilenced=$silenced")
+            }
+        }
+        return s
+    }
+
     // Status first, then phase: the service renders the overlay on phase changes
     // and reads status.value, so status must already be current when phase emits.
     private fun set(phase: Phase, status: String) {
@@ -134,7 +153,7 @@ class LiveSessionController(context: Context) {
         // instead (see resolveConnectionMode + onTap/startConversation) - a small
         // latency cost, not a correctness one.
         if (!GeminiKeyProvider.hasKey()) return
-        val s = GeminiLiveSession(appContext) { handleEvent(it) }
+        val s = newSession()
         session = s
         pendingAction = Pending.NONE
         conversationMode = false
@@ -320,7 +339,7 @@ class LiveSessionController(context: Context) {
      * failed connection doesn't burn the one-time introduction.
      */
     private fun startConversation() {
-        val s = GeminiLiveSession(appContext) { handleEvent(it) }
+        val s = newSession()
         session = s
         pendingAction = Pending.CONVERSATION
         conversationMode = true
@@ -352,7 +371,7 @@ class LiveSessionController(context: Context) {
 
     /** Cold start a speak-only proactive session (no warm socket existed). */
     private fun startProactive(prompt: String) {
-        val s = GeminiLiveSession(appContext) { handleEvent(it) }
+        val s = newSession()
         session = s
         pendingAction = Pending.PROACTIVE_COLD
         pendingPrompt = prompt
@@ -561,14 +580,14 @@ class LiveSessionController(context: Context) {
 
     private fun openLedgerImport() {
         val intent = Intent(appContext, MainActivity::class.java)
-            .putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.LEDGER_IMPORT)
+            .putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.MONEY_IMPORT)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         appContext.startActivity(intent)
     }
 
     private fun openPantryImport() {
         val intent = Intent(appContext, MainActivity::class.java)
-            .putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.PANTRY_IMPORT)
+            .putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.MONEY_PANTRY_IMPORT)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         appContext.startActivity(intent)
     }

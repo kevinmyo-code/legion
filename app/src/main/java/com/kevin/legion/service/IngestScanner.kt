@@ -141,6 +141,31 @@ class IngestScanner(private val context: Context) {
             _state.value = ScanState.Finished(FileResults())
             return
         }
+        if (children == null) {
+            // The provider declined the ROOT query. Distinct from an empty
+            // folder, and distinct from a revoked grant - measured on the A17K
+            // 2026-08-06, where the persisted READ permission was still live
+            // (the folder row rendered SCAN, not its revoked state) and Drive
+            // returned a null cursor anyway, twice, an hour apart. The listing
+            // came back fine immediately after the folder was opened in the
+            // Drive app itself.
+            //
+            // So the copy names the action that actually works rather than
+            // blaming permissions. Reported, never silent: this exact failure
+            // read as "Scan finished: nothing new" through four scans tonight,
+            // which is indistinguishable from a healthy scan of a folder with
+            // no new statements, and cost an hour of chasing the wrong thing.
+            Log.w(TAG, "scan ABORTED: root listing refused for $treeUri")
+            _events.trySend(
+                ScanEvent.Failed(
+                    "Google Drive didn't answer for that folder. Open the Drive app, look inside the " +
+                        "folder so it loads, then scan again. Nothing was imported and nothing was lost."
+                )
+            )
+            _state.value = ScanState.Finished(FileResults())
+            return
+        }
+        Log.d(TAG, "scan listed ${children.size} file(s) under $treeUri")
         _state.value = ScanState.Listing(children.size)
 
         // Phase 1: parallel limit 4 - fetch + sha256 + classify + spill.
@@ -205,10 +230,20 @@ class IngestScanner(private val context: Context) {
                     ingestedCount++
                     sf.cacheFile.delete() // cleanup obligation 1: per-entry after consumption
                 }
-                is DeterministicResult.Quarantined -> {
+                // On the FOLDER path an unmapped account really is a quarantine
+                // and the parser's own wording is right: there IS a folder, and
+                // mapping it is the fix. Handled alongside Quarantined rather
+                // than separately for exactly that reason - the single-file
+                // path is the one that needed a different answer.
+                is DeterministicResult.NeedsAccount, is DeterministicResult.Quarantined -> {
+                    val reason = when (det) {
+                        is DeterministicResult.NeedsAccount -> det.reason
+                        is DeterministicResult.Quarantined -> det.reason
+                        else -> "This statement's numbers didn't reconcile."
+                    }
                     IngestPipeline.commit(
                         context, sf.driveFileId, treeUri.toString(), sf.displayName,
-                        sf.staged, LedgerIngestResult.Quarantined(det.reason),
+                        sf.staged, LedgerIngestResult.Quarantined(reason),
                     )
                     quarantinedCount++
                     sf.cacheFile.delete()
@@ -341,8 +376,13 @@ class IngestScanner(private val context: Context) {
      * behavior's bug: a subfolder used to come back as an ordinary child,
      * fail every parser, and land [com.kevin.legion.data.local.IngestState.UNREADABLE].
      */
-    private fun listChildren(treeUri: Uri): List<SafChild> {
+    private fun listChildren(treeUri: Uri): List<SafChild>? {
+        // Null from the ROOT query is fatal to the scan and is reported, not
+        // absorbed. Null from a SUBFOLDER is logged and skipped: one
+        // uncooperative subfolder must not discard the files another one
+        // listed fine, and the caller has no way to act on it anyway.
         val topLevel = queryChildDocuments(treeUri, DocumentsContract.getTreeDocumentId(treeUri))
+            ?: return null
         val out = mutableListOf<SafChild>()
         for (child in topLevel) {
             if (child.mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
@@ -351,6 +391,7 @@ class IngestScanner(private val context: Context) {
                 // hint; any directory found AT THIS DEPTH is not descended
                 // into again - the cap this function's doc comment names.
                 out += queryChildDocuments(treeUri, child.documentId)
+                    .orEmpty()
                     .filter { it.mimeType != DocumentsContract.Document.MIME_TYPE_DIR }
                     .map { it.copy(containingFolderId = child.documentId) }
             } else {
@@ -361,7 +402,7 @@ class IngestScanner(private val context: Context) {
     }
 
     /** One binder call: every direct child of [parentDocumentId] within [treeUri]. Shared by the root listing and the one-level subfolder recursion in [listChildren]. */
-    private fun queryChildDocuments(treeUri: Uri, parentDocumentId: String): List<SafChild> {
+    private fun queryChildDocuments(treeUri: Uri, parentDocumentId: String): List<SafChild>? {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocumentId)
         val columns = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -371,7 +412,39 @@ class IngestScanner(private val context: Context) {
             DocumentsContract.Document.COLUMN_LAST_MODIFIED,
         )
         val out = mutableListOf<SafChild>()
-        context.contentResolver.query(childrenUri, columns, null, null, null)?.use { c ->
+        // A THROWN cursor is the same event as a null one (crash fix,
+        // 2026-08-07). The null case below is handled carefully and at length -
+        // but a revoked SAF grant does not politely return null, it throws
+        // SecurityException, and nothing here caught it. That crashed the app
+        // mid-scan for exactly the reason the null branch exists to explain.
+        // Both funnel to the same `null` return so the caller's "LEGION can no
+        // longer read your folder" reporting covers both, rather than one being
+        // explained and the other killing the process.
+        val cursor = try {
+            context.contentResolver.query(childrenUri, columns, null, null, null)
+        } catch (e: Exception) {
+            Log.w(TAG, "child listing threw (grant revoked or tree gone): ${e.message}")
+            null
+        }
+        if (cursor == null) {
+            // A null cursor is NOT an empty folder. It is the provider
+            // declining the query outright - a dropped persisted grant, a
+            // signed-out account, a provider that failed to start. The
+            // previous `query(...)?.use { }` swallowed that into the same
+            // empty list a genuinely empty folder produces, and the scan then
+            // reported "nothing new" for both. That is the whole difference
+            // between "your folder has no new statements" and "LEGION can no
+            // longer read your folder at all", and it was invisible.
+            //
+            // Still not thrown: ticket 05 §9's rule that a scan finding
+            // nothing is a normal outcome holds, and a mid-listing failure
+            // must not abort a batch. It is logged loudly instead, because
+            // there is no crash reporter to catch it (CLAUDE.md §3, Firebase
+            // is not wired up).
+            Log.w(TAG, "listing REFUSED for parent=$parentDocumentId (null cursor, not an empty folder)")
+            return null
+        }
+        cursor.use { c ->
             while (c.moveToNext()) {
                 val documentId = c.getString(0) ?: continue
                 out += SafChild(
@@ -383,6 +456,7 @@ class IngestScanner(private val context: Context) {
                 )
             }
         }
+        Log.d(TAG, "listing for parent=$parentDocumentId returned ${out.size} children")
         return out
     }
 
