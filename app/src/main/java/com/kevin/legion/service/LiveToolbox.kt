@@ -836,6 +836,29 @@ object LiveToolbox {
             required = listOf("service"),
         ))
 
+        // set_maintenance_interval (ticket 05,
+        // .scratch/fleet-maintenance/issues/05-an-edit-that-actually-sticks.md): Kevin's original
+        // attempt to change the oil interval by voice reported success and silently changed
+        // nothing - there was no live tool for it at all, only the advisor's accept_proposal path.
+        // This one ALWAYS reads the row back after writing and states the result, because a
+        // read-back cannot be produced from a write that did not land - see
+        // VehicleController.setMaintenanceInterval's doc for the full mechanism.
+        fns.put(fn(
+            name = "set_maintenance_interval",
+            description = "Set or change how often a maintenance item is due, e.g. 'change the oil " +
+                "interval to every 7,500 miles' or 'set tire rotation to every 6 months'. Marks the " +
+                "interval as driver-confirmed, so the automatic schedule lookup will never silently " +
+                "overwrite it again. Always reads the value back so the driver can hear it actually " +
+                "changed.",
+            params = obj(
+                "service" to schema("string", "The service, e.g. oil change, tire rotation, brake pads."),
+                "interval_miles" to schema("integer", "New mileage interval, if the driver gave one, e.g. 7500."),
+                "interval_months" to schema("integer", "New time interval in months, if the driver gave one, e.g. 6."),
+                "vehicle" to VEHICLE_PARAM,
+            ),
+            required = listOf("service"),
+        ))
+
         // lookup_vin is listed as "category B" in ticket 01 §3's build spec, but
         // it reads the OBD port DIRECTLY (VinDecoder.fromObd()) - the same
         // physical constraint §0 states for category A: there is no such thing
@@ -1374,13 +1397,31 @@ object LiveToolbox {
                 message = PlaceController.tagPlace(context, args.optString("label"))
             )
             "forget_place" -> result(success = true, message = PlaceController.forgetPlace(context, args.optString("label")))
+            // set_odometer/log_service/log_past_service/set_maintenance_interval: success is now
+            // DERIVED from the underlying write (ticket 05, "the no-op guard is law now"), never
+            // hardcoded - VehicleController's *Direct functions return a WriteOutcome precisely so
+            // this dispatch can't assert success above a write that failed the way the rest of the
+            // 194 result( calls in this file still do (deliberately out of scope, see ticket 05's
+            // answer, "scoped, not swept").
             "set_odometer" -> withResolvedVehicle(context, args) {
-                result(success = true, message = VehicleController.setOdometer(context, args.optInt("miles"), it.obdMac))
+                val outcome = VehicleController.setOdometer(context, args.optInt("miles"), it.obdMac)
+                result(success = outcome.success, message = outcome.message)
             }
             "log_service" -> withResolvedVehicle(context, args) {
-                result(success = true, message = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac))
+                val outcome = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac)
+                result(success = outcome.success, message = outcome.message)
             }
             "log_past_service" -> withResolvedVehicle(context, args) { logPastService(context, args, it.obdMac) }
+            "set_maintenance_interval" -> withResolvedVehicle(context, args) {
+                val outcome = VehicleController.setMaintenanceInterval(
+                    context,
+                    args.optString("service"),
+                    args.optInt("interval_miles", -1).takeIf { it > 0 },
+                    args.optInt("interval_months", -1).takeIf { it > 0 },
+                    it.obdMac,
+                )
+                result(success = outcome.success, message = outcome.message)
+            }
             "lookup_vin" -> lookupVin(context)
             "get_specs" -> withResolvedVehicle(context, args) { getSpecs(context, it.obdMac) }
             "check_recalls" -> withResolvedVehicle(context, args) { checkRecalls(context, it.obdMac) }
@@ -3996,9 +4037,12 @@ object LiveToolbox {
             return result(success = false, message = dateError ?: "I need something to go on — a mileage, how long ago, a date, or that it's never been done.")
         }
 
-        val message = VehicleController.logPastServiceDirect(context, service, mileage, milesAgo, date, neverDone, vehicleId)
-        val finalMessage = if (dateError != null) "$message $dateError" else message
-        return result(success = true, message = finalMessage)
+        val outcome = VehicleController.logPastServiceDirect(context, service, mileage, milesAgo, date, neverDone, vehicleId)
+        // A bad/future date is a separate soft warning appended to whatever the
+        // write itself reported - it does not override outcome.success, which
+        // is ticket 05's no-op guard and reflects whether the write actually landed.
+        val finalMessage = if (dateError != null) "${outcome.message} $dateError" else outcome.message
+        return result(success = outcome.success, message = finalMessage)
     }
 
     /**

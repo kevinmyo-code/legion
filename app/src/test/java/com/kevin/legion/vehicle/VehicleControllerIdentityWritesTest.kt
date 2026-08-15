@@ -5,6 +5,7 @@ import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -108,15 +109,22 @@ class VehicleControllerIdentityWritesTest {
      * same false success ticket 13 was opened to remove, just moved one layer
      * down (lessons.md L16).
      */
+    /**
+     * Ticket 05 promoted [VehicleController.setOdometer]'s String reply to a
+     * [VehicleController.WriteOutcome] so a caller (LiveToolbox) can derive
+     * `success` from the write itself rather than string-matching the
+     * message - `success` is asserted directly here for the same reason.
+     */
     @Test
     fun `setOdometer on a car with no row refuses instead of silently swallowing the reading`() = runBlocking {
         val reply = VehicleController.setOdometer(context, miles = 142_500, vehicleId = "never:registered:mac")
 
+        assertFalse("A write that touched zero rows must report success = false. Was: $reply", reply.success)
         assertTrue(
             "Reply must say the car is not on file, not claim success. Was: $reply",
-            reply.contains("don't have this car on file", ignoreCase = true),
+            reply.message.contains("don't have this car on file", ignoreCase = true),
         )
-        assertTrue("Reply should still carry the number so it is not lost to the driver", reply.contains("142500"))
+        assertTrue("Reply should still carry the number so it is not lost to the driver", reply.message.contains("142500"))
         assertNull("No row may be created by an odometer write", dao.getByMac("never:registered:mac"))
         assertTrue(dao.getAllIncludingArchived().isEmpty())
     }
@@ -137,7 +145,8 @@ class VehicleControllerIdentityWritesTest {
         assertEquals(227_500, after.odometerBaseline)
         assertEquals(0.0, after.tripMilesSinceBaseline, 0.0001)
         assertTrue("Baseline timestamp must be stamped", after.odometerBaselineAt > 0L)
-        assertTrue("Reply must not be the refusal. Was: $reply", !reply.contains("don't have this car on file", true))
+        assertTrue("A write that landed must report success = true. Was: $reply", reply.success)
+        assertTrue("Reply must not be the refusal. Was: $reply", !reply.message.contains("don't have this car on file", true))
     }
 
     /**

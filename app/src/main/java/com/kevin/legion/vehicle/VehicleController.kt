@@ -39,6 +39,17 @@ object VehicleController {
     private const val DAY_MS = 24L * 60 * 60 * 1000
 
     /**
+     * Outcome of a voice/tool write that can now fail structurally rather than by string-matching
+     * the reply (ticket 05, `.scratch/fleet-maintenance/issues/05-an-edit-that-actually-sticks.md`
+     * - "the no-op guard is law now"). [success] is derived from the underlying targeted write's
+     * row count, never asserted; [message] is exactly what the caller speaks either way. Closes the
+     * gap ticket 05 itself named: `LiveToolbox` used to hardcode `success = true` above every one
+     * of these calls, so the JSON envelope handed to Gemini said the call succeeded even when
+     * [message] was a refusal - a false success one layer up from the database write it wraps.
+     */
+    data class WriteOutcome(val success: Boolean, val message: String)
+
+    /**
      * Default assistant personality (ported from Midnight AI's Zero persona, which was
      * already character-only and stated no identity claim, so it carries over as-is).
      * Single global assistant identity now - no per-car companion, no Zero-vs-car-self
@@ -136,9 +147,9 @@ object VehicleController {
      * accumulator. [vehicleId] is the fleet-wide-voice override (ticket 01,
      * "category B" stored-data tool) - null means the active car, unchanged.
      */
-    suspend fun setOdometer(context: Context, miles: Int, vehicleId: String? = null): String {
+    suspend fun setOdometer(context: Context, miles: Int, vehicleId: String? = null): WriteOutcome {
         if (miles < 100 || miles > 999_999)
-            return "That reading doesn't look right — odometer should be between 100 and 999,999 miles."
+            return WriteOutcome(false, "That reading doesn't look right — odometer should be between 100 and 999,999 miles.")
         val vehicle = vehicleFor(context, vehicleId)
         val now = System.currentTimeMillis()
         // Targeted write (ticket 13): touches only the odometer baseline fields,
@@ -159,23 +170,30 @@ object VehicleController {
         val written = CarDatabase.getDatabase(context).vehicleDao()
             .setOdometerBaseline(vehicle.obdMac, miles, now, now)
         if (written == 0) {
-            return "I don't have this car on file yet, so I can't attach that reading to it. " +
-                "Tell me the year, make and model first and I'll record $miles miles straight after."
+            return WriteOutcome(
+                false,
+                "I don't have this car on file yet, so I can't attach that reading to it. " +
+                    "Tell me the year, make and model first and I'll record $miles miles straight after.",
+            )
         }
-        return listOf(
-            "Got it, $miles on the clock. I'll keep track from here.",
-            "Noted, $miles miles. Let's see how long till the next thing breaks.",
-            "$miles it is. Filed away.",
-        ).random()
+        return WriteOutcome(
+            true,
+            listOf(
+                "Got it, $miles on the clock. I'll keep track from here.",
+                "Noted, $miles miles. Let's see how long till the next thing breaks.",
+                "$miles it is. Filed away.",
+            ).random(),
+        )
     }
 
     /**
      * Normalises a free-text service name (from Gemini, either a spoken log or a
      * looked-up interval) onto the app's canonical vocabulary so the same real
      * service always lands on the same [MaintenanceItem] row. Falls back to
-     * titlecasing the raw name when it matches none of the 9 canonical keywords -
-     * that fallback can still vary phrasing-to-phrasing (accepted; see
-     * [refreshServiceIntervals]'s doc for the bug this specifically closes).
+     * word-by-word titlecasing the raw name when it matches none of the 9
+     * canonical keywords - that fallback can still vary phrasing-to-phrasing
+     * (accepted; [looksLikeExistingItem] is the guard against that variance
+     * mattering, ticket 07/08).
      */
     /**
      * Free-text service name -> one of [SERVICE_KEYWORDS]' canonical names, or a
@@ -198,7 +216,41 @@ object VehicleController {
             }
             .maxByOrNull { it.second }
             ?.first
-            ?: serviceName.trim().replaceFirstChar { it.titlecase() }
+            ?: titlecaseWords(serviceName.trim())
+    }
+
+    /**
+     * Word-by-word Title Case, not [canonicalizeServiceName]'s old fallback
+     * (`replaceFirstChar { it.titlecase() }`, which only capitalised the FIRST
+     * character of the WHOLE string). That bug is the duplicate engine tickets
+     * 07/08 found: a hand-typed `"transfer case fluid"` stored as
+     * `"Transfer case fluid"` while the LLM seed independently produced
+     * `"Transfer Case Fluid"` - two different strings, and since `serviceName`
+     * is half of [MaintenanceItem]'s composite primary key, two different rows
+     * for the same real service. Pinned by
+     * `VehicleControllerServiceNameTest.canonicalizeServiceName titlecases every word`.
+     */
+    private fun titlecaseWords(raw: String): String =
+        raw.split(" ").joinToString(" ") { word ->
+            if (word.isEmpty()) word else word.replaceFirstChar { it.titlecase() }
+        }
+
+    /**
+     * The demoted, comparator-only half of [canonicalizeServiceName] (ticket 07's ruling: hand-add
+     * storage is verbatim, canonicalisation is for DETECTION only, never a rewrite). Canonicalises
+     * both [typedName] and every name in [existingNames], compares case-insensitively, and returns
+     * the COLLIDING EXISTING name verbatim (never a rewritten form of [typedName]) - or null if
+     * nothing collides.
+     *
+     * Two callers, one function, deliberately: the hand-add duplicate warning ("this looks like Oil
+     * Change - add anyway?", ticket 07) and matching a spoken service to the schedule item it should
+     * reset (ticket 08's `logServiceDirect`/`logPastServiceDirect`) are the SAME comparison - "does
+     * this name refer to a service already on the schedule" - so they share one implementation
+     * rather than drifting into two.
+     */
+    internal fun looksLikeExistingItem(typedName: String, existingNames: List<String>): String? {
+        val canonicalTyped = canonicalizeServiceName(typedName)
+        return existingNames.firstOrNull { canonicalizeServiceName(it).equals(canonicalTyped, ignoreCase = true) }
     }
 
     /**
@@ -206,28 +258,73 @@ object VehicleController {
      * [vehicleId] is the fleet-wide-voice override (ticket 01) - null means
      * the active car, unchanged.
      */
-    suspend fun logServiceDirect(context: Context, serviceName: String, vehicleId: String? = null): String {
+    suspend fun logServiceDirect(context: Context, serviceName: String, vehicleId: String? = null): WriteOutcome {
         val canonical = canonicalizeServiceName(serviceName)
         val db = CarDatabase.getDatabase(context)
         val vehicle = vehicleFor(context, vehicleId)
         val mileage = currentMileage(vehicle)
         val now = System.currentTimeMillis()
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = vehicle.obdMac, serviceName = canonical, mileage = mileage, date = now))
-        val existing = db.maintenanceItemDao().get(vehicle.obdMac, canonical)
-        // neverDone MUST be cleared here, not just in the backfill path. Marking
-        // something never-done and then actually doing it is the normal sequence,
-        // and isDue checks neverDone first and returns true unconditionally - so
-        // leaving it set left a just-completed service reading as permanently
-        // overdue, forever, re-injected into the live prompt every turn.
+
+        // Ticket 08's matching rule: canonicalise the spoken name and every
+        // existing item's name, and compare case-insensitively - never an
+        // exact-name `get`, which missed hand-typed items stored verbatim
+        // (ticket 07) and orphaned an anchor on any phrasing mismatch. Reuses
+        // the same comparator ticket 07 built for the hand-add duplicate
+        // warning, because "does this name refer to a service already on the
+        // schedule" is one question with two callers, not two questions.
+        val existingItems = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val matchedName = looksLikeExistingItem(serviceName, existingItems.map { it.serviceName })
+
+        // The ServiceRecord is ALWAYS written - work done is a true fact
+        // regardless of what the schedule knows (ticket 08 decision). Filed
+        // under the matched item's own stored name when one exists, so a
+        // hand-typed schedule name and its service history read as the same
+        // service; otherwise under the canonical form of what was said.
+        val targetName = matchedName ?: canonical
+        db.serviceRecordDao().insert(ServiceRecord(vehicleId = vehicle.obdMac, serviceName = targetName, mileage = mileage, date = now))
+
+        if (matchedName != null) {
+            // Targeted write (ticket 05): touches only the anchor columns - no
+            // read-modify-write, so a concurrent interval edit can't be lost
+            // between the read above and this write. neverDone is cleared here
+            // (setAnchor's own contract), not just in the backfill path: marking
+            // something never-done and then actually doing it is the normal
+            // sequence, and isDue checks neverDone first unconditionally, so
+            // leaving it set would read a just-completed service as permanently
+            // overdue.
+            val written = db.maintenanceItemDao().setAnchor(vehicle.obdMac, matchedName, mileage, now, now)
+            // matchedName came from a read moments ago; only a concurrent
+            // delete/rename between that read and this write can zero it, and
+            // ticket 05's no-op law says that must be reported, not assumed.
+            if (written == 0) {
+                return WriteOutcome(
+                    false,
+                    "Logged the $matchedName at $mileage miles, but the schedule item disappeared before I could " +
+                        "reset it - it may have just been deleted.",
+                )
+            }
+            return WriteOutcome(
+                true,
+                listOf(
+                    "Nice, logged the $matchedName at $mileage miles. I'll let you know when it's due again.",
+                    "Got it — $matchedName done at $mileage. One less thing to worry about.",
+                    "Logged: $matchedName at $mileage miles.",
+                ).random(),
+            )
+        }
+
+        // No existing item matched (ticket 08): create it and SAY SO, under the
+        // canonical form of what was said - a bad canonicalisation is then
+        // visible immediately, not discovered three days later on a database
+        // pull the way Kevin's silently-created Brake Fluid/Brake Pads rows were.
         db.maintenanceItemDao().upsert(
-            (existing ?: MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = canonical))
-                .copy(lastDoneMileage = mileage, lastDoneDate = now, neverDone = false)
+            MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = canonical, lastDoneMileage = mileage, lastDoneDate = now, neverDone = false)
         )
-        return listOf(
-            "Nice, logged the $canonical at $mileage miles. I'll let you know when it's due again.",
-            "Got it — $canonical done at $mileage. One less thing to worry about.",
-            "Logged: $canonical at $mileage miles.",
-        ).random()
+        return WriteOutcome(
+            true,
+            "Logged the $canonical at $mileage miles. Nothing on your schedule matched, so I've added $canonical " +
+                "as an item - it has no interval yet, tell me one when you want it tracked.",
+        )
     }
 
     /**
@@ -251,28 +348,183 @@ object VehicleController {
         date: Long? = null,
         neverDone: Boolean = false,
         vehicleId: String? = null,
-    ): String {
+    ): WriteOutcome {
         if (!neverDone && mileage == null && milesAgo == null && date == null) {
-            return "I need something to go on — a mileage, how long ago, a date, or that it's never been done."
+            return WriteOutcome(false, "I need something to go on — a mileage, how long ago, a date, or that it's never been done.")
         }
         val canonical = canonicalizeServiceName(serviceName)
         val db = CarDatabase.getDatabase(context)
         val vehicle = vehicleFor(context, vehicleId)
-        val existing = db.maintenanceItemDao().get(vehicle.obdMac, canonical)
-        val base = existing ?: MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = canonical)
 
-        val updated = mergeBackfillAnchors(base, mileage, milesAgo, date, neverDone, currentMileage(vehicle))
-        db.maintenanceItemDao().upsert(updated)
+        // Same comparator-based matching as logServiceDirect (ticket 08) - see
+        // its doc. A backfill against an item that doesn't exist yet creates one,
+        // same as a fresh log.
+        val existingItems = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val matchedName = looksLikeExistingItem(serviceName, existingItems.map { it.serviceName })
+        val targetName = matchedName ?: canonical
+
+        // Ticket 08's backfill-conflict rule: a remembered approximation may not
+        // silently beat a precise ServiceRecord. Real damage on Kevin's device -
+        // log_service wrote a record AND its anchor at 118,374; fourteen seconds
+        // later a mileage-only backfill (no date argument at all) overwrote that
+        // anchor to 118,483 and NULLED its date.
+        //
+        // [date] here is the backfill's OWN claimed date, not "now" - comparing
+        // against wall-clock call time would never catch the real incident (the
+        // conflicting record was logged BEFORE the backfill call, so it can
+        // never be "at or after" a `now` that only gets later). When [date] is
+        // null (mileage/milesAgo-only, exactly the incident's shape, and also
+        // `neverDone`), the merge sets no date at all - there is then no way to
+        // tell whether the backfill precedes or follows an existing record, so
+        // ANY logged record for this item is treated as a conflict (queried
+        // with `atOrAfterMs = 0`, i.e. since the epoch - every real record date
+        // is positive). When [date] IS given, only a record at or after THAT
+        // date conflicts: an older backfill (e.g. "also did this back in 2021")
+        // is not contradicted by a record from today.
+        if (db.serviceRecordDao().hasRecordAtOrAfter(vehicle.obdMac, targetName, date ?: 0L)) {
+            // The refusal is branched and NAMES THE WAY OUT. Both halves were review findings
+            // (2026-08-15): one message covering both cases was factually wrong for `neverDone`
+            // (nothing is being moved backward - the anchor is being cleared), and a refusal with
+            // no stated escape turns the conservative choice into a dead end the driver cannot
+            // reason about. Refusing beats guessing, but only if the driver can see what to do
+            // next; an unexplained refusal is its own kind of silence.
+            return WriteOutcome(
+                false,
+                if (neverDone) {
+                    "I've got a logged $targetName on file, so I can't mark it as never done - that record " +
+                        "says otherwise. If the record is the wrong one, say so and we'll sort that out first."
+                } else {
+                    "I've already got a logged $targetName that's at least as recent as this, so I'm leaving " +
+                        "the schedule alone rather than overwrite something precise with an approximation. " +
+                        "If this one really was later, give me the date and I'll take it."
+                },
+            )
+        }
+
+        val base = existingItems.firstOrNull { it.serviceName == targetName }
+            ?: MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = targetName)
+        val merged = mergeBackfillAnchors(base, mileage, milesAgo, date, neverDone, currentMileage(vehicle))
+
+        if (matchedName != null) {
+            // Targeted write (ticket 05): touches only the anchor columns.
+            val written = if (neverDone) {
+                db.maintenanceItemDao().setNeverDone(vehicle.obdMac, targetName, System.currentTimeMillis())
+            } else {
+                db.maintenanceItemDao().setAnchor(vehicle.obdMac, targetName, merged.lastDoneMileage, merged.lastDoneDate, System.currentTimeMillis())
+            }
+            // matchedName came from a read moments ago; a concurrent
+            // delete/rename is the only way this zeroes, and ticket 05's no-op
+            // law says that must be reported, not assumed.
+            if (written == 0) {
+                return WriteOutcome(
+                    false,
+                    "I found $targetName a moment ago but couldn't write to it just now - it may have just been removed.",
+                )
+            }
+        } else {
+            // Genuine insert (ticket 05: upsert survives for this case only).
+            db.maintenanceItemDao().upsert(merged)
+        }
 
         return if (neverDone) {
-            "Got it, marking $canonical as never done — I'll flag it as overdue."
+            WriteOutcome(true, "Got it, marking $targetName as never done — I'll flag it as overdue.")
         } else {
-            listOf(
-                "Noted — $canonical, backfilled from what you remember.",
-                "Got it, filed $canonical into the record.",
-                "Logged $canonical from memory.",
-            ).random()
+            WriteOutcome(
+                true,
+                listOf(
+                    "Noted — $targetName, backfilled from what you remember.",
+                    "Got it, filed $targetName into the record.",
+                    "Logged $targetName from memory.",
+                ).random(),
+            )
         }
+    }
+
+    /**
+     * Voice-driven interval edit (ticket 05, decision 2 - "voice and screen both, and voice reads
+     * the value back"). Matches [serviceName] against the existing schedule via the same
+     * canonicalised, case-insensitive comparator [logServiceDirect] uses (ticket 08's mechanism),
+     * writes a targeted [MaintenanceItemDao.setIntervals] tagged `CONFIRMED`, and RE-READS the row
+     * before replying - Kevin's original voice attempt reported success and changed nothing, and a
+     * read-back cannot be produced from a write that did not land, which is the entire fix.
+     *
+     * `CONFIRMED` (never `SEEDED`) because a spoken edit through this exact tool IS the explicit
+     * confirmation ticket 05 decided a driver-owned interval requires before anything may touch it
+     * again - the factory populate (ticket 14) skips a `CONFIRMED` row rather than silently
+     * overwriting it.
+     *
+     * At least one of [intervalMiles] / [intervalMonths] must be given.
+     */
+    suspend fun setMaintenanceInterval(
+        context: Context,
+        serviceName: String,
+        intervalMiles: Int? = null,
+        intervalMonths: Int? = null,
+        vehicleId: String? = null,
+    ): WriteOutcome {
+        if (intervalMiles == null && intervalMonths == null) {
+            return WriteOutcome(false, "I need a mileage interval or a time interval to set - which one?")
+        }
+        val canonical = canonicalizeServiceName(serviceName)
+        val db = CarDatabase.getDatabase(context)
+        val vehicle = vehicleFor(context, vehicleId)
+        val now = System.currentTimeMillis()
+
+        val existingItems = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val matchedName = looksLikeExistingItem(serviceName, existingItems.map { it.serviceName })
+        val targetName = matchedName ?: canonical
+
+        if (matchedName != null) {
+            // MERGE, never blanket-write. [MaintenanceItemDao.setIntervals] is an unconditional
+            // `SET intervalMiles = :miles, intervalMonths = :months`, so passing a null through for
+            // an axis the driver never mentioned writes SQL NULL and DESTROYS it.
+            //
+            // Found on review, 2026-08-15, before this reached the device, and it was not
+            // theoretical: 34 of the 54 rows on Kevin's phone carry both axes, including every
+            // intervalled item on the Jeep - `Oil Change 3,000 mi / 3 mo` among them. "Change the
+            // oil interval to 7,500" would have silently nulled the 3-month clock.
+            //
+            // Worse, the read-back below could not have caught it. It re-reads the row and reports
+            // what is actually stored, so it would have confirmed the damaged row as correct -
+            // the safety mechanism reporting success over the failure it exists to catch. An
+            // unowned column is not made safe by a targeted query if the CALLER hands that query a
+            // null for a field it was never asked to touch. `AdvisorProposalExecutor` already
+            // merges this way; this path did not.
+            val existing = existingItems.firstOrNull { it.serviceName == targetName }
+            val finalMiles = intervalMiles ?: existing?.intervalMiles
+            val finalMonths = intervalMonths ?: existing?.intervalMonths
+            val written = db.maintenanceItemDao().setIntervals(vehicle.obdMac, targetName, finalMiles, finalMonths, "CONFIRMED", now)
+            if (written == 0) {
+                return WriteOutcome(
+                    false,
+                    "I found $targetName a moment ago but couldn't write to it just now - it may have just been removed.",
+                )
+            }
+        } else {
+            db.maintenanceItemDao().upsert(
+                MaintenanceItem(
+                    vehicleId = vehicle.obdMac, serviceName = targetName,
+                    intervalMiles = intervalMiles, intervalMonths = intervalMonths, intervalSource = "CONFIRMED",
+                )
+            )
+        }
+
+        // The read-back itself (ticket 05 decision 2): re-read rather than
+        // trust the values just sent, so a write this function's own logic
+        // somehow missed can never still be spoken as fact.
+        val after = db.maintenanceItemDao().get(vehicle.obdMac, targetName)
+            ?: return WriteOutcome(false, "I set that, but couldn't read it back to confirm - check the schedule when you get a chance.")
+
+        val everyPhrase = listOfNotNull(
+            after.intervalMiles?.let { "$it miles" },
+            after.intervalMonths?.let { "$it months" },
+        ).joinToString(" / ")
+        val lastPhrase = when {
+            after.neverDone -> "never done yet"
+            after.lastDoneMileage != null -> "last done at ${after.lastDoneMileage}"
+            else -> "no history logged yet"
+        }
+        return WriteOutcome(true, "$targetName is now every $everyPhrase, $lastPhrase.")
     }
 
     /**
@@ -819,7 +1071,12 @@ object VehicleController {
         // agree on it or nothing ever matches.
         val items = canonicalizeAndDedupe(lookupServiceIntervals(context, vehicle))
         val db = CarDatabase.getDatabase(context)
-        if (items.isNotEmpty()) db.maintenanceItemDao().insertAll(items)
+        // intervalSource is EXPLICIT here, not left to MaintenanceItem's Kotlin
+        // default (ticket 05): this is the ONE writer that is allowed to lay
+        // down a "SEEDED" interval at all, and insertAll's IGNORE is what stops
+        // it from ever overwriting a row a driver has since edited to
+        // "CONFIRMED" - see MaintenanceItemDao.insertAll's own doc.
+        if (items.isNotEmpty()) db.maintenanceItemDao().insertAll(items.map { it.copy(intervalSource = "SEEDED") })
         // Targeted write (ticket 13): flips onboarded only, via
         // VehicleDao.markOnboarded. Every caller of this function already
         // guarantees vehicle's row exists (a fresh insert just above in
@@ -842,51 +1099,15 @@ object VehicleController {
         }
     }
 
-    /**
-     * Re-runs [lookupServiceIntervals] and updates the interval fields on the
-     * vehicle's existing rows, WITHOUT touching what the driver has already
-     * told us (lastDoneMileage/lastDoneDate/neverDone). Deliberately does not
-     * use [MaintenanceItemDao.insertAll] - its IGNORE conflict strategy would
-     * silently no-op on every row that already exists, which is exactly the
-     * common case here (refreshing an already-onboarded car). Returns the
-     * count of items written (created or updated).
-     *
-     * **Names are canonicalized before the lookup and the upsert both.** Gemini's
-     * lookup prompt does not constrain it to the app's vocabulary, so it can come
-     * back with "Engine Oil & Filter Change" for what [logServiceDirect] already
-     * filed as "Oil Change" - an exact-name match against the existing row then
-     * fails, INSERTS a second anchor-less row for the same real service, and that
-     * duplicate silently pollutes [unknownItems] (and compounds on every future
-     * refresh, since it never matches either). Running every looked-up name
-     * through [canonicalizeServiceName] before both the `dao.get` lookup and the
-     * upsert puts it back on the same key spoken logs use, for the 9 canonical
-     * services. Names outside that vocabulary still fall back to titlecase and
-     * can still vary call-to-call - accepted, not fixed by this pass.
-     */
-    suspend fun refreshServiceIntervals(context: Context, vehicle: Vehicle): Int {
-        val looked = lookupServiceIntervals(context, vehicle)
-        if (looked.isEmpty()) return 0
-        val dao = CarDatabase.getDatabase(context).maintenanceItemDao()
-        val seenCanonicalNames = mutableSetOf<String>()
-        var written = 0
-        for (item in looked) {
-            val canonicalName = canonicalizeServiceName(item.serviceName)
-            // Two looked-up items canonicalizing to the same name (e.g. Gemini
-            // returning both "Oil Change" and "Engine Oil & Filter Change" in one
-            // response) would otherwise upsert twice for one logical service -
-            // keep the first, skip the rest.
-            if (!seenCanonicalNames.add(canonicalName)) continue
-            val existing = dao.get(vehicle.obdMac, canonicalName)
-            val merged = if (existing != null) {
-                existing.copy(intervalMiles = item.intervalMiles, intervalMonths = item.intervalMonths)
-            } else {
-                item.copy(serviceName = canonicalName)
-            }
-            dao.upsert(merged)
-            written++
-        }
-        return written
-    }
+    // refreshServiceIntervals was DELETED (ticket 05, 2026-08-15). It had zero
+    // callers in app/src/main - dead code that did the merge-intervals-onto-
+    // existing-rows job ticket 14's populate now owns properly, with a diff
+    // and a driver confirmation. Dead code that looks like a working feature
+    // is exactly what made "I changed the oil interval to 7,500" plausible to
+    // Kevin in the first place (ticket 05's own finding) - it does not get to
+    // sit next to the rebuild. If ticket 14 needs this shape again, it should
+    // be built against the targeted `MaintenanceItemDao.setIntervals` write,
+    // not resurrected as a whole-row upsert.
 
     /**
      * Asks [AriaBrain] (with search grounding) for the manufacturer's NORMAL scheduled

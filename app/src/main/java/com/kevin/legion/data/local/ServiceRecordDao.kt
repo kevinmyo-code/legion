@@ -46,4 +46,19 @@ interface ServiceRecordDao {
     /** Total records for a vehicle - ticket 09's FLEET "NOT BUILT YET" block needs a real count, not a hardcoded one. */
     @Query("SELECT COUNT(*) FROM service_records WHERE vehicleId = :vehicleId")
     suspend fun countForVehicle(vehicleId: String): Int
+
+    /**
+     * True if a precise, actually-logged service exists at or after [atOrAfterMs] - ticket 08's
+     * backfill-conflict rule (`.scratch/fleet-maintenance/issues/08-matching-a-logged-service-to-an-item.md`).
+     * Real damage this closes: on Kevin's device a `log_service` wrote a record AND its anchor at
+     * 118,374; fourteen seconds later a `log_past_service` backfill silently overwrote that anchor
+     * to 118,483 and nulled its date - a remembered approximation beat a precise fact. [serviceName]
+     * must be the SAME name the anchor write would use (the caller's already-matched/canonicalised
+     * name, never the driver's raw phrasing) or this cannot see the record it exists to protect.
+     */
+    @Query(
+        "SELECT EXISTS(SELECT 1 FROM service_records WHERE vehicleId = :vehicleId " +
+            "AND serviceName = :serviceName AND date >= :atOrAfterMs)"
+    )
+    suspend fun hasRecordAtOrAfter(vehicleId: String, serviceName: String, atOrAfterMs: Long): Boolean
 }

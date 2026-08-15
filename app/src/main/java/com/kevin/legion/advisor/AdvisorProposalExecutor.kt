@@ -193,11 +193,23 @@ object AdvisorProposalExecutor {
 
     // --- FLEET -----------------------------------------------------------------------------------
 
-    /** Writes an interval only - never `lastDoneMileage`/`lastDoneDate`/`neverDone`, which are
+    /**
+     * Writes an interval only - never `lastDoneMileage`/`lastDoneDate`/`neverDone`, which are
      * claims about work actually performed (an ACTUAL) and stay off this allowlist entirely. Scoped
      * to [VehicleController.currentVehicle] - FLEET's own digest ([com.kevin.legion.advisor.digest
      * .FleetDigestBuilder]) is built against the same active car, so the proposal the advisor saw
-     * and the vehicle this writes against are guaranteed to match. */
+     * and the vehicle this writes against are guaranteed to match.
+     *
+     * Targeted write (ticket 05, `.scratch/fleet-maintenance/issues/05-an-edit-that-actually-sticks.md`
+     * decision 3), tagged `CONFIRMED` rather than `SEEDED`: **an accepted proposal IS the
+     * confirmation** ticket 05 decided a driver-owned interval requires before anything may touch
+     * it again, exactly the same as the voice `set_maintenance_interval` tool - the driver accepting
+     * this proposal is the explicit act, not the advisor's own JSON. Uses
+     * [MaintenanceItemDao.setIntervals] (an UPDATE) against an existing row, or a genuine
+     * [MaintenanceItemDao.upsert] insert when the item is new to the schedule - never a
+     * read-modify-write [MaintenanceItemDao.upsertStamped] REPLACE, which could otherwise clobber a
+     * concurrent anchor write (`logServiceDirect`) landing on the same row.
+     */
     private suspend fun setMaintenanceItem(context: Context, obj: JSONObject): ExecuteResult {
         val serviceName = obj.optString("serviceName").trim()
         if (serviceName.isBlank()) return ExecuteResult.Refused("That proposal didn't name a service.")
@@ -209,16 +221,30 @@ object AdvisorProposalExecutor {
 
         val vehicle = VehicleController.currentVehicle(context)
         val db = CarDatabase.getDatabase(context)
+        val now = System.currentTimeMillis()
         val existing = db.maintenanceItemDao().get(vehicle.obdMac, serviceName)
-        val item = (existing ?: MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = serviceName)).copy(
-            intervalMiles = intervalMiles ?: existing?.intervalMiles,
-            intervalMonths = intervalMonths ?: existing?.intervalMonths,
-        )
-        db.maintenanceItemDao().upsert(item)
+        val finalMiles = intervalMiles ?: existing?.intervalMiles
+        val finalMonths = intervalMonths ?: existing?.intervalMonths
+
+        if (existing != null) {
+            val written = db.maintenanceItemDao().setIntervals(vehicle.obdMac, serviceName, finalMiles, finalMonths, "CONFIRMED", now)
+            // The row existed a moment ago (the `get` above); ticket 05's no-op
+            // law says a zero here must be reported, never assumed away.
+            if (written == 0) {
+                return ExecuteResult.WriteFailed("That item disappeared before I could update it - try proposing again.")
+            }
+        } else {
+            db.maintenanceItemDao().upsert(
+                MaintenanceItem(
+                    vehicleId = vehicle.obdMac, serviceName = serviceName,
+                    intervalMiles = finalMiles, intervalMonths = finalMonths, intervalSource = "CONFIRMED",
+                )
+            )
+        }
 
         val everyPhrase = listOfNotNull(
-            item.intervalMiles?.let { "$it miles" },
-            item.intervalMonths?.let { "$it months" },
+            finalMiles?.let { "$it miles" },
+            finalMonths?.let { "$it months" },
         ).joinToString(" / ")
         return ExecuteResult.Ok("Set $serviceName on the ${VehicleController.displayLabel(vehicle)} to every $everyPhrase.")
     }
