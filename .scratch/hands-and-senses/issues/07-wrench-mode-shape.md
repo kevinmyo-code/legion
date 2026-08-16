@@ -3,6 +3,9 @@
 Type: grilling
 Status: open
 Blocked by: 06
+Scope: **EFFORT, not a ticket.** Chart `.scratch/wrench-mode/` first, using this body as raw
+material; [ticket 06's findings](06-wrench-vision-research.md) and its five spikes become that
+map's opening work. It later absorbs the glasses peripheral. See map.md, "Efforts in disguise".
 
 ## Question
 

@@ -11,8 +11,14 @@ place calls and send texts) and the new senses (notification listener, wrench-mo
 Connect), plus the assistant's actual voice and a configurable morning brief.**
 
 Destination is DECISIONS, not shipped - same shape as `.scratch/android-auto/`. Each surface
-graduates its own build tickets (or its own effort, for home control) once its decisions land.
-Exception: Clear DTC is small enough that its ticket carries the build spec.
+graduates its own build tickets once its decisions land. Exception: Clear DTC is small enough that
+its ticket carries the build spec.
+
+**SCOPE CORRECTION (Kevin, 2026-08-16, after charting): this map is a SURVEY, and six of its
+tickets are efforts in disguise.** See "Efforts in disguise" below. They stay here as the record of
+what was found and why it matters; each one's first act when picked up is to chart its OWN map,
+seeded from its ticket body. What remains natively on this map is the genuinely ticket-sized work.
+The destination above therefore holds only for those; the six graduate rather than resolve.
 
 ## Notes
 
@@ -117,6 +123,37 @@ new senses below are what a JARVIS does that a dashboard does not.
   four vault-specific edges are unproven, including offline reads and Google-native docs - **a
   resume is likely a Google Doc, which is a virtual file**. Ten spikes listed; S6 and S8 can
   invalidate the recommendation and run before [the vault](issues/17-document-vault.md) builds.
+
+## Efforts in disguise
+
+Charted as tickets, sized like maps. **A ticket is one ~100K session resolving ONE decision; these
+each carry three to eight decision clusters plus a build.** Do not try to resolve one in a session.
+When Kevin picks one up, session 1 charts its own map under `.scratch/<slug>/`, taking the ticket
+body as raw material for the Destination and first tickets - the ticket then closes here with a
+pointer to that map, recorded in Decisions so far like any other resolution.
+
+| Ticket | Why it is an effort | Suggested slug |
+|---|---|---|
+| [Home control scope](issues/03-home-control-scope.md) | Hub provisioning, token custody, tool surface, danger tiers, entity exposure, Shelly migration, offline, clone-and-run. The HA research already resolved is that effort's research ticket. | `home-control` |
+| [Wrench mode shape](issues/07-wrench-mode-shape.md) | Session architecture (Live vs one-shot vs hybrid), context injection, capture artifacts, entry, register - **plus five on-device spikes that must run before any of it is decidable**, and it later absorbs the glasses peripheral. | `wrench-mode` |
+| [Location intelligence](issues/15-location-intelligence.md) | Five separable clusters: area-data categories, the proactive line, the departure advisor, the geofence migration, garage-on-approach. Any one is a session. | `location-intelligence` |
+| [Document vault](issues/17-document-vault.md) | Storage location, retrieval, gate semantics, document classes and privacy, the filing/metadata convention, wrench-mode handoff - **plus ten spikes, two of which can invalidate the resolved research**. The largest single capability on the map. | `document-vault` |
+| [Memory decay](issues/20-memory-decay.md) | Decay curve, what "fuzzy" means mechanically, the §7 anchoring tension, unforgettability, scheduling, whether embeddings were ever wired, a legacy table needing a Room decision, backup semantics. | `memory-decay` |
+| [The proactive switch](issues/21-proactive-mode.md) | Trigger-engine architecture, the compulsion test, quiet hours and the nudge budget, delivery routing, Android scheduling per trigger class, register, deprecating the shipped mute. **Category shape already settled** - that decision carries into the new map as a settled input. | `proactive-mode` |
+
+**Judged ticket-sized and staying here:** [Clear DTC](issues/01-clear-dtc.md),
+[notification listener](issues/04-notification-listener.md), [comms](issues/05-comms.md),
+[ledger Gmail auto-pull](issues/09-ledger-gmail-autopull.md),
+[Health Connect scope](issues/11-health-connect-scope.md) (it feeds the EXISTING body controllers
+rather than building an aspect), [assistant identity](issues/12-assistant-identity.md),
+[voice and persona surface](issues/13-voice-persona-surface.md),
+[inbox intelligence](issues/18-inbox-intelligence.md) (and it may shrink to packages only),
+[people dates](issues/19-people-dates.md).
+
+**[Morning brief](issues/08-morning-brief.md) is the borderline one.** It is a module registry plus
+config plus delivery plus composition - arguably an effort - but every module it composes is an
+existing read, and its delivery question is now owned by the proactive map. Judged a ticket, on the
+condition that it does NOT invent its own raise policy. Revisit if it resists one session.
 
 ## Not yet specified
 

@@ -3,6 +3,9 @@
 Type: grilling
 Status: open
 Blocked by: 02
+Scope: **EFFORT, not a ticket.** Chart `.scratch/home-control/` first, using this body as raw
+material; [ticket 02's findings](02-ha-api-research.md) become that map's resolved research. See
+map.md, "Efforts in disguise".
 
 ## Question
 

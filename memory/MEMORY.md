@@ -103,6 +103,11 @@ resolved the same day - read the map, not this line, before acting.
 **HANDS AND SENSES charted 2026-08-16.** Map `.scratch/hands-and-senses/`, **21 tickets**, from a
 competitive-landscape brainstorm (`.scratch/competitive-landscape/research/landscape.md`). Theme:
 **LEGION almost only READS; this map gives it hands and new senses.** Destination is DECISIONS.
+- **IT IS A SURVEY, NOT A MAP - Kevin caught it the same night.** **Six tickets are efforts in
+  disguise** and must each chart their own map before being resolved: home control, wrench mode,
+  location intelligence, document vault, memory decay, proactive mode. The map's "Efforts in
+  disguise" table names them, why, and the slug. Nine remain genuinely ticket-sized; morning brief
+  is borderline. **Do not try to resolve one of the six in a session.**
 - **All 4 research resolved same day**, filed to `library/decisions.md`: HA needs only REST (tokens
   are unscoped - use a non-admin HA user); Health Connect sideloads fine but **sync freshness is
   undocumented**; Gemini Live takes **camera frames on a plain key** at 1 fps (2-min/10-min session

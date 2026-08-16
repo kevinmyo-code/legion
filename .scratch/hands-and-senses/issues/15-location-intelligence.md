@@ -3,6 +3,10 @@
 Type: grilling
 Status: open
 Blocked by: 14
+Scope: **EFFORT, not a ticket.** Chart `.scratch/location-intelligence/` first, using this body as
+raw material; [ticket 14's findings](14-location-intel-research.md) become that map's resolved
+research. The five numbered clusters below are each roughly a ticket. See map.md, "Efforts in
+disguise".
 
 ## Question
 

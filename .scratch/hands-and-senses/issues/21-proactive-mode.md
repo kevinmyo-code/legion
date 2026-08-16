@@ -3,6 +3,10 @@
 Type: grilling
 Status: open
 Blocked by: -
+Scope: **EFFORT, not a ticket.** Chart `.scratch/proactive-mode/` first, using this body as raw
+material. **Question 3 is already SETTLED by Kevin and carries over as a settled decision of the
+new map, not as an open question.** Every other raising ticket across LEGION inherits this map's
+rules. See map.md, "Efforts in disguise".
 
 ## Question
 
