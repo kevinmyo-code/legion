@@ -35,6 +35,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import com.kevin.legion.location.ReminderController
 import com.kevin.legion.media.MusicController
+import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.media.VolumeController
@@ -4275,30 +4276,85 @@ object LiveToolbox {
     }
 
     /**
-     * Controls whatever's playing via Android's media-session framework
-     * ([MusicController]) - transport only (play/pause/next/previous). Works
-     * against any active session (phone-BT relay, Spotify, etc); there's no
-     * search-to-play here, only [playMusic] (Spotify-direct) supports that.
+     * Transport only (play/pause/next/previous), over TWO independent backends.
+     *
+     * [MusicController] (Android's media-session framework) is preferred because it
+     * drives whatever is actually playing - the phone-BT relay, Spotify, anything
+     * that publishes a session. But `MediaSessionManager.getActiveSessions` requires
+     * the one-time notification-access grant, and without it every command silently
+     * no-ops: the SecurityException is swallowed into an empty session list
+     * ([MusicController.activeSessions]), so the transport call never happens and the
+     * tool just reports failure.
+     *
+     * Found on device 2026-08-16 (Kevin): "ai can play what i ask but i couldn't get
+     * it to pause or skip". `play_music` goes to [SpotifyController.playUri] over App
+     * Remote, which needs NO notification grant, so starting a track worked while
+     * every transport command failed - and the grant is per-device special access,
+     * so the A25 migration dropped it. The two paths had no reason to agree and
+     * nothing said why.
+     *
+     * So App Remote is now the fallback: it drives Spotify only, but it needs no
+     * grant at all. Ordering keeps the granted case byte-identical to before, and
+     * only adds a second attempt where the first currently fails.
+     *
+     * When neither can act, [musicFailureMessage] says which of the two reasons it
+     * was, in words, rather than one generic line. There is no third silent no-op.
      *
      * The media framework expects to run on a thread with a Looper; Live tool
      * dispatch runs on a worker, so every MusicController call is marshalled to
      * [Dispatchers.Main] (a bare worker thread threw "Can't create handler ...",
-     * crashing the app on next/play).
+     * crashing the app on next/play). App Remote has no such requirement.
      */
     private suspend fun controlMusic(context: Context, args: JSONObject): JSONObject {
-        return when (val action = args.optString("action")) {
-            "play"     -> simpleMusicResult(withContext(Dispatchers.Main) { MusicController.play(context) })
-            "pause"    -> simpleMusicResult(withContext(Dispatchers.Main) { MusicController.pause(context) })
-            "next"     -> simpleMusicResult(withContext(Dispatchers.Main) { MusicController.next(context) })
-            "previous" -> simpleMusicResult(withContext(Dispatchers.Main) { MusicController.previous(context) })
-            else       -> result(success = false, message = "Unknown music action: $action")
+        val action = args.optString("action")
+        if (action != "play" && action != "pause" && action != "next" && action != "previous") {
+            return result(success = false, message = "Unknown music action: $action")
         }
+
+        if (NowPlayingController.hasAccess(context)) {
+            val ok = withContext(Dispatchers.Main) {
+                when (action) {
+                    "play"     -> MusicController.play(context)
+                    "pause"    -> MusicController.pause(context)
+                    "next"     -> MusicController.next(context)
+                    else       -> MusicController.previous(context)
+                }
+            }
+            if (ok) return result(success = true, message = null)
+        }
+
+        // Only attempt this against a live remote. [SpotifyController.withPlayer]
+        // reports success the instant the call is DISPATCHED rather than when it
+        // lands (unlike playUri, which awaits the real CallResult), so gating on
+        // isConnected is what keeps a `true` here from becoming a claim the app
+        // cannot support.
+        if (SpotifyController.isConnected) {
+            val ok = when (action) {
+                "play"     -> SpotifyController.play()
+                "pause"    -> SpotifyController.pause()
+                "next"     -> SpotifyController.next()
+                else       -> SpotifyController.previous()
+            }
+            if (ok) return result(success = true, message = null)
+        }
+
+        return result(success = false, message = musicFailureMessage(context))
     }
 
-    private fun simpleMusicResult(ok: Boolean): JSONObject =
-        if (ok) result(success = true, message = null)
-        else result(success = false,
-            message = "I couldn't reach the music — make sure your phone's connected and playing over Bluetooth.")
+    /**
+     * Names the actual reason transport failed. The missing-grant case used to be
+     * indistinguishable from "nothing is playing", which is why the defect above
+     * survived: the app knew exactly why it could not act and said nothing.
+     */
+    internal fun musicFailureMessage(context: Context): String =
+        if (!NowPlayingController.hasAccess(context)) {
+            "I can't reach the transport controls. Android requires notification access " +
+                "to control media, and Legion doesn't have it - it's under Settings, Apps, " +
+                "Special app access, Notification access. Until then I can start a track on " +
+                "Spotify, but I can't pause or skip anything else."
+        } else {
+            "I couldn't reach the music. Make sure something's actually playing."
+        }
 
     /**
      * Adjusts the head unit's media volume on-device ([VolumeController]) - no
