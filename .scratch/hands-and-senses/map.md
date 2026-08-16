@@ -175,14 +175,25 @@ new senses below are what a JARVIS does that a dashboard does not.
   no input; there is nothing to search for. Killed rather than archived because it does not park on
   anything Kevin is likely to change. **Nothing was wrong on the merits** - it was a correct plan
   for a mailbox he does not have. SAF Drive-folder ingestion stays the only route.
-- **PATTERN, three tickets running (2026-08-16): this map was charted from a competitive-landscape
+- [Voice and persona: the picker surface and the reconnect](issues/13-voice-persona-surface.md)
+  — **CLOSED, already built.** Kevin: "yeah already done"; verified against the tree first. Its
+  premise line "Missing: any screen that hosts them" is false, and all five questions are answered
+  in shipped code: the roster + editor + audition surface exists, **`refreshIdleVoice()` decides the
+  reconnect** (next line, never mid-turn, with the field-test bug named in its KDoc), a persona edit
+  re-materialises **silently and immediately** for the active profile, and `updatedAt` is a caller
+  concern precisely so a Drive-pulled row keeps the remote clock. Only sliver left: the silent swap
+  was an implementation choice, not a taste call. Not worth a session.
+- **PATTERN, FOUR tickets running (2026-08-16): this map was charted from a competitive-landscape
   brainstorm, so its tickets describe what a JARVIS COULD do rather than what Kevin's data actually
-  looks like.** Ticket 12 died because the thing already existed; 11 because the device does not
-  exist; 09 because the data does not exist. **Every remaining ticket confirms its data source and
-  greps its premise before a session is spent on it.** Two live cases: settled decision 4 puts the
-  morning brief's news on "Kevin's newsletters via Gmail", and
-  [inbox intelligence](issues/18-inbox-intelligence.md) is entirely mail-derived - **both assume a
-  Gmail account with content in it, and that assumption is exactly what just killed 09.**
+  looks like.** Ticket 12 died because the thing already existed; 13 for the same reason; 11
+  because the device does not exist; 09 because the data does not exist. **Every remaining ticket
+  confirms its data source and greps its premise before a session is spent on it.**
+  **Kevin's triage, 2026-08-16, on the survivors:** 04 notification listener "good"; 05 comms "yes";
+  **08 morning brief KEEPS ITS PREMISE - "newsletters are important, dont kill"**, which confirms
+  settled decision 4's Gmail assumption and by extension the source (not the scope) of
+  [inbox intelligence](issues/18-inbox-intelligence.md). 18 and 19 explained to Kevin, not yet
+  ruled on. **18 should still check `CalendarProvider` first** - its own question 3 predicts it
+  shrinks to packages only, because flights already land in Google Calendar.
 
 ## Efforts in disguise
 
@@ -208,8 +219,8 @@ pointer to that map, recorded in Decisions so far like any other resolution.
 ~~[Health Connect scope](issues/11-health-connect-scope.md)~~ (**ARCHIVED** 2026-08-16, no
 wearable), [assistant identity](issues/12-assistant-identity.md) (**CLOSED** 2026-08-16, premise false;
 freeform authoring back-burnered and graduates to `persona-authoring` when wanted),
-[voice and persona surface](issues/13-voice-persona-surface.md) (**re-scope before picking up** -
-the voice, persona picker and 30-voice audition all ship; check what is left),
+~~[voice and persona surface](issues/13-voice-persona-surface.md)~~ (**CLOSED** 2026-08-16,
+already built),
 [inbox intelligence](issues/18-inbox-intelligence.md) (and it may shrink to packages only),
 [people dates](issues/19-people-dates.md).
 
