@@ -290,3 +290,70 @@ attributable to the investigation rather than to normal use.
   on. Timing and `maybeAutoSync`'s call site fit; no lock was actually traced.
 - The reverted build was verified installed by sha256 (`c136aad9...`), and the app source at that
   commit is identical to the ticket-16 build - the two commits between them touched only `.scratch/`.
+
+## Stage 3 done, 2026-08-16: deduped on the device
+
+Authorised by Kevin. 31,604 rows deleted. Every table on the phone now has `total == distinct`.
+
+| Table | before | after | deleted |
+|---|---|---|---|
+| `obd_samples` (Outlander) | 36,694 | 5,242 | 31,452 |
+| `daily_drive_logs` (Outlander) | 169 | 25 | 144 |
+| `monthly_recaps` (Outlander) | 9 | 1 | 8 |
+
+Database file 4,513,792 -> 1,736,704 bytes after `VACUUM`.
+
+### How it was done
+
+There is no `sqlite3` binary on the A25 (checked `PATH`, `/system/bin`, `/system/xbin`, and the
+runtime apex), so the work could not happen in place. Sequence, with the app force-stopped
+throughout so nothing else held the database:
+
+1. **Backup pulled first**, all three files, sizes matched against the device:
+   `scratchpad/backup-20260816/legion_database{,-wal,-shm}`.
+2. Dedup performed on a COPY, never on the device: `PRAGMA wal_checkpoint(TRUNCATE)`, then per table
+   `DELETE ... WHERE vehicleId = <outlander> AND id NOT IN (SELECT MIN(id) ... GROUP BY <identity>)`.
+   Lowest `id` survives, which is the earliest-inserted copy.
+3. **Verified on the copy before anything was pushed**: Outlander `total == distinct` on all three
+   tables; rows NOT under the Outlander unchanged (13,452 / 53 / 3); `PRAGMA integrity_check` = ok;
+   `user_version` still 21; and a full table-by-table diff against the backup showing **exactly three
+   tables changed out of forty-five**, with the Jeep identical on `obd_samples`, `daily_drive_logs`,
+   `monthly_recaps`, `maintenance_items`, `service_records` and `code_events`.
+4. `VACUUM`, then pushed and swapped in via `run-as cp`, with the stale `-wal`/`-shm` removed since
+   the checkpointed file is complete on its own. File ownership stayed `u0_a311` because `run-as`
+   runs as the app.
+5. sha256 verified at three points: local file, `/data/local/tmp` after push, and
+   `databases/legion_database` after the swap. All `e47cc95b...`.
+
+### After
+
+App launches clean - no crash, no Room migration attempt, `user_version` 21 accepted as-is. FLEET
+renders, the Jeep reads `1998 JEEP CHEROKEE` / `about 227,495 mi` / `0 DUE - 7 UNKNOWN`, and
+`midnight_import gate: completed=true` still holds, so nothing re-runs the rekey.
+
+Counts re-read off the live device after several minutes of runtime: unchanged, 18,694 rows in
+`obd_samples` total, every vehicle at `total == distinct`.
+
+### What is deliberately still there
+
+The `default`-keyed sentinel rows were NOT touched: 5,242 `obd_samples`, 24 `daily_drive_logs`, 2
+`monthly_recaps`, 16 `maintenance_items`, 1 `vehicle_specs`. They are orphans under an archived
+vehicle, they are not duplicates of each other, and deleting them is stage 2's business - sync would
+simply pull them back, as it demonstrably did within 17 minutes earlier today. Removing them before
+the Drive side is fixed would be theatre.
+
+### Assumptions ledger
+
+- `on-device`: every count above, before and after, from pulled databases with sizes matched.
+- `on-device`: the three-point sha256 chain, the clean launch, the rendered FLEET screen, and the
+  latched import gate afterwards.
+- `built`: the 45-table diff proving only three tables changed, and the Jeep unchanged across six
+  tables.
+- `reasoned`, NOT proven: that the dedup survives a Drive sync. Counts held across several minutes
+  of runtime with sync enabled, but `SyncEngine` logs nothing, so no sync was OBSERVED to run in that
+  window. The reason to expect it holds is that UNION merges by identity tuple, and every identity
+  Drive could offer is already present locally - unlike the original loop, where the rekey changed
+  the identity and made the pulled rows look new. If duplicates ever reappear without the import
+  running, that reasoning is wrong and this is the line to revisit.
+- The backup lives at `scratchpad/backup-20260816/` in a SESSION-TEMP directory. Copy it somewhere
+  durable if it is wanted beyond this session.
