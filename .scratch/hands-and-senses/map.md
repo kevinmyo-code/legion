@@ -51,6 +51,9 @@ new senses below are what a JARVIS does that a dashboard does not.
 | 5 | **No writes to money, ever.** Restated from the brainstorm so no ticket drifts there. | Ledger stays read-only permanently; auto-pull ingests documents, it never touches accounts. |
 | 6 | **Carfax, KBB, Edmunds are dead ends** (no consumer API; unverified for VINwiki). NHTSA recall/VIN decode already shipped in LEGION. | No tickets against them. Paid BYO-key lookups (CarMD, NMVTIS) sit in fog behind wrench mode. |
 | 7 | **Calendar, Gmail, and the NHTSA recall checker already exist.** Asserted missing twice during the brainstorm; both times the code had them. | Every ticket greps the tree before proposing anything as new. |
+| 8 | **The advisor/goals/body layers already exist too** (`advisor/` playbooks + digests, `goals/`, `meals/`, `sleep/`, `workouts/`, ledger `Categorization`/`CategoryAgent`/budgets, `YearlyWrapped`/`MonthlyRecap`). | Health Connect becomes a DATA SOURCE feeding the existing body controllers, never a new aspect. "Financial insight" is largely built - do not re-chart it. |
+| 9 | **LEGION's Drive grant is `drive.appdata` only** - a hidden folder Kevin cannot put files in. Verified 2026-08-16 in `DriveAuth.kt`. | "Use the Drive folder we already have" is FALSE for any user-visible folder. The vault rides SAF `ACTION_OPEN_DOCUMENT_TREE` (already proven for ledger, API 30+, no new scope). |
+| 10 | **Searching public data on private individuals is OUT** (people-lookup/OSINT), dropped by Kevin 2026-08-16 on usefulness plus safety. | See Out of scope. Self-OSINT (breach checks on Kevin's own identifiers) and situational feeds went with it. |
 
 ## Decisions so far
 
@@ -96,7 +99,16 @@ In scope, but not sharp enough to ticket. Graduates as the frontier advances.
   if Kevin does not already run Home Assistant.
 - **Proactive delivery beyond the brief.** ProactiveBus exists; whether any of the new senses
   (notifications, health) may raise proactively, and where the compulsion line sits, sharpens
-  after the per-sense tickets resolve.
+  after the per-sense tickets resolve. [Location intelligence](issues/15-location-intelligence.md)
+  now carries the sharpest version of this question (an NWS warning at Kevin's location).
+- **Commute patterns.** "You usually leave at 8:10" computed from logged drives -
+  `DailyDriveLogController` and `TelemetryRecorder` already hold the raw material. Stats over
+  falsifiable facts, so it is allowed; it waits on the departure advisor landing first.
+- **Carrier tracking APIs.** UPS/FedEx/USPS developer keys, if
+  [inbox intelligence](issues/18-inbox-intelligence.md) decides mail-only staleness is not enough.
+- **Vault expansion beyond documents Kevin curates.** Tax returns, medical records and IDs will
+  land in that folder eventually; whether LEGION treats any class differently sharpens once
+  [the vault](issues/17-document-vault.md) resolves its privacy line.
 
 ## Out of scope
 
@@ -111,3 +123,12 @@ Ruled beyond this destination. Never graduates; returns only as a fresh effort.
 - **Comparative or anonymized fleet data.** Permanent CLAUDE.md ban, restated.
 - **Sending, replying to, or drafting mail.** Stays out, per the google-account map. Texting is
   [Comms](issues/05-comms.md); mail is not.
+- **Looking up private individuals** - public professional data (LinkedIn, employer, education) as
+  much as anything else. Raised and dropped by Kevin 2026-08-16: not useful enough now, and the
+  safety guardrails are not worth arguing for a feature he does not need. **The narrower hazard
+  that would have stayed out regardless: physical-location aggregation on a person, and
+  DPPA-restricted lookups (plate-to-owner), which are illegal for a private individual.** Facts
+  Kevin states about his own circle are IN, as [People dates](issues/19-people-dates.md).
+- **Self-OSINT (breach checks on Kevin's own identifiers)** and **situational feeds** (ADS-B
+  "what's that plane", AIS, scanner audio). Dropped with the OSINT thread. Genuinely cheap and
+  genuinely JARVIS-shaped, so they return as a fresh effort if Kevin wants them.
