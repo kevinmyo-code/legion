@@ -123,6 +123,24 @@ new senses below are what a JARVIS does that a dashboard does not.
   four vault-specific edges are unproven, including offline reads and Google-native docs - **a
   resume is likely a Google Doc, which is a virtual file**. Ten spikes listed; S6 and S8 can
   invalidate the recommendation and run before [the vault](issues/17-document-vault.md) builds.
+- [Clear DTCs: fleet's first write to the car](issues/01-clear-dtc.md)
+  — **clearing is a TRANSACTION, not a send**: snapshot, send, re-read, and only the re-read may be
+  spoken. Forced by a code fact, not taste - `sendCommand` returns `""` on failure and
+  `Elm327Io.exchange` returns whatever arrived on timeout without throwing, so a quiet link and a
+  successful clear are the same value at that seam (android-auto ticket 13's defect). **Five
+  outcomes** (`NOTHING_TO_CLEAR`, `CLEARED`, `RETURNED`, `UNVERIFIED`, `REFUSED`); the `44` ack is
+  **diagnostic, never dispositive**; Mode 04 is excluded from the PID-silence counter so a failed
+  clear cannot trigger a protocol reinit mid-write. **New `code_clear_events` table, Room v21 ->
+  v22** - `code_events` has no update, no delete and no field that can mean "cleared", and a
+  `clearedAt` column would retroactively rewrite observations that were true when made. Confirm
+  turn copies `activate_garage` verbatim (`confirmed` param, gate in pure controller code), but the
+  prompt is **informed** - call 1 does the snapshot, names the actual codes, and may end the
+  operation without ever asking; **recited every time**, live-session only, engine-running warns
+  rather than gates. **Both surfaces through one gate** (`DtcClearController`), recall-checker
+  shape. **No maintenance-log row** - a clear is not work performed (`AdvisorProposalExecutor`
+  precedent). Fleet must **subtract cleared codes by union rule** or the table buys nothing. Build
+  spec and its verification gates are in the ticket. **Note: the tree is Room v21, not the v20
+  `MEMORY.md` still claims.**
 
 ## Efforts in disguise
 
@@ -141,7 +159,8 @@ pointer to that map, recorded in Decisions so far like any other resolution.
 | [Memory decay](issues/20-memory-decay.md) | Decay curve, what "fuzzy" means mechanically, the §7 anchoring tension, unforgettability, scheduling, whether embeddings were ever wired, a legacy table needing a Room decision, backup semantics. | `memory-decay` |
 | [The proactive switch](issues/21-proactive-mode.md) | Trigger-engine architecture, the compulsion test, quiet hours and the nudge budget, delivery routing, Android scheduling per trigger class, register, deprecating the shipped mute. **Category shape already settled** - that decision carries into the new map as a settled input. | `proactive-mode` |
 
-**Judged ticket-sized and staying here:** [Clear DTC](issues/01-clear-dtc.md),
+**Judged ticket-sized and staying here:** [Clear DTC](issues/01-clear-dtc.md) (**RESOLVED**
+2026-08-16, build spec in the ticket, not yet built),
 [notification listener](issues/04-notification-listener.md), [comms](issues/05-comms.md),
 [ledger Gmail auto-pull](issues/09-ledger-gmail-autopull.md),
 [Health Connect scope](issues/11-health-connect-scope.md) (it feeds the EXISTING body controllers
