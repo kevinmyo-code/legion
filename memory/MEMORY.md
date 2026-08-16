@@ -3,16 +3,36 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
-## Status as of 2026-08-13 (session 7)
+## Status as of 2026-08-15 (session 8)
 
+- **THE PHONE CHANGED. It is a Samsung Galaxy A25 (`SM-A256U`), Android 16 / SDK 36.** Migrated
+  2026-08-15; Kevin: "a25 is the real phone now". The **OPPO A17k (`CPH2471`) is RETIRED** - it still
+  holds a full copy of the database as a fallback, so do not wipe it, but **never write to it.** Both
+  phones were identical at the moment of migration and **`sync/` has still never executed**, so
+  anything written to the A17k diverges silently and nothing reconciles it.
+  - **Migration verified row-for-row**: 5 vehicles / 54 maintenance items / 2 service records /
+    18,645 obd_samples / 148 ledger rows / 188 ingested_files, and **totals identical to the cent on both
+    sides.** WAL was checkpointed into the main file before the copy and the target's stale
+    `-wal`/`-shm` deleted, so no mismatched journal could replay.
+  - **The Gemini key did NOT come across** - it is sealed by the A17k's hardware Keystore, which is
+    device-bound by design. Drive authorisation and runtime permissions (mic, calendar) also need
+    re-granting.
+- **Two device facts that invalidate prior assumptions, both measured:**
+  - **384 x 832 dp, not 360 x 806.** Every layout figure in `.scratch/mission-control/` was measured
+    against the A17k - the 560dp content budget, the 328/159dp tiles, the 7-character hero. Not
+    wrong, **unverified at this size.**
+  - **Animation scales are 1.0, not 0.0.** The A17k froze every infinite animation, so the entire
+    mission-control motion vocabulary was dormant. **That motion has never been observed by anyone,
+    on any device, and it is now running.** Treat as untested, not as shipped-and-fine.
 - **SIX domains: fleet, ledger, pantry, body, notes/lists/calendar, plus goals/advisors.** Tabs:
-  Today, Money, Body, Fleet, Notes, Setup. **955 unit tests green.**
-- **Room is v19.** Three data-only bumps on 2026-08-13 (16->17, 17->18, 18->19), each proven against
-  a COPY of Kevin's real data before touching the device, then verified on-device: v19, integrity
-  ok, 497 rows and 168,422 cents unchanged throughout.
-- **Device: OPPO A17k (`CPH2471`), wireless ADB working.** Not a OnePlus; an old note was wrong.
-- Branch **`feat/car-probe`** holds tonight's work. `dev`/`main` are far behind - **204 commits ahead
-  of `origin/main`.** CLAUDE.md §8: Claude never pushes `main`, never opens or merges that PR.
+  Today, Money, Body, Fleet, Notes, Setup. **1206 unit tests green.**
+- **Room is v20.** v19->v20 landed 2026-08-15 (fleet-maintenance): `intervalSource` + `deleted` on
+  `maintenance_items`, `engine` on `vehicles`, and `cost` REAL -> `costCents` INTEGER on
+  `service_records`. That last one is **non-additive**, the map's single stated exception to §5,
+  permitted only because the column was **proven empty first** (0 of 2 rows). Proven against a COPY
+  of Kevin's real data, then verified on-device.
+- Branch **`feat/mission-control`** holds this session's work. `dev`/`main` far behind. CLAUDE.md §8:
+  Claude never pushes `main`, never opens or merges that PR.
 
 ## Blocking
 
