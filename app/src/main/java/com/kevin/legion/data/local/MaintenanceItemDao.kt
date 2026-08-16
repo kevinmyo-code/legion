@@ -17,8 +17,10 @@ import androidx.room.Query
  * a targeted write against a `(vehicleId, serviceName)` pair that does not exist succeeds at the
  * SQL level while writing nothing, and the caller MUST check the count and surface a zero in
  * words rather than reporting success on a write that changed nothing (the exact "I changed the
- * oil interval to 7,500" bug the ticket is named for). [upsert]/[insertAll] survive for GENUINE
- * INSERTS only - see each one's own doc.
+ * oil interval to 7,500" bug the ticket is named for). [upsert]/[insertAll]/[insertIgnore] survive
+ * for GENUINE INSERTS only - see each one's own doc. [insertIgnore] additionally NEVER REPLACEs a
+ * conflicting row the way [upsert] does (ticket 14 review, BLOCKING 2) - use it, not [upsert], for
+ * any accept-a-candidate write where the candidate may be stale by the time the driver taps accept.
  */
 @Dao
 interface MaintenanceItemDao {
@@ -45,6 +47,27 @@ interface MaintenanceItemDao {
     // mechanism, kept exactly as-is on purpose.
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(items: List<MaintenanceItem>)
+
+    /**
+     * Single-row counterpart to [insertAll], added for ticket 14's populate WOULD ADD accept
+     * (`ui/fleet/PopulateWrites.kt.writePopulateAdd`, ticket 14 review BLOCKING 2,
+     * `.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`). [upsert] REPLACEs
+     * the whole row - this DAO's own doc already warns that is for creating a row only, and
+     * `writePopulateAdd` was doing exactly the edit it warns against: a `wouldAdd` candidate is
+     * computed at diff-load time and can sit un-accepted while the driver reviews, so a row with the
+     * SAME `(vehicleId, serviceName)` can appear in that window (a sync merge landing mid-review, a
+     * voice `log_service` orphan, or the near-miss/keyword gap BLOCKING 1b closes) - tapping ADD on a
+     * stale candidate must never clobber whatever that concurrent write left, including its anchor or
+     * `CONFIRMED` provenance. `IGNORE` here is the DAO's normal "genuine insert only" contract, not a
+     * new one.
+     *
+     * Room's single-item `@Insert` return is the SQLite rowid on a real insert, or **-1 on an
+     * IGNOREd conflict** - the caller checks for `-1L` exactly the way every other targeted write in
+     * this file checks an affected-row count of zero (ticket 05's law), and surfaces it as
+     * "already on file - check WOULD CHANGE" rather than reporting a silent overwrite as success.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(item: MaintenanceItem): Long
 
     /**
      * Edits ONLY [MaintenanceItem.intervalMiles]/[MaintenanceItem.intervalMonths]/
@@ -119,6 +142,27 @@ interface MaintenanceItemDao {
     suspend fun softDelete(vehicleId: String, serviceName: String, now: Long): Int
 
     /**
+     * Un-tombstones a row AND sets its interval in one targeted write (ticket 14,
+     * `.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`'s "you deleted
+     * this - add it back?" case: a populate finds a factory item that matches a TOMBSTONED row on
+     * file). One UPDATE rather than restore-then-[setIntervals] as two calls, for the same
+     * no-read-modify-write reason every other targeted write here gives - a concurrent edit between
+     * two separate writes could otherwise land in an inconsistent order. `source` is always
+     * `"CONFIRMED"` at the one call site (ticket 06 decision b: accepting a populate diff row is the
+     * driver's own confirmation), but is threaded as a parameter rather than hardcoded here to match
+     * every other write in this file, which never bakes a literal into its own SQL.
+     *
+     * **Returns the affected row count - the caller MUST check it** (ticket 05's law): a restore
+     * against a `(vehicleId, serviceName)` pair with no row at all (never tombstoned, or genuinely
+     * absent) touches zero rows and must be reported as a failure, not assumed to have worked.
+     */
+    @Query(
+        "UPDATE maintenance_items SET deleted = 0, intervalMiles = :miles, intervalMonths = :months, " +
+            "intervalSource = :source, updatedAt = :now WHERE vehicleId = :vehicleId AND serviceName = :serviceName"
+    )
+    suspend fun restore(vehicleId: String, serviceName: String, miles: Int?, months: Int?, source: String, now: Long): Int
+
+    /**
      * Active items only - filters the ticket 07 tombstone. Every reader EXCEPT
      * [com.kevin.legion.sync.SyncEngine]'s raw-SQL snapshot must go through here or [get], never a
      * bare `SELECT * FROM maintenance_items` - see [softDelete]'s doc for why the sync path is the
@@ -126,6 +170,18 @@ interface MaintenanceItemDao {
      */
     @Query("SELECT * FROM maintenance_items WHERE vehicleId = :vehicleId AND deleted = 0")
     suspend fun getForVehicle(vehicleId: String): List<MaintenanceItem>
+
+    /**
+     * EVERY row for [vehicleId], tombstoned included - the second deliberate exception alongside
+     * [com.kevin.legion.sync.SyncEngine]'s snapshot, and for a related reason: ticket 14's populate
+     * diff has to tell "on file, factory doesn't list it" (an active row with no factory match) apart
+     * from "you deleted this, and the factory lists it" (a TOMBSTONED row with a factory match) -
+     * [getForVehicle]'s `deleted = 0` filter would make the second case indistinguishable from "would
+     * add", silently re-adding something the driver deliberately removed. Never used for an ordinary
+     * read; only the populate-diff builder in `vehicle/PopulateSchedule.kt` calls this.
+     */
+    @Query("SELECT * FROM maintenance_items WHERE vehicleId = :vehicleId")
+    suspend fun getForVehicleIncludingDeleted(vehicleId: String): List<MaintenanceItem>
 
     /** Active item only - see [getForVehicle]'s doc on the `deleted = 0` filter. */
     @Query("SELECT * FROM maintenance_items WHERE vehicleId = :vehicleId AND serviceName = :serviceName AND deleted = 0")

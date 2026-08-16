@@ -298,6 +298,13 @@ fun FullScheduleScreen(
      * button below, sitting beside ADD ITEM rather than a third row, since both are this screen's
      * only two navigational (non-item) actions. */
     onOpenServiceHistory: () -> Unit,
+    /**
+     * Ticket 14's second entry point ("the full schedule screen, where an empty schedule is
+     * visible"). Only offered when [items] is empty - a schedule that already has rows is edited
+     * item by item or re-populated from SPECS, not from a button that would otherwise sit here on
+     * every visit. Defaults to a no-op so every pre-existing caller/preview keeps compiling.
+     */
+    onOpenPopulate: () -> Unit = {},
     onBack: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
@@ -361,12 +368,17 @@ fun FullScheduleScreen(
             LazyColumn(Modifier.fillMaxSize()) {
                 if (rows.isEmpty()) {
                     item(key = "empty") {
-                        Text(
-                            "No maintenance schedule yet.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = sem.faint,
-                            modifier = Modifier.padding(12.dp),
-                        )
+                        Column(Modifier.padding(12.dp)) {
+                            // Ticket 14's own wording: a new car's empty schedule says so and
+                            // offers the fix right there, rather than a bare "no schedule yet."
+                            Text(
+                                "No schedule yet - populate it from the factory recommendation?",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = sem.faint,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            DeckButton(text = "POPULATE SCHEDULE", onClick = onOpenPopulate)
+                        }
                     }
                 }
                 if (!filterUnknownOnly && overdueRows.isNotEmpty()) {

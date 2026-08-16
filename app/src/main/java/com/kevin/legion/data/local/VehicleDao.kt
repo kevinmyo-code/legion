@@ -142,6 +142,18 @@ interface VehicleDao {
     suspend fun applyDecodedIdentity(mac: String, year: Int, make: String, model: String, trim: String, now: Long): Int
 
     /**
+     * Sets [Vehicle.engine] alone (ticket 14,
+     * `.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`'s manual-input
+     * field). Its own targeted query rather than folded into [setIdentity]: engine is not part of
+     * that function's "the driver just stated the identity" contract, and a correction that
+     * mentions only the engine must not have to restate year/make/model/trim/name alongside it (or
+     * risk re-sending a stale copy of one of them). Same false-success shape every other targeted
+     * write here warns about - see [setOdometerBaseline]'s doc - so this returns the row count too.
+     */
+    @Query("UPDATE vehicles SET engine = :engine, updatedAt = :now WHERE obdMac = :mac")
+    suspend fun setEngine(mac: String, engine: String, now: Long): Int
+
+    /**
      * Clears the retired `"this car"` sentinel off any row still carrying it (ticket 04's label
      * rule, `.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`) - a data write through
      * this existing targeted query, not a migration. `name` has always been a plain TEXT column

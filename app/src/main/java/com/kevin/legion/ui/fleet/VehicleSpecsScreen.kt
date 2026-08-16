@@ -75,7 +75,7 @@ import kotlinx.coroutines.launch
  * reads as current forever.
  */
 @Composable
-fun VehicleSpecsScreen(onBack: () -> Unit) {
+fun VehicleSpecsScreen(onBack: () -> Unit, onOpenPopulate: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val connectionState by ObdBluetoothManager.connectionState.collectAsStateWithLifecycle()
@@ -169,6 +169,7 @@ fun VehicleSpecsScreen(onBack: () -> Unit) {
                 recallChecking = false
             }
         },
+        onOpenPopulate = onOpenPopulate,
     )
 }
 
@@ -194,6 +195,8 @@ fun VehicleSpecsContent(
     onReadVin: () -> Unit,
     onReconcileIdentity: () -> Unit,
     onCheckRecalls: () -> Unit,
+    /** Ticket 14's populate trigger, one of its two entry points ("beside SYNC ID FROM VIN"). Defaults to a no-op so every pre-existing caller/preview keeps compiling. */
+    onOpenPopulate: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -313,6 +316,13 @@ fun VehicleSpecsContent(
                                     announce = recallAnnouncement(recallOutcome),
                                 )
                             }
+                        }
+                        // Ticket 14's first entry point ("beside SYNC ID FROM VIN, where a VIN
+                        // already lives"). A separate row rather than crowding the one above - this
+                        // action opens a whole new screen (the diff), not an inline outcome the way
+                        // the two above are.
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                            SpecAction("POPULATE SCHEDULE", onClick = onOpenPopulate)
                         }
                         if (reconciling) {
                             Row(

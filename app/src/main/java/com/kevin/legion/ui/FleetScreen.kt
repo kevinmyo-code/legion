@@ -65,6 +65,7 @@ import com.kevin.legion.ui.fleet.LiveRowView
 import com.kevin.legion.ui.fleet.MaintenanceDrilldownScreen
 import com.kevin.legion.ui.fleet.ObdDeviceScreen
 import com.kevin.legion.ui.fleet.OilAnalysisDrilldownScreen
+import com.kevin.legion.ui.fleet.PopulateScreen
 import com.kevin.legion.ui.fleet.RecapDrilldownScreen
 import com.kevin.legion.ui.fleet.ServiceHistoryScreen
 import com.kevin.legion.ui.fleet.SetOdometerDialog
@@ -267,7 +268,7 @@ data class FleetUiState(
  * [FleetScreen] below, so returning from ITEM DETAIL to FULL SCHEDULE preserves the filter without
  * threading it back through the enum itself.
  */
-private enum class FleetDrilldown { UPLINK, MAINTENANCE, FULL_SCHEDULE, ITEM_DETAIL, SERVICE_HISTORY, DRIVES, ADAPTER, SPECS, RECAPS, OIL }
+private enum class FleetDrilldown { UPLINK, MAINTENANCE, FULL_SCHEDULE, ITEM_DETAIL, SERVICE_HISTORY, DRIVES, ADAPTER, SPECS, RECAPS, OIL, POPULATE }
 
 @Composable
 fun FleetScreen(
@@ -437,14 +438,14 @@ fun FleetScreen(
             else -> null
         }
         // Ticket 09 verification #3: "confirm the drilldown-return path refreshes the parent"
-        // (mission-control ticket 04's stale-parent bug). FULL SCHEDULE, ITEM DETAIL, and (ticket
-        // 11) SERVICE HISTORY are the screens on this map that can write, so all three bump
-        // reloadKey on every way out - physical back (below) and each screen's own onBack callback
-        // (further down) - rather than trying to track whether a write actually happened on this
-        // particular visit.
+        // (mission-control ticket 04's stale-parent bug). FULL SCHEDULE, ITEM DETAIL, SERVICE
+        // HISTORY (ticket 11), and POPULATE (ticket 14) are the screens on this map that can write,
+        // so all four bump reloadKey on every way out - physical back (below) and each screen's own
+        // onBack callback (further down) - rather than trying to track whether a write actually
+        // happened on this particular visit.
         BackHandler {
             if (currentDrilldown == FleetDrilldown.FULL_SCHEDULE || currentDrilldown == FleetDrilldown.ITEM_DETAIL ||
-                currentDrilldown == FleetDrilldown.SERVICE_HISTORY
+                currentDrilldown == FleetDrilldown.SERVICE_HISTORY || currentDrilldown == FleetDrilldown.POPULATE
             ) {
                 reloadKey++
             }
@@ -490,6 +491,7 @@ fun FleetScreen(
                 },
                 onConfirmAll = { items -> writeConfirmAll(context, fullState.vehicleId, items) },
                 onOpenServiceHistory = { drilldown = FleetDrilldown.SERVICE_HISTORY },
+                onOpenPopulate = { drilldown = FleetDrilldown.POPULATE },
                 onBack = { reloadKey++; drilldown = FleetDrilldown.MAINTENANCE },
             )
             FleetDrilldown.SERVICE_HISTORY -> ServiceHistoryScreen(
@@ -539,7 +541,17 @@ fun FleetScreen(
                     reloadKey++
                 },
             )
-            FleetDrilldown.SPECS -> VehicleSpecsScreen(onBack = { drilldown = null })
+            FleetDrilldown.SPECS -> VehicleSpecsScreen(
+                onBack = { drilldown = null },
+                onOpenPopulate = { drilldown = FleetDrilldown.POPULATE },
+            )
+            // Ticket 14: not display-only like every other drilldown in this `when` - PopulateScreen
+            // owns its own loads/writes (see its file doc for why). reloadKey++ on the way out
+            // catches any accepted row so FLEET's own MAINTENANCE/FULL SCHEDULE panels reflect it.
+            FleetDrilldown.POPULATE -> PopulateScreen(
+                vehicleId = fullState.vehicleId,
+                onBack = { reloadKey++; drilldown = null },
+            )
         }
         return
     }

@@ -127,7 +127,23 @@ suspend fun writeAddItem(
         neverDone = mode == AnchorMode.NEVER_DONE,
         intervalSource = "CONFIRMED",
     )
-    CarDatabase.getDatabase(context).maintenanceItemDao().upsert(item)
+    // insertIgnore, never upsert. `upsert` is @Insert(REPLACE) - a whole-row overwrite - and this
+    // path is reached from a form the driver may have had open while something else wrote the same
+    // (vehicleId, serviceName): a voice log_service creating an orphan, a populate accept, a sync
+    // merge. Tapping ADD would then silently replace that row wholesale, taking its anchor and its
+    // provenance with it.
+    //
+    // Worse, the no-op law cannot catch it: REPLACE always reports a write, so a row-count check is
+    // structurally blind here. That is why the fix is the insert strategy and not another guard.
+    //
+    // Found by review of ticket 14's identical bug in writePopulateAdd, which correctly reported
+    // this sibling as out of its own scope rather than reaching into this file. Fixed here on the
+    // same reasoning that governs the rest of this map: a known instance of a bug just fixed
+    // elsewhere is not a smaller bug for being known.
+    val rowId = CarDatabase.getDatabase(context).maintenanceItemDao().insertIgnore(item)
+    if (rowId == -1L) {
+        return WriteOutcome(false, "$trimmed is already on the schedule - open it to change its interval.")
+    }
     return WriteOutcome(true, "Added $trimmed.")
 }
 

@@ -210,4 +210,26 @@ class VehicleDaoTargetedWritesTest {
         val stillAfter = dao.getByMac("AA:09")!!
         assertEquals(after, stillAfter)
     }
+
+    // --- setEngine (ticket 14's manual-input field) -----------------------
+
+    @Test
+    fun `setEngine touches only engine and updatedAt`() = runBlocking {
+        dao.upsert(fullVehicle("AA:10"))
+        val before = dao.getByMac("AA:10")!!
+
+        val written = dao.setEngine("AA:10", engine = "4.0L I6", now = 4_321L)
+        val after = dao.getByMac("AA:10")!!
+
+        assertEquals(1, written)
+        assertEquals("4.0L I6", after.engine)
+        assertEquals(4_321L, after.updatedAt)
+        assertEquals(before.copy(engine = "4.0L I6", updatedAt = 4_321L), after)
+    }
+
+    @Test
+    fun `setEngine against a nonexistent mac affects zero rows`() = runBlocking {
+        val written = dao.setEngine("never:registered", engine = "2.5L I4", now = 1L)
+        assertEquals(0, written)
+    }
 }

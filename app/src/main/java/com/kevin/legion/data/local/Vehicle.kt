@@ -25,8 +25,17 @@ data class Vehicle(
     // Last time Aria asked the driver to confirm the odometer, so the
     // monthly check-in doesn't nag more than once per interval.
     val lastOdometerPromptAt: Long = 0L,
-    // False until the one-time online lookup has populated default
-    // maintenance intervals for this make/model/year.
+    // VESTIGIAL (ticket 14, `.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`,
+    // 2026-08-15). Used to mean "the one-time online lookup has populated default maintenance
+    // intervals for this make/model/year" - that lookup (`VehicleController.onboardPendingVehicles`,
+    // and the automatic calls inside `registerDirect`/`addVehicle`/`correctVehicle`) is DELETED.
+    // Nothing writes this column anymore; the left-in-place `VehicleDao.markOnboarded` query has no
+    // caller either. A car's schedule now starts empty and stays empty until a driver-triggered
+    // populate diff is run and accepted (`vehicle/PopulateSchedule.kt`) - there is no more "one-time"
+    // event for this flag to record. Left in the schema rather than dropped for no gain (removing a
+    // column buys nothing here), but do NOT read it as live state or wire a new caller to it - that
+    // is exactly the `refreshServiceIntervals` mistake (ticket 05: dead code that looks like a
+    // working feature) one column over.
     val onboarded: Boolean = false,
     // Per-car companion presentation, set during onboarding. voiceName is the
     // chosen prebuilt Gemini voice (blank = app default); personaTraits is the

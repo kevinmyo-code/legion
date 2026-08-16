@@ -292,12 +292,20 @@ fun AutoCarRow(isAuto: Boolean, resolvesTo: String?, onSelect: () -> Unit) {
  * [com.kevin.legion.vehicle.VehicleController.addVehicle] via the caller, which also owns that
  * function's OWN make/model/year duplicate check - this dialog never second-guesses that result,
  * it only decides when CONFIRM may be pressed at all.
+ *
+ * **Engine field (ticket 14, `.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`).**
+ * Optional, same as trim - a 4.0L XJ and a 2.5L XJ differ on plugs and capacities, so a driver who
+ * already knows the engine at ADD time can save a populate-time round trip through
+ * [ManualIdentityForm][com.kevin.legion.ui.fleet.PopulateScreen]. Mileage is deliberately NOT a
+ * field here - ticket 14 asks for it to reuse [SetOdometerDialog] rather than a duplicate text
+ * field, so `CarsScreen` shows that SAME dialog for the freshly-added car right after this one
+ * closes, instead of this dialog growing a sixth field.
  */
 @Composable
 fun AddCarDialog(
     existingLabels: List<String>,
     onDismiss: () -> Unit,
-    onAdd: (year: Int, make: String, model: String, trim: String, name: String) -> Unit,
+    onAdd: (year: Int, make: String, model: String, trim: String, name: String, engine: String) -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     var make by remember { mutableStateOf("") }
@@ -305,6 +313,7 @@ fun AddCarDialog(
     var yearText by remember { mutableStateOf("") }
     var trim by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
+    var engine by remember { mutableStateOf("") }
 
     val validation = CarManageResolver.validateAddCar(make, model, yearText, name, existingLabels)
 
@@ -321,6 +330,8 @@ fun AddCarDialog(
                 Spacer(Modifier.padding(top = 8.dp))
                 OutlinedTextField(value = trim, onValueChange = { trim = it }, singleLine = true, label = { Text("Trim (optional)") })
                 Spacer(Modifier.padding(top = 8.dp))
+                OutlinedTextField(value = engine, onValueChange = { engine = it }, singleLine = true, label = { Text("Engine (optional)") })
+                Spacer(Modifier.padding(top = 8.dp))
                 OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Nickname (optional)") })
                 if (validation.error != null) {
                     Spacer(Modifier.padding(top = 8.dp))
@@ -331,7 +342,9 @@ fun AddCarDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onAdd(CarManageResolver.parseYear(yearText) ?: 0, make.trim(), model.trim(), trim.trim(), name.trim()) },
+                onClick = {
+                    onAdd(CarManageResolver.parseYear(yearText) ?: 0, make.trim(), model.trim(), trim.trim(), name.trim(), engine.trim())
+                },
                 enabled = validation.isValid,
             ) { Text("ADD CAR") }
         },
@@ -520,7 +533,7 @@ private fun PreviewAutoRow() = LegionTheme {
 @Preview(name = "Add a car: blank form", widthDp = 360, heightDp = 640)
 @Composable
 private fun PreviewAddCarDialog() = LegionTheme {
-    AddCarDialog(existingLabels = listOf("2020 Mitsubishi Outlander"), onDismiss = {}, onAdd = { _, _, _, _, _ -> })
+    AddCarDialog(existingLabels = listOf("2020 Mitsubishi Outlander"), onDismiss = {}, onAdd = { _, _, _, _, _, _ -> })
 }
 
 @Preview(name = "Rename: prefilled from the current label", widthDp = 360, heightDp = 640)

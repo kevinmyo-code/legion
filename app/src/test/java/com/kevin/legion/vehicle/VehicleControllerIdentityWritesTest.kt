@@ -34,12 +34,12 @@ import org.robolectric.RuntimeEnvironment
  * Robolectric through the real [CarDatabase.getDatabase] path, same shape as
  * [VehicleControllerSeedingTest].
  *
- * Note on the interval lookup: [VehicleController.registerDirect] and
- * `correctVehicle` both reach `applyServiceIntervals` -> `lookupServiceIntervals`,
- * which asks Gemini over the network. Under Robolectric that call fails and is
- * caught (`Log.w` then `?: return emptyList()`), so these tests exercise the
- * identity-write path with a zero-item schedule. That is deliberate: the write
- * being pinned here happens before the lookup and must not depend on it.
+ * Note on the interval lookup: as of ticket 14
+ * (`.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`), neither
+ * [VehicleController.registerDirect] nor `correctVehicle` touches the factory-schedule lookup at
+ * all anymore - that automatic seed is deleted. These tests exercise the identity-write path with
+ * no schedule interaction whatsoever now, which only makes the original point more true: the write
+ * being pinned here never depended on the lookup, and now there is no lookup for it to depend on.
  */
 @RunWith(RobolectricTestRunner::class)
 class VehicleControllerIdentityWritesTest {

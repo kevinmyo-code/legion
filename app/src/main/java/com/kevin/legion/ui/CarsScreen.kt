@@ -165,7 +165,7 @@ fun CarsScreen(onBack: () -> Unit) {
             }
         },
         onToggleArchived = { showArchived = !showArchived },
-        onAddCar = { year, make, model, trim, name ->
+        onAddCar = { year, make, model, trim, name, engine ->
             scope.launch {
                 // Same call the manage_vehicle voice tool's "add" action makes
                 // (LiveToolbox.manageVehicle) - no second write path. addVehicle
@@ -173,7 +173,7 @@ fun CarsScreen(onBack: () -> Unit) {
                 // adding a second car mid-drive must not silently move which
                 // car is active), so nothing here needs to re-notify a live
                 // session the way onActivate/onArchive do.
-                VehicleController.addVehicle(context, year, make, model, trim, name)
+                VehicleController.addVehicle(context, year, make, model, trim, name, engine)
                 reloadNonce++
             }
         },
@@ -200,7 +200,7 @@ fun CarsContent(
     onArchive: (vehicleId: String) -> Unit,
     onUnarchive: (vehicleId: String) -> Unit,
     onToggleArchived: () -> Unit,
-    onAddCar: (year: Int, make: String, model: String, trim: String, name: String) -> Unit,
+    onAddCar: (year: Int, make: String, model: String, trim: String, name: String, engine: String) -> Unit,
     onRename: (vehicleId: String, newName: String) -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
@@ -214,8 +214,8 @@ fun CarsContent(
         AddCarDialog(
             existingLabels = state.allLabels,
             onDismiss = { showAddDialog = false },
-            onAdd = { year, make, model, trim, name ->
-                onAddCar(year, make, model, trim, name)
+            onAdd = { year, make, model, trim, name, engine ->
+                onAddCar(year, make, model, trim, name, engine)
                 showAddDialog = false
             },
         )
@@ -333,7 +333,7 @@ private fun PreviewCarsLoading() = LegionTheme {
     CarsContent(
         CarsUiState(loading = true),
         onBack = {}, onActivate = {}, onFollowAdapter = {}, onArchive = {}, onUnarchive = {}, onToggleArchived = {},
-        onAddCar = { _, _, _, _, _ -> }, onRename = { _, _ -> },
+        onAddCar = { _, _, _, _, _, _ -> }, onRename = { _, _ -> },
     )
 }
 
@@ -346,7 +346,7 @@ private fun PreviewCarsPinned() = LegionTheme {
             allLabels = previewRows.map { it.label },
         ),
         onBack = {}, onActivate = {}, onFollowAdapter = {}, onArchive = {}, onUnarchive = {}, onToggleArchived = {},
-        onAddCar = { _, _, _, _, _ -> }, onRename = { _, _ -> },
+        onAddCar = { _, _, _, _, _, _ -> }, onRename = { _, _ -> },
     )
 }
 
@@ -362,7 +362,7 @@ private fun PreviewCarsAuto() = LegionTheme {
             allLabels = previewRows.map { it.label },
         ),
         onBack = {}, onActivate = {}, onFollowAdapter = {}, onArchive = {}, onUnarchive = {}, onToggleArchived = {},
-        onAddCar = { _, _, _, _, _ -> }, onRename = { _, _ -> },
+        onAddCar = { _, _, _, _, _, _ -> }, onRename = { _, _ -> },
     )
 }
 
@@ -372,6 +372,6 @@ private fun PreviewCarsEmpty() = LegionTheme {
     CarsContent(
         CarsUiState(loading = false, rows = emptyList(), isAuto = true),
         onBack = {}, onActivate = {}, onFollowAdapter = {}, onArchive = {}, onUnarchive = {}, onToggleArchived = {},
-        onAddCar = { _, _, _, _, _ -> }, onRename = { _, _ -> },
+        onAddCar = { _, _, _, _, _, _ -> }, onRename = { _, _ -> },
     )
 }

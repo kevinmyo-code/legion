@@ -209,4 +209,42 @@ class MaintenanceWritesTest {
         assertNotNull(createdGhost)
         assertEquals("CONFIRMED", createdGhost?.intervalSource)
     }
+
+    /**
+     * `writeAddItem` used to write through `upsert` = `@Insert(REPLACE)`, a whole-row overwrite.
+     * The add form can sit open while something else writes the same (vehicleId, serviceName) - a
+     * voice `log_service` orphan, a populate accept, a sync merge - and tapping ADD would then
+     * replace that row wholesale, anchor and provenance included.
+     *
+     * The no-op law could not have caught it: REPLACE always reports a write, so a row-count check
+     * is structurally blind. The fix had to be the insert strategy itself.
+     *
+     * Found by review of ticket 14's identical bug in `writePopulateAdd`.
+     */
+    @Test
+    fun `writeAddItem refuses rather than overwriting a row that already exists`() = runBlocking {
+        db.maintenanceItemDao().upsert(
+            MaintenanceItem(
+                vehicleId = "V1", serviceName = "Tire Rotation",
+                intervalMiles = 6_000, intervalMonths = 6,
+                lastDoneMileage = 118_483, intervalSource = "CONFIRMED",
+            )
+        )
+
+        val outcome = writeAddItem(
+            context, vehicleId = "V1", name = "Tire Rotation",
+            miles = 9_999, months = null, mode = AnchorMode.DONT_KNOW, mileage = null, date = null,
+        )
+
+        assertFalse("An add that collides must refuse. Was: ${outcome.message}", outcome.success)
+        assertTrue(
+            "The refusal must point at the change path. Was: ${outcome.message}",
+            outcome.message.contains("already on the schedule", ignoreCase = true),
+        )
+
+        val after = db.maintenanceItemDao().get("V1", "Tire Rotation")!!
+        assertEquals("the existing interval must survive", 6_000, after.intervalMiles)
+        assertEquals("and its anchor", 118_483, after.lastDoneMileage)
+        assertEquals("and its provenance", "CONFIRMED", after.intervalSource)
+    }
 }

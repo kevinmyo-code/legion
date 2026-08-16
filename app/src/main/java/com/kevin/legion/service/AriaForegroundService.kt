@@ -244,11 +244,11 @@ class AriaForegroundService : Service() {
             com.kevin.legion.vehicle.TelemetryRecorder.run(this@AriaForegroundService)
         }
 
-        // One-time online lookup of maintenance intervals for any vehicle
-        // that hasn't been onboarded yet (e.g. the default Zero profile).
-        serviceScope.launch {
-            VehicleController.onboardPendingVehicles(this@AriaForegroundService)
-        }
+        // The automatic maintenance-interval seed that used to run here (onboardPendingVehicles) was
+        // DELETED (ticket 14, `.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`)
+        // - it fired on every service start and silently seeded 54 rows / 49 empty anchors across
+        // Kevin's roster without him ever asking for one. A car's schedule now starts empty; the
+        // only way it gets populated is a deliberate, driver-triggered diff-and-confirm.
 
         startHealthMonitor()
         startArrivalMonitor()

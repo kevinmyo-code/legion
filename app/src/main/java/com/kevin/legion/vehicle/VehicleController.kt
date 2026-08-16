@@ -80,21 +80,74 @@ object VehicleController {
     // "Brake Fluid" is its own entry deliberately: the severe-service lookup
     // prompt asks for it by name, so a row titled exactly that is an ordinary
     // seed result, and without an entry the bare "brake" keyword swallowed it.
+    //
+    // Expanded from ten to seventeen entries (ticket 14 review, BLOCKING 1b,
+    // `.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`,
+    // 2026-08-15): ticket 02's sourced 1998 XJ research
+    // (`.scratch/fleet-maintenance/research/1998-xj-schedule.md` §5.1) counted 26 distinct factory
+    // service strings against the original ten keywords - "differential fluid", "transfer case
+    // fluid", "serpentine belt", "ignition cables", and "steering/ball-joint lubrication" all had
+    // NO canonical entry at all, so two differently-worded LLM responses for any of those concepts
+    // became two rows, the exact `Axle Fluid` / `Axle Lubricant` / `Axle Lubricant Service` shape
+    // ticket 01 measured on Kevin's real phone. "Manual Transmission Fluid" is a NEW entry
+    // alongside the pre-existing "Transmission Fluid" rather than a rename of it - the research
+    // (§5.3) flagged automatic/manual/transfer-case as three separate factory items sharing one
+    // ambiguous canonical name; splitting out the manual case is additive (longest-match already
+    // makes "manual transmission fluid" beat the shorter "transmission fluid"/"transmission"
+    // keywords, so nothing already stored as "Transmission Fluid" changes behaviour) rather than
+    // reopening the automatic-transmission naming, which is out of this ticket's scope. "PCV Valve"
+    // is included even though ticket 02 found the XJ has no PCV item (CCV system, not serviceable) -
+    // this table is shared across every vehicle on the fleet, not just the XJ, and PCV is a real
+    // canonical concept on plenty of other cars.
     private val SERVICE_KEYWORDS = listOf(
         "Oil Change" to listOf("oil"),
         "Tire Rotation" to listOf("tire rotation", "tires rotated", "rotated the tires"),
-        "Brake Pads" to listOf("brake pad", "brakes", "brake"),
+        "Brake Pads" to listOf("brake pad", "brake lining", "brakes", "brake"),
         "Brake Fluid" to listOf("brake fluid"),
-        "Air Filter" to listOf("air filter"),
+        "Air Filter" to listOf("air filter", "air cleaner element"),
         "Cabin Air Filter" to listOf("cabin filter", "cabin air filter"),
         "Spark Plugs" to listOf("spark plug"),
+        "Ignition Cables" to listOf("ignition cable", "spark plug wire", "plug wire"),
         "Coolant Flush" to listOf("coolant", "antifreeze"),
         "Transmission Fluid" to listOf("transmission fluid", "transmission"),
+        "Manual Transmission Fluid" to listOf("manual transmission fluid", "manual transmission"),
+        "Transfer Case Fluid" to listOf("transfer case fluid", "transfer case"),
+        "Differential Fluid" to listOf(
+            "differential fluid", "differential service", "front and rear axles", "axle fluid",
+            "axle lubricant", "gear oil", "rear axle fluid", "front axle fluid",
+        ),
+        "Serpentine Belt" to listOf("serpentine belt", "drive belt", "accessory belt"),
+        "Chassis Lubrication" to listOf(
+            "lubricate steering", "steering linkage", "ball joint", "chassis lubrication", "grease fitting",
+        ),
+        "PCV Valve" to listOf("pcv valve", "pcv"),
         "Battery" to listOf("battery"),
     )
 
+    // Common maintenance verbs/articles that carry no identity - stripped before the near-miss
+    // token-overlap comparison below, so "Drain and refill the front axle" and "Front axle fluid
+    // service" compare on their NOUNS ("front", "axle") rather than diluting the overlap ratio with
+    // words every factory sentence shares regardless of what job it names.
+    //
+    // "fluid" is deliberately in here too, found by the unit test it broke: "Transfer Case Fluid"
+    // vs the real-shape dataset's existing "Transmission Fluid" share only the word "fluid" (1 of
+    // 2 significant words on the shorter side), which lands EXACTLY on the 0.5 threshold and would
+    // wrongly near-miss-match two genuinely different services. "Fluid" is a generic solvent-word
+    // that shows up across transmission/differential/transfer-case/brake/coolant concepts alike, so
+    // like "service"/"change" it carries no identity of its own and is stripped the same way.
+    private val NEAR_MISS_STOPWORDS = setOf(
+        "a", "an", "and", "as", "at", "of", "or", "the", "to",
+        "adjust", "change", "check", "drain", "fluid", "flush", "inspect", "necessary", "refill",
+        "replace", "replacement", "service", "tension",
+    )
+
     /**
-     * Registers the car's year/make/model, triggers maintenance-interval lookup.
+     * Registers the car's year/make/model/trim/engine. **No longer triggers a maintenance-interval
+     * lookup** (ticket 14, `.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`):
+     * registering a car used to silently call [applyServiceIntervals] - the mechanism that put 54
+     * rows and 49 empty anchors across Kevin's roster without him ever asking for one. A car now
+     * starts with an EMPTY schedule and says so; populating it is a deliberate, driver-triggered
+     * diff-and-confirm (see `vehicle/PopulateSchedule.kt`), never a side effect of registration.
      *
      * **Ticket 13 rewrite (2026-08-15).** This used to build a brand new [Vehicle]
      * from scratch on every call - even when a row already existed - which
@@ -106,8 +159,14 @@ object VehicleController {
      * touches only the identity columns and leaves everything else - including
      * the odometer and persona fields this function used to carry forward by
      * hand - untouched by construction rather than by remembering to list them.
+     *
+     * [trim]/[engine] default to blank so every pre-existing caller (voice `register_vehicle`,
+     * which has no engine slot) keeps compiling unchanged; ticket 14's manual-input form is the
+     * first caller to actually supply them. A blank [trim]/[engine] on an EXISTING row leaves the
+     * stored value alone (same "blank means don't touch" convention [correctVehicle] uses) rather
+     * than clobbering it back to empty.
      */
-    suspend fun registerDirect(context: Context, year: Int, make: String, model: String): String {
+    suspend fun registerDirect(context: Context, year: Int, make: String, model: String, trim: String = "", engine: String = ""): String {
         if (year < 1900 || make.isBlank() || model.isBlank())
             return "I need a valid year, make, and model to register the car."
         val vehicleId = ActiveVehicle.current(context)
@@ -119,33 +178,31 @@ object VehicleController {
         // the `&& it != "this car"` half of this check is dead weight now, same as AriaBrain's -
         // removed rather than left to rot.
         val name = existing?.name?.takeIf { it.isNotBlank() } ?: model
-        val vehicle: Vehicle
         if (existing == null) {
             // Genuinely new row - nothing to preserve, a real INSERT.
-            vehicle = Vehicle(
-                obdMac = vehicleId,
-                name = name,
-                make = make,
-                model = model,
-                year = year,
-                personaPrompt = "",
-                onboarded = false,
-                confirmed = true,
+            dao.upsert(
+                Vehicle(
+                    obdMac = vehicleId,
+                    name = name,
+                    make = make,
+                    model = model,
+                    year = year,
+                    trim = trim,
+                    engine = engine,
+                    personaPrompt = "",
+                    onboarded = false,
+                    confirmed = true,
+                )
             )
-            dao.upsert(vehicle)
         } else {
             // Existing row: a targeted identity write, not a rebuild - see the
             // function doc and VehicleDao.setIdentity for why.
-            dao.setIdentity(vehicleId, year, make, model, existing.trim, name, now)
-            vehicle = existing.copy(year = year, make = make, model = model, name = name, confirmed = true, updatedAt = now)
+            dao.setIdentity(vehicleId, year, make, model, trim.ifBlank { existing.trim }, name, now)
+            if (engine.isNotBlank()) dao.setEngine(vehicleId, engine, now)
         }
-        val found = applyServiceIntervals(context, vehicle)
 
-        return if (found > 0) {
-            "Got it, this is the $year $make $model now. Pulled up $found maintenance items so I can keep track of intervals."
-        } else {
-            "Got it, this is the $year $make $model now. Couldn't find a maintenance schedule online, but I'll track it as you log things."
-        }
+        return "Got it, this is the $year $make $model now. No maintenance schedule on file yet - " +
+            "populate it from the factory recommendation whenever you're ready."
     }
 
     /**
@@ -251,10 +308,12 @@ object VehicleController {
      * Normalises a free-text service name (from Gemini, either a spoken log or a
      * looked-up interval) onto the app's canonical vocabulary so the same real
      * service always lands on the same [MaintenanceItem] row. Falls back to
-     * word-by-word titlecasing the raw name when it matches none of the 9
-     * canonical keywords - that fallback can still vary phrasing-to-phrasing
-     * (accepted; [looksLikeExistingItem] is the guard against that variance
-     * mattering, ticket 07/08).
+     * word-by-word titlecasing the raw name when it matches none of
+     * [SERVICE_KEYWORDS]' entries (seventeen as of ticket 14's review, up from ten -
+     * see that list's own doc comment) - that fallback can still vary phrasing-to-phrasing
+     * (accepted; [looksLikeExistingItem] is the guard against that variance mattering, ticket
+     * 07/08, and [nearMissServiceName] is the weaker guard for phrasings that fall through the
+     * keyword table entirely, ticket 14's review).
      */
     /**
      * Free-text service name -> one of [SERVICE_KEYWORDS]' canonical names, or a
@@ -313,6 +372,61 @@ object VehicleController {
         val canonicalTyped = canonicalizeServiceName(typedName)
         return existingNames.firstOrNull { canonicalizeServiceName(it).equals(canonicalTyped, ignoreCase = true) }
     }
+
+    /**
+     * Bounded near-miss detector for names that [looksLikeExistingItem] cannot catch because they
+     * fall OUTSIDE [SERVICE_KEYWORDS] entirely (ticket 14's review, BLOCKING 1b,
+     * `.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`). Two different
+     * LLM phrasings of a concept with no keyword entry [canonicalizeServiceName] both onto the
+     * word-by-word titlecase fallback - which titlecases whatever raw words it was given, so two
+     * different sentences for the same real job produce two different strings. That is the exact
+     * `Air Filter` / `Air Filter Replacement` / `Engine Air Filter` shape ticket 01 measured, just
+     * for a concept the keyword table does not cover yet - and expanding the table (this same
+     * ticket's other half) can only ever close today's gaps, never the next one an LLM invents a new
+     * phrasing for.
+     *
+     * **Detection only, same rule as [looksLikeExistingItem] (ticket 07: "the canonicaliser is a
+     * comparator, never a rewriter").** This function never resolves a near-miss in either
+     * direction - the caller ([buildPopulateDiff][com.kevin.legion.vehicle.buildPopulateDiff])
+     * surfaces it as its own question ("this looks like X already on file - same thing?"), and
+     * nothing writes until the driver answers explicitly, same as every other populate-diff row.
+     *
+     * **Token-overlap, not edit distance.** Two factory phrasings of the same job share NOUNS
+     * ("axle", "differential", "belt") far more reliably than they share character sequences - a
+     * verb-heavy sentence ("Drain and refill the front axle") edit-distances poorly against a noun
+     * phrase ("Front axle fluid service") even when both name the same job. [NEAR_MISS_STOPWORDS]
+     * strips the maintenance verbs and articles that would otherwise dilute the overlap ratio with
+     * words every factory sentence shares regardless of what it is naming, then compares what is
+     * left as sets.
+     *
+     * **Threshold 0.5 of the SHORTER name's significant word count** (at least half of the smaller
+     * side's remaining words must appear in the other) - conservative on purpose, so this only
+     * fires when a real majority of the identifying content overlaps. Below 0.5, unrelated
+     * single-word concepts ("Belt" vs "Battery" both losing their only word to no match, or a
+     * two-word overlap-of-one like "Front Bumper" vs "Front Axle" sharing just "front") start
+     * colliding; ticket 02's one real audit of factory phrasing variance is what this number is
+     * checked against, pinned by `VehicleControllerServiceNameTest`.
+     *
+     * Returns the EXISTING name verbatim (same contract as [looksLikeExistingItem]) or null.
+     */
+    internal fun nearMissServiceName(candidate: String, existingNames: List<String>): String? {
+        val candidateTokens = significantTokens(candidate)
+        if (candidateTokens.isEmpty()) return null
+        return existingNames.firstOrNull { existing ->
+            val existingTokens = significantTokens(existing)
+            if (existingTokens.isEmpty()) return@firstOrNull false
+            val overlap = candidateTokens.intersect(existingTokens).size
+            val smallerSide = minOf(candidateTokens.size, existingTokens.size)
+            overlap.toDouble() / smallerSide >= 0.5
+        }
+    }
+
+    /** [NEAR_MISS_STOPWORDS]-filtered lowercase word set for [nearMissServiceName]'s comparison. */
+    private fun significantTokens(raw: String): Set<String> =
+        raw.lowercase()
+            .split(Regex("[^a-z0-9]+"))
+            .filter { it.isNotBlank() && it !in NEAR_MISS_STOPWORDS }
+            .toSet()
 
     /**
      * Logs completed maintenance and clears the item's "due" status.
@@ -783,6 +897,9 @@ object VehicleController {
         model: String,
         trim: String = "",
         name: String = "",
+        // Ticket 14's manual-input field, alongside trim - default blank so every pre-existing
+        // caller (voice `manage_vehicle` "add" action, which has no engine slot) keeps compiling.
+        engine: String = "",
     ): String {
         if (make.isBlank() || model.isBlank()) return "I need at least a make and model to add a car."
         val dao = CarDatabase.getDatabase(context).vehicleDao()
@@ -810,6 +927,7 @@ object VehicleController {
             model = model,
             year = year,
             trim = trim,
+            engine = engine,
             personaPrompt = "",
             odometerBaseline = 0,
             odometerBaselineAt = 0L,
@@ -818,13 +936,11 @@ object VehicleController {
             confirmed = true,
         )
         dao.upsert(vehicle)
-        val found = applyServiceIntervals(context, vehicle)
+        // No more automatic applyServiceIntervals call here (ticket 14) - the new row starts with
+        // an empty schedule, same as registerDirect.
         val active = currentVehicle(context)
-        return buildString {
-            append("Added the $label. ")
-            if (found > 0) append("Pulled up $found maintenance items for it. ")
-            append("You're still on the ${label(active)} - say switch to the $model when you want me on that one.")
-        }
+        return "Added the $label. No maintenance schedule on file yet - populate it whenever you're " +
+            "ready. You're still on the ${label(active)} - say switch to the $model when you want me on that one."
     }
 
     /**
@@ -842,6 +958,11 @@ object VehicleController {
         model: String? = null,
         trim: String? = null,
         name: String? = null,
+        // Ticket 14's manual-input field. Null means "don't touch", matching every other param
+        // here - written through its OWN targeted query ([VehicleDao.setEngine]) rather than folded
+        // into [VehicleDao.setIdentity], so a correction that never mentions engine can never
+        // silently blank it, and an engine-only correction never has to restate the whole identity.
+        engine: String? = null,
     ): String {
         val dao = CarDatabase.getDatabase(context).vehicleDao()
         val existing = dao.getByMac(vehicleId) ?: return "I couldn't find that car on file."
@@ -853,20 +974,21 @@ object VehicleController {
             name = name?.takeIf { it.isNotBlank() } ?: existing.name,
             confirmed = true,
         )
-        if (updated == existing) return "Nothing to change there - it's already a ${label(existing)}."
-        // Targeted write (ticket 13): identity columns only, via
-        // VehicleDao.setIdentity - the odometer, persona and archive state on
-        // this row ride along untouched instead of round-tripping through a
-        // whole-row upsert of a struct built from a read that could be stale.
-        dao.setIdentity(vehicleId, updated.year, updated.make, updated.model, updated.trim, updated.name, System.currentTimeMillis())
-        // Only re-pull intervals when the actual car changed, not on a rename.
-        val identityChanged = updated.year != existing.year ||
-            !updated.make.equals(existing.make, true) || !updated.model.equals(existing.model, true)
-        val found = if (identityChanged) applyServiceIntervals(context, updated) else 0
-        return buildString {
-            append("Fixed - that one's a ${label(updated)} now. Its history stayed with it. ")
-            if (found > 0) append("Refreshed $found maintenance items for the corrected car.")
+        val identityChanged = updated != existing
+        val engineChanged = engine != null && engine.trim() != existing.engine
+        if (!identityChanged && !engineChanged) return "Nothing to change there - it's already a ${label(existing)}."
+        val now = System.currentTimeMillis()
+        if (identityChanged) {
+            // Targeted write (ticket 13): identity columns only, via
+            // VehicleDao.setIdentity - the odometer, persona and archive state on
+            // this row ride along untouched instead of round-tripping through a
+            // whole-row upsert of a struct built from a read that could be stale.
+            dao.setIdentity(vehicleId, updated.year, updated.make, updated.model, updated.trim, updated.name, now)
         }
+        if (engineChanged) dao.setEngine(vehicleId, engine!!.trim(), now)
+        // No more automatic applyServiceIntervals call here (ticket 14) - correcting a car's badge
+        // no longer silently re-seeds its schedule. A populate is a deliberate, separate action.
+        return "Fixed - that one's a ${label(updated)} now. Its history stayed with it."
     }
 
     /**
@@ -1309,47 +1431,47 @@ object VehicleController {
     // writer, computing per-tick miles from GPS when a fix exists and OBD speed
     // (PID 010D) when it doesn't, so the persisted estimate advances either way.
 
-    /**
-     * Looks up typical manufacturer maintenance intervals for any vehicle that
-     * hasn't been onboarded yet (seeded by [seedVehicle] or [handleRegister]).
-     * Safe to call repeatedly - a no-op once onboarded. Meant to run once at
-     * service startup.
-     */
-    suspend fun onboardPendingVehicles(context: Context) {
-        val dao = CarDatabase.getDatabase(context).vehicleDao()
-        for (vehicle in dao.getAll()) {
-            if (vehicle.onboarded || vehicle.make.isBlank() || vehicle.model.isBlank()) continue
-            applyServiceIntervals(context, vehicle)
-        }
-    }
+    // onboardPendingVehicles was DELETED (ticket 14, 2026-08-15,
+    // `.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`). It fired once
+    // at every service start (AriaForegroundService.onCreate) and silently seeded EVERY car that had
+    // a make/model but had not yet been onboarded - the mechanism that put 54 rows and 49 empty
+    // anchors across Kevin's roster without him ever asking for one (ticket 01's audit). A new car
+    // now starts with an EMPTY schedule and says so ("no maintenance schedule on file yet"); the
+    // only way a schedule ever gets written now is a deliberate, driver-triggered populate
+    // (`vehicle/PopulateSchedule.kt`) that shows a diff and writes NOTHING until each row is
+    // individually accepted. Its old caller in AriaForegroundService.kt was removed with it.
+
+    // applyServiceIntervals was DELETED alongside it - it was the writer onboardPendingVehicles and
+    // the (also now-removed) automatic calls in registerDirect/addVehicle/correctVehicle all shared:
+    // canonicalize-and-dedupe, then insertAll (IGNORE) tagged SEEDED, then flip `onboarded`. Nothing
+    // calls it anymore. Ticket 14's populate diff needs the LOOKUP half of what it did (see
+    // [fetchFactorySchedule] below) but never the blind-write half - every row it proposes is shown
+    // to the driver first, and every accepted row is tagged CONFIRMED (ticket 06 decision b: "any
+    // driver action that names the value moves it to CONFIRMED... accepting a populate diff row"),
+    // never SEEDED. `VehicleDao.markOnboarded` and `Vehicle.onboarded` are left in place (removing a
+    // column for no gain is not this ticket's job) but nothing writes `onboarded` anymore either -
+    // see the column's own doc comment in `data/local/Vehicle.kt`.
 
     // --- Registration -------------------------------------------------
 
-    /** Online lookup of default maintenance intervals; persists them and marks [vehicle] onboarded. Returns the count found. */
-    private suspend fun applyServiceIntervals(context: Context, vehicle: Vehicle): Int {
-        // Canonicalize at SEED time, not just on refresh and voice writes. The
-        // seed used to store Gemini's raw phrasing ("Engine Air Filter"), while
-        // every later write canonicalized ("Air Filter") and then looked the row
-        // up by exact name - missing it, and creating a second, interval-less row
-        // holding the anchor. The real row kept its interval and sat in UNKNOWN
-        // forever. serviceName is half the primary key, so both sides have to
-        // agree on it or nothing ever matches.
-        val items = canonicalizeAndDedupe(lookupServiceIntervals(context, vehicle))
-        val db = CarDatabase.getDatabase(context)
-        // intervalSource is EXPLICIT here, not left to MaintenanceItem's Kotlin
-        // default (ticket 05): this is the ONE writer that is allowed to lay
-        // down a "SEEDED" interval at all, and insertAll's IGNORE is what stops
-        // it from ever overwriting a row a driver has since edited to
-        // "CONFIRMED" - see MaintenanceItemDao.insertAll's own doc.
-        if (items.isNotEmpty()) db.maintenanceItemDao().insertAll(items.map { it.copy(intervalSource = "SEEDED") })
-        // Targeted write (ticket 13): flips onboarded only, via
-        // VehicleDao.markOnboarded. Every caller of this function already
-        // guarantees vehicle's row exists (a fresh insert just above in
-        // registerDirect/addVehicle, or a row pulled straight from getAll() in
-        // onboardPendingVehicles), so this is never a no-op in practice.
-        db.vehicleDao().markOnboarded(vehicle.obdMac, System.currentTimeMillis())
-        return items.size
-    }
+    /**
+     * The read-only half of what [lookupServiceIntervals] used to feed straight into a blind write
+     * (ticket 14): asks the LLM for [vehicle]'s factory schedule and returns it canonicalized and
+     * deduped, WITHOUT writing anything or touching [Vehicle.onboarded] - a populate diff (built by
+     * `vehicle/PopulateSchedule.kt`'s `buildPopulateDiff`) is what decides what, if anything,
+     * actually lands, and nothing here may pre-empt that. Canonicalizing here, not just at diff time,
+     * matters for the SAME reason the old seed canonicalized before its own write: a lookup
+     * returning both "Oil Change" and "Engine Oil & Filter Change" must collapse to ONE candidate
+     * row before the diff ever compares it against the driver's own schedule, or the diff would
+     * offer to "add" two different names for the same real service.
+     *
+     * **`null` propagates straight through from [lookupServiceIntervals] - a genuine lookup failure,
+     * never silently downgraded to "found nothing."** See that function's own doc: the two must stay
+     * distinguishable, because [buildPopulateDiff] would otherwise read a failed network call as "the
+     * factory schedule has zero items" and flag every item already on file as not-in-schedule.
+     */
+    suspend fun fetchFactorySchedule(context: Context, vehicle: Vehicle): List<MaintenanceItem>? =
+        lookupServiceIntervals(context, vehicle)?.let { canonicalizeAndDedupe(it) }
 
     /**
      * Canonicalizes each looked-up item's name and drops later collisions, so a
@@ -1396,12 +1518,29 @@ object VehicleController {
      *
      * Whatever comes back is still an LLM's retrieval, not a figure the car stated - CLAUDE.md
      * §4 rule 5. Labelling it as an estimate is ticket 06's job, not this function's.
+     *
+     * **[Vehicle.engine] is folded in when present (ticket 14).** Ticket 02's research is explicit
+     * about why: a 1998 XJ's factory schedule differs by engine (a 4.0L I6 and a 2.5L I4 disagree on
+     * plugs and capacities), so naming it disambiguates the same way [trim] already does - engine
+     * first, trim after, since "4.0L I6 Limited" reads naturally in that order and the LLM has both
+     * pieces of context either way.
+     *
+     * **Returns `null` on a genuine lookup failure - network error, or a response that doesn't parse
+     * as JSON - never the same `emptyList()` a well-formed `[]` produces (ticket 14 fix, caught on
+     * review before this reached a populate).** The two used to collapse onto one value, which is
+     * exactly the silent-failure shape CLAUDE.md's reconciliation-gate posture exists to prevent
+     * elsewhere: [fetchFactorySchedule] feeds this straight into [buildPopulateDiff], and an empty
+     * factory list reads there as "the manufacturer publishes NO schedule for this car" - every
+     * active item on file would then show as `notInFactorySchedule`, a network hiccup dressed up as
+     * "delete everything." [PopulateScreen][com.kevin.legion.ui.fleet.PopulateScreen] surfaces `null`
+     * as a retryable error rather than ever building a diff from it.
      */
-    private suspend fun lookupServiceIntervals(context: Context, vehicle: Vehicle): List<MaintenanceItem> {
+    private suspend fun lookupServiceIntervals(context: Context, vehicle: Vehicle): List<MaintenanceItem>? {
+        val engine = vehicle.engine.trim().takeIf { it.isNotBlank() }?.let { " $it" } ?: ""
         val trim = vehicle.trim.trim().takeIf { it.isNotBlank() }?.let { " $it" } ?: ""
         val prompt = "Use search to find the manufacturer's published NORMAL scheduled maintenance " +
             "intervals - the standard/light-duty schedule, NOT the severe or heavy-duty one - for a " +
-            "${vehicle.year} ${vehicle.make} ${vehicle.model}$trim. Respond with ONLY a raw JSON array " +
+            "${vehicle.year} ${vehicle.make} ${vehicle.model}$engine$trim. Respond with ONLY a raw JSON array " +
             "(no markdown, no commentary, no code fences) of objects, each with keys " +
             "\"service\" (short title-case name like \"Oil Change\"), \"intervalMiles\" (integer or null), " +
             "and \"intervalMonths\" (integer or null). Include ONLY items the manufacturer actually " +
@@ -1414,15 +1553,16 @@ object VehicleController {
         } catch (e: Exception) {
             Log.w(TAG, "Service interval lookup failed: ${e.message}")
             null
-        } ?: return emptyList()
+        } ?: return null
 
         return parseIntervals(vehicle.obdMac, raw)
     }
 
-    private fun parseIntervals(vehicleId: String, raw: String): List<MaintenanceItem> {
+    /** `null` on anything that doesn't parse as JSON - see [lookupServiceIntervals]'s doc for why that must not collapse onto a genuinely empty `[]`. */
+    private fun parseIntervals(vehicleId: String, raw: String): List<MaintenanceItem>? {
         val start = raw.indexOf('[')
         val end = raw.lastIndexOf(']')
-        if (start == -1 || end == -1 || end < start) return emptyList()
+        if (start == -1 || end == -1 || end < start) return null
 
         return try {
             val arr = JSONArray(raw.substring(start, end + 1))
@@ -1439,7 +1579,7 @@ object VehicleController {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse service intervals: ${e.message}")
-            emptyList()
+            null
         }
     }
 

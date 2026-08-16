@@ -175,4 +175,42 @@ class MaintenanceItemDaoTargetedWritesTest {
 
         assertNull("Re-seeding must not resurrect a deleted item", dao.get("V1", "Brake Pads"))
     }
+
+    // ------------------------------------------------------------- ticket 14
+
+    @Test
+    fun `getForVehicleIncludingDeleted returns both active and tombstoned rows`() = runBlocking {
+        dao.upsertStamped(fullItem("V1", "Oil Change"))
+        dao.upsertStamped(fullItem("V1", "Brake Pads"))
+        dao.softDelete("V1", "Brake Pads", now = 1L)
+
+        val all = dao.getForVehicleIncludingDeleted("V1")
+
+        assertEquals(2, all.size)
+        assertEquals(setOf("Oil Change", "Brake Pads"), all.map { it.serviceName }.toSet())
+        assertTrue("The tombstoned row must be included, deleted = true", all.first { it.serviceName == "Brake Pads" }.deleted)
+    }
+
+    @Test
+    fun `restore un-tombstones and writes the interval in one call`() = runBlocking {
+        dao.upsertStamped(fullItem("V1", "Tire Rotation").copy(intervalMiles = 3_000, intervalMonths = null, intervalSource = "SEEDED"))
+        dao.softDelete("V1", "Tire Rotation", now = 1L)
+        assertNull("Sanity: tombstoned before restore", dao.get("V1", "Tire Rotation"))
+
+        val written = dao.restore("V1", "Tire Rotation", miles = 7_500, months = 6, source = "CONFIRMED", now = 5_555L)
+
+        assertEquals(1, written)
+        val after = dao.get("V1", "Tire Rotation")!!
+        assertEquals(false, after.deleted)
+        assertEquals(7_500, after.intervalMiles)
+        assertEquals(6, after.intervalMonths)
+        assertEquals("CONFIRMED", after.intervalSource)
+        assertEquals(5_555L, after.updatedAt)
+    }
+
+    @Test
+    fun `restore against a nonexistent pair affects zero rows`() = runBlocking {
+        val written = dao.restore("V1", "Nonexistent", miles = 5_000, months = null, source = "CONFIRMED", now = 1L)
+        assertEquals(0, written)
+    }
 }
