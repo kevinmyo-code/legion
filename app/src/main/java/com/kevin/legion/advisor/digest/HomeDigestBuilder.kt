@@ -191,7 +191,15 @@ object HomeDigestBuilder : DigestBuilder {
     /** Overdue count and the single most urgent overdue item if any exist; otherwise the soonest
      * upcoming item from [VehicleController.nextService]. [DigestText.notLogged] only when this car
      * has no maintenance schedule seeded at all - a schedule with zero due items is a real,
-     * computed "on track", not an absent record. `internal` for direct unit testing. */
+     * computed "on track", not an absent record. `internal` for direct unit testing.
+     *
+     * **The `next.byMiles`/`next.byTime` branches carry a "- guess, unconfirmed" suffix off
+     * [VehicleController.ServiceCandidate.isGuess]** (mission-control ticket 16,
+     * `.scratch/fleet-maintenance/issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md`)
+     * - both name a real interval-derived timing figure fed straight into HOME's own digest, i.e. a
+     * model's context. The overdue branch above (`due.first().serviceName`) is deliberately left
+     * alone: it names a count and a service name but renders no interval or timing figure at all, so
+     * there is nothing here for the caveat to qualify. */
     // FLEET stays a bare TrustTier.REPORTED rather than a combinedTier() call, deliberately, unlike
     // BIO/CRED above: [MaintenanceItem] carries no per-row TrustTier field to combine, because - per
     // FleetDigestBuilder's own class doc - EVERY fleet figure derived from a car's own odometer/
@@ -210,8 +218,10 @@ object HomeDigestBuilder : DigestBuilder {
         val phrase = when {
             next == null -> "no schedule to report"
             next.allDue -> "everything anchored is already due"
-            next.byMiles != null -> "next ${next.byMiles.serviceName} in ${next.byMiles.remaining} mi"
-            next.byTime != null -> "next ${next.byTime.serviceName} in ${next.byTime.remaining} days"
+            next.byMiles != null -> "next ${next.byMiles.serviceName} in ${next.byMiles.remaining} mi" +
+                (if (next.byMiles.isGuess) " - guess, unconfirmed" else "")
+            next.byTime != null -> "next ${next.byTime.serviceName} in ${next.byTime.remaining} days" +
+                (if (next.byTime.isGuess) " - guess, unconfirmed" else "")
             else -> "on track, nothing anchored yet"
         }
         return DigestText.withTier(DigestText.line("FLEET", phrase), TrustTier.REPORTED)

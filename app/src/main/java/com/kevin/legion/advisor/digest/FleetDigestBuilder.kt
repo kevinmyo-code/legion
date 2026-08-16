@@ -184,7 +184,16 @@ object FleetDigestBuilder : DigestBuilder {
      * .NextService]'s own doc comment ("whichever comes first" when the same item leads both axes,
      * both leaders named when they differ). Null (no schedule at all) or [VehicleController
      * .NextService.allDue] (a fully-logged schedule where everything is already due) both read as
-     * distinct, honest states - neither collapses into the other or into a bare zero. */
+     * distinct, honest states - neither collapses into the other or into a bare zero.
+     *
+     * **`[byMiles.isGuess]`/`[byTime.isGuess]` each carry their own "- guess, unconfirmed" suffix**
+     * (mission-control ticket 16,
+     * `.scratch/fleet-maintenance/issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md`),
+     * same inline-word convention [maintenanceLines] already uses for [DueRowView.isGuess] - this
+     * line feeds [com.kevin.legion.advisor.AdvisorBriefs] i.e. a model's own context, and a "NEXT" it
+     * states back confidently is exactly the laundering ticket 06 named. The two candidates are
+     * independent items when they differ, so each gets its own suffix rather than one flag for the
+     * whole line. */
     private fun nextServiceLine(next: VehicleController.NextService?): String {
         if (next == null) return DigestText.line("NEXT", DigestText.notLogged())
         if (next.allDue) return DigestText.line("NEXT", "everything anchored is already due")
@@ -192,13 +201,18 @@ object FleetDigestBuilder : DigestBuilder {
         val byTime = next.byTime
         val milesPhrase = byMiles?.let { VehicleController.formatRemaining(it.remaining, VehicleController.ScheduleUnit.MILES) }
         val timePhrase = byTime?.let { VehicleController.formatRemaining(it.remaining, VehicleController.ScheduleUnit.DAYS) }
+        val milesGuess = if (byMiles?.isGuess == true) " - guess, unconfirmed" else ""
+        val timeGuess = if (byTime?.isGuess == true) " - guess, unconfirmed" else ""
         val phrase = when {
             byMiles != null && byTime != null && byMiles.serviceName == byTime.serviceName ->
-                "${byMiles.serviceName} in $milesPhrase or $timePhrase, whichever comes first"
+                // Same item leads both axes, so it is one candidate with one provenance - the suffix
+                // fires once, off byMiles (== byTime's own isGuess by construction, since both
+                // candidates were built from the same MaintenanceItem in computeNextService).
+                "${byMiles.serviceName} in $milesPhrase or $timePhrase, whichever comes first$milesGuess"
             byMiles != null && byTime != null ->
-                "${byMiles.serviceName} in $milesPhrase; ${byTime.serviceName} in $timePhrase"
-            byMiles != null -> "${byMiles.serviceName} in $milesPhrase"
-            byTime != null -> "${byTime.serviceName} in $timePhrase"
+                "${byMiles.serviceName} in $milesPhrase$milesGuess; ${byTime.serviceName} in $timePhrase$timeGuess"
+            byMiles != null -> "${byMiles.serviceName} in $milesPhrase$milesGuess"
+            byTime != null -> "${byTime.serviceName} in $timePhrase$timeGuess"
             else -> "nothing anchored on either axis"
         }
         return DigestText.withTier(DigestText.line("NEXT", phrase), TrustTier.REPORTED)

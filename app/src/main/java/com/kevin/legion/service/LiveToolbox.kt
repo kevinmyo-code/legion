@@ -3961,6 +3961,24 @@ object LiveToolbox {
     }
 
     /**
+     * The spoken guess caveat, appended to a sentence naming [candidate] when
+     * [VehicleController.ServiceCandidate.isGuess] is set (mission-control ticket 16,
+     * `.scratch/fleet-maintenance/issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md`
+     * - "the caveat carry ALOUD because a tag cannot be heard"). [sentenceNoPeriod] is the sentence's
+     * own words WITHOUT its trailing period; this function supplies the period either way, so every
+     * call site below reads naturally whether or not the caveat fires, rather than every branch
+     * having to remember to punctuate both halves itself.
+     *
+     * Deliberately ONE generic phrase rather than distinguishing SEEDED from LOOKUP the way
+     * [MaintenanceAgent.describeItem] does - [VehicleController.ServiceCandidate.isGuess] is a plain
+     * boolean (same shape as [com.kevin.legion.ui.fleet.DueRowView.isGuess]), and this is read aloud
+     * mid-sentence to someone driving, not a model-facing prompt with room for a full provenance
+     * clause.
+     */
+    private fun withGuessCaveat(sentenceNoPeriod: String, candidate: VehicleController.ServiceCandidate): String =
+        sentenceNoPeriod + if (candidate.isGuess) " - though that interval is LEGION's guess, not one you've confirmed." else "."
+
+    /**
      * Instant, zero-token read of what's coming up next - pure DB arithmetic
      * over [VehicleController.nextService], no Gemini call, so it works with no
      * key and no network. Renders plain spoken sentences (this is read aloud),
@@ -3976,6 +3994,10 @@ object LiveToolbox {
      * remaining is phrased as due today rather than "about today out" - see
      * [VehicleController.formatRemaining]'s doc for why that value can't just
      * be dropped into the usual "about X out" template.
+     *
+     * **Every branch that names a candidate carries [withGuessCaveat]** (ticket 16, this being the
+     * spoken surface ticket 06 explicitly required the disclosure carry aloud on). The `allDue` and
+     * "nothing due" branches name no candidate at all, so they carry nothing to caveat.
      */
     private suspend fun getNextService(context: Context, vehicle: Vehicle): JSONObject {
         val next = VehicleController.nextService(context, vehicle)
@@ -3996,25 +4018,29 @@ object LiveToolbox {
                 append("I don't have an odometer reading yet, so I can't time anything by mileage. ")
                 append(
                     next.byTime?.let {
-                        if (it.remaining <= 0L) "${it.serviceName} is due today."
-                        else "By time, ${it.serviceName} is next, about ${VehicleController.formatRemaining(it.remaining, days)} out."
+                        if (it.remaining <= 0L) withGuessCaveat("${it.serviceName} is due today", it)
+                        else withGuessCaveat("By time, ${it.serviceName} is next, about ${VehicleController.formatRemaining(it.remaining, days)} out", it)
                     } ?: "Nothing's coming up by time either yet."
                 )
             }
-            sameItem && next.byTime!!.remaining <= 0L -> "${next.byMiles!!.serviceName} is due today."
-            sameItem -> "${next.byMiles!!.serviceName}, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} or " +
-                "${VehicleController.formatRemaining(next.byTime!!.remaining, days)}, whichever comes first."
+            sameItem && next.byTime!!.remaining <= 0L -> withGuessCaveat("${next.byMiles!!.serviceName} is due today", next.byMiles)
+            sameItem -> withGuessCaveat(
+                "${next.byMiles!!.serviceName}, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} or " +
+                    "${VehicleController.formatRemaining(next.byTime!!.remaining, days)}, whichever comes first",
+                next.byMiles,
+            )
             next.byMiles != null && next.byTime != null -> buildString {
-                append("${next.byMiles.serviceName} is soonest by mileage, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} out. ")
+                append(withGuessCaveat("${next.byMiles.serviceName} is soonest by mileage, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} out", next.byMiles))
+                append(" ")
                 append(
-                    if (next.byTime.remaining <= 0L) "${next.byTime.serviceName} is due today."
-                    else "${next.byTime.serviceName} is soonest by time, about ${VehicleController.formatRemaining(next.byTime.remaining, days)} out."
+                    if (next.byTime.remaining <= 0L) withGuessCaveat("${next.byTime.serviceName} is due today", next.byTime)
+                    else withGuessCaveat("${next.byTime.serviceName} is soonest by time, about ${VehicleController.formatRemaining(next.byTime.remaining, days)} out", next.byTime)
                 )
             }
-            next.byMiles != null -> "${next.byMiles.serviceName} is next, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} out."
+            next.byMiles != null -> withGuessCaveat("${next.byMiles.serviceName} is next, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} out", next.byMiles)
             next.byTime != null -> {
-                if (next.byTime.remaining <= 0L) "${next.byTime.serviceName} is due today."
-                else "${next.byTime.serviceName} is next, about ${VehicleController.formatRemaining(next.byTime.remaining, days)} out."
+                if (next.byTime.remaining <= 0L) withGuessCaveat("${next.byTime.serviceName} is due today", next.byTime)
+                else withGuessCaveat("${next.byTime.serviceName} is next, about ${VehicleController.formatRemaining(next.byTime.remaining, days)} out", next.byTime)
             }
             else -> "Nothing's due or coming up soon that I can time yet."
         }

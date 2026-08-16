@@ -7,6 +7,7 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.DriveReassignment
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.ServiceRecord
+import com.kevin.legion.data.local.intervalIsUnconfirmed
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.ledger.formatCents
 import com.kevin.legion.util.relativeAge
@@ -1363,11 +1364,25 @@ object VehicleController {
     /** Unit the driver asked about ("how many miles until X" vs. "how many days"). */
     enum class ScheduleUnit { MILES, DAYS }
 
-    /** One soonest-due item on a single axis - see [NextService]. */
+    /**
+     * One soonest-due item on a single axis - see [NextService].
+     *
+     * [isGuess] carries [MaintenanceItem.intervalIsUnconfirmed] off the item this candidate was
+     * built from (mission-control ticket 16,
+     * `.scratch/fleet-maintenance/issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md`).
+     * This is the right seam for the flag: it travels WITH the candidate, so a consumer literally
+     * cannot render this candidate's name and remaining-time figure without also having the
+     * disclosure in hand to decide whether to say it. Same shape as
+     * [com.kevin.legion.ui.fleet.DueRowView.isGuess] (ticket 09) - a plain boolean, not the
+     * SEEDED-vs-LOOKUP distinction [MaintenanceAgent.describeItem] carries, because every consumer
+     * of THIS candidate is a short spoken or single-line sentence, not a model-facing prompt with
+     * room for a full provenance clause.
+     */
     data class ServiceCandidate(
         val serviceName: String,
         val remaining: Long,
         val unit: ScheduleUnit,
+        val isGuess: Boolean = false,
     )
 
     /**
@@ -1728,6 +1743,10 @@ object VehicleController {
      *    driver has never given a real reading): [NextService.byMiles] is always
      *    null in that case ([NextService.odometerUnset] records why), but
      *    [NextService.byTime] is computed normally.
+     *  - Every [ServiceCandidate] carries [ServiceCandidate.isGuess] straight off the
+     *    [MaintenanceItem.intervalIsUnconfirmed] of the item it beat every other candidate to
+     *    become - see [ServiceCandidate]'s own doc for why the flag rides with the candidate rather
+     *    than being looked up separately downstream (ticket 16).
      */
     internal fun computeNextService(
         items: List<MaintenanceItem>,
@@ -1747,7 +1766,7 @@ object VehicleController {
                 val milesRemaining = (item.intervalMiles - (currentMileage - item.lastDoneMileage)).toLong()
                 val currentBest = byMiles?.remaining ?: Long.MAX_VALUE
                 if (milesRemaining < currentBest) {
-                    byMiles = ServiceCandidate(item.serviceName, milesRemaining, ScheduleUnit.MILES)
+                    byMiles = ServiceCandidate(item.serviceName, milesRemaining, ScheduleUnit.MILES, item.intervalIsUnconfirmed)
                 }
             }
             if (item.intervalMonths != null && item.lastDoneDate != null) {
@@ -1756,7 +1775,7 @@ object VehicleController {
                 val daysRemaining = (intervalMs - elapsedMs) / DAY_MS
                 val currentBest = byTime?.remaining ?: Long.MAX_VALUE
                 if (daysRemaining < currentBest) {
-                    byTime = ServiceCandidate(item.serviceName, daysRemaining, ScheduleUnit.DAYS)
+                    byTime = ServiceCandidate(item.serviceName, daysRemaining, ScheduleUnit.DAYS, item.intervalIsUnconfirmed)
                 }
             }
         }

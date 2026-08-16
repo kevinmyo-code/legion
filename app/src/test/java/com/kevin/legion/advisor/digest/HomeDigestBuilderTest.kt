@@ -193,6 +193,32 @@ class HomeDigestBuilderTest {
         assertTrue(line.contains("next Oil Change in"))
     }
 
+    @Test
+    fun `fleetHeadline's next-upcoming branch carries a guess suffix when the candidate is unconfirmed`() {
+        // Mission-control ticket 16 (`.scratch/fleet-maintenance/issues/16-ticket-06-audited-a-
+        // dead-surface-and-missed-a-live-one.md`): this branch renders an interval-derived timing
+        // figure straight into HOME's own digest (a model's context), so ServiceCandidate.isGuess
+        // must carry through here too.
+        val next = VehicleController.NextService(
+            byMiles = VehicleController.ServiceCandidate("Oil Change", 400, VehicleController.ScheduleUnit.MILES, isGuess = true),
+            byTime = null, unknownCount = 0, unknownNames = emptyList(), odometerUnset = false, allDue = false,
+        )
+        val item = MaintenanceItem(vehicleId = "v", serviceName = "Oil Change", intervalMiles = 5000, lastDoneMileage = 100, intervalSource = "SEEDED")
+        val line = HomeDigestBuilder.fleetHeadline(items = listOf(item), due = emptyList(), next = next)
+        assertTrue(line.contains("next Oil Change in 400 mi - guess, unconfirmed"))
+    }
+
+    @Test
+    fun `fleetHeadline's overdue branch names no interval or timing figure, so it carries no guess suffix even for an unconfirmed item`() {
+        // The overdue branch above names a count and a service name only ("N item(s) overdue, most
+        // urgent X") - there is no rendered interval/timing figure for a caveat to qualify, unlike
+        // the next-upcoming branch. Ticket 16's own instruction: "if one genuinely does not render
+        // the interval or timing, leave it and say so."
+        val item = MaintenanceItem(vehicleId = "v", serviceName = "Oil Change", neverDone = true, intervalSource = "SEEDED", intervalMiles = 5000)
+        val line = HomeDigestBuilder.fleetHeadline(items = listOf(item), due = listOf(item), next = null)
+        assertFalse(line.contains("guess"))
+    }
+
     // ---------------------------------------------------------------------------------- LOG
 
     @Test

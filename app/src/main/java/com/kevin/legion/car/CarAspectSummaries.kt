@@ -31,6 +31,14 @@ object CarAspectSummaries {
      * Fleet row: the active vehicle's display name plus the soonest not-yet-due maintenance item on
      * either axis (miles or time) - the same [VehicleController.nextService] read `ui/TodayScreen.kt`
      * and `ui/FleetScreen.kt` already build their own DUE rows from, not a new query.
+     *
+     * **The `next.byMiles`/`next.byTime` branches carry a "- guess, unconfirmed" suffix off
+     * [VehicleController.ServiceCandidate.isGuess]** (mission-control ticket 16,
+     * `.scratch/fleet-maintenance/issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md`)
+     * - this row's subtitle is spoken aloud on some head units (see the mileageLabel comment above),
+     * and the whole point of ticket 06 is that a caveat only a screen can see does not survive being
+     * read out. Same reasoning as [VehicleController.mileageLabel]'s own caveat one line up: there is
+     * no second line here to carry it separately, so it rides inline in the one subtitle string.
      */
     suspend fun fleet(context: Context): Pair<String, String> {
         val vehicle = VehicleController.currentVehicle(context)
@@ -50,9 +58,11 @@ object CarAspectSummaries {
             next == null -> "$mileageLabel · no maintenance schedule yet"
             next.odometerUnset -> "odometer not set · say your mileage to enable due-dates"
             next.byMiles != null ->
-                "$mileageLabel · ${next.byMiles.serviceName} in ${next.byMiles.remaining} mi"
+                "$mileageLabel · ${next.byMiles.serviceName} in ${next.byMiles.remaining} mi" +
+                    (if (next.byMiles.isGuess) " - guess, unconfirmed" else "")
             next.byTime != null ->
-                "$mileageLabel · ${next.byTime.serviceName} in ${next.byTime.remaining} days"
+                "$mileageLabel · ${next.byTime.serviceName} in ${next.byTime.remaining} days" +
+                    (if (next.byTime.isGuess) " - guess, unconfirmed" else "")
             next.allDue -> "$mileageLabel · everything scheduled is already due"
             else -> "$mileageLabel · nothing due yet"
         }

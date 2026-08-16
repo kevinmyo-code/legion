@@ -173,6 +173,43 @@ class FleetDigestBuilderTest {
     }
 
     @Test
+    fun `next service - same item leading both axes - carries one guess suffix when the candidate is unconfirmed`() {
+        // Mission-control ticket 16 (`.scratch/fleet-maintenance/issues/16-ticket-06-audited-a-
+        // dead-surface-and-missed-a-live-one.md`): nextServiceLine now carries ServiceCandidate.isGuess
+        // through to the NEXT line, same inline-word convention maintenanceLines already used.
+        val next = VehicleController.NextService(
+            byMiles = VehicleController.ServiceCandidate("Oil Change", 400, VehicleController.ScheduleUnit.MILES, isGuess = true),
+            byTime = VehicleController.ServiceCandidate("Oil Change", 10, VehicleController.ScheduleUnit.DAYS, isGuess = true),
+            unknownCount = 0, unknownNames = emptyList(), odometerUnset = false, allDue = false,
+        )
+        val text = FleetDigestBuilder.buildDigestText(
+            vehicle = vehicle(), currentMileage = 10_000, items = emptyList(), unknownNames = emptyList(),
+            nextService = next, codeEvents = emptyList(), recentServices = emptyList(), now = now,
+        )
+        assertTrue(text.contains("whichever comes first - guess, unconfirmed"))
+    }
+
+    @Test
+    fun `next service - two different items, each axis carries its OWN guess suffix independently`() {
+        val next = VehicleController.NextService(
+            byMiles = VehicleController.ServiceCandidate("Oil Change", 400, VehicleController.ScheduleUnit.MILES, isGuess = true),
+            byTime = VehicleController.ServiceCandidate("Wiper Blades", 10, VehicleController.ScheduleUnit.DAYS, isGuess = false),
+            unknownCount = 0, unknownNames = emptyList(), odometerUnset = false, allDue = false,
+        )
+        val text = FleetDigestBuilder.buildDigestText(
+            vehicle = vehicle(), currentMileage = 10_000, items = emptyList(), unknownNames = emptyList(),
+            nextService = next, codeEvents = emptyList(), recentServices = emptyList(), now = now,
+        )
+        val nextLine = text.lines().first { it.startsWith("NEXT ") }
+        val timePhrase = VehicleController.formatRemaining(10, VehicleController.ScheduleUnit.DAYS)
+        assertTrue("miles candidate is a guess and should be suffixed", nextLine.contains("- guess, unconfirmed;"))
+        assertTrue(
+            "time candidate is CONFIRMED and must NOT be suffixed - the tag right after its own phrase is the trust-tier tag, not a guess suffix",
+            nextLine.contains("Wiper Blades in $timePhrase [reported]") && !nextLine.contains("Wiper Blades in $timePhrase - guess"),
+        )
+    }
+
+    @Test
     fun `allDue reads as its own distinct state, never collapsed into not logged`() {
         val next = VehicleController.NextService(
             byMiles = null, byTime = null, unknownCount = 0, unknownNames = emptyList(),

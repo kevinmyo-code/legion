@@ -5,6 +5,8 @@ import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.AssistantIdentity
 import com.kevin.legion.ai.SubAgent
 import com.kevin.legion.data.local.MaintenanceItem
+import com.kevin.legion.data.local.intervalIsUnconfirmed
+import com.kevin.legion.data.local.provenanceWords
 import com.kevin.legion.util.shortDate
 
 /**
@@ -70,14 +72,36 @@ object MaintenanceAgent {
      * either) used to collapse onto the same "never logged" string, which told
      * the agent - and the driver - a guess-worthy absence when one of them is
      * actually known.
+     *
+     * **This is the ACTUAL live formatter that pre-seeds [answer]'s prompt** - ticket 06 required a
+     * seeded-interval disclosure on every surface that speaks or renders an interval and audited
+     * `CarToolbelt.maintenanceSchedule` instead, which greps identically (`intervalMiles`/
+     * `intervalMonths`, formatted almost the same way) but has zero callers anywhere in the tree
+     * (see its tombstone comment in `VehicleController.kt`) - the audit counted a function nobody
+     * calls and missed the one that actually feeds the model. Fixed mission-control ticket 16
+     * (`.scratch/fleet-maintenance/issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md`).
+     * The interval clause now carries [MaintenanceItem.provenanceWords] in full words, spelled out
+     * rather than abbreviated, whenever [MaintenanceItem.intervalIsUnconfirmed] - ticket 06's own
+     * stated harm: "feeding an unlabelled guess into a model that states it back confidently is how
+     * an estimate launders itself into a fact." A `CONFIRMED` item gets no suffix (nothing to
+     * disclose), and an item with no interval at all reads "no interval on file" with no suffix
+     * either - [intervalIsUnconfirmed]'s own second clause exists exactly because there is no number
+     * there to doubt.
+     *
+     * `internal`, not `private`, ONLY so [MaintenanceAgentTest] can exercise this directly without
+     * going through the network-calling [answer] - there is no other seam to test the three output
+     * shapes (SEEDED / LOOKUP / CONFIRMED-or-no-interval) through.
      */
-    private fun describeItem(item: MaintenanceItem): String = buildString {
+    internal fun describeItem(item: MaintenanceItem): String = buildString {
         append(item.serviceName).append(": ")
         val interval = listOfNotNull(
             item.intervalMiles?.let { "every ${"%,d".format(it)} mi" },
             item.intervalMonths?.let { "every $it mo" },
         ).joinToString(" / ").ifBlank { "no interval on file" }
         append(interval)
+        if (item.intervalIsUnconfirmed) {
+            item.provenanceWords?.let { append(" (").append(it).append(", unconfirmed by the driver)") }
+        }
         append("; last done ")
         append(
             when {

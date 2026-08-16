@@ -14,6 +14,9 @@ import com.kevin.legion.data.local.DailyDriveLog
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.MonthlyRecap
 import com.kevin.legion.data.local.OdbSample
+import com.kevin.legion.data.local.intervalIsUnconfirmed
+import com.kevin.legion.data.local.provenanceWords as entityProvenanceWords
+import com.kevin.legion.data.local.provenanceWordsForSource as entityProvenanceWordsForSource
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.relativeAge
@@ -99,12 +102,15 @@ data class DueRowView(
      */
     val fraction: Float? = null,
     /**
-     * True only when [MaintenanceItem.intervalSource] is `SEEDED` AND the item carries an interval
-     * on at least one axis (ticket 06 refinement c, `.scratch/fleet-maintenance/issues/06-a-seeded-interval-is-a-guess.md`:
+     * True whenever the driver did not state this interval themselves ([MaintenanceItem.intervalSource]
+     * is anything but `CONFIRMED`, so `SEEDED` or `LOOKUP` - widened by ticket 18, this doc said
+     * `SEEDED` only until then) AND the item carries an interval on at least one axis (ticket 06
+     * refinement c, `.scratch/fleet-maintenance/issues/06-a-seeded-interval-is-a-guess.md`:
      * "the tag renders only when there is an interval to qualify" - a null interval already reads
      * "no interval on file", and tagging that `[GUESS]` would be a claim about a number that does
-     * not exist). See [isGuessTag]. Defaults to `false` for the same preview/test-compat reason
-     * [fraction] defaults to `null`.
+     * not exist). See [isGuessTag]. The tag itself is deliberately coarse; where WHICH kind of
+     * unconfirmed matters, callers read [provenanceWords] alongside it. Defaults to `false` for the
+     * same preview/test-compat reason [fraction] defaults to `null`.
      */
     val isGuess: Boolean = false,
 )
@@ -143,41 +149,30 @@ internal fun buildDueRows(items: List<MaintenanceItem>, currentMileage: Int, odo
 }
 
 /**
- * True whenever the driver did NOT state this interval themselves (`intervalSource != "CONFIRMED"`)
- * AND the item carries an interval on at least one axis - ticket 06 refinement c, WIDENED by ticket
- * 18 (`.scratch/fleet-maintenance/issues/18-the-factory-lookup-is-not-stable-enough-to-diff-against.md`).
+ * True whenever the driver did NOT state this interval themselves AND the item carries an interval
+ * on at least one axis - ticket 06 refinement c, WIDENED by ticket 18
+ * (`.scratch/fleet-maintenance/issues/18-the-factory-lookup-is-not-stable-enough-to-diff-against.md`).
  *
- * **Deliberately three-way, never `== "SEEDED"`.** The original rule only caught `SEEDED`, which was
- * correct back when `SEEDED`/`CONFIRMED` were the only two values on file. Ticket 18 added `LOOKUP`
- * (a populate accept, reviewed but never typed - see [MaintenanceItem.intervalSource]'s own doc) and
- * a two-way test would have sorted it silently into "not a guess", rendering a value that came off a
- * lookup shown to disagree with itself three-of-eight-items across two runs in five minutes as if the
- * driver had typed it - exactly the laundering ticket 18 exists to stop. Testing the NEGATIVE
- * (`!= "CONFIRMED"`) rather than enumerating every non-driver-stated value means a future provenance
- * addition defaults to disclosed rather than defaulting to silent, which is the safer failure mode
- * for a disclosure flag.
- *
- * A `Brake Fluid`/`Brake Pads` orphan (created by [VehicleController.logServiceDirect] with no
- * interval at all) is `SEEDED` by the entity's own column default but has nothing to doubt, and its
- * sub-line already says "no interval on file" honestly - tagging it `[GUESS]` would be a claim about
- * a number that does not exist. That second clause is unchanged by ticket 18. `internal` for direct
- * unit testing, same posture as every other pure builder in this file.
+ * **Moved onto [MaintenanceItem] itself as [com.kevin.legion.data.local.intervalIsUnconfirmed]**
+ * (mission-control ticket 16,
+ * `.scratch/fleet-maintenance/issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md`):
+ * `vehicle/` and `advisor/` both need this rule now, and `vehicle/` must never import `ui.fleet`
+ * (this file already imports [VehicleController], so the reverse import would be a dependency
+ * cycle). This function is now a thin delegate kept under its original name/signature so no UI call
+ * site here or in `FleetDigestBuilder`/`PopulateDrilldown.kt` had to change - see the entity
+ * property's own doc for the full "why three-way, never `== SEEDED`" reasoning. `internal` for
+ * direct unit testing, same posture as every other pure builder in this file.
  */
-internal fun isGuessTag(item: MaintenanceItem): Boolean =
-    item.intervalSource != "CONFIRMED" && (item.intervalMiles != null || item.intervalMonths != null)
+internal fun isGuessTag(item: MaintenanceItem): Boolean = item.intervalIsUnconfirmed
 
 /**
- * Words a screen can put beside a `[GUESS]`-tagged item's value, distinguishing WHICH kind of
- * non-driver-stated provenance it is (ticket 18): a `SEEDED` row is LEGION's own unreviewed guess at
- * a plausible interval, a `LOOKUP` row is a factory-schedule lookup the driver actually reviewed and
- * accepted - a materially different claim, since ticket 18 found that lookup disagrees with itself
- * roughly every other run. `null` for `CONFIRMED`, the one case with nothing to disclose - callers
- * that need "you set this" for that case supply it themselves (`ui/fleet/PopulateDrilldown.kt`'s
- * `WouldChangeRow`/`PossibleMatchRow`), since that phrase only makes sense in a diff-row context this
- * general-purpose function has no opinion about. `internal` for direct unit testing, same posture as
- * [isGuessTag].
+ * Words a screen can put beside a guess-tagged item's value - now a thin delegate onto
+ * [com.kevin.legion.data.local.provenanceWords] (mission-control ticket 16, same move as
+ * [isGuessTag]). Kept under its original name/signature so no call site changed. See the entity
+ * property's own doc for the SEEDED-vs-LOOKUP wording rationale. `internal` for direct unit
+ * testing, same posture as [isGuessTag].
  */
-internal fun provenanceWords(item: MaintenanceItem): String? = provenanceWordsForSource(item.intervalSource)
+internal fun provenanceWords(item: MaintenanceItem): String? = item.entityProvenanceWords
 
 /**
  * [provenanceWords]'s actual logic, keyed on the raw `intervalSource` string rather than a full
@@ -186,14 +181,13 @@ internal fun provenanceWords(item: MaintenanceItem): String? = provenanceWordsFo
  * `WouldChangeRow`/`PossibleMatchRow`) only ever carry the ON-FILE row's `currentSource`/
  * `existingSource` as a bare string, not the row itself, so [provenanceWords] delegates here rather
  * than forcing either of those call sites to fabricate a throwaway [MaintenanceItem] just to read one
- * field back off it. `internal`, not `private` - Kotlin's top-level `private` is file-scoped, and
- * `PopulateDrilldown.kt` (a different file in this same package) is exactly the caller that needs it.
+ * field back off it. Now a thin delegate onto
+ * [com.kevin.legion.data.local.provenanceWordsForSource] (mission-control ticket 16), kept under its
+ * original name/signature. `internal`, not `private` - Kotlin's top-level `private` is file-scoped,
+ * and `PopulateDrilldown.kt` (a different file in this same package) is exactly the caller that
+ * needs it.
  */
-internal fun provenanceWordsForSource(intervalSource: String): String? = when (intervalSource) {
-    "SEEDED" -> "LEGION's guess"
-    "LOOKUP" -> "from a factory lookup"
-    else -> null
-}
+internal fun provenanceWordsForSource(intervalSource: String): String? = entityProvenanceWordsForSource(intervalSource)
 
 /**
  * [fromEpochMs] plus [months] calendar months, via [java.time.ZonedDateTime.plusMonths] in the

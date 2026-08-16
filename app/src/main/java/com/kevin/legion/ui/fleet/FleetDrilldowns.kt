@@ -605,8 +605,21 @@ fun ItemDetailScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
                         DeckTag("GUESS", DeckTagStyle.INVERTED_AMBER)
                         Spacer(Modifier.width(8.dp))
+                        // The TAG stays coarse ("unconfirmed"), the SENTENCE is precise - same split
+                        // as CONFIRM ALL's dialog, and for the same reason. Hardcoding "LEGION
+                        // guessed this" here was false for a LOOKUP row the moment ticket 18 widened
+                        // isGuessTag past SEEDED: a factory-lookup value the driver reviewed and
+                        // accepted was never LEGION's guess. Ticket 18 fixed that laundering in one
+                        // direction (a lookup value reading as driver-stated); this is the same lie
+                        // told the other way round, and it was still here.
+                        // `current` is a delegated property, so it cannot smart-cast - read it
+                        // through ?.let the same way this branch's own isGuessTag guard above does.
+                        val origin = current?.let { provenanceWords(it) }
                         Text(
-                            "LEGION guessed this interval - you haven't confirmed it.",
+                            when (origin) {
+                                "from a factory lookup" -> "This came from a factory lookup - you haven't confirmed it."
+                                else -> "LEGION guessed this interval - you haven't confirmed it."
+                            },
                             style = LegionType.stamp,
                             color = sem.faint,
                         )

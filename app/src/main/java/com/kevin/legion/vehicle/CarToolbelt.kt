@@ -134,40 +134,16 @@ object CarToolbelt {
         }
     }
 
-    /**
-     * Maintenance schedule with current mileage and which items read as due.
-     * [vehicleId] override (ticket 01) - see [trendSummary]'s doc for why
-     * this is currently unwired to any tool's `vehicle` argument.
-     */
-    suspend fun maintenanceSchedule(context: Context, vehicleId: String? = null): String {
-        val vehicle = VehicleController.vehicleFor(context, vehicleId)
-        val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)
-        // mileageLabel (ticket 10) is the one place that decides bare-vs-estimated: a confirmed
-        // reading renders bare, only the estimate carries "estimated, last confirmed ...". This
-        // string feeds a sub-agent prompt (ticket 06's lesson), so an unlabelled figure here would
-        // let the model state a 5-15%-low guess back as if it were exact.
-        val mileage = VehicleController.mileageLabel(vehicle)
-        if (items.isEmpty()) {
-            return if (mileage.isBlank()) "No maintenance schedule on file yet. Odometer not set."
-                else "No maintenance schedule on file yet. Odometer $mileage."
-        }
-        val due = VehicleController.dueItems(context, vehicle).map { it.serviceName }.toSet()
-        return buildString {
-            append(if (mileage.isBlank()) "Odometer not set.\n" else "Odometer $mileage.\n")
-            append(items.joinToString("\n") { item ->
-                val interval = listOfNotNull(
-                    item.intervalMiles?.let { "every ${"%,d".format(it)} mi" },
-                    item.intervalMonths?.let { "every $it mo" },
-                ).joinToString(" / ").ifBlank { "no interval" }
-                val last = listOfNotNull(
-                    item.lastDoneMileage?.let { "at ${"%,d".format(it)} mi" },
-                    item.lastDoneDate?.let { "on ${shortDate(it)}" },
-                ).joinToString(" ").ifBlank { "never logged" }
-                val flag = if (item.serviceName in due) " - DUE" else ""
-                "- ${item.serviceName}: $interval; last $last$flag"
-            })
-        }
-    }
+    // maintenanceSchedule was DELETED (mission-control ticket 16, 2026-08-15,
+    // `.scratch/fleet-maintenance/issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md`).
+    // It had ZERO callers anywhere in app/src (main and test both), confirmed by grep before
+    // deletion - forMaintenance's own comment already said why: "MaintenanceAgent pre-seeds the
+    // schedule into its context, so the belt omits get_maintenance_schedule". Dead code that greps
+    // identically to a live surface (same `intervalMiles`/`intervalMonths` formatting shape) is
+    // exactly what misled ticket 06's own audit into counting this function and missing
+    // MaintenanceAgent.describeItem, the formatter that actually pre-seeds the maintenance agent's
+    // prompt - same disease ticket 05 deleted refreshServiceIntervals for. See describeItem's own
+    // doc for the live surface this pointed at all along.
 
     /**
      * The recorded cold-start bursts: the newest sample-by-sample, plus a one-line

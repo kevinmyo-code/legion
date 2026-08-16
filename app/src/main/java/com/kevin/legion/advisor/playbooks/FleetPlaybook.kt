@@ -37,6 +37,15 @@ package com.kevin.legion.advisor.playbooks
  *
  * Measured 2,497 tokens (`countTokens`, `gemini-3.5-flash-lite`, key from local.properties,
  * 2026-08-13) - under the 2,500 ceiling. Re-verify the same way before adding more.
+ *
+ * **2026-08-15 (mission-control ticket 16): two small edits for the unconfirmed-interval
+ * disclosure** (a corrected "an on-file interval was chosen for this vehicle, use it" clause plus
+ * one new REASON-FROM-THE-LOG bullet - see `.scratch/fleet-maintenance/issues/16-ticket-06-audited-
+ * a-dead-surface-and-missed-a-live-one.md`). `TEXT` grew from 9,065 to 9,573 chars, still under the
+ * chars/4 ceiling `PlaybookKeywordsTest` enforces (10,000) with 427 chars of margin, but this was
+ * NOT re-measured with `countTokens` against the real tokenizer - reasoned from the chars/4
+ * fallback only. Re-run `countTokens` before the next addition; the fallback is a pessimistic
+ * sanity check, not a substitute for the real measurement this file's own convention calls for.
  */
 object FleetPlaybook {
     const val TEXT = """
@@ -66,10 +75,16 @@ current odometer and OBD/DTC history where available.
 - Prioritize by consequence, not by count: safety items (brakes, tires, steering fluid leaks)
   first, engine-protection items (oil, coolant, timing belt) second, comfort/economy items (cabin
   filter, wipers) last.
+- An interval the digest marks unconfirmed ("LEGION's guess" or "from a factory lookup") is not the
+  same as a driver-set one. Name it as unconfirmed when it drives a recommendation, and suggest the
+  driver confirm it rather than presenting it as the car's real interval.
 
 GENERIC SERVICE-INTERVAL BASELINES (mileage AND time). Use only where the vehicle's
-MaintenanceItem has no interval of its own - where the item carries an interval, that interval was
-chosen for this vehicle, use it. Format: item - mileage / time - note.
+MaintenanceItem has no interval of its own. Where the item DOES carry an interval, prefer it over
+these baselines, but do not assume it was chosen for this vehicle: an interval the digest marks
+unconfirmed (see above) is closer to a generic baseline than to a fact about this car - use it, say
+so, and suggest confirming it rather than treating it as authoritative. Format: item - mileage /
+time - note.
 - Engine oil + filter - ~5,000 mi (3,000-5,000 older/severe; 7,500-10,000 synthetic) / 6-12 months
   even if under mileage - manual wins; severe service uses the shorter end.
 - Engine air filter - 15,000-30,000 mi / 12-36 months - sooner if dusty; check at oil changes.
