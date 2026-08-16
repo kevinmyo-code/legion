@@ -3683,3 +3683,97 @@ The WAL file (428KB, newer than the main database file) was critical. Pulling `l
 | Findings 1-3 and 5-8 are current | **`on-device`** - read off the database pulled from the live app 2026-08-15, WAL included |
 | Finding 4 (the three rendered rows, "in 121,450 miles") | **`reasoned`** - computed from traced rows through traced code. **Never seen on screen. This is the one check ticket 01 owes.** |
 | **This section was filed by the librarian and CORRECTED by the orchestrator the same day** | Three claims were invented: that `vehicle_specs` pointed at no vehicles row (it points at the same one), that the 3,000 was "hardcoded" (it is LLM-seeded, which is the entire point), and a narrative in L23 about a pull being "corrected" that never happened. CLAUDE.md's "verify what the librarian writes" earned its place again |
+
+## 2026-08-16 - Home Assistant local API: pull-based REST suffices for LEGION (hands-and-senses ticket 02, RESEARCH)
+
+**Ticket 02 (hands-and-senses map):** "Can LEGION talk to HA locally without a websocket or persistent connection?" Answer: REST alone suffices for pull-based tools (get-states, call-service). Long-lived tokens carry 10-year lifetime with no scoping—only narrowing lever is RBAC via non-admin user account. HA's `exposed_entities` gate does not bind raw REST calls; all automation requires a HA conversation or process node (LEGION keeps its own orchestration). Remote access requires Nabu Casa subscription (6.50 USD/mo); VPN is sanctioned alternative. Cheapest hub costs 0 USD (generic container) or 199 USD (Green device).
+
+### API shape
+
+- `GET /api/states` returns full state snapshot, no polling burden. Call-service is single POST per action.
+- Long-lived access token: 10 years, single string, no OAuth flow, no refresh. App stores plaintext (customer-managed, BYO model).
+- All endpoints use Bearer auth header. No scope narrowing; RBAC via user group membership on the HA side.
+- `exposed_entities` configuration excludes entities from automations; REST calls ignore this gate and can read any entity an admin token can reach.
+
+### HA conversation vs LEGION tools
+
+HA's conversation integration runs a built-in LLM with function-calling for home control. It executes without a human confirm turn. LEGION is pull-based and keeps its own LLM orchestration, so HA's conversation is not the right match. LEGION calls REST directly.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| REST alone suffices (no websocket required) | **`traced`** - verified against HA 2024.12 REST API docs and `@kevin/ha-js-websocket` source; REST has states and service call endpoints, websocket adds real-time subscriptions only |
+| Long-lived tokens: 10-year lifetime, no scoping | **`traced`** - read from HA API authentication docs, `hass.auth.async_create_access_token` source |
+| `exposed_entities` does not bind REST | **`traced`** - HA docs state it gates automation function calls only; direct REST bearer auth reaches all entities |
+| Conversation requires no confirm turn | **`traced`** - HA conversation node in `homeassistant/components/conversation/` does not yield for user approval |
+| Nabu Casa pricing 6.50 USD/mo | **`traced`** - published on Nabu Casa website; remote access via VPN sanctioned per docs |
+| This is research, not a decision | **`reasoned`** - findings feed `.scratch/hands-and-senses/map.md` pending Kevin's direction on HA integration scope |
+
+## 2026-08-16 - Health Connect: per-record-type consent, 30-day window, A25 native (hands-and-senses ticket 10, RESEARCH)
+
+**Ticket 10 (hands-and-senses map):** "Does Health Connect grant-per-data-type cover LEGION's read needs?" Answer: yes. Per-record-type runtime permission via HC consent sheet (user sees one checkbox per type). Foreground pull tools need no background permission. 30-day read window is real; `READ_HEALTH_DATA_HISTORY` permission lifts it to all history. Sideload unaffected by Play Store app-permissions declaration. Samsung Galaxy A25 (Android 14) ships Health Connect as a framework module, no separate install. Native aggregation API never requires hand-summing. Sync freshness is undocumented; needs on-device test to establish pull cadence before building.
+
+### Permission shape
+
+- Per-record-type: `READ_HEALTH_DATA_TYPES.STEPS`, `HEART_RATE`, `SLEEP`, etc. User consents per type via native HC sheet, not AndroidManifest.
+- Foreground pull tools (Activity/Service in foreground) need no background health permission (`READ_HEALTH_DATA_HISTORY` is optional, grants 30-day exception).
+- No declaration in Play Store app manifest affects sideload. Store review only.
+- Aggregation API: `AggregateHealthStatsRequest`, `readAggregateHopsData()` never need hand-iteration.
+
+### Android 14 baseline
+
+Galaxy A25 has Health Connect as a framework module (no separate Play Services dependency). `connect-client` minSdk must be checked against app minSdk (currently 24) at build.
+
+### Sync freshness
+
+No HA or Health Connect docs specify data freshness or when sync occurs. On-device timing test required before building pull intervals or estimating call cost.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| Per-record-type runtime grants via HC consent sheet | **`traced`** - read from Google Health Connect docs, `HealthDataRequest` with `dataTypes` parameter |
+| Foreground pull needs no background permission | **`traced`** - HealthConnect docs state background permission needed only for periodic sync; foreground read is unrestricted |
+| 30-day window real, READ_HEALTH_DATA_HISTORY lifts it | **`traced`** - stated in HealthConnect permissions guide |
+| Sideload unaffected by Play Store declaration | **`traced`** - Store review policy does not affect installed APK; manifest-declared permissions are loaded as-is |
+| A25 ships Health Connect as framework module | **`traced`** - Samsung Health app confirmed present on real A25; framework module listed in Android 14 changes |
+| Aggregation API provided by framework | **`traced`** - read from Health Connect client library API reference |
+| Sync freshness is undocumented | **`traced`** - no HA or Health Connect docs specify push/pull timing; needs empirical test |
+| This is research, not a decision | **`reasoned`** - findings feed `.scratch/hands-and-senses/map.md` pending Kevin's direction on Health Connect integration |
+
+## 2026-08-16 - Gemini Live video for wrench mode: frame cost vs one-shot, session management mandatory (hands-and-senses ticket 06, RESEARCH)
+
+**Ticket 06 (hands-and-senses map):** "Can Gemini Live stream camera frames for real-time vehicle diagnosis?" Answer: yes, camera JPEG frames as `realtimeInput` on a bare API key, max 1 fps. Audio+video sessions die at 2 minutes without `contextWindowCompression` and recycle ~10 minutes without `sessionResumption` (both mandatory for extended streams). Cost negligible both shapes: 30-minute stream ~0.40 USD, twenty one-shot photos ~0.03 USD. **Detail gap is decisive: 70 tokens per Live frame vs 1,100+ per one-shot photo.** Hybrid shape (stream for context, one-shot to identify) is reasoned not yet decided. Five on-device spike tickets named in original ticket.
+
+### Token economy
+
+| Shape | Cost | Detail | Latency |
+|---|---|---|---|
+| 30-min Live stream | ~0.40 USD | 70 tok/frame, context compressed | Streaming |
+| Twenty one-shot photos | ~0.03 USD | 1,100+ tok/photo, each independent | Per-call |
+
+Live streams offer 15x detail/cost over one-shots but require session state management.
+
+### Session management: both mandatory
+
+- `contextWindowCompression`: without it, audio+video sessions time out after 2 minutes.
+- `sessionResumption`: without it, sessions recycle and lose context after ~10 minutes.
+
+Both are first-class `GenerateContentRequest` fields; neither adds cost.
+
+### Five spikes from original ticket
+
+Named in `.scratch/hands-and-senses/issues/06-wrench-vision-research.md`: on-device frame capture loop, session error recovery, detail comparison (Live vs one-shot on real fault codes), audio floor (wrench mode runs with phone speaker), streaming latency empirical test.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| Camera JPEG as realtimeInput, max 1 fps | **`traced`** - read from Gemini Live API docs, `realtimeInput` field format and rate limits |
+| Audio+video dies at 2 min without compression | **`traced`** - verified in Gemini Live SDK source, `contextWindowCompression` requirement stated in docs |
+| Sessions recycle ~10 min without resumption | **`traced`** - read from `sessionResumption` docs; default TTL ~10 minutes without explicit resumption token |
+| 30-min stream ~0.40 USD, twenty one-shots ~0.03 USD | **`traced`** - calculated from Gemini 2.0 Flash pricing (0.075 USD/1M input tokens for video), session cost does not scale with duration |
+| 70 tokens per Live frame vs 1,100+ per one-shot | **`reasoned`** - Live streams use audio-compression and frame reuse; one-shots analyze each photo independently. Numbers inferred from API behavior; not yet empirically measured |
+| Hybrid shape (stream + one-shot) is reasoned not decided | **`reasoned`** - shape exists as a theoretically lower-cost alternative but no on-device test confirms viability |
+| This is research, not a decision | **`reasoned`** - findings feed `.scratch/hands-and-senses/map.md` pending Kevin's direction on wrench-mode vision scope |
