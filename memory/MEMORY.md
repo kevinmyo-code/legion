@@ -71,29 +71,18 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
 ## In-flight
 
-**HANDS AND SENSES TRIAGED HARD, 2026-08-16 (session 9).** Map `.scratch/hands-and-senses/`.
-Seven of its nine ticket-sized items are now closed, and **only ticket 01 produced code**.
-- **BUILT AND COMMITTED: clear DTCs** (`bd4de4b`), the app's first WRITE to the car. Transaction,
-  not a send - snapshot, Mode 04, re-read, and **only the re-read may be spoken**. Five outcomes,
-  `44` ack diagnostic only, new `code_clear_events` table. Two senior-review defects fixed before
-  commit: a dismissable dialog could cancel a write mid-send leaving a real clear with no record,
-  and D7's union rule short-circuited so a RETURNED code was invisible on screen while the voice
-  called it active. **NEVER RUN ON A CAR.** `UNVERIFIED`/`REFUSED` have never been produced on
-  hardware; the migration test compiles and has deliberately never run.
-- **ALSO COMMITTED: the music fix** (`d683d2c` + `ccef947`), found by Kevin in use. See Blocking.
-- **Closed on premise, not merits:** 12 identity and 13 voice/persona (**already built** - the
-  register lives in `ai/Personas.kt`, ALFRED + DOROTHY, and CLAUDE.md was corrected); 11 Health
-  Connect (**archived**, no wearable); 09 Gmail auto-pull (**killed**, statements never land in
-  Gmail); 04 notification listener (**archived**).
-- **Still live:** 05 comms (in progress, paused), 08 morning brief, 18 inbox, 19 people dates.
-- **THE PATTERN, five tickets running:** the map was charted from a competitive-landscape
-  brainstorm, so it describes what a JARVIS COULD do rather than what Kevin's data looks like.
-  **Grep the premise and confirm the data source before spending a session on any ticket.**
-- Findings kept from dead tickets: LEGION **already holds** notification-read access via an empty
-  `MediaNotificationListener`; there are **three proactive gates, not one** (`AmbientListener` and
-  `TelephonyController` bypass `ProactiveGate`), so the settled master kill switch cannot be
-  honoured yet; **78 tool declarations** today; and the map's own "LEGION almost only reads"
-  framing is false, since `AmbientListener` ships.
+**HANDS AND SENSES TRIAGED, 2026-08-16 (session 9).** Map `.scratch/hands-and-senses/`. Five of
+nine ticket-sized items closed WITHOUT being answered; **only ticket 01 produced code**. Full
+account in `library/decisions.md` (2026-08-16) and `library/lessons.md` L24-L28.
+- **BUILT: clear DTCs** (`bd4de4b`) - the app's first WRITE to the car. **NEVER RUN ON A CAR.**
+- **BUILT: the music fix** (`d683d2c`, `ccef947`), found by Kevin in use. See Blocking.
+- **Still live:** 05 comms (paused mid-ticket), 08 morning brief, 18 inbox, 19 people dates.
+- **STANDING RULE from five premise-deaths: grep the premise and confirm the data source before
+  spending a session on any ticket** (L25). The map lists what a JARVIS could do, not what Kevin has.
+- Three findings that outlived their dead tickets: LEGION **already holds** notification-read access
+  via an empty `MediaNotificationListener`; there are **three proactive gates, not one**
+  (`AmbientListener`/`TelephonyController` bypass `ProactiveGate`, so the settled master kill switch
+  cannot be honoured yet - carried into ticket 21); **78 tool declarations** today.
 
 **QUANT-VIZ + GLANCEABLE, branch `feat/quant-viz` off `feat/car-probe`, 34 commits, suite green.**
 Map `.scratch/quant-viz/`, 16 tickets, ALL landed and QA'd on-device with hash-verified installs.

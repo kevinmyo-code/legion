@@ -573,3 +573,110 @@ The method works—but it has its own failure mode, and it bit twice in this eff
 **Regression check:** A database finding from a device pull that does not mention whether `-wal` and `-shm` were present. Also: an unsourced claim about device database state made without confirming the WAL was included.
 
 **Status:** CLOSED. Rule is recorded here and in ticket 01's verification accounting. Next session: graduate this into `playbook-coding.md` or a database procedures section if database pulls become routine.
+
+## L24 - The repo is ahead of its docs; grep the premise before drafting (2026-08-16)
+
+**Session 9, tickets 12 and 13.** Both asked for work that already existed. `AssistantIdentity.kt:8`
+reads "No longer placeholder"; the register copy lives in `ai/Personas.kt` (ALFRED, DOROTHY), with
+a shipping picker, voice audition, and an already-decided reconnect behaviour
+(`LiveSessionController.refreshIdleVoice()`). CLAUDE.md sections 1, 6 and 10 all asserted the
+opposite and were corrected in one pass. This is the **third** instance of the pattern.
+
+**Root class:** drafting against an assumed baseline without checking whether the baseline is stale.
+
+**Rule:** grep the premise before drafting against any ticket. If a ticket asserts "X is missing" or
+"we have not decided Y", verify against the tree first. Applied for the rest of session 9.
+
+**Regression check:** a ticket resolution asserting a gap without stating how the gap was verified.
+
+**Status:** CLOSED - rule lives in this shelf and on `.scratch/hands-and-senses/map.md`.
+
+## L25 - A map charted from competitive research describes what a product COULD do, not what the user HAS (2026-08-16)
+
+**Session 9, the hands-and-senses map.** It was seeded from
+`.scratch/competitive-landscape/research/landscape.md`. Five of its nine ticket-sized items closed
+without being answered: **12 and 13** because the work already existed, **11** because the device
+does not exist (no wearable), **09** because the data does not exist (statements never reach
+Gmail), **04** because Kevin did not want it. Ticket 08 survived and kept its premise.
+
+**Root class:** treating a map drawn from what a category of product can do as equivalent to what
+this user needs and can supply data for.
+
+**Rule:** every ticket confirms its data source exists before a session is spent on it. For a
+hardware ticket, confirm the device. For a data ticket, confirm the data actually arrives where the
+ticket assumes. Ticket 11's own question 6 did this correctly and predicted its own death.
+
+**Regression check:** a ticket whose premise names a data source, with no note on whether that
+source was confirmed or assumed.
+
+**Status:** CLOSED - recorded on the map itself as a standing rule for its remaining tickets.
+
+## L26 - The reviewer's "safe to commit" is an input, not a verdict (2026-08-16)
+
+**Session 9, ticket 01 (clear DTC).** Senior review returned "safe to commit as-is" with two
+SHOULD-FIX items. Both were fixed before commit instead. One let a real Mode 04 write reach the ECU
+and then lose all three observability channels if the dialog was dismissed mid-send - a real
+vehicle change with no trace anywhere, which is the ticket's own defect class pointed backwards.
+The other made two surfaces contradict each other: after a `RETURNED` clear the voice correctly
+said the fault was still active while STORED CODES showed nothing.
+
+**Root class:** treating a passing review as the gate, rather than reading its flags against the
+cost of the failure they describe.
+
+**Rule:** on a first-of-its-kind destructive path - a write to external state that cannot be undone
+- "should fix" is "fix". A review verdict is an input to the merge decision, not a substitute for
+judging the flags.
+
+**Regression check:** a SHOULD-FIX item on a destructive-path change, committed without resolution
+and without a named follow-up.
+
+**Status:** CLOSED. Both fixes landed in `bd4de4b`.
+
+## L27 - When a helper exists with no caller, ask what silently degrades (2026-08-16)
+
+**Session 9.** Kevin reported music play working but pause and skip doing nothing. Tracing that
+split found `NowPlayingController.hasAccess` - the app's only check for notification-listener
+access - with **zero callers**, so `MusicController` swallowed the SecurityException into an empty
+session list and the app never said why. Two commits came out of it (`d683d2c`, `ccef947`).
+
+The same orphaned-helper pattern turned up **four times in one day**: `hasAccess`,
+`CompanionProfile.savePersona`, `PersonaTraits.assemblePersona`, and the empty
+`MediaNotificationListener` (which nonetheless holds a live notification-read grant).
+
+**Root class:** unreachability at the caller boundary. A helper with no production caller is a
+capability the app believes it has and does not.
+
+**Rule:** when a helper exists with no production caller, ask **what silently degrades because
+nothing calls it** - that is usually a live user-visible defect, not dead weight. **Do not reach
+for deletion first:** `hasAccess` was orphaned and the correct fix was to CALL it, twice. If it is
+genuinely pre-emptive, mark it ORPHANED with a pointer to the ticket that will wire it.
+
+**Regression check:** a helper with no production call site and no ORPHANED marker.
+
+**Status:** OPEN. Two of the four are resolved (`hasAccess` is now called from `LiveToolbox` and
+`SettingsScreen`). `savePersona`/`assemblePersona` remain orphaned by decision - freeform persona
+authoring is back-burnered, and re-wiring them naively fails silently because `personaFor()` falls
+back to ALFRED on any unrecognised string. `MediaNotificationListener` stays empty by design.
+
+## L28 - Verify the migration against a copy of the real data, not a fixture (2026-08-16)
+
+**Session 9, Room v21->v22.** The new `code_clear_events` table was checked two ways before any
+install: (1) diffed **byte-for-byte** against the kapt-generated `createSql` in
+`app/schemas/.../22.json`, and (2) applied to a database pulled off the A25 with `adb exec-out` -
+all three files (main, `-wal`, `-shm`), each size compared against `ls -l` on the device, with no
+checkpoint so the live database was never written to. Result: 47 to 48 tables, only
+`code_clear_events` added, zero existing DDL changed, zero row-count drift, `integrity_check` and
+`foreign_key_check` clean. Same posture as v19->v20.
+
+**Root class:** a fixture is a minimal spec-compliant database; the real one carries months of data
+and shapes a fixture cannot reproduce.
+
+**Rule:** for any schema migration, apply it to a real pulled copy before install, and assert table
+count, per-table DDL, row counts, and both integrity pragmas. Verify the migration SQL is
+byte-identical to the generated `createSql` rather than eyeballing it - and do the substitution
+correctly, since `createSql` already carries backticks around `${TABLE_NAME}`.
+
+**Regression check:** a schema migration merged with no evidence it was applied to a real device
+database.
+
+**Status:** CLOSED. See [[L23]] for the WAL-file discipline this builds on.

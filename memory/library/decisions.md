@@ -3928,3 +3928,64 @@ S6 and S8 are design invalidators if results deviate from assumption.
 | Core SAF premise tested on-device 2026-08-02 | **`tested`** - verified: files added after permission grant became visible to app |
 | NIBRS coverage, FBI CDE lag, agency-level granularity | (See ticket 14) | — |
 | This is research, not a decision | **`reasoned`** - findings feed `.scratch/hands-and-senses/map.md` pending Kevin's direction on vault retrieval scope and budget constraints |
+
+## 2026-08-16 - Clear DTCs: clearing is a transaction, not a send (hands-and-senses ticket 01, BUILT)
+
+**Ticket 01** is LEGION's first destructive WRITE to the car. Ten decisions; D1-D4 Kevin, D5-D10
+Stark under the altitude ruling below. Full record:
+`.scratch/hands-and-senses/issues/01-clear-dtc.md`.
+
+**The load-bearing decision: clearing is a TRANSACTION, not a send.** Snapshot (**Mode 03** for
+codes, **Mode 02** for freeze frame), send **Mode 04**, re-read (**Mode 03**), and **only the
+re-read may be spoken**. Forced by a code fact rather than taste: `sendCommand` returns `""` on
+failure and `Elm327Io.exchange` returns whatever arrived on timeout without throwing (it polls
+`available()` and never blocks on `read()`), so **a quiet link and a successful clear are the same
+value at that seam**. Reporting off the ack would have shipped the same silent-no-op class as
+android-auto ticket 13. `traced`.
+
+**Five outcomes**, not a boolean: `NOTHING_TO_CLEAR`, `CLEARED`, `RETURNED`, `UNVERIFIED`,
+`REFUSED` (enum `ClearOutcome`). `NOTHING_TO_CLEAR` and `REFUSED` send no command at all. A partial
+clear is `RETURNED`, naming survivors. **The `44` ack is diagnostic, never dispositive** - it may
+separate `REFUSED` from `UNVERIFIED`, it may never upgrade a spoken sentence. Mode 04 opts out of
+the PID-silence counter, by an explicit per-call parameter rather than by widening the `AT` prefix
+test, so a failed clear cannot trigger a protocol reinit mid-write.
+
+**Storage:** new `code_clear_events` table at Room v22, additive. `code_events` has no update, no
+delete and no field meaning "cleared"; a `clearedAt` column would have retroactively rewritten
+observations that were true when made. **No `service_records`/`maintenance_items` row** - a clear
+is a diagnostic act, not work performed (`AdvisorProposalExecutor` precedent). Fleet subtracts
+cleared codes by a union rule, with the hide-anchor (latest `CLEARED`) deliberately separate from
+the survivor source (latest clear-event of any outcome).
+
+Committed `bd4de4b`. Logic `tested` (1365 unit tests green). **Everything about real hardware is
+`reasoned` only** - never run on a car; `UNVERIFIED` and `REFUSED` have never been produced against
+a live ECU; the Compose dialog has never rendered; the migration test compiles and has deliberately
+never run. Two senior-review SHOULD-FIX items were fixed before commit rather than filed - see L26.
+
+## 2026-08-16 - Kevin's altitude ruling (STANDING)
+
+Mid-grilling on ticket 01, Kevin: **"as a CTO and VP you shouldnt be coming to me about low level
+stuff. im all the way up the abstraction layer."** Consequence: bring him forks carrying real cost
+or taste; decide implementation without asking. `tested` by the remainder of session 9 working that
+way.
+
+## 2026-08-16 - Freeform persona authoring: BACK BURNER
+
+Kevin, after the finding that the voice was already written and only freeform authoring was
+missing: **"put it back burner for now. we just keep alfred and dorothy."** If it returns it
+graduates to its own `persona-authoring` effort, because the honesty rules currently live inside
+each persona's own clause (`Personas.kt`) and would have to be extracted into an immutable kernel
+before a user could edit register text freely.
+
+## 2026-08-16 - Four tickets closed on premise, not merits (hands-and-senses session 9)
+
+- **Ticket 11 Health Connect: ARCHIVED.** "i dont have a fitbit or a watch." The research
+  (ticket 10) stays resolved and nothing in it was falsified; it simply has no consumer.
+  Un-archives if Kevin gets a wearable.
+- **Ticket 09 ledger Gmail auto-pull: KILLED.** "my statements dont land in gmail." Nothing was
+  wrong on the merits - it was a correct plan for a mailbox he does not have.
+- **Ticket 04 notification listener: ARCHIVED.** "we dont need notifications for now."
+- **Tickets 12 and 13: CLOSED as already built**, not on premise - see L24.
+
+**Ticket 08 morning brief KEEPS its premise.** Kevin: "newsletters are important, dont kill". That
+also confirms settled decision 4's Gmail assumption. It remains OPEN.
