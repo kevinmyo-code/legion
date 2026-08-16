@@ -33,10 +33,12 @@ import com.kevin.legion.ai.CompanionProfileStore
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.personaFor
 import com.kevin.legion.ledger.LedgerController
+import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.service.AssistantIgnition
 import com.kevin.legion.service.DebugSettings
 import com.kevin.legion.sync.SyncCapability
+import com.kevin.legion.ui.media.MediaTransportAccessBanner
 import com.kevin.legion.ui.spotify.SpotifyConnectResolver
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -102,6 +104,11 @@ fun SettingsScreen(
             ),
         )
     }
+    // Notification-listener access - the system gate media transport (pause/skip/previous)
+    // needs and Gemini key/Drive/Spotify have no equivalent of. Re-read on ON_RESUME below for
+    // the same reason those are: the fix is a trip to Settings and back, never a re-request
+    // from inside the app.
+    var hasMediaAccess by remember { mutableStateOf(NowPlayingController.hasAccess(context)) }
 
     suspend fun reloadActiveProfile() {
         val profile = CompanionProfileStore.activeProfile(context)
@@ -120,6 +127,7 @@ fun SettingsScreen(
             hasClientId = CompanionProfile.hasSpotifyClientId(context),
             isAuthorized = SpotifyWebApi.isAuthorized(context),
         )
+        hasMediaAccess = NowPlayingController.hasAccess(context)
         recallAlertsOn = DebugSettings.recallAlertsEnabled(context)
     }
 
@@ -228,6 +236,12 @@ fun SettingsScreen(
                 status = SpotifyConnectResolver.headline(spotifyStage),
                 onClick = onOpenSpotify,
             )
+
+            // Renders nothing at all once the grant is present (MediaTransportAccessBanner's own
+            // doc comment) - kept right under the Spotify row because that is the other place
+            // media transport shows up on this screen, and the message is explicitly about the
+            // gap between the two: Spotify playback works without this grant, pause/skip do not.
+            MediaTransportAccessBanner(hasAccess = hasMediaAccess)
 
             // Mission-control ticket 12: DebugSettings.setRecallAlerts had zero callers before
             // this row - the toggle governed AriaForegroundService.checkRecallsOnce but nothing
