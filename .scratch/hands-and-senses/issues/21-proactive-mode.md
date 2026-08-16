@@ -45,22 +45,27 @@ Decide:
    engagement with the app**, and (d) be silenceable forever in one instruction. (c) and (d) are
    the load-bearing halves; without them "it's past 10pm" becomes "you haven't talked to me in
    three days".
-3. **~~One switch or many.~~ SETTLED (Kevin, 2026-08-16): a master switch plus per-category
-   control.** One toggle is the primary control and the thing Kevin flips; categories inherit it
-   and can be tuned after. What remains to decide here:
-   - **The category list.** Candidates, each owned by the ticket that raises it:
-     safety (weather/disaster, from [location intelligence](15-location-intelligence.md)),
-     departure ("leave now", same ticket), goals, fleet (maintenance due, DTC, recall),
-     [morning brief](08-morning-brief.md), [notifications](04-notification-listener.md),
-     [health](11-health-connect-scope.md), [people dates](19-people-dates.md).
-     Fewer, broader categories beat a settings page nobody reads - argue the cut.
-   - **Tri-state or two.** A category that is explicitly ON should probably survive the master
-     going off only for safety; everything else should die with the master. So: does each
-     category store on / off / inherit, or just an override flag? Simple first.
-   - **Whether any category is exempt from the master.** An NWS tornado warning at Kevin's
-     location is the candidate. If nothing is exempt, the master is a true kill switch, which is
-     cleaner and easier to trust - decide deliberately, because a switch that does not fully
-     silence is a switch nobody believes.
+3. **~~One switch or many.~~ SETTLED (Kevin, 2026-08-16).** Master switch plus per-category
+   control, **five categories, no tri-state, and the master is a true kill switch.**
+
+   | Category | Raises | Owned by |
+   |---|---|---|
+   | **Safety** | NWS warnings, disasters at Kevin's location | [location intelligence](15-location-intelligence.md) |
+   | **Timing** | "leave now" departure, calendar-anchored nudges | [location intelligence](15-location-intelligence.md) |
+   | **Wellbeing** | goal nudges, health, the past-10pm rest line | [health](11-health-connect-scope.md), `goals/` |
+   | **Fleet** | maintenance due, open DTCs, recalls | fleet aspect, [clear DTC](01-clear-dtc.md) |
+   | **Digest** | morning brief, birthdays and dates | [brief](08-morning-brief.md), [people dates](19-people-dates.md) |
+
+   - **Two states per category, not three.** On or off. No inherit state, no override flag - a
+     category is a plain boolean and the master ANDs over all of them. Simple first.
+   - **Nothing is exempt from the master, safety included.** Off means silent. A switch that does
+     not fully silence is a switch nobody believes, and trust in the kill switch is what makes
+     proactivity acceptable at all. (Note the one thing this does NOT cover: `CrisisDetector` is
+     not proactive speech - it is a response to something Kevin said, so it is untouched by this
+     switch and must stay that way.)
+   - **The phone's notification listener is NOT a category.** It stays pull-only unless
+     [ticket 04](04-notification-listener.md) argues otherwise; if it ever raises, it joins
+     Timing rather than earning a sixth switch.
    - **Where it lives.** `SettingsScreen`/`SettingsRows` exist; `mission-control` owns screen
      aesthetics. Coordinate with that map rather than building a surface it re-skins.
 4. **Quiet hours and the nudge budget.** "Past 10pm, perhaps rest" is itself a late-night line, so

@@ -100,6 +100,25 @@ resolved the same day - read the map, not this line, before acting.
   fine when the Bluetooth link goes QUIET** (`Elm327Io` polls `available()`, never blocks on
   `read()`), and the live session could be **silenced with zeroes and no callback**.
 
+**HANDS AND SENSES charted 2026-08-16.** Map `.scratch/hands-and-senses/`, **21 tickets**, from a
+competitive-landscape brainstorm (`.scratch/competitive-landscape/research/landscape.md`). Theme:
+**LEGION almost only READS; this map gives it hands and new senses.** Destination is DECISIONS.
+- **All 4 research resolved same day**, filed to `library/decisions.md`: HA needs only REST (tokens
+  are unscoped - use a non-admin HA user); Health Connect sideloads fine but **sync freshness is
+  undocumented**; Gemini Live takes **camera frames on a plain key** at 1 fps (2-min/10-min session
+  caps make compression + resumption mandatory); the vault needs **no RAG** (0.48 USD/month
+  whole-document; context caching is a 15x trap; **free API tier is disqualifying** for private
+  docs); **TomTom is the only no-card traffic vendor** and Google retired its 200 USD credit.
+- **Three charting corrections, all from grepping**: calendar/Gmail tools, the NHTSA recall checker,
+  the `advisor/`+`goals/`+body layers, and the **companion memory system all ALREADY EXIST**.
+  Memory's consolidation/reflection ported; **its FORGETTING never did** (nothing consumes
+  `lastAccessedAt`, no scorer, no pruning, plus a legacy `MemoryEntry` table). Ticket 20 owns it.
+- **Settled by Kevin:** proactivity = master switch + five categories (Safety, Timing, Wellbeing,
+  Fleet, Digest), two states each, **master is a true kill switch, nothing exempt**. HA fronts home
+  control (never per-device integrations). Glasses are a peripheral, phone stays the brain.
+  **People-lookup/OSINT is OUT.** Money is never written to.
+- **`is_area_safe` must never ship** - FBI crime data is agency-level and ~13 months stale.
+
 **Still open from 2026-08-07:** `CategoryDao.insert` plus an add-category affordance. D14's fixed
 list exists to stop the MODEL inventing categories, not to stop Kevin adding one.
 
