@@ -142,6 +142,23 @@ new senses below are what a JARVIS does that a dashboard does not.
   spec and its verification gates are in the ticket. **Note: the tree is Room v21, not the v20
   `MEMORY.md` still claims.**
 
+- [Write the assistant's actual voice](issues/12-assistant-identity.md)
+  — **CLOSED, premise false. The voice was already written.** `AssistantIdentity.kt:8` says "No
+  longer placeholder"; it is a resolver, and the register copy is `ai/Personas.kt` - ALFRED and
+  DOROTHY, each a full clause plus delivery, shortClause and greetings, picked per profile in a
+  shipping UI. CLAUDE.md §1/§6/§10 all said otherwise and were corrected in the same commit
+  (**third** `repo-ahead-of-docs` instance). **Item 4 was never a decision:** LEGION is the app,
+  the companion is user-named, `AssistantIdentity.withName` already swaps the persona's default
+  name, and "Alfred/JARVIS" is a **register band, not a name**. What is actually missing is
+  **freeform personality authoring**, which Kevin put on the **BACK BURNER** ("we just keep alfred
+  and dorothy"). Midnight AI's builder is **ported, complete and orphaned** - `PersonaTraits`'
+  `assemblePersona()` is only called by `CompanionProfile.savePersona()`, which has no production
+  caller. **Do not just re-wire it:** `persona()` is dual-typed and `personaFor()` silently falls
+  back to ALFRED on any unrecognised string, so freeform prose is discarded with no error. When it
+  returns it **graduates to `persona-authoring`**, because the honesty rules currently live inside
+  each persona's own clause and must be extracted into an immutable kernel first. Also found: **no
+  tests at all** over identity, personas, or base-prompt assembly.
+
 ## Efforts in disguise
 
 Charted as tickets, sized like maps. **A ticket is one ~100K session resolving ONE decision; these
@@ -164,8 +181,10 @@ pointer to that map, recorded in Decisions so far like any other resolution.
 [notification listener](issues/04-notification-listener.md), [comms](issues/05-comms.md),
 [ledger Gmail auto-pull](issues/09-ledger-gmail-autopull.md),
 [Health Connect scope](issues/11-health-connect-scope.md) (it feeds the EXISTING body controllers
-rather than building an aspect), [assistant identity](issues/12-assistant-identity.md),
-[voice and persona surface](issues/13-voice-persona-surface.md),
+rather than building an aspect), [assistant identity](issues/12-assistant-identity.md) (**CLOSED** 2026-08-16, premise false;
+freeform authoring back-burnered and graduates to `persona-authoring` when wanted),
+[voice and persona surface](issues/13-voice-persona-surface.md) (**re-scope before picking up** -
+the voice, persona picker and 30-voice audition all ship; check what is left),
 [inbox intelligence](issues/18-inbox-intelligence.md) (and it may shrink to packages only),
 [people dates](issues/19-people-dates.md).
 

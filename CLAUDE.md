@@ -28,9 +28,15 @@ If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins 
 
 - **Product:** LEGION, one **Android phone app**. A single voice assistant orchestrating
   **aspects** of life. Not a launcher, not a head-unit product, not a commercial product.
-- **Register: Alfred/JARVIS.** A tool with a personality. Not a mascot, not a companion, not the
-  car. Competent, dry, useful. One global identity (`ai/AssistantIdentity.kt`) - **the actual
-  voice has not been written yet**, that file is placeholder copy by its own doc comment.
+- **Register: Alfred/JARVIS is a BAND, not a name.** A tool with a personality. Not a mascot, not
+  the car. Competent, dry, useful. **CORRECTED 2026-08-16: the voice HAS been written and the
+  identity is not global.** `ai/AssistantIdentity.kt` is a resolver (its own doc comment says "No
+  longer placeholder"); the register copy lives in **`ai/Personas.kt`** - `ALFRED` and `DOROTHY`,
+  each a full clause plus delivery, a compressed sub-agent clause, and greetings. **LEGION is the
+  app; the thing Kevin talks to is a named companion he picks per profile** (`companion_profiles`,
+  `ui/CompanionsScreen.kt`), and `AssistantIdentity.withName` swaps the persona's default name for
+  the driver's, so a profile can be Alfred's register wearing another name. Never hardcode an
+  assistant name into copy.
 - **Aspects:**
   | Aspect | What it is | State |
   |---|---|---|
@@ -189,8 +195,9 @@ with zero schema change. Confirm it the same way rather than assuming: read the 
 
 ```
 app/src/main/java/com/kevin/legion/
-├── ai/            AriaBrain, SubAgent (+ inline image part), AssistantIdentity (PLACEHOLDER copy),
-│                  KeyVault, CrisisDetector, OnboardingFlow, PersonaTraits, Voices, ReflectionEngine
+├── ai/            AriaBrain, SubAgent (+ inline image part), AssistantIdentity (resolver) +
+│                  Personas (the ACTUAL register copy: ALFRED, DOROTHY), KeyVault, CrisisDetector,
+│                  OnboardingFlow, PersonaTraits (ORPHANED - see §10), Voices, ReflectionEngine
 ├── service/       AriaForegroundService, GeminiLiveSession, LiveSessionController, LiveToolbox,
 │                  WakeWordEngine, ProactiveBus, AmbientListener, GlanceCardController, Phase
 ├── ledger/        LedgerController, LedgerStatementAgent, LedgerIngestResult, parsers/
@@ -372,7 +379,17 @@ Stated so nobody treats these as gaps to panic about or as silently-missing work
 - **Almost all of `ui/`.** Deliberate clean slate. No design language chosen to replace city-pop.
 - **Onboarding UI.** `ai/OnboardingFlow.kt` ported, but its identity clause is placeholder and the
   conversational onboarding screen that hosts it does not exist.
-- **The assistant's actual voice.** `ai/AssistantIdentity.kt` is placeholder copy.
+- ~~**The assistant's actual voice.**~~ **DONE, corrected 2026-08-16** - see §1. `Personas.kt`
+  ships Alfred and Dorothy, the picker ships, and the persona genuinely changes the system prompt.
+- **Freeform personality authoring. BACK BURNER (Kevin, 2026-08-16), Alfred and Dorothy are
+  enough for now.** Midnight AI let users build a personality by staged questions or free text.
+  `PersonaTraits.kt` still holds all five stages and `assemblePersona()`, but its only caller
+  `CompanionProfile.savePersona()` **has no production caller** - the roster UI writes a persona
+  KEY instead. Ported, complete, orphaned. **Do not simply re-wire it:** `CompanionProfile.persona()`
+  is dual-typed (key in the live path, prose in the legacy one) and `personaFor()` silently falls
+  back to `ALFRED` on any unrecognised string (`Personas.kt:159`), so freeform prose written to
+  that field is discarded without an error. Full account in
+  `.scratch/hands-and-senses/issues/12-assistant-identity.md`.
 - **Ledger categorization / FX / insights.** Nothing to port; new design work.
 - **Pantry consumption-rate tracking and spend/nutrition aggregation.** Deliberately deferred at
   scoping time, same shape as ledger's insight layers.
