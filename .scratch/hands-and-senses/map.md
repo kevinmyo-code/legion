@@ -83,6 +83,21 @@ new senses below are what a JARVIS does that a dashboard does not.
   The real gap is DETAIL: a Live frame is 70 tokens vs ~1,100+ for a one-shot photo - evidence
   points at a hybrid (stream for context, one-shot for "identify this"), flagged reasoned, not
   decided. Five on-device spikes named in the ticket (L10).
+- [Does the document vault need retrieval machinery at all?](issues/16-vault-retrieval-research.md)
+  — **no. No embeddings, no chunker, no index.** A 300-page vault is 77,400 tokens against a
+  1,048,576-token window - it fits 13 times over, and a PDF page bills a flat 258 tokens with its
+  native text layer free. Routed whole-document: **0.48 USD/month** at 5 queries/day. Full RAG
+  saves 2.44 USD/YEAR in exchange for a Room migration and a driftable index. **Context caching is
+  a trap** (56 USD/month kept warm, 15x worse than re-sending); take free implicit caching by
+  ordering document-before-question. **PDFs go to Gemini natively, not through PdfBox** - 2.7x
+  fewer tokens, reads scans (PdfBox returns empty on them), preserves torque-spec tables, cites
+  page numbers, and drops Robolectric from vault tests. **The free API tier is disqualifying** for
+  a folder headed toward tax returns: Google's pricing page says free-tier content improves their
+  products, so the vault needs a billing-enabled key, said in words on the setup surface. SAF's
+  core premise is `tested` on-device (files added after the grant ARE visible, 2026-08-02) but
+  four vault-specific edges are unproven, including offline reads and Google-native docs - **a
+  resume is likely a Google Doc, which is a virtual file**. Ten spikes listed; S6 and S8 can
+  invalidate the recommendation and run before [the vault](issues/17-document-vault.md) builds.
 
 ## Not yet specified
 
