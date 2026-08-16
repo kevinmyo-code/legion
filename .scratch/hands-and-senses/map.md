@@ -84,6 +84,23 @@ new senses below are what a JARVIS does that a dashboard does not.
   The real gap is DETAIL: a Live frame is 70 tokens vs ~1,100+ for a one-shot photo - evidence
   points at a hybrid (stream for context, one-shot for "identify this"), flagged reasoned, not
   decided. Five on-device spikes named in the ticket (L10).
+- [What location data can LEGION actually get, and on what terms?](issues/14-location-intel-research.md)
+  — **four of six areas are keyless** (NWS alerts by point, USGS quake summary feeds, FEMA
+  OpenFEMA county declarations, NIFC wildfire ArcGIS), two need a free no-card key (NASA FIRMS,
+  AirNow, api.data.gov for FBI). **Traffic verdict: TomTom** - the only vendor needing no card
+  ("no upfront credit card needed"), with traffic-aware ETA as the DEFAULT of its free 20K/month
+  routing tier. Google now requires billing enabled, puts traffic-aware routing behind the **Pro
+  SKU** (5,000 free/month then 10 USD/1,000), has **retired the 200 USD monthly credit**, and
+  carries the most restrictive caching terms; HERE closed its no-card Limited plan on March 27.
+  **Crime honesty verdict: "is this area safe" cannot be honestly answered from FBI CDE** -
+  granularity is the reporting AGENCY's jurisdiction (the returned lat/lon is the agency's own
+  address), lag is ~13 months (a live query on 2026-08-16 returned complete data only through
+  07-2025), and reporting is voluntary. **Do not ship `is_area_safe`;** ship
+  `get_reported_crime_history` whose description states agency-level, a year stale, voluntary, and
+  that it does not answer safety. Two live flags: AirNow lists lat/lon services under a "will be
+  retired in the fall of 2026" heading (ambiguous, weeks away, needs a logged-in read), and
+  **Kevin's city is not recorded anywhere in this repo** (verified by three greps) - ask him or
+  reverse-geocode at runtime before any local-incident feed can be chosen.
 - [Does the document vault need retrieval machinery at all?](issues/16-vault-retrieval-research.md)
   — **no. No embeddings, no chunker, no index.** A 300-page vault is 77,400 tokens against a
   1,048,576-token window - it fits 13 times over, and a PDF page bills a flat 258 tokens with its
