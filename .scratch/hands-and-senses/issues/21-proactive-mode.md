@@ -45,14 +45,24 @@ Decide:
    engagement with the app**, and (d) be silenceable forever in one instruction. (c) and (d) are
    the load-bearing halves; without them "it's past 10pm" becomes "you haven't talked to me in
    three days".
-3. **One switch or many.** Kevin asked for one switch. But one switch over goals + alerts +
-   location + health + fleet + brief means either noise or silence, and the first noisy week gets
-   it flipped off forever. Proposal to argue: **one master switch** (what he asked for) **plus
-   per-category defaults he can tune after**, with categories inheriting the master. Decide the
-   category list, drawing from the tickets that each own a raise:
-   [location intelligence](15-location-intelligence.md) (weather/disaster, the sharpest case),
-   [morning brief](08-morning-brief.md), [notifications](04-notification-listener.md),
-   [health](11-health-connect-scope.md), [people dates](19-people-dates.md), goals, fleet.
+3. **~~One switch or many.~~ SETTLED (Kevin, 2026-08-16): a master switch plus per-category
+   control.** One toggle is the primary control and the thing Kevin flips; categories inherit it
+   and can be tuned after. What remains to decide here:
+   - **The category list.** Candidates, each owned by the ticket that raises it:
+     safety (weather/disaster, from [location intelligence](15-location-intelligence.md)),
+     departure ("leave now", same ticket), goals, fleet (maintenance due, DTC, recall),
+     [morning brief](08-morning-brief.md), [notifications](04-notification-listener.md),
+     [health](11-health-connect-scope.md), [people dates](19-people-dates.md).
+     Fewer, broader categories beat a settings page nobody reads - argue the cut.
+   - **Tri-state or two.** A category that is explicitly ON should probably survive the master
+     going off only for safety; everything else should die with the master. So: does each
+     category store on / off / inherit, or just an override flag? Simple first.
+   - **Whether any category is exempt from the master.** An NWS tornado warning at Kevin's
+     location is the candidate. If nothing is exempt, the master is a true kill switch, which is
+     cleaner and easier to trust - decide deliberately, because a switch that does not fully
+     silence is a switch nobody believes.
+   - **Where it lives.** `SettingsScreen`/`SettingsRows` exist; `mission-control` owns screen
+     aesthetics. Coordinate with that map rather than building a surface it re-skins.
 4. **Quiet hours and the nudge budget.** "Past 10pm, perhaps rest" is itself a late-night line, so
    quiet hours cannot simply mute everything at night - the rest nudge lives THERE. Decide: what
    is silenced when, what may always speak (safety: NWS warning, crisis), and **how many times a

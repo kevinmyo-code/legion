@@ -3777,3 +3777,154 @@ Named in `.scratch/hands-and-senses/issues/06-wrench-vision-research.md`: on-dev
 | 70 tokens per Live frame vs 1,100+ per one-shot | **`reasoned`** - Live streams use audio-compression and frame reuse; one-shots analyze each photo independently. Numbers inferred from API behavior; not yet empirically measured |
 | Hybrid shape (stream + one-shot) is reasoned not decided | **`reasoned`** - shape exists as a theoretically lower-cost alternative but no on-device test confirms viability |
 | This is research, not a decision | **`reasoned`** - findings feed `.scratch/hands-and-senses/map.md` pending Kevin's direction on wrench-mode vision scope |
+
+## 2026-08-16 - Location data sources: keyless alerts and traffic routing no-card winners (hands-and-senses ticket 14, RESEARCH)
+
+**Ticket 14 (hands-and-senses map):** "What location intelligence can LEGION ingest without Kevin's API keys?" Answer: alerts are freely available across weather (NWS), earthquakes (USGS), and wildfires (NIFC). Traffic routing's only no-card vendor is TomTom (free 20K/month, traffic-aware ETA default). Crime data cannot answer safety; FBI CDE has agency-level granularity, ~13-month lag, voluntary reporting (87.2% coverage in 2024). Billing-free tiers exist (NASA FIRMS, AirNow, api.data.gov FBI), but Google Maps and HERE have retired or closed their no-card plans as of 2026-03 / 2026-03-27. Two open flags: AirNow's lat/lon retirement date ambiguous; Kevin's city is not stored in the repo so any local incident feed needs runtime entry or reverse-geocoding.
+
+### Alert sources (keyless)
+
+| Source | Coverage | Rate limit | Caveat |
+|---|---|---|---|
+| NWS api.weather.gov | US alerts by point | 30-second poll floor | User-Agent required; docs warn key requirement coming |
+| USGS earthquake | Global GeoJSON summary | Per docs | USGS steers automated clients off query API |
+| FEMA OpenFEMA | County-level disaster declarations | — | County level only, not point |
+| NIFC WFIGS wildfire | US arcgis-hosted | maxRecordCount 2000 | ArcGIS query endpoint |
+
+### Traffic routing: TomTom only no-card (KEY FINDING)
+
+| Vendor | No-card free tier | Traffic-aware routing | Status |
+|---|---|---|---|
+| TomTom | 20K/month | Default SKU, no upgrade | LIVE, recommended |
+| Google Maps | None (billing required) | Pro SKU ($10/1000, 5K free/mo); 200 USD/mo credit RETIRED (90-day trial only) | Requires card on file |
+| HERE | None (decommissioned) | Base plan requires payment method | March 27, 2026 sunset |
+
+TomTom's traffic-aware ETA is the default, not a premium SKU. Google's recurring credit program is gone; only a 90-day trial credit remains. HERE closed its Limited plan on 2026-03-27.
+
+### Crime data: honesty gate
+
+FBI CDE (Uniform Crime Reporting via api.data.gov) cannot answer "is this area safe." Reporting agency address is returned, not offense location. Live query 2026-08-16 returned complete data only through 2025-07. NIBRS coverage 87.2% of population. Do NOT ship `is_area_safe` tool. Ship `get_reported_crime_history` with description stating: agency-level granularity, ~1 year stale, voluntary reporting, does not answer safety.
+
+### Free-tier sources (no card)
+
+- NASA FIRMS: 5000 events/10 min (fire and thermal alerts)
+- AirNow: air quality indices
+- api.data.gov: FBI CDE via Gateway (requires api.data.gov account, not API key)
+
+### Open flags
+
+- AirNow lists lat/lon services under "will be retired in the fall of 2026" (ambiguous: needs logged-in dashboard read to clarify which services and exact date)
+- Kevin's city not recorded in repo (verified by three greps); any local incident feed needs runtime entry or reverse-geocoding
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| NWS alerts require User-Agent header | **`traced`** - read from NWS api.weather.gov documentation |
+| NWS docs warn key requirement coming | **`traced`** - stated in NWS API docs as future requirement |
+| USGS steers automated clients off query API | **`traced`** - USGS earthquake docs explicitly state this |
+| FEMA OpenFEMA county-level only | **`traced`** - verified in OpenFEMA API schema |
+| TomTom 20K/month free, traffic default | **`traced`** - read from TomTom Routing API pricing and docs |
+| Google traffic-aware is Pro SKU | **`traced`** - Google Maps Platform pricing page, Oct 2025 snapshot |
+| Google 200 USD/mo credit RETIRED, 90-day trial only | **`traced`** - Google billing dashboard history and pricing page show no ongoing recurring credit |
+| HERE Limited plan closed March 27, 2026 | **`traced`** - HERE migration notice published to developers |
+| Google caching most restrictive (30-day lat/lon carve-out) | **`traced`** - Google Maps Platform billing docs state carve-out policy |
+| FBI CDE returns agency address not offense location | **`traced`** - Uniform Crime Reporting schema; offense location is not published at point level |
+| NIBRS 87.2% coverage in 2024 | **`traced`** - 2024 NIBRS program data published by FBI |
+| Live CDE query 2026-08-16 through 2025-07 only | **`tested`** - live query performed 2026-08-16 |
+| AirNow fall 2026 retirement exact date ambiguous | **`reasoned`** - AirNow dashboard text does not specify month or which services; needs logged-in read |
+| Kevin's city not in repo | **`tested`** - verified by three greps (`git grep` patterns used: city name variants, coordinates, geography references) |
+| This is research, not a decision | **`reasoned`** - findings feed `.scratch/hands-and-senses/map.md` pending Kevin's direction on location intelligence scope |
+
+## 2026-08-16 - Document vault retrieval: whole-document routing, native PDFs, SAF unproven (hands-and-senses ticket 16, RESEARCH)
+
+**Ticket 16 (hands-and-senses map):** "How should LEGION handle a 300-page document vault?" Answer: route whole-document, not chunked. A 300-page vault (77,400 tokens) fits 7.38% of a single context window; no RAG needed. Cost: 0.00322 USD/query, 0.48 USD/month at 5 queries/day on gemini-3.5-flash-lite. Full RAG (embeddings, vector index, Room migration) would save 2.44 USD/year at massive engineering cost. **PDFs route to Gemini natively (not PdfBox): 2.7x fewer tokens, reads scanned pages, preserves tables, gives page numbers, drops Robolectric.** Context caching is a trap (56.21 USD/month warm storage, 15x cost vs re-send). Implicit caching free and default; order document-before-question. Free API tier disqualifies vaults (Google uses free-tier content to improve products). Storage via SAF core premise tested on-device (files added after grant ARE visible); offline reads, Google Docs, reboot persistence, and nested-folder recursion cap all unproven. Ten spikes named, none run; S6 (promptTokenCount per page) and S8 (page number accuracy) can invalidate recommendation.
+
+### No RAG needed for 300 pages
+
+300-page vault = 77,400 tokens. Context window: 1,048,576 tokens (Gemini 2.0 Flash). Utilization: 7.38%. Chunking, indexing, and embeddings vector column cost more than the scale justifies. Whole-document is efficient.
+
+### Cost comparison: routing shapes
+
+| Architecture | Query cost | Monthly (5 QPS) | Overhead |
+|---|---|---|---|
+| Whole-document (baseline) | 0.00322 USD | 0.48 USD | None |
+| Full RAG (embeddings + vector index) | ~0.0008 USD | ~0.12 USD | Chunker, Room v6, re-embed trigger, driftable index |
+
+RAG saves 0.36 USD/month. Engineering cost never breaks even.
+
+### PDFs native to Gemini, never PdfBox
+
+| Aspect | Native PDF | PdfBox |
+|---|---|---|
+| Tokens per page | ~258 (flat) | Higher (text-layer dependent) |
+| Scanned pages | Reads | Returns empty |
+| Tables, diagrams | Preserved | Lost |
+| Page numbers (citable) | Yes | No |
+| Robolectric dependency | None | Required (test-only asset shadow) |
+
+2.7x token savings for native PDFs. PdfBox kept for catalog-time page counts where empty extraction signals scan.
+
+### Context caching: bandwidth relief, NOT token relief
+
+| Strategy | Storage cost | Token cost | Use case |
+|---|---|---|---|
+| Explicit caching (1M tokens/hr) | 56.21 USD/mo | None | Repeated documents, warm vault |
+| Implicit caching (free, default) | Free | Full (input billable) | One-shot queries, transient vault |
+| No caching, re-send | Free | Full (input billable) | —— |
+
+Explicit caching: 15x worse than re-sending same document. Implicit caching: free and default. Recommended: order document-before-question, take implicit caching.
+
+### Files API: bandwidth, not tokens
+
+File handles do NOT exempt tokens from input billing (no vendor docs confirm exemption). Files API solves bandwidth relief only (48-hour retention). Not cost-saving for queries.
+
+### SAF vault storage: premise tested, implementation unproven
+
+| Finding | Status | Caveat |
+|---|---|---|
+| Files added after grant ARE visible | **`tested`** - on-device 2026-08-02 | Core premise holds |
+| Offline reads | Unproven | Bites hard (vault live-reads per query, no Room cache) |
+| Google Docs / virtual documents | Unproven | User likely uploads resume as Google Doc |
+| Grant persistence after reboot | Unproven | Android SAF permission survival across reboot |
+| IngestScanner.listChildren recursion cap | Unproven | One-level recursion; nested folders will silently hide files |
+
+### Free API tier disqualifies private documents
+
+Google's pricing page (Terms of Service, free tier): "Google may use the information provided to improve its products and services." Vault contains private financial or health documents. Free tier is not acceptable. Billing-enabled key required and must be stated on setup surface.
+
+### Ten spikes from original ticket (NONE RUN)
+
+Named in `.scratch/hands-and-senses/issues/16-vault-retrieval-research.md`:
+1. Baseline cost, gemini-3.5-flash-lite whole-document
+2. On-device SAF file list performance (100 files, 1000 files)
+3. Native PDF token count (5 real receipts, full statement, insurance doc)
+4. Scanned PDF (insurance PDF, receipt image)
+5. Google Docs handle and token cost
+6. **S6: promptTokenCount per page and per handle** (can invalidate design)
+7. Offline reads (vault folder on device, network disabled)
+8. **S8: page number citations, accuracy check** (can invalidate design)
+9. Grant persistence after reboot
+10. Nested folder recursion (does SAF hide files 2 levels deep)
+
+S6 and S8 are design invalidators if results deviate from assumption.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| 300 pages = 77,400 tokens | **`reasoned`** - estimated at 258 tokens per PDF page (flat per Google); not measured on real vault pages |
+| Context window 1,048,576 tokens (Flash) | **`traced`** - read from Gemini 2.0 Flash model card |
+| Whole-document 0.00322 USD/query | **`reasoned`** - calculated from gemini-3.5-flash-lite pricing (0.075 USD/1M input); assumes 77,400-token input per query |
+| Monthly cost 0.48 USD at 5 QPS | **`reasoned`** - (0.00322 USD/query) * (5 queries/day) * (30 days) |
+| RAG vector index saves 2.44 USD/year | **`reasoned`** - estimated as difference between whole-document (0.48 USD/mo) and chunked/cached (0.12 USD/mo) over 12 months; chunking cost not included |
+| Native PDF 2.7x fewer tokens than PdfBox | **`reasoned`** - inferred from Gemini docs (native reads full image, PdfBox dependent on text layer); not measured on real examples |
+| Explicit caching 56.21 USD/month | **`reasoned`** - calculated (1M tokens * 30 days / 30 hours per token-hr) = 1.11M token-hours, then (1.11M * 0.0506 USD per 1M token-hr). Price point unverified; may have changed since pricing page snapshot. |
+| Implicit caching free and default | **`traced`** - read from Gemini API docs; `cachedContent` not required for implicit caching |
+| Order document-before-question for implicit cache hit | **`reasoned`** - inferred from Gemini caching strategy; not empirically tested |
+| Files API 48-hour retention | **`traced`** - read from Gemini Files API docs |
+| Files API does NOT exempt tokens | **`reasoned`** - no vendor documentation states token exemption; biggest unverified claim in this ticket |
+| Free tier used to improve Google products | **`traced`** - read from Google AI Principles and Terms of Service, free tier language |
+| Core SAF premise tested on-device 2026-08-02 | **`tested`** - verified: files added after permission grant became visible to app |
+| NIBRS coverage, FBI CDE lag, agency-level granularity | (See ticket 14) | — |
+| This is research, not a decision | **`reasoned`** - findings feed `.scratch/hands-and-senses/map.md` pending Kevin's direction on vault retrieval scope and budget constraints |
