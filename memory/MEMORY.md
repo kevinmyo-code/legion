@@ -25,8 +25,12 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
     mission-control motion vocabulary was dormant. **That motion has never been observed by anyone,
     on any device, and it is now running.** Treat as untested, not as shipped-and-fine.
 - **SIX domains: fleet, ledger, pantry, body, notes/lists/calendar, plus goals/advisors.** Tabs:
-  Today, Money, Body, Fleet, Notes, Setup. **1206 unit tests green.**
-- **Room is v20.** v19->v20 landed 2026-08-15 (fleet-maintenance): `intervalSource` + `deleted` on
+  Today, Money, Body, Fleet, Notes, Setup. **1365 unit tests green** (2026-08-16).
+- **Room is v22.** v21->v22 landed 2026-08-16: `code_clear_events` (clear-DTC), additive, SQL
+  verified byte-identical to the generated schema AND applied to a pulled copy of the real device
+  DB (47->48 tables, zero DDL changes, zero row drift, integrity clean). **v20->v21 predates this
+  session and is unaccounted for here** - read `app/schemas/` rather than trusting this line.
+- Earlier: v19->v20 landed 2026-08-15 (fleet-maintenance): `intervalSource` + `deleted` on
   `maintenance_items`, `engine` on `vehicles`, and `cost` REAL -> `costCents` INTEGER on
   `service_records`. That last one is **non-additive**, the map's single stated exception to §5,
   permitted only because the column was **proven empty first** (0 of 2 rows). Proven against a COPY
@@ -36,6 +40,13 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
 ## Blocking
 
+- **NOTIFICATION-LISTENER ACCESS IS NOT GRANTED ON THE A25.** Measured 2026-08-16
+  (`adb shell settings get secure enabled_notification_listeners`): `com.kevin.legion` is absent
+  while four other apps hold it. Per-device special access, so the migration dropped it. This is
+  why pause/skip did nothing while play worked. **Kevin must grant it** (Settings > Apps > Special
+  app access > Notification access), or one line:
+  `adb shell cmd notification allow_listener com.kevin.legion/com.kevin.legion.service.MediaNotificationListener`.
+  Until then only Spotify transport works, via the App Remote fallback added 2026-08-16.
 - **Onboarding has no screen. Firebase not wired**, so a swallowed exception is invisible.
   **Crisis resource is US-only (988).**
 - Google console work still needing Kevin: `.scratch/google-account-integration/` tickets 11
@@ -59,6 +70,30 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
   screen only, never aloud.
 
 ## In-flight
+
+**HANDS AND SENSES TRIAGED HARD, 2026-08-16 (session 9).** Map `.scratch/hands-and-senses/`.
+Seven of its nine ticket-sized items are now closed, and **only ticket 01 produced code**.
+- **BUILT AND COMMITTED: clear DTCs** (`bd4de4b`), the app's first WRITE to the car. Transaction,
+  not a send - snapshot, Mode 04, re-read, and **only the re-read may be spoken**. Five outcomes,
+  `44` ack diagnostic only, new `code_clear_events` table. Two senior-review defects fixed before
+  commit: a dismissable dialog could cancel a write mid-send leaving a real clear with no record,
+  and D7's union rule short-circuited so a RETURNED code was invisible on screen while the voice
+  called it active. **NEVER RUN ON A CAR.** `UNVERIFIED`/`REFUSED` have never been produced on
+  hardware; the migration test compiles and has deliberately never run.
+- **ALSO COMMITTED: the music fix** (`d683d2c` + `ccef947`), found by Kevin in use. See Blocking.
+- **Closed on premise, not merits:** 12 identity and 13 voice/persona (**already built** - the
+  register lives in `ai/Personas.kt`, ALFRED + DOROTHY, and CLAUDE.md was corrected); 11 Health
+  Connect (**archived**, no wearable); 09 Gmail auto-pull (**killed**, statements never land in
+  Gmail); 04 notification listener (**archived**).
+- **Still live:** 05 comms (in progress, paused), 08 morning brief, 18 inbox, 19 people dates.
+- **THE PATTERN, five tickets running:** the map was charted from a competitive-landscape
+  brainstorm, so it describes what a JARVIS COULD do rather than what Kevin's data looks like.
+  **Grep the premise and confirm the data source before spending a session on any ticket.**
+- Findings kept from dead tickets: LEGION **already holds** notification-read access via an empty
+  `MediaNotificationListener`; there are **three proactive gates, not one** (`AmbientListener` and
+  `TelephonyController` bypass `ProactiveGate`), so the settled master kill switch cannot be
+  honoured yet; **78 tool declarations** today; and the map's own "LEGION almost only reads"
+  framing is false, since `AmbientListener` ships.
 
 **QUANT-VIZ + GLANCEABLE, branch `feat/quant-viz` off `feat/car-probe`, 34 commits, suite green.**
 Map `.scratch/quant-viz/`, 16 tickets, ALL landed and QA'd on-device with hash-verified installs.
