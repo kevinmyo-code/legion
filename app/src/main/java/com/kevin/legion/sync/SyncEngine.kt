@@ -175,6 +175,10 @@ object SyncEngine {
         Spec("service_records", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         Spec("build_entries", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         Spec("code_events", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
+        // code_clear_events (D3, `.scratch/hands-and-senses/issues/01-clear-dtc.md`): append-only
+        // falsifiable facts about the car, same posture as code_events one line up - no
+        // `deleted` tombstone, UNION on the portable syncId.
+        Spec("code_clear_events", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         Spec("oil_analyses", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         // Mutable, last-write-wins.
         Spec("car_tasks", listOf("syncId"), Mode.LWW, naturalPk = false, hasSyncId = true),

@@ -45,6 +45,20 @@ class LiveToolboxDeclarationSetTest {
     }
 
     /**
+     * `clear_codes` (`.scratch/hands-and-senses/issues/01-clear-dtc.md`, D10) is the exact shape
+     * this file exists to catch: a destructive, confirm-gated tool that would be silently
+     * dispatchable-but-invisible if it ever landed in the wrong array.
+     */
+    @Test
+    fun `clear_codes is declared to the live session, not to onboarding`() {
+        assertTrue("clear_codes must be declared() so the live model can call it", "clear_codes" in names(LiveToolbox.declarations()))
+        assertTrue(
+            "clear_codes must NOT be in onboardingDeclarations() - onboarding has no OBD write path",
+            "clear_codes" !in names(LiveToolbox.onboardingDeclarations()),
+        )
+    }
+
+    /**
      * Onboarding replaces the normal toolset rather than extending it, and its dispatch lives in
      * the onboarding screen, not [LiveToolbox.dispatch]. A tool that leaks in here is advertised
      * to a model that has no way to run it.

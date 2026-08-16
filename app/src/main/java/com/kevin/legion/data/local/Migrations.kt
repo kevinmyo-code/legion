@@ -956,3 +956,28 @@ val MIGRATION_20_21 = object : Migration(20, 21) {
         db.execSQL("ALTER TABLE `service_records` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+/**
+ * v21 -> v22: adds `code_clear_events` - fleet's first WRITE to the car
+ * (`.scratch/hands-and-senses/issues/01-clear-dtc.md`, resolved 2026-08-16). One additive
+ * `CREATE TABLE`, nothing existing touched. SQL copied verbatim from the generated
+ * `app/schemas/com.kevin.legion.data.local.CarDatabase/22.json` after a kapt run, per the
+ * additive-migration discipline - see CarDatabase's v22 doc comment and [CodeClearEvent]'s own.
+ */
+val MIGRATION_21_22 = object : Migration(21, 22) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `code_clear_events` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`vehicleId` TEXT NOT NULL, " +
+                "`timestamp` INTEGER NOT NULL, " +
+                "`mileage` INTEGER, " +
+                "`codesBeforeJson` TEXT NOT NULL, " +
+                "`freezeFrameJson` TEXT NOT NULL, " +
+                "`codesAfterJson` TEXT NOT NULL, " +
+                "`outcome` TEXT NOT NULL, " +
+                "`ackRaw` TEXT NOT NULL, " +
+                "`syncId` TEXT NOT NULL DEFAULT '')"
+        )
+    }
+}

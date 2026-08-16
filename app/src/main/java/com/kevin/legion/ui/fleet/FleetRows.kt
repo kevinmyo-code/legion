@@ -4,11 +4,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import com.kevin.legion.data.local.CodeClearEvent
 import com.kevin.legion.data.local.CodeEvent
 import com.kevin.legion.data.local.DailyDriveLog
 import com.kevin.legion.data.local.MaintenanceItem
@@ -21,6 +25,7 @@ import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.relativeAge
 import com.kevin.legion.util.shortDate
+import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.VehicleController
 import org.json.JSONArray
 import java.time.LocalDate
@@ -482,6 +487,83 @@ data class FaultRowsSummary(val visible: List<Pair<FaultRow, String?>>, val over
 internal fun capFaultRows(faults: List<Pair<FaultRow, String?>>, max: Int = 2): FaultRowsSummary =
     if (faults.size <= max) FaultRowsSummary(faults, 0) else FaultRowsSummary(faults.take(max), faults.size - max)
 
+/**
+ * D7's union rule (`.scratch/hands-and-senses/issues/01-clear-dtc.md`, resolved 2026-08-16): which
+ * codes STORED CODES shows, and the `CLEARED <date>` line's timestamp if any.
+ *
+ * ```
+ * (code_events newer than the latest CLEARED clear-event) union (the latest clear-event's own codesAfterJson)
+ * ```
+ *
+ * **Only a CLEARED clear-event ever moves the anchor or earns the date line** - D7's own text:
+ * "RETURNED and UNVERIFIED clears do NOT filter anything." When no CLEARED event exists for this
+ * vehicle yet, every code ever seen stays visible and [Pair.second] is `null`.
+ *
+ * **The union half exists because of a gap in a DIFFERENT poll loop, not this one.**
+ * `AriaForegroundService.startHealthMonitor` keeps its own in-memory "known codes" baseline that
+ * is never told a clear happened. A code that returns after a CLEARED erase and is already present
+ * the NEXT time that poll runs reads as "not new" against its stale baseline, so no fresh
+ * [CodeEvent] row is ever written for the return - the plain timestamp filter alone would hide it
+ * forever. The freshest clear-event ON FILE (any outcome - a later RETURNED or UNVERIFIED attempt
+ * still counts, even though it never moves the anchor itself) carries its OWN `codesAfterJson`:
+ * RETURNED's real survivors, or CLEARED's/UNVERIFIED's empty set either way. Unioning that in means
+ * a code a later clear attempt proved still live can never be silently hidden behind an older
+ * successful clear.
+ *
+ * [clearEvents] is expected newest-first ([com.kevin.legion.data.local.CodeClearEventDao.getAll]'s
+ * own ordering) but this function does not rely on that - both the anchor and the union supplement
+ * are found by `maxByOrNull`, never `firstOrNull`. `internal` for direct unit testing, same posture
+ * as every other pure builder in this file.
+ */
+internal fun visibleFaultCodes(events: List<CodeEvent>, clearEvents: List<CodeClearEvent>): Pair<Set<String>, Long?> {
+    // FIX (senior review 2026-08-16): this used to early-return `distinctFaultsByFirstSeen(events)
+    // to null` the instant no CLEARED anchor existed, skipping the union half below entirely. That
+    // silently dropped every RETURNED/UNVERIFIED survivor whenever this vehicle had never had a
+    // CLEARED clear - the anchor and the union are independent questions (D7's own text: "Only a
+    // CLEARED clear-event ever moves the anchor or earns the date line" says nothing about the
+    // union), so a missing anchor must fall through to the same union logic every other path uses,
+    // not bypass it.
+    val latestCleared = clearEvents.filter { it.outcome == "CLEARED" }.maxByOrNull { it.timestamp }
+
+    val newCodes = distinctFaultsByFirstSeen(
+        if (latestCleared == null) events else events.filter { it.timestamp > latestCleared.timestamp },
+    ).map { it.code }.toSet()
+    val latestOverall = clearEvents.maxByOrNull { it.timestamp }
+    val survivorCodes = latestOverall?.codesAfterJson
+        ?.let { json -> runCatching { JSONArray(json) }.getOrNull() }
+        ?.let { arr -> (0 until arr.length()).mapNotNull { i -> arr.optString(i).takeIf(String::isNotBlank) } }
+        ?.toSet()
+        ?: emptySet()
+
+    return (newCodes + survivorCodes) to latestCleared?.timestamp
+}
+
+/**
+ * FIX (senior review 2026-08-16, `.scratch/hands-and-senses/issues/01-clear-dtc.md`): D7's union
+ * rule can name a survivor code straight off a clear-event's own `codesAfterJson` that
+ * [com.kevin.legion.service.AriaForegroundService.startHealthMonitor]'s 5-minute poll has not
+ * re-observed yet, so [distinctFaultsByFirstSeen] - keyed purely off `code_events` - has no row for
+ * it at all. The old call site fed [visibleFaultCodes]'s output straight into
+ * `mapNotNull { allFirstSeen[code] }`, which silently dropped that code from STORED CODES while
+ * D9's spoken line correctly still called it active - two surfaces contradicting each other over
+ * the exact same fact.
+ *
+ * Synthesises a [FaultRow] for any code in [visibleCodes] missing from [allFirstSeen], backdating
+ * [FaultRow.firstSeenMs] to [clearEvents]' own latest timestamp - the same clear-event
+ * [visibleFaultCodes] itself draws `codesAfterJson` from, and the earliest moment LEGION can
+ * honestly claim to have known the code was live. Writes nothing to the database; this is
+ * display-only, so D3's "no double-write" rule is untouched. `internal` for direct unit testing,
+ * same reasoning as every other pure builder in this file.
+ */
+internal fun withSynthesizedSurvivors(
+    visibleCodes: Set<String>,
+    allFirstSeen: Map<String, FaultRow>,
+    clearEvents: List<CodeClearEvent>,
+): List<FaultRow> {
+    val fallbackTimestamp = clearEvents.maxByOrNull { it.timestamp }?.timestamp ?: 0L
+    return visibleCodes.map { code -> allFirstSeen[code] ?: FaultRow(code, fallbackTimestamp) }
+}
+
 // ------------------------------------------------------------- DRIVES (pure)
 
 /**
@@ -645,4 +727,66 @@ fun FaultRowView(row: FaultRow, description: String?) {
             Text("first seen ${shortDate(row.firstSeenMs)}", style = LegionType.stamp, color = sem.faint)
         }
     }
+}
+
+/**
+ * STORED CODES' CLEAR action (D5, `.scratch/hands-and-senses/issues/01-clear-dtc.md`) - `AlertDialog`
+ * in [com.kevin.legion.ui.companions.CompanionRows.DeleteCompanionDialog]'s shape, per the ticket's
+ * explicit instruction. **Never copy the garage UI precedent** - `ui.GarageSheet` is referenced in
+ * three KDocs but the file does not exist (ticket's own note).
+ *
+ * FIX (senior review 2026-08-16): this composable used to own BOTH the mutable
+ * `result`/`loading` state AND the `rememberCoroutineScope()` that launched
+ * [com.kevin.legion.vehicle.DtcClearController.dispatchAndRecord] - the real OBD write. That scope
+ * dies the instant this dialog leaves composition, and with no [DialogProperties] override the
+ * `AlertDialog` defaulted to dismissable by back-press/outside-tap, including WHILE the confirmed
+ * send was in flight - a real Mode 04 write is not abortable once it reaches the ECU, so a
+ * cancellation landing after the send but before `recordOutcome()` erased the car's codes with
+ * none of D8's three channels ever firing. This is now a **pure observer**: [loading]/[result] are
+ * owned by [FleetScreen] on a coroutine scope that outlives the dialog (`fleetScope` there,
+ * `rememberCoroutineScope()` at the screen's own composition root, not this composable's), and
+ * [onConfirm] triggers that scope's launch rather than launching one here. Dismissal now only ever
+ * hides the dialog UI; it can no longer cancel a write already under way. The [DialogProperties]
+ * override below narrows the window further (no dismiss AT ALL while [loading]) but is explicitly
+ * NOT sufficient alone - the scope move is what actually closes it. **Process death mid-send is
+ * still unrecoverable and this does not attempt to solve that** - only a live coroutine scope
+ * surviving the dialog is in scope here, not the process.
+ *
+ * [loading]/[result] are the SAME two pieces of state the old internal `LaunchedEffect`/CONFIRM
+ * click used to produce locally; passing them in as params keeps every downstream line below
+ * (title/text/button logic) unchanged from the original. [onConfirm] is a plain callback, not a
+ * suspend fun, because the launch itself now happens on [FleetScreen]'s scope, not this
+ * composable's - see that call site's own comment for the shared gate function
+ * ([com.kevin.legion.vehicle.DtcClearController.dispatchAndRecord], D5's "one gate function") both
+ * it and the voice tool call, so this dialog's body text is never a second, independently-worded
+ * copy of the confirm prompt.
+ */
+@Composable
+fun DtcClearDialog(
+    loading: Boolean,
+    result: DtcClearController.ClearResult?,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    // Only the confirm-prompt turn (outcome == null) ever offers CONFIRM/CANCEL - once a real
+    // outcome comes back (D2's five states), the only thing left to do is read it and dismiss.
+    val awaitingConfirm = !loading && result?.outcome == null
+    AlertDialog(
+        // FIX half 1: no dismiss of any kind while a real op is in flight. This alone does not
+        // close the cancellation window (see the KDoc above) - it only narrows it, since a
+        // dismissal that races the exact instant loading flips true/false is still theoretically
+        // reachable. The scope move above is what actually closes it.
+        properties = DialogProperties(dismissOnBackPress = !loading, dismissOnClickOutside = !loading),
+        onDismissRequest = { if (!loading) onDismiss() },
+        title = { Text(if (loading) "Reading codes..." else if (awaitingConfirm) "Clear stored codes?" else "Clear codes") },
+        text = { Text(if (loading) "Checking what's stored before asking." else result?.message.orEmpty()) },
+        confirmButton = {
+            if (awaitingConfirm) {
+                TextButton(onClick = onConfirm) { Text("Clear") }
+            } else {
+                TextButton(onClick = onDismiss) { Text("OK") }
+            }
+        },
+        dismissButton = { if (awaitingConfirm) TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

@@ -470,6 +470,29 @@ object ObdBluetoothManager {
     suspend fun getDtcCodes(): List<String> = ObdResponseParser.dtcCodes(sendCommand("03"))
 
     /**
+     * The RAW Mode 03 response, undigested - [com.kevin.legion.vehicle.DtcClearController] needs
+     * the raw text, not [getDtcCodes]'s already-parsed list, to tell "the car reports zero stored
+     * codes" (a real `43 00` answer) apart from "the link didn't answer at all"
+     * ([ObdResponseParser.isFailureResponse] true) - two states [getDtcCodes] deliberately
+     * collapses into the identical empty list, exactly the ambiguity D2's REFUSED-vs-
+     * NOTHING_TO_CLEAR split (`.scratch/hands-and-senses/issues/01-clear-dtc.md`) exists to catch.
+     * Counts toward [consecutivePidSilence] like any other PID read - only the Mode 04 send itself
+     * ([clearDtcCodes]) is excluded from that counter.
+     */
+    suspend fun getDtcCodesRaw(): String = sendCommand("03")
+
+    /**
+     * Sends Mode 04 - erases stored codes, freeze frame, and readiness monitors. The caller
+     * ([com.kevin.legion.vehicle.DtcClearController]) NEVER treats this raw ack as proof of a
+     * clean erase (D1: `sendCommand` returns `""` on failure and a quiet link answers exactly like
+     * a successful ack at this layer) - only a post-send re-read of [getDtcCodesRaw] may. Excluded
+     * from [consecutivePidSilence] via [sendCommand]'s `countsTowardPidSilence` opt-out (D2):
+     * renegotiating the bus mid-write-transaction on a command that legitimately answers quiet on
+     * some ECUs would be wrong, and the surrounding re-reads already carry that counter normally.
+     */
+    suspend fun clearDtcCodes(): String = sendCommand("04", countsTowardPidSilence = false)
+
+    /**
      * Battery/system voltage in volts via the ELM327 "ATRV" command, or null if
      * unavailable. Engine off this is the resting battery voltage (~12.4-12.7 =
      * healthy); engine running it reflects the alternator (~13.7-14.7).
@@ -775,11 +798,21 @@ object ObdBluetoothManager {
      * "NO DATA" - non-blank text - so the counter never incremented and
      * [reinitProtocolLocked] never fired in practice; the drive that exposed
      * this still dropped to voltage-only for the rest of the drive).
+     *
+     * [countsTowardPidSilence] (D2, `.scratch/hands-and-senses/issues/01-clear-dtc.md`) is an
+     * explicit per-call opt-out, not a widening of the `AT`-prefix test below - [clearDtcCodes]'s
+     * Mode 04 send is the one command that legitimately answers quiet on some ECUs while a write
+     * is genuinely in flight, and renegotiating the bus via [reinitProtocolLocked] mid-write-
+     * transaction would be wrong. Defaults `true` so every existing PID read is unaffected.
      */
-    private suspend fun sendCommand(cmd: String, timeoutMs: Long = 5000): String = withContext(Dispatchers.IO) {
+    private suspend fun sendCommand(
+        cmd: String,
+        timeoutMs: Long = 5000,
+        countsTowardPidSilence: Boolean = true,
+    ): String = withContext(Dispatchers.IO) {
         commandMutex.withLock {
             val response = exchangeLocked(cmd, timeoutMs)
-            if (!cmd.startsWith("AT", ignoreCase = true)) {
+            if (!cmd.startsWith("AT", ignoreCase = true) && countsTowardPidSilence) {
                 if (ObdResponseParser.isFailureResponse(response) && transport != null) {
                     consecutivePidSilence++
                     // Breadcrumb the EXACT failing response (ADB logcat is blocked on

@@ -69,6 +69,19 @@ object MidnightEvents {
         Log.w(TAG, "obd_reinit recovered=$recovered trigger='${trigger.take(60).replace('\n', ' ')}'")
     }
 
+    /**
+     * A `clear_codes` transaction reached one of D2's five outcomes
+     * (`vehicle/DtcClearController.kt`, `.scratch/hands-and-senses/issues/01-clear-dtc.md`).
+     * [before]/[after] are the DTC lists at each end of the transaction - `after` empty means the
+     * post-send re-read genuinely came back clean, distinct from NOTHING_TO_CLEAR/REFUSED/
+     * UNVERIFIED, none of which ever captured a trustworthy after-read (the caller passes an empty
+     * list for those too, since this is a `Log.d` breadcrumb, not the durable row - see
+     * [com.kevin.legion.data.local.CodeClearEvent] for the nullable distinction that DOES matter).
+     */
+    fun dtcCleared(outcome: String, before: List<String>, after: List<String>) = safe {
+        Log.d(TAG, "dtc_cleared[$outcome]: before=$before after=$after")
+    }
+
     /** REFRESH SCHEDULE in the logbook's DUE tab threw. */
     fun maintenanceRefreshFailed(e: Throwable) = safe {
         Log.w(TAG, "maintenance_refresh ${e.javaClass.simpleName}: ${e.message}", e)

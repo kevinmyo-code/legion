@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -54,6 +55,7 @@ import com.kevin.legion.ui.common.HalfTile
 import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.ui.fleet.DriveHistoryDrilldownScreen
 import com.kevin.legion.ui.fleet.DriveSummaryView
+import com.kevin.legion.ui.fleet.DtcClearDialog
 import com.kevin.legion.ui.fleet.DueRowView
 import com.kevin.legion.ui.fleet.FaultRow
 import com.kevin.legion.ui.fleet.FaultRowView
@@ -78,6 +80,8 @@ import com.kevin.legion.ui.fleet.buildMilesSparkline
 import com.kevin.legion.ui.fleet.buildMpgSparkline
 import com.kevin.legion.ui.fleet.capFaultRows
 import com.kevin.legion.ui.fleet.distinctFaultsByFirstSeen
+import com.kevin.legion.ui.fleet.visibleFaultCodes
+import com.kevin.legion.ui.fleet.withSynthesizedSurvivors
 import com.kevin.legion.ui.fleet.writeAddItem
 import com.kevin.legion.ui.fleet.writeConfirmAll
 import com.kevin.legion.ui.fleet.writeDeleteItem
@@ -89,7 +93,9 @@ import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.theme.deckMotionEnabled
+import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.DtcDescriptions
 import com.kevin.legion.vehicle.FleetSpendController
 import com.kevin.legion.vehicle.ObdBluetoothManager
@@ -97,6 +103,7 @@ import com.kevin.legion.vehicle.ObdDeviceRegistry
 import com.kevin.legion.vehicle.VehicleController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.kevin.legion.location.PlaceController
 
@@ -200,6 +207,14 @@ data class FleetUiState(
      */
     val allServiceRecords: List<ServiceRecord> = emptyList(),
     val faults: List<Pair<FaultRow, String?>> = emptyList(),
+    /**
+     * The latest CLEARED `clear_codes` transaction's timestamp for this vehicle, or `null` when
+     * none exists yet - D7's union rule (`.scratch/hands-and-senses/issues/01-clear-dtc.md`).
+     * [faults] above is ALREADY filtered by [com.kevin.legion.ui.fleet.visibleFaultCodes]; this is
+     * only the `CLEARED <date>` line's own timestamp, so an absence reads as "cleared", not
+     * "nothing was ever stored".
+     */
+    val clearedAt: Long? = null,
     val serviceHistoryCount: Int = 0,
     val buildSheetCount: Int = 0,
     val recapCount: Int = 0,
@@ -300,6 +315,51 @@ fun FleetScreen(
     // Ticket 10's manual-entry control - see CarsPane's own doc and the dialog's render site below.
     var showOdometerDialog by remember { mutableStateOf(false) }
 
+    // D5's UI half (`.scratch/hands-and-senses/issues/01-clear-dtc.md`) - same "sibling of
+    // FleetContent, not threaded through it" shape showOdometerDialog uses, and for the same
+    // reason: this dialog calls DtcClearController and bumps reloadKey directly.
+    var showClearCodesDialog by remember { mutableStateOf(false) }
+
+    // FIX (senior review 2026-08-16): DtcClearDialog used to own its own `rememberCoroutineScope()`
+    // and launch DtcClearController.dispatchAndRecord (a real Mode 04 write) on it. That scope dies
+    // the instant the dialog leaves composition, so a back-press/outside-tap while the confirmed
+    // send was in flight could cancel the coroutine AFTER the ECU received the clear but BEFORE
+    // recordOutcome() ran - a real write with none of D8's three observability channels firing.
+    // clearCodesLoading/clearCodesResult are now owned HERE, and dispatchAndRecord is launched on
+    // fleetScope - a scope tied to this composable's own composition, which outlives the dialog
+    // (the dialog is a conditionally-emitted sibling, toggled by showClearCodesDialog, the same
+    // shape showOdometerDialog already uses). Dismissing the dialog now only ever hides its UI; it
+    // can no longer cancel a write already under way. See runClearCodes below and DtcClearDialog's
+    // own KDoc for why the dialog-properties half of this fix (no dismiss while loading) is real
+    // but NOT sufficient by itself - this scope move is what actually closes the window.
+    val fleetScope = rememberCoroutineScope()
+    var clearCodesLoading by remember { mutableStateOf(false) }
+    var clearCodesResult by remember { mutableStateOf<DtcClearController.ClearResult?>(null) }
+
+    // The one place either DtcClearDialog turn (confirmed=false's snapshot read, confirmed=true's
+    // real send) is launched - see the fleetScope doc above for why this lives on the screen's own
+    // scope rather than inside the dialog. Process death mid-send is still unrecoverable; that gap
+    // is orthogonal to the dialog-dismissal one this function exists to close and is not addressed
+    // here (per the ticket: note it, do not attempt to solve it).
+    fun runClearCodes(confirmed: Boolean) {
+        clearCodesLoading = true
+        fleetScope.launch {
+            val vehicle = VehicleController.currentVehicle(context)
+            val r = DtcClearController.dispatchAndRecord(context, vehicle, confirmed)
+            clearCodesResult = r
+            clearCodesLoading = false
+            // Refresh STORED CODES/the CLEARED-date line only once something was actually
+            // recorded - the confirm-prompt turn and REFUSED/NOTHING_TO_CLEAR wrote nothing,
+            // so a refresh there would be a harmless but pointless re-query.
+            if (r.outcome == DtcClearController.ClearOutcome.CLEARED ||
+                r.outcome == DtcClearController.ClearOutcome.RETURNED ||
+                r.outcome == DtcClearController.ClearOutcome.UNVERIFIED
+            ) {
+                reloadKey++
+            }
+        }
+    }
+
     LaunchedEffect(reloadKey) {
         val vehicle = VehicleController.currentVehicle(context)
         val currentMileage = VehicleController.currentMileage(vehicle)
@@ -308,6 +368,10 @@ fun FleetScreen(
 
         val items: List<MaintenanceItem> = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
         val codeEvents = db.codeEventDao().getAll(vehicle.obdMac)
+        // D7's union rule (`.scratch/hands-and-senses/issues/01-clear-dtc.md`) - see
+        // visibleFaultCodes' own doc for why this needs the full clear-event history, not just
+        // the latest CLEARED one, to compute the union supplement correctly.
+        val clearEvents = db.codeClearEventDao().getAll(vehicle.obdMac)
         val samplesByPid = LIVE_GAUGE_PIDS.associateWith { pid ->
             db.odbSampleDao().getLatest(vehicle.obdMac, pid, 1).firstOrNull()
         }
@@ -354,7 +418,15 @@ fun FleetScreen(
         val descriptions = withContext(Dispatchers.IO) {
             DtcDescriptions.loadSeed(context) + DtcDescriptions.loadLearned(context)
         }
-        val faults = distinctFaultsByFirstSeen(codeEvents).map { it to descriptions[it.code]?.first }
+        val (visibleCodes, clearedAt) = visibleFaultCodes(codeEvents, clearEvents)
+        val allFirstSeen = distinctFaultsByFirstSeen(codeEvents).associateBy { it.code }
+        // FIX (senior review 2026-08-16): this used to be `visibleCodes.mapNotNull { allFirstSeen[code] }`,
+        // which silently dropped any D7 union survivor with no code_events row of its own - see
+        // withSynthesizedSurvivors' own doc for why that row can be missing and why a synthesized
+        // one, not a dropped one, is correct here.
+        val faults = withSynthesizedSurvivors(visibleCodes, allFirstSeen, clearEvents)
+            .sortedByDescending { it.firstSeenMs }
+            .map { it to descriptions[it.code]?.first }
 
         // AWAIT FIRST, COPY ONCE: every suspend call above is resolved into a
         // local val before this single, non-suspending assignment - the L15
@@ -382,6 +454,7 @@ fun FleetScreen(
             odometerUnset = vehicle.odometerBaseline == 0,
             vehicleId = vehicle.obdMac,
             faults = faults,
+            clearedAt = clearedAt,
             serviceHistoryCount = db.serviceRecordDao().countForVehicle(vehicle.obdMac),
             buildSheetCount = db.buildEntryDao().countForVehicle(vehicle.obdMac),
             recapCount = monthlyRecaps.size,
@@ -567,6 +640,13 @@ fun FleetScreen(
         onOpenAdapter = { drilldown = FleetDrilldown.ADAPTER },
         onOpenSpecs = { drilldown = FleetDrilldown.SPECS },
         onSetOdometer = { showOdometerDialog = true },
+        onClearCodes = {
+            showClearCodesDialog = true
+            clearCodesResult = null
+            // D4.1: opening the dialog immediately fires the confirmed=false snapshot read, which
+            // alone can end the operation without ever asking (NOTHING_TO_CLEAR/REFUSED).
+            runClearCodes(confirmed = false)
+        },
         onSweepActiveChanged = onSweepActiveChanged,
     )
 
@@ -588,6 +668,21 @@ fun FleetScreen(
             },
         )
     }
+
+    // D5's UI half - same sibling-dialog reasoning as SetOdometerDialog above: this calls
+    // DtcClearController (a real OBD write) and bumps reloadKey directly, without threading a
+    // suspend callback down through FleetContent/FleetListing/UplinkPane. As of the senior-review
+    // fix above, the dialog itself is a pure observer of clearCodesLoading/clearCodesResult - the
+    // actual dispatchAndRecord launch lives in runClearCodes, on fleetScope, not here and not in
+    // the dialog, so dismissing this dialog can never cancel a write already in flight.
+    if (showClearCodesDialog) {
+        DtcClearDialog(
+            loading = clearCodesLoading,
+            result = clearCodesResult,
+            onDismiss = { showClearCodesDialog = false },
+            onConfirm = { runClearCodes(confirmed = true) },
+        )
+    }
 }
 
 /** How many recent daily logs the DRIVES panel/drilldown pulls - a sparkline needs more than a headline figure, but no reason to load the whole table for a panel-height chart. */
@@ -606,6 +701,7 @@ fun FleetContent(
     onOpenAdapter: () -> Unit = {},
     onOpenSpecs: () -> Unit = {},
     onSetOdometer: () -> Unit = {},
+    onClearCodes: () -> Unit = {},
     onSweepActiveChanged: (Boolean) -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
@@ -621,7 +717,7 @@ fun FleetContent(
             if (state.loading) {
                 Text("LOADING...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
             } else {
-                FleetListing(state, onOpenPlaces, onOpenCars, onOpenUplink, onOpenMaintenance, onOpenDrives, onOpenDrivingMode, onOpenAdapter, onOpenSpecs, onSetOdometer, onSweepActiveChanged)
+                FleetListing(state, onOpenPlaces, onOpenCars, onOpenUplink, onOpenMaintenance, onOpenDrives, onOpenDrivingMode, onOpenAdapter, onOpenSpecs, onSetOdometer, onClearCodes, onSweepActiveChanged)
             }
         }
     }
@@ -639,12 +735,13 @@ private fun FleetListing(
     onOpenAdapter: () -> Unit,
     onOpenSpecs: () -> Unit,
     onSetOdometer: () -> Unit,
+    onClearCodes: () -> Unit,
     onSweepActiveChanged: (Boolean) -> Unit,
 ) {
     LazyColumn(Modifier.fillMaxSize()) {
         // ------------------------------------------------------------ UPLINK (leads, always)
         item(key = "uplink-pane") {
-            UplinkPane(state, onOpenDrivingMode, onSweepActiveChanged, modifier = Modifier.clickable(onClick = onOpenUplink))
+            UplinkPane(state, onOpenDrivingMode, onClearCodes, onSweepActiveChanged, modifier = Modifier.clickable(onClick = onOpenUplink))
         }
 
         // ------------------------------------------------------ MAINTENANCE / DRIVES (HALF tiles)
@@ -758,6 +855,7 @@ private fun FleetListing(
 private fun UplinkPane(
     state: FleetUiState,
     onOpenDrivingMode: () -> Unit,
+    onClearCodes: () -> Unit,
     onSweepActiveChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -795,28 +893,53 @@ private fun UplinkPane(
         } else {
             state.liveRows.forEach { row -> DeckFeedRow(code = row.pid, name = row.label, value = "${row.value} · ${row.sub}") }
         }
-        if (state.faults.isNotEmpty()) {
-            Text(
-                "STORED CODES",
-                style = LegionType.stamp,
-                color = sem.faint,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            )
-            // Ticket 16 (Kevin's call): capped at 2 with a worded overflow row - an unbounded
-            // list here (6 DTCs on Kevin's real car) pushed MAINTENANCE/DRIVES/CARS below the
-            // fold. Same "no faults drilldown exists" tap-through as before the cap: neither the
-            // capped rows nor the overflow row carry their own clickable, so both still resolve
-            // to UplinkPane's own outer Modifier.clickable(onOpenUplink) from FleetListing - the
-            // same place every STORED CODES row already tapped to.
-            val cappedFaults = capFaultRows(state.faults)
-            cappedFaults.visible.forEach { (fault, description) -> FaultRowView(fault, description) }
-            if (cappedFaults.overflowCount > 0) {
+        // D7's union rule means an empty state.faults can still be the CLEARED result of a
+        // recent successful clear - the header stays gated on faults (nothing to show/act on
+        // otherwise), but the CLEARED-date line renders independently so an absence reads as
+        // "cleared", not as a bug (D7, `.scratch/hands-and-senses/issues/01-clear-dtc.md`).
+        if (state.faults.isNotEmpty() || state.clearedAt != null) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("STORED CODES", style = LegionType.stamp, color = sem.faint)
+                // D5's UI half: destructive, gated on there being anything to clear - a car with
+                // nothing currently stored offers nothing to tap, matching NOTHING_TO_CLEAR's own
+                // "refuse early" reasoning (D2) organically rather than a second explicit check.
+                if (state.faults.isNotEmpty()) {
+                    Text(
+                        "CLEAR",
+                        style = LegionType.stamp,
+                        color = sem.quarantined,
+                        modifier = Modifier.clickable(onClick = onClearCodes).padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                }
+            }
+            if (state.clearedAt != null) {
                 Text(
-                    "AND ${cappedFaults.overflowCount} MORE",
+                    "CLEARED ${shortDate(state.clearedAt)}",
                     style = LegionType.stamp,
                     color = sem.faint,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
                 )
+            }
+            if (state.faults.isNotEmpty()) {
+                // Ticket 16 (Kevin's call): capped at 2 with a worded overflow row - an unbounded
+                // list here (6 DTCs on Kevin's real car) pushed MAINTENANCE/DRIVES/CARS below the
+                // fold. Same "no faults drilldown exists" tap-through as before the cap: neither the
+                // capped rows nor the overflow row carry their own clickable, so both still resolve
+                // to UplinkPane's own outer Modifier.clickable(onOpenUplink) from FleetListing - the
+                // same place every STORED CODES row already tapped to.
+                val cappedFaults = capFaultRows(state.faults)
+                cappedFaults.visible.forEach { (fault, description) -> FaultRowView(fault, description) }
+                if (cappedFaults.overflowCount > 0) {
+                    Text(
+                        "AND ${cappedFaults.overflowCount} MORE",
+                        style = LegionType.stamp,
+                        color = sem.faint,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
             }
         }
         // Manual override (Kevin, 2026-08-08): the row is ALWAYS shown, not

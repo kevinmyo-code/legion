@@ -160,6 +160,14 @@ import androidx.room.RoomDatabase
  * (`sync/SyncEngine.kt:175`), and UNION never updates a row a device already has, so this delete is
  * LOCAL ONLY by construction, unlike `maintenance_items.deleted`'s LWW tombstone. See
  * [ServiceRecord.deleted] and [MIGRATION_20_21]'s own doc comments for the full reasoning.
+ *
+ * v22: `code_clear_events` - fleet's first WRITE to the car
+ * (`.scratch/hands-and-senses/issues/01-clear-dtc.md`, resolved 2026-08-16). One additive
+ * `CREATE TABLE`, nothing existing touched. Records a `clear_codes` transaction's outcome (D2's
+ * five-state `ClearOutcome`) - see [CodeClearEvent]'s own doc comment for why this cannot be a
+ * column on [CodeEvent], and [MIGRATION_21_22]'s for the schema itself. Verbatim from the
+ * generated `app/schemas/com.kevin.legion.data.local.CarDatabase/22.json` after a kapt run, per
+ * the additive-migration discipline this project has kept from v1.
  */
 @Database(
     entities = [
@@ -183,8 +191,9 @@ import androidx.room.RoomDatabase
         GroceryItem::class, GroceryStaple::class,
         VehicleCapability::class,
         Goal::class, AdvisorAdvice::class,
+        CodeClearEvent::class,
     ],
-    version = 21,
+    version = 22,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -232,6 +241,7 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun listItemSkipDao(): ListItemSkipDao
     abstract fun goalDao(): GoalDao
     abstract fun advisorAdviceDao(): AdvisorAdviceDao
+    abstract fun codeClearEventDao(): CodeClearEventDao
 
     companion object {
         @Volatile
@@ -263,7 +273,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 21
+        const val SCHEMA_VERSION = 22
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -283,6 +293,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_11_12, MIGRATION_12_13,
                         MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
                         MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
+                        MIGRATION_21_22,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

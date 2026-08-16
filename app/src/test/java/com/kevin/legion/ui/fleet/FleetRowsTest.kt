@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.fleet
 
+import com.kevin.legion.data.local.CodeClearEvent
 import com.kevin.legion.data.local.CodeEvent
 import com.kevin.legion.data.local.DailyDriveLog
 import com.kevin.legion.data.local.MaintenanceItem
@@ -493,5 +494,149 @@ class FleetRowsTest {
         // same day - milesDriven is non-null by construction (see the
         // function's own doc), so nothing here is a gap.
         assertEquals(listOf(20f, 0f, 40f), points)
+    }
+
+    // ------------------------------------------------------- visibleFaultCodes (D7 union rule)
+
+    private fun clearEvent(
+        timestamp: Long,
+        outcome: String,
+        codesAfterJson: String = "",
+    ) = CodeClearEvent(
+        vehicleId = vehicleId,
+        timestamp = timestamp,
+        codesBeforeJson = "[]",
+        codesAfterJson = codesAfterJson,
+        outcome = outcome,
+    )
+
+    @Test
+    fun `visibleFaultCodes shows every code and reports no date when nothing was ever cleared`() {
+        val events = listOf(CodeEvent(vehicleId = vehicleId, timestamp = now, codesJson = """["P0420","P0128"]"""))
+        val (codes, clearedAt) = visibleFaultCodes(events, emptyList())
+        assertEquals(setOf("P0420", "P0128"), codes)
+        assertNull(clearedAt)
+    }
+
+    @Test
+    fun `visibleFaultCodes hides every code timestamp-filtered by a CLEARED anchor with nothing since`() {
+        val events = listOf(CodeEvent(vehicleId = vehicleId, timestamp = now - monthMs, codesJson = """["P0420","P0128"]"""))
+        val clear = clearEvent(timestamp = now, outcome = "CLEARED", codesAfterJson = "[]")
+        val (codes, clearedAt) = visibleFaultCodes(events, listOf(clear))
+        assertEquals(emptySet<String>(), codes)
+        assertEquals(now, clearedAt)
+    }
+
+    @Test
+    fun `visibleFaultCodes shows a code_event newer than the CLEARED anchor without needing the union`() {
+        val cleared = clearEvent(timestamp = now, outcome = "CLEARED", codesAfterJson = "[]")
+        val freshEvent = CodeEvent(vehicleId = vehicleId, timestamp = now + 1000, codesJson = """["P0442"]""")
+        val (codes, clearedAt) = visibleFaultCodes(listOf(freshEvent), listOf(cleared))
+        assertEquals(setOf("P0442"), codes)
+        assertEquals(now, clearedAt)
+    }
+
+    /**
+     * The ticket's own required scenario: "shows a RETURNED code and hides a CLEARED one."
+     *
+     * Two codes trip together (P0420, P0128), both get CLEARED at T1 (the anchor). A LATER
+     * RETURNED clear attempt at T2 proves P0420 is live again, but - because the health-monitor
+     * poll's own baseline never learned about the T1 clear (see [visibleFaultCodes]'s own doc) -
+     * no fresh [CodeEvent] row exists for that return. The plain timestamp filter alone would show
+     * nothing (both code_events predate T1); the union of T2's `codesAfterJson` must rescue P0420
+     * while P0128, which really was cleared and never returned, stays hidden.
+     */
+    @Test
+    fun `visibleFaultCodes union rule shows a RETURNED code and hides a CLEARED one`() {
+        val t0 = now - 2 * monthMs
+        val t1 = now - monthMs
+        val t2 = now
+        val events = listOf(
+            CodeEvent(vehicleId = vehicleId, timestamp = t0, codesJson = """["P0420","P0128"]"""),
+        )
+        val clearedEvent = clearEvent(timestamp = t1, outcome = "CLEARED", codesAfterJson = "[]")
+        val returnedEvent = clearEvent(timestamp = t2, outcome = "RETURNED", codesAfterJson = """["P0420"]""")
+
+        val (codes, clearedAt) = visibleFaultCodes(events, listOf(clearedEvent, returnedEvent))
+
+        assertEquals("P0420 (RETURNED) must show, P0128 (CLEARED, never returned) must not", setOf("P0420"), codes)
+        assertEquals("only the CLEARED event ever moves the anchor/date line", t1, clearedAt)
+    }
+
+    @Test
+    fun `visibleFaultCodes never anchors on a RETURNED or UNVERIFIED clear-event alone`() {
+        // D7's own text: "RETURNED and UNVERIFIED clears do NOT filter anything." With no CLEARED
+        // event on file at all, a RETURNED/UNVERIFIED history must never hide or date-stamp anything.
+        val events = listOf(CodeEvent(vehicleId = vehicleId, timestamp = now - monthMs, codesJson = """["P0420"]"""))
+        val onlyReturned = clearEvent(timestamp = now, outcome = "RETURNED", codesAfterJson = """["P0420"]""")
+        val (codes, clearedAt) = visibleFaultCodes(events, listOf(onlyReturned))
+        assertEquals(setOf("P0420"), codes)
+        assertNull(clearedAt)
+    }
+
+    // -------------------------------------- senior-review fixes, 2026-08-16 (D7 union rule)
+
+    /**
+     * FIX (a): the old implementation early-returned `distinctFaultsByFirstSeen(events) to null`
+     * the instant no `CLEARED` clear-event existed, skipping the union half of D7's rule entirely -
+     * a `RETURNED` survivor named only in a clear-event's own `codesAfterJson` was silently hidden
+     * whenever this vehicle had never had a `CLEARED` clear. `events` is empty here on purpose: this
+     * is also the (b)-adjacent shape where the survivor has no `code_events` row at all, so a bug
+     * that special-cased "fall back to `code_events`" alone could not accidentally pass it.
+     */
+    @Test
+    fun `visibleFaultCodes shows a RETURNED survivor when no CLEARED event has ever existed`() {
+        val returned = clearEvent(timestamp = now, outcome = "RETURNED", codesAfterJson = """["P0442"]""")
+        val (codes, clearedAt) = visibleFaultCodes(emptyList(), listOf(returned))
+        assertEquals(setOf("P0442"), codes)
+        assertNull(clearedAt)
+    }
+
+    /**
+     * FIX (b): [withSynthesizedSurvivors] is the replacement for the old call site's
+     * `visibleCodes.mapNotNull { allFirstSeen[code] }`, which silently DROPPED any survivor code
+     * with no `code_events` row instead of rendering it - reachable because
+     * `AriaForegroundService.startHealthMonitor` only writes its first row on the first 5-minute
+     * poll, and a code cleared and returned inside that window has no fresh `code_events` row yet.
+     * [FaultRow.firstSeenMs] must backdate to the clear-event's OWN timestamp (the earliest LEGION
+     * can honestly claim to have known the code was live), never drop the row and never invent "now".
+     */
+    @Test
+    fun `withSynthesizedSurvivors renders a survivor with no code_events row, backdated to the clear-event's own timestamp`() {
+        val returned = clearEvent(timestamp = now, outcome = "RETURNED", codesAfterJson = """["P0442"]""")
+        val rows = withSynthesizedSurvivors(
+            visibleCodes = setOf("P0442"),
+            allFirstSeen = emptyMap(),
+            clearEvents = listOf(returned),
+        )
+        assertEquals(listOf(FaultRow("P0442", now)), rows)
+    }
+
+    /** [withSynthesizedSurvivors] must NOT synthesize a row for a code [allFirstSeen] already has - the real, observed `firstSeenMs` wins, never the clear-event's backdated fallback. */
+    @Test
+    fun `withSynthesizedSurvivors prefers the real code_events first-seen over the synthesized fallback`() {
+        val realFirstSeen = now - monthMs
+        val returned = clearEvent(timestamp = now, outcome = "RETURNED", codesAfterJson = """["P0420"]""")
+        val rows = withSynthesizedSurvivors(
+            visibleCodes = setOf("P0420"),
+            allFirstSeen = mapOf("P0420" to FaultRow("P0420", realFirstSeen)),
+            clearEvents = listOf(returned),
+        )
+        assertEquals(listOf(FaultRow("P0420", realFirstSeen)), rows)
+    }
+
+    /**
+     * Hiding still requires a `CLEARED` anchor specifically - an `UNVERIFIED`-only history (the
+     * sibling case to the existing `RETURNED`-only test above) must not hide or date-stamp anything
+     * either. `UNVERIFIED`'s `codesAfterJson` is always empty (D2: the post-send re-read never came
+     * back), so this also confirms the union half contributes nothing when there is nothing to add.
+     */
+    @Test
+    fun `visibleFaultCodes never hides on an UNVERIFIED clear-event alone`() {
+        val events = listOf(CodeEvent(vehicleId = vehicleId, timestamp = now - monthMs, codesJson = """["P0420"]"""))
+        val onlyUnverified = clearEvent(timestamp = now, outcome = "UNVERIFIED", codesAfterJson = "")
+        val (codes, clearedAt) = visibleFaultCodes(events, listOf(onlyUnverified))
+        assertEquals(setOf("P0420"), codes)
+        assertNull(clearedAt)
     }
 }

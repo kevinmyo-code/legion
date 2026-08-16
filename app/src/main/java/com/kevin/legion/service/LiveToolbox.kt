@@ -66,6 +66,7 @@ import com.kevin.legion.notes.RepeatRule
 import com.kevin.legion.notes.parseWeekdays
 import com.kevin.legion.vehicle.ColdStartAgent
 import com.kevin.legion.vehicle.DiagnosticAgent
+import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.DtcDescriptions
 import com.kevin.legion.vehicle.GarageController
 import com.kevin.legion.vehicle.GaragePreferences
@@ -259,6 +260,32 @@ object LiveToolbox {
                 "answer for any other car.",
             params = obj(),
             required = listOf(),
+        ))
+
+        // Fleet's first WRITE to the car (D1-D10, `.scratch/hands-and-senses/issues/01-clear-dtc.md`).
+        // Category A like the seven other DTC tools above (D10) - live-hardware, no `vehicle` param,
+        // guarded by CATEGORY_A_TOOLS/refuseIfNotConnectedCar below. The confirm shape is copied
+        // VERBATIM from activate_garage (D4): required confirmed boolean, model instructed to call
+        // false first and true only after a yes in the very next turn - and, same as activate_garage,
+        // this only works inside a live session (D4.4), never a one-shot.
+        fns.put(fn(
+            name = "clear_codes",
+            description = "Erase the car's stored trouble codes - OBD Mode 04, a REAL WRITE to the " +
+                "ECU. This also wipes the freeze frame and RESETS THE EMISSIONS READINESS MONITORS, " +
+                "so the car will fail an inspection until it has driven enough to reset them. " +
+                "Destructive and not reversible. ALWAYS call this first with confirmed=false - it " +
+                "reads the stored codes and returns the exact warning to recite to the driver; only " +
+                "call it again with confirmed=true after the driver says yes in the very next turn. " +
+                "After sending, this re-reads the codes and reports what actually came back - only " +
+                "ever say 'cleared' if that is what this tool's own result says, never assume the " +
+                "send alone means it worked. Use when the driver asks to clear codes, reset the " +
+                "check engine light, or erase trouble codes. Reads the OBD dongle in the car it is " +
+                "plugged into right now. Cannot answer for any other car.",
+            params = obj(
+                "confirmed" to schema("boolean", "False on the first call to read the codes and get " +
+                    "the confirm warning to recite. True only after the driver has just confirmed."),
+            ),
+            required = listOf("confirmed"),
         ))
 
         // Category B - stored-data tools (fleet-wide voice, ticket 01 §0). Room
@@ -1386,6 +1413,7 @@ object LiveToolbox {
             "get_trend" -> withResolvedVehicle(context, args) { getTrend(context, args, it.obdMac) }
             "get_mpg" -> withResolvedVehicle(context, args) { getMpg(context, it) }
             "check_readiness" -> checkReadiness()
+            "clear_codes" -> clearCodes(context, args)
             "check_cold_start" -> checkColdStart(context)
             "get_next_service" -> withResolvedVehicle(context, args) { getNextService(context, it) }
             "ask_maintenance" -> withResolvedVehicle(context, args) { askMaintenance(context, args, it) }
@@ -1519,7 +1547,7 @@ object LiveToolbox {
      */
     private val CATEGORY_A_TOOLS = setOf(
         "get_vehicle_data", "get_health", "check_readiness", "get_codes",
-        "diagnose_codes", "triage_symptom", "check_cold_start",
+        "diagnose_codes", "triage_symptom", "check_cold_start", "clear_codes",
     )
 
     /**
@@ -3026,6 +3054,25 @@ object LiveToolbox {
             GarageController.activate(context, door)
         }
         return result(r.success, r.message)
+    }
+
+    /**
+     * Dispatches the clear_codes voice tool - a thin Context/JSONObject wrapper around
+     * [DtcClearController.dispatchAndRecord], which owns the whole snapshot/send/re-read/record
+     * transaction and the confirm gate (unit-tested directly, no Context needed there - see
+     * DtcClearControllerTest). `success` follows [GarageController]'s own convention for a
+     * destructive write tool: true only when the physical action actually completed as asked
+     * (CLEARED), false for every other outcome including the confirm-prompt turn itself - the
+     * driver-facing wording is always [message], never inferred from this flag.
+     */
+    private suspend fun clearCodes(context: Context, args: JSONObject): JSONObject {
+        val confirmed = args.optBoolean("confirmed", false)
+        if (!ObdBluetoothManager.isConnected) {
+            return result(false, "The OBD adapter isn't connected, so I can't clear anything.")
+        }
+        val vehicle = VehicleController.currentVehicle(context)
+        val r = DtcClearController.dispatchAndRecord(context, vehicle, confirmed)
+        return result(success = r.outcome == DtcClearController.ClearOutcome.CLEARED, message = r.message)
     }
 
     // ---------------------------------------------------------------- notes / lists / calendar
