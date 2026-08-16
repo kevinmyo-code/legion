@@ -201,3 +201,92 @@ the duplicates, a local-only dedup gets re-pulled - which is why stage 2 is not 
 Worth considering separately, and deliberately not folded in here. It is a one-shot migration that
 has already carried Midnight AI's history across, and it reruns forever only because it cannot
 latch. Stage 1 makes it latch, which may make retirement moot.
+
+## Stage 1 attempt, 2026-08-16: the loop IS stopped, and NOT by the code
+
+Read this before touching any of it, because what fixed the device is not what is in the build.
+
+### Outcome on Kevin's A25
+
+**The import is retired.** `midnight_import gate: completed=true (key=completed_v3)` on relaunch,
+and no table lines after it. The rekey no longer runs at all, so nothing is duplicating any more.
+Frozen final state:
+
+| Table | vehicle | total | distinct | factor |
+|---|---|---|---|---|
+| `obd_samples` | Outlander | 36,694 | 5,242 | 7.0x |
+| `daily_drive_logs` | Outlander | 169 | 25 | 6.8x |
+| `monthly_recaps` | Outlander | 9 | 1 | 9.0x |
+| everything | Jeep / F-150 | - | - | clean |
+
+### What actually fixed it
+
+Not the stage 1 code. A **side effect of its partial run.**
+
+The stage 1 build got as far as `vehicle_specs` (`discarded=1`) and `maintenance_items`
+(`discarded=16`), committed both, and then hung on `obd_samples`. Those two tables were the ONLY
+two failing, because they are the only two with a real primary key over their identity. With their
+colliding sentinel rows gone, the reverted build's own unmodified rekey found nothing to collide
+with, reported `0 failed`, and latched `KEY_COMPLETED` for the first time since 2026-08-03.
+
+So the device was fixed by deleting 17 rows, and the mechanism that stops the loop is the gate
+latching, exactly as designed. **The bug is untouched in code.** Any other device in this state still
+has it.
+
+### Why the stage 1 code was reverted
+
+**It hangs.** On `obd_samples` it ran for over four minutes with no progress, thread state `D`
+(uninterruptible I/O) and CPU frozen at 33.52s across three minutes of observation - blocked, not
+merely slow. The unmodified pass does the same table in ~21 seconds. Sync's own writer is the
+likely other side of the lock, since `maybeAutoSync` fires from `MainActivity` at essentially the
+same moment the import starts, but that was not proven.
+
+Two separate defects were found and fixed in the attempt before it was abandoned, both worth keeping
+if this is picked up again (the work is stashed: `git stash list`, "stage-1 rekey fix, HANGS on
+device - needs rework"):
+
+1. **A per-row `SELECT ... LIMIT 1` probe was pathological.** 11,511 shard rows against an
+   `obd_samples` with no index over `(vehicleId, pid, timestamp)`. Replaced with one identity-set
+   load per destination id, mirroring `loadExistingKeys`. Did not fix the hang.
+2. **`places` has no `vehicleId` column at all.** Loading that identity set eagerly threw
+   `no such column: vehicleId` and failed the table on-device. The long-standing
+   `if (!row.has(VEHICLE_COL)) continue` guard is what has always kept such tables out of this
+   function, so the load has to sit behind it, not in front. Six unit tests were written, including
+   one pinning exactly this.
+
+### What this changes about the remaining stages
+
+- **Stage 1 is no longer urgent on this device** and should not be re-attempted as written. If it is
+  wanted for other devices, it needs to not hold a long write transaction while sync is running -
+  which probably means doing the work in bounded batches, or not at the same moment as
+  `maybeAutoSync`.
+- **Stage 3 (dedup) is now SAFE to do**, and it was not before. Nothing regenerates copies once the
+  gate is latched, so a dedup will hold. Still destructive, still needs Kevin's go-ahead: delete
+  31,452 `obd_samples`, 144 `daily_drive_logs`, 8 `monthly_recaps`, all under the Outlander only.
+- **Stage 2 is still the real fix** and is unaffected by any of this. Drive still holds
+  `default`-keyed rows - proven again during this session: the stage 1 build deleted the sentinel
+  `vehicle_specs` and `maintenance_items` rows at 00:41, and by 00:58 sync had put them back. They
+  are inert now only because nothing rekeys them any more.
+
+### Honest accounting
+
+The duplication went from 6.0x to 7.0x during this work. Launching the app is what adds a copy, and
+diagnosing this required launching it. That is one full extra copy of the Outlander's samples,
+attributable to the investigation rather than to normal use.
+
+## Assumptions ledger, stage 1 attempt
+
+- `on-device`: `gate: completed=true` on relaunch with no subsequent table lines; the `0 failed`
+  pass that latched it; the final counts table above, from a pulled DB with WAL.
+- `on-device`: the hang - thread `D` state with CPU frozen at 33.52s across three minutes, against a
+  ~21s baseline for the same table on the unmodified build.
+- `on-device`: sync restoring the sentinel `vehicle_specs`/`maintenance_items` rows between 00:41 and
+  00:58, after the stage 1 build had deleted them. This is the strongest direct evidence yet that
+  Drive still holds `default`-keyed rows.
+- `tested`: six unit tests for the stashed rekey fix, all passing (1340 total), including the
+  free-destination, occupied-destination, repeat-4-times, PK-collision, no-vehicle-column, and
+  driver-s-own-row cases.
+- `reasoned`, NOT proven: that sync's writer is the other side of the lock the stage 1 build blocked
+  on. Timing and `maybeAutoSync`'s call site fit; no lock was actually traced.
+- The reverted build was verified installed by sha256 (`c136aad9...`), and the app source at that
+  commit is identical to the ticket-16 build - the two commits between them touched only `.scratch/`.
