@@ -164,10 +164,10 @@ class MaintenanceWritesTest {
         db.maintenanceItemDao().upsertStamped(orphan)
         db.maintenanceItemDao().upsertStamped(confirmed)
 
-        // The real call shape: FullScheduleScreen only ever passes confirmableSeededItems(items),
+        // The real call shape: FullScheduleScreen only ever passes confirmableItems(items),
         // never the raw roster - writeConfirmAll itself trusts that filtering rather than
         // re-deriving it, so this test exercises the pair together, same as the production call.
-        val toConfirm = confirmableSeededItems(listOf(guess, orphan, confirmed))
+        val toConfirm = confirmableItems(listOf(guess, orphan, confirmed))
         assertEquals(listOf("Oil Change"), toConfirm.map { it.serviceName })
 
         val outcomes = writeConfirmAll(context, "V1", toConfirm)

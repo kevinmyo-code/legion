@@ -143,15 +143,57 @@ internal fun buildDueRows(items: List<MaintenanceItem>, currentMileage: Int, odo
 }
 
 /**
- * True only when LEGION produced this interval (`intervalSource == "SEEDED"`) AND the item carries
- * an interval on at least one axis - ticket 06 refinement c. A `Brake Fluid`/`Brake Pads` orphan
- * (created by [VehicleController.logServiceDirect] with no interval at all) is `SEEDED` by the
- * entity's own column default but has nothing to doubt, and its sub-line already says "no interval
- * on file" honestly - tagging it `[GUESS]` would be a claim about a number that does not exist.
- * `internal` for direct unit testing, same posture as every other pure builder in this file.
+ * True whenever the driver did NOT state this interval themselves (`intervalSource != "CONFIRMED"`)
+ * AND the item carries an interval on at least one axis - ticket 06 refinement c, WIDENED by ticket
+ * 18 (`.scratch/fleet-maintenance/issues/18-the-factory-lookup-is-not-stable-enough-to-diff-against.md`).
+ *
+ * **Deliberately three-way, never `== "SEEDED"`.** The original rule only caught `SEEDED`, which was
+ * correct back when `SEEDED`/`CONFIRMED` were the only two values on file. Ticket 18 added `LOOKUP`
+ * (a populate accept, reviewed but never typed - see [MaintenanceItem.intervalSource]'s own doc) and
+ * a two-way test would have sorted it silently into "not a guess", rendering a value that came off a
+ * lookup shown to disagree with itself three-of-eight-items across two runs in five minutes as if the
+ * driver had typed it - exactly the laundering ticket 18 exists to stop. Testing the NEGATIVE
+ * (`!= "CONFIRMED"`) rather than enumerating every non-driver-stated value means a future provenance
+ * addition defaults to disclosed rather than defaulting to silent, which is the safer failure mode
+ * for a disclosure flag.
+ *
+ * A `Brake Fluid`/`Brake Pads` orphan (created by [VehicleController.logServiceDirect] with no
+ * interval at all) is `SEEDED` by the entity's own column default but has nothing to doubt, and its
+ * sub-line already says "no interval on file" honestly - tagging it `[GUESS]` would be a claim about
+ * a number that does not exist. That second clause is unchanged by ticket 18. `internal` for direct
+ * unit testing, same posture as every other pure builder in this file.
  */
 internal fun isGuessTag(item: MaintenanceItem): Boolean =
-    item.intervalSource == "SEEDED" && (item.intervalMiles != null || item.intervalMonths != null)
+    item.intervalSource != "CONFIRMED" && (item.intervalMiles != null || item.intervalMonths != null)
+
+/**
+ * Words a screen can put beside a `[GUESS]`-tagged item's value, distinguishing WHICH kind of
+ * non-driver-stated provenance it is (ticket 18): a `SEEDED` row is LEGION's own unreviewed guess at
+ * a plausible interval, a `LOOKUP` row is a factory-schedule lookup the driver actually reviewed and
+ * accepted - a materially different claim, since ticket 18 found that lookup disagrees with itself
+ * roughly every other run. `null` for `CONFIRMED`, the one case with nothing to disclose - callers
+ * that need "you set this" for that case supply it themselves (`ui/fleet/PopulateDrilldown.kt`'s
+ * `WouldChangeRow`/`PossibleMatchRow`), since that phrase only makes sense in a diff-row context this
+ * general-purpose function has no opinion about. `internal` for direct unit testing, same posture as
+ * [isGuessTag].
+ */
+internal fun provenanceWords(item: MaintenanceItem): String? = provenanceWordsForSource(item.intervalSource)
+
+/**
+ * [provenanceWords]'s actual logic, keyed on the raw `intervalSource` string rather than a full
+ * [MaintenanceItem] - [PopulateChangeRow][com.kevin.legion.vehicle.PopulateChangeRow] and
+ * [PopulatePossibleMatchRow][com.kevin.legion.vehicle.PopulatePossibleMatchRow] (`PopulateDrilldown.kt`'s
+ * `WouldChangeRow`/`PossibleMatchRow`) only ever carry the ON-FILE row's `currentSource`/
+ * `existingSource` as a bare string, not the row itself, so [provenanceWords] delegates here rather
+ * than forcing either of those call sites to fabricate a throwaway [MaintenanceItem] just to read one
+ * field back off it. `internal`, not `private` - Kotlin's top-level `private` is file-scoped, and
+ * `PopulateDrilldown.kt` (a different file in this same package) is exactly the caller that needs it.
+ */
+internal fun provenanceWordsForSource(intervalSource: String): String? = when (intervalSource) {
+    "SEEDED" -> "LEGION's guess"
+    "LOOKUP" -> "from a factory lookup"
+    else -> null
+}
 
 /**
  * [fromEpochMs] plus [months] calendar months, via [java.time.ZonedDateTime.plusMonths] in the
@@ -377,9 +419,16 @@ private fun toScheduleRow(item: MaintenanceItem, currentMileage: Int, odometerUn
  * Every item CONFIRM-ALL is allowed to bless in one pass - ticket 06 decision 2: "a list of what is
  * about to be blessed, read before agreeing... a plain accept-all was declined, correctly."
  * [isGuessTag]'s own "an interval must exist" rule applies here too: there is nothing to confirm on
- * a `SEEDED` row with no interval, so it never appears in the review list.
+ * an unconfirmed row with no interval, so it never appears in the review list.
+ *
+ * **Renamed from `confirmableSeededItems` when ticket 18 widened [isGuessTag] past `SEEDED`.** It
+ * now returns `LOOKUP` rows too, which is deliberate - confirming is how a factory-lookup value
+ * becomes one the driver actually vouches for, and that path must exist. But the old name asserted a
+ * provenance this no longer filters on, and a name that says `SEEDED` while returning `LOOKUP` is
+ * the same species of lie the rest of this ticket is about. The dialog that renders this list is
+ * what carries the per-row distinction, via [provenanceWords].
  */
-internal fun confirmableSeededItems(items: List<MaintenanceItem>): List<MaintenanceItem> =
+internal fun confirmableItems(items: List<MaintenanceItem>): List<MaintenanceItem> =
     items.filter { isGuessTag(it) }
 
 // -------------------------------------------------------- ITEM DETAIL (pure, ticket 09/07)

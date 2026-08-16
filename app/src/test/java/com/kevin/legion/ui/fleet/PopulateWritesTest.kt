@@ -39,7 +39,7 @@ class PopulateWritesTest {
     // ------------------------------------------------------------ writePopulateAdd
 
     @Test
-    fun `writePopulateAdd inserts a genuine new row as CONFIRMED`() = runBlocking {
+    fun `writePopulateAdd inserts a genuine new row as LOOKUP`() = runBlocking {
         val candidate = MaintenanceItem(vehicleId = "ignored", serviceName = "Coolant Flush", intervalMonths = 24, intervalSource = "SEEDED")
 
         val outcome = writePopulateAdd(context, "V1", candidate)
@@ -49,8 +49,10 @@ class PopulateWritesTest {
         assertNotNull(created)
         assertEquals("V1", created?.vehicleId)
         assertEquals(24, created?.intervalMonths)
-        // Always CONFIRMED on accept, regardless of what the candidate carried (ticket 06 decision b).
-        assertEquals("CONFIRMED", created?.intervalSource)
+        // LOOKUP on accept, never CONFIRMED (ticket 18, superseding ticket 06 decision b) - the
+        // driver reviewed a factory-lookup candidate, they did not state this figure themselves, and
+        // ticket 18 found that lookup disagrees with itself roughly every other run.
+        assertEquals("LOOKUP", created?.intervalSource)
     }
 
     /**
@@ -89,7 +91,7 @@ class PopulateWritesTest {
     // ------------------------------------------------------------ writePopulateChange
 
     @Test
-    fun `writePopulateChange writes the proposed interval and stamps CONFIRMED`() = runBlocking {
+    fun `writePopulateChange writes the proposed interval and stamps LOOKUP`() = runBlocking {
         db.maintenanceItemDao().upsertStamped(
             MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 3_000, intervalSource = "SEEDED"),
         )
@@ -104,7 +106,9 @@ class PopulateWritesTest {
         val after = db.maintenanceItemDao().get("V1", "Oil Change")!!
         assertEquals(7_500, after.intervalMiles)
         assertEquals(6, after.intervalMonths)
-        assertEquals("CONFIRMED", after.intervalSource)
+        // LOOKUP, not CONFIRMED (ticket 18) - the proposed value is still the factory lookup's own
+        // figure, only reviewed and accepted, never typed by the driver.
+        assertEquals("LOOKUP", after.intervalSource)
     }
 
     @Test
@@ -147,7 +151,9 @@ class PopulateWritesTest {
         val after = db.maintenanceItemDao().get("V1", "Tire Rotation")!!
         assertFalse(after.deleted)
         assertEquals(7_500, after.intervalMiles)
-        assertEquals("CONFIRMED", after.intervalSource)
+        // LOOKUP, not CONFIRMED (ticket 18) - the restored interval is the factory lookup's own
+        // proposed figure, reviewed and accepted, not stated by the driver.
+        assertEquals("LOOKUP", after.intervalSource)
     }
 
     @Test
@@ -178,7 +184,9 @@ class PopulateWritesTest {
         // The EXISTING name is what got the write - the factory's own wording never became a row.
         val after = db.maintenanceItemDao().get("V1", "Check The Wheel Alignment")!!
         assertEquals(20_000, after.intervalMiles)
-        assertEquals("CONFIRMED", after.intervalSource)
+        // LOOKUP, not CONFIRMED (ticket 18) - reached via writePopulateChange under the hood, same
+        // reasoning as that function's own test.
+        assertEquals("LOOKUP", after.intervalSource)
         assertNull(db.maintenanceItemDao().get("V1", "Wheel Alignment Check"))
     }
 
@@ -200,7 +208,9 @@ class PopulateWritesTest {
         assertTrue("Was: ${outcome.message}", outcome.success)
         val newRow = db.maintenanceItemDao().get("V1", "Wheel Alignment Check")!!
         assertEquals(20_000, newRow.intervalMiles)
-        assertEquals("CONFIRMED", newRow.intervalSource)
+        // LOOKUP, not CONFIRMED (ticket 18) - reached via writePopulateAdd under the hood, same
+        // reasoning as that function's own test.
+        assertEquals("LOOKUP", newRow.intervalSource)
         // The item the driver said was NOT a match must survive completely untouched.
         val untouched = db.maintenanceItemDao().get("V1", "Check The Wheel Alignment")!!
         assertEquals(15_000, untouched.intervalMiles)

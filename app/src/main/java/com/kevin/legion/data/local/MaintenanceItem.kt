@@ -30,16 +30,27 @@ data class MaintenanceItem(
     // starts with null anchors. See VehicleController.dueItems/unknownItems.
     @ColumnInfo(defaultValue = "0") val neverDone: Boolean = false,
     // Who put this interval on the schedule: "SEEDED" (LEGION's LLM lookup guessed
-    // it) or "CONFIRMED" (the driver typed it, accepted it, or confirmed it as-is).
+    // it, unreviewed), "LOOKUP" (a factory-schedule lookup the driver reviewed and
+    // accepted via the populate diff), or "CONFIRMED" (the driver typed it, or
+    // stated it directly - VehicleController's set_maintenance_interval tool,
+    // MaintenanceWrites' hand-add, or an item-detail confirm).
     // Ticket 06 (`.scratch/fleet-maintenance/issues/06-*`): an LLM-guessed interval
     // never enters CLAUDE.md §4's reconciliation gate - there is nothing to reconcile
     // it against - so this is deliberately NOT [IngestMethod] (that vocabulary
     // describes what survived the gate). Plain TEXT, no enum column type: CLAUDE.md
-    // §5's "widening an enum stored as TEXT is not a migration" - a future FACTORY
-    // state (a bundled schedule, declined for now) costs no schema change this way.
+    // §5's "widening an enum stored as TEXT is not a migration" - LOOKUP was added
+    // ticket 18 at zero schema cost this exact way, and a future FACTORY state (a
+    // bundled schedule, declined for now) costs no schema change either.
     // Every row migrated in at v20 defaults to SEEDED, correctly - all 54 rows on
     // Kevin's phone were LLM-produced and updatedAt cannot reveal authorship (its
     // Kotlin default stamps construction). DEFAULT 'SEEDED' mirrors the migration.
+    //
+    // LOOKUP exists because ticket 18 found the factory lookup itself is not stable
+    // enough to diff against - four runs on the same car, minutes apart, disagreed
+    // with each other on three of eight items - so a populate accept must never be
+    // laundered into CONFIRMED, the tag meaning "the driver stated this value". A
+    // driver reviewing and accepting a proposal is a different act from a driver
+    // naming a figure, and the schema now says so.
     @ColumnInfo(defaultValue = "SEEDED") val intervalSource: String = "SEEDED",
     // Soft-delete tombstone (ticket 07, v19->v20). maintenance_items syncs
     // Mode.LWW/naturalPk (SyncEngine.kt) so a hard DELETE cannot propagate - the

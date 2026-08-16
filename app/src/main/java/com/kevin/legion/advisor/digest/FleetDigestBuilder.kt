@@ -153,8 +153,10 @@ object FleetDigestBuilder : DigestBuilder {
      * Ticket 06 required this on six surfaces and missed this one - the audit grepped for
      * `intervalMiles|intervalMonths`, and this function consumes [DueRowView.sub], an
      * already-formatted string, so it could never have matched. [DueRowView.isGuess] reuses
-     * [com.kevin.legion.ui.fleet.isGuessTag]'s exact rule (`intervalSource == "SEEDED"` AND an
-     * interval exists) rather than reinventing it. This digest feeds [com.kevin.legion.advisor.
+     * [com.kevin.legion.ui.fleet.isGuessTag]'s exact rule (`intervalSource != "CONFIRMED"` AND an
+     * interval exists - widened ticket 18 to also catch `LOOKUP`, a factory lookup shown to
+     * disagree with itself run to run, never just `SEEDED`) rather than reinventing it. This digest
+     * feeds [com.kevin.legion.advisor.
      * AdvisorBriefs] (via `FleetDigestBuilder` being its FLEET `digestBuilder`), i.e. a model's
      * OWN context - ticket 06's stated reason this matters more than the screen: "feeding an
      * unlabelled guess into a model that then states it back confidently is how an estimate

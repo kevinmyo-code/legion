@@ -375,7 +375,11 @@ private fun PopulateDiffContent(
             }
         }
         if (diff.notInFactorySchedule.isNotEmpty()) {
-            item(key = "not-in-header") { SectionHeaderCount("NOT IN THE FACTORY SCHEDULE", diff.notInFactorySchedule.size) }
+            // Header softened ticket 18: "NOT IN THE FACTORY SCHEDULE" asserted a fact about the
+            // car off a single lookup run that ticket 18 showed disagrees with itself roughly every
+            // other run - see NotInScheduleRow's own doc for the full reasoning, reproduced in the
+            // per-row copy below.
+            item(key = "not-in-header") { SectionHeaderCount("THIS LOOKUP DIDN'T MENTION", diff.notInFactorySchedule.size) }
             items(diff.notInFactorySchedule, key = { "not-in-${it.serviceName}" }) { candidate ->
                 NotInScheduleRow(candidate) {
                     scope.launch {
@@ -417,9 +421,11 @@ private fun WouldChangeRow(row: PopulateChangeRow, onAccept: () -> Unit) {
         DeckRow(label = row.serviceName, value = intervalPhrase(row.proposedMiles, row.proposedMonths))
         Text(
             // "who authored the current value" (ticket 14's own words) - CONFIRMED reads as
-            // "you set this", SEEDED as "LEGION guessed this", never left unstated.
+            // "you set this", everything else names its own provenance via [provenanceWords]
+            // (ticket 18: a two-way test here would have silently rendered a LOOKUP row's prior
+            // value, itself only a reviewed factory-lookup guess, as if the driver had typed it).
             "on file: ${intervalPhrase(row.currentMiles, row.currentMonths)} " +
-                "(${if (row.currentSource == "CONFIRMED") "you set this" else "LEGION's guess"})",
+                "(${provenanceWordsForSource(row.currentSource) ?: "you set this"})",
             style = LegionType.stamp,
             color = sem.faint,
         )
@@ -442,9 +448,12 @@ private fun PossibleMatchRow(row: PopulatePossibleMatchRow, onSameThing: () -> U
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
         DeckRow(label = row.factoryName, value = intervalPhrase(row.proposedMiles, row.proposedMonths))
         Text(
+            // Three-way via [provenanceWordsForSource] (ticket 18) - a two-way test here would have
+            // silently rendered a LOOKUP-sourced existing row (an earlier populate's own accept) as
+            // "you set this", the exact laundering ticket 18 exists to stop.
             "This looks like \"${row.existingName}\" already on file " +
                 "(${intervalPhrase(row.currentMiles, row.currentMonths)}, " +
-                "${if (row.existingSource == "CONFIRMED") "you set this" else "LEGION's guess"}) - same thing?",
+                "${provenanceWordsForSource(row.existingSource) ?: "you set this"}) - same thing?",
             style = LegionType.stamp,
             color = sem.faint,
         )
@@ -462,7 +471,10 @@ private fun WouldRestoreRow(row: PopulateRestoreRow, onAccept: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
         DeckRow(label = row.serviceName, value = intervalPhrase(row.proposedMiles, row.proposedMonths))
         Text(
-            "You deleted this item - the factory schedule still lists it.",
+            // Softened alongside NotInScheduleRow (ticket 18): "the factory schedule still lists
+            // it" was the same shape of over-claim off a single lookup run - this lookup is what
+            // actually said so.
+            "You deleted this item - this lookup still lists it.",
             style = LegionType.stamp,
             color = sem.estimated,
         )
@@ -478,12 +490,16 @@ private fun NotInScheduleRow(item: MaintenanceItem, onDelete: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
         DeckRow(label = item.serviceName, value = intervalWords(item) ?: "no interval on file")
         Text(
-            // The wording the ticket names by hand: an invented row reads differently from one the
-            // driver typed themselves, because intervalSource says which is which.
-            if (item.intervalSource == "SEEDED") {
-                "LEGION guessed this item, and the factory schedule doesn't list it - looks invented."
-            } else {
-                "You added this yourself. The factory schedule doesn't list it, but that doesn't mean it's wrong for this car."
+            // Three-way (ticket 18) and deliberately SOFTENED: this used to assert "the factory
+            // schedule doesn't list it", a claim about the car built off a single lookup run. Ticket
+            // 18 showed that same lookup, run again minutes later on the same car, disagreed with
+            // itself on three of eight items - so "this lookup didn't mention it" is what the app
+            // actually knows, and "the factory schedule doesn't list it" is a claim it does not.
+            // A single flaky sample is thin grounds for suggesting a driver delete a real service.
+            when (item.intervalSource) {
+                "SEEDED" -> "LEGION guessed this item, and this lookup didn't mention it either."
+                "LOOKUP" -> "This came from an earlier factory lookup. This one didn't mention it."
+                else -> "You added this yourself. This lookup didn't mention it, which doesn't mean it's wrong for this car."
             },
             style = LegionType.stamp,
             color = sem.faint,

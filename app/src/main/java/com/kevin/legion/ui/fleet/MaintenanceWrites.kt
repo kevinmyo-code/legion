@@ -149,7 +149,7 @@ suspend fun writeAddItem(
 
 /**
  * CONFIRM-ALL's write (ticket 06 decision 2): [writeSetInterval] looped over every item the caller
- * has already shown the driver ([confirmableSeededItems]'s own list, rendered in full BEFORE this is
+ * has already shown the driver ([confirmableItems]'s own list, rendered in full BEFORE this is
  * ever called - see `FullScheduleScreen`'s confirm dialog). Each call is independent and its own
  * [WriteOutcome], so one item disappearing mid-loop (a concurrent delete) fails only that one row
  * rather than the whole batch - the caller surfaces any `success == false` entries in words rather

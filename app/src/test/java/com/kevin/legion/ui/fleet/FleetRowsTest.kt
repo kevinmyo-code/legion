@@ -311,13 +311,34 @@ class FleetRowsTest {
     // -------------------------------------------------------- [GUESS] tag (ticket 06/09)
 
     @Test
-    fun `isGuessTag is true only for a SEEDED item that actually carries an interval`() {
+    fun `isGuessTag is true for any non-CONFIRMED item that actually carries an interval`() {
         val seededWithInterval = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, intervalSource = "SEEDED")
         val seededNoInterval = MaintenanceItem(vehicleId = vehicleId, serviceName = "Brake Fluid", intervalSource = "SEEDED")
         val confirmedWithInterval = MaintenanceItem(vehicleId = vehicleId, serviceName = "Tire Rotation", intervalMiles = 7500, intervalSource = "CONFIRMED")
         assertEquals(true, isGuessTag(seededWithInterval))
         assertEquals(false, isGuessTag(seededNoInterval))
         assertEquals(false, isGuessTag(confirmedWithInterval))
+    }
+
+    @Test
+    fun `isGuessTag - ticket 18 - a LOOKUP item with an interval is a guess, a LOOKUP item with none is not, CONFIRMED never is`() {
+        // A LOOKUP row (a factory-schedule proposal the driver reviewed and accepted via populate,
+        // never a figure the driver typed) must disclose exactly like SEEDED - the ticket 18 bug was
+        // a LOOKUP row rendering with NO disclosure at all, indistinguishable from a driver-typed
+        // CONFIRMED row, off a lookup shown to disagree with itself roughly every other run.
+        val lookupWithInterval = MaintenanceItem(vehicleId = vehicleId, serviceName = "Spark Plug Replacement", intervalMiles = 30_000, intervalSource = "LOOKUP")
+        val lookupNoInterval = MaintenanceItem(vehicleId = vehicleId, serviceName = "Brake Fluid", intervalSource = "LOOKUP")
+        val confirmedWithInterval = MaintenanceItem(vehicleId = vehicleId, serviceName = "Tire Rotation", intervalMiles = 7500, intervalSource = "CONFIRMED")
+        assertEquals(true, isGuessTag(lookupWithInterval))
+        assertEquals(false, isGuessTag(lookupNoInterval))
+        assertEquals(false, isGuessTag(confirmedWithInterval))
+    }
+
+    @Test
+    fun `provenanceWords names each provenance in words, CONFIRMED has nothing to disclose`() {
+        assertEquals("LEGION's guess", provenanceWords(MaintenanceItem(vehicleId = vehicleId, serviceName = "x", intervalSource = "SEEDED")))
+        assertEquals("from a factory lookup", provenanceWords(MaintenanceItem(vehicleId = vehicleId, serviceName = "x", intervalSource = "LOOKUP")))
+        assertNull(provenanceWords(MaintenanceItem(vehicleId = vehicleId, serviceName = "x", intervalSource = "CONFIRMED")))
     }
 
     @Test
@@ -363,11 +384,40 @@ class FleetRowsTest {
     }
 
     @Test
-    fun `confirmableSeededItems excludes a SEEDED item with no interval to confirm`() {
+    fun `confirmableItems excludes a SEEDED item with no interval to confirm`() {
         val guess = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, intervalSource = "SEEDED")
         val orphan = MaintenanceItem(vehicleId = vehicleId, serviceName = "Brake Fluid", intervalSource = "SEEDED")
         val confirmed = MaintenanceItem(vehicleId = vehicleId, serviceName = "Tire Rotation", intervalMiles = 7500, intervalSource = "CONFIRMED")
-        assertEquals(listOf("Oil Change"), confirmableSeededItems(listOf(guess, orphan, confirmed)).map { it.serviceName })
+        assertEquals(listOf("Oil Change"), confirmableItems(listOf(guess, orphan, confirmed)).map { it.serviceName })
+    }
+
+    /**
+     * Ticket 18: confirming is how a factory-lookup value becomes one the driver actually vouches
+     * for, so a `LOOKUP` row MUST be offered - excluding it would strand every populate-accepted
+     * interval as permanently unconfirmable. What must not happen is the row losing its provenance
+     * on the way; the dialog renders [provenanceWords] per row precisely because a bulk confirm is
+     * where an unstable lookup value would otherwise pass for a driver-stated one.
+     */
+    @Test
+    fun `confirmableItems includes a LOOKUP row, and it is still distinguishable from a seeded guess`() {
+        val lookup = MaintenanceItem(vehicleId = vehicleId, serviceName = "Spark Plugs", intervalMiles = 30_000, intervalSource = "LOOKUP")
+        val seeded = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5_000, intervalSource = "SEEDED")
+        val confirmed = MaintenanceItem(vehicleId = vehicleId, serviceName = "Tire Rotation", intervalMiles = 7_500, intervalSource = "CONFIRMED")
+
+        assertEquals(
+            listOf("Spark Plugs", "Oil Change"),
+            confirmableItems(listOf(lookup, seeded, confirmed)).map { it.serviceName },
+        )
+        // Same list, different words - the distinction survives into what the driver reads.
+        assertEquals("from a factory lookup", provenanceWords(lookup))
+        assertEquals("LEGION's guess", provenanceWords(seeded))
+    }
+
+    /** A LOOKUP row with nothing on either axis has no number to confirm, same as a seeded orphan. */
+    @Test
+    fun `confirmableItems excludes a LOOKUP row with no interval`() {
+        val orphan = MaintenanceItem(vehicleId = vehicleId, serviceName = "Brake Pads", intervalSource = "LOOKUP")
+        assertEquals(emptyList<String>(), confirmableItems(listOf(orphan)).map { it.serviceName })
     }
 
     // --------------------------------------------------- RECAPS month slots (ticket 05 part A)

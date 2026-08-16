@@ -320,7 +320,7 @@ fun FullScheduleScreen(
     var currentItems by remember(items) { mutableStateOf(items) }
 
     val rows = remember(currentItems, currentMileage, odometerUnset, now) { buildScheduleRows(currentItems, currentMileage, odometerUnset, now) }
-    val confirmable = remember(currentItems) { confirmableSeededItems(currentItems) }
+    val confirmable = remember(currentItems) { confirmableItems(currentItems) }
     var showConfirmDialog by remember { mutableStateOf(false) }
     var confirmStatus by remember { mutableStateOf<String?>(null) }
 
@@ -417,15 +417,26 @@ fun FullScheduleScreen(
     // a number Kevin typed, and this dialog is what keeps that from becoming a rubber stamp.
     if (showConfirmDialog) {
         DeckDialog(title = "Confirm All", onDismissRequest = { showConfirmDialog = false }) {
+            // The heading no longer claims LEGION guessed all of these (ticket 18): once isGuessTag
+            // widened past SEEDED, this list can also hold LOOKUP rows, which came from a factory
+            // lookup the driver reviewed. Saying "guessed by LEGION" over those would be false, and
+            // the one thing this dialog exists to prevent is a value looking more or less
+            // authoritative than it is. What they genuinely share is that the driver has not
+            // confirmed them, so that is what the heading says.
             Text(
-                "These ${confirmable.size} intervals were guessed by LEGION, never confirmed. Confirming accepts them exactly as shown:",
+                "These ${confirmable.size} intervals have not been confirmed by you. Confirming accepts them exactly as shown:",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(bottom = 8.dp),
             )
             confirmable.forEach { mi ->
+                // Per-row provenance, because the two kinds are NOT equally weak and a bulk confirm
+                // is exactly where that difference would otherwise vanish. A LOOKUP row came from a
+                // lookup shown to be unstable across runs (ticket 18); a SEEDED one was never
+                // reviewed at all.
+                val origin = provenanceWords(mi)?.let { " ($it)" } ?: ""
                 Text(
-                    "${mi.serviceName} - ${intervalWords(mi) ?: "no interval"}",
+                    "${mi.serviceName} - ${intervalWords(mi) ?: "no interval"}$origin",
                     style = LegionType.stamp,
                     color = sem.faint,
                     modifier = Modifier.padding(vertical = 2.dp),
