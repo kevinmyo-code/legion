@@ -57,7 +57,7 @@ new senses below are what a JARVIS does that a dashboard does not.
 | 5 | **No writes to money, ever.** Restated from the brainstorm so no ticket drifts there. | Ledger stays read-only permanently; auto-pull ingests documents, it never touches accounts. |
 | 6 | **Carfax, KBB, Edmunds are dead ends** (no consumer API; unverified for VINwiki). NHTSA recall/VIN decode already shipped in LEGION. | No tickets against them. Paid BYO-key lookups (CarMD, NMVTIS) sit in fog behind wrench mode. |
 | 7 | **Calendar, Gmail, and the NHTSA recall checker already exist.** Asserted missing twice during the brainstorm; both times the code had them. | Every ticket greps the tree before proposing anything as new. |
-| 8 | **The advisor/goals/body layers already exist too** (`advisor/` playbooks + digests, `goals/`, `meals/`, `sleep/`, `workouts/`, ledger `Categorization`/`CategoryAgent`/budgets, `YearlyWrapped`/`MonthlyRecap`). | Health Connect becomes a DATA SOURCE feeding the existing body controllers, never a new aspect. "Financial insight" is largely built - do not re-chart it. |
+| 8 | **The advisor/goals/body layers already exist too** (`advisor/` playbooks + digests, `goals/`, `meals/`, `sleep/`, `workouts/`, ledger `Categorization`/`CategoryAgent`/budgets, `YearlyWrapped`/`MonthlyRecap`). | Health Connect becomes a DATA SOURCE feeding the existing body controllers, never a new aspect. "Financial insight" is largely built - do not re-chart it. **The Health Connect half is moot as of 2026-08-16 - ticket 11 archived, no wearable.** The advisor/goals/body finding itself stands. |
 | 9 | **LEGION's Drive grant is `drive.appdata` only** - a hidden folder Kevin cannot put files in. Verified 2026-08-16 in `DriveAuth.kt`. | "Use the Drive folder we already have" is FALSE for any user-visible folder. The vault rides SAF `ACTION_OPEN_DOCUMENT_TREE` (already proven for ledger, API 30+, no new scope). |
 | 10 | **Searching public data on private individuals is OUT** (people-lookup/OSINT), dropped by Kevin 2026-08-16 on usefulness plus safety. | See Out of scope. Self-OSINT (breach checks on Kevin's own identifiers) and situational feeds went with it. |
 | 13 | **Proactivity is a master switch plus FIVE categories - Safety, Timing, Wellbeing, Fleet, Digest** (Kevin, 2026-08-16). Two states each, no tri-state; **the master is a true kill switch and nothing is exempt, safety included.** `CrisisDetector` is unaffected because it responds to speech rather than initiating it. | Question 3 of [The proactive switch](issues/21-proactive-mode.md) is closed. Every raising ticket maps its lines onto one of the five; none invents a sixth switch or its own opt-in. The notification listener stays pull-only. |
@@ -159,6 +159,17 @@ new senses below are what a JARVIS does that a dashboard does not.
   each persona's own clause and must be extracted into an immutable kernel first. Also found: **no
   tests at all** over identity, personas, or base-prompt assembly.
 
+- [Health Connect: what does LEGION do with a body's data?](issues/11-health-connect-scope.md)
+  — **ARCHIVED, not resolved.** Kevin, 2026-08-16: "i dont have a fitbit or a watch." Health
+  Connect reads what other apps write, and with no wearable four of the five metrics are simply
+  absent. The prize this ticket existed for - **pantry's estimated macros in versus measured energy
+  out** - needs the "out" side, which is the half that requires a device. **The ticket's own
+  question 6 predicted this** ("if nothing writes to Health Connect on his phone, this aspect has
+  no data and the ticket may park"). [The research](issues/10-health-connect-research.md) **stays
+  resolved and nothing in it was falsified** - it simply has no consumer. Steps are the one
+  phone-only exception and were not pursued, because steps alone do not compute the insight.
+  **Un-archives if Kevin gets a wearable.**
+
 ## Efforts in disguise
 
 Charted as tickets, sized like maps. **A ticket is one ~100K session resolving ONE decision; these
@@ -180,8 +191,8 @@ pointer to that map, recorded in Decisions so far like any other resolution.
 2026-08-16, build spec in the ticket, not yet built),
 [notification listener](issues/04-notification-listener.md), [comms](issues/05-comms.md),
 [ledger Gmail auto-pull](issues/09-ledger-gmail-autopull.md),
-[Health Connect scope](issues/11-health-connect-scope.md) (it feeds the EXISTING body controllers
-rather than building an aspect), [assistant identity](issues/12-assistant-identity.md) (**CLOSED** 2026-08-16, premise false;
+~~[Health Connect scope](issues/11-health-connect-scope.md)~~ (**ARCHIVED** 2026-08-16, no
+wearable), [assistant identity](issues/12-assistant-identity.md) (**CLOSED** 2026-08-16, premise false;
 freeform authoring back-burnered and graduates to `persona-authoring` when wanted),
 [voice and persona surface](issues/13-voice-persona-surface.md) (**re-scope before picking up** -
 the voice, persona picker and 30-voice audition all ship; check what is left),
