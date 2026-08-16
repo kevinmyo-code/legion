@@ -533,3 +533,90 @@ and the real defect is somewhere else entirely.
   and it is checkable, but nothing was traced and no Drive file was read.
 - The pre-converge backup is at `scratchpad/backup-preconverge/`, and the older post-dedup backup at
   `scratchpad/backup-20260816/`. Both are in a SESSION-TEMP directory.
+
+## The upload hypothesis was WRONG, and the rule came back from Drive
+
+The Drive sync screen was read once Kevin unlocked the phone. Two things landed at once.
+
+### Uploads work
+
+`SYNC NOW` reported **"Synced with your Google Drive."** Google Drive shows `Connected`, the grant is
+`Granted`, and the whole-database backup feature (a separate thing from table sync, worth knowing
+exists) lists three backups, newest Aug 15 19:40 at 19,479 rows.
+
+So the previous section's leading hypothesis - that the push half of sync was silently failing - is
+**disproven.** Recorded because it was written down as the most likely explanation and it was wrong.
+
+### The real reason the revert did not stick
+
+Immediately after that successful sync, the database showed `drive_reassignments: 1` and the
+Outlander back at 10,484.
+
+**The hand-written rule had synced to Drive before the revert.** `drive_reassignments` is
+`Mode.LWW` keyed on `syncId`, so restoring a local backup deleted the local copy and changed nothing
+remotely - and the very next pull brought it straight back and applied it again. The revert removed
+the symptom from one side of a two-sided system.
+
+That also explains the failed convergence attempt without needing any upload defect: the rule was
+live the whole time, on Drive, being re-applied every pass, moving each freshly-pulled batch of
+sentinel rows onto the Outlander. One copy per sync, exactly as observed.
+
+### How it was actually stopped
+
+A rule in a synced LWW table cannot be deleted by deleting it locally. It can be **neutered through
+the same channel that spread it**: set `newVehicleId = vehicleId` and bump `updatedAt`, so LWW
+carries the harmless version to Drive and it wins.
+
+`DriveReassigner.plan` drops self-moves by design - *"a self-move would be an infinite no-op on every
+sync pass forever"* - so a neutered rule plans to nothing on every device that receives it, forever.
+That property, written for a different reason, is what made a clean exit possible.
+
+Done in one pass with a dedup, then pushed and synced:
+
+| | |
+|---|---|
+| rule | `default -> default` (neutered), confirmed surviving two syncs |
+| `obd_samples` Outlander | 5,242, `total == distinct` |
+| `obd_samples` Jeep | 7,006, untouched |
+| every vehicle, every table | `total == distinct` |
+| stability | held across a force-stop, relaunch and further auto-sync |
+
+Database 1,470,464 bytes.
+
+### Final state, and what is still unexplained
+
+**Stable and clean.** No duplication anywhere, no active rule, growth stopped, Jeep never touched at
+any point in any of this.
+
+Drive still holds the sentinel-keyed rows: they arrive on each sync as 5,242 `obd_samples` under
+`default`, plus 24 `daily_drive_logs`, 2 `monthly_recaps`, 16 `maintenance_items`, 1 `vehicle_specs`.
+They are inert - nothing re-keys them now - and they sit under an archived vehicle, invisible.
+
+**What is genuinely not understood:** why the reassignment rule failed to converge Drive while it was
+live. The design reads correctly - `syncFile` applies reassignments before re-reading the snapshot it
+uploads, so the July shard should have been replaced with Outlander-keyed rows and the sentinel rows
+should have stopped arriving. They did not stop. `monthsToSync`'s retention floor was checked and
+excluded as a cause. **Whatever the answer is, it is upstream of anything this ticket has touched,
+and it should be found before any future convergence attempt.**
+
+### What a future attempt must know
+
+1. **Anything written to a synced table is not local.** A hand-written row in `drive_reassignments`
+   propagates, and cannot be taken back by restoring a local backup. Neuter it through LWW instead.
+2. **Test convergence on a copy, not on the live Drive.** There is no undo for the shared file.
+3. **The `default` sentinel is dual-purpose** - stale imported id AND the live unpaired-car
+   placeholder - so any rule touching it must be bounded forwards in time. That fix is in the shipped
+   code and is worth keeping regardless of what happens to the rest.
+
+### Assumptions ledger
+
+- `on-device`: the Drive sync screen contents; "Synced with your Google Drive."; the rule returning
+  after the revert; every count in the table above; stability across a further force-stop, relaunch
+  and auto-sync.
+- `built`: the neutered rule and dedup verified on a copy before pushing - `total == distinct` for
+  every vehicle, integrity ok, `user_version` 21 - then sha256-matched onto the device.
+- **Disproven**: that Drive uploads were failing. They are not.
+- **Unexplained, and flagged as such**: why a live reassignment rule did not converge the Drive-side
+  rows. Not a hypothesis worth recording yet, because the two offered so far were both wrong.
+- Backups: `scratchpad/backup-20260816/` (post-dedup) and `scratchpad/backup-preconverge/`, both in a
+  SESSION-TEMP directory.
