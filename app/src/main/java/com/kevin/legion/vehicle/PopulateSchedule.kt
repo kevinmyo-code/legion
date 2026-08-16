@@ -141,10 +141,26 @@ data class PopulatePossibleMatchRow(
  * active-vs-tombstoned split of [existingItems] partitions it cleanly with no name appearing on
  * both sides.
  *
+ * **An EMPTY [factoryItems] returns `null`, exactly as a failed lookup does** (found on-device
+ * 2026-08-15, first real populate on Kevin's Jeep - see
+ * `.scratch/fleet-maintenance/issues/17-an-empty-factory-list-is-a-failed-lookup.md`). The previous
+ * fix guarded only the `null` half of this and left the `[]` half open, while
+ * [VehicleController.lookupServiceIntervals]'s own prompt ends *"Return an empty array if you cannot
+ * find the schedule"* - so the model's not-found signal was precisely the one value nothing checked.
+ * The result on the phone: all eight of Kevin's live items, oil change included, categorised
+ * `notInFactorySchedule` with the copy *"the factory schedule doesn't list it"*, which for a 1998
+ * Cherokee is simply false. There is no vehicle whose true factory schedule is zero items, so an
+ * empty list is never a fact about the car - it is always a failed lookup, and refusing it here (in
+ * the pure builder, where a test can pin it) rather than at the caller is what keeps the two from
+ * collapsing again at some third layer. CLAUDE.md §4 rule 6: a check that passes when nothing parsed
+ * is not a gate.
+ *
  * `internal` for direct unit testing without Room or a [Context] - same posture as every other pure
  * builder in this codebase (`VehicleController.isDue`, `ui/fleet/FleetRows.kt`'s builders).
  */
-internal fun buildPopulateDiff(factoryItems: List<MaintenanceItem>, existingItems: List<MaintenanceItem>): PopulateDiff {
+internal fun buildPopulateDiff(factoryItems: List<MaintenanceItem>, existingItems: List<MaintenanceItem>): PopulateDiff? {
+    if (factoryItems.isEmpty()) return null
+
     val active = existingItems.filterNot { it.deleted }
     val tombstoned = existingItems.filter { it.deleted }
 
@@ -222,10 +238,12 @@ internal fun buildPopulateDiff(factoryItems: List<MaintenanceItem>, existingItem
  * lookup half) so the UI layer has exactly one function to call to get a reviewable diff, matching
  * `ui/fleet/MaintenanceWrites.kt`'s own "state holder calls one thin function per action" shape.
  *
- * **Returns `null` on a genuine lookup failure, propagated straight from [VehicleController.fetchFactorySchedule] -
- * never a diff built from an empty list standing in for one.** See that function's own doc for why
- * the distinction is load-bearing: an empty factory schedule and a failed network call must never
- * collapse onto the same "everything on file is not-in-schedule" diff.
+ * **Returns `null` on EITHER shape of failed lookup: a `null` from
+ * [VehicleController.fetchFactorySchedule] (network error, unparseable response) or an empty list
+ * from it (the model's own "I could not find the schedule" signal), the second refused by
+ * [buildPopulateDiff] itself.** See both functions' docs for why: an empty factory schedule and a
+ * failed network call must never collapse onto the same "everything on file is not-in-schedule"
+ * diff, and until 2026-08-15 only the first of the two was actually guarded.
  * [PopulateScreen][com.kevin.legion.ui.fleet.PopulateScreen] is the one caller and treats `null` as
  * a retryable error, never as "the manufacturer publishes nothing for this car."
  */

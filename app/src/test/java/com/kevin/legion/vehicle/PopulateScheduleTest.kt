@@ -2,6 +2,7 @@ package com.kevin.legion.vehicle
 
 import com.kevin.legion.data.local.MaintenanceItem
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -59,7 +60,7 @@ class PopulateScheduleTest {
             MaintenanceItem(vehicleId = "V1", serviceName = "Transfer Case Fluid", intervalMiles = 30_000),
         )
 
-        val diff = buildPopulateDiff(factory, realShapeExisting())
+        val diff = buildPopulateDiff(factory, realShapeExisting())!!
 
         // WOULD ADD: only the genuinely new factory item.
         assertEquals(listOf("Transfer Case Fluid"), diff.wouldAdd.map { it.serviceName })
@@ -88,7 +89,16 @@ class PopulateScheduleTest {
 
     @Test
     fun `an invented SEEDED row and a hand-typed CONFIRMED row both land in not-in-schedule but carry different provenance`() {
-        val diff = buildPopulateDiff(factoryItems = emptyList(), existingItems = realShapeExisting())
+        // The factory list is deliberately NON-empty and deliberately agrees with the one row it
+        // does name, so nothing it contributes shows up in the diff. It used to be `emptyList()`
+        // here purely as a shortcut to force every existing row into notInFactorySchedule - which
+        // is the exact input that is now a refused lookup (ticket 17), and this test asserting a
+        // sensible answer for it is part of why the real bug looked covered.
+        val factory = listOf(
+            MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 7_500, intervalMonths = 3),
+        )
+
+        val diff = buildPopulateDiff(factory, realShapeExisting())!!
 
         val brakeFluidFlush = diff.notInFactorySchedule.first { it.serviceName == "Brake Fluid Flush" }
         val transmissionFluid = diff.notInFactorySchedule.first { it.serviceName == "Transmission Fluid" }
@@ -113,7 +123,7 @@ class PopulateScheduleTest {
         )
         val factory = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 7_500, intervalMonths = 6))
 
-        val diff = buildPopulateDiff(factory, existing)
+        val diff = buildPopulateDiff(factory, existing)!!
 
         assertEquals(1, diff.wouldChange.size)
         assertEquals("CONFIRMED", diff.wouldChange.single().currentSource)
@@ -129,7 +139,7 @@ class PopulateScheduleTest {
         )
         val factory = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Tire Rotation", intervalMiles = 7_500))
 
-        val diff = buildPopulateDiff(factory, existing)
+        val diff = buildPopulateDiff(factory, existing)!!
 
         assertEquals(listOf("Tire Rotation"), diff.wouldRestore.map { it.serviceName })
         assertEquals(7_500, diff.wouldRestore.single().proposedMiles)
@@ -139,9 +149,16 @@ class PopulateScheduleTest {
 
     @Test
     fun `a deleted item the factory does NOT list produces no row at all - it is not resurrected and not re-flagged`() {
-        val existing = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Cabin Air Filter", intervalMonths = 12, deleted = true))
+        // Oil Change is carried on both sides, in agreement, so the factory list is non-empty (a
+        // real lookup, not the refused one - ticket 17) while still contributing no diff row of its
+        // own. What is under test is only the tombstoned Cabin Air Filter the factory never names.
+        val existing = listOf(
+            MaintenanceItem(vehicleId = "V1", serviceName = "Cabin Air Filter", intervalMonths = 12, deleted = true),
+            MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 7_500, intervalMonths = 6),
+        )
+        val factory = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 7_500, intervalMonths = 6))
 
-        val diff = buildPopulateDiff(factoryItems = emptyList(), existingItems = existing)
+        val diff = buildPopulateDiff(factory, existing)!!
 
         assertTrue(diff.isEmpty)
     }
@@ -155,7 +172,7 @@ class PopulateScheduleTest {
         val existing = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Air Filter", intervalMiles = 12_000, intervalSource = "SEEDED"))
         val factory = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Engine Air Filter", intervalMiles = 15_000))
 
-        val diff = buildPopulateDiff(factory, existing)
+        val diff = buildPopulateDiff(factory, existing)!!
 
         // A near-miss that DISAGREES is a would-change question, not two independent rows.
         assertEquals(1, diff.wouldChange.size)
@@ -169,16 +186,44 @@ class PopulateScheduleTest {
         val existing = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Air Filter", intervalMiles = 12_000, intervalSource = "SEEDED"))
         val factory = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Engine Air Filter", intervalMiles = 12_000))
 
-        val diff = buildPopulateDiff(factory, existing)
+        val diff = buildPopulateDiff(factory, existing)!!
 
         assertTrue("Values already agree - nothing to review", diff.isEmpty)
     }
 
     @Test
     fun `isEmpty is true only when every one of the five categories is empty`() {
-        assertTrue(buildPopulateDiff(emptyList(), emptyList()).isEmpty)
-        val oneAdd = buildPopulateDiff(listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change")), emptyList())
+        // An agreeing pair: the factory names one item, the driver already has it with the same
+        // intervals, so every category is empty. (This used to be `buildPopulateDiff(emptyList(),
+        // emptyList())`, which is now a refused lookup rather than an empty diff - ticket 17.)
+        val agreed = buildPopulateDiff(
+            listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 7_500)),
+            listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 7_500)),
+        )!!
+        assertTrue(agreed.isEmpty)
+        val oneAdd = buildPopulateDiff(listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change")), emptyList())!!
         assertTrue(!oneAdd.isEmpty)
+    }
+
+    /**
+     * Ticket 17, the on-device finding: an empty factory list is a FAILED LOOKUP, never a fact about
+     * the car. The model is told in [VehicleController.lookupServiceIntervals]'s own prompt to return
+     * `[]` when it cannot find the schedule, so this is the common failure, not an exotic one - and
+     * before this guard it produced a diff proposing that the driver delete their entire schedule,
+     * oil change included, under the words "the factory schedule doesn't list it".
+     */
+    @Test
+    fun `an empty factory list is refused outright, never rendered as everything-not-in-schedule`() {
+        assertNull(buildPopulateDiff(factoryItems = emptyList(), existingItems = realShapeExisting()))
+        // Refused whatever the driver has on file, including nothing at all - the emptiness of the
+        // FACTORY side is what decides it, and no existing-side shape may talk it back into a diff.
+        assertNull(buildPopulateDiff(factoryItems = emptyList(), existingItems = emptyList()))
+        assertNull(
+            buildPopulateDiff(
+                factoryItems = emptyList(),
+                existingItems = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", deleted = true)),
+            ),
+        )
     }
 
     // --- possibleMatch: the near-miss category (ticket 14 review, BLOCKING 1b) --------------
@@ -199,7 +244,7 @@ class PopulateScheduleTest {
                 intervalMiles = 15_000,
             ),
         )
-        val firstDiff = buildPopulateDiff(firstRunFactory, existingItems = emptyList())
+        val firstDiff = buildPopulateDiff(firstRunFactory, existingItems = emptyList())!!
         assertEquals(listOf("Check The Wheel Alignment"), firstDiff.wouldAdd.map { it.serviceName })
         assertTrue(firstDiff.possibleMatch.isEmpty())
 
@@ -222,7 +267,7 @@ class PopulateScheduleTest {
                 intervalMiles = 15_000,
             ),
         )
-        val secondDiff = buildPopulateDiff(secondRunFactory, existingItems = afterAccept)
+        val secondDiff = buildPopulateDiff(secondRunFactory, existingItems = afterAccept)!!
 
         assertTrue("must not duplicate as a new item: ${secondDiff.wouldAdd}", secondDiff.wouldAdd.isEmpty())
         assertEquals(1, secondDiff.possibleMatch.size)
@@ -239,7 +284,7 @@ class PopulateScheduleTest {
         val existing = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Check The Wheel Alignment", intervalMiles = 15_000, intervalSource = "SEEDED"))
         val factory = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Wheel Alignment Check", intervalMiles = 20_000))
 
-        val diff = buildPopulateDiff(factory, existing)
+        val diff = buildPopulateDiff(factory, existing)!!
 
         assertTrue("a near-miss must never land in wouldChange - it is not a confident match", diff.wouldChange.isEmpty())
         assertTrue("a near-miss must never land in wouldAdd - it is not confidently new", diff.wouldAdd.isEmpty())
@@ -261,7 +306,7 @@ class PopulateScheduleTest {
         val existing = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Air Filter", intervalMiles = 12_000, intervalSource = "SEEDED"))
         val factory = listOf(MaintenanceItem(vehicleId = "V1", serviceName = "Engine Air Filter", intervalMiles = 15_000))
 
-        val diff = buildPopulateDiff(factory, existing)
+        val diff = buildPopulateDiff(factory, existing)!!
 
         assertEquals(1, diff.wouldChange.size)
         assertTrue(diff.possibleMatch.isEmpty())

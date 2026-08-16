@@ -256,6 +256,14 @@ his two existing service records on a screen.
   identity is unexplained; migrations 16-19, `correctVehicle` and `registerDirect` are all ruled out
   by reading. Charted as ticket 13.
 
+- [An empty factory list is a failed lookup](issues/17-an-empty-factory-list-is-a-failed-lookup.md) -
+  **an empty factory schedule is refused exactly as a `null` one is**, in `buildPopulateDiff` itself
+  rather than at its caller, so a test can pin it. The previous guard covered only `null`, while the
+  lookup prompt instructs the model to signal not-found as `[]` - so the first real populate on
+  Kevin's Jeep proposed deleting all eight of his items, oil change included. Built, and the guard
+  was then seen catching a real empty lookup on-device. It also surfaced **ticket 18**, which is open
+  and which limits how far ticket 14's populate can be trusted.
+
 ## Not yet specified
 
 - **The build tickets.** **Every decision on this map is now made** - what remains is execution, and

@@ -103,7 +103,13 @@ fun PopulateScreen(vehicleId: String, onBack: () -> Unit) {
             loadingDiff = true
             diff = runCatching { loadPopulateDiff(context, v) }.getOrNull()
             if (diff == null) {
-                loadError = "Couldn't reach the factory-schedule lookup. Check the connection and try again."
+                // Covers BOTH failure shapes deliberately (2026-08-15, ticket 17): the lookup was
+                // unreachable, OR it came back with nothing. The old copy named only the connection,
+                // which would have read as a lie on the second one. Neither is a statement about the
+                // car, and saying "nothing has been changed" out loud matters because the screen the
+                // driver would otherwise see proposes deleting their whole schedule.
+                loadError = "Couldn't get a factory schedule for this car - either the lookup was " +
+                    "unreachable or it came back empty. Nothing has been changed. Try again."
             }
             loadingDiff = false
         }
