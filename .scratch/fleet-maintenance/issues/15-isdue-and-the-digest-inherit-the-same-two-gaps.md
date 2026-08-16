@@ -1,7 +1,7 @@
 # `isDue` and the fleet digest inherit two gaps this map closed elsewhere
 
 Type: task
-Status: open
+Status: resolved (2026-08-15)
 
 ## Question
 
@@ -71,3 +71,11 @@ consumer again.
   on Kevin's Jeep (ticket 01 measured 938 speed samples and an accumulator of 0.0, for a separate
   latch defect ticket 10 owns). **So this is currently latent, not live.**
 - **Not built, not on-device.**
+
+## Closed 2026-08-15
+
+Both gaps were built the same day the ticket was filed; the status line above was simply left stale
+and is corrected here at effort close. Verified by reading the code, not by trusting the note:
+`VehicleController.isDue` takes `odometerUnset` and guards the mileage axis with it, matching
+`ui.fleet.chooseDueAxis`; `FleetDigestBuilder` renders `"$phrase - guess, unconfirmed"` off
+`row.isGuess`, and its doc quotes `isGuessTag`'s rule (now `!= "CONFIRMED"`, widened by ticket 18).
