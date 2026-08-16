@@ -54,6 +54,7 @@ new senses below are what a JARVIS does that a dashboard does not.
 | 8 | **The advisor/goals/body layers already exist too** (`advisor/` playbooks + digests, `goals/`, `meals/`, `sleep/`, `workouts/`, ledger `Categorization`/`CategoryAgent`/budgets, `YearlyWrapped`/`MonthlyRecap`). | Health Connect becomes a DATA SOURCE feeding the existing body controllers, never a new aspect. "Financial insight" is largely built - do not re-chart it. |
 | 9 | **LEGION's Drive grant is `drive.appdata` only** - a hidden folder Kevin cannot put files in. Verified 2026-08-16 in `DriveAuth.kt`. | "Use the Drive folder we already have" is FALSE for any user-visible folder. The vault rides SAF `ACTION_OPEN_DOCUMENT_TREE` (already proven for ledger, API 30+, no new scope). |
 | 10 | **Searching public data on private individuals is OUT** (people-lookup/OSINT), dropped by Kevin 2026-08-16 on usefulness plus safety. | See Out of scope. Self-OSINT (breach checks on Kevin's own identifiers) and situational feeds went with it. |
+| 12 | **A proactive layer already ships, in the wrong shape.** `ProactivePreferences` is ONE global inverted `muted` boolean (proactive is currently ON by default); `ProactiveGate.speakIfIdle` gates idle/mute/call/onboarding; callers are car-shaped ambient chatter (opener, drive monitor, arrival). Nothing is goal-aware, time-aware, or category-aware. | [The proactive switch](issues/21-proactive-mode.md) owns replacing it. No other ticket invents its own raise policy. |
 | 11 | **The companion memory architecture ported from Midnight AI; the FORGETTING did not.** Verified 2026-08-16: `CompanionMemory` (importance, lastAccessedAt, embeddingVector), `MemoryConsolidator` and `ReflectionEngine` all exist; no decay function, no pruning, no retrieval scorer, and a second legacy `MemoryEntry` table. | [Memory decay](issues/20-memory-decay.md) owns building the missing half. Do not re-chart the consolidation/reflection layers - they work. |
 
 ## Decisions so far
@@ -113,10 +114,13 @@ In scope, but not sharp enough to ticket. Graduates as the frontier advances.
 - **RSS news module for the brief**, if newsletters prove insufficient (settled decision 4).
 - **An HA hub purchase task** graduates from [Home control scope](issues/03-home-control-scope.md)
   if Kevin does not already run Home Assistant.
-- **Proactive delivery beyond the brief.** ProactiveBus exists; whether any of the new senses
-  (notifications, health) may raise proactively, and where the compulsion line sits, sharpens
-  after the per-sense tickets resolve. [Location intelligence](issues/15-location-intelligence.md)
-  now carries the sharpest version of this question (an NWS warning at Kevin's location).
+**Graduated 2026-08-16** into [The proactive switch](issues/21-proactive-mode.md), which now owns
+the cross-cutting question: one master toggle plus per-category control, the compulsion line
+written as a checkable test, quiet hours, a daily nudge cap, and which trigger class uses which
+Android scheduling primitive. Every ticket that raises a line (location, brief, notifications,
+health, people dates) inherits its rules rather than inventing its own.
+[Location intelligence](issues/15-location-intelligence.md) still carries the sharpest single case
+(an NWS warning at Kevin's location).
 - **Commute patterns.** "You usually leave at 8:10" computed from logged drives -
   `DailyDriveLogController` and `TelemetryRecorder` already hold the raw material. Stats over
   falsifiable facts, so it is allowed; it waits on the departure advisor landing first.
