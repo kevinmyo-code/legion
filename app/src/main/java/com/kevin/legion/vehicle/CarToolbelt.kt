@@ -124,7 +124,12 @@ object CarToolbelt {
                 append(" at ${"%,d".format(r.mileage)} mi")
                 // costCents is cents (ticket 11, CLAUDE.md §4 rule 3) - divide by 100
                 // here at the formatting edge, never carry a raw cents figure further.
-                r.costCents?.let { append(" ($").append("%.0f".format(it / 100.0)).append(")") }
+                // Two decimals, not "%.0f". Rounding to the nearest dollar here turned a $45.99
+                // record into "$46" in a spoken reply - a figure the driver could not reconcile
+                // against a receipt, from an app whose whole money discipline exists so exact
+                // amounts survive. Storage was always exact Long cents; only this formatter was
+                // throwing them away. Caught on review, 2026-08-15.
+                r.costCents?.let { append(" ($").append("%.2f".format(it / 100.0)).append(")") }
             }
         }
     }

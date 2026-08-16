@@ -294,6 +294,10 @@ fun FullScheduleScreen(
     onOpenItem: (String) -> Unit,
     onAddItem: () -> Unit,
     onConfirmAll: suspend (List<MaintenanceItem>) -> List<WriteOutcome>,
+    /** Ticket 11 §3's entry point: "reached from the full-schedule screen" - the SERVICE HISTORY
+     * button below, sitting beside ADD ITEM rather than a third row, since both are this screen's
+     * only two navigational (non-item) actions. */
+    onOpenServiceHistory: () -> Unit,
     onBack: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
@@ -343,6 +347,8 @@ fun FullScheduleScreen(
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
                 DeckButton(text = "ADD ITEM", onClick = onAddItem)
+                Spacer(Modifier.width(8.dp))
+                DeckButton(text = "SERVICE HISTORY", onClick = onOpenServiceHistory)
                 if (!filterUnknownOnly && confirmable.isNotEmpty()) {
                     Spacer(Modifier.width(8.dp))
                     DeckButton(text = "CONFIRM ALL (${confirmable.size})", onClick = { showConfirmDialog = true })
@@ -662,12 +668,12 @@ fun ItemDetailScreen(
                             modifier = Modifier.padding(vertical = 6.dp),
                         )
                     } else {
-                        serviceHistory.forEach { record ->
-                            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                                Text(shortDate(record.date), style = LegionType.stamp, color = sem.faint, modifier = Modifier.weight(1f))
-                                Text("${groupThousands(record.mileage)} mi", style = LegionType.reading, color = MaterialTheme.colorScheme.onSurface)
-                            }
-                        }
+                        // The SAME row [ServiceHistoryScreen] uses (ticket 11 §3: "one list
+                        // implementation, two entry points") - read-only here (no onClick), per
+                        // this screen's own doc comment: edit/delete live on the full history
+                        // screen only. showServiceName = false - this screen's own header already
+                        // names the service, so repeating it on every row would be noise.
+                        serviceHistory.forEach { record -> ServiceHistoryRow(record, showServiceName = false) }
                     }
                     Spacer(Modifier.height(16.dp))
 
@@ -999,7 +1005,7 @@ private fun PreviewFullSchedule() = LegionTheme {
         odometerUnset = false,
         now = 1_700_000_000_000L,
         filterUnknownOnly = false,
-        onOpenItem = {}, onAddItem = {}, onConfirmAll = { emptyList() }, onBack = {},
+        onOpenItem = {}, onAddItem = {}, onConfirmAll = { emptyList() }, onOpenServiceHistory = {}, onBack = {},
     )
 }
 

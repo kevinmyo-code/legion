@@ -57,6 +57,7 @@ import com.kevin.legion.ui.fleet.DriveSummaryView
 import com.kevin.legion.ui.fleet.DueRowView
 import com.kevin.legion.ui.fleet.FaultRow
 import com.kevin.legion.ui.fleet.FaultRowView
+import com.kevin.legion.ui.fleet.FleetSpendView
 import com.kevin.legion.ui.fleet.FullScheduleScreen
 import com.kevin.legion.ui.fleet.ItemDetailScreen
 import com.kevin.legion.ui.fleet.LIVE_GAUGE_PIDS
@@ -65,9 +66,11 @@ import com.kevin.legion.ui.fleet.MaintenanceDrilldownScreen
 import com.kevin.legion.ui.fleet.ObdDeviceScreen
 import com.kevin.legion.ui.fleet.OilAnalysisDrilldownScreen
 import com.kevin.legion.ui.fleet.RecapDrilldownScreen
+import com.kevin.legion.ui.fleet.ServiceHistoryScreen
 import com.kevin.legion.ui.fleet.SetOdometerDialog
 import com.kevin.legion.ui.fleet.VehicleSpecsScreen
 import com.kevin.legion.ui.fleet.buildDueRows
+import com.kevin.legion.ui.fleet.buildFleetSpendView
 import com.kevin.legion.ui.fleet.buildLastDriveSummary
 import com.kevin.legion.ui.fleet.buildLiveRows
 import com.kevin.legion.ui.fleet.buildMilesSparkline
@@ -77,6 +80,8 @@ import com.kevin.legion.ui.fleet.distinctFaultsByFirstSeen
 import com.kevin.legion.ui.fleet.writeAddItem
 import com.kevin.legion.ui.fleet.writeConfirmAll
 import com.kevin.legion.ui.fleet.writeDeleteItem
+import com.kevin.legion.ui.fleet.writeDeleteServiceRecord
+import com.kevin.legion.ui.fleet.writeEditServiceRecord
 import com.kevin.legion.ui.fleet.writeSetAnchor
 import com.kevin.legion.ui.fleet.writeSetInterval
 import com.kevin.legion.ui.theme.LegionTheme
@@ -85,6 +90,7 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.theme.deckMotionEnabled
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.DtcDescriptions
+import com.kevin.legion.vehicle.FleetSpendController
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.ObdDeviceRegistry
 import com.kevin.legion.vehicle.VehicleController
@@ -236,6 +242,17 @@ data class FleetUiState(
     val yearlyWrapped: YearlyWrapped? = null,
     /** OIL drilldown (quant-viz ticket 06): every [OilAnalysis] on file, newest-first, straight off [com.kevin.legion.data.local.OilAnalysisDao.getAll]. */
     val oilAnalyses: List<OilAnalysis> = emptyList(),
+    /**
+     * SERVICE HISTORY drilldown's fleet-spend panel (ticket 11 §4) - built once here, off
+     * [com.kevin.legion.vehicle.FleetSpendController]'s four reads, via the pure
+     * [com.kevin.legion.ui.fleet.buildFleetSpendView] - the drilldown composable itself never
+     * touches the controller (this file's own "display-only screens" convention).
+     */
+    val spendView: FleetSpendView = FleetSpendView(
+        totalText = "", coverageText = "", perMileText = "", perMileIsRefusal = false,
+        byType = emptyList(), byTypeRows = emptyList(), byYear = emptyList(), byYearRows = emptyList(),
+        yearTrendAvailable = false,
+    ),
 )
 
 /**
@@ -250,7 +267,7 @@ data class FleetUiState(
  * [FleetScreen] below, so returning from ITEM DETAIL to FULL SCHEDULE preserves the filter without
  * threading it back through the enum itself.
  */
-private enum class FleetDrilldown { UPLINK, MAINTENANCE, FULL_SCHEDULE, ITEM_DETAIL, DRIVES, ADAPTER, SPECS, RECAPS, OIL }
+private enum class FleetDrilldown { UPLINK, MAINTENANCE, FULL_SCHEDULE, ITEM_DETAIL, SERVICE_HISTORY, DRIVES, ADAPTER, SPECS, RECAPS, OIL }
 
 @Composable
 fun FleetScreen(
@@ -309,8 +326,17 @@ fun FleetScreen(
 
         // ITEM DETAIL's read-only service-history list (ticket 09): one collect of the whole
         // vehicle's history, filtered by name at the ITEM_DETAIL call site - see that call site's
-        // own comment for why this is not a second, per-name DAO query.
+        // own comment for why this is not a second, per-name DAO query. SERVICE HISTORY (ticket 11
+        // §3) reuses this SAME list unfiltered - "one list implementation, two entry points."
         val allServiceRecords = db.serviceRecordDao().getRecordsForVehicle(vehicle.obdMac).first()
+
+        // Fleet spend (ticket 11 §4): the four controller reads, turned into display strings/chart
+        // data by the pure buildFleetSpendView - never touched again once assembled, matching this
+        // block's own AWAIT FIRST, COPY ONCE discipline below.
+        val spendTotal = FleetSpendController.totalSpent(context, vehicle.obdMac)
+        val spendPerMile = FleetSpendController.costPerMile(context, vehicle.obdMac)
+        val spendByType = FleetSpendController.spendByServiceType(context, vehicle.obdMac)
+        val spendByYear = FleetSpendController.spendByYear(context, vehicle.obdMac)
 
         val selectedAdapter = ObdBluetoothManager.getActiveDeviceMac(context)
         val adapterLabel = selectedAdapter?.let { mac ->
@@ -370,6 +396,7 @@ fun FleetScreen(
             yearlyWrapped = yearlyWrapped,
             oilAnalyses = oilAnalyses,
             allServiceRecords = allServiceRecords,
+            spendView = buildFleetSpendView(spendTotal, spendPerMile, spendByType, spendByYear),
         )
     }
 
@@ -403,16 +430,21 @@ fun FleetScreen(
         // so back returns there, filter preserved via fullScheduleFilterUnknown above).
         val backTarget = when (currentDrilldown) {
             FleetDrilldown.RECAPS, FleetDrilldown.OIL -> FleetDrilldown.MAINTENANCE
-            FleetDrilldown.ITEM_DETAIL -> FleetDrilldown.FULL_SCHEDULE
+            FleetDrilldown.ITEM_DETAIL, FleetDrilldown.SERVICE_HISTORY -> FleetDrilldown.FULL_SCHEDULE
             else -> null
         }
         // Ticket 09 verification #3: "confirm the drilldown-return path refreshes the parent"
-        // (mission-control ticket 04's stale-parent bug). FULL SCHEDULE and ITEM DETAIL are the two
-        // screens on this map that can write, so both bump reloadKey on every way out - physical
-        // back (below) and each screen's own onBack callback (further down) - rather than trying to
-        // track whether a write actually happened on this particular visit.
+        // (mission-control ticket 04's stale-parent bug). FULL SCHEDULE, ITEM DETAIL, and (ticket
+        // 11) SERVICE HISTORY are the screens on this map that can write, so all three bump
+        // reloadKey on every way out - physical back (below) and each screen's own onBack callback
+        // (further down) - rather than trying to track whether a write actually happened on this
+        // particular visit.
         BackHandler {
-            if (currentDrilldown == FleetDrilldown.FULL_SCHEDULE || currentDrilldown == FleetDrilldown.ITEM_DETAIL) reloadKey++
+            if (currentDrilldown == FleetDrilldown.FULL_SCHEDULE || currentDrilldown == FleetDrilldown.ITEM_DETAIL ||
+                currentDrilldown == FleetDrilldown.SERVICE_HISTORY
+            ) {
+                reloadKey++
+            }
             drilldown = backTarget
         }
         when (currentDrilldown) {
@@ -454,7 +486,15 @@ fun FleetScreen(
                     drilldown = FleetDrilldown.ITEM_DETAIL
                 },
                 onConfirmAll = { items -> writeConfirmAll(context, fullState.vehicleId, items) },
+                onOpenServiceHistory = { drilldown = FleetDrilldown.SERVICE_HISTORY },
                 onBack = { reloadKey++; drilldown = FleetDrilldown.MAINTENANCE },
+            )
+            FleetDrilldown.SERVICE_HISTORY -> ServiceHistoryScreen(
+                recordsNewestFirst = fullState.allServiceRecords,
+                spend = fullState.spendView,
+                onEditRecord = { id, mileage, cost -> writeEditServiceRecord(context, id, mileage, cost) },
+                onDeleteRecord = { id -> writeDeleteServiceRecord(context, id) },
+                onBack = { reloadKey++; drilldown = FleetDrilldown.FULL_SCHEDULE },
             )
             FleetDrilldown.ITEM_DETAIL -> ItemDetailScreen(
                 // Looked up fresh out of fullState rather than carried by value from the tap that

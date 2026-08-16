@@ -68,6 +68,70 @@ class VehicleControllerServiceWritesTest {
         assertEquals(1, db.maintenanceItemDao().getForVehicle("V1").size)
     }
 
+    // --- logServiceDirect: cost capture (ticket 11 §2) --------------------------------------
+
+    @Test
+    fun `logServiceDirect with a cost writes costCents onto the ServiceRecord`() = runBlocking {
+        val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1", costCents = 4599)
+
+        assertTrue(outcome.success)
+        val record = db.serviceRecordDao().getRecentForVehicle("V1", 1).single()
+        assertEquals(4599L, record.costCents)
+    }
+
+    @Test
+    fun `logServiceDirect with no cost given leaves costCents null, never zero`() = runBlocking {
+        val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
+
+        assertTrue(outcome.success)
+        val record = db.serviceRecordDao().getRecentForVehicle("V1", 1).single()
+        assertNull("an omitted cost must stay null - CLAUDE.md §4 rule 6, never a silent $0.00", record.costCents)
+    }
+
+    // --- editServiceRecordDirect / deleteServiceRecordDirect (ticket 11 §2) -----------------
+
+    @Test
+    fun `editServiceRecordDirect touches only mileage and costCents, and reads the value back`() = runBlocking {
+        VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
+        val id = db.serviceRecordDao().getRecentForVehicle("V1", 1).single().id
+
+        val outcome = VehicleController.editServiceRecordDirect(context, id, mileageMiles = 227_500, costCents = 4599)
+
+        assertTrue("Was: $outcome", outcome.success)
+        assertTrue("Read-back must state the new mileage. Was: ${outcome.message}", outcome.message.contains("227500") || outcome.message.contains("227,500"))
+        assertTrue("Read-back must state the new cost. Was: ${outcome.message}", outcome.message.contains("45.99"))
+        val after = db.serviceRecordDao().getById(id)!!
+        assertEquals(227_500, after.mileage)
+        assertEquals(4599L, after.costCents)
+    }
+
+    @Test
+    fun `editServiceRecordDirect against a nonexistent id reports failure rather than pretending it worked`() = runBlocking {
+        val outcome = VehicleController.editServiceRecordDirect(context, id = 999L, mileageMiles = 1, costCents = null)
+        assertFalse(outcome.success)
+    }
+
+    @Test
+    fun `deleteServiceRecordDirect soft-deletes and its message says the delete is local only`() = runBlocking {
+        VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
+        val id = db.serviceRecordDao().getRecentForVehicle("V1", 1).single().id
+
+        val outcome = VehicleController.deleteServiceRecordDirect(context, id)
+
+        assertTrue(outcome.success)
+        assertTrue(
+            "the delete's local-only nature must be stated in words (CLAUDE.md §2's tombstone caveat), not implied",
+            outcome.message.contains("this phone", ignoreCase = true),
+        )
+        assertTrue(db.serviceRecordDao().getRecentForVehicle("V1", 10).isEmpty())
+    }
+
+    @Test
+    fun `deleteServiceRecordDirect against a nonexistent id reports failure`() = runBlocking {
+        val outcome = VehicleController.deleteServiceRecordDirect(context, id = 999L)
+        assertFalse(outcome.success)
+    }
+
     @Test
     fun `logServiceDirect always writes a ServiceRecord, even for a brand new item`() = runBlocking {
         // "wheel bearing service" deliberately matches none of the 10

@@ -153,6 +153,13 @@ import androidx.room.RoomDatabase
  *   convert, and a conversion expression would imply data that never existed. See
  *   [MIGRATION_19_20]'s own doc comment for the table rebuild and [ServiceRecord.costCents]'s for
  *   why this is a `Long` (CLAUDE.md §4 rule 3) while [BuildEntry.cost] deliberately stays `Double`.
+ *
+ * v21: `service_records.deleted INTEGER NOT NULL DEFAULT 0` - the soft-delete tombstone ticket 11
+ * §2 asks for (`.scratch/fleet-maintenance/issues/11-*`). Purely additive, one column. **Cannot
+ * propagate across devices** - `service_records` syncs `Mode.UNION` on `syncId`
+ * (`sync/SyncEngine.kt:175`), and UNION never updates a row a device already has, so this delete is
+ * LOCAL ONLY by construction, unlike `maintenance_items.deleted`'s LWW tombstone. See
+ * [ServiceRecord.deleted] and [MIGRATION_20_21]'s own doc comments for the full reasoning.
  */
 @Database(
     entities = [
@@ -177,7 +184,7 @@ import androidx.room.RoomDatabase
         VehicleCapability::class,
         Goal::class, AdvisorAdvice::class,
     ],
-    version = 20,
+    version = 21,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -256,7 +263,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 20
+        const val SCHEMA_VERSION = 21
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -275,7 +282,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
                         MIGRATION_11_12, MIGRATION_12_13,
                         MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
-                        MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20,
+                        MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

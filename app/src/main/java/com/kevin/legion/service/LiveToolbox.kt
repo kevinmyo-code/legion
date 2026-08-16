@@ -812,6 +812,7 @@ object LiveToolbox {
                 "status. Use when the driver says they did some work, e.g. 'I just changed the oil'.",
             params = obj(
                 "service" to schema("string", "The service performed, e.g. oil change, tire rotation, brake pads."),
+                "cost" to schema("number", "Dollar amount paid, only if the driver stated one. Omit otherwise."),
                 "vehicle" to VEHICLE_PARAM,
             ),
             required = listOf("service"),
@@ -1409,7 +1410,18 @@ object LiveToolbox {
                 result(success = outcome.success, message = outcome.message)
             }
             "log_service" -> withResolvedVehicle(context, args) {
-                val outcome = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac)
+                // Dollars -> cents at the voice edge (CLAUDE.md §4 rule 3: VehicleController.logServiceDirect
+                // only ever sees Long cents) - same Math.round(amount * 100) shape
+                // LedgerPendingLog.pendingAmountCents already uses for a spoken dollar figure, with the
+                // same non-finite/non-positive guard so a misheard "cost" argument can't write a bogus
+                // negative or NaN-derived value.
+                val costCents = if (args.has("cost") && !args.isNull("cost")) {
+                    val dollars = args.optDouble("cost")
+                    if (!dollars.isNaN() && dollars.isFinite() && dollars > 0.0) Math.round(dollars * 100.0) else null
+                } else {
+                    null
+                }
+                val outcome = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac, costCents)
                 result(success = outcome.success, message = outcome.message)
             }
             "log_past_service" -> withResolvedVehicle(context, args) { logPastService(context, args, it.obdMac) }

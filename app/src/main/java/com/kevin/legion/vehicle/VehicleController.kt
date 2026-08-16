@@ -8,6 +8,7 @@ import com.kevin.legion.data.local.DriveReassignment
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.data.local.Vehicle
+import com.kevin.legion.ledger.formatCents
 import com.kevin.legion.util.relativeAge
 import org.json.JSONArray
 import kotlin.math.roundToInt
@@ -312,9 +313,13 @@ object VehicleController {
     /**
      * Logs completed maintenance and clears the item's "due" status.
      * [vehicleId] is the fleet-wide-voice override (ticket 01) - null means
-     * the active car, unchanged.
+     * the active car, unchanged. [costCents] is optional (ticket 11 §2, cost
+     * capture at log time) - `Long` cents, never a `Double` (CLAUDE.md §4 rule
+     * 3); the caller (the log-a-service UI form or `log_service`'s voice tool,
+     * both dollar-denominated at their own edge) converts to cents BEFORE
+     * calling this, so this function never sees a fractional dollar amount.
      */
-    suspend fun logServiceDirect(context: Context, serviceName: String, vehicleId: String? = null): WriteOutcome {
+    suspend fun logServiceDirect(context: Context, serviceName: String, vehicleId: String? = null, costCents: Long? = null): WriteOutcome {
         val canonical = canonicalizeServiceName(serviceName)
         val db = CarDatabase.getDatabase(context)
         val vehicle = vehicleFor(context, vehicleId)
@@ -337,7 +342,7 @@ object VehicleController {
         // hand-typed schedule name and its service history read as the same
         // service; otherwise under the canonical form of what was said.
         val targetName = matchedName ?: canonical
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = vehicle.obdMac, serviceName = targetName, mileage = mileage, date = now))
+        db.serviceRecordDao().insert(ServiceRecord(vehicleId = vehicle.obdMac, serviceName = targetName, mileage = mileage, date = now, costCents = costCents))
 
         if (matchedName != null) {
             // Targeted write (ticket 05): touches only the anchor columns - no
@@ -581,6 +586,47 @@ object VehicleController {
             else -> "no history logged yet"
         }
         return WriteOutcome(true, "$targetName is now every $everyPhrase, $lastPhrase.")
+    }
+
+    /**
+     * Edits an EXISTING [ServiceRecord]'s mileage/cost (ticket 11 §2 - "Kevin's two existing
+     * records can get costs added retroactively, and a mistyped mileage is fixable"). A targeted
+     * write via [ServiceRecordDao.editMileageAndCost], mirroring [setMaintenanceInterval]'s own
+     * "write, then re-read rather than trust the caller's own input" discipline - the returned
+     * message states what is ACTUALLY on the row afterward, never an echo of what was asked for.
+     *
+     * [mileageMiles] and [costCents] are both written unconditionally (the edit form shows both
+     * fields pre-filled with the record's current values, so "unchanged" and "explicitly cleared"
+     * are indistinguishable at this layer by design - same shape [MaintenanceItemDao.setIntervals]'s
+     * form-driven callers already use). `Long` cents throughout (CLAUDE.md §4 rule 3) - the caller
+     * converts a driver-typed dollar string to cents before this is ever invoked.
+     */
+    suspend fun editServiceRecordDirect(context: Context, id: Long, mileageMiles: Int, costCents: Long?): WriteOutcome {
+        val db = CarDatabase.getDatabase(context)
+        val written = db.serviceRecordDao().editMileageAndCost(id, mileageMiles, costCents)
+        if (written == 0) {
+            return WriteOutcome(false, "Couldn't save that - the record may have just been deleted.")
+        }
+        val after = db.serviceRecordDao().getById(id)
+            ?: return WriteOutcome(false, "Saved, but couldn't read it back to confirm - check the history when you get a chance.")
+        val costPhrase = after.costCents?.let { " at $${formatCents(it)}" }.orEmpty()
+        return WriteOutcome(true, "Updated ${after.serviceName}: ${after.mileage} miles$costPhrase.")
+    }
+
+    /**
+     * Soft-deletes a [ServiceRecord] (ticket 11 §2). **LOCAL ONLY** - see [ServiceRecord.deleted]'s
+     * own doc comment for why `service_records`' `Mode.UNION` sync makes a cross-device tombstone
+     * structurally impossible here, unlike [writeDeleteItem][com.kevin.legion.ui.fleet.writeDeleteItem]'s
+     * `maintenance_items` delete. Every caller-facing surface must say "on this phone" in words - see
+     * the message below and the UI's own wording where this is offered.
+     */
+    suspend fun deleteServiceRecordDirect(context: Context, id: Long): WriteOutcome {
+        val written = CarDatabase.getDatabase(context).serviceRecordDao().softDelete(id)
+        return if (written == 0) {
+            WriteOutcome(false, "Couldn't delete that - it may have already been removed.")
+        } else {
+            WriteOutcome(true, "Deleted from this phone. This delete doesn't sync - it won't remove the record from your other phone.")
+        }
     }
 
     /**

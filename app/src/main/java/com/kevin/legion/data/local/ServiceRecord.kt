@@ -26,4 +26,30 @@ data class ServiceRecord(
     val costCents: Long? = null,
     // Portable cross-device identity for sync (S1) - see MemoryEntry.syncId.
     @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
+    // The soft-delete tombstone (ticket 11 §2, v20->v21). Every ORDINARY reader
+    // (ServiceRecordDao's list/count/total queries, CarToolbelt, the UI) filters
+    // `deleted = 0`; only sync's raw-SQL snapshot sees a tombstoned row at all -
+    // same shape as [MaintenanceItem.deleted].
+    //
+    // **UNLIKE [MaintenanceItem.deleted], this tombstone is LOCAL ONLY and CANNOT
+    // propagate across devices.** `maintenance_items` gets away with the tombstone
+    // pattern because it syncs `Mode.LWW` on a natural key - a newer `deleted = 1`
+    // simply wins the merge like any other edit (`sync/SyncEngine.kt:46-52`).
+    // `service_records` syncs `Mode.UNION` on the portable `syncId`
+    // (`sync/SyncEngine.kt:175`), and UNION **never updates an existing local row**
+    // (`SyncMerge.Action` is Insert | Update, and the merge only ever inserts a
+    // syncId it has not seen before) - so setting `deleted = 1` here, on THIS
+    // device, never reaches the other device's copy, which keeps `deleted = 0`
+    // and goes right on showing the "deleted" record forever. `SyncEngine.kt:222-226`
+    // states this explicitly for `ledger_transactions`' own near-identical case:
+    // "UNION and delete-propagation are mutually exclusive." A real cross-device
+    // tombstone for a UNION table would need its own mechanism (a deleted-ids
+    // list shipped as its own row, the way ticket 07's own question 3 framed the
+    // option ticket 07 ultimately didn't need) - not built here, because Kevin's
+    // sync/ has never actually run on this device (memory/MEMORY.md) and building
+    // an untestable cross-device mechanism on spec was judged worse than shipping
+    // a plainly-labelled local-only delete. **Every surface that offers this
+    // delete must say so in words** - "deletes on this phone only" - never imply
+    // it is a global delete the way [MaintenanceItem.deleted]'s genuinely is.
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

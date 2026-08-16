@@ -936,3 +936,23 @@ val MIGRATION_19_20 = object : Migration(19, 20) {
         db.execSQL("ALTER TABLE `service_records_new` RENAME TO `service_records`")
     }
 }
+
+/**
+ * v20 -> v21: adds `service_records.deleted INTEGER NOT NULL DEFAULT 0` - the soft-delete tombstone
+ * ticket 11 §2 asks for (`.scratch/fleet-maintenance/issues/11-service-history-cost-and-fleet-spend.md`,
+ * resolved 2026-08-15). Purely additive, one `ALTER TABLE ... ADD COLUMN`, verbatim from the
+ * generated `app/schemas/com.kevin.legion.data.local.CarDatabase/21.json` after a kapt run.
+ *
+ * **This tombstone is LOCAL ONLY and cannot propagate to another device** - `service_records` syncs
+ * `Mode.UNION` on the portable `syncId` (`sync/SyncEngine.kt:175`), and UNION never updates an
+ * existing local row, so setting `deleted = 1` here never reaches a device that already has its own
+ * copy of the row. See [ServiceRecord.deleted]'s own doc comment for the full reasoning - this is
+ * the deliberate exception to the tombstone pattern [MIGRATION_9_10]/[MIGRATION_19_20]'s
+ * `maintenance_items.deleted` column already uses successfully, because that column's table syncs
+ * LWW and this one does not.
+ */
+val MIGRATION_20_21 = object : Migration(20, 21) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `service_records` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+    }
+}
