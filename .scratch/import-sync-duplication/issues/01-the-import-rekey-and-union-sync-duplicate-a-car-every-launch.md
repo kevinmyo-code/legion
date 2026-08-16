@@ -34,11 +34,36 @@ Jeep and the F-150 are untouched. The factor is uniform, which is what a per-lau
    under a new identity, while the `default`-keyed original is still in the shared Drive file.
 4. UNION means union. The rekeyed copy is pushed up; the `default`-keyed original is pulled back
    down. Neither ever wins, because union has no notion of one superseding the other.
-5. Next launch the restored `default` rows are rekeyed again, and because none of these tables has a
-   unique constraint on its identity columns (`naturalPk = false`, the real PK is an autoincrement
-   `id`), the moved rows simply pile up beside the previous copies.
+5. Next launch the restored `default` rows are rekeyed again, and one more copy lands.
 
 Each launch adds one full copy. Six launches, six copies.
+
+**Mechanism CORRECTED after verification (2026-08-16).** The first draft of this ticket said the
+duplication was rekeyed rows "piling up" because these tables have no unique constraint. That was
+reasoned, and it was wrong about which statement creates the rows. An `UPDATE` reuses rowids and
+cannot manufacture them. The six copies of one `(pid, timestamp)` tuple carry row ids:
+
+```
+4645, 25176, 30993, 36284, 41526, 46768
+```
+
+The last three gaps are **exactly 5,242**, one full shard's worth, and every copy sits in its own
+ascending id block. Those are six separate INSERT batches. The import logs `inserted=0` on every
+run, so the import is not the inserter - **sync's pull is.** The corrected sequence:
+
+1. Drive still holds the `obd_samples` rows keyed `vehicleId = "default"`.
+2. Sync pulls. Its identity for the table is `(vehicleId, pid, timestamp)`, so the local copies -
+   which the import already rekeyed to `imported-mitsubishi-outlander-2020` - **do not match**. The
+   rows read as absent, and UNION mode inserts a full fresh batch under `default`.
+3. The import's rekey then moves that batch onto the Outlander id, where nothing constrains it, so
+   it lands beside the five already there.
+4. Drive is unchanged by any of this, so the next sync does it again.
+
+The rekey is not the duplicator. It is the thing that makes each pulled batch *invisible to the next
+pull*, which is what turns a repeated pull into unbounded growth. Both halves are needed.
+
+This also explains the asymmetry between the two observed launches (`obd_samples rekeyed=0` then
+`rekeyed=5242`): the rekey only has something to move once a sync has pulled a fresh batch.
 
 **The two failing tables are the ones that CANNOT duplicate, and they fail loudly for that reason.**
 `vehicle_specs` (PK `vehicleId`) and `maintenance_items` (PK `vehicleId, serviceName`) have real
@@ -105,11 +130,74 @@ first.
 - `traced`: `rekeyExistingRows` is an `UPDATE ... WHERE identity AND vehicleId = oldId` that assumes a
   free destination; `SyncEngine.REGISTRY` keys `obd_samples`/`monthly_recaps` on tuples that INCLUDE
   `vehicleId`, in `Mode.UNION`; the two failing tables are exactly the two with `naturalPk = true`.
-- `reasoned`, NOT directly observed: that Drive sync is what restores the `default`-keyed rows
-  between launches. It fits every observation (the sentinel never empties, the factor grows by
-  exactly one copy per launch, sync is ON, and the identity includes the column being rewritten), but
-  no sync pull was traced end to end, and no Drive-side file was inspected. **Verify this before
-  building a fix on it** - if something else is restoring those rows, step 1 above targets the wrong
-  thing.
+- **`on-device`, VERIFIED 2026-08-16**: sync's pull is the inserter. Six copies of one
+  `(pid, timestamp)` occupy six separate ascending row-id blocks, the last three exactly 5,242 apart
+  (one full shard), while the import reports `inserted=0` on every pass. An UPDATE cannot mint
+  rowids, so the rekey is not creating rows. Verified WITHOUT running a sync, which matters: a manual
+  sync would have pushed the local duplicates to the shared Drive file and on to the other phone.
+- `reasoned`, still NOT directly observed: that the Drive-side file specifically still holds
+  `default`-keyed rows. It is the only source consistent with rows appearing under `default` when the
+  import inserts nothing, but Drive was never read - there are no credentials outside the app.
+- **Unknown, and it matters:** whether Drive now also holds the duplicated Outlander-keyed rows.
+  UNION pushes as well as pulls, so it probably does, which would mean the other phone is affected
+  too. Cannot be settled without reading the Drive file.
 - `reasoned`: that the 6.0x factor means six prior rekey passes. Uniform across two unrelated tables,
   but the launch history was not independently reconstructed.
+
+## Proposed fix
+
+Three stages, in this order. Stage 3 is destructive and needs Kevin's explicit go-ahead.
+
+### Stage 1 - stop the growth (small, safe, deletes nothing)
+
+Make `rekeyExistingRows` check the destination before moving. Where an equivalent row already exists
+at the target identity, **DELETE the source row instead of UPDATEing it**. That single change:
+
+- ends the `UNIQUE constraint failed` exceptions on `vehicle_specs` and `maintenance_items`, since
+  those are exactly the collisions it would now handle rather than throw on;
+- lets the reconciliation gate finally latch, so the import stops rerunning;
+- stops each pulled batch adding a copy - the pull still happens, but the batch is discarded instead
+  of folded in beside the previous ones.
+
+This does not fix the cause. It bounds the damage at today's level, which is worth having before
+anything slower.
+
+### Stage 2 - fix the cause: reassign on Drive, not only locally
+
+**The right primitive already exists and already syncs.** `drive_reassignments` is in
+`SyncEngine.REGISTRY` (`sync/SyncEngine.kt:165`, `Mode.LWW`, keyed by `syncId`) and
+`applyReassignments` (`:377`) consumes it immediately after the `obd_samples` merge, rewriting
+`vehicleId` over a time range. It was built for exactly this shape of problem: moving samples from
+one car to another in a way the OTHER device also learns about.
+
+The sentinel repair should write a reassignment rule rather than performing a local-only `UPDATE`.
+Then the change propagates, the Drive-side rows stop being `default`-keyed, and the pull stops
+re-manufacturing them. The loop closes at its source instead of being mopped up every launch.
+
+Two things to settle before building it:
+- `applyReassignments` currently rewrites **`obd_samples` only**. `daily_drive_logs`,
+  `monthly_recaps`, `vehicle_specs` and `maintenance_items` are duplicated too, and need either the
+  same treatment or a different answer.
+- Its rules are time-ranged (`fromMs`/`toMs`). A whole-history reassignment needs a range that
+  genuinely covers everything, or an explicit unbounded form.
+
+### Stage 3 - dedup what is already there (DESTRUCTIVE, needs sign-off)
+
+Keep the lowest `id` per identity tuple, delete the rest. The counts are known exactly:
+
+| Table | vehicle | delete | keep |
+|---|---|---|---|
+| `obd_samples` | Outlander | 26,210 | 5,242 |
+| `daily_drive_logs` | Outlander | 126 | 25 |
+| `monthly_recaps` | Outlander | 7 | 1 |
+
+Plus the orphaned sentinel rows under `default`, once stage 2 makes them safe to drop.
+
+**Do not run stage 3 before stage 1 ships**, or the next launch undoes it. And if Drive also holds
+the duplicates, a local-only dedup gets re-pulled - which is why stage 2 is not optional.
+
+### Not proposed: retiring the import
+
+Worth considering separately, and deliberately not folded in here. It is a one-shot migration that
+has already carried Midnight AI's history across, and it reruns forever only because it cannot
+latch. Stage 1 makes it latch, which may make retirement moot.
