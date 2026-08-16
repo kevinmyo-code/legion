@@ -56,6 +56,30 @@ new senses below are what a JARVIS does that a dashboard does not.
 
 <!-- one line per closed ticket -->
 
+- [What does Home Assistant's local API actually offer a phone voice client?](issues/02-ha-api-research.md)
+  — **REST alone suffices for a pull-based client**: get-states, call-service, even conversation,
+  no persistent socket, no Doze conflict. Long-lived tokens live 10 years but carry NO scoping -
+  the only narrowing lever is a non-admin HA user, and **HA's exposed-entities gate does not bind
+  raw REST** (reasoned from docs' framing). Remote: Nabu Casa 6.50 USD/mo recommended, VPN
+  sanctioned, auth unchanged. Assist's `conversation/process` executes without a confirm turn, so
+  LEGION keeps its own tools. Cheapest hub: 0 USD container on existing hardware; Green 199 USD.
+- [What does Health Connect actually expose, and on what terms?](issues/10-health-connect-research.md)
+  — **all five metrics are first-class records with provenance**, read via per-type runtime grants
+  through HC's own consent sheet. Foreground pull tools need NO background permission; the 30-day
+  read window is real (`READ_HEALTH_DATA_HISTORY` lifts it, uninstall resets the clock). Sideload
+  is fine: the Play declaration is store-review-only, no platform gate. A25 on Android 14 = HC is
+  a framework module. Native aggregation API; never hand-sum raw records. Sync freshness is
+  UNDOCUMENTED - "how did I sleep at 7am" needs an on-device test, and the tool must say "not
+  synced yet" in words. One verify-at-build: connect-client library minSdk vs app minSdk 24.
+- [What can Gemini Live video actually do for wrench mode, on Kevin's key?](issues/06-wrench-vision-research.md)
+  — **camera frames work on a plain API key**: JPEG `realtimeInput` on the existing WebSocket, max
+  1 fps. The constraint is session plumbing, not money: audio+video sessions die at 2 minutes
+  without `contextWindowCompression` and recycle at ~10 without `sessionResumption`; both become
+  mandatory. Cost is pocket change either way (30-min stream ~0.40 USD, 20 one-shots ~0.03 USD).
+  The real gap is DETAIL: a Live frame is 70 tokens vs ~1,100+ for a one-shot photo - evidence
+  points at a hybrid (stream for context, one-shot for "identify this"), flagged reasoned, not
+  decided. Five on-device spikes named in the ticket (L10).
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Graduates as the frontier advances.
