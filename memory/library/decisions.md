@@ -3989,3 +3989,54 @@ before a user could edit register text freely.
 
 **Ticket 08 morning brief KEEPS its premise.** Kevin: "newsletters are important, dont kill". That
 also confirms settled decision 4's Gmail assumption. It remains OPEN.
+
+## 2026-08-16 - Drive UI charted, and the bus reality behind it (drive-ui tickets 01, RESEARCH)
+
+**Effort `.scratch/drive-ui/`**, charted 2026-08-16 from Kevin: "lets make the driving screen
+better, i thnk rpm polling can be more often now that we run on a phone and not the android head
+unit (midnight era)." Eight tickets. The premise check reframed it before anything was decided.
+
+**The premise was half wrong, and the wrong half mattered** (all `traced`):
+- **The driving screen makes ZERO OBD calls.** It reads Room every 2s (`DrivingModeScreen.kt:179-181`)
+  and renders the DATABASE, which `TelemetryRecorder` writes every **30 s**. That 30 s tick is
+  justified by **storage and battery** ("~18 MB/year"), never by the head unit.
+- **The genuine Midnight-era artifact is already dead code.** `ObdGauges.kt:10-13` bans fast PIDs
+  citing "starves the head unit's single Bluetooth radio... A2DP music stutter (field call
+  2026-07-12)" - and `ObdGauge` has **no callers anywhere**; `PidSpec.fast` has no consumers either.
+  The ban was abandoned and nothing replaced it.
+- **The constraint is the car, not the phone.**
+
+**Ticket 01 (research), resolved same day** - full findings with per-claim source-type labels
+(STANDARD / VENDOR / COMMUNITY) in `.scratch/drive-ui/research/01-bus-reality.md`:
+
+- **Multi-PID batching is CAN-only. Settled twice, independently.** `traced` - ISO 15031-5 defines
+  the optional PID#2-#6 request rows **only** in its CAN clause (Table 127), not in the
+  ISO 9141-2 clause (Table 18); the ELM327 datasheet says the same in prose. **One PID per round
+  trip is a hard ceiling on the 1998 XJ.**
+- **~119 ms/PID protocol floor, 150-250 ms realistic.** A 3-PID set lands at **~1.3-2.2 Hz today,
+  ~2.4-2.7 Hz after tuning, against an unreachable 2.8 Hz floor.** Each added PID costs 150-250 ms
+  **linearly**. `reasoned` on P1/P4 (ISO 9141-2 itself is paywalled); P2/P3 `traced` to the standard.
+- **One real unused lever: the ELM327 responses digit** (`010C1`), which is NOT CAN-only and which
+  LEGION never uses. `ATE0` saves ~1.3 ms and is hygiene. Bluetooth is noise (<5%); the
+  `Thread.sleep(20)` costs ~6%.
+- **MAF is the headline: the Jeep 4.0L is speed-density with NO MAF sensor**, and the standard
+  conditions `0110` on the vehicle having one. **MAF-based instantaneous mpg is very probably
+  impossible on this car** - trip content must argue from average-over-known-distance instead.
+- **Biggest uncertainty, worth 2-3x: how many ECUs answer, and the Chrysler PCM's actual P1/P2**,
+  which the standard delegates to the manufacturer. Ticket 02 measures it on the car.
+
+**The consequence that governs the rest of the map: a live gauge on this car steps about twice a
+second. Any UI implying smooth continuous motion is lying about the bus.** That turns the drive
+screen's motion question from taste into honesty - a needle easing between two real readings is
+inventing every value in between - and it is the estimates rule (CLAUDE.md section 4 rule 5)
+arriving somewhere nobody had pointed it before.
+
+**Also settled while charting: this screen's total ban on animation is STALE.** Six doc comments in
+`DrivingModeScreen` cite retired ticket 04's head-unit "ambient-motion ration"; CLAUDE.md lifted it
+in sections 2 and 7, and the A25 runs animation scales at **1.0**. `deckMotionEnabled()` stays - it
+reads the OS animator scale and is a live accessibility path, not a dead constraint.
+
+**Recorded as Stark's own error:** ticket 07 (temperature units) exists because the FAULTS freeze
+frame was aligned to UPLINK earlier the same day on a "screens match screens" argument, **without
+checking the driving screen** - which is the third screen and renders `177 F` where the other two
+render Celsius. The fix was right locally and asserted a consistency that did not exist.
