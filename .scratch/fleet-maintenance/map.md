@@ -264,6 +264,14 @@ his two existing service records on a screen.
   was then seen catching a real empty lookup on-device. It also surfaced **ticket 18**, which is open
   and which limits how far ticket 14's populate can be trusted.
 
+- [The factory lookup is not stable enough to diff against](issues/18-the-factory-lookup-is-not-stable-enough-to-diff-against.md) -
+  **the lookup is NOT fixed, deliberately** (no sampling, no citation requirement - Kevin's call);
+  manual entry stays the primary path. What changed is that a populate accept no longer writes
+  `CONFIRMED`. `LOOKUP` is a third provenance value, `isGuessTag` tests `!= "CONFIRMED"` so a new
+  value defaults to disclosed rather than silent, and every "the factory schedule doesn't list it"
+  is now "this lookup didn't mention it". Four runs on one car in five minutes disagreed on three of
+  eight items; the app now says only what it actually knows.
+
 ## Not yet specified
 
 - **The build tickets.** **Every decision on this map is now made** - what remains is execution, and

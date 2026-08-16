@@ -1,7 +1,7 @@
 # The factory lookup is not stable enough to diff against
 
 Type: grilling
-Status: open
+Status: resolved
 
 ## Question
 
@@ -87,3 +87,44 @@ by hand, and it is the concrete example to reason about when picking from the li
 - `reasoned`, NOT verified: that search grounding is functioning at all on these calls. Never
   confirmed either way; it is one candidate explanation for the flakiness among several.
 - Nothing here is built. This ticket decides, it does not implement.
+
+## Resolution (Kevin, 2026-08-15)
+
+**Chosen: options 3 and 4 (the cheap pair), plus option 5 - manual entry is the real path.**
+Options 1 (require a citable source) and 2 (sample the lookup N times) are **declined**: both are
+attempts to fix the retrieval, and neither is worth the calls on Kevin's own key for a 28-year-old
+vehicle whose published schedule is the least likely to be retrievable in the first place. The
+lookup stays exactly as it is, flaky, and ADD ITEM / hand-editing remain the primary way a schedule
+gets built. `VehicleController.lookupServiceIntervals` and its prompt were deliberately not touched.
+
+Built the same session, commit `990b3c7`:
+
+1. **`LOOKUP` is a third `intervalSource` value**, between `SEEDED` (LEGION guessed, never reviewed)
+   and `CONFIRMED` (the driver stated it). Every `PopulateWrites` path that accepts a factory-proposed
+   value writes it. Every other maintenance-item writer still writes `CONFIRMED`, because in those
+   the driver genuinely is the source of the number. **No migration**: the column's `createSql` in
+   `app/schemas/.../21.json` is `TEXT NOT NULL DEFAULT 'SEEDED'` with no CHECK, and the schema JSON
+   was byte-identical after a kapt run. Both checks were performed, not inferred from CLAUDE.md §5.
+2. **`isGuessTag` now tests `!= "CONFIRMED"` rather than `== "SEEDED"`.** This was the load-bearing
+   part and nearly the whole bug: as written, a `LOOKUP` row would have carried **no disclosure at
+   all**, rendering identically to a figure the driver typed. Testing the negative means a future
+   provenance value defaults to disclosed rather than to silent.
+3. **Every "the factory schedule doesn't list it" softened to "this lookup didn't mention it"**,
+   header included. The app knows what one lookup said. It does not know what the manufacturer
+   publishes, and one flaky sample is thin grounds for suggesting a driver delete a real service.
+4. **`confirmableSeededItems` renamed `confirmableItems`, and its dialog now names each row's
+   provenance.** Widening `isGuessTag` pulled `LOOKUP` rows into confirm-all, which is correct -
+   confirming is how a lookup value becomes one the driver vouches for. But the dialog said *"these N
+   intervals were guessed by LEGION, never confirmed"*, false for those rows, and it exists precisely
+   so that a bulk confirm is not a rubber stamp. A bulk confirm is exactly where the difference
+   between a seed guess and a lookup value would otherwise vanish. **This was not in the original
+   four-step spec** - it surfaced as a flagged downstream consequence during review and was closed
+   rather than relayed onward as a footnote (CLAUDE.md L11).
+
+Tests 1312 -> 1316. The softened copy was verified on the A25.
+
+**Left open deliberately:** `Spark Plug Replacement = 30,000 mi / 24 mo` on Kevin's Jeep still reads
+`CONFIRMED`, because it was accepted before `LOOKUP` existed. Kevin chose to review it by hand rather
+than have it reverted or re-looked-up. No backfill migration was written - one row, and guessing
+which historical `CONFIRMED` rows came from a populate is exactly the kind of inference this ticket
+is about not making.
