@@ -50,3 +50,15 @@ Decide:
    a warranty is not. Decide whether vault documents carry an aspect tag.
 6. **Tool budget.** One `search_documents` tool, or one per class? Write the description - and
    note it must promise citation, because that promise is the feature.
+7. **Filing convention: a metadata sidecar per document.** Kevin (2026-08-16) wants documents filed
+   with structured metadata rather than dumped in a folder, citing "Google's OKF". **That name was
+   not recognised and is unresolved** - the closest real thing is the Open Knowledge Foundation's
+   Frictionless Data spec (a small JSON descriptor filed beside each resource). **Ask Kevin what he
+   meant before designing to a guess**; the two live readings are (a) an OKF/Frictionless-style
+   sidecar descriptor, (b) Google Drive labels/Knowledge-Graph-style entity tagging. Either way the
+   decision is the same shape: does each document carry a descriptor (type, subject, effective and
+   expiry dates, owning aspect, source), where does that descriptor live (a sidecar file in the
+   folder so it survives independently of the app, or a Room row so it is queryable), and who
+   writes it - Kevin by hand, or an LLM pass at ingest whose output he confirms? An expiry date in
+   the descriptor is what makes "registration expires next month" answerable without reading every
+   document, so this is load-bearing, not decoration.

@@ -1,7 +1,7 @@
 # What location data can LEGION actually get, and on what terms?
 
 Type: research
-Status: open
+Status: claimed
 Blocked by: -
 
 ## Question

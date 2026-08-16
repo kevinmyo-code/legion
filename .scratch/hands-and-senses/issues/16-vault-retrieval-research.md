@@ -1,7 +1,7 @@
 # Does the document vault need retrieval machinery at all?
 
 Type: research
-Status: open
+Status: claimed
 Blocked by: -
 
 ## Question

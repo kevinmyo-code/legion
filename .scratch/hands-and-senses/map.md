@@ -54,6 +54,7 @@ new senses below are what a JARVIS does that a dashboard does not.
 | 8 | **The advisor/goals/body layers already exist too** (`advisor/` playbooks + digests, `goals/`, `meals/`, `sleep/`, `workouts/`, ledger `Categorization`/`CategoryAgent`/budgets, `YearlyWrapped`/`MonthlyRecap`). | Health Connect becomes a DATA SOURCE feeding the existing body controllers, never a new aspect. "Financial insight" is largely built - do not re-chart it. |
 | 9 | **LEGION's Drive grant is `drive.appdata` only** - a hidden folder Kevin cannot put files in. Verified 2026-08-16 in `DriveAuth.kt`. | "Use the Drive folder we already have" is FALSE for any user-visible folder. The vault rides SAF `ACTION_OPEN_DOCUMENT_TREE` (already proven for ledger, API 30+, no new scope). |
 | 10 | **Searching public data on private individuals is OUT** (people-lookup/OSINT), dropped by Kevin 2026-08-16 on usefulness plus safety. | See Out of scope. Self-OSINT (breach checks on Kevin's own identifiers) and situational feeds went with it. |
+| 11 | **The companion memory architecture ported from Midnight AI; the FORGETTING did not.** Verified 2026-08-16: `CompanionMemory` (importance, lastAccessedAt, embeddingVector), `MemoryConsolidator` and `ReflectionEngine` all exist; no decay function, no pruning, no retrieval scorer, and a second legacy `MemoryEntry` table. | [Memory decay](issues/20-memory-decay.md) owns building the missing half. Do not re-chart the consolidation/reflection layers - they work. |
 
 ## Decisions so far
 
