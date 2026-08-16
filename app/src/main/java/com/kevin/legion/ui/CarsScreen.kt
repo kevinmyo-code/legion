@@ -321,7 +321,7 @@ private val previewRows = listOf(
     ),
     CarRowView(
         vehicleId = "default",
-        label = "this car",
+        label = "a car you haven't named yet",
         sub = "no telemetry recorded",
         active = false, explicit = false, archived = false,
     ),
@@ -342,7 +342,7 @@ private fun PreviewCarsLoading() = LegionTheme {
 private fun PreviewCarsPinned() = LegionTheme {
     CarsContent(
         CarsUiState(
-            loading = false, rows = previewRows, isAuto = false, autoResolvesTo = "this car", archivedCount = 1,
+            loading = false, rows = previewRows, isAuto = false, autoResolvesTo = "a car you haven't named yet", archivedCount = 1,
             allLabels = previewRows.map { it.label },
         ),
         onBack = {}, onActivate = {}, onFollowAdapter = {}, onArchive = {}, onUnarchive = {}, onToggleArchived = {},
@@ -358,7 +358,7 @@ private fun PreviewCarsAuto() = LegionTheme {
             loading = false,
             rows = previewRows.map { it.copy(active = it.vehicleId == "default", explicit = false) },
             isAuto = true,
-            autoResolvesTo = "this car",
+            autoResolvesTo = "a car you haven't named yet",
             allLabels = previewRows.map { it.label },
         ),
         onBack = {}, onActivate = {}, onFollowAdapter = {}, onArchive = {}, onUnarchive = {}, onToggleArchived = {},

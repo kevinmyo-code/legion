@@ -20,7 +20,7 @@ import org.junit.Test
 class CarRowsTest {
     private fun vehicle(
         id: String,
-        name: String = "this car",
+        name: String = "",
         make: String = "",
         model: String = "",
         year: Int = 0,
@@ -77,13 +77,39 @@ class CarRowsTest {
     }
 
     @Test
-    fun `a blank placeholder falls back to its name, never to an invented make or model`() {
-        assertEquals("this car", carLabel(placeholder))
+    fun `a placeholder with nothing at all gets the one last-resort string, never an invented make or model`() {
+        // Ticket 04's label rule (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`):
+        // seedVehicle no longer writes the "this car" sentinel, and a raw id is no longer the
+        // fallback either - both nickname and spec blank means the ONE last-resort string.
+        assertEquals("a car you haven't named yet", carLabel(placeholder))
     }
 
     @Test
-    fun `a row with no name at all falls back to the raw id rather than rendering blank`() {
-        assertEquals("AA:BB:CC", carLabel(vehicle("AA:BB:CC", name = "")))
+    fun `nickname blank, spec present - the spec is the label`() {
+        assertEquals(
+            "2020 Mitsubishi Outlander",
+            carLabel(vehicle("AA:BB:CC", make = "Mitsubishi", model = "Outlander", year = 2020)),
+        )
+    }
+
+    @Test
+    fun `spec blank, nickname present - the nickname is the label`() {
+        assertEquals("the truck", carLabel(vehicle("AA:BB:CC", name = "the truck")))
+    }
+
+    @Test
+    fun `carLabel excludes trim - a nickname matching the untrimmed spec still de-duplicates`() {
+        // Kevin's real row (ticket 04's Answer section): name = "1998 Jeep Cherokee",
+        // full displayLabel (WITH trim) = "1998 Jeep Cherokee Limited" - which does NOT contain the
+        // name, so a trim-inclusive spec would render "1998 Jeep Cherokee (1998 Jeep Cherokee
+        // Limited)" instead of de-duplicating. carLabel/carSpecPrefix use
+        // VehicleController.identitySpec (no trim) precisely so this still collapses to one line.
+        val jeep = Vehicle(
+            obdMac = "REAL:MAC", name = "1998 Jeep Cherokee", make = "Jeep", model = "Cherokee",
+            year = 1998, trim = "Limited", personaPrompt = "",
+        )
+        assertEquals("1998 Jeep Cherokee", carLabel(jeep))
+        assertEquals("", carSpecPrefix(jeep))
     }
 
     @Test

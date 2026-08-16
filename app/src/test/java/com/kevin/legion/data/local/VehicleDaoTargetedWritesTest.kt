@@ -170,4 +170,44 @@ class VehicleDaoTargetedWritesTest {
         assertEquals(null, dao.getByMac("NEVER:SEEN"))
         assertEquals(0, dao.getAll().size)
     }
+
+    // --- clearThisCarSentinel (ticket 04's label rule) -------------------
+
+    @Test
+    fun `clearThisCarSentinel blanks the name on a row carrying the retired sentinel, touching only name and updatedAt`() = runBlocking {
+        dao.upsert(fullVehicle("AA:07").copy(name = "this car"))
+        val before = dao.getByMac("AA:07")!!
+
+        dao.clearThisCarSentinel(now = 1_111L)
+        val after = dao.getByMac("AA:07")!!
+
+        assertEquals("", after.name)
+        assertEquals(1_111L, after.updatedAt)
+        assertEquals(before.copy(name = "", updatedAt = 1_111L), after)
+    }
+
+    @Test
+    fun `clearThisCarSentinel leaves every other name alone, including a real driver-typed one`() = runBlocking {
+        dao.upsert(fullVehicle("AA:08").copy(name = "1998 Jeep Cherokee"))
+        val before = dao.getByMac("AA:08")!!
+
+        dao.clearThisCarSentinel(now = 1_111L)
+        val after = dao.getByMac("AA:08")!!
+
+        assertEquals(before, after)
+    }
+
+    @Test
+    fun `clearThisCarSentinel is idempotent - a no-op once nothing matches`() = runBlocking {
+        dao.upsert(fullVehicle("AA:09").copy(name = "this car"))
+        dao.clearThisCarSentinel(now = 1_111L)
+        val after = dao.getByMac("AA:09")!!
+        assertEquals("", after.name)
+
+        // Nothing left matches "this car", so a second pass must not throw and must not
+        // re-stamp updatedAt on a row it no longer touches.
+        dao.clearThisCarSentinel(now = 2_222L)
+        val stillAfter = dao.getByMac("AA:09")!!
+        assertEquals(after, stillAfter)
+    }
 }

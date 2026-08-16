@@ -342,8 +342,23 @@ class AriaBrain private constructor(context: Context) {
             val ymm = listOf(v.year.takeIf { it > 0 }?.toString().orEmpty(), v.make, v.model)
                 .filter { it.isNotBlank() }.joinToString(" ")
             val label = ymm.ifBlank { "an unregistered car" }
-            val named = v.name.isNotBlank() && v.name != "this car"
-            return if (named) "$label (\"${v.name}\")" else label
+            // Ticket 04's label rule deleted the "this car" sentinel at the source
+            // (VehicleController.seedVehicle no longer writes it, and the two archived rows that
+            // had it are cleared on process start), so the `&& v.name != "this car"` half of this
+            // check is now dead weight rather than a real filter - removed rather than left to rot.
+            // The dual-fact format is deliberate - the model gets the spec and the nickname as
+            // SEPARATE facts, which is why this is not simply VehicleController.label(). But it
+            // needs label()'s de-duplication clause all the same: when the nickname IS the spec,
+            // there are not two facts to keep apart, and this rendered
+            // `1998 Jeep Cherokee ("1998 Jeep Cherokee")` on Kevin's real row - the exact
+            // duplication ticket 04 exists to kill, reproduced in the one place that was exempted
+            // from the rule, with quote marks instead of parentheses as the only difference.
+            //
+            // Caught on review, 2026-08-15. An exemption from a rule is not an exemption from the
+            // reason the rule exists.
+            val nickname = v.name.trim()
+            val redundant = nickname.isBlank() || label.contains(nickname, ignoreCase = true)
+            return if (redundant) label else "$label (\"$nickname\")"
         }
 
         if (vehicles.size == 1) {
@@ -354,8 +369,8 @@ class AriaBrain private constructor(context: Context) {
 
         val activeId = ActiveVehicle.current(appContext)
         val active = vehicles.firstOrNull { it.obdMac == activeId }
-        val activeName = active?.name?.takeIf { it.isNotBlank() && it != "this car" }
-            ?: active?.let { describe(it) } ?: "this car"
+        val activeName = active?.name?.takeIf { it.isNotBlank() }
+            ?: active?.let { describe(it) } ?: "a car you haven't named yet"
 
         return "The driver's fleet: ${vehicles.joinToString(", ") { describe(it) }}. They are " +
             "currently driving $activeName. Tools that read stored records take a `vehicle` " +

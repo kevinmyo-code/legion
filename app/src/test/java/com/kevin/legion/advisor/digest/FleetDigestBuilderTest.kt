@@ -21,8 +21,13 @@ class FleetDigestBuilderTest {
     private val now = 1_700_000_000_000L
     private val monthMs = 30L * 24 * 60 * 60 * 1000L
 
+    // Blank name, not a placeholder nickname (ticket 04's label rule, `.scratch/fleet-maintenance/
+    // issues/04-one-car-label-rule.md`): VehicleController.label now prefers a real, distinct
+    // nickname over the spec ("Car (2018 Honda Civic)" would have been the old "Car" default's
+    // actual output), and every assertion below is exercising the maintenance/odometer text, not
+    // naming - a blank name keeps them on the spec-only branch unchanged.
     private fun vehicle(make: String = "Honda", model: String = "Civic", year: Int = 2018, odometerBaseline: Int = 0) =
-        Vehicle(obdMac = vehicleId, name = "Car", make = make, model = model, year = year, personaPrompt = "", odometerBaseline = odometerBaseline)
+        Vehicle(obdMac = vehicleId, name = "", make = make, model = model, year = year, personaPrompt = "", odometerBaseline = odometerBaseline)
 
     // ------------------------------------------------------------------------------ empty domain
 
@@ -259,6 +264,19 @@ class FleetDigestBuilderTest {
             // mileageLabel intentionally omitted (defaults to "") - the odometer was never set.
         )
         assertTrue(text.contains("VEHICLE 2018 Honda Civic odometer not logged"))
+    }
+
+    @Test
+    fun `a real nickname renders alongside the spec, not silently dropped`() {
+        // Ticket 04's label rule: the digest used to ignore `name` entirely whenever a spec
+        // existed, so renaming a car changed nothing here - the same invisible-RENAME bug the
+        // ticket fixed on every other surface.
+        val named = vehicle().copy(name = "the truck")
+        val text = FleetDigestBuilder.buildDigestText(
+            vehicle = named, currentMileage = 0, items = emptyList(), unknownNames = emptyList(),
+            nextService = null, codeEvents = emptyList(), recentServices = emptyList(), now = now,
+        )
+        assertTrue(text.contains("VEHICLE the truck (2018 Honda Civic) odometer not logged"))
     }
 
     @Test

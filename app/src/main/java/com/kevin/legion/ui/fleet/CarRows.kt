@@ -78,13 +78,13 @@ data class CarRowView(
  * Builds the roster.
  *
  * **A car is never labelled with something it did not state.** A placeholder row
- * (see [VehicleController]'s `seedVehicle`) has no make, model or year, so
- * [VehicleController.displayLabel] returns blank and the fallback is the row's
- * own `name` - "this car" - and then, only if even that is empty, the raw id.
- * The id is a last resort rather than a first choice because a MAC or a
- * `car:`-prefixed UUID tells the driver nothing, but it does at least
- * distinguish two otherwise identical blank rows, which is exactly the state a
- * device that ran both codebases can end up in.
+ * (see [VehicleController]'s `seedVehicle`) has no name, make, model or year, so
+ * [carLabel] falls all the way to [VehicleController]'s one last-resort string
+ * ("a car you haven't named yet", ticket 04's label rule,
+ * `.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`) rather than a raw
+ * MAC or `car:`-prefixed UUID - a device id was the earlier last resort and told
+ * the driver nothing either way, so there is no longer a reason to prefer it over
+ * the one honest string every other blank surface already uses.
  *
  * **Ordering:** the active car first (it is what FLEET is showing, so it
  * belongs at the top), then the rest in label order, then archived cars last.
@@ -130,10 +130,10 @@ fun buildCarRows(
  * state" rule - and the spec is not lost, it moves to the row's sub-line.
  */
 internal fun carLabel(vehicle: Vehicle): String {
-    val spec = VehicleController.displayLabel(vehicle)
+    val spec = VehicleController.identitySpec(vehicle)
     val name = vehicle.name.trim()
     return when {
-        name.isBlank() -> spec.ifBlank { vehicle.obdMac }
+        name.isBlank() -> spec.ifBlank { "a car you haven't named yet" }
         spec.isBlank() -> name
         // `name` is not always a nickname the driver chose - import sets it from the model, so the
         // Outlander arrives already called "Outlander". Preferring it blindly would DOWNGRADE
@@ -149,9 +149,14 @@ internal fun carLabel(vehicle: Vehicle): String {
  * The spec line that sits under a renamed car, so calling it "the truck" never
  * costs the driver the knowledge that it is a 2020 Mitsubishi Outlander. Blank
  * when the car has no spec, or when [carLabel] is already showing it.
+ *
+ * [VehicleController.identitySpec], not [VehicleController.displayLabel] - trim is deliberately
+ * excluded (ticket 04's label rule), see [VehicleController.label]'s doc for why: it breaks this
+ * exact de-duplication check on a car named after its own spec, Kevin's own Jeep being the case
+ * that surfaced it.
  */
 internal fun carSpecPrefix(vehicle: Vehicle): String {
-    val spec = VehicleController.displayLabel(vehicle)
+    val spec = VehicleController.identitySpec(vehicle)
     return if (spec.isBlank() || spec == carLabel(vehicle)) "" else spec
 }
 
@@ -481,7 +486,7 @@ private fun PreviewCarRowActiveAuto() = LegionTheme {
         CarRow(
             CarRowView(
                 vehicleId = "AA:BB:CC:DD:EE:FF",
-                label = "this car",
+                label = "a car you haven't named yet",
                 sub = "no telemetry recorded",
                 active = true, explicit = false, archived = false,
             ),
@@ -509,7 +514,7 @@ private fun PreviewCarRowArchived() = LegionTheme {
 @Preview(name = "Auto row: selected", widthDp = 360)
 @Composable
 private fun PreviewAutoRow() = LegionTheme {
-    Surface { AutoCarRow(isAuto = true, resolvesTo = "this car", onSelect = {}) }
+    Surface { AutoCarRow(isAuto = true, resolvesTo = "a car you haven't named yet", onSelect = {}) }
 }
 
 @Preview(name = "Add a car: blank form", widthDp = 360, heightDp = 640)

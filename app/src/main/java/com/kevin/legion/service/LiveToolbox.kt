@@ -1374,7 +1374,10 @@ object LiveToolbox {
                 val history = CarToolbelt.codeHistory(context, limit, vehicle.obdMac)
                 JSONObject()
                     .put("success", true)
-                    .put("vehicle", vehicle.name)
+                    // Ticket 04's label rule: this "vehicle" field is a single identifier the model
+                    // is expected to speak back (unlike list_vehicles' decomposed name/year/make/
+                    // model/trim tuple below, which stays raw), so it goes through the one rule too.
+                    .put("vehicle", VehicleController.label(vehicle))
                     .put("history", history)
             }
             "triage_symptom" -> triageSymptom(context, args)
@@ -1553,13 +1556,11 @@ object LiveToolbox {
             return null
         }
         val connectedVehicle = VehicleController.vehicleFor(context, connectedId)
-        // Name first (what the driver actually calls it, e.g. "the Outlander"),
-        // then the bare year/make/model, then a last-resort placeholder -
-        // mirrors VehicleResolver's own displayName so the refusal names the
-        // car the same way the rest of fleet-wide voice does.
-        val connectedLabel = connectedVehicle.name
-            .takeIf { it.isNotBlank() && it != "this car" }
-            ?: VehicleController.displayLabel(connectedVehicle).ifBlank { "connected car" }
+        // Ticket 04's label rule: the one rule, every surface - see VehicleController.label's own
+        // doc. This used to hand-roll the same name-then-spec-then-placeholder precedence
+        // VehicleResolver.displayName also hand-rolled, with its own "this car" filter and its own
+        // last-resort literal - now both just call the one function.
+        val connectedLabel = VehicleController.label(connectedVehicle)
 
         val match = VehicleResolver.resolveVehicle(context, requested)
         val isConnectedCar = match is VehicleMatch.Resolved && match.vehicle.obdMac == connectedId
@@ -1637,7 +1638,7 @@ object LiveToolbox {
             }
             "archive" -> withResolvedVehicle(context, args) {
                 VehicleController.archive(context, it.obdMac)
-                result(true, "Archived the ${VehicleController.displayLabel(it)}. Nothing was deleted - its history is still there.")
+                result(true, "Archived the ${VehicleController.label(it)}. Nothing was deleted - its history is still there.")
             }
             // Deliberately NOT withResolvedVehicle: VehicleResolver only ever
             // matches against the non-archived roster (see its own comment), so
@@ -1645,6 +1646,10 @@ object LiveToolbox {
             // archived by definition permanently unreachable.
             "unarchive" -> {
                 val query = args.optString("vehicle")
+                // Matching, not labelling - kept on displayLabel's trim-inclusive spec deliberately
+                // (ticket 04's label rule is about how a car is NAMED to the driver, not what a
+                // spoken query is matched against; narrowing this to the label string would drop
+                // trim as a matchable word, e.g. "the Limited", for no gain).
                 val hits = VehicleController.allVehiclesIncludingArchived(context)
                     .filter { it.archived }
                     .filter {
@@ -1654,11 +1659,11 @@ object LiveToolbox {
                 when (hits.size) {
                     1 -> {
                         VehicleController.unarchive(context, hits[0].obdMac)
-                        result(true, "The ${VehicleController.displayLabel(hits[0])} is back on the roster.")
+                        result(true, "The ${VehicleController.label(hits[0])} is back on the roster.")
                     }
                     0 -> result(false, "I don't have an archived car matching \"$query\".")
                     else -> result(false, "\"$query\" matches more than one archived car - " +
-                        "${hits.joinToString(", ") { VehicleController.displayLabel(it) }}. Which one?")
+                        "${hits.joinToString(", ") { VehicleController.label(it) }}. Which one?")
                 }
             }
             else -> result(false, "I don't know how to \"$action\" a car.")
@@ -1856,6 +1861,10 @@ object LiveToolbox {
         val connectedId = ObdBluetoothManager.connectedDeviceAddress
         val arr = JSONArray()
         for (v in vehicles) {
+            // Raw v.name deliberately, not VehicleController.label - this is a decomposed tuple
+            // (name/year/make/model/trim as separate fields, ticket 04's label rule doesn't apply
+            // to the individual raw facts), unlike the single "vehicle" identifier field other
+            // tools below send when there is no sibling year/make/model to decompose into.
             val o = JSONObject()
                 .put("name", v.name)
                 .put("year", v.year)
@@ -3410,7 +3419,10 @@ object LiveToolbox {
             if (supported.isEmpty()) {
                 return@withResolvedVehicle result(
                     false,
-                    "I haven't profiled ${vehicle.name} yet - plug the adapter into it once and I'll " +
+                    // Ticket 04's label rule: the one rule, every surface - see
+                    // VehicleController.label's own doc. This whole function used raw Vehicle.name
+                    // throughout (the ticket's "capability-probe replies" surface).
+                    "I haven't profiled ${VehicleController.label(vehicle)} yet - plug the adapter into it once and I'll " +
                         "record what it can report.",
                 )
             }
@@ -3426,7 +3438,7 @@ object LiveToolbox {
                 }
                 return@withResolvedVehicle JSONObject()
                     .put("success", true)
-                    .put("vehicle", vehicle.name)
+                    .put("vehicle", VehicleController.label(vehicle))
                     .put("readable_count", caps.readable.size)
                     .put("readable_by_group", byGroup)
                     // Surfaced, never hidden: "supported but we don't decode it yet" is a real and
@@ -3443,7 +3455,7 @@ object LiveToolbox {
                     // different answers and merging them would misinform.
                     val elsewhere = matchPid(sensorArg, PID_REGISTRY.filter { it.readable })
                     if (elsewhere.isNotEmpty()) {
-                        result(false, "${vehicle.name} doesn't report ${elsewhere.first().description.lowercase()} - " +
+                        result(false, "${VehicleController.label(vehicle)} doesn't report ${elsewhere.first().description.lowercase()} - " +
                             "it's not in the set of sensors that car answers.")
                     } else {
                         result(false, "I don't know a sensor called \"$sensorArg\".")
@@ -3458,17 +3470,17 @@ object LiveToolbox {
                     if (!connectedToThisCar) {
                         return@withResolvedVehicle result(
                             false,
-                            "${vehicle.name} does report ${spec.description.lowercase()}, but I need the " +
+                            "${VehicleController.label(vehicle)} does report ${spec.description.lowercase()}, but I need the " +
                                 "adapter plugged into it to read the current value.",
                         )
                     }
                     val value = ObdBluetoothManager.readPid(spec)
                         ?: return@withResolvedVehicle result(
-                            false, "${vehicle.name} didn't answer for ${spec.label} just now.",
+                            false, "${VehicleController.label(vehicle)} didn't answer for ${spec.label} just now.",
                         )
                     JSONObject()
                         .put("success", true)
-                        .put("vehicle", vehicle.name)
+                        .put("vehicle", VehicleController.label(vehicle))
                         .put("sensor", spec.key)
                         .put("description", spec.description)
                         .put("value", (value * 100).roundToInt() / 100.0)
@@ -3696,6 +3708,11 @@ object LiveToolbox {
             return result(success = false, message = why)
         }
 
+        // Deliberately displayLabel, not VehicleController.label (ticket 04's label rule is about
+        // naming a car TO the driver; this string is grounding text fed INTO a diagnostic
+        // specialist's own reasoning, where the trim it drops can be mechanically relevant, e.g.
+        // "330i" vs "330Ci ZHP" - a nickname-preferring label would tell the specialist less, not
+        // just render differently).
         val label = VehicleController.displayLabel(VehicleController.currentVehicle(context))
 
         return agentResult("I couldn't reach the diagnostics specialist just now - try again in a sec.") {
@@ -3745,6 +3762,9 @@ object LiveToolbox {
             message = "Tell me what it's doing - a noise, a smell, how it's driving - and I'll work through it.")
 
         val vehicle = VehicleController.currentVehicle(context)
+        // displayLabel, not label - specialist grounding text, same reasoning as diagnose_codes
+        // above (ticket 04's label rule governs naming the car TO the driver, not what gets fed
+        // into a reasoning specialist's own prompt).
         val label = VehicleController.displayLabel(vehicle)
 
         val readings = StringBuilder()
@@ -3875,7 +3895,7 @@ object LiveToolbox {
             }
             if (!isActiveCar) {
                 put("note", "Live/lifetime MPG only tracks the car actually being driven right now - " +
-                    "these are ${vehicle.name}'s recorded per-drive figures only.")
+                    "these are ${VehicleController.label(vehicle)}'s recorded per-drive figures only.")
             }
         }
     }
@@ -3926,6 +3946,9 @@ object LiveToolbox {
      */
     private suspend fun checkColdStart(context: Context): JSONObject {
         val vehicle = VehicleController.currentVehicle(context)
+        // The `label` computed below (for ColdStartAgent) stays on displayLabel deliberately -
+        // see diagnose_codes' comment above for why specialist grounding text is exempt from
+        // ticket 04's label rule.
         val markers = CarDatabase.getDatabase(context).odbSampleDao()
             .getLatest(vehicle.obdMac, "COLD_START", 1)
         if (markers.isEmpty()) {
@@ -4124,6 +4147,7 @@ object LiveToolbox {
      */
     private suspend fun askMaintenance(context: Context, args: JSONObject, vehicle: Vehicle): JSONObject {
         val question = args.optString("question")
+        // displayLabel deliberately - specialist grounding text, see diagnose_codes' comment above.
         val label = VehicleController.displayLabel(vehicle)
 
         val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)

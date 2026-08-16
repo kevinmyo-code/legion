@@ -151,7 +151,10 @@ fun DrivingModeScreen(onExit: () -> Unit) {
     // path fired.
     LaunchedEffect(Unit) {
         val vehicle = VehicleController.currentVehicle(context)
-        vehicleName = vehicle.name
+        // Ticket 04's label rule: the one rule, every surface - see VehicleController.label's doc.
+        // This used to be raw Vehicle.name, which is how the seedVehicle placeholder's literal
+        // "this car" reached this screen and got shouted by the .uppercase() below.
+        vehicleName = VehicleController.label(vehicle)
         val dao = CarDatabase.getDatabase(context).odbSampleDao()
         // Manual override (Kevin, 2026-08-08): driving mode can be entered
         // with NO dongle paired at all, so "the link dropped" only means
@@ -374,7 +377,10 @@ private fun DrivingHudLine(vehicleName: String, linkLive: Boolean, clock: String
         )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (vehicleName.isNotBlank()) {
-                Text(vehicleName.uppercase(), style = LegionType.stamp, color = sem.faint)
+                // NOT .uppercase() (ticket 04's label rule) - LegionType.stamp is chrome styling,
+                // uppercasing is a chrome concern, and a car's name is DATA the driver typed. This
+                // is exactly how the seedVehicle placeholder used to shout "THIS CAR" here.
+                Text(vehicleName, style = LegionType.stamp, color = sem.faint)
             }
             Text(clock, style = LegionType.stamp, color = sem.faint)
         }

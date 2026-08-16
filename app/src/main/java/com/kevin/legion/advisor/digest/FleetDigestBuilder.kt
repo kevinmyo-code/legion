@@ -138,11 +138,10 @@ object FleetDigestBuilder : DigestBuilder {
         return lines.joinToString("\n")
     }
 
-    private fun vehicleLabel(vehicle: Vehicle): String {
-        val parts = listOf(vehicle.year.takeIf { it > 0 }?.toString(), vehicle.make, vehicle.model)
-            .filter { !it.isNullOrBlank() }
-        return if (parts.isEmpty()) vehicle.name.ifBlank { "vehicle" } else parts.joinToString(" ")
-    }
+    // Ticket 04's label rule: the one rule, every surface, including this digest - see
+    // VehicleController.label's own doc. Pure, no Context/Room, safe to call from this file's own
+    // "pure assembly" posture (see buildDigestText's doc).
+    private fun vehicleLabel(vehicle: Vehicle): String = VehicleController.label(vehicle)
 
     /** "MAINTENANCE DUE" section - see class doc for why [buildDueRows] is reused rather than
      * re-derived. `neverDone` items read "overdue-now (never logged)" per the ticket's explicit

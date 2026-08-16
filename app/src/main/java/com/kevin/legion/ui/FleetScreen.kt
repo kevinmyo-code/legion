@@ -361,7 +361,10 @@ fun FleetScreen(
         // re-introduced by accident when DRIVES' new reads were added.
         state = FleetUiState(
             loading = false,
-            vehicleLabel = VehicleController.displayLabel(vehicle).ifBlank { "This car" },
+            // Ticket 04's label rule: the one rule, every surface, screen and speech alike - see
+            // VehicleController.label's own doc. VehicleController.displayLabel never read `name`
+            // at all, which is how RENAME could visibly do nothing on this exact pane.
+            vehicleLabel = VehicleController.label(vehicle),
             // Ticket 10: bare "N mi" only when it IS the driver's own last reading with nothing
             // accrued since; every drifting-estimate value carries the "estimated, last confirmed..."
             // caveat in words, every time - see VehicleController.mileageCaveat's own doc for the
@@ -970,7 +973,10 @@ private fun CarsPane(
     val sem = LocalLegionSemantics.current
     DeckPane(header = "Cars") {
         DeckRow(
-            label = state.vehicleLabel.ifBlank { "This car" },
+            // Defensive only - VehicleController.label never returns blank, so this ifBlank is
+            // unreachable in practice; kept as a belt-and-braces fallback with the one canonical
+            // last-resort string rather than removed outright.
+            label = state.vehicleLabel.ifBlank { "a car you haven't named yet" },
             value = state.mileageValueText.ifBlank { "-" },
             modifier = Modifier.clickable(onClick = onOpenCars),
         )
@@ -1073,7 +1079,7 @@ private fun PreviewFleetConnectedEmpty() = LegionTheme {
     FleetContent(
         FleetUiState(
             loading = false,
-            vehicleLabel = "this car",
+            vehicleLabel = "a car you haven't named yet",
             mileageValueText = "",
             connected = true,
             liveRows = emptyList(),

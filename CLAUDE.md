@@ -100,7 +100,7 @@ repeat. Commit map and ticket changes like any other file.
 | Voice AI | Gemini Live WebSocket STS | `service/GeminiLiveSession.kt`, server VAD, half-duplex |
 | Sub-agents | Gemini Flash REST | `ai/SubAgent.kt`, one-shot + bounded investigate loop; now also takes an optional inline image part (`imageBytes`/`imageMimeType`) for pantry vision |
 | BYO key | Paste + 1-token validation ping | Ping is `ai/GeminiKeyValidator.kt` (`VALID`/`INVALID_KEY`/`NETWORK_ERROR`); storage is `ai/KeyVault.kt` (Keystore AES/GCM) via `CompanionProfile.saveGeminiKey`; resolution is `ai/GeminiKeyProvider.kt`. Direct to Google, no proxy |
-| Local DB | Room **v5** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). v1->v2 ledger, v2->v3 pantry, v3->v4 `ingested_files`, v4->v5 `companion_profiles`; all real verbatim generated-SQL migrations with `exportSchema` |
+| Local DB | Room **v21** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). v1->v2 ledger, v2->v3 pantry, v3->v4 `ingested_files`, v4->v5 `companion_profiles`; all real verbatim generated-SQL migrations with `exportSchema` |
 | OBD | ELM327 Bluetooth RFCOMM + BLE | Unchanged from Midnight AI |
 | Music | Generic MediaSession transport (`media/MusicController`) + Spotify App Remote direct play | `MusicRouter`/`MusicSource`/mixtapes all retired |
 | Location | Android `Geocoder` | The Mapbox-backed `NavGeocoder`, embedded nav, and the phone-to-head-unit GPS beacon are all gone |
@@ -164,7 +164,7 @@ anchored to external, falsifiable reality.
 
 ---
 
-## 5. Data Layer (Room v5)
+## 5. Data Layer (Room v21)
 
 Additive migrations only, verbatim generated SQL, `exportSchema = true`, schema JSON committed
 under `app/schemas/`, no destructive fallback on upgrade.

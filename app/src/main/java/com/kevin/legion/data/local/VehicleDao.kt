@@ -142,6 +142,18 @@ interface VehicleDao {
     suspend fun applyDecodedIdentity(mac: String, year: Int, make: String, model: String, trim: String, now: Long): Int
 
     /**
+     * Clears the retired `"this car"` sentinel off any row still carrying it (ticket 04's label
+     * rule, `.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`) - a data write through
+     * this existing targeted query, not a migration. `name` has always been a plain TEXT column
+     * with no CHECK constraint, so widening what counts as "unnamed" changes no schema, the same
+     * way [com.kevin.legion.ledger.IngestMethod.UNRECONCILED] needed none. A blank name now means
+     * exactly what every other never-set field on this row already means: unknown, not a stated
+     * fact. See [com.kevin.legion.vehicle.VehicleController.clearThisCarSentinel] for the caller.
+     */
+    @Query("UPDATE vehicles SET name = '', updatedAt = :now WHERE name = 'this car'")
+    suspend fun clearThisCarSentinel(now: Long)
+
+    /**
      * Hides/unhides a car from the roster and picker (touches [Vehicle.archived]
      * only). Replaces a read-then-whole-row-write round trip in
      * [com.kevin.legion.vehicle.VehicleController]'s `setArchived` that could

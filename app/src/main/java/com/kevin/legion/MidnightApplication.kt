@@ -138,6 +138,19 @@ class MidnightApplication : Application() {
                 runCatching { com.kevin.legion.notes.AlarmScheduler.rescheduleAll(this@MidnightApplication) }
                     .onFailure { MidnightEvents.appStartWorkFailed("reschedule_alarms", it) }
             }
+
+            // Ticket 04's label rule (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`):
+            // the retired "this car" sentinel is a magic value masquerading as user data, and the
+            // two rows carrying it are both archived and invisible today - which is exactly why
+            // they would otherwise survive forever to trap the next label surface that forgets to
+            // filter it. Idempotent (a no-op UPDATE once no row matches), so this runs
+            // unconditionally on every process start rather than tracking a run-once flag, same L12
+            // reasoning as the caches above.
+            appScope.launch {
+                runCatching {
+                    com.kevin.legion.vehicle.VehicleController.clearThisCarSentinel(this@MidnightApplication)
+                }.onFailure { MidnightEvents.appStartWorkFailed("clear_this_car_sentinel", it) }
+            }
         }
 
         MidnightEvents.setBuildContext(

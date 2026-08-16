@@ -114,7 +114,8 @@ fun TelemetryScreen(onBack: () -> Unit) {
         // Found by auditing for the pattern after the ledger bug, not by a
         // failure - this one has not been seen in the wild, and the point is
         // that it would not announce itself if it happened.
-        val carLabel = VehicleController.displayLabel(vehicle).ifBlank { vehicle.name }
+        // Ticket 04's label rule: the one rule, every surface - see VehicleController.label's doc.
+        val carLabel = VehicleController.label(vehicle)
         val totalCount = dao.totalCount(vehicle.obdMac)
         val firstSampleMs = dao.firstSampleMs(vehicle.obdMac)
         val lastSampleMs = dao.lastSampleMs(vehicle.obdMac)
@@ -201,7 +202,7 @@ fun TelemetryContent(
                 )
 
                 state.totalCount == 0 -> {
-                    SectionHeader(state.carLabel.ifBlank { "THIS CAR" })
+                    SectionHeader(state.carLabel.ifBlank { "a car you haven't named yet" })
                     Text(
                         "No telemetry recorded for this car. The recorder writes a sample every 30 seconds while an OBD adapter is connected and the engine is running.",
                         style = MaterialTheme.typography.bodySmall,
@@ -212,7 +213,7 @@ fun TelemetryContent(
 
                 else -> {
                     SectionHeader(
-                        state.carLabel.ifBlank { "THIS CAR" },
+                        state.carLabel.ifBlank { "a car you haven't named yet" },
                         "${groupThousands(state.totalCount)} readings",
                     )
                     spanLine(state.firstSampleMs, state.lastSampleMs)?.let { span ->
@@ -345,7 +346,7 @@ private fun PreviewTelemetryEmptyRange() = LegionTheme {
 @Composable
 private fun PreviewTelemetryNone() = LegionTheme {
     TelemetryContent(
-        TelemetryUiState(loading = false, carLabel = "this car", totalCount = 0),
+        TelemetryUiState(loading = false, carLabel = "a car you haven't named yet", totalCount = 0),
         onBack = {}, onSelectPid = {}, onSelectRange = {},
     )
 }

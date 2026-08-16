@@ -114,7 +114,11 @@ object VehicleController {
         val dao = CarDatabase.getDatabase(context).vehicleDao()
         val existing = dao.getByMac(vehicleId)
         val now = System.currentTimeMillis()
-        val name = existing?.name?.takeIf { it.isNotBlank() && it != "this car" } ?: model
+        // Ticket 04's label rule deleted the "this car" sentinel at the source (seedVehicle no
+        // longer writes it, and the archived rows that had it are cleared on process start), so
+        // the `&& it != "this car"` half of this check is dead weight now, same as AriaBrain's -
+        // removed rather than left to rot.
+        val name = existing?.name?.takeIf { it.isNotBlank() } ?: model
         val vehicle: Vehicle
         if (existing == null) {
             // Genuinely new row - nothing to preserve, a real INSERT.
@@ -782,6 +786,10 @@ object VehicleController {
     ): String {
         if (make.isBlank() || model.isBlank()) return "I need at least a make and model to add a car."
         val dao = CarDatabase.getDatabase(context).vehicleDao()
+        // Deliberately NOT VehicleController.label (ticket 04's label rule): this confirms exactly
+        // the facts the driver just stated, trim included, right after stating them - dropping trim
+        // here would silently discard something they just said, unlike an ambient "which car is
+        // this" label elsewhere.
         val label = listOf(year.takeIf { it >= 1900 }?.toString().orEmpty(), make, model, trim)
             .filter { it.isNotBlank() }.joinToString(" ")
 
@@ -791,7 +799,7 @@ object VehicleController {
             it.make.equals(make, true) && it.model.equals(model, true) &&
                 (year < 1900 || it.year == year)
         }?.let {
-            return "You've already got a ${displayLabel(it)} on file. " +
+            return "You've already got a ${label(it)} on file. " +
                 "If that one's wrong, tell me to correct it instead of adding another."
         }
 
@@ -815,7 +823,7 @@ object VehicleController {
         return buildString {
             append("Added the $label. ")
             if (found > 0) append("Pulled up $found maintenance items for it. ")
-            append("You're still on the ${displayLabel(active)} - say switch to the $model when you want me on that one.")
+            append("You're still on the ${label(active)} - say switch to the $model when you want me on that one.")
         }
     }
 
@@ -845,7 +853,7 @@ object VehicleController {
             name = name?.takeIf { it.isNotBlank() } ?: existing.name,
             confirmed = true,
         )
-        if (updated == existing) return "Nothing to change there - it's already a ${displayLabel(existing)}."
+        if (updated == existing) return "Nothing to change there - it's already a ${label(existing)}."
         // Targeted write (ticket 13): identity columns only, via
         // VehicleDao.setIdentity - the odometer, persona and archive state on
         // this row ride along untouched instead of round-tripping through a
@@ -856,7 +864,7 @@ object VehicleController {
             !updated.make.equals(existing.make, true) || !updated.model.equals(existing.model, true)
         val found = if (identityChanged) applyServiceIntervals(context, updated) else 0
         return buildString {
-            append("Fixed - that one's a ${displayLabel(updated)} now. Its history stayed with it. ")
+            append("Fixed - that one's a ${label(updated)} now. Its history stayed with it. ")
             if (found > 0) append("Refreshed $found maintenance items for the corrected car.")
         }
     }
@@ -956,9 +964,9 @@ object VehicleController {
     suspend fun switchTo(context: Context, vehicleId: String): String {
         val vehicle = CarDatabase.getDatabase(context).vehicleDao().getByMac(vehicleId)
             ?: return "I couldn't find that car on file."
-        if (vehicle.archived) return "The ${displayLabel(vehicle)} is archived - want me to bring it back first?"
+        if (vehicle.archived) return "The ${label(vehicle)} is archived - want me to bring it back first?"
         ActiveVehicle.select(context, vehicleId)
-        return "You're on the ${displayLabel(vehicle)} now."
+        return "You're on the ${label(vehicle)} now."
     }
 
     /**
@@ -1033,11 +1041,83 @@ object VehicleController {
         )
     }
 
+    /**
+     * `year make model trim` - every stated identity fact, including trim. **Not the driver-facing
+     * label anymore** (ticket 04, `.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`) -
+     * see [label] for that. This is kept for the two kinds of caller that genuinely need the
+     * fuller, trim-inclusive spec rather than the one label rule: sub-agent grounding text
+     * ([DiagnosticAgent.diagnose]/[SymptomAgent.triage]/[ColdStartAgent.analyze]/[MaintenanceAgent.answer]
+     * all reason more precisely with a real trim, e.g. "330i" vs "330Ci ZHP", than a driver would
+     * ever want spoken back as a label) and driver-facing CONFIRMATION sentences that echo exactly
+     * the facts just stated/corrected ([addVehicle]'s "Added the ..." line), where dropping trim
+     * would silently discard something the driver just said. Every surface that names a car TO the
+     * driver as an ambient label - screen or spoken - goes through [label], not this.
+     */
     fun displayLabel(vehicle: Vehicle): String =
         listOf(
             vehicle.year.takeIf { it > 0 }?.toString().orEmpty(),
             vehicle.make, vehicle.model, vehicle.trim,
         ).filter { it.isNotBlank() }.joinToString(" ")
+
+    /**
+     * `year make model` - [displayLabel] minus trim. The `spec` half of [label]'s rule, and also
+     * the building block [com.kevin.legion.ui.fleet.CarRows.carLabel]/[com.kevin.legion.ui.fleet.CarRows.carSpecPrefix]
+     * use for the two-line narrow-width variant of the same rule (ticket 04's "nickname on top,
+     * spec beneath" shape) - trim is excluded there for the identical reason it is excluded here,
+     * so the two shapes never disagree about what "the spec" is.
+     */
+    fun identitySpec(vehicle: Vehicle): String =
+        listOf(
+            vehicle.year.takeIf { it > 0 }?.toString().orEmpty(),
+            vehicle.make, vehicle.model,
+        ).filter { it.isNotBlank() }.joinToString(" ")
+
+    /**
+     * THE one car-label rule (ticket 04, resolved 2026-08-15,
+     * `.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`) - every surface that names a
+     * car to the driver, screen and speech alike, renders through this function. It replaced
+     * twelve-then-twenty-four ad-hoc call sites across [displayLabel] and raw [Vehicle.name] reads,
+     * each with its own drifted precedence and its own last-resort literal ("This car", "THIS CAR",
+     * "vehicle", "an unnamed car", "Fleet", a raw [Vehicle.obdMac]) - RENAME visibly worked on three
+     * of them and silently did nothing on the rest.
+     *
+     * ```
+     * nickname blank, spec blank -> "a car you haven't named yet"
+     * nickname blank             -> spec
+     * spec blank                 -> nickname
+     * spec CONTAINS nickname     -> spec        (de-duplication: a car named after its own spec -
+     *                                             Kevin's own Jeep - must not read twice)
+     * otherwise                  -> "nickname (spec)"
+     * ```
+     *
+     * `spec` is [identitySpec] - YEAR MAKE MODEL, never [displayLabel]'s trim-inclusive form. Trim
+     * breaks the de-duplication clause exactly when a driver has named the car after its own spec
+     * (the common case for a car with no real nickname): `displayLabel` on Kevin's Jeep is
+     * "1998 Jeep Cherokee Limited", which does not contain his stored name "1998 Jeep Cherokee",
+     * so the clause would miss and the row would render "1998 Jeep Cherokee (1998 Jeep Cherokee
+     * Limited)". Trim still belongs on a detail surface - just not this one.
+     *
+     * Never blank. The single last-resort string replaces every retired literal above; **it is not
+     * a magic value written to the database** the way `"this car"` used to be - a blank
+     * [Vehicle.name] means "unknown", full stop, and this function is where that state gets worded,
+     * every time, rather than a sentinel some callers remembered to filter and most did not.
+     *
+     * Where there is no room for one line, [com.kevin.legion.ui.fleet.CarRows.carLabel] /
+     * [com.kevin.legion.ui.fleet.CarRows.carSpecPrefix] implement the identical precedence split
+     * across two lines (nickname on top, spec beneath) rather than combining them - a deliberate,
+     * named two-shape API per this rule, not a second rule.
+     */
+    fun label(vehicle: Vehicle): String {
+        val nickname = vehicle.name.trim()
+        val spec = identitySpec(vehicle)
+        return when {
+            nickname.isBlank() && spec.isBlank() -> "a car you haven't named yet"
+            nickname.isBlank() -> spec
+            spec.isBlank() -> nickname
+            spec.contains(nickname, ignoreCase = true) -> spec
+            else -> "$nickname ($spec)"
+        }
+    }
 
     /** Current odometer estimate: driver-reported baseline plus GPS-or-OBD trip distance since. */
     fun currentMileage(vehicle: Vehicle): Int =
@@ -1655,10 +1735,29 @@ object VehicleController {
     private fun seedVehicle(vehicleId: String): Vehicle =
         Vehicle(
             obdMac = vehicleId,
-            name = "this car",
+            // Blank, not the retired "this car" sentinel (ticket 04's label rule) - a placeholder
+            // states nothing it does not know, and "unnamed" is exactly the state [label] already
+            // words correctly. A magic string here is exactly what let this leak past whichever
+            // surface's own filter forgot it - see the ticket for the two archived rows it wrote
+            // permanently before this fix.
+            name = "",
             make = "",
             model = "",
             year = 0,
             personaPrompt = "",
         )
+
+    /**
+     * One-time cleanup for the retired `"this car"` sentinel (ticket 04's label rule,
+     * `.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`): a data write through
+     * [com.kevin.legion.data.local.VehicleDao.clearThisCarSentinel], not a migration - `name` has
+     * always been a plain TEXT column with no CHECK constraint, so this changes no schema. The two
+     * rows carrying it are both archived and invisible today, which is exactly why they would
+     * otherwise survive to trap the next label surface that forgets to filter it. Idempotent (a
+     * no-op UPDATE once no row matches), so [com.kevin.legion.MidnightApplication] runs it
+     * unconditionally on every process start rather than tracking a run-once flag.
+     */
+    suspend fun clearThisCarSentinel(context: Context) {
+        CarDatabase.getDatabase(context).vehicleDao().clearThisCarSentinel(System.currentTimeMillis())
+    }
 }

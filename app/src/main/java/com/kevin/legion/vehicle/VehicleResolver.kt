@@ -131,7 +131,12 @@ object VehicleResolver {
         listOf(v.year.takeIf { it > 0 }?.toString().orEmpty(), v.make, v.model, v.trim, v.name)
             .joinToString(" ")
 
-    /** What a car is called back to the driver - name if it has one, else the make/model. */
-    private fun displayName(v: Vehicle): String =
-        v.name.takeIf { it.isNotBlank() && it != "this car" } ?: VehicleController.displayLabel(v).ifBlank { "an unnamed car" }
+    /**
+     * What a car is called back to the driver. Delegates entirely to [VehicleController.label]
+     * (ticket 04's label rule, `.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`) rather
+     * than its own precedence - this function used to be the ONE place in the app with a
+     * `"this car"` sentinel filter, everywhere else forgot it, and the fix is one rule everywhere
+     * rather than one more site remembering to filter.
+     */
+    private fun displayName(v: Vehicle): String = VehicleController.label(v)
 }

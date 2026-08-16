@@ -49,6 +49,10 @@ class VehicleControllerSeedingTest {
         assertEquals("", placeholder.make)
         assertEquals("", placeholder.model)
         assertEquals(0, placeholder.year)
+        // Ticket 04's label rule (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`):
+        // blank, not the retired "this car" sentinel - a magic string a caller has to remember to
+        // filter is exactly what let the two archived rows carry it permanently.
+        assertEquals("", placeholder.name)
 
         assertNull("seedVehicle must not have persisted a row", dao.getByMac(VehicleController.DEFAULT_VEHICLE_ID))
         assertTrue("getAll() must not contain the placeholder", dao.getAll().isEmpty())

@@ -625,9 +625,13 @@ object ObdBluetoothManager {
      */
     private suspend fun announceActiveCar(context: Context) {
         runCatching {
-            val label = VehicleController.displayLabel(VehicleController.currentVehicle(context))
-                .ifBlank { "this car" }
-            CompanionPhase.showNotice("RECORDING AS ${label.uppercase()}")
+            // Ticket 04's label rule: the one rule, every surface - see VehicleController.label's
+            // doc. Only the fixed "RECORDING AS " chrome is uppercase; the label itself is data
+            // (a driver-typed nickname) and must never be transformed - the old
+            // `.uppercase()` over the WHOLE string is how this notice used to shout a renamed car's
+            // own name back at the driver.
+            val label = VehicleController.label(VehicleController.currentVehicle(context))
+            CompanionPhase.showNotice("RECORDING AS $label")
         }
     }
 

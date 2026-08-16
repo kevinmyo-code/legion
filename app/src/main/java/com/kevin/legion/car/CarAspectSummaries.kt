@@ -34,7 +34,10 @@ object CarAspectSummaries {
      */
     suspend fun fleet(context: Context): Pair<String, String> {
         val vehicle = VehicleController.currentVehicle(context)
-        val label = vehicle.name.ifBlank { VehicleController.displayLabel(vehicle) }.ifBlank { "Fleet" }
+        // Ticket 04's label rule: the one rule, every surface, including this Android Auto row -
+        // see VehicleController.label's own doc. Not verified on a head unit (this probe has never
+        // touched one - see the file doc), so this is traced-correct rather than confirmed live.
+        val label = VehicleController.label(vehicle)
         // Ticket 10: any mileage not the driver's own confirmed reading says so, in words, on every
         // surface that renders OR speaks it - Android Auto reads this row's subtitle aloud on some
         // head units, and there is no second line here to carry a caveat separately (unlike

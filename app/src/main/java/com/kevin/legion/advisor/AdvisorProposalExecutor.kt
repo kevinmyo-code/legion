@@ -246,7 +246,7 @@ object AdvisorProposalExecutor {
             finalMiles?.let { "$it miles" },
             finalMonths?.let { "$it months" },
         ).joinToString(" / ")
-        return ExecuteResult.Ok("Set $serviceName on the ${VehicleController.displayLabel(vehicle)} to every $everyPhrase.")
+        return ExecuteResult.Ok("Set $serviceName on the ${VehicleController.label(vehicle)} to every $everyPhrase.")
     }
 
     // --- LOG -------------------------------------------------------------------------------------
