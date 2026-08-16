@@ -74,8 +74,17 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 **HANDS AND SENSES TRIAGED, 2026-08-16 (session 9).** Map `.scratch/hands-and-senses/`. Five of
 nine ticket-sized items closed WITHOUT being answered; **only ticket 01 produced code**. Full
 account in `library/decisions.md` (2026-08-16) and `library/lessons.md` L24-L28.
-- **BUILT: clear DTCs** (`bd4de4b`) - the app's first WRITE to the car. **NEVER RUN ON A CAR.**
-- **BUILT: the music fix** (`d683d2c`, `ccef947`), found by Kevin in use. See Blocking.
+- **BUILT + INSTALLED: clear DTCs** (`bd4de4b`). APK hash-verified on the A25 2026-08-16
+  (`39d22097...`). **Migration ran clean on the real device: v22, 48 tables, 5/54/2/148/188 rows
+  unchanged, integrity ok.** `on-device`: the CLEAR button renders on STORED CODES (conditional on
+  codes existing), and **`REFUSED` was produced for real** - correct wording, no confirm button
+  offered, and it wrote nothing (`code_clear_events` still 0, `service_records` still 2, so D6
+  holds). **STILL NEVER RUN ON A CAR:** `CLEARED`/`RETURNED`/`UNVERIFIED`/`NOTHING_TO_CLEAR`, the
+  actual Mode 04 send, the `CLEARED <date>` line, the union rule against a real clear-event, and
+  the `clear_codes` VOICE path have none of them been exercised. Migration test still never run.
+- **BUILT + INSTALLED: the music fix** (`d683d2c`, `ccef947`), found by Kevin in use. `on-device`:
+  banner renders in Setup with correct copy, and its button lands on
+  `Settings$NotificationAccessSettingsActivity`. See Blocking - the grant is still not given.
 - **Still live:** 05 comms (paused mid-ticket), 08 morning brief, 18 inbox, 19 people dates.
 - **STANDING RULE from five premise-deaths: grep the premise and confirm the data source before
   spending a session on any ticket** (L25). The map lists what a JARVIS could do, not what Kevin has.
