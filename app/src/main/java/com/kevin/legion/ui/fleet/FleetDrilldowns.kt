@@ -352,12 +352,26 @@ fun FullScheduleScreen(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
                 )
             }
+            // TWO ROWS, not one. Three DeckButtons packed into a single Row have no `weight()` and
+            // no horizontal scroll, so when all three are present the third gets squeezed to its
+            // minimum intrinsic width and Compose wraps its label one character per line - CONFIRM
+            // ALL (1) rendered as a vertical stack of single letters on the device.
+            //
+            // Observed on the real phone 2026-08-15, at 384dp, in the three-button state. The
+            // ticket-11 review flagged exactly this as an unverified overflow risk and named the
+            // three-button case specifically; it was right, and only installing showed it. Unit
+            // tests cannot see a layout, and Compose previews have never rendered on this project.
+            //
+            // The primary two keep the first row. CONFIRM ALL takes its own full-width row when it
+            // is present, which also suits it: it is the only one of the three that carries a count
+            // and opens a review dialog.
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
                 DeckButton(text = "ADD ITEM", onClick = onAddItem)
                 Spacer(Modifier.width(8.dp))
                 DeckButton(text = "SERVICE HISTORY", onClick = onOpenServiceHistory)
-                if (!filterUnknownOnly && confirmable.isNotEmpty()) {
-                    Spacer(Modifier.width(8.dp))
+            }
+            if (!filterUnknownOnly && confirmable.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 0.dp)) {
                     DeckButton(text = "CONFIRM ALL (${confirmable.size})", onClick = { showConfirmDialog = true })
                 }
             }
