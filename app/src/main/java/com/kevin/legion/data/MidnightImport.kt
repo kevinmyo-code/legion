@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.AssetManager
 import android.database.Cursor
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.CarDatabase
@@ -321,6 +322,11 @@ object MidnightImport {
             Log.w(TAG, "midnight_import: re-keyed $totalRekeyed row(s) off '$SENTINEL_VEHICLE_ID' -> $remap")
             MidnightEvents.importRekeyed(totalRekeyed, remap)
         }
+        // A local UPDATE is not enough, and believing it was is what caused
+        // `.scratch/import-sync-duplication/issues/01-the-import-rekey-and-union-sync-duplicate-a-car-every-launch.md`.
+        // Written unconditionally on a non-empty remap, not just when rows moved, because a device
+        // can hold NO sentinel rows locally and still be handed them by Drive on a later sync.
+        if (remap.isNotEmpty()) recordSentinelReassignments(db, remap)
         Log.i(
             TAG,
             "midnight_import complete: $totalInserted rows inserted, $totalSkipped already present, " +
@@ -493,6 +499,77 @@ object MidnightImport {
         }
         return moved
     }
+
+    /**
+     * Records the sentinel re-key as a **synced [com.kevin.legion.data.local.DriveReassignment]
+     * rule**, so the correction survives a Drive round trip instead of being undone by one.
+     *
+     * This is the fix for `.scratch/import-sync-duplication/issues/01-the-import-rekey-and-union-sync-duplicate-a-car-every-launch.md`,
+     * and the mechanism it uses already existed - it was built on 2026-07-16 for the identical
+     * problem, and [com.kevin.legion.vehicle.VehicleController.reassignDrive]'s doc comment states
+     * the hazard in as many words:
+     *
+     * > *"Writes a RULE rather than re-keying the rows directly: `obd_samples` syncs UNION on an
+     * > identity that INCLUDES vehicleId, so a plain UPDATE would leave the originals on Drive under
+     * > the old id, and the next sync would re-insert them - cloning the drive onto both cars
+     * > instead of moving it, permanently, on every device."*
+     *
+     * [rekeyExistingRows] then went and did exactly that plain UPDATE. Measured consequence on
+     * Kevin's A25: `obd_samples` reached 36,694 rows over 5,242 distinct identities, one fresh copy
+     * per launch, because every sync pulled the sentinel-keyed rows back and the next re-key made
+     * them look new again.
+     *
+     * What makes a rule different is not that it re-keys harder. It is WHERE
+     * [com.kevin.legion.sync.SyncEngine] applies it: inside `syncFile`, after the merge and
+     * **before** the converged snapshot is re-read and uploaded. So the rows Drive receives already
+     * carry the new id, the sentinel-keyed originals stop coming back, and the correction converges
+     * instead of oscillating.
+     *
+     * **The syncId is deterministic, not a fresh UUID.** Re-running the import must not add a second
+     * rule saying the same thing: `drive_reassignments` is LWW keyed on `syncId`, so a stable id
+     * makes a re-run overwrite its own rule rather than accumulate near-duplicates that
+     * [com.kevin.legion.vehicle.DriveReassigner.plan] would then replay one after another.
+     *
+     * **Covers all of time** (`0 .. Long.MAX_VALUE`). The rule shape is time-ranged because its
+     * original caller corrects ONE drive; here the whole of a car's history is on the wrong id, and
+     * there is no meaningful narrower window. `DriveReassigner.plan` passes both bounds straight
+     * through to `timestamp BETWEEN ?  AND ?`, so an unbounded pair is exactly "every row".
+     *
+     * **Known gap, deliberate:** `SyncEngine.applyReassignments` rewrites `obd_samples` ONLY. The
+     * other UNION tables whose identity includes `vehicleId` (`monthly_recaps`, `daily_drive_logs`,
+     * `yearly_wrapped`) are not covered, and cannot be by this rule shape - they are keyed by
+     * year/month/day, not by a millisecond timestamp, so a `fromMs`/`toMs` window does not address
+     * their rows at all. Those tables are far smaller (2 and 24 rows on Kevin's phone against
+     * 5,242), and extending the rule to them is its own design question rather than something to
+     * improvise here. `maintenance_items`/`vehicle_specs`/`vehicles` need nothing: they are LWW over
+     * a real primary key, so a stale sentinel row is replaced rather than duplicated, which is why
+     * they never grew.
+     */
+    @VisibleForTesting
+    internal fun recordSentinelReassignments(db: SupportSQLiteDatabase, remap: Map<String, String>) {
+        val now = System.currentTimeMillis()
+        for ((oldId, newId) in remap) {
+            if (oldId == newId) continue
+            db.execSQL(
+                "INSERT OR REPLACE INTO `drive_reassignments` " +
+                    "(`id`, `syncId`, `vehicleId`, `fromMs`, `toMs`, `newVehicleId`, `updatedAt`) " +
+                    "VALUES ((SELECT `id` FROM `drive_reassignments` WHERE `syncId` = ?), ?, ?, ?, ?, ?, ?)",
+                arrayOf<Any?>(
+                    reassignmentSyncId(oldId, newId),
+                    reassignmentSyncId(oldId, newId),
+                    oldId,
+                    0L,
+                    Long.MAX_VALUE,
+                    newId,
+                    now,
+                ),
+            )
+        }
+        Log.w(TAG, "midnight_import: recorded ${remap.size} drive reassignment rule(s) so the re-key survives sync")
+    }
+
+    /** Stable across re-runs, so the import overwrites its own rule instead of stacking another. */
+    private fun reassignmentSyncId(oldId: String, newId: String) = "midnight-import-rekey:$oldId->$newId"
 
     /** Rows affected by the last statement on this connection. */
     private fun changes(db: SupportSQLiteDatabase): Int =

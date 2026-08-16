@@ -357,3 +357,94 @@ the Drive side is fixed would be theatre.
   running, that reasoning is wrong and this is the line to revisit.
 - The backup lives at `scratchpad/backup-20260816/` in a SESSION-TEMP directory. Copy it somewhere
   durable if it is wanted beyond this session.
+
+## Stage 2 done, 2026-08-16: the import records a synced rule
+
+The import no longer repairs its sentinel re-key with a local `UPDATE` sync cannot see. It writes a
+`DriveReassignment` rule, which is the mechanism that already existed for this exact problem.
+
+`VehicleController.reassignDrive`'s doc comment, written 2026-07-16, states the hazard in as many
+words:
+
+> *"Writes a RULE rather than re-keying the rows directly: `obd_samples` syncs UNION on an identity
+> that INCLUDES vehicleId, so a plain UPDATE would leave the originals on Drive under the old id, and
+> the next sync would re-insert them - cloning the drive onto both cars instead of moving it,
+> permanently, on every device."*
+
+`rekeyExistingRows` then did precisely that plain UPDATE. **The fix was not to invent anything; it was
+to use the primitive already sitting one package over.**
+
+### Why a rule converges where an UPDATE oscillates
+
+Not because it re-keys harder. Because of WHERE `SyncEngine` applies it (`sync/SyncEngine.kt:466`):
+inside `syncFile`, after the merge and **before** the converged snapshot is re-read and uploaded. So
+the rows Drive receives already carry the corrected id, the sentinel-keyed originals stop coming
+back, and the correction sticks. The file's own comment says the same thing about the caller it was
+built for: *"Re-keying after syncFile returned would fix this device and re-upload the OLD rows
+anyway, so the correction would resurrect on every pass, forever, on every device."*
+
+### What was built
+
+`MidnightImport.recordSentinelReassignments`, called whenever the remap is non-empty - deliberately
+NOT gated on rows having moved locally, because a device can hold no sentinel rows of its own and
+still be handed them by Drive on a later sync.
+
+- **Deterministic `syncId`** (`midnight-import-rekey:<old>-><new>`), not a fresh UUID. The import
+  re-runs until its gate latches, roughly six times on Kevin's phone, and six rules all saying the
+  same thing would be replayed one after another by `DriveReassigner.plan` on every sync forever.
+- **Unbounded time range** (`0 .. Long.MAX_VALUE`). The rule shape is time-ranged because its
+  original caller corrects one drive; here a car's entire history is on the wrong id.
+- **Self-moves are never written.** `plan` already drops them ("a self-move would be an infinite
+  no-op on every sync pass forever"), so writing one would be storing a known-bad row.
+
+Five unit tests, 1334 -> 1339. No schema change: `drive_reassignments` already existed and is
+already in the sync registry.
+
+### It is DORMANT on Kevin's phone, by design
+
+Verified after installing: `drive_reassignments` holds **0 rows**, because
+`midnight_import gate: completed=true` and `run()` returns before any of this. The code is correct
+and protects any device that still has an import to do. It does nothing for the device that already
+had the problem.
+
+That is not a gap in the fix. It is what stage 1's outcome already achieved: the import is retired
+here, so the loop cannot restart regardless.
+
+### What remains, and why it was NOT done unasked
+
+Drive still holds the sentinel-keyed rows. Locally they are still present too: 5,242 `obd_samples`,
+24 `daily_drive_logs`, 2 `monthly_recaps`, 16 `maintenance_items`, 1 `vehicle_specs`, all under the
+archived `default` vehicle. Converging them would mean writing the reassignment rule straight into
+the database by hand, the way the dedup was done. **That has a real cost and it is Kevin's call:**
+
+1. Applying the rule moves the local 5,242 sentinel `obd_samples` onto the Outlander id, where an
+   identical 5,242 already sit and nothing constrains them - so it **re-duplicates that table once**,
+   deliberately, on the way to converging.
+2. One sync pass then uploads the corrected snapshot and Drive stops holding sentinel rows.
+3. A second dedup pass cleans up the one-time artifact.
+
+Net: one Drive write, one duplication, one dedup, to tidy rows that are currently inert under an
+archived car and harming nothing. Worth doing for correctness, not urgent.
+
+**Known gap either way:** `applyReassignments` rewrites `obd_samples` ONLY. `monthly_recaps` and
+`daily_drive_logs` are also UNION with `vehicleId` in their identity, but they are keyed by
+year/month/day rather than a millisecond timestamp, so a `fromMs`/`toMs` window cannot address their
+rows at all. Extending the rule shape to date-keyed tables is its own design question. Those tables
+hold 2 and 24 rows against `obd_samples`' 5,242, so the volume argument for solving it now is weak.
+`maintenance_items`/`vehicle_specs`/`vehicles` need nothing - LWW over a real primary key replaces
+rather than duplicates, which is exactly why they never grew.
+
+### Assumptions ledger
+
+- `built`: `compileDebugKotlin -Pnokey` and the full suite green at 1339, and `app/schemas/` byte
+  unchanged (no migration).
+- `tested`: rule contents, idempotency across five re-runs, one rule per remapped vehicle, self-move
+  refusal, and that the rule plans into the intended move via the real `DriveReassigner.plan`.
+- `on-device`: installed by sha256, clean launch, dedup still holding at `total == distinct`, and
+  `drive_reassignments` empty because the gate is latched.
+- `traced`: `SyncEngine.syncFile` applying reassignments before re-reading the snapshot it uploads;
+  the registry modes and identities for every table named above.
+- `reasoned`, NOT proven: that applying the rule on this device would re-duplicate `obd_samples`
+  once before converging. It follows from UNION merge inserting by identity plus an unconstrained
+  target table, but it was not run - which is the main reason it is being offered as a choice rather
+  than performed.
