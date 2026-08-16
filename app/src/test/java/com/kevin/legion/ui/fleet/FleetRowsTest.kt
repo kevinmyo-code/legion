@@ -639,4 +639,140 @@ class FleetRowsTest {
         assertEquals(setOf("P0420"), codes)
         assertNull(clearedAt)
     }
+
+    // ---------------------------------------------------- FAULTS drilldown (pure)
+
+    @Test
+    fun `codesInEvent parses codesJson in order, keeping duplicates`() {
+        val event = CodeEvent(vehicleId = vehicleId, timestamp = now, codesJson = """["P0420","P0420","P0128"]""")
+        assertEquals(listOf("P0420", "P0420", "P0128"), codesInEvent(event))
+    }
+
+    @Test
+    fun `codesInEvent returns empty on unparseable json rather than throwing`() {
+        val event = CodeEvent(vehicleId = vehicleId, timestamp = now, codesJson = "not json")
+        assertEquals(emptyList<String>(), codesInEvent(event))
+    }
+
+    @Test
+    fun `faultEventMileageText always words the figure as an estimate`() {
+        assertEquals("about 132,400 mi (estimated)", faultEventMileageText(132_400))
+    }
+
+    @Test
+    fun `faultEventMileageText is null when no mileage was captured, never a fabricated zero`() {
+        assertNull(faultEventMileageText(null))
+    }
+
+    @Test
+    fun `clearedMarkerFor finds the earliest CLEARED event postdating this one`() {
+        val event = CodeEvent(vehicleId = vehicleId, timestamp = now, codesJson = """["P0420"]""")
+        val earlierClear = clearEvent(timestamp = now - 1000, outcome = "CLEARED") // predates the event - irrelevant
+        val firstClearAfter = clearEvent(timestamp = now + 1000, outcome = "CLEARED")
+        val laterClearAfter = clearEvent(timestamp = now + 2000, outcome = "CLEARED")
+        val marker = clearedMarkerFor(event, listOf(earlierClear, laterClearAfter, firstClearAfter))
+        assertEquals(now + 1000, marker?.timestamp)
+    }
+
+    @Test
+    fun `clearedMarkerFor ignores RETURNED and UNVERIFIED outcomes`() {
+        val event = CodeEvent(vehicleId = vehicleId, timestamp = now, codesJson = """["P0420"]""")
+        val returned = clearEvent(timestamp = now + 1000, outcome = "RETURNED")
+        assertNull(clearedMarkerFor(event, listOf(returned)))
+    }
+
+    @Test
+    fun `clearedMarkerFor is null when nothing postdates the event`() {
+        val event = CodeEvent(vehicleId = vehicleId, timestamp = now, codesJson = """["P0420"]""")
+        val earlier = clearEvent(timestamp = now - 1000, outcome = "CLEARED")
+        assertNull(clearedMarkerFor(event, listOf(earlier)))
+    }
+
+    @Test
+    fun `formatFreezeFrame renders all eight PIDs present, temps in C to match UPLINK and speed in mph`() {
+        val json = """{"rpm":2400,"coolant_c":90,"speed_kmh":64.4,"load_pct":38,"maf_gs":12.3,"stft_pct":2.5,"ltft_pct":-1.2,"iat_c":25}"""
+        val readings = formatFreezeFrame(json)
+        assertEquals(
+            listOf(
+                FreezeFrameReading("RPM", "2400"),
+                FreezeFrameReading("COOLANT", "90 C"),
+                FreezeFrameReading("SPEED", "40 mph"),
+                FreezeFrameReading("LOAD", "38%"),
+                FreezeFrameReading("MAF", "12.3 g/s"),
+                FreezeFrameReading("STFT", "+2.5%"),
+                FreezeFrameReading("LTFT", "-1.2%"),
+                FreezeFrameReading("IAT", "25 C"),
+            ),
+            readings,
+        )
+    }
+
+    @Test
+    fun `formatFreezeFrame omits a missing key rather than rendering it as zero`() {
+        val json = """{"rpm":900,"coolant_c":85}"""
+        val readings = formatFreezeFrame(json)
+        assertEquals(listOf(FreezeFrameReading("RPM", "900"), FreezeFrameReading("COOLANT", "85 C")), readings)
+    }
+
+    @Test
+    fun `formatFreezeFrame returns empty for a blank freeze frame, the caller says so in words`() {
+        assertEquals(emptyList<FreezeFrameReading>(), formatFreezeFrame(""))
+    }
+
+    @Test
+    fun `formatFreezeFrame returns empty for unparseable json rather than throwing`() {
+        assertEquals(emptyList<FreezeFrameReading>(), formatFreezeFrame("not json"))
+    }
+
+    @Test
+    fun `telemetryWindow brackets the event timestamp by FAULT_TELEMETRY_WINDOW_MS each side`() {
+        val window = telemetryWindow(now)
+        assertEquals(now - FAULT_TELEMETRY_WINDOW_MS, window.first)
+        assertEquals(now + FAULT_TELEMETRY_WINDOW_MS, window.last)
+    }
+
+    @Test
+    fun `eventTelemetrySparkline maps samples straight through in order, no bucketing`() {
+        val samples = listOf(
+            OdbSample(vehicleId = vehicleId, pid = "010C", value = 900.0, unit = "rpm", timestamp = now),
+            OdbSample(vehicleId = vehicleId, pid = "010C", value = 1200.0, unit = "rpm", timestamp = now + 30_000),
+        )
+        assertEquals(listOf(900f, 1200f), eventTelemetrySparkline(samples))
+    }
+
+    @Test
+    fun `locationFromSamples finds the first sample carrying a fix`() {
+        val samples = listOf(
+            OdbSample(vehicleId = vehicleId, pid = "010D", value = 40.0, unit = "km/h", timestamp = now, lat = null, lng = null),
+            OdbSample(vehicleId = vehicleId, pid = "010D", value = 42.0, unit = "km/h", timestamp = now + 30_000, lat = 47.6, lng = -122.3),
+        )
+        assertEquals(47.6 to -122.3, locationFromSamples(samples))
+    }
+
+    @Test
+    fun `locationFromSamples is null when no sample in the window carries a fix`() {
+        val samples = listOf(OdbSample(vehicleId = vehicleId, pid = "010D", value = 40.0, unit = "km/h", timestamp = now))
+        assertNull(locationFromSamples(samples))
+    }
+
+    @Test
+    fun `codeNeedsIdentification is true when the code is in neither seed nor learned`() {
+        assertEquals(true, codeNeedsIdentification("P0420", emptyMap()))
+        assertEquals(false, codeNeedsIdentification("P0420", mapOf("P0420" to ("Catalyst efficiency" to "detail"))))
+    }
+
+    @Test
+    fun `splitIdentifyResult takes the first sentence as the title, the whole text as the detail`() {
+        val text = "Catalyst efficiency below threshold. Usually a failing catalytic converter or a downstream O2 sensor."
+        val (title, detail) = splitIdentifyResult(text)
+        assertEquals("Catalyst efficiency below threshold", title)
+        assertEquals(text, detail)
+    }
+
+    @Test
+    fun `splitIdentifyResult falls back to a literal title on blank input, never an empty string`() {
+        val (title, detail) = splitIdentifyResult("   ")
+        assertEquals("Identified", title)
+        assertEquals("", detail)
+    }
 }

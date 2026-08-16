@@ -22,6 +22,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,12 +30,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.kevin.legion.ai.AgentResult
+import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.CodeClearEvent
+import com.kevin.legion.data.local.CodeEvent
 import com.kevin.legion.data.local.DailyDriveLog
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.MonthlyRecap
+import com.kevin.legion.data.local.OdbSample
 import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.data.local.YearlyWrapped
 import com.kevin.legion.ui.common.DeckButton
@@ -52,9 +59,14 @@ import com.kevin.legion.ui.common.SectionHeader
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.util.clockTime
 import com.kevin.legion.util.shortDate
+import com.kevin.legion.vehicle.DiagnosticAgent
+import com.kevin.legion.vehicle.DtcDescriptions
 import com.kevin.legion.vehicle.VehicleController.WriteOutcome
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -1007,6 +1019,280 @@ private fun DriveLogRow(log: DailyDriveLog) {
             Text("${log.milesDriven.toInt()} mi$mpgPart", style = LegionType.reading, color = MaterialTheme.colorScheme.onSurface)
         }
         Text(log.narrative, style = MaterialTheme.typography.bodySmall, color = sem.faint)
+    }
+}
+
+/**
+ * FAULTS: every [CodeEvent] this vehicle has ever recorded, newest first, no cap - the drilldown
+ * `UplinkPane`'s own doc used to name as missing ("no faults drilldown exists"). Reached by tapping
+ * anywhere in STORED CODES (`FleetScreen.kt`'s `UplinkPane` wires that tap onto [onBack]'s sibling
+ * `onOpenFaults`; this screen has no opinion about how it got here).
+ *
+ * **Not display-only, unlike [RecapDrilldownScreen]/[DriveHistoryDrilldownScreen]** (see this
+ * file's own doc comment for that convention, and [PopulateScreen]'s doc for the established
+ * exception this follows instead) - two things here need a live [android.content.Context] neither
+ * of those screens do:
+ *
+ * 1. **Surrounding telemetry.** [FaultEventRow]'s own `LaunchedEffect` queries
+ *    [com.kevin.legion.data.local.OdbSampleDao.getRange] PER VISIBLE ROW, not eagerly for every
+ *    event up front - [LazyColumn] only composes rows actually on screen, so a car with months of
+ *    fault history never fires more than a screenful of queries at once, and scrolling a row off
+ *    screen cancels its own in-flight query the ordinary Compose way (the `LaunchedEffect` leaves
+ *    composition).
+ * 2. **IDENTIFY.** [codeNeedsIdentification] gates a per-code affordance that spends ONE
+ *    [DiagnosticAgent.diagnose] call on the driver's own Gemini key (the ticket's explicit "must be
+ *    per-code and user-initiated" - there is no batch-identify loop anywhere in this file) and
+ *    persists the result via [DtcDescriptions.save] so the SAME code is never asked about twice, on
+ *    this install, ever again. Identify state ([identifyingCodes]/[learnedThisSession]) is hoisted
+ *    HERE rather than owned per-row, because the same code can appear in more than one [CodeEvent]
+ *    and identifying it once must update EVERY row currently showing it, not just the row that
+ *    triggered the call - `effectiveDescriptions` below is what every [FaultEventRow] actually
+ *    reads.
+ *
+ * [onBack] bumps `reloadKey` at the `FleetScreen.kt` call site (matching [FullScheduleScreen]/
+ * [PopulateScreen]'s own "any drilldown that can write bumps the reload on the way out" rule) so a
+ * fresh visit re-reads [descriptions] off disk rather than needing [learnedThisSession] to survive
+ * past this composable's own lifetime - it does not need to; disk is the source of truth the moment
+ * [DtcDescriptions.save] returns.
+ */
+@Composable
+fun FaultsDrilldownScreen(
+    vehicleId: String,
+    vehicleLabel: String,
+    eventsNewestFirst: List<CodeEvent>,
+    clearEvents: List<CodeClearEvent>,
+    descriptions: Map<String, Pair<String, String>>,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val sem = LocalLegionSemantics.current
+
+    // See this screen's own doc for why IDENTIFY state lives here rather than per-row.
+    var learnedThisSession by remember { mutableStateOf<Map<String, Pair<String, String>>>(emptyMap()) }
+    var identifyingCodes by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var identifyErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val effectiveDescriptions = descriptions + learnedThisSession
+
+    // The one Gemini call this screen ever launches, and only ever ONE PER TAP - see
+    // codeNeedsIdentification's own doc for why a code already in effectiveDescriptions never
+    // offers this affordance at all, which is what keeps this per-code rather than a batch loop.
+    fun identify(code: String) {
+        if (code in identifyingCodes) return
+        identifyingCodes = identifyingCodes + code
+        identifyErrors = identifyErrors - code
+        scope.launch {
+            when (val result = DiagnosticAgent.diagnose(context, vehicleLabel, listOf(code), "What does $code mean?")) {
+                is AgentResult.Success -> {
+                    val (title, detail) = splitIdentifyResult(result.text)
+                    withContext(Dispatchers.IO) {
+                        val merged = DtcDescriptions.loadLearned(context) + (code to (title to detail))
+                        DtcDescriptions.save(context, merged)
+                    }
+                    learnedThisSession = learnedThisSession + (code to (title to detail))
+                }
+                // Every other AgentResult branch (RateLimited/KeyInvalid/Overloaded/Offline/Failed)
+                // is a soft failure - the code stays unidentified and IDENTIFY reappears, exactly
+                // the "on failure say so plainly and leave the code unidentified" instruction, never
+                // a retry loop or a silently-invented description.
+                else -> identifyErrors = identifyErrors + (code to "Couldn't identify $code right now. Try again.")
+            }
+            identifyingCodes = identifyingCodes - code
+        }
+    }
+
+    Surface(modifier = Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onBack) {
+                    Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+            Text(
+                "FAULTS",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+            Hairline()
+            if (eventsNewestFirst.isEmpty()) {
+                Text(
+                    "No fault codes recorded yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = sem.faint,
+                    modifier = Modifier.padding(12.dp),
+                )
+            } else {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(eventsNewestFirst, key = { it.id }) { event ->
+                        FaultEventRow(
+                            vehicleId = vehicleId,
+                            event = event,
+                            clearedMarker = clearedMarkerFor(event, clearEvents),
+                            descriptions = effectiveDescriptions,
+                            identifyingCodes = identifyingCodes,
+                            identifyErrors = identifyErrors,
+                            onIdentify = ::identify,
+                        )
+                        Hairline()
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One [CodeEvent], fully expanded (no tap-to-expand - the ticket's own list is exhaustive per
+ * event: date/time, mileage, codes+descriptions+IDENTIFY, the full freeze frame, surrounding
+ * telemetry, and a cleared marker, so there is nothing left over for a second tap to reveal).
+ *
+ * Surrounding-telemetry samples are queried in THIS row's own `LaunchedEffect(event.id)`, not
+ * passed down from [FaultsDrilldownScreen] - see that screen's own doc for why per-row, lazy
+ * loading is what keeps an unbounded fault history cheap to open. Speed (`010D`) and rpm (`010C`)
+ * are the two PIDs [com.kevin.legion.vehicle.TelemetryRecorder] actually samples at its base
+ * 30-second tick regardless of which other PIDs a given install's ECU answers, so these are the two
+ * every car's history can be expected to have something to draw - see that object's own PID list.
+ */
+@Composable
+private fun FaultEventRow(
+    vehicleId: String,
+    event: CodeEvent,
+    clearedMarker: CodeClearEvent?,
+    descriptions: Map<String, Pair<String, String>>,
+    identifyingCodes: Set<String>,
+    identifyErrors: Map<String, String>,
+    onIdentify: (String) -> Unit,
+) {
+    val sem = LocalLegionSemantics.current
+    val context = LocalContext.current
+    val codes = remember(event.id) { codesInEvent(event) }
+    val freezeFrame = remember(event.id) { formatFreezeFrame(event.freezeFrameJson) }
+    val mileageText = remember(event.id) { faultEventMileageText(event.mileage) }
+
+    // `null` means "still loading"; an empty list is a genuine "queried, nothing in the window" -
+    // the two states render differently below (see the AROUND THIS EVENT block).
+    var speedSamples by remember(event.id) { mutableStateOf<List<OdbSample>?>(null) }
+    var rpmSamples by remember(event.id) { mutableStateOf<List<OdbSample>?>(null) }
+    LaunchedEffect(event.id) {
+        val window = telemetryWindow(event.timestamp)
+        val dao = CarDatabase.getDatabase(context).odbSampleDao()
+        speedSamples = withContext(Dispatchers.IO) { dao.getRange(vehicleId, "010D", window.first, window.last) }
+        rpmSamples = withContext(Dispatchers.IO) { dao.getRange(vehicleId, "010C", window.first, window.last) }
+    }
+
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Text("${shortDate(event.timestamp)} · ${clockTime(event.timestamp)}", style = LegionType.stamp, color = sem.faint)
+        // Mileage is ALWAYS labelled an estimate - see faultEventMileageText's own doc for why this
+        // event, uniquely among the app's mileage surfaces, has no confirmed/estimated branch to
+        // even ask (CarToolbelt.codeHistory's own reasoning, carried here verbatim).
+        if (mileageText != null) {
+            Text(mileageText, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 2.dp))
+        }
+        // D7's union rule applied per-event (clearedMarkerFor's own doc): this code event reads as
+        // cleared the moment ANY later successful clear ran, dated to that clear.
+        if (clearedMarker != null) {
+            Text(
+                "CLEARED ${shortDate(clearedMarker.timestamp)}",
+                style = LegionType.stamp,
+                color = sem.credit,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+        codes.forEach { code ->
+            val description = descriptions[code]?.first
+            Column(Modifier.padding(bottom = 6.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(code, style = LegionType.reading, color = sem.quarantined)
+                    when {
+                        code in identifyingCodes -> Text("IDENTIFYING...", style = LegionType.stamp, color = sem.faint)
+                        codeNeedsIdentification(code, descriptions) -> Text(
+                            "IDENTIFY",
+                            style = LegionType.stamp,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { onIdentify(code) }.padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+                Text(
+                    description ?: "not identified locally",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (description != null) MaterialTheme.colorScheme.onSurface else sem.faint,
+                )
+                identifyErrors[code]?.let { error ->
+                    Text(error, style = LegionType.stamp, color = sem.quarantined, modifier = Modifier.padding(top = 2.dp))
+                }
+            }
+        }
+
+        // Freeze frame - every PID the ECU actually latched, never a fabricated zero for one it
+        // didn't (formatFreezeFrame's own doc).
+        Text("FREEZE FRAME", style = LegionType.stamp, color = sem.faint)
+        if (freezeFrame.isEmpty()) {
+            Text(
+                "No freeze frame recorded for this event.",
+                style = LegionType.stamp,
+                color = sem.faint,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        } else {
+            Text(
+                freezeFrame.joinToString("   ") { "${it.label} ${it.value}" },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+
+        // Surrounding telemetry - "what point in the drive" this code tripped at.
+        Spacer(Modifier.height(6.dp))
+        Text("AROUND THIS EVENT", style = LegionType.stamp, color = sem.faint)
+        val speed = speedSamples
+        val rpm = rpmSamples
+        when {
+            speed == null || rpm == null -> Text(
+                "Loading...",
+                style = LegionType.stamp,
+                color = sem.faint,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            speed.isEmpty() && rpm.isEmpty() -> Text(
+                "No telemetry recorded around this event.",
+                style = LegionType.stamp,
+                color = sem.faint,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            else -> {
+                if (speed.isNotEmpty()) {
+                    Text("SPEED", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 4.dp))
+                    DeckSparkline(eventTelemetrySparkline(speed))
+                }
+                if (rpm.isNotEmpty()) {
+                    Text("RPM", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 4.dp))
+                    DeckSparkline(eventTelemetrySparkline(rpm))
+                }
+                // Location only when a surrounding sample actually carried a fix (locationFromSamples'
+                // own doc) - rendered as raw coordinates rather than a reverse-geocoded address, which
+                // would add a network round trip this read-only drilldown has no other reason to make.
+                locationFromSamples(speed + rpm)?.let { (lat, lng) ->
+                    Text(
+                        "Location %.4f, %.4f".format(lat, lng),
+                        style = LegionType.stamp,
+                        color = sem.faint,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        }
     }
 }
 

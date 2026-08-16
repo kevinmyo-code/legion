@@ -39,6 +39,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.CodeClearEvent
+import com.kevin.legion.data.local.CodeEvent
 import com.kevin.legion.data.local.DailyDriveLog
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.MonthlyRecap
@@ -59,6 +61,7 @@ import com.kevin.legion.ui.fleet.DtcClearDialog
 import com.kevin.legion.ui.fleet.DueRowView
 import com.kevin.legion.ui.fleet.FaultRow
 import com.kevin.legion.ui.fleet.FaultRowView
+import com.kevin.legion.ui.fleet.FaultsDrilldownScreen
 import com.kevin.legion.ui.fleet.FleetSpendView
 import com.kevin.legion.ui.fleet.FullScheduleScreen
 import com.kevin.legion.ui.fleet.ItemDetailScreen
@@ -215,6 +218,31 @@ data class FleetUiState(
      * "nothing was ever stored".
      */
     val clearedAt: Long? = null,
+    /**
+     * Every [CodeEvent] this vehicle has ever recorded, newest first ([CodeEventDao.getAll]'s own
+     * ordering, unchanged here) - the FAULTS drilldown's own list. [faults] above is already
+     * deduped to one row per DISTINCT code (see [distinctFaultsByFirstSeen]'s doc); FAULTS needs
+     * the full per-EVENT history instead - every trip, every freeze frame, the codes as the ECU
+     * actually reported them together, not a vehicle-wide summary. No cap: the ticket that builds
+     * this drilldown is explicit that "ALL of them" is the requirement STORED CODES' own 2-row cap
+     * (ticket 16) exists to avoid on the panel, not on the drilldown a driver opened on purpose.
+     */
+    val codeEventsNewestFirst: List<CodeEvent> = emptyList(),
+    /**
+     * Every [CodeClearEvent] on file, any outcome, newest first ([CodeClearEventDao.getAll]'s own
+     * ordering) - the same list [visibleFaultCodes] above already reads to compute [faults]/
+     * [clearedAt], just also threaded onto state so the FAULTS drilldown can resolve each
+     * individual [CodeEvent]'s own cleared marker via [com.kevin.legion.ui.fleet.clearedMarkerFor]
+     * rather than re-querying.
+     */
+    val clearEventsAll: List<CodeClearEvent> = emptyList(),
+    /**
+     * `loadSeed() + loadLearned()` - the same map [faults]' own `descriptions[it.code]?.first` read
+     * already builds, threaded onto state too so the FAULTS drilldown can look up a per-event code's
+     * full description and [com.kevin.legion.ui.fleet.codeNeedsIdentification] can tell which codes
+     * still need the IDENTIFY affordance, without a second asset+disk read.
+     */
+    val dtcDescriptions: Map<String, Pair<String, String>> = emptyMap(),
     val serviceHistoryCount: Int = 0,
     val buildSheetCount: Int = 0,
     val recapCount: Int = 0,
@@ -283,7 +311,7 @@ data class FleetUiState(
  * [FleetScreen] below, so returning from ITEM DETAIL to FULL SCHEDULE preserves the filter without
  * threading it back through the enum itself.
  */
-private enum class FleetDrilldown { UPLINK, MAINTENANCE, FULL_SCHEDULE, ITEM_DETAIL, SERVICE_HISTORY, DRIVES, ADAPTER, SPECS, RECAPS, OIL, POPULATE }
+private enum class FleetDrilldown { UPLINK, MAINTENANCE, FULL_SCHEDULE, ITEM_DETAIL, SERVICE_HISTORY, DRIVES, ADAPTER, SPECS, RECAPS, OIL, POPULATE, FAULTS }
 
 @Composable
 fun FleetScreen(
@@ -455,6 +483,11 @@ fun FleetScreen(
             vehicleId = vehicle.obdMac,
             faults = faults,
             clearedAt = clearedAt,
+            // getAll for both DAOs is already newest-first (see FleetUiState's own doc for each
+            // field) - neither needs a re-sort here.
+            codeEventsNewestFirst = codeEvents,
+            clearEventsAll = clearEvents,
+            dtcDescriptions = descriptions,
             serviceHistoryCount = db.serviceRecordDao().countForVehicle(vehicle.obdMac),
             buildSheetCount = db.buildEntryDao().countForVehicle(vehicle.obdMac),
             recapCount = monthlyRecaps.size,
@@ -606,6 +639,19 @@ fun FleetScreen(
                 logsNewestFirst = fullState.recentDriveLogs,
                 onBack = { drilldown = null },
             )
+            // FAULTS' own IDENTIFY affordance writes to DtcDescriptions (disk, not Room) - reloadKey++
+            // on the way out matches FULL_SCHEDULE/ITEM_DETAIL/SERVICE_HISTORY/POPULATE's own rule
+            // (ticket 09 verification #3) so a freshly-identified code's description survives a
+            // re-open of this same drilldown rather than only living in FaultsDrilldownScreen's own
+            // session-local cache.
+            FleetDrilldown.FAULTS -> FaultsDrilldownScreen(
+                vehicleId = fullState.vehicleId,
+                vehicleLabel = fullState.vehicleLabel,
+                eventsNewestFirst = fullState.codeEventsNewestFirst,
+                clearEvents = fullState.clearEventsAll,
+                descriptions = fullState.dtcDescriptions,
+                onBack = { reloadKey++; drilldown = null },
+            )
             // Closing ADAPTER re-keys the load above: selecting a dongle in
             // there writes the registry, which this screen only reads on load.
             FleetDrilldown.ADAPTER -> ObdDeviceScreen(
@@ -634,6 +680,7 @@ fun FleetScreen(
         onOpenPlaces = onOpenPlaces,
         onOpenCars = onOpenCars,
         onOpenUplink = { drilldown = FleetDrilldown.UPLINK },
+        onOpenFaults = { drilldown = FleetDrilldown.FAULTS },
         onOpenMaintenance = { drilldown = FleetDrilldown.MAINTENANCE },
         onOpenDrives = { drilldown = FleetDrilldown.DRIVES },
         onOpenDrivingMode = onOpenDrivingMode,
@@ -703,6 +750,9 @@ fun FleetContent(
     onSetOdometer: () -> Unit = {},
     onClearCodes: () -> Unit = {},
     onSweepActiveChanged: (Boolean) -> Unit = {},
+    // Defaulted to a no-op for the same reason every other optional callback above is - existing
+    // preview/test construction sites that predate the FAULTS drilldown keep compiling unchanged.
+    onOpenFaults: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -717,7 +767,7 @@ fun FleetContent(
             if (state.loading) {
                 Text("LOADING...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
             } else {
-                FleetListing(state, onOpenPlaces, onOpenCars, onOpenUplink, onOpenMaintenance, onOpenDrives, onOpenDrivingMode, onOpenAdapter, onOpenSpecs, onSetOdometer, onClearCodes, onSweepActiveChanged)
+                FleetListing(state, onOpenPlaces, onOpenCars, onOpenUplink, onOpenFaults, onOpenMaintenance, onOpenDrives, onOpenDrivingMode, onOpenAdapter, onOpenSpecs, onSetOdometer, onClearCodes, onSweepActiveChanged)
             }
         }
     }
@@ -729,6 +779,7 @@ private fun FleetListing(
     onOpenPlaces: () -> Unit,
     onOpenCars: () -> Unit,
     onOpenUplink: () -> Unit,
+    onOpenFaults: () -> Unit,
     onOpenMaintenance: () -> Unit,
     onOpenDrives: () -> Unit,
     onOpenDrivingMode: () -> Unit,
@@ -741,7 +792,7 @@ private fun FleetListing(
     LazyColumn(Modifier.fillMaxSize()) {
         // ------------------------------------------------------------ UPLINK (leads, always)
         item(key = "uplink-pane") {
-            UplinkPane(state, onOpenDrivingMode, onClearCodes, onSweepActiveChanged, modifier = Modifier.clickable(onClick = onOpenUplink))
+            UplinkPane(state, onOpenDrivingMode, onClearCodes, onOpenFaults, onSweepActiveChanged, modifier = Modifier.clickable(onClick = onOpenUplink))
         }
 
         // ------------------------------------------------------ MAINTENANCE / DRIVES (HALF tiles)
@@ -856,6 +907,11 @@ private fun UplinkPane(
     state: FleetUiState,
     onOpenDrivingMode: () -> Unit,
     onClearCodes: () -> Unit,
+    // Ticket "FAULTS drilldown" (2026-08-16): opens the new per-event drilldown. Wired onto the
+    // STORED CODES block specifically, below - NOT onto this whole pane's own outer `modifier`
+    // clickable, which stays wired to UPLINK's telemetry drilldown (`onOpenUplink`, from
+    // [FleetListing]). See the STORED CODES block's own comment for how the two coexist.
+    onOpenFaults: () -> Unit,
     onSweepActiveChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -898,47 +954,56 @@ private fun UplinkPane(
         // otherwise), but the CLEARED-date line renders independently so an absence reads as
         // "cleared", not as a bug (D7, `.scratch/hands-and-senses/issues/01-clear-dtc.md`).
         if (state.faults.isNotEmpty() || state.clearedAt != null) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text("STORED CODES", style = LegionType.stamp, color = sem.faint)
-                // D5's UI half: destructive, gated on there being anything to clear - a car with
-                // nothing currently stored offers nothing to tap, matching NOTHING_TO_CLEAR's own
-                // "refuse early" reasoning (D2) organically rather than a second explicit check.
-                if (state.faults.isNotEmpty()) {
-                    Text(
-                        "CLEAR",
-                        style = LegionType.stamp,
-                        color = sem.quarantined,
-                        modifier = Modifier.clickable(onClick = onClearCodes).padding(horizontal = 4.dp, vertical = 2.dp),
-                    )
+            // FAULTS drilldown (2026-08-16): the WHOLE STORED CODES block - header row, the
+            // CLEARED-date line, every capped fault row, and the overflow row - now opens FAULTS,
+            // not UPLINK. Before this, none of these had their own clickable, so a tap anywhere in
+            // here fell through to UplinkPane's own outer `onOpenUplink` (see FleetListing) - that
+            // was this pane's own doc's named gap ("no faults drilldown exists"). CLEAR's own
+            // nested `Modifier.clickable(onClearCodes)` below is untouched and still wins: Compose
+            // consumes a nested clickable's tap before it reaches an ancestor's, the exact same
+            // "inner click wins" shape [DriveModeOfferRow]'s own doc names for its row inside this
+            // same pane's outer `onOpenUplink` clickable.
+            Column(Modifier.fillMaxWidth().clickable(onClick = onOpenFaults)) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("STORED CODES", style = LegionType.stamp, color = sem.faint)
+                    // D5's UI half: destructive, gated on there being anything to clear - a car with
+                    // nothing currently stored offers nothing to tap, matching NOTHING_TO_CLEAR's own
+                    // "refuse early" reasoning (D2) organically rather than a second explicit check.
+                    if (state.faults.isNotEmpty()) {
+                        Text(
+                            "CLEAR",
+                            style = LegionType.stamp,
+                            color = sem.quarantined,
+                            modifier = Modifier.clickable(onClick = onClearCodes).padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                    }
                 }
-            }
-            if (state.clearedAt != null) {
-                Text(
-                    "CLEARED ${shortDate(state.clearedAt)}",
-                    style = LegionType.stamp,
-                    color = sem.faint,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
-                )
-            }
-            if (state.faults.isNotEmpty()) {
-                // Ticket 16 (Kevin's call): capped at 2 with a worded overflow row - an unbounded
-                // list here (6 DTCs on Kevin's real car) pushed MAINTENANCE/DRIVES/CARS below the
-                // fold. Same "no faults drilldown exists" tap-through as before the cap: neither the
-                // capped rows nor the overflow row carry their own clickable, so both still resolve
-                // to UplinkPane's own outer Modifier.clickable(onOpenUplink) from FleetListing - the
-                // same place every STORED CODES row already tapped to.
-                val cappedFaults = capFaultRows(state.faults)
-                cappedFaults.visible.forEach { (fault, description) -> FaultRowView(fault, description) }
-                if (cappedFaults.overflowCount > 0) {
+                if (state.clearedAt != null) {
                     Text(
-                        "AND ${cappedFaults.overflowCount} MORE",
+                        "CLEARED ${shortDate(state.clearedAt)}",
                         style = LegionType.stamp,
                         color = sem.faint,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
                     )
+                }
+                if (state.faults.isNotEmpty()) {
+                    // Ticket 16 (Kevin's call): capped at 2 with a worded overflow row - an unbounded
+                    // list here (6 DTCs on Kevin's real car) pushed MAINTENANCE/DRIVES/CARS below the
+                    // fold. The capped rows and the overflow row now open FAULTS (see this block's own
+                    // comment above) rather than falling through to UPLINK's telemetry drilldown.
+                    val cappedFaults = capFaultRows(state.faults)
+                    cappedFaults.visible.forEach { (fault, description) -> FaultRowView(fault, description) }
+                    if (cappedFaults.overflowCount > 0) {
+                        Text(
+                            "AND ${cappedFaults.overflowCount} MORE",
+                            style = LegionType.stamp,
+                            color = sem.faint,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                    }
                 }
             }
         }

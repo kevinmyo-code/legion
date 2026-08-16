@@ -28,8 +28,10 @@ import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.VehicleController
 import org.json.JSONArray
+import org.json.JSONObject
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.math.roundToInt
 
 /**
  * FLEET-specific pure logic and rows for ticket 09 (resolution §1: LIVE / DUE
@@ -562,6 +564,162 @@ internal fun withSynthesizedSurvivors(
 ): List<FaultRow> {
     val fallbackTimestamp = clearEvents.maxByOrNull { it.timestamp }?.timestamp ?: 0L
     return visibleCodes.map { code -> allFirstSeen[code] ?: FaultRow(code, fallbackTimestamp) }
+}
+
+// ---------------------------------------------------- FAULTS drilldown (pure)
+
+/**
+ * [CodeEvent.codesJson] parsed into a plain code list, IN ORDER, keeping duplicates - unlike
+ * [distinctFaultsByFirstSeen] this does not flatten or dedupe across events, because the FAULTS
+ * drilldown's per-event row needs to show exactly what one Mode 03 read returned, not a
+ * vehicle-wide summary. Empty list on blank/unparseable JSON, never a thrown exception. `internal`
+ * for direct unit testing, same posture as every other pure builder in this file.
+ */
+internal fun codesInEvent(event: CodeEvent): List<String> {
+    val codes = runCatching { JSONArray(event.codesJson) }.getOrNull() ?: return emptyList()
+    return (0 until codes.length()).mapNotNull { i -> codes.optString(i).takeIf { it.isNotBlank() } }
+}
+
+/**
+ * [CodeEvent.mileage]'s display line for the FAULTS drilldown - ALWAYS worded as an estimate,
+ * unconditionally, carrying forward [com.kevin.legion.vehicle.CarToolbelt.codeHistory]'s own
+ * reasoning verbatim rather than re-deriving it: the figure is a frozen `Int` snapshot taken from
+ * the same rolling mileage estimator every OTHER mileage surface in this app labels conditionally
+ * (confirmed vs. estimated), but nothing was captured ALONGSIDE this one to say how stale the
+ * estimate was at the moment the code actually tripped - so unlike every other mileage reading
+ * here, there is no confirmed/estimated branch to even ask. `null` when no mileage was captured at
+ * all (an older row, or a car whose estimator had nothing to snapshot yet); the caller renders that
+ * as an absence, never a fabricated zero. `internal` for direct unit testing.
+ */
+internal fun faultEventMileageText(mileage: Int?): String? =
+    mileage?.let { "about ${groupThousands(it)} mi (estimated)" }
+
+/**
+ * D7's union rule (`.scratch/hands-and-senses/issues/01-clear-dtc.md`) applied PER EVENT rather
+ * than to the vehicle's latest state: the earliest `CLEARED` [CodeClearEvent] that postdates
+ * [event]'s own timestamp - a stored code this old reads as cleared the moment ANY later
+ * successful clear ran (a Mode 04 clear is whole-ECU, never per-code, see [CodeClearEvent]'s own
+ * doc), even one that also erased other, unrelated codes. `minByOrNull` rather than the vehicle-wide
+ * [visibleFaultCodes]' `maxByOrNull` on purpose: a LATER `CLEARED` event than the one that actually
+ * cleared this row would still be true ("still cleared") but would date-stamp the wrong clear.
+ * Returns `null` when no `CLEARED` event postdates [event] - the honest "still open, or fate
+ * unknown" case. `internal` for direct unit testing, same posture as [visibleFaultCodes].
+ */
+internal fun clearedMarkerFor(event: CodeEvent, clearEvents: List<CodeClearEvent>): CodeClearEvent? =
+    clearEvents.filter { it.outcome == "CLEARED" && it.timestamp > event.timestamp }
+        .minByOrNull { it.timestamp }
+
+/** One freeze-frame PID reading, formatted for display - [label] a short caps tag, [value] the number plus its own unit. */
+data class FreezeFrameReading(val label: String, val value: String)
+
+/**
+ * All eight PIDs [com.kevin.legion.vehicle.ObdBluetoothManager.getFreezeFrame] can capture,
+ * formatted for the FAULTS drilldown's per-event detail. [com.kevin.legion.vehicle.CarToolbelt]'s
+ * own `freezeHighlights` (private to that file) renders only three of these eight, for the
+ * spoken/voice surface - a deliberate "keep it brief for the ear" cut, not a claim the other five
+ * don't exist. This builder shows every key the freeze frame actually carries; a key ABSENT from
+ * [json] is simply OMITTED from the result, never rendered as a zero (CLAUDE.md §4: a value the
+ * source did not record must never masquerade as a recorded one).
+ *
+ * Coolant and intake-air temperature convert C->F, and speed converts km/h->mph, matching every
+ * OTHER human-facing (as opposed to raw-PID-feed) surface already in this app -
+ * [com.kevin.legion.ui.DrivingModeScreen]'s gauges and `CarToolbelt.freezeHighlights`'s own spoken
+ * summary both make the identical two conversions. RPM, load %, MAF, and both fuel-trim
+ * percentages are reported in the ECU's own native unit - there is no "human" unit to convert them
+ * into. Returns an EMPTY list for blank or unparseable [json]; the caller states "no freeze frame
+ * recorded" in words rather than rendering nothing silently. `internal` for direct unit testing,
+ * same posture as every other pure builder in this file.
+ */
+internal fun formatFreezeFrame(json: String): List<FreezeFrameReading> {
+    if (json.isBlank()) return emptyList()
+    val o = runCatching { JSONObject(json) }.getOrNull() ?: return emptyList()
+    fun value(key: String): Double? = if (o.has(key)) o.optDouble(key, Double.NaN).takeUnless { it.isNaN() } else null
+    return listOfNotNull(
+        value("rpm")?.let { FreezeFrameReading("RPM", it.toInt().toString()) },
+        // Celsius, NOT Fahrenheit. The first build of this screen converted, following
+        // CarToolbelt.freezeHighlights - but that is the SPOKEN surface, and this is a screen
+        // whose parent pane renders "81 C" for the same reading (UplinkPane's live COOLANT
+        // gauge). A drilldown disagreeing with the pane it opened from is the worse
+        // inconsistency, so screens match screens. Distance stays imperial (mph) because every
+        // other screen figure already is - the odometer, DRIVES, the recaps.
+        value("coolant_c")?.let { FreezeFrameReading("COOLANT", "${it.toInt()} C") },
+        value("speed_kmh")?.let { FreezeFrameReading("SPEED", "${(it * 0.621371).roundToInt()} mph") },
+        value("load_pct")?.let { FreezeFrameReading("LOAD", "${it.toInt()}%") },
+        value("maf_gs")?.let { FreezeFrameReading("MAF", "%.1f g/s".format(it)) },
+        value("stft_pct")?.let { FreezeFrameReading("STFT", "%+.1f%%".format(it)) },
+        value("ltft_pct")?.let { FreezeFrameReading("LTFT", "%+.1f%%".format(it)) },
+        value("iat_c")?.let { FreezeFrameReading("IAT", "${it.toInt()} C") },
+    )
+}
+
+/**
+ * Half-width of the surrounding-telemetry window the FAULTS drilldown draws its speed/rpm
+ * sparklines from around a stored code's own timestamp - the "what point in the drive" answer.
+ * 5 minutes each side, 10 minutes total. [com.kevin.legion.vehicle.TelemetryRecorder.TICK_MS]
+ * samples every 30 seconds while the engine runs, so this window typically holds on the order of
+ * 10-20 points per PID: enough for a sparkline's silhouette (a code tripping mid-acceleration
+ * looks different from one tripping at idle) without pulling an unbounded query over a car that
+ * kept driving for hours before or after the code tripped.
+ */
+internal const val FAULT_TELEMETRY_WINDOW_MS = 5 * 60 * 1000L
+
+/** [FAULT_TELEMETRY_WINDOW_MS]'s bounds around [eventTimestamp], for [com.kevin.legion.data.local.OdbSampleDao.getRange]'s `fromMs`/`toMs`. `internal` for direct unit testing. */
+internal fun telemetryWindow(eventTimestamp: Long): LongRange =
+    (eventTimestamp - FAULT_TELEMETRY_WINDOW_MS)..(eventTimestamp + FAULT_TELEMETRY_WINDOW_MS)
+
+/**
+ * [com.kevin.legion.ui.common.DeckSparkline]'s index-ordered input, straight off a window of
+ * [OdbSample] ([samplesOldestFirst], as [com.kevin.legion.data.local.OdbSampleDao.getRange] already
+ * returns oldest-first). No bucketing, unlike [buildMpgSparkline]'s daily rollup:
+ * [FAULT_TELEMETRY_WINDOW_MS] is short enough that TelemetryRecorder's own 30-second tick never
+ * produces more points than a sparkline can plot directly. `internal` for direct unit testing.
+ */
+internal fun eventTelemetrySparkline(samplesOldestFirst: List<OdbSample>): List<Float?> =
+    samplesOldestFirst.map { it.value.toFloat() }
+
+/**
+ * The first sample in [samples] carrying a location fix, or `null` if none do - the FAULTS
+ * drilldown's per-event "where was the car" line only ever renders when at least one surrounding
+ * sample recorded one. [com.kevin.legion.vehicle.TelemetryRecorder] only stamps `lat`/`lng` when a
+ * location fix was available at write time, so a fix-less stretch of driving is a real absence,
+ * not a bug to work around. `internal` for direct unit testing.
+ */
+internal fun locationFromSamples(samples: List<OdbSample>): Pair<Double, Double>? =
+    samples.firstOrNull { it.lat != null && it.lng != null }?.let { it.lat!! to it.lng!! }
+
+/**
+ * True when [code] has no description in EITHER the bundled seed dictionary or this install's
+ * learned one (i.e. it is not present in [descriptions], which callers pass as
+ * `loadSeed() + loadLearned()` - see [distinctFaultsByFirstSeen]'s own call site in `FleetScreen.kt`)
+ * - the FAULTS drilldown's per-code IDENTIFY affordance only ever offers itself where this is true.
+ * Kevin's own call, stated in the ticket: spend one Gemini call per code, once, ever - never a
+ * batch-identify loop. `internal` for direct unit testing.
+ */
+internal fun codeNeedsIdentification(code: String, descriptions: Map<String, Pair<String, String>>): Boolean =
+    code !in descriptions
+
+/** [splitIdentifyResult]'s cap on the derived title's length - long enough for a real short label, short enough that a run-on first sentence still reads as a title rather than a wrapped paragraph. */
+internal const val IDENTIFY_TITLE_MAX_CHARS = 80
+
+/**
+ * [com.kevin.legion.vehicle.DiagnosticAgent.diagnose]'s per-code IDENTIFY call returns ONE spoken
+ * paragraph, not the `(title, detail)` pair [com.kevin.legion.vehicle.DtcDescriptions.save] stores
+ * (the same shape [com.kevin.legion.vehicle.DiagnosticAgent.describeCodes] already produces for the
+ * DTC sheet, by asking the model for it in that exact format - `diagnose` asks for none, so this
+ * splits its prose after the fact instead). [Pair.first] (the title) is [text]'s own first
+ * sentence, capped at [IDENTIFY_TITLE_MAX_CHARS] - the same short-label slot
+ * `descriptions[code]?.first` already fills everywhere else this map is read.
+ * [Pair.second] (the detail) is [text] verbatim, unabridged. Blank input returns a literal
+ * "Identified" title over the (empty) blank detail rather than an empty title string, so a
+ * degenerate response never writes a blank-looking row into [DtcDescriptions]. `internal` for
+ * direct unit testing.
+ */
+internal fun splitIdentifyResult(text: String): Pair<String, String> {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return "Identified" to trimmed
+    val sentenceEnd = trimmed.indexOfFirst { it == '.' || it == '!' || it == '?' }
+    val titleRaw = if (sentenceEnd in trimmed.indices) trimmed.substring(0, sentenceEnd) else trimmed
+    return titleRaw.trim().take(IDENTIFY_TITLE_MAX_CHARS) to trimmed
 }
 
 // ------------------------------------------------------------- DRIVES (pure)
