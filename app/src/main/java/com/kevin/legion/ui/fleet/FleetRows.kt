@@ -678,6 +678,76 @@ internal fun eventTelemetrySparkline(samplesOldestFirst: List<OdbSample>): List<
     samplesOldestFirst.map { it.value.toFloat() }
 
 /**
+ * How close the NEAREST surrounding-telemetry sample must sit to a fault's own EVENT timestamp
+ * before its value is trusted as "the value when LEGION logged the code" - [sparklineCaption]'s
+ * "when logged" clause. **This is deliberately NOT "the value when the fault set".**
+ * `CodeEvent.timestamp` is stamped in `AriaForegroundService.recordCodeEvent`, called from
+ * `startHealthMonitor`'s poll loop (`AriaForegroundService.kt:519`, `:926`,
+ * `HEALTH_SCAN_INTERVAL_MS = 5 * 60 * 1000L`) - that loop runs every five minutes and a stored DTC
+ * persists until cleared, so `CodeEvent.timestamp` is only ever "the poll that noticed the code was
+ * set", which can trail the ECU actually setting it by up to a scan interval, or by hours/days if
+ * the code was already stored before LEGION started watching. The freeze frame is a different
+ * moment entirely - the ECU's OWN snapshot from when the fault set - which is exactly why this
+ * caption and the freeze frame block above it can legitimately disagree; [FaultEventRow]'s on-screen
+ * note says so in words rather than leaving the two numbers to speak for themselves.
+ * [com.kevin.legion.vehicle.TelemetryRecorder] ticks every 30s while driving (see
+ * [FAULT_TELEMETRY_WINDOW_MS]'s own doc for the same fact), so three ticks (90s) absorbs ordinary
+ * tick jitter without letting the clause pass off a sample that is really a gap - a dropped tick, a
+ * poll landing right at the window's edge, or the engine only just starting to sample - as if it
+ * were the moment LEGION actually logged the event. CLAUDE.md §4's "never a fabricated precision":
+ * omitting the clause when the nearest sample is this far off is the honest call, not a lesser one.
+ */
+internal const val FAULT_SPARKLINE_NEAREST_SAMPLE_MAX_MS = 90_000L
+
+/**
+ * The magnitude caption drawn beneath a FAULTS-drilldown sparkline (mission-control follow-up, "the
+ * sparklines have no magnitude" - the shape alone answers "did the car accelerate", never "was that
+ * 5 mph or 60"). Two clauses: the RANGE across [samples] (min-max, or a single bare figure when every
+ * sample reads the same - see below), and, when trustworthy, the value at the sample NEAREST
+ * [eventTimestamp] - the number that actually matters, "when logged" rather than at the window's
+ * first or last tick. **"When logged" names [eventTimestamp] correctly and deliberately does NOT say
+ * "at the code"** - see [FAULT_SPARKLINE_NEAREST_SAMPLE_MAX_MS]'s own doc for why [eventTimestamp]
+ * (`CodeEvent.timestamp`, when LEGION's poll loop noticed the code) is not the moment the fault
+ * actually set, which is what the freeze frame captures instead. [displayValue] converts a sample's
+ * raw stored unit into the figure actually shown (e.g. km/h -> mph for speed; bare `Int` for rpm, no
+ * conversion) - kept as a caller-supplied function so this stays pure arithmetic/formatting with no
+ * PID-specific unit knowledge baked in. [unitSuffix] is appended to the RANGE clause only (`" mph"`
+ * for speed, `""` for rpm) - the "when logged" clause is always a bare number, matching the worked
+ * example (`"0-42 mph  ·  38 when logged"`, not `"...38 mph when logged"`): the unit is stated once
+ * per caption, not per number.
+ *
+ * **A flat window (every sample reads the same [displayValue]) renders as one bare figure**, never
+ * `"42-42 mph"` - the same "render it sensibly, not a degenerate range" instruction [DeckSparkline]'s
+ * own flat-series handling already applies to the line itself, restated here for the caption.
+ *
+ * **The "when logged" clause is omitted, not fabricated, when the nearest sample is farther than
+ * [FAULT_SPARKLINE_NEAREST_SAMPLE_MAX_MS] from [eventTimestamp]** - see that constant's own doc for
+ * why. `null` when [samples] is empty (the caller's own "no telemetry recorded" wording already
+ * covers that case one level up; this function has nothing to add to it). `internal` for direct unit
+ * testing, same posture as every other pure builder in this file.
+ */
+internal fun sparklineCaption(
+    samples: List<OdbSample>,
+    eventTimestamp: Long,
+    displayValue: (Double) -> Int,
+    unitSuffix: String,
+): String? {
+    if (samples.isEmpty()) return null
+    val displayed = samples.map { displayValue(it.value) }
+    val min = displayed.min()
+    val max = displayed.max()
+    val rangeText = if (min == max) "$min$unitSuffix" else "$min-$max$unitSuffix"
+
+    val nearest = samples.minByOrNull { kotlin.math.abs(it.timestamp - eventTimestamp) }!!
+    val gapMs = kotlin.math.abs(nearest.timestamp - eventTimestamp)
+    return if (gapMs <= FAULT_SPARKLINE_NEAREST_SAMPLE_MAX_MS) {
+        "$rangeText  ·  ${displayValue(nearest.value)} when logged"
+    } else {
+        rangeText
+    }
+}
+
+/**
  * The first sample in [samples] carrying a location fix, or `null` if none do - the FAULTS
  * drilldown's per-event "where was the car" line only ever renders when at least one surrounding
  * sample recorded one. [com.kevin.legion.vehicle.TelemetryRecorder] only stamps `lat`/`lng` when a
@@ -721,6 +791,77 @@ internal fun splitIdentifyResult(text: String): Pair<String, String> {
     val titleRaw = if (sentenceEnd in trimmed.indices) trimmed.substring(0, sentenceEnd) else trimmed
     return titleRaw.trim().take(IDENTIFY_TITLE_MAX_CHARS) to trimmed
 }
+
+/**
+ * The expanded-detail text actually worth rendering for one code, with a leading duplicate of
+ * [title] stripped off (mission-control follow-up: on screen, P1282's title read "Code P1282 on
+ * your Jeep indicates a fuel pump relay control circuit malfunction" and the expanded detail BEGAN
+ * with that exact sentence again, so it read twice - [splitIdentifyResult] only guarantees the title
+ * is the detail's own first sentence, never that the model didn't ALSO restate that sentence as the
+ * detail's opening words, and it evidently sometimes does).
+ *
+ * Matching is case- and whitespace-insensitive: [title] and [detail] are both trimmed before the
+ * comparison. If the trimmed detail starts with the trimmed title, that prefix is removed, and a
+ * single trailing `.` or `:` right after it - the separator a model tends to leave between an echoed
+ * title and the sentence that follows - is removed too, before the remaining whitespace run is
+ * trimmed off. Only ONE leading occurrence is ever stripped; a title that happens to recur again
+ * later in the detail's own prose is left alone, since that is not the duplication this exists to
+ * fix. A detail that does not start with the title at all is returned trimmed and otherwise
+ * untouched - see the no-prefix case in this function's own tests.
+ *
+ * `internal` for direct unit testing, same posture as every other pure builder in this file.
+ */
+internal fun detailWithoutTitlePrefix(title: String, detail: String): String {
+    val trimmedTitle = title.trim()
+    val trimmedDetail = detail.trim()
+    if (trimmedTitle.isEmpty() || !trimmedDetail.startsWith(trimmedTitle, ignoreCase = true)) {
+        return trimmedDetail
+    }
+    var remainder = trimmedDetail.substring(trimmedTitle.length)
+    if (remainder.isNotEmpty() && (remainder[0] == '.' || remainder[0] == ':')) {
+        remainder = remainder.substring(1)
+    }
+    return remainder.trim()
+}
+
+/**
+ * True when an identified code's DETAIL half is actually worth surfacing (mission-control follow-up,
+ * "IDENTIFY saves far more than it shows" - [com.kevin.legion.vehicle.DtcDescriptions] stores a
+ * `(title, detail)` pair per code and the FAULTS drilldown used to render only the title, leaving the
+ * detail - likely causes, urgency, the typical fix - sitting on disk unread). `description` is the
+ * SAME `descriptions[code]` lookup every row already reads for its title; `null` (code not yet
+ * identified) is never reachable, matching [codeNeedsIdentification]'s own "IDENTIFY offers itself
+ * only where nothing is known yet" split - the two functions are never true for the same code at
+ * once.
+ *
+ * **Reachability is judged on the text AFTER [detailWithoutTitlePrefix] strips a leading duplicate
+ * of the title, not on the raw detail** - a blank detail, a detail that IS the title (exactly, or
+ * with only case/whitespace/trailing-punctuation differences), or a detail that is the title plus a
+ * separator and nothing else, all reduce to an empty remainder and are NOT reachable: the ticket's
+ * own instruction that a row with nothing MORE to show than its own title line should not look
+ * tappable. A detail that starts with the title and then genuinely continues IS reachable, and the
+ * affordance renders only that remainder - see [detailWithoutTitlePrefix]'s own doc for the stripping
+ * rule. `internal` for direct unit testing, same posture as [codeNeedsIdentification].
+ */
+internal fun codeDetailIsReachable(description: Pair<String, String>?): Boolean {
+    if (description == null) return false
+    val (title, detail) = description
+    return detailWithoutTitlePrefix(title, detail).isNotEmpty()
+}
+
+/**
+ * The expand/collapse state key for one code's detail on one [CodeEvent] row - `"$eventId:$code"`.
+ * **Keyed by [CodeEvent.id] (a stable database primary key), never by the row's position in the
+ * list** - the ticket's own instruction ("must survive scroll, not a bare index"): a
+ * [com.kevin.legion.data.local.CodeEvent.id] does not shift when the list scrolls or a new event
+ * arrives above it the way a `LazyColumn` index would. The SAME code can appear in more than one
+ * [CodeEvent] (a recurring fault), and this key deliberately lets each event's own row remember its
+ * own open/closed state independently, matching the ticket's "per code per event row" wording exactly
+ * - unlike [FaultsDrilldownScreen]'s IDENTIFY state, which is intentionally shared across every row
+ * showing the same code (see that screen's own doc for why those two are different problems).
+ * `internal` for direct unit testing, same posture as every other pure builder in this file.
+ */
+internal fun faultDetailKey(eventId: Long, code: String): String = "$eventId:$code"
 
 // ------------------------------------------------------------- DRIVES (pure)
 

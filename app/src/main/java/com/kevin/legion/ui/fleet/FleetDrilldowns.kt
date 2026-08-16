@@ -69,6 +69,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.math.roundToInt
 
 /**
  * FLEET's in-screen drilldowns (ticket 18, merging FLEET + TELEMETRY per ticket 09's resolution;
@@ -1048,6 +1049,15 @@ private fun DriveLogRow(log: DailyDriveLog) {
  *    and identifying it once must update EVERY row currently showing it, not just the row that
  *    triggered the call - `effectiveDescriptions` below is what every [FaultEventRow] actually
  *    reads.
+ * 3. **DETAILS.** A second, unrelated piece of hoisted state, [expandedDetailKeys] - the mission-
+ *    control follow-up "IDENTIFY saves far more than it shows": [DtcDescriptions] stores a
+ *    `(title, detail)` pair per code and this screen used to render only the title, leaving likely
+ *    causes/urgency/the typical fix unread on disk. Tapping DETAILS toggles that code's detail open
+ *    on the ONE event row tapped, keyed by [faultDetailKey] (`eventId:code`) - deliberately NOT
+ *    shared across every row showing the same code the way IDENTIFY's state is, because opening a
+ *    detail writes nothing to disk, so two rows for a recurring code are free to sit independently
+ *    open/closed. See [faultDetailKey]'s own doc for why the key is the event id, never the row's
+ *    list position (LazyColumn recycling).
  *
  * [onBack] bumps `reloadKey` at the `FleetScreen.kt` call site (matching [FullScheduleScreen]/
  * [PopulateScreen]'s own "any drilldown that can write bumps the reload on the way out" rule) so a
@@ -1073,6 +1083,13 @@ fun FaultsDrilldownScreen(
     var identifyingCodes by remember { mutableStateOf<Set<String>>(emptySet()) }
     var identifyErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     val effectiveDescriptions = descriptions + learnedThisSession
+
+    // DETAILS toggle state - see this screen's own doc point 3 for why this is keyed per event row
+    // (faultDetailKey) rather than shared per code the way IDENTIFY's state above is.
+    var expandedDetailKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    fun toggleDetail(key: String) {
+        expandedDetailKeys = if (key in expandedDetailKeys) expandedDetailKeys - key else expandedDetailKeys + key
+    }
 
     // The one Gemini call this screen ever launches, and only ever ONE PER TAP - see
     // codeNeedsIdentification's own doc for why a code already in effectiveDescriptions never
@@ -1136,6 +1153,8 @@ fun FaultsDrilldownScreen(
                             identifyingCodes = identifyingCodes,
                             identifyErrors = identifyErrors,
                             onIdentify = ::identify,
+                            expandedDetailKeys = expandedDetailKeys,
+                            onToggleDetail = ::toggleDetail,
                         )
                         Hairline()
                     }
@@ -1146,9 +1165,11 @@ fun FaultsDrilldownScreen(
 }
 
 /**
- * One [CodeEvent], fully expanded (no tap-to-expand - the ticket's own list is exhaustive per
- * event: date/time, mileage, codes+descriptions+IDENTIFY, the full freeze frame, surrounding
- * telemetry, and a cleared marker, so there is nothing left over for a second tap to reveal).
+ * One [CodeEvent], fully expanded (no tap-to-expand ITS OWN ROOT - the ticket's own list is
+ * exhaustive per event: date/time, mileage, codes+descriptions+IDENTIFY, the full freeze frame,
+ * surrounding telemetry, and a cleared marker. **A DETAILS toggle exists one level down, per code**
+ * - see [FaultsDrilldownScreen]'s own doc point 3 - which is narrower than "tap-to-expand the row"
+ * and does not contradict this paragraph.
  *
  * Surrounding-telemetry samples are queried in THIS row's own `LaunchedEffect(event.id)`, not
  * passed down from [FaultsDrilldownScreen] - see that screen's own doc for why per-row, lazy
@@ -1156,6 +1177,19 @@ fun FaultsDrilldownScreen(
  * are the two PIDs [com.kevin.legion.vehicle.TelemetryRecorder] actually samples at its base
  * 30-second tick regardless of which other PIDs a given install's ECU answers, so these are the two
  * every car's history can be expected to have something to draw - see that object's own PID list.
+ * Each sparkline now carries a [sparklineCaption] beneath it (mission-control follow-up, "the
+ * sparklines have no magnitude") - the shape alone answers "did the car accelerate", never "was
+ * that 5 mph or 60". **The caption's own "when logged" clause, this row's "AROUND WHEN LOGGED"
+ * heading, and the explanatory line rendered between FREEZE FRAME and it are a correction, not
+ * original wording** - a real device (P1282) showed FREEZE FRAME's SPEED 0 mph next to a caption
+ * that used to read "32 at the code", and both numbers were correct for two different moments:
+ * [CodeEvent.timestamp] is stamped in `AriaForegroundService.recordCodeEvent`, driven by
+ * `startHealthMonitor`'s poll loop (`AriaForegroundService.kt:519`, `:926`,
+ * `HEALTH_SCAN_INTERVAL_MS` = 5 minutes) - when LEGION's periodic scan NOTICED a stored code, never
+ * when the ECU actually set it. A stored DTC persists until cleared, so that gap is unbounded. The
+ * freeze frame, by contrast, is the ECU's own snapshot from the moment the fault set. Do not revert
+ * this wording back to "at the code" - see [FAULT_SPARKLINE_NEAREST_SAMPLE_MAX_MS]'s own doc for
+ * the same trace.
  */
 @Composable
 private fun FaultEventRow(
@@ -1166,6 +1200,9 @@ private fun FaultEventRow(
     identifyingCodes: Set<String>,
     identifyErrors: Map<String, String>,
     onIdentify: (String) -> Unit,
+    /** See [FaultsDrilldownScreen]'s doc point 3 and [faultDetailKey]'s own doc for the key shape. */
+    expandedDetailKeys: Set<String>,
+    onToggleDetail: (String) -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     val context = LocalContext.current
@@ -1205,7 +1242,14 @@ private fun FaultEventRow(
 
         Spacer(Modifier.height(8.dp))
         codes.forEach { code ->
-            val description = descriptions[code]?.first
+            val entry = descriptions[code]
+            val description = entry?.first
+            // codeDetailIsReachable's own doc: false for an unidentified code (entry == null, the
+            // SAME condition codeNeedsIdentification below reads), and false for a blank or
+            // title-duplicating detail - neither of those gets a tap affordance.
+            val detailReachable = codeDetailIsReachable(entry)
+            val detailKey = faultDetailKey(event.id, code)
+            val detailExpanded = detailReachable && detailKey in expandedDetailKeys
             Column(Modifier.padding(bottom = 6.dp)) {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -1221,6 +1265,17 @@ private fun FaultEventRow(
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.clickable { onIdentify(code) }.padding(horizontal = 4.dp, vertical = 2.dp),
                         )
+                        // Mutually exclusive with both branches above by construction - IDENTIFY only
+                        // ever offers itself where entry == null (codeNeedsIdentification's own doc),
+                        // and detailReachable requires entry != null - so this affordance and
+                        // IDENTIFY's can never both render for the same code, and their two clickable
+                        // Text nodes never compete for the same tap.
+                        detailReachable -> Text(
+                            if (detailExpanded) "HIDE" else "DETAILS",
+                            style = LegionType.stamp,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { onToggleDetail(detailKey) }.padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
                     }
                 }
                 Text(
@@ -1228,6 +1283,22 @@ private fun FaultEventRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = if (description != null) MaterialTheme.colorScheme.onSurface else sem.faint,
                 )
+                // The detail half of DtcDescriptions' (title, detail) pair - collapsed by default
+                // (mission-control follow-up: "collapsed by default, so the list stays scannable"),
+                // toggled open by the DETAILS/HIDE affordance above. Rendered through
+                // detailWithoutTitlePrefix rather than entry.second raw: on a real device (P1282,
+                // FAULTS drilldown) the title line read "Code P1282 on your Jeep indicates a fuel
+                // pump relay control circuit malfunction" and the expanded detail BEGAN with that
+                // exact sentence again, so it read twice - codeDetailIsReachable's own doc explains
+                // why reachability itself is judged on the same stripped text.
+                if (detailExpanded) {
+                    Text(
+                        detailWithoutTitlePrefix(entry!!.first, entry.second),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = sem.faint,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
                 identifyErrors[code]?.let { error ->
                     Text(error, style = LegionType.stamp, color = sem.quarantined, modifier = Modifier.padding(top = 2.dp))
                 }
@@ -1253,9 +1324,28 @@ private fun FaultEventRow(
             )
         }
 
-        // Surrounding telemetry - "what point in the drive" this code tripped at.
+        // Once per event row, in words, not left to two disagreeing numbers to explain themselves:
+        // FREEZE FRAME above is the ECU's OWN snapshot from the moment the fault actually set.
+        // Everything below (AROUND WHEN LOGGED) is dated to event.timestamp, which
+        // AriaForegroundService.recordCodeEvent stamps from startHealthMonitor's poll loop
+        // (AriaForegroundService.kt:519, HEALTH_SCAN_INTERVAL_MS at :926 = 5 minutes) - the moment
+        // LEGION's periodic scan NOTICED a stored code, not the moment it set. A stored DTC persists
+        // until cleared, so that gap can be minutes, hours, or days, and on a real device (P1282) it
+        // was enough for FREEZE FRAME to read SPEED 0 mph while the "at the code" caption below it
+        // (as it used to say) read 32 mph - both readings were correct, for two different moments.
+        Text(
+            "Freeze frame is the car's own snapshot from when the fault set. The readings below are " +
+                "from when LEGION logged it - the two can be far apart.",
+            style = LegionType.stamp,
+            color = sem.faint,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+
+        // Surrounding telemetry - "what point in LEGION's own logging" this code was noticed at, NOT
+        // "what point in the drive the fault set" - see this row's own doc and the note above for why
+        // those are two different moments and this heading no longer conflates them.
         Spacer(Modifier.height(6.dp))
-        Text("AROUND THIS EVENT", style = LegionType.stamp, color = sem.faint)
+        Text("AROUND WHEN LOGGED", style = LegionType.stamp, color = sem.faint)
         val speed = speedSamples
         val rpm = rpmSamples
         when {
@@ -1272,13 +1362,25 @@ private fun FaultEventRow(
                 modifier = Modifier.padding(top = 2.dp),
             )
             else -> {
+                // Speed samples are stored in km/h (TelemetryRecorder's own raw PID unit for `010D`)
+                // - converted to mph here, same 0.621371 factor and same "screens match screens"
+                // reasoning formatFreezeFrame's own SPEED conversion states, since this drilldown's
+                // FREEZE FRAME block above already renders mph for the identical reading.
                 if (speed.isNotEmpty()) {
                     Text("SPEED", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 4.dp))
                     DeckSparkline(eventTelemetrySparkline(speed))
+                    sparklineCaption(speed, event.timestamp, { kmh -> (kmh * 0.621371).roundToInt() }, " mph")?.let { caption ->
+                        Text(caption, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 2.dp))
+                    }
                 }
+                // RPM stays the ECU's own native unit - bare number, no suffix, matching
+                // formatFreezeFrame's own "RPM... no 'human' unit to convert into" call.
                 if (rpm.isNotEmpty()) {
                     Text("RPM", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 4.dp))
                     DeckSparkline(eventTelemetrySparkline(rpm))
+                    sparklineCaption(rpm, event.timestamp, { it.roundToInt() }, "")?.let { caption ->
+                        Text(caption, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 2.dp))
+                    }
                 }
                 // Location only when a surrounding sample actually carried a fix (locationFromSamples'
                 // own doc) - rendered as raw coordinates rather than a reverse-geocoded address, which

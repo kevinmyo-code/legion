@@ -9,6 +9,7 @@ import com.kevin.legion.data.local.OdbSample
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import kotlin.math.roundToInt
 
 /**
  * Pure-logic coverage for [buildDueRows] / [distinctFaultsByFirstSeen] /
@@ -774,5 +775,186 @@ class FleetRowsTest {
         val (title, detail) = splitIdentifyResult("   ")
         assertEquals("Identified", title)
         assertEquals("", detail)
+    }
+
+    // ------------------------------------ detailWithoutTitlePrefix / codeDetailIsReachable / faultDetailKey
+
+    @Test
+    fun `detailWithoutTitlePrefix strips an exact leading duplicate of the title`() {
+        assertEquals(
+            "Usually a failing relay.",
+            detailWithoutTitlePrefix(
+                "Fuel pump relay control circuit malfunction",
+                "Fuel pump relay control circuit malfunction Usually a failing relay.",
+            ),
+        )
+    }
+
+    @Test
+    fun `detailWithoutTitlePrefix strips the title plus a trailing period`() {
+        assertEquals(
+            "Usually a failing relay.",
+            detailWithoutTitlePrefix(
+                "Fuel pump relay control circuit malfunction",
+                "Fuel pump relay control circuit malfunction. Usually a failing relay.",
+            ),
+        )
+    }
+
+    @Test
+    fun `detailWithoutTitlePrefix strips the title plus a trailing colon`() {
+        assertEquals(
+            "Usually a failing relay.",
+            detailWithoutTitlePrefix(
+                "Fuel pump relay control circuit malfunction",
+                "Fuel pump relay control circuit malfunction: Usually a failing relay.",
+            ),
+        )
+    }
+
+    @Test
+    fun `detailWithoutTitlePrefix matches the duplicate case- and whitespace-insensitively`() {
+        assertEquals(
+            "Usually a failing relay.",
+            detailWithoutTitlePrefix(
+                "Fuel Pump Relay Control Circuit Malfunction",
+                "  fuel pump relay control circuit malfunction   Usually a failing relay.  ",
+            ),
+        )
+    }
+
+    @Test
+    fun `detailWithoutTitlePrefix leaves a detail with no leading title match unchanged`() {
+        val detail = "Usually a failing catalytic converter or a downstream O2 sensor."
+        assertEquals(detail, detailWithoutTitlePrefix("Catalyst efficiency below threshold", detail))
+    }
+
+    @Test
+    fun `detailWithoutTitlePrefix on a detail that IS the title reduces to empty`() {
+        assertEquals("", detailWithoutTitlePrefix("Catalyst efficiency", "catalyst efficiency"))
+    }
+
+    @Test
+    fun `detailWithoutTitlePrefix on the title plus only a separator reduces to empty`() {
+        assertEquals("", detailWithoutTitlePrefix("Catalyst efficiency", "Catalyst efficiency."))
+        assertEquals("", detailWithoutTitlePrefix("Catalyst efficiency", "Catalyst efficiency:   "))
+    }
+
+    @Test
+    fun `codeDetailIsReachable is false for an unidentified code`() {
+        assertEquals(false, codeDetailIsReachable(null))
+    }
+
+    @Test
+    fun `codeDetailIsReachable is false for a blank detail`() {
+        assertEquals(false, codeDetailIsReachable("Catalyst efficiency" to "   "))
+        assertEquals(false, codeDetailIsReachable("Catalyst efficiency" to ""))
+    }
+
+    @Test
+    fun `codeDetailIsReachable is false when the detail duplicates the title, case and whitespace insensitive`() {
+        assertEquals(false, codeDetailIsReachable("Catalyst efficiency" to "catalyst efficiency"))
+        assertEquals(false, codeDetailIsReachable("Catalyst efficiency" to "  Catalyst efficiency  "))
+    }
+
+    @Test
+    fun `codeDetailIsReachable is false when the detail is the title plus only a separator`() {
+        assertEquals(false, codeDetailIsReachable("Catalyst efficiency" to "Catalyst efficiency."))
+        assertEquals(false, codeDetailIsReachable("Catalyst efficiency" to "Catalyst efficiency:  "))
+    }
+
+    @Test
+    fun `codeDetailIsReachable is true for a real, distinct detail`() {
+        assertEquals(
+            true,
+            codeDetailIsReachable(
+                "Catalyst efficiency below threshold" to
+                    "Usually a failing catalytic converter or a downstream O2 sensor. Not urgent, but plan to fix soon.",
+            ),
+        )
+    }
+
+    @Test
+    fun `codeDetailIsReachable is true when the detail repeats the title and then genuinely continues`() {
+        assertEquals(
+            true,
+            codeDetailIsReachable(
+                "Code P1282 on your Jeep indicates a fuel pump relay control circuit malfunction" to
+                    "Code P1282 on your Jeep indicates a fuel pump relay control circuit malfunction. " +
+                    "Usually a failing relay or wiring fault. Not urgent, but worth a shop visit soon.",
+            ),
+        )
+    }
+
+    @Test
+    fun `faultDetailKey combines event id and code`() {
+        assertEquals("42:P1282", faultDetailKey(42L, "P1282"))
+        assertEquals("42:P0420", faultDetailKey(42L, "P0420"))
+    }
+
+    // ------------------------------------------------------------------- sparklineCaption
+
+    @Test
+    fun `sparklineCaption reports the range and the value nearest the event timestamp`() {
+        val samples = listOf(
+            OdbSample(vehicleId = vehicleId, pid = "010D", value = 0.0, unit = "km/h", timestamp = now - 60_000),
+            OdbSample(vehicleId = vehicleId, pid = "010D", value = 30.0, unit = "km/h", timestamp = now - 10_000),
+            OdbSample(vehicleId = vehicleId, pid = "010D", value = 68.0, unit = "km/h", timestamp = now), // 42 mph, exactly when logged
+            OdbSample(vehicleId = vehicleId, pid = "010D", value = 20.0, unit = "km/h", timestamp = now + 45_000),
+        )
+        val caption = sparklineCaption(samples, now, { kmh -> (kmh * 0.621371).roundToInt() }, " mph")
+        assertEquals("0-42 mph  ·  42 when logged", caption)
+    }
+
+    @Test
+    fun `sparklineCaption on a single sample reports that value as both the range and when logged`() {
+        val samples = listOf(OdbSample(vehicleId = vehicleId, pid = "010C", value = 900.0, unit = "rpm", timestamp = now))
+        val caption = sparklineCaption(samples, now, { it.roundToInt() }, "")
+        assertEquals("900  ·  900 when logged", caption)
+    }
+
+    @Test
+    fun `sparklineCaption is null for an empty sample list`() {
+        assertNull(sparklineCaption(emptyList(), now, { it.roundToInt() }, " mph"))
+    }
+
+    @Test
+    fun `sparklineCaption omits the when-logged clause when the nearest sample is too far away`() {
+        val samples = listOf(
+            OdbSample(
+                vehicleId = vehicleId, pid = "010C", value = 780.0, unit = "rpm",
+                timestamp = now - FAULT_SPARKLINE_NEAREST_SAMPLE_MAX_MS - 1,
+            ),
+            OdbSample(
+                vehicleId = vehicleId, pid = "010C", value = 2100.0, unit = "rpm",
+                timestamp = now + FAULT_SPARKLINE_NEAREST_SAMPLE_MAX_MS + 1,
+            ),
+        )
+        val caption = sparklineCaption(samples, now, { it.roundToInt() }, "")
+        assertEquals("780-2100", caption)
+    }
+
+    @Test
+    fun `sparklineCaption at exactly the nearest-sample threshold still includes the when-logged clause`() {
+        val samples = listOf(
+            OdbSample(
+                vehicleId = vehicleId, pid = "010C", value = 1950.0, unit = "rpm",
+                timestamp = now - FAULT_SPARKLINE_NEAREST_SAMPLE_MAX_MS,
+            ),
+        )
+        val caption = sparklineCaption(samples, now, { it.roundToInt() }, "")
+        assertEquals("1950  ·  1950 when logged", caption)
+    }
+
+    @Test
+    fun `sparklineCaption collapses an all-identical range to one bare figure, never N-N`() {
+        val samples = listOf(
+            OdbSample(vehicleId = vehicleId, pid = "010D", value = 68.0, unit = "km/h", timestamp = now - 120_000),
+            OdbSample(vehicleId = vehicleId, pid = "010D", value = 68.0, unit = "km/h", timestamp = now - 60_000),
+            OdbSample(vehicleId = vehicleId, pid = "010D", value = 68.0, unit = "km/h", timestamp = now + 120_000),
+        )
+        // Every sample converts to the same 42 mph; the nearest sample (60s away) is inside threshold.
+        val caption = sparklineCaption(samples, now, { kmh -> (kmh * 0.621371).roundToInt() }, " mph")
+        assertEquals("42 mph  ·  42 when logged", caption)
     }
 }
