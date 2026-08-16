@@ -530,10 +530,19 @@ object MidnightImport {
      * makes a re-run overwrite its own rule rather than accumulate near-duplicates that
      * [com.kevin.legion.vehicle.DriveReassigner.plan] would then replay one after another.
      *
-     * **Covers all of time** (`0 .. Long.MAX_VALUE`). The rule shape is time-ranged because its
-     * original caller corrects ONE drive; here the whole of a car's history is on the wrong id, and
-     * there is no meaningful narrower window. `DriveReassigner.plan` passes both bounds straight
-     * through to `timestamp BETWEEN ?  AND ?`, so an unbounded pair is exactly "every row".
+     * **Unbounded backwards, bounded at NOW going forwards** (`0 .. System.currentTimeMillis()`).
+     * The rule shape is time-ranged because its original caller corrects ONE drive; here the whole
+     * of a car's history is on the wrong id, so the past needs no lower bound.
+     *
+     * The upper bound is load-bearing and was very nearly `Long.MAX_VALUE`.
+     * [SENTINEL_VEHICLE_ID] is not just the imported car's stale id - it is ALSO this device's
+     * live placeholder for a car with no dongle paired, which is the whole reason it was ambiguous
+     * enough to cause the 2026-08-03 mess in the first place. An unbounded rule would therefore
+     * sweep every FUTURE sample recorded under the placeholder onto the imported car, silently,
+     * forever, on every sync pass. Everything the bundle carries is by definition already in the
+     * past at the moment this runs, so `now` covers all of it and none of what has not happened
+     * yet. `DriveReassigner.plan` passes both bounds straight through to
+     * `timestamp BETWEEN ? AND ?`.
      *
      * **Known gap, deliberate:** `SyncEngine.applyReassignments` rewrites `obd_samples` ONLY. The
      * other UNION tables whose identity includes `vehicleId` (`monthly_recaps`, `daily_drive_logs`,
@@ -559,7 +568,7 @@ object MidnightImport {
                     reassignmentSyncId(oldId, newId),
                     oldId,
                     0L,
-                    Long.MAX_VALUE,
+                    now,
                     newId,
                     now,
                 ),

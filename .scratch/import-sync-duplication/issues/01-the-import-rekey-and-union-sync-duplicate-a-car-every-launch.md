@@ -448,3 +448,88 @@ rather than duplicates, which is exactly why they never grew.
   once before converging. It follows from UNION merge inserting by identity plus an unconstrained
   target table, but it was not run - which is the main reason it is being offered as a choice rather
   than performed.
+
+## Convergence ATTEMPTED and REVERTED, 2026-08-16. Stage 2's claim is not proven.
+
+Kevin authorised converging Drive. It was tried, it did not work, the device was restored, and the
+result contradicts what the stage 2 commit claimed. Recording that plainly because the claim is in a
+commit message and in this file above it.
+
+### What was done
+
+A `DriveReassignment` rule was written by hand into the database (app stopped, fresh backup taken
+first): `default -> imported-mitsubishi-outlander-2020`, `fromMs = 0`,
+`toMs = 1785416586731` (the last sentinel sample).
+
+**The bound is not `Long.MAX_VALUE`, and that matters beyond this attempt.** `default` is not only the
+imported car's stale id, it is ALSO this device's live placeholder for a car with no dongle paired.
+An unbounded rule would sweep every FUTURE placeholder sample onto the imported car, forever, on
+every pass. The shipped code had exactly that bug for about an hour; it now bounds at
+`System.currentTimeMillis()`, and a test pins that it is not unbounded.
+
+### What happened
+
+| Pass | `default` | Outlander | distinct |
+|---|---|---|---|
+| before | 5,242 | 5,242 | 5,242 |
+| after sync 1 | 0 | 10,484 | 5,242 |
+| after sync 2 | 0 | 15,726 | 5,242 |
+
+The rule applied correctly - `default` emptied on the first pass, exactly as designed. But the second
+pass added **another full 5,242**, which means Drive handed the sentinel-keyed rows back again. The
+rule did not converge anything. It simply took over driving the same loop the import used to drive,
+one copy per launch.
+
+Restored from `backup-preconverge` at that point. Verified after a further launch and sync: every
+vehicle back to `total == distinct`, `drive_reassignments` empty, Jeep untouched at 7,006 samples, no
+regrowth.
+
+### Why the stage 2 reasoning was wrong
+
+The reasoning was: `syncFile` applies reassignments after the merge and BEFORE re-reading the
+snapshot it uploads, so Drive receives corrected ids and stops serving stale ones. That reasoning
+describes the code accurately. It is also evidently not what happens here, because the stale rows
+came back.
+
+**`monthsToSync` was checked and ruled out** - it drops months older than the retention floor, and
+the sentinel samples are 2026-07-27/30, comfortably inside a 365-day window from today.
+
+**The leading hypothesis is now that the UPLOAD half of sync is failing**, silently, and has been for
+some time. It fits every observation better than anything else considered so far:
+
+- the pull demonstrably works (rows arrive), the push demonstrably does not take effect (Drive keeps
+  serving the same stale rows);
+- it explains why the original duplication accumulated for roughly six passes over weeks without
+  Drive ever self-correcting;
+- it explains why deleting the sentinel `vehicle_specs`/`maintenance_items` rows locally saw them
+  restored within 17 minutes;
+- and it explains this attempt exactly.
+
+**This is a hypothesis, not a finding.** It was not confirmed: `SyncEngine` logs nothing on this
+path, the phone locked partway through the attempt so the Drive sync screen (which reports status and
+errors, `ui/DriveSyncScreen.kt`) could not be read, and there are no Drive credentials outside the
+app. **Confirming it is the next step, and it should happen before any further convergence work** -
+if uploads are failing, then no reassignment rule, however well shaped, can ever converge anything,
+and the real defect is somewhere else entirely.
+
+### What this does and does not change about the shipped code
+
+- The code change **stands**: writing a synced rule is strictly better than a local `UPDATE` that
+  sync cannot see, and `VehicleController.reassignDrive`'s 2026-07-16 doc comment is unambiguous that
+  a plain UPDATE is wrong for a UNION table keyed on `vehicleId`.
+- The **claim that it converges is withdrawn.** It is untested in the only environment that matters,
+  and the one attempt to test it here failed. The commit message says it converges; this section is
+  the correction.
+- The forward-bound fix (`now` instead of `Long.MAX_VALUE`) is a genuine improvement discovered by
+  doing this, and is worth keeping regardless of what happens to the rest.
+
+### Assumptions ledger
+
+- `on-device`: every count in the table above; the restore, verified by sha256 (`e47cc95b...`) and by
+  re-reading counts after a further launch and sync.
+- `on-device`: `monthsToSync`'s retention floor does not exclude 2026-07 (read the code, checked the
+  sample dates against today).
+- `reasoned`, NOT confirmed: that Drive uploads are failing. It is the best fit for all the evidence
+  and it is checkable, but nothing was traced and no Drive file was read.
+- The pre-converge backup is at `scratchpad/backup-preconverge/`, and the older post-dedup backup at
+  `scratchpad/backup-20260816/`. Both are in a SESSION-TEMP directory.

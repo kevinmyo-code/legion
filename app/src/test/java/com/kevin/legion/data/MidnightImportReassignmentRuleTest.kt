@@ -57,16 +57,21 @@ class MidnightImportReassignmentRuleTest {
     }
 
     @Test
-    fun `the sentinel re-key is recorded as a synced rule covering all of time`() {
+    fun `the sentinel re-key is recorded as a synced rule covering the bundle's whole past`() {
+        val before = System.currentTimeMillis()
         MidnightImport.recordSentinelReassignments(db, mapOf(sentinel to synthetic))
 
         val rule = rules().single()
         assertEquals(sentinel, rule.vehicleId)
         assertEquals(synthetic, rule.newVehicleId)
-        // Unbounded on purpose: the whole of this car's history is on the wrong id, and
-        // DriveReassigner passes both bounds straight into `timestamp BETWEEN ? AND ?`.
+        // Unbounded backwards - the whole of this car's history is on the wrong id.
         assertEquals(0L, rule.fromMs)
-        assertEquals(Long.MAX_VALUE, rule.toMs)
+        // But bounded at NOW going forwards, and that bound is the point of this assertion.
+        // `default` is ALSO this device's live placeholder for an unpaired car, so an unbounded
+        // rule would sweep every future sample recorded under it onto the imported car, silently,
+        // forever, on every sync pass. Everything the bundle carries is already in the past.
+        assertTrue("must not be unbounded forwards", rule.toMs < Long.MAX_VALUE)
+        assertTrue("but must still cover everything the bundle carried", rule.toMs >= before)
     }
 
     /**
@@ -117,6 +122,6 @@ class MidnightImportReassignmentRuleTest {
         assertEquals(sentinel, move.fromVehicleId)
         assertEquals(synthetic, move.toVehicleId)
         assertEquals(0L, move.fromMs)
-        assertEquals(Long.MAX_VALUE, move.toMs)
+        assertTrue("the planner must carry the forward bound through, not widen it", move.toMs < Long.MAX_VALUE)
     }
 }
