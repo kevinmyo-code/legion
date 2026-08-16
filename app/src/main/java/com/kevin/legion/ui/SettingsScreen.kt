@@ -35,6 +35,7 @@ import com.kevin.legion.ai.personaFor
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.service.AssistantIgnition
+import com.kevin.legion.service.DebugSettings
 import com.kevin.legion.sync.SyncCapability
 import com.kevin.legion.ui.spotify.SpotifyConnectResolver
 import com.kevin.legion.ui.theme.LegionType
@@ -89,6 +90,7 @@ fun SettingsScreen(
     // comes back from settings/companions having edited or switched.
     var reloadNonce by remember { mutableStateOf(0) }
 
+    var recallAlertsOn by remember { mutableStateOf(DebugSettings.recallAlertsEnabled(context)) }
     var hasKey by remember { mutableStateOf(GeminiKeyProvider.hasKey()) }
     var driveConnected by remember { mutableStateOf(SyncCapability.syncAvailable(context)) }
     var playServices by remember { mutableStateOf(SyncCapability.playServicesAvailable(context)) }
@@ -118,6 +120,7 @@ fun SettingsScreen(
             hasClientId = CompanionProfile.hasSpotifyClientId(context),
             isAuthorized = SpotifyWebApi.isAuthorized(context),
         )
+        recallAlertsOn = DebugSettings.recallAlertsEnabled(context)
     }
 
     // Step 2 of the chain: RECORD_AUDIO. Only reached once POST_NOTIFICATIONS
@@ -224,6 +227,19 @@ fun SettingsScreen(
                 label = "Spotify",
                 status = SpotifyConnectResolver.headline(spotifyStage),
                 onClick = onOpenSpotify,
+            )
+
+            // Mission-control ticket 12: DebugSettings.setRecallAlerts had zero callers before
+            // this row - the toggle governed AriaForegroundService.checkRecallsOnce but nothing
+            // could ever turn it on. Now that the proactive push shares the on-request check's
+            // identity-present gate, it has a coherent answer to give.
+            Spacer(Modifier.height(8.dp))
+            RecallAlertsRow(
+                enabled = recallAlertsOn,
+                onToggle = { on ->
+                    DebugSettings.setRecallAlerts(context, on)
+                    recallAlertsOn = on
+                },
             )
 
             // Android Auto probe harness (`.scratch/android-auto/map.md` wave 1) - a debug

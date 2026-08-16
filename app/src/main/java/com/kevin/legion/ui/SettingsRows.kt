@@ -118,6 +118,41 @@ fun IgnitionRow(
 }
 
 /**
+ * Whether Zero proactively mentions open NHTSA recalls once at startup
+ * ([com.kevin.legion.service.AriaForegroundService.checkRecallsOnce]). Off by default - a network
+ * call made on the driver's behalf every launch, not on request - and, since mission-control
+ * ticket 12 (`.scratch/fleet-maintenance/issues/12-a-recall-button.md`), gated the same
+ * identity-present way as the on-request check under Fleet -> Specs and the `check_recalls` voice
+ * tool. Ticket 12's finding: [com.kevin.legion.service.DebugSettings.setRecallAlerts] had zero
+ * callers before this row - a preference nobody could change, gating a proactive nobody had seen.
+ */
+@Composable
+fun RecallAlertsRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Recall alerts", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    if (enabled) {
+                        "On - Zero mentions it once at startup if NHTSA lists any open recall"
+                    } else {
+                        "Off - check any time under Fleet -> Specs"
+                    },
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                )
+            }
+            Switch(checked = enabled, onCheckedChange = onToggle)
+        }
+    }
+}
+
+/**
  * The "who is active" line. [name] null means the roster hasn't loaded yet or
  * (a genuinely fresh install, pre-onboarding) no profile is active on this
  * device at all; both render as "No companion set up yet" rather than blank
@@ -238,4 +273,16 @@ private fun PreviewCompanionActive() = LegionTheme {
 @Composable
 private fun PreviewPurgeLedgerRowNeutral() = LegionTheme {
     Surface { PurgeLedgerRow(onPurge = {}) }
+}
+
+@Preview(name = "Settings: recall alerts off", widthDp = 360)
+@Composable
+private fun PreviewRecallAlertsOff() = LegionTheme {
+    Surface { RecallAlertsRow(enabled = false, onToggle = {}) }
+}
+
+@Preview(name = "Settings: recall alerts on", widthDp = 360)
+@Composable
+private fun PreviewRecallAlertsOn() = LegionTheme {
+    Surface { RecallAlertsRow(enabled = true, onToggle = {}) }
 }

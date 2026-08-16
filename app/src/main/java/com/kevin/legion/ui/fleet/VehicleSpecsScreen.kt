@@ -39,6 +39,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.data.local.VehicleSpec
+import com.kevin.legion.ui.common.DeckCheckbox
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.common.Hairline
@@ -48,7 +49,9 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.IdentityWriteResult
 import com.kevin.legion.vehicle.ObdBluetoothManager
+import com.kevin.legion.vehicle.RecallCheckResult
 import com.kevin.legion.vehicle.VehicleSpecController
+import com.kevin.legion.vehicle.VinDecoder
 import com.kevin.legion.vehicle.VinRefreshResult
 import kotlinx.coroutines.launch
 
@@ -88,6 +91,13 @@ fun VehicleSpecsScreen(onBack: () -> Unit) {
     var reconciling by remember { mutableStateOf(false) }
     var reconcileMessage by remember { mutableStateOf<String?>(null) }
 
+    // Ticket 12's button: independent again from the two flows above - it needs no adapter and
+    // no re-decode, only whatever year/make/model is already on the `vehicles` row, so it must be
+    // driveable regardless of `reading`/`reconciling` and does not touch `spec`/`reloadKey` at all
+    // (recalls are never stored, `data/local/VehicleSpec.kt`, so there is nothing here to reload).
+    var recallChecking by remember { mutableStateOf(false) }
+    var recallOutcome by remember { mutableStateOf<RecallCheckResult?>(null) }
+
     LaunchedEffect(reloadKey) {
         spec = VehicleSpecController.current(context)
         loaded = true
@@ -101,6 +111,8 @@ fun VehicleSpecsScreen(onBack: () -> Unit) {
         failure = failure,
         reconciling = reconciling,
         reconcileMessage = reconcileMessage,
+        recallChecking = recallChecking,
+        recallOutcome = recallOutcome,
         onBack = onBack,
         onCopyVin = { vin -> copyToClipboard(context, vin) },
         onReadVin = {
@@ -149,6 +161,14 @@ fun VehicleSpecsScreen(onBack: () -> Unit) {
                 if (result is VinRefreshResult.Decoded) reloadKey++
             }
         },
+        onCheckRecalls = {
+            recallChecking = true
+            recallOutcome = null
+            scope.launch {
+                recallOutcome = VehicleSpecController.recalls(context)
+                recallChecking = false
+            }
+        },
     )
 }
 
@@ -167,10 +187,13 @@ fun VehicleSpecsContent(
     failure: String?,
     reconciling: Boolean,
     reconcileMessage: String?,
+    recallChecking: Boolean,
+    recallOutcome: RecallCheckResult?,
     onBack: () -> Unit,
     onCopyVin: (String) -> Unit,
     onReadVin: () -> Unit,
     onReconcileIdentity: () -> Unit,
+    onCheckRecalls: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -264,6 +287,14 @@ fun VehicleSpecsContent(
                         // `connected` or whether `vin` above is blank in this render pass - it
                         // reads its own VIN fresh from storage when pressed, and needs network, not
                         // a live dongle.
+                        //
+                        // CHECK RECALLS sits beside it (ticket 12,
+                        // `.scratch/fleet-maintenance/issues/12-a-recall-button.md`) - same row, same
+                        // control vocabulary - but is a DIFFERENT lookup: it is keyed off
+                        // year/make/model already on the `vehicles` row, not the VIN either button
+                        // reads/writes, despite all three sitting in the same VIN pane. Its own
+                        // outcome renders in the Recalls pane below, not inline here, because a
+                        // recall list is paragraphs, not a one-line announce.
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -273,6 +304,13 @@ fun VehicleSpecsContent(
                                     "SYNC ID FROM VIN",
                                     onClick = onReconcileIdentity,
                                     announce = reconcileMessage,
+                                )
+                            }
+                            if (!recallChecking) {
+                                SpecAction(
+                                    "CHECK RECALLS",
+                                    onClick = onCheckRecalls,
+                                    announce = recallAnnouncement(recallOutcome),
                                 )
                             }
                         }
@@ -306,6 +344,17 @@ fun VehicleSpecsContent(
                                 modifier = Modifier.padding(12.dp),
                             )
                         }
+                    }
+                }
+
+                item(key = "recalls-pane") {
+                    Spacer(Modifier.height(12.dp))
+                    DeckPane(header = "Recalls") {
+                        RecallSection(
+                            checking = recallChecking,
+                            outcome = recallOutcome,
+                            onSyncId = onReconcileIdentity,
+                        )
                     }
                 }
 
@@ -402,6 +451,160 @@ private fun SpecAction(text: String, onClick: () -> Unit, announce: String? = nu
 }
 
 /**
+ * The Recalls pane's body (ticket 12,
+ * `.scratch/fleet-maintenance/issues/12-a-recall-button.md`). Four outcomes, every one said in
+ * words on the surface itself, never a colour- or glyph-only signal and never a bare spinner that
+ * ends in silence (CLAUDE.md §7):
+ *
+ * - **Not checked yet** ([outcome] null): says the lookup is live and un-cached, so a driver who
+ *   never taps the button is not left wondering why nothing is here.
+ * - **Identity missing**: names which of year/make/model is absent and offers the fix right there,
+ *   rather than a bare refusal - the finding that opened this ticket (an empty recall list read
+ *   identically whether the car had no identity at all or genuinely had zero recalls).
+ * - **None found**: rendered at [MaterialTheme.colorScheme.onSurface], the SAME ordinary-content
+ *   tier the recall list itself uses below, deliberately NOT [LegionSemantics.faint] or
+ *   [LegionSemantics.estimated] - this is the important state per the ticket's own wording: zero
+ *   open recalls is the expected answer on a 28-year-old car, so it must read as a completed check
+ *   that happened to find nothing, not as a failed or empty load.
+ * - **Lookup failed**: [LegionSemantics.estimated] (the advisory tier, same as [IgnitionRow]'s
+ *   permission-refusal line) - a blocked network call, not a data fault, but visibly distinct from
+ *   "none found" so the two can never be mistaken for each other.
+ */
+@Composable
+private fun RecallSection(checking: Boolean, outcome: RecallCheckResult?, onSyncId: () -> Unit) {
+    val sem = LocalLegionSemantics.current
+    if (checking) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text("Checking NHTSA for open recalls...", style = LegionType.stamp, color = sem.faint)
+        }
+        return
+    }
+    when (outcome) {
+        null -> Text(
+            "Not checked yet. This is a live NHTSA lookup by year/make/model - not the VIN above " +
+                "- and recalls are never stored, so CHECK RECALLS always asks fresh.",
+            style = MaterialTheme.typography.bodySmall,
+            color = sem.faint,
+            modifier = Modifier.padding(12.dp),
+        )
+        is RecallCheckResult.IdentityMissing -> Column(Modifier.padding(12.dp)) {
+            Text(
+                "Can't check recalls - this car's ${outcome.missing.joinToString(" and ")} " +
+                    "${if (outcome.missing.size == 1) "isn't" else "aren't"} on file. Recalls are " +
+                    "looked up by year, make, and model, not the VIN.",
+                style = MaterialTheme.typography.bodySmall,
+                color = sem.estimated,
+            )
+            Spacer(Modifier.height(8.dp))
+            SpecAction("SYNC ID FROM VIN", onClick = onSyncId)
+        }
+        RecallCheckResult.LookupFailed -> Text(
+            "Couldn't reach NHTSA just now. Check the connection and tap CHECK RECALLS again - " +
+                "nothing about recalls is ever cached, so this always needs a live network call.",
+            style = MaterialTheme.typography.bodySmall,
+            color = sem.estimated,
+            modifier = Modifier.padding(12.dp),
+        )
+        is RecallCheckResult.Checked -> if (outcome.recalls.isEmpty()) {
+            // The important state (ticket 12): must NOT read as a failure. Ordinary content
+            // colour, ordinary weight, "checked" stated explicitly in the copy itself.
+            Text(
+                "Checked NHTSA just now - no open recalls on file for this year, make, and model.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(12.dp),
+            )
+        } else {
+            Text(
+                "Checked NHTSA just now - " +
+                    "${outcome.recalls.size} open recall${if (outcome.recalls.size == 1) "" else "s"}. " +
+                    "Tap one for the summary and remedy.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+            outcome.recalls.forEachIndexed { index, recall -> RecallDetailRow(recall, index) }
+        }
+    }
+}
+
+/**
+ * One recall, list-then-detail (ticket 12): campaign + component are always visible, summary and
+ * remedy - the two long-form fields - only once expanded, so a car with several open campaigns
+ * does not dump a wall of paragraphs before the driver has picked one. [DeckCheckbox] supplies the
+ * expand/collapse control itself: real `role = Role.Checkbox` [toggleable][
+ * androidx.compose.foundation.selection.toggleable] target, 48dp touch height, and - per its own
+ * doc - no separate manual [stateDescription][androidx.compose.ui.semantics.stateDescription] on
+ * top, because `toggleable`'s own Checkbox role plus the boolean already announces expanded/
+ * collapsed correctly on its own.
+ */
+@Composable
+private fun RecallDetailRow(recall: VinDecoder.Recall, index: Int) {
+    val sem = LocalLegionSemantics.current
+    var expanded by remember(index, recall.campaign) { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        DeckCheckbox(
+            checked = expanded,
+            onCheckedChange = { expanded = it },
+            label = recall.component.ifBlank { "Recall" },
+        )
+        Text(
+            recall.campaign.ifBlank { "No campaign number given" },
+            style = LegionType.stamp,
+            color = sem.faint,
+            modifier = Modifier.padding(start = 26.dp),
+        )
+        if (expanded) {
+            if (recall.summary.isNotBlank()) {
+                Text(
+                    recall.summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = sem.faint,
+                    modifier = Modifier.padding(start = 26.dp, top = 6.dp),
+                )
+            }
+            if (recall.remedy.isNotBlank()) {
+                Text(
+                    "Remedy: ${recall.remedy}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = sem.faint,
+                    modifier = Modifier.padding(start = 26.dp, top = 6.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Hairline()
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+/**
+ * The `stateDescription` for the CHECK RECALLS action - same [SpecAction.announce] convention
+ * SYNC ID FROM VIN already carries, so TalkBack hears the same outcome the pane below shows in
+ * words, never a colour- or glyph-only signal. Internal so it is testable without Compose,
+ * matching [reconcileOutcomeText]'s own reason for being `internal`.
+ */
+internal fun recallAnnouncement(outcome: RecallCheckResult?): String? = when (outcome) {
+    null -> null
+    is RecallCheckResult.IdentityMissing -> "Missing " + outcome.missing.joinToString(", ")
+    RecallCheckResult.LookupFailed -> "Recall lookup failed"
+    is RecallCheckResult.Checked -> when (outcome.recalls.size) {
+        0 -> "No open recalls"
+        1 -> "1 open recall"
+        else -> "${outcome.recalls.size} open recalls"
+    }
+}
+
+/**
  * Renders a [VinRefreshResult] into the plain-language line ticket 04 §5 asks for - every
  * outcome said in words, on the surface itself (not TalkBack-only), never a bare spinner that
  * ends in silence and never a colour- or glyph-only signal.
@@ -458,7 +661,8 @@ private fun PreviewSpecsDecoded() = LegionTheme {
         ),
         loaded = true, connected = true, reading = false, failure = null,
         reconciling = false, reconcileMessage = null,
-        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {},
+        recallChecking = false, recallOutcome = null,
+        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {}, onCheckRecalls = {},
     )
 }
 
@@ -468,7 +672,8 @@ private fun PreviewSpecsEmpty() = LegionTheme {
     VehicleSpecsContent(
         spec = null, loaded = true, connected = false, reading = false, failure = null,
         reconciling = false, reconcileMessage = null,
-        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {},
+        recallChecking = false, recallOutcome = null,
+        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {}, onCheckRecalls = {},
     )
 }
 
@@ -480,7 +685,8 @@ private fun PreviewSpecsFailed() = LegionTheme {
         failure = "No usable VIN came back. Cars built before roughly 2001 often do not report " +
             "one over OBD-II at all, and the decode also needs a network connection.",
         reconciling = false, reconcileMessage = null,
-        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {},
+        recallChecking = false, recallOutcome = null,
+        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {}, onCheckRecalls = {},
     )
 }
 
@@ -498,6 +704,73 @@ private fun PreviewSpecsReconcileConflict() = LegionTheme {
         reconciling = false,
         reconcileMessage = "Conflict, nothing changed: model on file is \"Cherokee Sport\", the VIN " +
             "says \"Cherokee\". Correct it by hand under Cars if the VIN is right.",
-        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {},
+        recallChecking = false, recallOutcome = null,
+        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {}, onCheckRecalls = {},
+    )
+}
+
+/**
+ * Ticket 12's four recall outcomes (`.scratch/fleet-maintenance/issues/12-a-recall-button.md`).
+ * "None found" is deliberately previewed alongside "found" and "failed" so the three sit next to
+ * each other in the preview list the way the ticket's own verification step (screenshot them side
+ * by side) asks for - the whole point is that none of the three may look alike.
+ */
+@Preview(name = "Specs: recalls found", widthDp = 360, heightDp = 700)
+@Composable
+private fun PreviewSpecsRecallsFound() = LegionTheme {
+    VehicleSpecsContent(
+        spec = VehicleSpec(vehicleId = "default", vin = "1FAKEVIN000000001", decodedAt = 1785153923212L),
+        loaded = true, connected = false, reading = false, failure = null,
+        reconciling = false, reconcileMessage = null,
+        recallChecking = false,
+        recallOutcome = RecallCheckResult.Checked(
+            recalls = listOf(
+                VinDecoder.Recall(
+                    campaign = "98V123000",
+                    component = "STEERING",
+                    summary = "The steering coupler may separate from the steering shaft.",
+                    remedy = "Dealers will replace the steering coupler free of charge.",
+                ),
+            ),
+        ),
+        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {}, onCheckRecalls = {},
+    )
+}
+
+@Preview(name = "Specs: recalls - none found (must NOT look like a failure)", widthDp = 360, heightDp = 500)
+@Composable
+private fun PreviewSpecsRecallsNone() = LegionTheme {
+    VehicleSpecsContent(
+        spec = VehicleSpec(vehicleId = "default", vin = "1FAKEVIN000000001", decodedAt = 1785153923212L),
+        loaded = true, connected = false, reading = false, failure = null,
+        reconciling = false, reconcileMessage = null,
+        recallChecking = false,
+        recallOutcome = RecallCheckResult.Checked(recalls = emptyList()),
+        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {}, onCheckRecalls = {},
+    )
+}
+
+@Preview(name = "Specs: recalls - lookup failed", widthDp = 360, heightDp = 500)
+@Composable
+private fun PreviewSpecsRecallsFailed() = LegionTheme {
+    VehicleSpecsContent(
+        spec = VehicleSpec(vehicleId = "default", vin = "1FAKEVIN000000001", decodedAt = 1785153923212L),
+        loaded = true, connected = false, reading = false, failure = null,
+        reconciling = false, reconcileMessage = null,
+        recallChecking = false,
+        recallOutcome = RecallCheckResult.LookupFailed,
+        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {}, onCheckRecalls = {},
+    )
+}
+
+@Preview(name = "Specs: recalls - identity missing", widthDp = 360, heightDp = 500)
+@Composable
+private fun PreviewSpecsRecallsIdentityMissing() = LegionTheme {
+    VehicleSpecsContent(
+        spec = null, loaded = true, connected = false, reading = false, failure = null,
+        reconciling = false, reconcileMessage = null,
+        recallChecking = false,
+        recallOutcome = RecallCheckResult.IdentityMissing(missing = listOf("year", "make", "model")),
+        onBack = {}, onCopyVin = {}, onReadVin = {}, onReconcileIdentity = {}, onCheckRecalls = {},
     )
 }

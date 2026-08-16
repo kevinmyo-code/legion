@@ -31,6 +31,7 @@ import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.ai.OnboardingState
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.vehicle.ObdBluetoothManager
+import com.kevin.legion.vehicle.RecallCheckResult
 import com.kevin.legion.vehicle.VehicleController
 import com.kevin.legion.vehicle.VehicleSpecController
 import com.kevin.legion.sync.SyncEngine
@@ -458,13 +459,35 @@ class AriaForegroundService : Service() {
      * for the car and have Zero mention them in one line. Network call, so it's
      * opt-in and runs after the opener has had a moment. Gated like every other
      * proactive line via [speakProactive].
+     *
+     * Uses the same [VehicleSpecController.recalls] gate the voice tool `check_recalls` does
+     * (identity-present, not [com.kevin.legion.data.local.Vehicle.confirmed] - ticket 12,
+     * `.scratch/fleet-maintenance/issues/12-a-recall-button.md`), so the two can no longer
+     * disagree about whether this car is fit to look up. A missing identity or a failed lookup
+     * both mean "nothing to proactively say" here - unlike the button or the voice tool, this
+     * path has no UI to say the refusal in, so it stays silent rather than half-announcing.
      */
     private suspend fun checkRecallsOnce() {
         if (recallChecked) return
         recallChecked = true
         if (!DebugSettings.recallAlertsEnabled(this)) return
         delay(RECALL_CHECK_DELAY_MS)
-        val recalls = VehicleSpecController.recalls(this)
+        val outcome = VehicleSpecController.recalls(this)
+        // Staying silent is right for this channel (see the doc above), but silence with NO TRACE
+        // is a different thing. If NHTSA is persistently unreachable from a network, or the car's
+        // identity is never set, this path would otherwise no-op every session forever with
+        // nothing anywhere to show it had even tried - undiagnosable by construction. Logged on
+        // review, 2026-08-15, as the cheap half of "doing nothing is acceptable, doing nothing
+        // silently is not".
+        when (outcome) {
+            is RecallCheckResult.IdentityMissing ->
+                Log.d(TAG, "recall check skipped: identity incomplete (${outcome.missing.joinToString()})")
+            is RecallCheckResult.LookupFailed ->
+                Log.d(TAG, "recall check failed: NHTSA lookup did not return a usable result")
+            is RecallCheckResult.Checked ->
+                Log.d(TAG, "recall check ok: ${outcome.recalls.size} open recall(s)")
+        }
+        val recalls = (outcome as? RecallCheckResult.Checked)?.recalls.orEmpty()
         if (recalls.isEmpty()) return
         val components = recalls.take(3).map { it.component.ifBlank { "a safety issue" } }.distinct().joinToString(", ")
         speakProactive(

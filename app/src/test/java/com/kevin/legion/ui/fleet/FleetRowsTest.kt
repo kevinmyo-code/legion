@@ -290,6 +290,24 @@ class FleetRowsTest {
         assertNull(rows[0].fraction)
     }
 
+    @Test
+    fun `a row never reads OVERDUE off an unconfirmed odometer, even when accumulated trip miles alone would cross the interval`() {
+        // Ticket 15 gap 1 (`.scratch/fleet-maintenance/issues/15-isdue-and-the-digest-inherit-the-
+        // same-two-gaps.md`): VehicleController.isDue used to compute mileageDue with no regard for
+        // odometerUnset, so buildDueRows' own partition (which sorts overdue vs upcoming via isDue,
+        // separately from chooseDueAxis's already-guarded render math) could sort an item into
+        // OVERDUE off an odometer nobody confirmed - the exact "currentMileage > 0 while
+        // odometerBaseline == 0" case ticket 09's own senior-dev review caught for chooseDueAxis, now
+        // closed for isDue too. lastDoneMileage = 0 and currentMileage = 6,000 against a 5,000-mile
+        // interval crosses it by raw arithmetic alone; odometerUnset = true must refuse it anyway.
+        val item = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, lastDoneMileage = 0)
+        val rows = buildDueRows(listOf(item), currentMileage = 6000, odometerUnset = true, now = now)
+        assertEquals(1, rows.size)
+        assertEquals(false, rows[0].overdue)
+        assertEquals("-", rows[0].value)
+        assertEquals("every 5,000 mi - odometer not set", rows[0].sub)
+    }
+
     // -------------------------------------------------------- [GUESS] tag (ticket 06/09)
 
     @Test
@@ -332,6 +350,16 @@ class FleetRowsTest {
         assertNull(rows[0].fraction)
         assertEquals("every 30,000 mi", rows[0].sub)
         assertEquals(true, rows[0].isGuess)
+    }
+
+    @Test
+    fun `buildScheduleRows also never sorts a row into OVERDUE off an unconfirmed odometer`() {
+        // Same ticket 15 gap 1 fix as buildDueRows' own regression above, exercised through the
+        // FULL SCHEDULE grouping function instead - it partitions via the same VehicleController
+        // .isDue call, so it inherited the identical bug.
+        val item = MaintenanceItem(vehicleId = vehicleId, serviceName = "Oil Change", intervalMiles = 5000, lastDoneMileage = 0)
+        val rows = buildScheduleRows(listOf(item), currentMileage = 6000, odometerUnset = true, now = now)
+        assertEquals(ScheduleGroup.UPCOMING, rows[0].group)
     }
 
     @Test

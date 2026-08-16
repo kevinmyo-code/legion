@@ -1,8 +1,11 @@
 package com.kevin.legion.ui.fleet
 
 import com.kevin.legion.data.local.VehicleSpec
+import com.kevin.legion.vehicle.RecallCheckResult
+import com.kevin.legion.vehicle.VinDecoder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -67,5 +70,43 @@ class VehicleSpecsScreenTest {
         val rows = specRows(spec { copy(engineHp = 190, paintCode = "PSC") })
         assertTrue(rows.any { it.first == "Horsepower" })
         assertTrue(rows.any { it.first == "Paint code" && it.second == "PSC" })
+    }
+
+    // --- recallAnnouncement: ticket 12's CHECK RECALLS button stateDescription -----------------
+    //
+    // Same "every outcome sayable, and the four must never collapse" rule the button itself is
+    // built to (`.scratch/fleet-maintenance/issues/12-a-recall-button.md`), asserted here on the
+    // TalkBack-facing text rather than the on-screen pane.
+
+    @Test
+    fun `recallAnnouncement is null before any check has run`() {
+        assertNull(recallAnnouncement(null))
+    }
+
+    @Test
+    fun `recallAnnouncement names the missing fields distinctly from a failed lookup`() {
+        val missing = recallAnnouncement(RecallCheckResult.IdentityMissing(listOf("year", "make")))
+        val failed = recallAnnouncement(RecallCheckResult.LookupFailed)
+        assertEquals("Missing year, make", missing)
+        assertEquals("Recall lookup failed", failed)
+        assertTrue("missing and failed must not read alike", missing != failed)
+    }
+
+    @Test
+    fun `recallAnnouncement distinguishes zero recalls from a failed or missing check`() {
+        val none = recallAnnouncement(RecallCheckResult.Checked(emptyList()))
+        val failed = recallAnnouncement(RecallCheckResult.LookupFailed)
+        val missing = recallAnnouncement(RecallCheckResult.IdentityMissing(listOf("model")))
+        assertEquals("No open recalls", none)
+        // The exact defect ticket 12 opened on: an empty answer must never share wording (or
+        // meaning) with a refusal to even try.
+        assertTrue(none != failed && none != missing)
+    }
+
+    @Test
+    fun `recallAnnouncement counts recalls found, singular and plural`() {
+        val recall = VinDecoder.Recall(campaign = "98V123000", component = "STEERING", summary = "", remedy = "")
+        assertEquals("1 open recall", recallAnnouncement(RecallCheckResult.Checked(listOf(recall))))
+        assertEquals("2 open recalls", recallAnnouncement(RecallCheckResult.Checked(listOf(recall, recall))))
     }
 }

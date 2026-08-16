@@ -91,6 +91,53 @@ class FleetDigestBuilderTest {
     }
 
     @Test
+    fun `an overdue SEEDED item's DUE line carries the guess disclosure in words - ticket 15 gap 2`() {
+        // Ticket 06 required this on six surfaces and missed FleetDigestBuilder - it consumes
+        // DueRowView.sub (already-formatted), so the audit's `intervalMiles|intervalMonths` grep
+        // could never have matched it. row.isGuess reuses ui.fleet.isGuessTag's exact rule
+        // (SEEDED AND an interval exists) rather than reinventing it.
+        val item = MaintenanceItem(
+            vehicleId = vehicleId, serviceName = "Oil Change",
+            intervalMiles = 5000, lastDoneMileage = 100_000, intervalSource = "SEEDED",
+        )
+        val text = FleetDigestBuilder.buildDigestText(
+            vehicle = vehicle(odometerBaseline = 100_000), currentMileage = 106_000, items = listOf(item), unknownNames = emptyList(),
+            nextService = null, codeEvents = emptyList(), recentServices = emptyList(), now = now,
+        )
+        assertTrue(text.contains("DUE Oil Change every 5,000 mi - overdue - guess, unconfirmed"))
+    }
+
+    @Test
+    fun `a CONFIRMED item's overdue DUE line carries no guess disclosure`() {
+        val item = MaintenanceItem(
+            vehicleId = vehicleId, serviceName = "Oil Change",
+            intervalMiles = 5000, lastDoneMileage = 100_000, intervalSource = "CONFIRMED",
+        )
+        val text = FleetDigestBuilder.buildDigestText(
+            vehicle = vehicle(odometerBaseline = 100_000), currentMileage = 106_000, items = listOf(item), unknownNames = emptyList(),
+            nextService = null, codeEvents = emptyList(), recentServices = emptyList(), now = now,
+        )
+        assertTrue(text.contains("DUE Oil Change every 5,000 mi - overdue [reported]"))
+        assertFalse("a driver-confirmed interval must never carry the guess disclosure", text.contains("guess"))
+    }
+
+    @Test
+    fun `a neverDone SEEDED item's overdue-now line still carries the guess disclosure when it has an interval`() {
+        // isGuessTag's own rule: an interval must exist to doubt. A neverDone item that DOES carry a
+        // seeded interval is still a guess about that interval, even though its phrase bypasses
+        // DueRowView.sub for the "overdue-now (never logged)" wording.
+        val item = MaintenanceItem(
+            vehicleId = vehicleId, serviceName = "Timing Belt", neverDone = true,
+            intervalMiles = 90_000, intervalSource = "SEEDED",
+        )
+        val text = FleetDigestBuilder.buildDigestText(
+            vehicle = vehicle(), currentMileage = 10_000, items = listOf(item), unknownNames = emptyList(),
+            nextService = null, codeEvents = emptyList(), recentServices = emptyList(), now = now,
+        )
+        assertTrue(text.contains("DUE Timing Belt overdue-now (never logged) - guess, unconfirmed"))
+    }
+
+    @Test
     fun `a schedule with nothing overdue reads MAINTENANCE DUE none`() {
         val item = MaintenanceItem(
             vehicleId = vehicleId, serviceName = "Oil Change",

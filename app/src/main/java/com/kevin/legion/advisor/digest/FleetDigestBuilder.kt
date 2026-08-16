@@ -147,7 +147,23 @@ object FleetDigestBuilder : DigestBuilder {
     /** "MAINTENANCE DUE" section - see class doc for why [buildDueRows] is reused rather than
      * re-derived. `neverDone` items read "overdue-now (never logged)" per the ticket's explicit
      * wording; anchored overdue items name the axis that fired via [DueRowView.sub]. An empty
-     * [items] reads [DigestText.notLogged] - no schedule was ever seeded for this car. */
+     * [items] reads [DigestText.notLogged] - no schedule was ever seeded for this car.
+     *
+     * **`[row.isGuess]` carries a guess suffix, in words** (ticket 15 gap 2,
+     * `.scratch/fleet-maintenance/issues/15-isdue-and-the-digest-inherit-the-same-two-gaps.md`).
+     * Ticket 06 required this on six surfaces and missed this one - the audit grepped for
+     * `intervalMiles|intervalMonths`, and this function consumes [DueRowView.sub], an
+     * already-formatted string, so it could never have matched. [DueRowView.isGuess] reuses
+     * [com.kevin.legion.ui.fleet.isGuessTag]'s exact rule (`intervalSource == "SEEDED"` AND an
+     * interval exists) rather than reinventing it. This digest feeds [com.kevin.legion.advisor.
+     * AdvisorBriefs] (via `FleetDigestBuilder` being its FLEET `digestBuilder`), i.e. a model's
+     * OWN context - ticket 06's stated reason this matters more than the screen: "feeding an
+     * unlabelled guess into a model that then states it back confidently is how an estimate
+     * launders itself into a fact." A text digest has no tag/colour channel to begin with, so the
+     * word is inline in the line's own value, not a bracket - matching this file's existing
+     * value-then-tier composition (see [DigestText.estimate]'s own doc for the same two-layer
+     * shape used elsewhere in this package).
+     */
     private fun maintenanceLines(items: List<MaintenanceItem>, currentMileage: Int, odometerUnset: Boolean, now: Long): List<String> {
         if (items.isEmpty()) return listOf(DigestText.line("MAINTENANCE", DigestText.notLogged()))
         val overdue = buildDueRows(items, currentMileage, odometerUnset, now).filter { it.overdue }
@@ -158,7 +174,8 @@ object FleetDigestBuilder : DigestBuilder {
             // ("every 5,000 mi - overdue"), so wrapping it in a second "overdue (...)" here would say
             // it twice - [row.sub] is used bare now, not composed into a second sentence.
             val phrase = if (row.label in neverDoneNames) "overdue-now (never logged)" else row.sub
-            DigestText.withTier(DigestText.line("DUE ${row.label}", phrase), TrustTier.REPORTED)
+            val guessed = if (row.isGuess) "$phrase - guess, unconfirmed" else phrase
+            DigestText.withTier(DigestText.line("DUE ${row.label}", guessed), TrustTier.REPORTED)
         }
     }
 

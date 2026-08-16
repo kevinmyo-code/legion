@@ -40,11 +40,21 @@ data class Vehicle(
     // guess from OBD. Added v8->v9. Sharpens diagnostics/maintenance grounding.
     @ColumnInfo(defaultValue = "''") val trim: String = "",
     // True once the driver has actually stated/confirmed this car's identity
-    // (voice register, onboarding, or the AI Profile facts form). The no-OBD
-    // default seed is a placeholder 1998 Jeep Cherokee; without this flag,
-    // year/make/model-keyed lookups (e.g. NHTSA recalls) would report on the
-    // mascot car the driver never claimed. Added v11->v12; DEFAULT '0' mirrors
-    // the migration so a migrated row validates identically to a fresh one.
+    // (voice register, onboarding, or the AI Profile facts form). Originally the
+    // gate on year/make/model-keyed lookups (e.g. NHTSA recalls), so those never
+    // reported on the no-OBD placeholder seed (a mascot 1998 Jeep Cherokee) the
+    // driver never claimed. That premise expired when seeding went blank for
+    // every id (a09aa68, 2026-08-15) - a blank row cannot pass an
+    // identity-present test either, so the recall gate is now
+    // com.kevin.legion.vehicle.identityPresent(vehicle) instead (ticket 12,
+    // `.scratch/fleet-maintenance/issues/12-a-recall-button.md`), applied the
+    // same way whether the identity arrived from the driver or from a VIN
+    // decode. This flag is NOT retired: it still records that the driver
+    // themself stated the identity, which a VIN write-back (ticket 04)
+    // deliberately does not claim on their behalf, and other callers may still
+    // want that distinction even though recalls no longer do. Added v11->v12;
+    // DEFAULT '0' mirrors the migration so a migrated row validates identically
+    // to a fresh one.
     @ColumnInfo(defaultValue = "0") val confirmed: Boolean = false,
     // Last-modified epoch ms for cross-device sync last-write-wins (S1, BYO-cloud
     // Google Drive sync). The Kotlin default stamps new rows; an EDIT must re-stamp

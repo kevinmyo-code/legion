@@ -106,13 +106,20 @@ object VinDecoder {
 
     /**
      * Fetches active NHTSA recalls for a year/make/model (not by VIN - the free
-     * recalls endpoint is keyed by year/make/model). Returns an empty list if
-     * none / on failure.
+     * recalls endpoint is keyed by year/make/model). Null means the HTTP call itself failed
+     * (offline, NHTSA unreachable, timeout) or its response was unparseable - deliberately
+     * distinct from a successful call that simply found zero recalls, which returns
+     * [emptyList] (ticket 12, `.scratch/fleet-maintenance/issues/12-a-recall-button.md`:
+     * "no open recalls" must read as a completed check, never as a failure, so the two
+     * cannot share one falsy return). Callers are expected to gate identity themselves
+     * (year/make/model all present) before calling - this still refuses at its own front
+     * door as a second line of defense, returning [emptyList] rather than null, because an
+     * identity-less call was never attempted at all, not one that ran and failed.
      */
-    suspend fun fetchRecalls(year: Int, make: String, model: String): List<Recall> = withContext(Dispatchers.IO) {
+    suspend fun fetchRecalls(year: Int, make: String, model: String): List<Recall>? = withContext(Dispatchers.IO) {
         if (year <= 0 || make.isBlank() || model.isBlank()) return@withContext emptyList()
         val url = "$RECALLS_URL?make=${enc(make)}&model=${enc(model)}&modelYear=$year"
-        val raw = httpGet(url) ?: return@withContext emptyList()
+        val raw = httpGet(url) ?: return@withContext null
         parseRecalls(raw)
     }
 
@@ -185,9 +192,10 @@ object VinDecoder {
         }
     }
 
-    private fun parseRecalls(json: String): List<Recall> {
+    /** Null (not [emptyList]) when the shape isn't what NHTSA normally sends - see [fetchRecalls]'s doc for why the two are kept distinct. */
+    private fun parseRecalls(json: String): List<Recall>? {
         return try {
-            val results = JSONObject(json).optJSONArray("results") ?: return emptyList()
+            val results = JSONObject(json).optJSONArray("results") ?: return null
             (0 until results.length()).mapNotNull { i ->
                 val o = results.optJSONObject(i) ?: return@mapNotNull null
                 Recall(
@@ -199,7 +207,7 @@ object VinDecoder {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse recalls: ${e.message}")
-            emptyList()
+            null
         }
     }
 

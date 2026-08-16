@@ -129,12 +129,20 @@ object VehicleSpecController {
     }
 
     /**
-     * Live recall lookup for the active car (year/make/model). Empty if
-     * none/unknown. [vehicleId] is the fleet-wide-voice override (ticket 01,
-     * "category B" stored-data tool) - null means the active car, unchanged.
+     * Live recall lookup for the active car (year/make/model, never by VIN - see
+     * [RecallCheckResult]'s doc). Gates on [identityPresent] - **not**
+     * [com.kevin.legion.data.local.Vehicle.confirmed]; ticket 12
+     * (`.scratch/fleet-maintenance/issues/12-a-recall-button.md`) found the voice tool and the
+     * proactive startup push disagreeing about which flag gated this, and this is the single
+     * place both now call through, so they cannot disagree again. [vehicleId] is the
+     * fleet-wide-voice override (ticket 01, "category B" stored-data tool) - null means the
+     * active car, unchanged.
      */
-    suspend fun recalls(context: Context, vehicleId: String? = null): List<VinDecoder.Recall> {
+    suspend fun recalls(context: Context, vehicleId: String? = null): RecallCheckResult {
         val v = VehicleController.vehicleFor(context, vehicleId)
-        return VinDecoder.fetchRecalls(v.year, v.make, v.model)
+        val missing = missingIdentityFields(v)
+        if (missing.isNotEmpty()) return RecallCheckResult.IdentityMissing(missing)
+        val recalls = VinDecoder.fetchRecalls(v.year, v.make, v.model) ?: return RecallCheckResult.LookupFailed
+        return RecallCheckResult.Checked(recalls)
     }
 }

@@ -70,6 +70,7 @@ import com.kevin.legion.vehicle.GarageController
 import com.kevin.legion.vehicle.GaragePreferences
 import com.kevin.legion.vehicle.MaintenanceAgent
 import com.kevin.legion.vehicle.ObdBluetoothManager
+import com.kevin.legion.vehicle.RecallCheckResult
 import com.kevin.legion.vehicle.SymptomAgent
 import com.kevin.legion.vehicle.TelemetryRecorder
 import com.kevin.legion.vehicle.VehicleController
@@ -1924,29 +1925,37 @@ object LiveToolbox {
      * Live NHTSA recall lookup for a car ([VehicleSpecController]); on-request
      * only. [vehicleId] is the resolved fleet-wide-voice override (ticket 01) -
      * null means the active car.
+     *
+     * Gates on identity-present (year/make/model all set), not
+     * [com.kevin.legion.data.local.Vehicle.confirmed] - ticket 12
+     * (`.scratch/fleet-maintenance/issues/12-a-recall-button.md`) found this tool refusing on
+     * `confirmed` while the proactive startup push read `year/make/model` directly with no check
+     * at all, so the same car could get recalls announced unprompted and then refused when asked.
+     * [VehicleSpecController.recalls] now owns the one gate both paths share.
      */
     private suspend fun checkRecalls(context: Context, vehicleId: String? = null): JSONObject {
-        // Recalls are keyed by year/make/model, which - with no OBD and no
-        // registration - would be the default mascot seed (1998 Jeep Cherokee).
-        // Refuse until the driver has actually confirmed the car so we never
-        // report recalls for a vehicle they never claimed.
-        if (!VehicleController.isConfirmed(context, vehicleId)) {
-            return result(
+        return when (val outcome = VehicleSpecController.recalls(context, vehicleId)) {
+            is RecallCheckResult.IdentityMissing -> result(
                 success = false,
-                message = "I don't know which car this is yet, so I can't check recalls. " +
-                    "Tell me the year, make, and model first.",
+                message = "I don't know this car's ${outcome.missing.joinToString(" and ")} yet, " +
+                    "so I can't check recalls. Tell me and I'll look it up, or run a VIN lookup.",
             )
+            RecallCheckResult.LookupFailed -> result(
+                success = false,
+                message = "Couldn't reach NHTSA to check recalls right now. Try again in a moment.",
+            )
+            is RecallCheckResult.Checked -> {
+                val arr = JSONArray()
+                for (r in outcome.recalls) {
+                    arr.put(JSONObject()
+                        .put("campaign", r.campaign)
+                        .put("component", r.component)
+                        .put("summary", r.summary)
+                        .put("remedy", r.remedy))
+                }
+                JSONObject().put("success", true).put("count", outcome.recalls.size).put("recalls", arr)
+            }
         }
-        val recalls = VehicleSpecController.recalls(context, vehicleId)
-        val arr = JSONArray()
-        for (r in recalls) {
-            arr.put(JSONObject()
-                .put("campaign", r.campaign)
-                .put("component", r.component)
-                .put("summary", r.summary)
-                .put("remedy", r.remedy))
-        }
-        return JSONObject().put("success", true).put("count", recalls.size).put("recalls", arr)
     }
 
     /** Searches long-term memory for entries relevant to [query], for Zero to read out. */

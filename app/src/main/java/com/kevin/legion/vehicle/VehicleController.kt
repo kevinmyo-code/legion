@@ -1089,12 +1089,15 @@ object VehicleController {
      * this list into the system instruction). Unknown items are now excluded
      * outright; see [unknownItems] for surfacing them separately, honestly, as
      * "I don't know" rather than "overdue".
+     *
+     * `odometerUnset = vehicle.odometerBaseline == 0` guards [isDue]'s mileage axis the same way
+     * [ui.fleet.chooseDueAxis] guards it in the render path - see [isDue]'s doc (ticket 15).
      */
     suspend fun dueItems(context: Context, vehicle: Vehicle): List<MaintenanceItem> {
         val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)
         val mileage = currentMileage(vehicle)
         val now = System.currentTimeMillis()
-        return items.filter { isDue(it, mileage, now) }
+        return items.filter { isDue(it, mileage, vehicle.odometerBaseline == 0, now) }
     }
 
     /**
@@ -1329,11 +1332,25 @@ object VehicleController {
      *  - Otherwise due if either its own mileage or time threshold has been
      *    crossed. A missing interval/anchor for one axis just excludes that axis,
      *    it never counts as due on its own.
+     *
+     * **[odometerUnset] guards the mileage axis, matching [ui.fleet.chooseDueAxis]'s render-path
+     * guard exactly** (`.scratch/fleet-maintenance/issues/15-isdue-and-the-digest-inherit-the-same-two-gaps.md`).
+     * Before this parameter existed, this function computed `mileageDue` off `currentMileage` with
+     * no regard for whether the odometer had ever been confirmed, so an item could be sorted into
+     * OVERDUE by [dueItems]/[buildDueRows]/[buildScheduleRows] off an odometer nobody set - the sort
+     * path was silently less honest than the render path ticket 09 already fixed. **The signal is
+     * `vehicle.odometerBaseline == 0`, never `currentMileage > 0`**: [currentMileage] is
+     * `odometerBaseline + tripMilesSinceBaseline`, and [com.kevin.legion.vehicle.TelemetryRecorder]'s
+     * trip-mile accumulation runs unconditionally on `odometerBaseline`, so a car can read a positive
+     * `currentMileage` while the odometer itself is still unconfirmed - the exact case this guard
+     * exists for. Every caller either already has this value in scope (the two [ui.fleet.FleetRows]
+     * builders take it as their own parameter) or derives it trivially from the [Vehicle] it already
+     * holds ([dueItems], [computeNextService]).
      */
-    internal fun isDue(item: MaintenanceItem, currentMileage: Int, now: Long): Boolean {
+    internal fun isDue(item: MaintenanceItem, currentMileage: Int, odometerUnset: Boolean, now: Long): Boolean {
         if (item.neverDone) return true
         if (item.lastDoneMileage == null && item.lastDoneDate == null) return false
-        val mileageDue = item.intervalMiles != null && item.lastDoneMileage != null &&
+        val mileageDue = !odometerUnset && item.intervalMiles != null && item.lastDoneMileage != null &&
             currentMileage - item.lastDoneMileage >= item.intervalMiles
         val timeDue = item.intervalMonths != null && item.lastDoneDate != null &&
             now - item.lastDoneDate >= item.intervalMonths.toLong() * MONTH_MS
@@ -1454,7 +1471,7 @@ object VehicleController {
     ): NextService? {
         val odometerUnset = odometerBaseline == 0
         val unknown = items.filter { isUnknown(it) }
-        val candidates = items.filter { !isUnknown(it) && !isDue(it, currentMileage, now) }
+        val candidates = items.filter { !isUnknown(it) && !isDue(it, currentMileage, odometerUnset, now) }
 
         var byMiles: ServiceCandidate? = null
         var byTime: ServiceCandidate? = null

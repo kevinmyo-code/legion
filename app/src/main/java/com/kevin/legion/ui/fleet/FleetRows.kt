@@ -137,7 +137,7 @@ data class DueRowView(
  */
 internal fun buildDueRows(items: List<MaintenanceItem>, currentMileage: Int, odometerUnset: Boolean, now: Long): List<DueRowView> {
     val anchored = items.filterNot { VehicleController.isUnknown(it) }
-    val (overdue, upcoming) = anchored.partition { VehicleController.isDue(it, currentMileage, now) }
+    val (overdue, upcoming) = anchored.partition { VehicleController.isDue(it, currentMileage, odometerUnset, now) }
     return overdue.map { toDueRow(it, currentMileage, odometerUnset, now, overdue = true) } +
         upcoming.map { toDueRow(it, currentMileage, odometerUnset, now, overdue = false) }
 }
@@ -345,7 +345,7 @@ data class ScheduleRowView(
 internal fun buildScheduleRows(items: List<MaintenanceItem>, currentMileage: Int, odometerUnset: Boolean, now: Long): List<ScheduleRowView> {
     val unknown = items.filter { VehicleController.isUnknown(it) }
     val known = items.filterNot { VehicleController.isUnknown(it) }
-    val (overdue, upcoming) = known.partition { VehicleController.isDue(it, currentMileage, now) }
+    val (overdue, upcoming) = known.partition { VehicleController.isDue(it, currentMileage, odometerUnset, now) }
     return overdue.map { toScheduleRow(it, currentMileage, odometerUnset, now, ScheduleGroup.OVERDUE) } +
         upcoming.map { toScheduleRow(it, currentMileage, odometerUnset, now, ScheduleGroup.UPCOMING) } +
         unknown.map { toScheduleRow(it, currentMileage, odometerUnset, now, ScheduleGroup.UNKNOWN) }
