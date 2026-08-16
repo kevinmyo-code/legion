@@ -99,3 +99,9 @@ ticket by its title, not `01`/`02`. The filename rides inside the name as its li
   fifteen tickets. Destination is DECISIONS, not shipped. **All five research tickets resolved the
   same day**; they falsified one settled decision, corrected a charting claim, and surfaced two
   defects in shipped code (tickets 13 and 15).
+- `.scratch/hands-and-senses/` - LEGION stops being read-only: clear DTCs, Home Assistant bridge,
+  notification listener, comms (call/text), wrench-mode vision, morning brief, ledger Gmail
+  auto-pull, Health Connect, and the assistant's actual voice. Charted 2026-08-16 from the
+  competitive-landscape brainstorm, thirteen tickets, three research fired at charting.
+  Destination is DECISIONS. Deliberately reopens two google-account out-of-scope rulings (Gmail
+  ingestion, background fetch) as the fresh efforts those rulings promised.
