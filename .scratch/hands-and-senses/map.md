@@ -31,6 +31,15 @@ The destination above therefore holds only for those; the six graduate rather th
 moat is verified whole-life context, and today it almost exclusively READS. The write surfaces and
 new senses below are what a JARVIS does that a dashboard does not.
 
+> **CORRECTION (2026-08-16, from ticket 04's premise check): "almost exclusively READS" is false.**
+> `AmbientListener` ships today - local Vosk transcription of cabin conversation, a periodic
+> `SubAgent` pass deciding whether to react, and it **speaks unprompted**
+> (`AriaForegroundService.kt:268`, `AmbientListener.kt:245-248`). An ambient sense already exists
+> and is already accepted. What makes it acceptable is the pattern any future one should copy:
+> **off by default**, explicit opt-in, mute as a hard **listening** gate rather than only a
+> speaking gate, re-checked at reaction time, and excluded from `EpisodicTurn`. The map's framing
+> overstated the gap; the write surfaces are still the real hole.
+
 **Skills each session should consult:** `/grilling` and `/domain-modeling` for HITL tickets,
 `/research` for research tickets, `/prototype` where a surface needs something to react to.
 
@@ -183,7 +192,20 @@ new senses below are what a JARVIS does that a dashboard does not.
   re-materialises **silently and immediately** for the active profile, and `updatedAt` is a caller
   concern precisely so a Drive-pulled row keeps the remote clock. Only sliver left: the silent swap
   was an implementation choice, not a taste call. Not worth a session.
-- **PATTERN, FOUR tickets running (2026-08-16): this map was charted from a competitive-landscape
+- [Notification listener: the phone as a sense](issues/04-notification-listener.md)
+  — **ARCHIVED.** Kevin, 2026-08-16: "we dont need notifications for now." None of its six
+  questions answered. **Its premise check is the valuable artifact and is kept in the ticket:**
+  LEGION **already holds full notification-read access** - `MediaNotificationListener` is a
+  manifest-registered `NotificationListenerService` with an **empty body**, existing only so
+  `MediaSessionManager.getActiveSessions` works (`AndroidManifest.xml:194-201`). The ticket would
+  have widened an existing grant, not requested a new one. Also found: **a live defect** (nothing
+  ever calls `NowPlayingController.hasAccess`, so media silently does nothing on a phone that never
+  granted access - **fourth orphan in one day**); **item 4's premise was wrong** (no driving
+  `Phase`; it is the conversation phase); **the map's own framing sentence is false** (see the
+  correction under Notes); and two facts carried forward - **there are three proactive gates, not
+  one** (to ticket 21) and **78 tool declarations today** plus the `onboardingDeclarations()`
+  landmine (to any ticket adding a tool).
+- **PATTERN, FIVE tickets running (2026-08-16): this map was charted from a competitive-landscape
   brainstorm, so its tickets describe what a JARVIS COULD do rather than what Kevin's data actually
   looks like.** Ticket 12 died because the thing already existed; 13 for the same reason; 11
   because the device does not exist; 09 because the data does not exist. **Every remaining ticket
@@ -214,7 +236,7 @@ pointer to that map, recorded in Decisions so far like any other resolution.
 
 **Judged ticket-sized and staying here:** [Clear DTC](issues/01-clear-dtc.md) (**RESOLVED**
 2026-08-16, build spec in the ticket, not yet built),
-[notification listener](issues/04-notification-listener.md), [comms](issues/05-comms.md),
+~~[notification listener](issues/04-notification-listener.md)~~ (**ARCHIVED** 2026-08-16), [comms](issues/05-comms.md),
 ~~[ledger Gmail auto-pull](issues/09-ledger-gmail-autopull.md)~~ (**KILLED** 2026-08-16),
 ~~[Health Connect scope](issues/11-health-connect-scope.md)~~ (**ARCHIVED** 2026-08-16, no
 wearable), [assistant identity](issues/12-assistant-identity.md) (**CLOSED** 2026-08-16, premise false;

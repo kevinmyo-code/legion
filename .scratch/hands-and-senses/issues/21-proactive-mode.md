@@ -94,3 +94,33 @@ Decide:
    new model replace it, wrap it, or keep it as the master switch's storage? Existing callers
    (opener, drive chatter, arrival) must keep working or be deliberately retired - decide which,
    because "ambient car chatter" and "goal nudges" are different products sharing one pipe.
+
+---
+
+## Carried input (from ticket 04's premise check, 2026-08-16)
+
+Ticket 04 was archived without being answered, but its premise check surfaced a fact this ticket
+must build on. All `traced`.
+
+**There is not one proactive gate. There are three.**
+
+`ProactiveGate.speakIfIdle` (`service/ProactiveGate.kt:20-29`) is the shared one - onboarding
+complete, not busy, not in a call, not muted - and **11 raise sites** go through it
+(`ReminderAlarmReceiver.kt:70` directly, plus 10 via `AriaForegroundService.speakProactive`:
+first-meeting greeting, ignition opener, NHTSA recalls, new trouble code, coolant overheat,
+place arrival, two-hour break nudge, rough weather, odometer milestone, and idle chatter twice).
+
+**But two callers bypass it entirely**, calling `ProactiveBus.requestSpeak` directly and
+hand-rolling their own checks: `AmbientListener.kt:245` (which re-implements busy/call/mute at
+`:240-243`) and `TelephonyController.kt:82` (incoming-call announcement). `ProactiveBus` is
+deliberately **not** the choke point (`ProactiveBus.kt:18-23`).
+
+**Consequence for this ticket:** replacing `ProactivePreferences`' single `muted` boolean with the
+settled five categories is not enough. Anything raised through the bus inherits nothing, so the
+master kill switch settled by Kevin ("a true kill switch, nothing exempt") **cannot be honoured
+until the bus itself becomes the choke point or the two bypassers are brought back through the
+gate.** Decide which.
+
+Also relevant: `AmbientListener` treats mute as a hard **listening** gate, not just a speaking gate
+(`:41-46`, `:110-113`) - stricter than `ProactiveGate`. That asymmetry is deliberate today and this
+ticket should either keep it or kill it on purpose.
