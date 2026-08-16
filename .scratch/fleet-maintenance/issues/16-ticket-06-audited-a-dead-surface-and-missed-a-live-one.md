@@ -1,7 +1,7 @@
 # Ticket 06 audited a dead surface and missed the live one behind it
 
 Type: task
-Status: open
+Status: resolved (2026-08-15)
 
 ## Question
 
@@ -61,3 +61,61 @@ stopped and said so, which is the behaviour that found this at all.
   ticket 06's concern because no model ever sees a tile string. Consistent with ticket 06's own
   framing, not independently ruled.
 - **Not built, not on-device.**
+
+## Resolution (built 2026-08-15, commit `a27e33a`)
+
+All five steps, plus one thing the ticket did not name.
+
+1. **`MaintenanceAgent.describeItem` carries the disclosure**, in full words, whenever the interval
+   is unconfirmed: `(LEGION's guess, unconfirmed by the driver)` or `(from a factory lookup,
+   unconfirmed by the driver)`. A `CONFIRMED` item gets no suffix, and an item with no interval still
+   reads "no interval on file" with none either - there is no number there to doubt.
+2. **The spoken path carries it too.** `ServiceCandidate` gained `isGuess`, populated in
+   `computeNextService`. That is the seam that matters: the flag travels WITH the candidate, so a
+   consumer cannot render the name and timing without the disclosure to hand. Carried into
+   `LiveToolbox.getNextService` (spoken, phrased for speech rather than as a bracketed tag),
+   `FleetDigestBuilder.nextServiceLine`, `HomeDigestBuilder.fleetHeadline`, and
+   `CarAspectSummaries.fleet`. **`formatRemaining` cannot carry it and does not try** - it takes only
+   `(remaining: Long, unit: ScheduleUnit)` and never sees the item, so the ticket naming it was
+   simply wrong about where the seam is.
+3. **`FleetPlaybook` ruled: the blanket framing is NOT sufficient, and one clause was affirmatively
+   wrong.** Section 0's "every recommendation is an ESTIMATE" governs the MODEL's recommendations,
+   not an on-file interval the app hands it. And the baselines section told the model that where an
+   item carries an interval, "that interval was chosen for this vehicle, use it" - false for a
+   `SEEDED` row, and precisely how a 3,000-mile oil interval became authoritative on Kevin's Jeep
+   (ticket 01). Corrected, plus one `REASON FROM THE LOG` bullet on reading the new suffix.
+4. **`CarToolbelt.maintenanceSchedule` deleted**, zero callers reconfirmed across main and test.
+   Tombstoned in the same style as `refreshServiceIntervals`, which went for the same reason.
+5. **Audit re-run by reachability.** Every consumer of `NextService.byMiles`/`byTime` enumerated by
+   grep and each one checked for a live caller before counting it: the four surfaces above plus
+   `LiveToolbox`. `HomeDigestBuilder.fleetHeadline`'s overdue branch names no interval or timing
+   figure and was deliberately left alone.
+
+**Not named by the ticket, found while reviewing the build:** `ItemDetailScreen`'s `[GUESS]` banner
+hardcoded *"LEGION guessed this interval - you haven't confirmed it."* for any unconfirmed row. Once
+ticket 18 widened `isGuessTag` past `SEEDED`, that sentence started being said about `LOOKUP` rows,
+where it is false - a factory-lookup value the driver reviewed was never LEGION's guess. Ticket 18
+fixed this laundering in one direction; this was the same lie told the other way round. Fixed with
+the same split used for the CONFIRM ALL dialog: the tag stays coarse, the sentence is precise.
+
+**Structural fix underneath all of it:** the predicate moved from `ui/fleet/FleetRows.kt` onto
+`MaintenanceItem` itself (`intervalIsUnconfirmed`, `provenanceWords`). `vehicle/` and `advisor/` both
+needed it, and `FleetRows` already imports `VehicleController`, so importing back would have inverted
+the dependency. `isGuessTag` and friends now delegate, keeping every UI call site unchanged. One rule,
+one definition - which is the actual defence against a fourth pass of this same ticket.
+
+Tests 1316 -> 1334.
+
+## Verification not performed
+
+**No on-device check.** The A25 dropped off wireless adb before this build could be installed, and
+only the retired A17k was reachable, which is never written to. Recorded as a gate rather than a
+footnote (CLAUDE.md L11), since that discipline is the reason this ticket exists.
+
+Two further notes, both honest limits rather than oversights:
+- The `LOOKUP` branch of the item-detail banner needs a `LOOKUP` row to exist, which means accepting
+  a populate proposal into Kevin's real schedule. He asked to review those values himself, so it was
+  not created for a screenshot.
+- `FleetPlaybook.TEXT` grew 9,065 -> 9,573 chars, inside the 10,000-char ceiling
+  `PlaybookKeywordsTest` enforces, but this was NOT re-measured with the real `countTokens`
+  tokenizer. Noted in the file's own KDoc; re-measure before the next addition.

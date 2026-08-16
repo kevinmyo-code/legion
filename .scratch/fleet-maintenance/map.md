@@ -272,6 +272,14 @@ his two existing service records on a screen.
   is now "this lookup didn't mention it". Four runs on one car in five minutes disagreed on three of
   eight items; the app now says only what it actually knows.
 
+- [Ticket 06 audited a dead surface and missed the live one](issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md) -
+  **the model-facing half of ticket 06's disclosure, finally built.** `MaintenanceAgent.describeItem`
+  carries the provenance in words, `ServiceCandidate.isGuess` carries it into everything spoken, and
+  `FleetPlaybook`'s "that interval was chosen for this vehicle, use it" was corrected - false for a
+  seeded row, and how 3,000 miles became authoritative on the Jeep. Dead `CarToolbelt.maintenanceSchedule`
+  deleted. The predicate moved onto `MaintenanceItem` so there is exactly one definition of the rule,
+  which is the real defence against a fourth pass. **Not verified on-device** (see the ticket).
+
 ## Not yet specified
 
 - **The build tickets.** **Every decision on this map is now made** - what remains is execution, and
@@ -330,23 +338,6 @@ his two existing service records on a screen.
   Ticket 05 fixes only the write paths that can now fail and **explicitly scopes out** the rest.
   The full sweep is its own effort, and it needs its own count before anyone touches it - the
   hardcoded ones are a minority, so a blind sweep would do more harm than good.
-
-## Carried out of this effort, unbuilt
-
-**The effort is closed (Kevin, 2026-08-15). One ticket is left open on purpose, not lost.**
-
-- [Ticket 06 audited a dead surface and missed the live one](issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md) -
-  **open and unbuilt.** Re-verified at close rather than taken from an earlier note:
-  `MaintenanceAgent.describeItem` (`vehicle/MaintenanceAgent.kt:74`) still reads `intervalMiles`/
-  `intervalMonths` raw with no `intervalSource` check, and it is the live formatter that builds the
-  pre-seeded prompt the model actually reads. `CarToolbelt.maintenanceSchedule`
-  (`vehicle/CarToolbelt.kt:142`) still exists with no caller. So the model-facing half of ticket 06's
-  disclosure was never built, and this is the same §4 rule 5 harm tickets 17 and 18 spent the day
-  closing on the UI side - an unlabelled guess fed to a model that states it back confidently.
-  Small, self-contained, and it does not block anything else on this map.
-
-  It stays a ticket rather than moving to **Out of scope**, because it is squarely inside this map's
-  destination - it is simply unbuilt at the moment the effort closed.
 
 ## Out of scope
 
