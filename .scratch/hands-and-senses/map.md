@@ -170,6 +170,20 @@ new senses below are what a JARVIS does that a dashboard does not.
   phone-only exception and were not pursued, because steps alone do not compute the insight.
   **Un-archives if Kevin gets a wearable.**
 
+- [Ledger auto-pull: statements walk from the inbox into the gate](issues/09-ledger-gmail-autopull.md)
+  — **KILLED.** Kevin, 2026-08-16: "my statements dont land in gmail." The pipeline's first step has
+  no input; there is nothing to search for. Killed rather than archived because it does not park on
+  anything Kevin is likely to change. **Nothing was wrong on the merits** - it was a correct plan
+  for a mailbox he does not have. SAF Drive-folder ingestion stays the only route.
+- **PATTERN, three tickets running (2026-08-16): this map was charted from a competitive-landscape
+  brainstorm, so its tickets describe what a JARVIS COULD do rather than what Kevin's data actually
+  looks like.** Ticket 12 died because the thing already existed; 11 because the device does not
+  exist; 09 because the data does not exist. **Every remaining ticket confirms its data source and
+  greps its premise before a session is spent on it.** Two live cases: settled decision 4 puts the
+  morning brief's news on "Kevin's newsletters via Gmail", and
+  [inbox intelligence](issues/18-inbox-intelligence.md) is entirely mail-derived - **both assume a
+  Gmail account with content in it, and that assumption is exactly what just killed 09.**
+
 ## Efforts in disguise
 
 Charted as tickets, sized like maps. **A ticket is one ~100K session resolving ONE decision; these
@@ -190,7 +204,7 @@ pointer to that map, recorded in Decisions so far like any other resolution.
 **Judged ticket-sized and staying here:** [Clear DTC](issues/01-clear-dtc.md) (**RESOLVED**
 2026-08-16, build spec in the ticket, not yet built),
 [notification listener](issues/04-notification-listener.md), [comms](issues/05-comms.md),
-[ledger Gmail auto-pull](issues/09-ledger-gmail-autopull.md),
+~~[ledger Gmail auto-pull](issues/09-ledger-gmail-autopull.md)~~ (**KILLED** 2026-08-16),
 ~~[Health Connect scope](issues/11-health-connect-scope.md)~~ (**ARCHIVED** 2026-08-16, no
 wearable), [assistant identity](issues/12-assistant-identity.md) (**CLOSED** 2026-08-16, premise false;
 freeform authoring back-burnered and graduates to `persona-authoring` when wanted),

@@ -1,7 +1,7 @@
 # Ledger auto-pull: statements walk from the inbox into the gate
 
 Type: grilling
-Status: open
+Status: killed (Kevin, 2026-08-16) - statements do not arrive in Gmail
 Blocked by: -
 
 ## Question
@@ -29,3 +29,33 @@ dedups. Decide:
 5. **Dedup.** `ingested_files` keys on what for a mail-sourced file (message id, attachment id,
    content hash)? Same statement arriving by mail AND Drive folder must not double-ingest.
 6. **Tool budget.** One tool or a parameter on an existing ingestion tool? Write the description.
+
+## Answer
+
+**Killed 2026-08-16 by Kevin: "ledger gmail > kill it. my statements dont land in gmail."**
+
+Killed, not archived. The whole pipeline was "find statement mail -> fetch the PDF attachment ->
+`StatementDispatcher` -> gate", and the first step has no input. There is nothing to search for.
+Unlike [Health Connect](11-health-connect-scope.md), which parks until a device appears, this one
+does not park on anything Kevin is likely to change - he would have to move his banking mail to
+Gmail, which is not a feature request, it is a life change.
+
+**Nothing here was wrong on the merits.** The design premise held: `gmail.readonly` is granted, the
+reconciliation gate does not care where a PDF came from, and `ingested_files` would have deduped.
+It was a correct plan for a mailbox Kevin does not have.
+
+**The existing SAF Drive-folder path remains the only ingestion route**, which is what
+`.scratch/ledger-drive-ingestion/` built and what actually matches how Kevin gets statements.
+
+**Consequence for two other tickets, flagged not decided:**
+
+- Map settled decision 4 puts the **morning brief's news module** on "Kevin's newsletters via the
+  existing Gmail tool". That assumes his Gmail carries newsletters worth reading. **Unverified** -
+  it is the same class of assumption that just killed this ticket.
+- [Inbox intelligence](18-inbox-intelligence.md) is entirely mail-derived (package tracking,
+  staleness). Same dependency, same unverified assumption.
+
+Both should confirm what Kevin's Gmail actually contains before a session is spent on either. See
+the map's "Decisions so far" entry for this ticket.
+
+**Revives only if** Kevin's statements start arriving as mail attachments.
