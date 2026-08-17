@@ -47,6 +47,7 @@ import com.kevin.legion.data.local.YearlyWrapped
 import com.kevin.legion.ui.common.DeckButton
 import com.kevin.legion.ui.common.DeckDialog
 import com.kevin.legion.ui.common.DeckLineChart
+import com.kevin.legion.ui.common.DeckMeter
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRadio
 import com.kevin.legion.ui.common.DeckRow
@@ -206,6 +207,15 @@ fun MaintenanceDrilldownScreen(
                                 color = sem.faint,
                                 modifier = Modifier.padding(horizontal = 12.dp),
                             )
+                            // Restored (quant-viz ticket 05 part C shipped this, commit 7c6a5ca;
+                            // mission-control's ticket 09/16 rebuild moved the due list from
+                            // FleetScreen's MaintenancePane into this LazyColumn and the meter did
+                            // not travel with it - see .scratch/quant-viz/issues/17. null only when
+                            // the item has no interval on file to divide by (DueRowView.fraction's
+                            // own doc), same guard the original call used.
+                            if (row.fraction != null) {
+                                DeckMeter(row.fraction, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
+                            }
                         }
                     }
                     if (unknownCount > 0) {
@@ -492,7 +502,13 @@ fun FullScheduleScreen(
     }
 }
 
-/** One row of [FullScheduleScreen] - same tag-combining rule [MaintenanceDrilldownScreen]'s due rows use. */
+/**
+ * One row of [FullScheduleScreen] - same tag-combining rule [MaintenanceDrilldownScreen]'s due rows
+ * use, and the same restored meter (quant-viz ticket 05 part C / .scratch/quant-viz/issues/17):
+ * [ScheduleRowView.fraction] is `null` for the UNKNOWN group (nothing to meter, per
+ * [ScheduleRowView]'s own `toScheduleRow` doc) and non-null for OVERDUE/UPCOMING, same guard as
+ * [MaintenanceDrilldownScreen]'s due list.
+ */
 @Composable
 private fun ScheduleRow(row: ScheduleRowView, onOpenItem: (String) -> Unit) {
     val sem = LocalLegionSemantics.current
@@ -511,6 +527,9 @@ private fun ScheduleRow(row: ScheduleRowView, onOpenItem: (String) -> Unit) {
             },
         )
         Text(row.sub, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp))
+        if (row.fraction != null) {
+            DeckMeter(row.fraction, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
+        }
     }
 }
 
