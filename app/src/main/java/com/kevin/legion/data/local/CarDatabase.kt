@@ -177,6 +177,16 @@ import androidx.room.RoomDatabase
  * the SAME drive. One additive `CREATE TABLE`, nothing existing touched. See [Drive]'s own doc
  * comment for the full shape and [MIGRATION_22_23]'s for the schema itself, verbatim from the
  * generated `app/schemas/com.kevin.legion.data.local.CarDatabase/23.json` after a kapt run.
+ *
+ * v24: closes the `categoryPending` default drift
+ * (`.scratch/ledger-drive-ingestion/issues/13-categorypending-default-drift.md`).
+ * [LedgerTransaction.categoryPending] never carried `@ColumnInfo(defaultValue = ...)`, even though
+ * [MIGRATION_5_6] (v5->v6, the migration that added the column) has always written it with
+ * `INTEGER NOT NULL DEFAULT 0`. Every migrated device has therefore had `DEFAULT 0` on disk since
+ * v6; a fresh install never did. **No schema change on a migrated device** - same "the bump exists
+ * only because Room requires one to run anything at all" shape [MIGRATION_16_17]'s and
+ * [MIGRATION_17_18]'s own doc comments already describe for a pure identity-hash bump - see
+ * [MIGRATION_23_24]'s own doc comment for why its body is empty.
  */
 @Database(
     entities = [
@@ -203,7 +213,7 @@ import androidx.room.RoomDatabase
         CodeClearEvent::class,
         Drive::class,
     ],
-    version = 23,
+    version = 24,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -284,7 +294,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 23
+        const val SCHEMA_VERSION = 24
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -304,7 +314,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_11_12, MIGRATION_12_13,
                         MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
                         MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
-                        MIGRATION_21_22, MIGRATION_22_23,
+                        MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

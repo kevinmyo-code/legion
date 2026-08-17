@@ -1,5 +1,6 @@
 package com.kevin.legion.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -94,7 +95,12 @@ data class LedgerTransaction(
      * (D18 - "the whole stability answer": the same merchant is never guessed twice). Meaningless
      * when [category] is null - a row with no category has nothing pending to confirm.
      */
-    val categoryPending: Boolean = false,
+    // DEFAULT 0 mirrors MIGRATION_5_6's `ADD COLUMN ... INTEGER NOT NULL DEFAULT 0` (ticket 13,
+    // `.scratch/ledger-drive-ingestion/issues/13-categorypending-default-drift.md`) - a migrated
+    // device has carried DEFAULT 0 since v6; this entity simply never said so, so a fresh install's
+    // DDL and a migrated device's DDL diverged. Same "DEFAULT mirrors the migration" convention as
+    // Vehicle.archived, CarTask.updatedAt/syncId/deleted, Goal, DriveReassignment, ChassisQuirk.
+    @ColumnInfo(defaultValue = "0") val categoryPending: Boolean = false,
     /**
      * Non-null means "the driver told me about this by voice; no file has ever mentioned it."
      * Null is every existing row shape, unchanged - a document-derived row of any provenance.

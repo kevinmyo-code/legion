@@ -1004,3 +1004,40 @@ val MIGRATION_22_23 = object : Migration(22, 23) {
         )
     }
 }
+
+/**
+ * v23 -> v24: closes the `categoryPending` default drift, ticket 13
+ * (`.scratch/ledger-drive-ingestion/issues/13-categorypending-default-drift.md`).
+ * [LedgerTransaction.categoryPending] gained `@ColumnInfo(defaultValue = "0")` to match
+ * [MIGRATION_5_6]'s `ALTER TABLE ledger_transactions ADD COLUMN categoryPending INTEGER NOT NULL
+ * DEFAULT 0`, which every device that has ever run that migration (v6 onward - i.e. every real
+ * device, Kevin's included) already has physically on disk.
+ *
+ * **The body below is deliberately empty.** SQLite has no `ALTER COLUMN`, so in general a
+ * `defaultValue` change would need the create-new-table/copy/drop/rename dance - but that dance
+ * exists to make the ON-DISK DDL match a NEW expectation. Here the on-disk DDL for every migrated
+ * device is ALREADY `categoryPending INTEGER NOT NULL DEFAULT 0` (verbatim what [MIGRATION_5_6]
+ * wrote), which is exactly the DDL the corrected entity now expects too - there is nothing to
+ * change on a migrated database, only on a fresh one, and a fresh install builds its schema
+ * straight from the `@Entity` annotations, never by replaying migrations (see [MIGRATION_16_17]'s
+ * doc comment for the same "fresh install never replays migrations" fact). Confirmed, not assumed:
+ * `app/schemas/com.kevin.legion.data.local.CarDatabase/24.json`'s `ledger_transactions.createSql`
+ * differs from `23.json`'s ONLY by the added `DEFAULT 0` clause on `categoryPending`, and the two
+ * files' `identityHash` values differ - that hash difference is exactly why Room requires a version
+ * bump to run anything at all here, the same shape [MIGRATION_16_17]'s and [MIGRATION_17_18]'s own
+ * doc comments already describe for a pure identity-hash bump with no real DDL change on a migrated
+ * device. `MigrationTestHelper.runMigrationsAndValidate(dbName, 24, true, MIGRATION_23_24)` in
+ * [CarDatabaseMigration23To24Test] validates the post-migration `PRAGMA table_info` against
+ * `24.json` regardless, which is exactly what proves this empty body is sufficient rather than
+ * merely convenient.
+ *
+ * **Do not "fix" this by touching [MIGRATION_5_6].** CLAUDE.md §5 and this file's own precedent
+ * (every migration from [MIGRATION_16_17] on) are explicit: a shipped migration must keep producing
+ * exactly what it always produced. The entity was what drifted; the migration was correct the whole
+ * time.
+ */
+val MIGRATION_23_24 = object : Migration(23, 24) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Intentionally empty - see this migration's own doc comment above.
+    }
+}
