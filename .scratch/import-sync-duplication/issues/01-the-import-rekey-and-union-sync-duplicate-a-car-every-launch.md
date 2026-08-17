@@ -1,7 +1,7 @@
 # The import rekey and UNION sync duplicate a car's history on every launch
 
 Type: task
-Status: open
+Status: fixed (2026-08-16) - set-based rekey; NEVER RUN against the real condition
 
 ## What is happening
 
@@ -646,3 +646,66 @@ not latched still carries the bug** - which includes the retired A17k if it is e
 
 **Also still open, and documented in the code itself** (`:547-555`): `applyReassignments` rewrites
 `obd_samples` only.
+
+## Answer
+
+**Fixed 2026-08-16. NOT verifiable on Kevin's device, and that is stated rather than glossed.**
+
+### Why the first attempt hung - a better diagnosis than the ticket's own
+
+The ticket's leading hypothesis was concurrent sync-writer contention. **The likelier cause is
+simpler: `obd_samples` has NO index** beyond its autoincrement primary key (`traced` - read
+`OdbSample.kt`, grepped the repo for any `CREATE INDEX` on that table, found none).
+
+The reverted stash had already replaced the per-row occupancy PROBE with one upfront identity load,
+and the ticket records that this did not fix the hang. What it left unchanged was the apply step:
+**one `UPDATE` or `DELETE` per bundle row - up to 11,511 - each with a `WHERE` over
+`pid`/`timestamp`/`vehicleId` on an unindexed table holding up to 36,694 rows.** That is 11,511 full
+table scans over a table this very bug keeps inflating, which fits the observed shape (uninterruptible,
+no progress for 4+ minutes against a ~21s baseline) without needing contention to explain it.
+
+Ruled out with reasons: not a nested transaction (one transaction, no self-call, the identity read is
+a plain read on the same connection); not main-thread work (`withContext(Dispatchers.IO)` from a
+background scope). Contention remains plausible as an aggravating factor. **`reasoned`, not
+reproduced** - no device could run it this session.
+
+### The fix
+
+`rekeyExistingRows` is now **set-based**: bucket every candidate in memory against the
+already-loaded destination identity set, then apply each bucket as **one** `DELETE` and **one**
+`UPDATE` per table per move, matched against a SQLite **TEMP** table holding that batch's identities
+plus a temp index. Worst case becomes a small constant number of scans of the current table, not one
+scan per row. `vehicle_specs` gets a two-query special case since at most one row can collide.
+
+Temp tables touch `sqlite_temp_master`, never the persisted schema, so CLAUDE.md §5's migration rule
+does not apply (`reasoned`, standard SQLite).
+
+**Identity columns relied on:** `obd_samples` -> `pid`+`timestamp`; `daily_drive_logs` ->
+`year`+`month`+`day`; `monthly_recaps` -> `year`+`month`; `maintenance_items` -> `serviceName`;
+`vehicle_specs` -> `vehicleId` alone; `code_events`/`companion_memories`/`car_tasks`/`memories`/
+`build_entries`/`service_records` -> `syncId`; `places` excluded (no `vehicleId` column), guarded
+before any SQL runs. **A source row is deleted only when its full identity already exists at the
+destination under those same columns** - that is what makes deletion safe rather than lossy.
+
+**Idempotent, and tested as such:** four repeated passes, each simulating a fresh sentinel row
+arriving from Drive, converge to one surviving row every time.
+
+### What is NOT verified, plainly
+
+**This cannot run on Kevin's phone.** His import latched `completed_v3` after 17 colliding rows were
+deleted by hand, so `rekeyExistingRows` never executes there no matter what it now contains.
+
+Exercising it for real needs a device where `midnight_import`'s `completed_v3` is **unset**, an
+`assets/midnight_import/` bundle containing a colliding `default`-keyed vehicle is present, **and**
+enough real `obd_samples` volume to reproduce the original timing. That is the retired A17k or a
+fresh sideload - not this session.
+
+**So this ships as code that compiles, passes 1474 tests, and has never once run against the
+condition it exists for.**
+
+### Follow-up worth its own ticket, not built here
+
+**`obd_samples` should probably have an index** on `(vehicleId, pid, timestamp)`. It is the largest
+table in the database, it is the one this hang scanned repeatedly, and `OdbSampleDao.getRange` -
+which the FAULTS drilldown now calls per event row - scans it too. That is a Room schema change and
+was deliberately left out of a fix that is already unverifiable.

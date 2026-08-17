@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteStatement
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.sync.SyncCodec
@@ -293,6 +294,7 @@ object MidnightImport {
         var totalInserted = 0
         var totalSkipped = 0
         var totalRekeyed = 0
+        var totalDiscarded = 0
         var failedTables = 0
         // Filled while `vehicles` imports (it is first, see the class doc's ORDER
         // section), consumed by every table after it: old sentinel id -> the
@@ -309,11 +311,22 @@ object MidnightImport {
             totalInserted += result.inserted
             totalSkipped += result.skipped
             totalRekeyed += result.rekeyed
+            totalDiscarded += result.discarded
             Log.i(
                 TAG,
                 "midnight_import ${spec.table}: inserted=${result.inserted} " +
-                    "skipped=${result.skipped} rekeyed=${result.rekeyed}",
+                    "skipped=${result.skipped} rekeyed=${result.rekeyed} discarded=${result.discarded}",
             )
+        }
+        if (totalDiscarded > 0) {
+            // Distinct from the re-key line below on purpose. A discard means a sentinel-keyed row
+            // whose identity already exists at the destination was dropped rather than moved - the
+            // exact duplication loop this function exists to stop (stage 1,
+            // `.scratch/import-sync-duplication/issues/01-the-import-rekey-and-union-sync-duplicate-a-car-every-launch.md`).
+            // Expected on a device that still has sentinel rows arriving from Drive (stage 2's
+            // convergence claim was withdrawn by that same ticket) - the sign something is wrong
+            // would be this NEVER appearing while `obd_samples` keeps growing, not this appearing.
+            Log.w(TAG, "midnight_import: discarded $totalDiscarded sentinel row(s) already present under the synthetic id")
         }
         if (totalRekeyed > 0) {
             // Loud on purpose: this is rows already on disk being moved off the
@@ -340,7 +353,15 @@ object MidnightImport {
         else Log.w(TAG, "midnight_import: $failedTables table(s) failed, will retry next launch")
     }
 
-    private data class TableResult(val inserted: Int, val skipped: Int, val rekeyed: Int = 0)
+    private data class TableResult(
+        val inserted: Int,
+        val skipped: Int,
+        val rekeyed: Int = 0,
+        /** Sentinel-keyed rows deleted because the synthetic id already held the same identity -
+         * see [rekeyExistingRows]. Reported separately from [rekeyed] on purpose: folding the two
+         * together is what made six duplicating passes read as six successful ones. */
+        val discarded: Int = 0,
+    )
 
     /** One table's worth of rows, in one transaction (CLAUDE.md L11/spec: not
      * one transaction per row - 11.5k of those on a phone is a full minute). */
@@ -390,10 +411,10 @@ object MidnightImport {
         // Rows a PREVIOUS (v1) pass already inserted under the sentinel id are on
         // disk pointing at the wrong car. Move them before dedup, so they are then
         // recognised as already-present rather than inserted a second time.
-        val rekeyed = if (spec.table != "vehicles" && remap.isNotEmpty()) {
+        val rekey = if (spec.table != "vehicles" && remap.isNotEmpty()) {
             rekeyExistingRows(db, spec, rows, remap)
         } else {
-            0
+            RekeyResult(0, 0)
         }
 
         // A handful of Midnight AI rows may predate the `syncId` column and
@@ -447,8 +468,13 @@ object MidnightImport {
                     "(inserted=$inserted skipped=$skipped) - refusing to call this table imported",
             )
         }
-        return TableResult(inserted, skipped, rekeyed)
+        return TableResult(inserted, skipped, rekey.moved, rekey.discarded)
     }
+
+    /** What one [rekeyExistingRows] pass did: rows moved onto the synthetic id, and rows dropped
+     * because the synthetic id already held the same identity. See that function's doc for why the
+     * second number exists and why it is not a failure. */
+    internal data class RekeyResult(val moved: Int, val discarded: Int)
 
     /**
      * Moves rows a v1 pass already wrote under [SENTINEL_VEHICLE_ID] onto the
@@ -462,42 +488,243 @@ object MidnightImport {
      * the sentinel - so only rows this import is known to have created are
      * touched. Anything the driver generated locally under `default` stays put.
      *
-     * Returns the number of rows actually moved. Zero on a fresh device, which is
-     * the normal case; non-zero exactly once on a device that ran the v1 import.
+     * **The destination is checked BEFORE the move, and an occupied destination means the source
+     * row is DELETED rather than moved** (stage 1 of
+     * `.scratch/import-sync-duplication/issues/01-the-import-rekey-and-union-sync-duplicate-a-car-every-launch.md`,
+     * 2026-08-16). The original assumed the destination key was always free. It was not, in two
+     * different ways:
+     *
+     * - On `vehicle_specs` (PK `vehicleId`) and `maintenance_items` (PK `vehicleId, serviceName`)
+     *   the plain `UPDATE` hit a real constraint and threw. That rolled the table back, marked the
+     *   pass failed, and left [KEY_COMPLETED] unlatched - so the import re-ran on EVERY launch,
+     *   forever.
+     * - On the tables with an autoincrement `id` and no constraint over their identity columns
+     *   (`obd_samples`, `daily_drive_logs`, `monthly_recaps`) nothing objected. The row moved and
+     *   landed beside the copy already there. `vehicleId` is part of the SYNC identity for those
+     *   tables (`SyncEngine.REGISTRY`, `Mode.UNION`), so moving a row off the sentinel made it
+     *   invisible to the next pull, which then re-inserted the whole batch from Drive under the
+     *   sentinel again - one fresh copy per launch, 31,452 junk `obd_samples` rows over 5,242
+     *   distinct identities measured on Kevin's phone before this fix.
+     *
+     * Deleting the source is safe precisely because of the identity match: a source row only
+     * qualifies when its full identity matches a bundle row this import created, and the
+     * destination already holds that same identity. The two are the same row by every column this
+     * import keys on. (They can still differ in a non-identity column - a sample's `value`, say -
+     * and the surviving copy wins. Choosing the destination is deliberate: it is the one later
+     * passes and sync will agree on.)
+     *
+     * **SET-BASED, not row-at-a-time** (rewritten 2026-08-16 after the first cut of this fix hung
+     * on-device - see `git stash`, "stage-1 rekey fix, HANGS on device - needs rework", and the
+     * ticket's own "Stage 1 attempt" section). The first cut still issued one `UPDATE` or `DELETE`
+     * per bundle row - up to 11,511 of them for `obd_samples` on Kevin's phone - and each one is a
+     * `WHERE` clause over `pid`/`timestamp`/`vehicleId`, none of which [OdbSample] indexes (checked
+     * 2026-08-16: no `@Index` on that entity, and none is being added here - CLAUDE.md sec 5 rules
+     * out an unmigrated schema change). Without an index, EVERY one of those statements is a full
+     * table scan, and the table it scans is the one this exact bug keeps inflating - so the cost
+     * compounds with the duplication itself. That fits the observed shape: the
+     * destination-occupancy check was ALREADY rewritten from a per-row `SELECT ... LIMIT 1` to a
+     * single upfront load ([loadIdentitiesFor] - proven fine, kept here unchanged) before the hang
+     * was diagnosed, and the hang persisted anyway - consistent with the statement-per-row `WHERE`
+     * scan being the actual cost, not the occupancy check.
+     *
+     * This version keeps that one-time occupancy load, decides move-vs-discard for every candidate
+     * row in memory (cheap - a `Set` lookup, no SQL), and then applies each decision as ONE
+     * `DELETE`/`UPDATE` per table per destination, matched against a small SQLite TEMP table holding
+     * just that batch's identities (never the persisted schema - dropped with the connection, exempt
+     * from CLAUDE.md's migration rule). A table the size of `obd_samples` therefore costs, per
+     * import pass: one full-table scan to load existing destination identities (already proven cheap
+     * on-device), O(batch size) trivial temp-table inserts (no scan - the temp table starts empty),
+     * and two full-table scans total for the DELETE and the UPDATE - a small constant number of
+     * scans of the CURRENT table size, not one scan per bundle row. **This has not been run on a
+     * device where it matters** - see this function's test coverage and the caller's own report for
+     * what that means for confidence.
+     *
+     * A discarded row is NOT a failure and is counted separately, because reporting a discard as
+     * `rekeyed=N` is what let this run for six passes looking like success.
      */
-    private fun rekeyExistingRows(
+    @VisibleForTesting
+    internal fun rekeyExistingRows(
         db: SupportSQLiteDatabase,
         spec: TableSpec,
         rows: List<JSONObject>,
         remap: Map<String, String>,
-    ): Int {
+    ): RekeyResult {
+        // `places` has no `vehicleId` column at all - checked on the FIRST row rather than per-row,
+        // because every row in one table's shard shares the same schema, and checking before any SQL
+        // runs is what keeps this a true no-op for such tables. The first cut of this fix broke that
+        // by loading a destination-identity set BEFORE this guard, which threw
+        // `no such column: vehicleId` on `places` on the A25 - caught then, re-pinned by a test now.
+        if (rows.isNotEmpty() && !rows[0].has(VEHICLE_COL)) return RekeyResult(0, 0)
+
         val reverse = remap.entries.associate { (old, new) -> new to old }
+        // The identity columns that actually distinguish rows WITHIN one destination vehicle.
+        // Empty for `vehicle_specs`, whose whole identity IS the vehicle column - see the branch
+        // below.
+        val nonVehicleCols = spec.identity.filter { it != VEHICLE_COL }
+
+        // Group candidate rows by which sentinel -> synthetic move they belong to. `remap` carries
+        // exactly one entry in every case observed so far (one imported car per pass), but nothing
+        // here assumes that - two imported vehicles in one bundle would each get their own move.
+        val byMove = linkedMapOf<Pair<String, String>, MutableList<JSONObject>>()
+        for (row in rows) {
+            if (!row.has(VEHICLE_COL)) continue
+            val newId = row.optString(VEHICLE_COL, "")
+            val oldId = reverse[newId] ?: continue
+            byMove.getOrPut(oldId to newId) { mutableListOf() }.add(row)
+        }
+        if (byMove.isEmpty()) return RekeyResult(0, 0)
+
         var moved = 0
+        var discarded = 0
         db.beginTransaction()
         try {
-            for (row in rows) {
-                if (!row.has(VEHICLE_COL)) continue
-                val newId = row.optString(VEHICLE_COL, "")
-                val oldId = reverse[newId] ?: continue
-                // Identity as it would have been written by the v1 pass: the same
-                // columns, but still carrying the sentinel vehicle id.
-                val where = spec.identity.joinToString(" AND ") { "`$it`=?" }
-                val args = spec.identity.map { col ->
-                    if (col == VEHICLE_COL) oldId else SyncCodec.sqlArg(row, col)
+            for ((move, candidateRows) in byMove) {
+                val (oldId, newId) = move
+
+                if (nonVehicleCols.isEmpty()) {
+                    // Whole identity is the vehicle column itself (`vehicle_specs`) - at most one
+                    // row can ever exist at `oldId` for this move, so there is nothing to batch:
+                    // one query answers "is the destination occupied", one statement resolves it.
+                    val occupied = db.query(
+                        "SELECT 1 FROM `${spec.table}` WHERE `$VEHICLE_COL`=? LIMIT 1",
+                        arrayOf<Any?>(newId),
+                    ).use { it.moveToFirst() }
+                    if (occupied) {
+                        db.execSQL("DELETE FROM `${spec.table}` WHERE `$VEHICLE_COL`=?", arrayOf<Any?>(oldId))
+                        discarded += changes(db)
+                    } else {
+                        db.execSQL(
+                            "UPDATE `${spec.table}` SET `$VEHICLE_COL`=? WHERE `$VEHICLE_COL`=?",
+                            arrayOf<Any?>(newId, oldId),
+                        )
+                        moved += changes(db)
+                    }
+                    continue
                 }
-                // The trailing guard is redundant when the vehicle column is part
-                // of the identity and load-bearing when it is not (syncId tables).
-                db.execSQL(
-                    "UPDATE `${spec.table}` SET `$VEHICLE_COL`=? WHERE $where AND `$VEHICLE_COL`=?",
-                    (listOf<Any?>(newId) + args + oldId).toTypedArray(),
-                )
-                moved += changes(db)
+
+                // One scan of the rows already at the destination - the piece already proven not to
+                // be the hang's cause (see this function's doc). Everything after this is in-memory.
+                val occupied = loadIdentitiesFor(db, spec, newId)
+                val toDelete = mutableListOf<JSONObject>()
+                val toMove = mutableListOf<JSONObject>()
+                for (row in candidateRows) {
+                    val destKey = nonVehicleCols.map { SyncCodec.sqlArg(row, it) }
+                    // Set.add returns false when the key is already present - covers both "the
+                    // destination already held this identity" and "an earlier row in THIS batch
+                    // already claimed it" (a bundle-level duplicate), either way discarded rather
+                    // than stacked.
+                    if (!occupied.add(destKey)) toDelete.add(row) else toMove.add(row)
+                }
+
+                if (toDelete.isNotEmpty()) {
+                    stageRekeyBatch(db, nonVehicleCols, toDelete)
+                    db.execSQL(
+                        "DELETE FROM `${spec.table}` WHERE `$VEHICLE_COL`=? AND EXISTS " +
+                            "(SELECT 1 FROM `$REKEY_BATCH_TABLE` WHERE ${rekeyBatchMatch(spec.table, nonVehicleCols)})",
+                        arrayOf<Any?>(oldId),
+                    )
+                    discarded += changes(db)
+                    db.execSQL("DROP TABLE IF EXISTS `$REKEY_BATCH_TABLE`")
+                }
+                if (toMove.isNotEmpty()) {
+                    stageRekeyBatch(db, nonVehicleCols, toMove)
+                    db.execSQL(
+                        "UPDATE `${spec.table}` SET `$VEHICLE_COL`=? WHERE `$VEHICLE_COL`=? AND EXISTS " +
+                            "(SELECT 1 FROM `$REKEY_BATCH_TABLE` WHERE ${rekeyBatchMatch(spec.table, nonVehicleCols)})",
+                        arrayOf<Any?>(newId, oldId),
+                    )
+                    moved += changes(db)
+                    db.execSQL("DROP TABLE IF EXISTS `$REKEY_BATCH_TABLE`")
+                }
             }
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
         }
-        return moved
+        return RekeyResult(moved, discarded)
+    }
+
+    /** Fixed name, reused sequentially (dropped and recreated) rather than uniquely generated -
+     * [rekeyExistingRows] never has two batches staged at once, so there is nothing for a second
+     * name to disambiguate. Prefixed so it cannot collide with a real table name. */
+    private const val REKEY_BATCH_TABLE = "_midnight_import_rekey_batch"
+
+    /** `outer.col = batch.col AND ...` for every identity column that is not the vehicle column,
+     * shared between the DELETE and UPDATE statements in [rekeyExistingRows] so the two cannot
+     * drift apart. */
+    private fun rekeyBatchMatch(table: String, cols: List<String>): String =
+        cols.joinToString(" AND ") { "`$table`.`$it` = `$REKEY_BATCH_TABLE`.`$it`" }
+
+    /**
+     * Creates a fresh SQLite TEMP table holding [rows]' values for [cols], plus a temp index over
+     * those same columns, and populates it via one compiled, reused `INSERT` statement rather than
+     * re-parsing SQL text per row.
+     *
+     * **Not a persisted-schema change.** A TEMP table lives in `sqlite_temp_master`, scoped to this
+     * connection, and is gone the moment it disconnects - CLAUDE.md sec 5's migration rule governs
+     * the real `obd_samples` table, not a scratch structure that never outlives this function call.
+     * The temp index exists so the `EXISTS` join in the caller does not have to fall back on
+     * SQLite's automatic-index heuristic (on by default, but not something to depend on sight
+     * unseen when an explicit index is one statement away).
+     */
+    private fun stageRekeyBatch(db: SupportSQLiteDatabase, cols: List<String>, rows: List<JSONObject>) {
+        db.execSQL("DROP TABLE IF EXISTS `$REKEY_BATCH_TABLE`")
+        val colList = cols.joinToString(",") { "`$it`" }
+        db.execSQL("CREATE TEMP TABLE `$REKEY_BATCH_TABLE` ($colList)")
+        val insert = db.compileStatement(
+            "INSERT INTO `$REKEY_BATCH_TABLE` ($colList) VALUES (${cols.joinToString(",") { "?" }})",
+        )
+        try {
+            for (row in rows) {
+                insert.clearBindings()
+                cols.forEachIndexed { i, col -> bindRekeyArg(insert, i + 1, SyncCodec.sqlArg(row, col)) }
+                insert.executeInsert()
+            }
+        } finally {
+            insert.close()
+        }
+        db.execSQL("CREATE INDEX `${REKEY_BATCH_TABLE}_idx` ON `$REKEY_BATCH_TABLE` ($colList)")
+    }
+
+    /** [SyncCodec.sqlArg]'s output (`null` / [Long] / [Double] / [String]) bound onto a compiled
+     * statement - the same value shapes [insertRow] hands to `execSQL`'s varargs, spelled out
+     * explicitly here because [SupportSQLiteStatement] has no varargs-array bind overload. */
+    private fun bindRekeyArg(stmt: SupportSQLiteStatement, index: Int, value: Any?) {
+        when (value) {
+            null -> stmt.bindNull(index)
+            is Long -> stmt.bindLong(index, value)
+            is Int -> stmt.bindLong(index, value.toLong())
+            is Double -> stmt.bindDouble(index, value)
+            else -> stmt.bindString(index, value.toString())
+        }
+    }
+
+    /**
+     * Identity tuples of rows already carrying [vehicleId], for [rekeyExistingRows]'s
+     * is-the-destination-occupied question. Same shape as [loadExistingKeys] and deliberately so -
+     * both compare a JSON-derived key against a cursor-derived one, and the type mapping in
+     * [cursorValue] is what makes that comparison work at all.
+     *
+     * Scoped to one vehicle rather than the whole table because on the `syncId` tables the vehicle
+     * column is not part of [TableSpec.identity], so an unscoped set could not tell "this syncId
+     * exists somewhere" from "this syncId exists AT THE DESTINATION", which is the only question
+     * worth asking. One scan of the table (filtered by an unindexed equality check, same cost as
+     * any other single-statement scan here) - proven, on the A25, NOT to be what caused the hang
+     * this function was rewritten to fix.
+     */
+    private fun loadIdentitiesFor(
+        db: SupportSQLiteDatabase,
+        spec: TableSpec,
+        vehicleId: String,
+    ): MutableSet<List<Any?>> {
+        val cols = spec.identity.filter { it != VEHICLE_COL }.joinToString(",") { "`$it`" }
+        val keys = mutableSetOf<List<Any?>>()
+        db.query("SELECT $cols FROM `${spec.table}` WHERE `$VEHICLE_COL`=?", arrayOf<Any?>(vehicleId)).use { c ->
+            while (c.moveToNext()) {
+                keys.add((0 until c.columnCount).map { i -> cursorValue(c, i) })
+            }
+        }
+        return keys
     }
 
     /**
