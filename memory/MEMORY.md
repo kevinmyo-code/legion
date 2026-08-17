@@ -25,7 +25,9 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
     mission-control motion vocabulary was dormant. **That motion has never been observed by anyone,
     on any device, and it is now running.** Treat as untested, not as shipped-and-fine.
 - **SIX domains: fleet, ledger, pantry, body, notes/lists/calendar, plus goals/advisors.** Tabs:
-  Today, Money, Body, Fleet, Notes, Setup. **1474 unit tests green** (2026-08-17).
+  Today, Money, Body, Fleet, Notes, Setup. **1481 unit tests, 2 FAILING** (2026-08-17) - both
+  `BioDigestBuilderTest`, proven pre-existing by running that class alone at HEAD in a clean
+  worktree. The old "1474 green" line was wrong. **The suite is NOT green. Do not claim it is.**
 - **Room is v25.** v24->v25 indexed `obd_samples` on `(vehicleId, pid, timestamp)` - the table had
   **ZERO indexes at 18,694 rows**, so the FAULTS drilldown read **1.68M rows to draw one screen**
   and the old import hang was 11,511 full scans. **Verified on device: the plan is now
@@ -66,6 +68,12 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
   never plugged in.
 - **NO ALARM HAS EVER FIRED.** **`sync/` has never executed.** **OBD, wake word, proactives never
   run**; wake word CANNOT (`assets/vosk-model/` is a README only).
+  - **CAUSE FOUND 2026-08-17 and fixed in `80a1758`:** nothing started `AriaForegroundService`
+    except the Settings toggle - not app launch, not boot - so after any reboot or process death
+    the assistant was dead while every surface read On. The 12h run proved it SURVIVES once
+    started (same pid, same starttime, 6% battery over 7h53m, bucket still 10). **The fix has not
+    survived a real reboot yet**; the process-importance check that decides the mic type is
+    `reasoned` from the platform docs, not measured. See `.scratch/proactive-mode/research/`.
 - **Compose previews have never been rendered**, any screen, ever - now including `CarProbeScreen`
   and `ExcludedOwnAccountMovementsScreen`. `assets/dtc_descriptions_seed.json` has NEVER existed.
   The 30 voice clips have never been HEARD.
