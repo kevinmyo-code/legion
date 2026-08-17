@@ -217,6 +217,15 @@ new senses below are what a JARVIS does that a dashboard does not.
   ruled on. **18 should still check `CalendarProvider` first** - its own question 3 predicts it
   shrinks to packages only, because flights already land in Google Calendar.
 
+- [The proactive switch: Alfred speaks first](issues/21-proactive-mode.md)
+  — **GRADUATED to `.scratch/proactive-mode/`** (Kevin, 2026-08-16: "chart it properly"). 8 tickets.
+  Everything settled here carries into that map as settled input. **Its first ticket is the choke
+  point**: Kevin's "master is a true kill switch, nothing exempt" ruling **cannot be honoured today**,
+  because `AmbientListener` and `TelephonyController` bypass `ProactiveGate` entirely. Also verified
+  while charting: **`setMuted` has ZERO callers** - the switch exists and nothing can flip it, so
+  proactive is currently ON with no way to turn it off.
+
+
 ## Efforts in disguise
 
 Charted as tickets, sized like maps. **A ticket is one ~100K session resolving ONE decision; these

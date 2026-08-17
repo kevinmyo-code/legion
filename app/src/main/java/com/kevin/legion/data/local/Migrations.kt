@@ -1041,3 +1041,33 @@ val MIGRATION_23_24 = object : Migration(23, 24) {
         // Intentionally empty - see this migration's own doc comment above.
     }
 }
+
+/**
+ * v24 -> v25: one `CREATE INDEX` on `obd_samples(vehicleId, pid, timestamp)` - Kevin's device,
+ * 2026-08-16 (`app/schemas/com.kevin.legion.data.local.CarDatabase/25.json` after a kapt run, per
+ * the additive-migration discipline this project has kept from v1). `obd_samples` had 18,694 rows
+ * and zero indexes: `EXPLAIN QUERY PLAN` on [OdbSampleDao.getRange]'s shape (`WHERE vehicleId=? AND
+ * pid=? AND timestamp BETWEEN ? AND ? ORDER BY timestamp`) returned `SCAN obd_samples` plus `USE
+ * TEMP B-TREE FOR ORDER BY` - a full table scan and a temporary sort on every call, and the FAULTS
+ * drilldown (`ui/fleet/FleetDrilldowns.kt`) calls that shape TWICE per visible code event (speed +
+ * rpm), so 45 code events meant 90 full scans to draw one screen.
+ *
+ * The column order is not arbitrary: it matches [OdbSampleDao.getRange],
+ * [OdbSampleDao.getRangeNewestFirst], [OdbSampleDao.getLatest], and [OdbSampleDao.summarize]'s
+ * shared `WHERE vehicleId=? AND pid=? AND timestamp ...` shape exactly, so SQLite can use the index
+ * for both the filter and the `ORDER BY timestamp` without a separate sort step. See [OdbSample]'s
+ * own doc comment for the full accounting of which other `OdbSampleDao` queries this index serves
+ * only partially ([OdbSampleDao.lastSampleMs]/[OdbSampleDao.firstSampleMs]/
+ * [OdbSampleDao.recentTimestamps]) and why a second index was judged not worth the write cost on
+ * this table specifically.
+ *
+ * Purely additive - one `CREATE INDEX IF NOT EXISTS`, no existing column, table, or row touched.
+ */
+val MIGRATION_24_25 = object : Migration(24, 25) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_obd_samples_vehicleId_pid_timestamp` " +
+                "ON `obd_samples` (`vehicleId`, `pid`, `timestamp`)"
+        )
+    }
+}

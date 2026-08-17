@@ -187,6 +187,13 @@ import androidx.room.RoomDatabase
  * only because Room requires one to run anything at all" shape [MIGRATION_16_17]'s and
  * [MIGRATION_17_18]'s own doc comments already describe for a pure identity-hash bump - see
  * [MIGRATION_23_24]'s own doc comment for why its body is empty.
+ *
+ * v25: one `CREATE INDEX` on `obd_samples(vehicleId, pid, timestamp)` - Kevin's device, 2026-08-16.
+ * `obd_samples` had 18,694 rows and zero indexes; every telemetry query was `SCAN obd_samples` plus
+ * a temp b-tree sort, and the FAULTS drilldown ran that shape twice per visible code event. Purely
+ * additive, one `CREATE INDEX IF NOT EXISTS`, nothing existing touched. See [OdbSample]'s own doc
+ * comment for which of [OdbSampleDao]'s queries this serves, which it does not, and why a second
+ * index was judged not worth the extra write cost on the app's single largest table.
  */
 @Database(
     entities = [
@@ -213,7 +220,7 @@ import androidx.room.RoomDatabase
         CodeClearEvent::class,
         Drive::class,
     ],
-    version = 24,
+    version = 25,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -294,7 +301,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 24
+        const val SCHEMA_VERSION = 25
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -314,7 +321,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_11_12, MIGRATION_12_13,
                         MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
                         MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
-                        MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24,
+                        MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

@@ -1,7 +1,7 @@
 # The proactive switch: Alfred speaks first
 
 Type: grilling
-Status: open
+Status: graduated (2026-08-16) to .scratch/proactive-mode/
 Blocked by: -
 Scope: **EFFORT, not a ticket.** Chart `.scratch/proactive-mode/` first, using this body as raw
 material. **Question 3 is already SETTLED by Kevin and carries over as a settled decision of the
@@ -124,3 +124,20 @@ gate.** Decide which.
 Also relevant: `AmbientListener` treats mute as a hard **listening** gate, not just a speaking gate
 (`:41-46`, `:110-113`) - stricter than `ProactiveGate`. That asymmetry is deliberate today and this
 ticket should either keep it or kill it on purpose.
+
+## Answer
+
+**GRADUATED 2026-08-16 to `.scratch/proactive-mode/`** (Kevin: "chart it properly"). 8 tickets.
+
+This ticket closes as a pointer, per the parent map's "Efforts in disguise" rule. Its body became the
+new map's raw material, and everything settled here carries over as a **settled decision** of that
+map rather than as an open question: master plus five categories, two states each, master is a true
+kill switch with nothing exempt, `CrisisDetector` untouched, the notification listener is not a
+category.
+
+**The new map's tickets:** the choke point (one gate, not three); the trigger engine; the compulsion
+test written checkable; categories to storage and surface; quiet hours and the nudge budget;
+delivery; scheduling research; and the proactive register.
+
+**[The choke point](../../proactive-mode/issues/01-one-gate-not-three.md) is first and blocks the
+categories**, because Kevin's kill switch cannot be honoured while two callers bypass the gate.
