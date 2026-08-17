@@ -59,6 +59,37 @@ ticket carried eight decision clusters plus a build.
 
 <!-- one line per closed ticket -->
 
+- [What may a background process actually do on Android in 2026?](issues/07-scheduling-research.md)
+  — **The threat is Samsung's sleeping-apps layer, not the six-hour cap.** Full findings with
+  per-claim source labels in [research/07-scheduling.md](research/07-scheduling.md).
+  **Two premise corrections, both errors in the charting brief:** the app targets **SDK 34**, not 36
+  (`app/build.gradle.kts:38`) - the A25 *runs* 16, which is a different thing - so the six-hour
+  `dataSync` cap, the `BOOT_COMPLETED` FGS block and the global-DND lockout are **all dormant today
+  and armed by a `targetSdk` bump**, which sideloading means nothing forces. And the Samsung evidence
+  cited in the brief was wrong: `memory/wireless-adb-available.md:29-31` attributes the
+  `/data/local/tmp` failure to **Git Bash path mangling**, not an OEM block, and no `pm clear` entry
+  exists.
+  **The finding that matters most:** Samsung's own documented sleeping-apps layer puts an app unused
+  for ~3 days into a **restricted bucket - one alarm per day, no network - while the foreground
+  service keeps running and everything looks fine.** A voice assistant used daily **without its UI
+  ever being opened** is exactly that profile. [VENDOR, Samsung's own docs.]
+  **Also:** on Android 16 and applying at target 34, jobs running concurrently with a foreground
+  service now obey the runtime quota - **the FGS no longer buys unlimited WorkManager runtime.**
+  `AriaForegroundService` uses `dataSync` as its unconditional base type **because it is the only
+  type with no runtime prerequisite**, and it is the only one with a kill timer; neither it nor
+  `LedgerIngestService` implements `onTimeout`, so the future failure is a **fatal
+  `RemoteServiceException`, not degradation**. AOSP source settles that the FGS keeps network
+  through Doze. **No app-only DND bypass exists at any importance or category** - two independent
+  user gates, which bounds "what may always speak". `notes/AlarmScheduler`'s degrade-in-words posture
+  is confirmed still correct, with two gaps filed.
+  **Recommended, not yet decided:** drop `dataSync` from `AriaForegroundService` (declaring
+  `CHANGE_NETWORK_STATE` so `connectedDevice` needs no runtime grant); request the
+  battery-optimisation allowlist at onboarding, which buys exact alarms, FGS background-start and
+  partial Doze exemption in one prompt; and tell Kevin to mark LEGION "never sleeping".
+  **Ten items need the phone. The gate on all of them: does `AriaForegroundService` survive a
+  12-hour screen-off unplugged run at all? Run that first.**
+
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Graduates as the frontier advances.
