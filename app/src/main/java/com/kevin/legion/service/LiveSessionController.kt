@@ -108,6 +108,14 @@ class LiveSessionController(context: Context) {
     // LISTENING (wait for the driver) or IDLE.
     private var conversationMode = false
 
+    // How many tool calls handleToolCall is currently mid-flight on. Gemini can
+    // emit several functionCalls in one turn, each getting its own scope.launch,
+    // so the FIRST one to finish must not drop the UI out of THINKING while a
+    // sibling is still running - only the transition back to zero restores.
+    // scope is confined to Dispatchers.Main.immediate (a single thread), so a
+    // plain Int is correct here; no AtomicInteger needed.
+    private var activeToolCalls = 0
+
     /**
      * Constructs a fresh [GeminiLiveSession] and, alongside the caller's own wiring, starts
      * mirroring its [GeminiLiveSession.isSilenced] transitions to [CarProbeLog] (ticket 15 wave 2's
@@ -522,49 +530,76 @@ class LiveSessionController(context: Context) {
     private fun handleToolCall(call: LiveEvent.ToolCall) {
         scope.launch {
             val s = session ?: return@launch
-            // A tool MUST always hand a response back, even on error/timeout, or
-            // Gemini stays mid-turn and the UI wedges. Bound every tool.
-            // The investigating specialists run a multi-round agent loop (up to a
-            // 30s budget plus a one-shot fallback), so they get a longer leash than
-            // the snappy data/action tools.
-            val timeout = if (call.name in SUB_AGENT_TOOLS) SUB_AGENT_TOOL_TIMEOUT_MS else TOOL_TIMEOUT_MS
-            val response: JSONObject = try {
-                withTimeoutOrNull(timeout) {
-                    when (call.name) {
-                        // Session/UI-scoped tools the toolbox returns null for - we
-                        // own the session, the capture controller, and the activity.
-                        "show_saved_places" -> {
-                            if (call.args.optBoolean("visible", true)) openSavedPlaces()
-                            JSONObject().put("success", true)
-                        }
-                        "import_statement" -> {
-                            openLedgerImport()
-                            JSONObject().put("success", true)
-                        }
-                        "import_receipt" -> {
-                            openPantryImport()
-                            JSONObject().put("success", true)
-                        }
-                        // Ticket 21 (google-account-integration): s.readThroughToolTouchedThisTurn()
-                        // is what `remember`'s dispatch branch gates on - see that accessor's doc
-                        // for why the flag is read here, off the live session, rather than dispatch
-                        // reaching back into GeminiLiveSession itself.
-                        else -> LiveToolbox.dispatch(
-                            appContext, call.name, call.args, s.readThroughToolTouchedThisTurn(),
-                        ) ?: JSONObject().put("success", true)
-                    }
-                } ?: JSONObject()
-                    .put("success", false)
-                    .put("message", "That took too long and timed out.")
-            } catch (e: Exception) {
-                JSONObject().put("success", false).put("message", "Something went wrong running that.")
-            }
-            // Sending can throw if the socket died mid-tool; the close path handles
-            // recovery, so don't let it crash this scope.
+            // The socket goes quiet the instant the model calls a tool - no
+            // SpeakingStarted, no Subtitle, nothing - so without this the phase
+            // just sat wherever TurnComplete left it (LISTENING/"Listening...")
+            // for however long the tool took, INCLUDING an investigate()-backed
+            // sub-agent's up-to-30s loop. The driver watched "Listening..." while
+            // the app was actually busy. Move to THINKING for the duration.
+            activeToolCalls++
+            set(Phase.THINKING, "Working...")
             try {
-                s.sendToolResponse(call.id, call.name, response)
-            } catch (e: Exception) {
-                android.util.Log.w("LiveSessionController", "sendToolResponse failed: ${e.message}")
+                // A tool MUST always hand a response back, even on error/timeout, or
+                // Gemini stays mid-turn and the UI wedges. Bound every tool.
+                // The investigating specialists run a multi-round agent loop (up to a
+                // 30s budget plus a one-shot fallback), so they get a longer leash than
+                // the snappy data/action tools.
+                val timeout = if (call.name in SUB_AGENT_TOOLS) SUB_AGENT_TOOL_TIMEOUT_MS else TOOL_TIMEOUT_MS
+                val response: JSONObject = try {
+                    withTimeoutOrNull(timeout) {
+                        when (call.name) {
+                            // Session/UI-scoped tools the toolbox returns null for - we
+                            // own the session, the capture controller, and the activity.
+                            "show_saved_places" -> {
+                                if (call.args.optBoolean("visible", true)) openSavedPlaces()
+                                JSONObject().put("success", true)
+                            }
+                            "import_statement" -> {
+                                openLedgerImport()
+                                JSONObject().put("success", true)
+                            }
+                            "import_receipt" -> {
+                                openPantryImport()
+                                JSONObject().put("success", true)
+                            }
+                            // Ticket 21 (google-account-integration): s.readThroughToolTouchedThisTurn()
+                            // is what `remember`'s dispatch branch gates on - see that accessor's doc
+                            // for why the flag is read here, off the live session, rather than dispatch
+                            // reaching back into GeminiLiveSession itself.
+                            else -> LiveToolbox.dispatch(
+                                appContext, call.name, call.args, s.readThroughToolTouchedThisTurn(),
+                            ) ?: JSONObject().put("success", true)
+                        }
+                    } ?: JSONObject()
+                        .put("success", false)
+                        .put("message", "That took too long and timed out.")
+                } catch (e: Exception) {
+                    JSONObject().put("success", false).put("message", "Something went wrong running that.")
+                }
+                // Sending can throw if the socket died mid-tool; the close path handles
+                // recovery, so don't let it crash this scope.
+                try {
+                    s.sendToolResponse(call.id, call.name, response)
+                } catch (e: Exception) {
+                    android.util.Log.w("LiveSessionController", "sendToolResponse failed: ${e.message}")
+                }
+            } finally {
+                // Gemini can emit several functionCalls in one turn, each running
+                // through its own scope.launch of this function, so only the LAST
+                // one finishing (the count reaching zero) may restore the phase -
+                // otherwise the first tool to finish would drop the UI out of
+                // THINKING while a sibling call is still mid-flight. And restore
+                // only if nothing ELSE has moved the phase since (the model may
+                // already be speaking, or the socket may have closed) - a stale
+                // restore here would stomp a state a raced event already set.
+                activeToolCalls--
+                if (shouldRestoreAfterToolCall(activeToolCalls, _phase.value)) {
+                    if (conversationMode) {
+                        set(Phase.LISTENING, "Listening...")
+                    } else {
+                        set(Phase.IDLE, IDLE_STATUS)
+                    }
+                }
             }
         }
     }
@@ -626,5 +661,21 @@ class LiveSessionController(context: Context) {
             "diagnose_codes", "triage_symptom", "ask_maintenance", "check_cold_start",
             "ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_mail",
         )
+
+        /**
+         * The pure decision behind [handleToolCall]'s restore: true only when
+         * [remainingActiveToolCalls] has reached zero (this was the LAST concurrent tool call still
+         * in flight) AND nothing else has moved the phase out of THINKING in the meantime
+         * ([currentPhase] is still [Phase.THINKING] - the model may have already started speaking,
+         * or the socket may have closed, either of which must NOT be stomped by a late tool
+         * restoring LISTENING/IDLE over it). On the companion object (not an instance member) and
+         * internal, not private, precisely so it needs no [LiveSessionController] instance to call -
+         * that class needs a live Context/GeminiLiveSession/Room to construct at all (same
+         * constraint [GeminiLiveSessionEpisodicExclusionTest] already documents for a sibling class)
+         * - so [LiveSessionControllerToolCallRestoreTest] can assert the refcount/guard logic
+         * directly from a plain JVM test instead of only ever exercising it on-device.
+         */
+        internal fun shouldRestoreAfterToolCall(remainingActiveToolCalls: Int, currentPhase: Phase): Boolean =
+            remainingActiveToolCalls == 0 && currentPhase == Phase.THINKING
     }
 }
