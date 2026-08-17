@@ -25,8 +25,12 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
     mission-control motion vocabulary was dormant. **That motion has never been observed by anyone,
     on any device, and it is now running.** Treat as untested, not as shipped-and-fine.
 - **SIX domains: fleet, ledger, pantry, body, notes/lists/calendar, plus goals/advisors.** Tabs:
-  Today, Money, Body, Fleet, Notes, Setup. **1474 unit tests green** (2026-08-16).
-- **Room is v24.** v23->v24 closed the `categoryPending` default drift (annotation only, empty
+  Today, Money, Body, Fleet, Notes, Setup. **1474 unit tests green** (2026-08-17).
+- **Room is v25.** v24->v25 indexed `obd_samples` on `(vehicleId, pid, timestamp)` - the table had
+  **ZERO indexes at 18,694 rows**, so the FAULTS drilldown read **1.68M rows to draw one screen**
+  and the old import hang was 11,511 full scans. **Verified on device: the plan is now
+  `SEARCH ... USING INDEX`, was `SCAN` + temp sort.**
+- Earlier: **v24.** v23->v24 closed the `categoryPending` default drift (annotation only, empty
   migration body, **verified opening on the A25**). v22->v23: `drives` (the drive-boundary object).
   v21->v22 landed 2026-08-16: `code_clear_events` (clear-DTC), additive, SQL
   verified byte-identical to the generated schema AND applied to a pulled copy of the real device
@@ -199,6 +203,30 @@ then six builds. **Open tickets 50 -> 24.** Full account in `library/decisions.m
 - **Two shipped features had silently vanished in a screen rebuild** with their pure layers still
   green. Ticket `.scratch/quant-viz/issues/17-silent-regressions.md`. A guard test now exists that
   was **proven to fail** before being trusted.
+
+**PROACTIVE MODE CHARTED, 2026-08-17.** Map `.scratch/proactive-mode/`, **8 tickets**, graduated from
+hands-and-senses ticket 21 at Kevin's instruction. Kevin's settled shape carries in as fact: master
+plus five categories (Safety/Timing/Wellbeing/Fleet/Digest), two states each, **master is a true kill
+switch, nothing exempt**, `CrisisDetector` untouched.
+- **TICKET 01 IS FIRST AND BLOCKS THE CATEGORIES.** The kill switch **cannot be honoured today**:
+  `AmbientListener` and `TelephonyController` bypass `ProactiveGate` entirely, so a master switch
+  would silence 11 of 13 paths and leave two talking.
+- **`setMuted` HAS ZERO CALLERS.** Proactive is ON by default and **nothing in the app can turn it
+  off.** Not a Settings row, not a voice tool. `ProactivePreferences` is not referenced in `ui/` at all.
+- **The five categories exist NOWHERE in code.** Nor does anything bedtime/wellbeing-shaped.
+- **Ticket 07 (scheduling) RESOLVED same night.** The threat is **not** the six-hour `dataSync` cap -
+  the app targets **SDK 34, not 36** (the A25 *runs* 16; different thing), so that cap and the DND
+  lockout are **dormant until someone bumps `targetSdk`**. The real threat is **Samsung's own
+  sleeping-apps layer**: unused ~3 days -> restricted bucket, **one alarm/day, no network, while the
+  foreground service keeps running and looks fine.** A voice assistant used daily without its UI
+  opened is exactly that profile.
+- Also found: on Android 16 (applying already at target 34) **an FGS no longer buys unlimited
+  WorkManager runtime**; `AriaForegroundService` uses `dataSync` **because it is the only type with no
+  runtime prerequisite** and it is the only one with a kill timer, and **no `onTimeout` exists** in
+  either service, so the future failure is a fatal `RemoteServiceException`. **No app-only DND bypass
+  exists at any importance.**
+- **Recommended, NOT acted on:** drop `dataSync` from `AriaForegroundService`; request the
+  battery-optimisation allowlist at onboarding; mark LEGION "never sleeping" in One UI.
 
 ## Notes for next session
 
