@@ -1,13 +1,17 @@
 package com.kevin.legion.ui
 
+import com.kevin.legion.data.local.Drive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
  * Unit tests for [DrivingDialMath.kt]'s pure layer. Plain JUnit, no Robolectric, no Canvas - the
  * things this suite exists to pin: [dialFraction]'s clamping, [litSegmentCount]'s rounding,
- * [redlineSegmentStartIndex]'s ceil-not-round guarantee, [scaleTicks]'s exact tick count, and the
- * one surviving unit-conversion factor the speed column depends on.
+ * [redlineSegmentStartIndex]'s ceil-not-round guarantee, [scaleTicks]'s exact tick count, the one
+ * surviving unit-conversion factor the speed column depends on, and (trip content ticket 05/layout
+ * ticket 08) the trip block's "last finished drive" formatting - including its null-in/null-out
+ * empty case and that it never needs [Drive.gallons], even when that field is `null`.
  */
 class DrivingDialMathTest {
 
@@ -144,5 +148,87 @@ class DrivingDialMathTest {
         // 100 km/h is the canonical check value; CarToolbelt's own conversion rounds the
         // same 0.621371 factor to 62mph for a 100 km/h reading.
         assertEquals(62.1371f, kmhToMph(100f), 0.0001f)
+    }
+
+    // ---------------------------------------------------------------- formatElapsedMinutes
+
+    @Test
+    fun `an under-an-hour span formats as plain minutes`() {
+        assertEquals("42 MIN", formatElapsedMinutes(0L, 42 * 60_000L))
+    }
+
+    @Test
+    fun `a zero span formats as zero minutes rather than blank`() {
+        assertEquals("0 MIN", formatElapsedMinutes(1_000L, 1_000L))
+    }
+
+    @Test
+    fun `exactly one hour formats as one hour, zero minutes`() {
+        assertEquals("1H 00M", formatElapsedMinutes(0L, 60 * 60_000L))
+    }
+
+    @Test
+    fun `a span past an hour formats as hours plus zero-padded minutes`() {
+        assertEquals("1H 30M", formatElapsedMinutes(0L, 90 * 60_000L))
+    }
+
+    @Test
+    fun `a negative span clamps to zero rather than printing a negative duration`() {
+        // Defensive only - endedAt should never precede startedAt in a real Drive row.
+        assertEquals("0 MIN", formatElapsedMinutes(60_000L, 0L))
+    }
+
+    // -------------------------------------------------------------------- formatTripMiles
+
+    @Test
+    fun `distance formats to one decimal place with a unit suffix`() {
+        assertEquals("18.4 MI", formatTripMiles(18.4))
+    }
+
+    @Test
+    fun `distance rounds to one decimal rather than truncating`() {
+        assertEquals("12.3 MI", formatTripMiles(12.34))
+    }
+
+    @Test
+    fun `zero distance still prints a real number, not a blank`() {
+        assertEquals("0.0 MI", formatTripMiles(0.0))
+    }
+
+    // ------------------------------------------------------------------- lastDriveSummary
+
+    @Test
+    fun `no drive on file summarizes to null - the trip block's empty case`() {
+        assertNull(lastDriveSummary(null))
+    }
+
+    @Test
+    fun `a finished drive summarizes its elapsed time and distance`() {
+        val drive = Drive(
+            vehicleId = "test-vehicle",
+            startedAt = 0L,
+            endedAt = 42 * 60_000L,
+            miles = 18.4,
+            gallons = 1.2,
+            endReason = "ENGINE_OFF",
+        )
+        val summary = lastDriveSummary(drive)
+        assertEquals("42 MIN", summary?.elapsedText)
+        assertEquals("18.4 MI", summary?.distanceText)
+    }
+
+    @Test
+    fun `a drive with null gallons summarizes identically - gallons plays no part in this block`() {
+        val drive = Drive(
+            vehicleId = "test-vehicle",
+            startedAt = 0L,
+            endedAt = 42 * 60_000L,
+            miles = 18.4,
+            gallons = null,
+            endReason = "LINK_LOST",
+        )
+        val summary = lastDriveSummary(drive)
+        assertEquals("42 MIN", summary?.elapsedText)
+        assertEquals("18.4 MI", summary?.distanceText)
     }
 }

@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.view.WindowManager
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.Drive
 import com.kevin.legion.service.CompanionPhase
 import com.kevin.legion.ui.assistant.AssistantStripResolver
 import com.kevin.legion.ui.theme.DeckChrome
@@ -78,9 +79,9 @@ import kotlinx.coroutines.delay
  * `DrivingDialMath.kt`, and that whole mechanism is GONE, not merely renamed). RPM is the second
  * instrument, same segmented form, drawn smaller. COOLANT is a fader - a continuous filled track,
  * not segments, "exactly like the reference's `COLD ▬▬ HOT` slider" (ticket 04's own words).
- * A drive-in-progress block (ELAPSED/DISTANCE) fills what used to be a third of the screen sitting
- * empty - see [TripBlock]'s own doc for why both read "NOT TRACKING" rather than a fabricated
- * number.
+ * A trip block (ELAPSED/DISTANCE) fills what used to be a third of the screen sitting empty - see
+ * [TripBlock]'s own doc for what it actually shows (the last FINISHED drive, never a fabricated
+ * "so far" figure for one in progress) and why.
  *
  * **Motion is ALLOWED here now, deliberately, not merely un-banned.** This file used to carry six
  * doc comments forbidding all animation, citing a retired head-unit "ambient-motion ration" that
@@ -175,6 +176,9 @@ fun DrivingModeScreen(onExit: () -> Unit) {
     var rpm by remember { mutableStateOf<DrivingSample?>(null) }
     var speed by remember { mutableStateOf<DrivingSample?>(null) }
     var coolant by remember { mutableStateOf<DrivingSample?>(null) }
+    // The trip block's one input - the vehicle's last FINISHED drive, or null if it has none yet.
+    // Fetched once below, not on the POLL_MS loop - see that fetch site's own comment.
+    var lastDrive by remember { mutableStateOf<Drive?>(null) }
     // Increments on every poll iteration, live or not - the sole input to the HUD's liveness
     // pulse (file doc: "one ambient liveness signal... per poll tick"). A plain counter rather
     // than deriving "did a reading change" from the samples themselves, because the signal this
@@ -212,6 +216,14 @@ fun DrivingModeScreen(onExit: () -> Unit) {
         // "this car" reached this screen and got shouted by the .uppercase() below.
         vehicleName = VehicleController.label(vehicle)
         val dao = CarDatabase.getDatabase(context).odbSampleDao()
+        // The trip block's read (ticket 05/08): the last FINISHED drive only, fetched ONCE here
+        // rather than on the POLL_MS loop below. Unlike RPM/speed/coolant, a finished Drive row
+        // never changes while this screen is open - DriveDao's own doc: "no update, no delete" -
+        // so re-querying it every 2s would just repeat the same read for zero benefit. If a drive
+        // finalises WHILE this screen happens to be open (engine off, link lost), the trip block
+        // keeps showing whichever drive was last finished when the screen was entered; it is
+        // labelled "LAST DRIVE" precisely because it is not claimed to be live.
+        lastDrive = CarDatabase.getDatabase(context).driveDao().getRecent(vehicle.obdMac, 1).firstOrNull()
         // Manual override (Kevin, 2026-08-08): driving mode can be entered
         // with NO dongle paired at all, so "the link dropped" only means
         // anything if there was a link when we arrived. Without this latch a
@@ -269,6 +281,7 @@ fun DrivingModeScreen(onExit: () -> Unit) {
         rpm = rpm,
         speed = speed,
         coolant = coolant,
+        lastDrive = lastDrive,
         // The Alfred status line reuses AssistantStripResolver's own phase
         // wording (ticket 20 build brief item 2): no new voice-state
         // vocabulary invented for this one screen.
@@ -288,6 +301,7 @@ private fun DrivingModeContent(
     rpm: DrivingSample?,
     speed: DrivingSample?,
     coolant: DrivingSample?,
+    lastDrive: Drive?,
     alfredStatus: String,
     tickCounter: Int,
     protocolName: String?,
@@ -423,7 +437,7 @@ private fun DrivingModeContent(
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(12.dp))
-            TripBlock(modifier = Modifier.fillMaxWidth())
+            TripBlock(drive = lastDrive, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(6.dp))
             // Fix 4's technical footer band - one thin row of printed facts, real values only
             // (this composable's own instruction: nothing this screen cannot actually source).
@@ -802,39 +816,64 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawFaderTrack(frac
 }
 
 /**
- * The drive-in-progress block (layout ticket 08 Q26, trip content ticket 05 Q13) - fills what used
- * to be the screen's empty third. Trip content ticket 05 found a live trip needs an actual
- * drive-boundary object - today there is only `driveStartedAt` as a private local in
- * `AriaForegroundService` and day-granularity `daily_drive_logs`, neither of which is a per-drive
- * start/end this screen can read - and ticket 05 itself calls that "a data-model decision, not a
- * UI one". Building that object is explicitly out of scope for this rebuild.
+ * The trip block (layout ticket 08 Q26, trip content ticket 05 Q13) - fills what used to be the
+ * screen's empty third. **The doc that used to sit here was wrong, and is corrected rather than
+ * reworded**: it claimed no drive-boundary object existed. Commit `61a62b0` added one three commits
+ * later the same evening - the `drives` table (Room v23, now v24) plus
+ * [com.kevin.legion.data.local.Drive] and [com.kevin.legion.data.local.DriveDao], written by
+ * [com.kevin.legion.vehicle.TelemetryRecorder.finalizeDrive] whenever a drive ends
+ * ([Drive.endReason]: `ENGINE_OFF` or `LINK_LOST`).
  *
- * **MPG is deliberately not a third figure here.** Trip content ticket 05 found LEGION's own
- * mpg integration is off by roughly 1.7x on this car (`TelemetryRecorder`'s MAF-based gallons
- * math, filed as ticket 09) - shipping a figure known to be wrong is the estimates rule violated
- * outright, not merely an unlabelled one.
+ * **What this block can honestly show is narrower than "the current drive".** `drives` only ever
+ * holds FINISHED drives - `finalizeDrive` writes a row on the way OUT of a drive, never on the way
+ * in, so there is no in-progress row to poll toward. A live "so far" figure would have to be
+ * derived some other way - e.g. reaching into `AriaForegroundService`'s private `driveStartedAt`
+ * and computing elapsed against `System.currentTimeMillis()` - and that was rejected: that local is
+ * owned by the service's own drive-monitor loop, not this screen, and reading it here would be a
+ * second, competing notion of "when did this drive start" alongside the one [Drive.startedAt]
+ * already is, with no reconciliation between the two if they ever disagreed. So this block shows
+ * **the LAST FINISHED drive** ([com.kevin.legion.data.local.DriveDao.getRecent], `limit = 1`) and
+ * is labelled **"LAST DRIVE"**, never "TRIP" or anything implying "so far" - it can be minutes or
+ * days old by the time it is glanced at, and the age is printed alongside it
+ * ([com.kevin.legion.util.relativeAge] on [Drive.endedAt]) so nobody mistakes a stale figure for a
+ * live one. Implying a finished drive's numbers belong to the one happening right now would be the
+ * same class of mistake CLAUDE.md's estimates rule guards against for a NUMBER, just applied to a
+ * claim about WHICH drive a number belongs to.
  *
- * **Fix 3 (installed and looked at): two full `TripStat` tiles both reading `NOT TRACKING` is a
- * lot of screen saying nothing.** While [tracking] is false (today, always - see above), this
- * collapses to ONE worded line rather than spending two tiles' worth of bracket panel, border, and
- * vertical space on an absence - the exact "worded absence, never a fabricated placeholder" posture
- * this file already holds for "NO READING ON FILE" (CLAUDE.md §4/§7), just also honest about how
- * much SCREEN an absence deserves. [TripStat] is untouched below and is the reactivation point:
- * flip [tracking] to a real value once ticket 09's drive-boundary object exists, thread real
- * ELAPSED/DISTANCE text through it, and the two-tile `Row` comes back with zero other changes.
+ * **MPG is deliberately not a third figure here**, unchanged by this fix. Trip content ticket 05
+ * found LEGION's own mpg integration is off by roughly 1.7x on this car (`TelemetryRecorder`'s
+ * MAF-based gallons math, filed as ticket 09, [com.kevin.legion.vehicle.MpgTrust.SHOW_MPG] `false`)
+ * - shipping a figure known to be wrong is the estimates rule violated outright, not merely an
+ * unlabelled one. [Drive.gallons] is read by nothing in this block, including when it is `null`
+ * (see [lastDriveSummary]'s own doc).
+ *
+ * **The empty state stays worded, never a fabricated number**: no finished drive yet (fresh
+ * install, or the very first drive still in progress) reads `"TRIP // NO DRIVE ON FILE YET"` - the
+ * same "worded absence, never a fabricated placeholder" posture this file already holds for
+ * `"NO READING ON FILE"` (CLAUDE.md §4/§7), collapsed to one line rather than two empty [TripStat]
+ * tiles for the same "an absence does not deserve two bracket panels' worth of screen" reasoning
+ * the pre-rebuild fix-3 comment made about the old, permanent `NOT TRACKING` state.
  */
 @Composable
-private fun TripBlock(modifier: Modifier = Modifier) {
+private fun TripBlock(drive: Drive?, modifier: Modifier = Modifier) {
     val sem = LocalLegionSemantics.current
-    val tracking = false
-    if (tracking) {
-        Row(modifier, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TripStat(label = "ELAPSED", modifier = Modifier.weight(1f))
-            TripStat(label = "DISTANCE", modifier = Modifier.weight(1f))
+    val summary = lastDriveSummary(drive)
+    if (drive != null && summary != null) {
+        Column(modifier) {
+            Text(
+                "LAST DRIVE · ${relativeAge(drive.endedAt).uppercase()}",
+                style = LegionType.stamp,
+                color = sem.faint,
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TripStat(label = "ELAPSED", valueText = summary.elapsedText, modifier = Modifier.weight(1f))
+                TripStat(label = "DISTANCE", valueText = summary.distanceText, modifier = Modifier.weight(1f))
+            }
         }
     } else {
         Text(
-            "TRIP // NOT TRACKING",
+            "TRIP // NO DRIVE ON FILE YET",
             style = LegionType.stamp,
             color = sem.faint,
             modifier = modifier,
@@ -843,13 +882,13 @@ private fun TripBlock(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TripStat(label: String, modifier: Modifier = Modifier) {
+private fun TripStat(label: String, valueText: String, modifier: Modifier = Modifier) {
     val sem = LocalLegionSemantics.current
     BracketPanel(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(label.uppercase(), style = LegionType.stamp, color = sem.faint)
         Spacer(Modifier.height(6.dp))
         Text(
-            "NOT TRACKING",
+            valueText,
             style = MaterialTheme.typography.labelLarge,
             color = sem.faint,
             textAlign = TextAlign.Center,
@@ -926,6 +965,7 @@ private fun DrivingAlfredStrip(alfredStatus: String) {
 @Preview(name = "Driving mode: all readings live, RPM in the redline zone", widthDp = 384, heightDp = 832)
 @Composable
 private fun PreviewDrivingModeAllLive() = LegionTheme {
+    val now = System.currentTimeMillis()
     DrivingModeContent(
         vehicleName = "The Wagon",
         linkLive = true,
@@ -933,6 +973,16 @@ private fun PreviewDrivingModeAllLive() = LegionTheme {
         rpm = DrivingSample(5100f, "just now"),
         speed = DrivingSample(88f, "just now"),
         coolant = DrivingSample(92f, "just now"),
+        // The trip block's "a real last drive" case (ticket 05/08) - gallons null on purpose,
+        // proving the block never needs it (see [lastDriveSummary]'s own doc).
+        lastDrive = Drive(
+            vehicleId = "preview",
+            startedAt = now - 42 * 60_000L,
+            endedAt = now - 5 * 60_000L,
+            miles = 18.4,
+            gallons = null,
+            endReason = "ENGINE_OFF",
+        ),
         alfredStatus = "Tap to talk",
         tickCounter = 1,
         // Fix 4's footer band, the "known protocol, link live" case.
@@ -951,6 +1001,8 @@ private fun PreviewDrivingModeRpmMissing() = LegionTheme {
         rpm = null,
         speed = DrivingSample(72f, "just now"),
         coolant = DrivingSample(88f, "just now"),
+        // The trip block's empty state (no finished drive on file) - see [TripBlock]'s own doc.
+        lastDrive = null,
         alfredStatus = "Listening…",
         tickCounter = 3,
         // Link live but the ATDP handshake hasn't resolved a protocol yet - the footer band
@@ -970,6 +1022,7 @@ private fun PreviewDrivingModeStale() = LegionTheme {
         rpm = DrivingSample(1800f, "3 days ago"),
         speed = null,
         coolant = DrivingSample(88f, "3 days ago"),
+        lastDrive = null,
         alfredStatus = "Tap to talk",
         tickCounter = 0,
         // A non-null value here on purpose: this is the STALE-protocol case
@@ -991,6 +1044,7 @@ private fun PreviewDrivingModeNoData() = LegionTheme {
         rpm = null,
         speed = null,
         coolant = null,
+        lastDrive = null,
         alfredStatus = "Tap to talk",
         tickCounter = 0,
         protocolName = null,

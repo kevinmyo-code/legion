@@ -1,5 +1,6 @@
 package com.kevin.legion.ui
 
+import com.kevin.legion.data.local.Drive
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.round
@@ -124,3 +125,48 @@ fun scaleTicks(scaleMax: Float, step: Float): List<Pair<Float, Float>> {
  * system is deliberate, matching the odometer, DRIVES, and a US driver.
  */
 fun kmhToMph(kmh: Float): Float = kmh * 0.621371f
+
+// ------------------------------------------------------------------ trip block (last drive)
+
+/**
+ * [DrivingModeScreen]'s trip block (layout ticket 08 Q26, trip content ticket 05 Q13) only ever
+ * has a FINISHED drive to read - `drives` gets a row from
+ * [com.kevin.legion.vehicle.TelemetryRecorder.finalizeDrive] on the way OUT of a drive, never on
+ * the way in, so there is no in-progress row to poll toward. [lastDriveSummary] is the pure
+ * "what does the trip block say" decision for that one finished row (or its absence): `null` in,
+ * `null` out - a fresh install or a first drive still underway has nothing to show, and the caller
+ * renders a worded empty state rather than this function inventing a placeholder pair.
+ *
+ * **Never touches [Drive.gallons]**, including when it is `null` - mpg is withheld
+ * ([com.kevin.legion.vehicle.MpgTrust.SHOW_MPG] is `false`, ticket 09's ~1.7x integration error),
+ * so gallons plays no part in what this screen prints regardless of whether it was ever measured.
+ */
+internal data class TripSummary(val elapsedText: String, val distanceText: String)
+
+/** See [TripSummary]'s own doc - the null-in/null-out decision for the trip block. */
+internal fun lastDriveSummary(drive: Drive?): TripSummary? {
+    if (drive == null) return null
+    return TripSummary(
+        elapsedText = formatElapsedMinutes(drive.startedAt, drive.endedAt),
+        distanceText = formatTripMiles(drive.miles),
+    )
+}
+
+/**
+ * A finished drive's [startedAtMs]..[endedAtMs] span (both epoch ms, [Drive]'s own fields), as
+ * "N MIN" under an hour or "HH MM" (hour digit, then zero-padded minutes) at or past one - short
+ * enough to stay legible in [TripStat]'s tile at the 11sp value size a bracket panel that width can
+ * actually hold. A negative span (defensive only - [endedAtMs] should never precede [startedAtMs])
+ * clamps to zero rather than printing a negative duration.
+ */
+internal fun formatElapsedMinutes(startedAtMs: Long, endedAtMs: Long): String {
+    val totalMinutes = ((endedAtMs - startedAtMs) / 60_000L).coerceAtLeast(0L)
+    return if (totalMinutes >= 60L) {
+        "%dH %02dM".format(totalMinutes / 60L, totalMinutes % 60L)
+    } else {
+        "%d MIN".format(totalMinutes)
+    }
+}
+
+/** A finished drive's [Drive.miles], to one decimal place, matching this screen's imperial-distance convention (ticket 07 answer #3 - speed stays imperial, and so does this). */
+internal fun formatTripMiles(miles: Double): String = "%.1f MI".format(miles)
