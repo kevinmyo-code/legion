@@ -25,8 +25,9 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
     mission-control motion vocabulary was dormant. **That motion has never been observed by anyone,
     on any device, and it is now running.** Treat as untested, not as shipped-and-fine.
 - **SIX domains: fleet, ledger, pantry, body, notes/lists/calendar, plus goals/advisors.** Tabs:
-  Today, Money, Body, Fleet, Notes, Setup. **1365 unit tests green** (2026-08-16).
-- **Room is v22.** v21->v22 landed 2026-08-16: `code_clear_events` (clear-DTC), additive, SQL
+  Today, Money, Body, Fleet, Notes, Setup. **1428 unit tests green** (2026-08-16).
+- **Room is v23.** v22->v23 landed 2026-08-16: `drives` (the drive-boundary object), additive.
+  v21->v22 landed 2026-08-16: `code_clear_events` (clear-DTC), additive, SQL
   verified byte-identical to the generated schema AND applied to a pulled copy of the real device
   DB (47->48 tables, zero DDL changes, zero row drift, integrity clean). **v20->v21 predates this
   session and is unaccounted for here** - read `app/schemas/` rather than trusting this line.
@@ -40,13 +41,8 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
 ## Blocking
 
-- **NOTIFICATION-LISTENER ACCESS IS NOT GRANTED ON THE A25.** Measured 2026-08-16
-  (`adb shell settings get secure enabled_notification_listeners`): `com.kevin.legion` is absent
-  while four other apps hold it. Per-device special access, so the migration dropped it. This is
-  why pause/skip did nothing while play worked. **Kevin must grant it** (Settings > Apps > Special
-  app access > Notification access), or one line:
-  `adb shell cmd notification allow_listener com.kevin.legion/com.kevin.legion.service.MediaNotificationListener`.
-  Until then only Spotify transport works, via the App Remote fallback added 2026-08-16.
+- ~~Notification-listener access missing~~ **GRANTED by Kevin 2026-08-16.** Media transport
+  (pause/skip) should now work for everything, not just Spotify. **Untested since granting.**
 - **Onboarding has no screen. Firebase not wired**, so a swallowed exception is invisible.
   **Crisis resource is US-only (988).**
 - Google console work still needing Kevin: `.scratch/google-account-integration/` tickets 11
@@ -159,6 +155,21 @@ competitive-landscape brainstorm (`.scratch/competitive-landscape/research/lands
 
 **Still open from 2026-08-07:** `CategoryDao.insert` plus an add-category affordance. D14's fixed
 list exists to stop the MODEL inventing categories, not to stop Kevin adding one.
+
+**DRIVE UI charted and largely built, 2026-08-16.** Map `.scratch/drive-ui/`, **7 of 9 tickets
+settled**. Full account in `library/decisions.md` (2026-08-16).
+- **The screen was rebuilt to Kevin's reference direction** (80s dashboard, "akira, evangelion"):
+  segmented columns replace the arc dial, coolant is a COLD-HOT fader, PID codes printed beside
+  labels, speed primary over RPM. **Nobody has seen it as designed** - with no dongle every reading
+  is stale and correctly renders faint grey; the amber only appears on a live link.
+- **~2 Hz is the ceiling and batching is impossible** on a 1998 XJ (ISO 9141-2, not CAN). Ticket 02
+  must measure the real round trip before ticket 03 picks a cadence. **The screen makes zero OBD
+  calls** - it reads Room; TelemetryRecorder is what polls.
+- **mpg is SUPPRESSED everywhere** behind `MpgTrust.SHOW_MPG` until a tank-to-tank fill-up
+  calibrates it. It reads ~1.9x high on the Jeep: the formula is faithful, the synthesised MAF
+  input is not. `MPG_TRIP` still stores, so a factor applies retroactively.
+- **`drives` table now exists (v23).** A dropped OBD link used to skip the tick that finalises a
+  drive, so sessions merged - hence one 610-minute "drive" and only one drive ever recorded.
 
 ## Notes for next session
 
