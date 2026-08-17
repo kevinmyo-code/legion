@@ -3,6 +3,7 @@ package com.kevin.legion.ai
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
@@ -309,7 +310,14 @@ class SubAgent(
         object Network : HttpOutcome()
     }
 
-    /** POST the body, retrying once after a 1s pause on a transport failure. */
+    /**
+     * POST the body, retrying once after a 1s pause on a transport failure.
+     * NEVER retries a cancelled call: [postOnce] rethrows [kotlinx.coroutines.CancellationException]
+     * (it does not fall into the generic catch below, since it isn't an `Exception` subtype path we
+     * swallow inside [postOnce] - see that fun's own comment), so this loop unwinds via the
+     * suspend-cancellation machinery before `attempt == 0` can ever re-enter with a fresh, doomed
+     * connection opened on a job that's already dead.
+     */
     private suspend fun postRaw(body: JSONObject): HttpOutcome {
         var attempt = 0
         while (true) {
@@ -323,7 +331,32 @@ class SubAgent(
         }
     }
 
-    private fun postOnce(body: JSONObject): HttpOutcome {
+    /**
+     * The actual HTTP round-trip. `HttpURLConnection` I/O is blocking Java, not a suspend fun, so a
+     * coroutine parked in `connection.outputStream`/`.responseCode`/`.inputStream` is deaf to
+     * cancellation - the thread only notices once the socket itself returns, which without this fix
+     * meant every timeout wrapping this call ([AgentTool.timeoutMs], [investigate]'s [budgetMs],
+     * and [com.kevin.legion.service.LiveSessionController.handleToolCall]'s 45s tool-call ceiling)
+     * was inert down to the raw connect/read timeouts below. Two fixes make cancellation real:
+     *
+     * 1. `withContext(Dispatchers.IO)` moves the blocking calls onto the IO dispatcher and, more
+     *    importantly, makes this suspend point cancellable - `withContext` checks for cancellation
+     *    on entry/exit and rethrows [kotlinx.coroutines.CancellationException] at ITS OWN boundary,
+     *    never swallowed by the `catch (e: Exception)` inside the block below (`CancellationException`
+     *    thrown BY withContext itself, after the block returns, is outside that catch's scope).
+     * 2. `invokeOnCompletion` on this call's own [kotlinx.coroutines.Job] forces the blocked socket
+     *    read to unblock the moment the coroutine is cancelled, by calling `connection.disconnect()`
+     *    from whatever thread cancels it. That makes the parked `responseCode`/`inputStream` call
+     *    throw immediately instead of waiting out the full 30s read timeout. The disconnect races
+     *    ordinary completion, so the handle is always disposed in `finally` regardless of which side
+     *    won - a completed call disposing a no-op handle is harmless, a cancelled call disposing an
+     *    already-fired one is also harmless.
+     *
+     * Socket-level `connectTimeout`/`readTimeout` stay as the backstop for a network stall that
+     * happens with NO caller timeout at all (there is none such today, but it's cheap insurance);
+     * they are no longer the thing actually bounding a stuck call in practice.
+     */
+    private suspend fun postOnce(body: JSONObject): HttpOutcome = withContext(Dispatchers.IO) {
         val url = URL("$API_URL/$model:generateContent?key=${GeminiKeyProvider.key()}")
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -332,7 +365,12 @@ class SubAgent(
             connectTimeout = 15000
             readTimeout = 30000
         }
-        return try {
+        // Cancellation fires disconnect() on whatever thread cancels this coroutine, so the
+        // blocked write/read below throws instead of sitting out the full socket timeout.
+        val cancelHandle = coroutineContext.job.invokeOnCompletion { cause ->
+            if (cause != null) runCatching { connection.disconnect() }
+        }
+        try {
             connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
             val code = connection.responseCode
             if (code >= 400) {
@@ -346,6 +384,7 @@ class SubAgent(
             Log.e(TAG, "SubAgent request failed: ${e.message}", e)
             HttpOutcome.Network
         } finally {
+            cancelHandle.dispose()
             connection.disconnect()
         }
     }
