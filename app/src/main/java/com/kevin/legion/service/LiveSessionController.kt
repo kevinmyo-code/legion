@@ -577,9 +577,25 @@ class LiveSessionController(context: Context) {
                     JSONObject().put("success", false).put("message", "Something went wrong running that.")
                 }
                 // Sending can throw if the socket died mid-tool; the close path handles
-                // recovery, so don't let it crash this scope.
+                // recovery, so don't let it crash this scope. A THROWN exception isn't the
+                // only failure shape though: OkHttp's WebSocket.send returns false (never
+                // throws) when the socket is already closing/closed, so a stalled tool call
+                // that finally resolves into a dead socket used to vanish in total silence -
+                // no exception, no log, nothing for the driver to see or retry. Treat that
+                // false the same as a real failure.
                 try {
-                    s.sendToolResponse(call.id, call.name, response)
+                    val sent = s.sendToolResponse(call.id, call.name, response)
+                    if (!sent) {
+                        android.util.Log.w(
+                            "LiveSessionController", "sendToolResponse dropped (socket closed): ${call.name}",
+                        )
+                        // Only a driver-initiated conversation gets a visible notice - a
+                        // background proactive turn has no tool calls to begin with, but stay
+                        // consistent with the same userInitiated rule the Closed branch uses.
+                        if (conversationMode) {
+                            CompanionPhase.showNotice("CONNECTION LOST - TAP TO RETRY")
+                        }
+                    }
                 } catch (e: Exception) {
                     android.util.Log.w("LiveSessionController", "sendToolResponse failed: ${e.message}")
                 }

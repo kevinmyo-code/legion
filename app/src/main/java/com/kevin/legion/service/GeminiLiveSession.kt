@@ -514,8 +514,19 @@ class GeminiLiveSession(
         return webSocket?.send(msg.toString()) ?: false
     }
 
-    /** Returns the result of a [LiveEvent.ToolCall] back to Gemini. */
-    fun sendToolResponse(id: String, name: String, response: JSONObject) {
+    /**
+     * Returns the result of a [LiveEvent.ToolCall] back to Gemini.
+     *
+     * Returns whether the send was enqueued, same contract as [sendText] just above: OkHttp's
+     * `WebSocket.send` returns false (it does NOT throw) when the socket is already closing or
+     * closed, so a caller that only wraps this in try/catch never learns the response was dropped.
+     * That matters more here than for `sendText` - a tool response is the one message Gemini is
+     * actually WAITING on to close out a mid-turn function call, so a silently-dropped one leaves
+     * the model (and the driver-facing UI) wedged with no error and no way to know why. The bool
+     * lets the caller ([LiveSessionController.handleToolCall]) treat a false return as a real,
+     * user-visible failure instead of a false success.
+     */
+    fun sendToolResponse(id: String, name: String, response: JSONObject): Boolean {
         val msg = JSONObject().put("toolResponse", JSONObject().apply {
             put("functionResponses", JSONArray().put(JSONObject().apply {
                 put("id", id)
@@ -523,7 +534,7 @@ class GeminiLiveSession(
                 put("response", response)
             }))
         })
-        webSocket?.send(msg.toString())
+        return webSocket?.send(msg.toString()) ?: false
     }
 
     /**
