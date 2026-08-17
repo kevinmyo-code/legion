@@ -25,8 +25,9 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
     mission-control motion vocabulary was dormant. **That motion has never been observed by anyone,
     on any device, and it is now running.** Treat as untested, not as shipped-and-fine.
 - **SIX domains: fleet, ledger, pantry, body, notes/lists/calendar, plus goals/advisors.** Tabs:
-  Today, Money, Body, Fleet, Notes, Setup. **1428 unit tests green** (2026-08-16).
-- **Room is v23.** v22->v23 landed 2026-08-16: `drives` (the drive-boundary object), additive.
+  Today, Money, Body, Fleet, Notes, Setup. **1474 unit tests green** (2026-08-16).
+- **Room is v24.** v23->v24 closed the `categoryPending` default drift (annotation only, empty
+  migration body, **verified opening on the A25**). v22->v23: `drives` (the drive-boundary object).
   v21->v22 landed 2026-08-16: `code_clear_events` (clear-DTC), additive, SQL
   verified byte-identical to the generated schema AND applied to a pulled copy of the real device
   DB (47->48 tables, zero DDL changes, zero row drift, integrity clean). **v20->v21 predates this
@@ -176,6 +177,28 @@ settled**. Full account in `library/decisions.md` (2026-08-16).
   input is not. `MPG_TRIP` still stores, so a factor applies retroactively.
 - **`drives` table now exists (v23).** A dropped OBD link used to skip the tick that finalises a
   drive, so sessions merged - hence one 610-minute "drive" and only one drive ever recorded.
+
+**ALL-EFFORT VERIFICATION SWEEP + BUILD, 2026-08-16 (late).** Five verifiers over every open ticket,
+then six builds. **Open tickets 50 -> 24.** Full account in `library/decisions.md`.
+- **21 tickets closed as ALREADY BUILT.** All 16 quant-viz (statuses never flipped - the tracker
+  advertised 16 phantom tickets), 3 google-account, 2 cyberdeck-ui (superseded). **Fourth, fifth and
+  sixth instances of the repo being ahead of its docs.**
+- **BUILT AND COMMITTED tonight:** `categoryPending` drift closed at v24 (verified on device); the
+  **`remember` leak** (mail could reach permanent memory - now refuses in words); a real
+  `responseSchema` for the advisor; the **maintenance due meter restored** (a rebuild had silently
+  dropped it); the **trip block wired** to `drives`; and the **import rekey** made set-based.
+- **THE IMPORT REKEY HAS NEVER RUN against its own condition** - Kevin's import is latched
+  `completed_v3`. Needs a device with that unset.
+- **Root cause of the old import hang: `obd_samples` has NO INDEX.** 11,511 per-row statements were
+  full table scans over 36,694 rows. **An index on `(vehicleId, pid, timestamp)` is flagged and
+  unbuilt** - that table is also range-queried per row by the faults drilldown.
+- **Seven orphans found, only one deleted.** `MediaNotificationListener` must exist,
+  `embeddingVector` is a Room column, `savePersona`/`assemblePersona` are back-burnered not dead,
+  and `BleTransport.closed` was a **missing check** (the BLE half of the quiet-link defect) - now
+  wired, not removed.
+- **Two shipped features had silently vanished in a screen rebuild** with their pure layers still
+  green. Ticket `.scratch/quant-viz/issues/17-silent-regressions.md`. A guard test now exists that
+  was **proven to fail** before being trusted.
 
 ## Notes for next session
 
