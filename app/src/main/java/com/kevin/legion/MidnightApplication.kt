@@ -151,6 +151,26 @@ class MidnightApplication : Application() {
                     com.kevin.legion.vehicle.VehicleController.clearThisCarSentinel(this@MidnightApplication)
                 }.onFailure { MidnightEvents.appStartWorkFailed("clear_this_car_sentinel", it) }
             }
+
+            // Reconcile the assistant's on/off flag to reality (measured defect, 2026-08-17):
+            // AssistantIgnition's persisted flag can read true - and every UI surface built on it
+            // agree - while AriaForegroundService is not actually running, because the ONLY
+            // callers of AssistantIgnition.start() were the Settings toggle's own handler and
+            // nothing else ever restarted the service after a reboot or any other process death.
+            // resumeIfEnabled() is NOT a consent action (it never calls setEnabled - see its own
+            // doc) - it is a no-op the instant the flag is false, so a driver who never opted in
+            // gets nothing started here. Safe to call from a foreground app launch specifically
+            // because the app is starting because the user opened it, so none of the
+            // background-foreground-service-start restrictions (see BootReceiver's narrower call
+            // of the same function) apply - the full permission-gated type set in
+            // AriaForegroundService.startForegroundCompat, microphone included, is fine here.
+            //
+            // Not gated on isRunningUnderRobolectric alone by coincidence - it sits inside the same
+            // gated block as the three calls above for the identical L12 race reasoning (a
+            // Robolectric test starting a real foreground service intent would be its own hazard,
+            // never mind the DB race those three already document).
+            runCatching { com.kevin.legion.service.AssistantIgnition.resumeIfEnabled(this@MidnightApplication) }
+                .onFailure { MidnightEvents.appStartWorkFailed("resume_assistant_ignition", it) }
         }
 
         MidnightEvents.setBuildContext(

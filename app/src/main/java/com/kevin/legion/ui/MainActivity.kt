@@ -177,6 +177,23 @@ class MainActivity : ComponentActivity() {
      */
     override fun onResume() {
         super.onResume()
+        // Promote AriaForegroundService's foreground-service type set back up to include
+        // `microphone` now that the app is visibly foreground (2026-08-17). If the service was
+        // started by BootReceiver it came up WITHOUT the microphone type - see
+        // AriaForegroundService.isInForegroundEligibleState's doc - and this is the documented
+        // "call startForeground() again to add a type" pattern from the Android docs, reached via
+        // AssistantIgnition.resumeIfEnabled rather than a new IPC mechanism: it's a plain
+        // ContextCompat.startForegroundService call with no extras, which lands in
+        // onStartCommand and re-runs startForegroundCompat() unconditionally on every call
+        // (see that method's own doc, "cheap and idempotent"). No-op when the flag is off, same
+        // as every other call site of this function - never a consent bypass.
+        // Guarded: onResume fires on essentially every foreground return, so an exception from
+        // the startForegroundService IPC here would take the Activity down on something as
+        // ordinary as unlocking the screen. A failed type promotion must degrade to "no mic
+        // this time", never to a crash on resume.
+        runCatching {
+            com.kevin.legion.service.AssistantIgnition.resumeIfEnabled(applicationContext)
+        }.onFailure { com.kevin.legion.MidnightEvents.appStartWorkFailed("resume_promote_mic", it) }
         SyncEngine.maybeAutoSync(applicationContext)
         // Silent App Remote re-attach (2026-08-12). App Remote drops on its own whenever the
         // Spotify app is killed or backgrounded long enough, and nothing reconnected it - so

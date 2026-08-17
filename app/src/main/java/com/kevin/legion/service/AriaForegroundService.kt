@@ -817,6 +817,29 @@ class AriaForegroundService : Service() {
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     /**
+     * True only while this process is actually foreground from the platform's point of view -
+     * the documented signal for "an FGS start claiming a while-in-use-restricted type will be
+     * allowed here" (see [startForegroundCompat]'s call site for the defect this exists to
+     * close). `RunningAppProcessInfo.importance` is read off THIS app's own package name from
+     * [android.app.ActivityManager.getRunningAppProcesses] - there is no cheaper documented API
+     * for a service to ask "is my own process foreground right now" than walking that list and
+     * matching its own pid, which is exactly what this does.
+     *
+     * A driver-launched start (`MidnightApplication.onCreate`, or any Settings-toggle start)
+     * always reads `IMPORTANCE_FOREGROUND` here because the Activity that triggered it is on
+     * screen. A `BootReceiver`-triggered start never does - there is no Activity, no visible UI,
+     * nothing above background importance - so this returns false there without [BootReceiver]
+     * or [com.kevin.legion.service.AssistantIgnition] needing to say so explicitly.
+     */
+    private fun isInForegroundEligibleState(): Boolean {
+        val am = getSystemService(android.app.ActivityManager::class.java) ?: return false
+        val myPid = android.os.Process.myPid()
+        val myImportance = am.runningAppProcesses?.firstOrNull { it.pid == myPid }?.importance
+            ?: return false
+        return myImportance <= android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+    }
+
+    /**
      * Android 14+ hard-crashes (SecurityException) a foreground service that
      * declares a "special use" type - microphone, connectedDevice - without
      * actually holding that type's permission at the moment startForeground()
@@ -853,7 +876,30 @@ class AriaForegroundService : Service() {
                 granted(Manifest.permission.BLUETOOTH_CONNECT)
             } else true // pre-S Bluetooth permissions are install-time, not runtime
             if (bluetoothOk) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && granted(Manifest.permission.RECORD_AUDIO)) {
+            // The microphone type additionally requires the app to be in a foreground-eligible
+            // state, not just holding RECORD_AUDIO (2026-08-17, measured defect). At target SDK
+            // 34, `microphone` is on the documented BOOT_COMPLETED-prohibited list -
+            // attempting to claim it from a service started by BootReceiver throws
+            // ForegroundServiceStartNotAllowedException and kills the very service
+            // AssistantIgnition.resumeIfEnabled() was trying to bring back. dataSync/
+            // connectedDevice above are NOT on that list at this target SDK, so they're safe to
+            // request unconditionally on the permission check alone.
+            //
+            // isInForegroundEligibleState below checks RunningAppProcessInfo.importance, the
+            // documented way to ask "is my own process itself currently foreground or the
+            // in-scope kind of background the platform actually permits starting from" (developer.
+            // android.com's own recommended check for whether an FGS start will be allowed) -
+            // IMPORTANCE_FOREGROUND covers the ordinary "user has the app open" case
+            // (MidnightApplication.onCreate), and this deliberately does NOT special-case
+            // BootReceiver's own call by action or intent extra - a boot-triggered start simply
+            // never reaches IMPORTANCE_FOREGROUND, so the check excludes it without needing to
+            // know who's calling. Once the driver actually opens the app,
+            // onStartCommand's own re-declaration of types on every start (see its doc comment
+            // just above) promotes the mic type back in on the very next call.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                granted(Manifest.permission.RECORD_AUDIO) &&
+                isInForegroundEligibleState()
+            ) {
                 types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             }
             startForeground(NOTIFICATION_ID, notification, types)

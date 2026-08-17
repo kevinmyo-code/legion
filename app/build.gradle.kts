@@ -35,6 +35,15 @@ android {
     defaultConfig {
         applicationId = "com.kevin.legion"
         minSdk = 24
+        // DO NOT bump this to 35 without reading AriaForegroundService.startForegroundCompat and
+        // BootReceiver first (2026-08-17). At 35, `dataSync` joins `microphone` on the
+        // BOOT_COMPLETED-prohibited foreground-service-type list, which breaks the boot-time
+        // reconciliation AssistantIgnition.resumeIfEnabled relies on outright - there would be no
+        // type left that BootReceiver is allowed to start with. 35 also activates the `dataSync`
+        // 6h/24h foreground-service time cap and Service.onTimeout(), which neither
+        // AriaForegroundService nor LedgerIngestService implements today - an unimplemented
+        // onTimeout on a capped dataSync service is a fatal RemoteServiceException, not a soft
+        // stop. Both are real work items, not a toggle to flip.
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
