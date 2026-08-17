@@ -1,5 +1,8 @@
 package com.kevin.legion.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -7,13 +10,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,16 +32,18 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -48,72 +57,114 @@ import com.kevin.legion.ui.theme.DeckChrome
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.deckMotionEnabled
 import com.kevin.legion.util.clockTime
 import com.kevin.legion.util.relativeAge
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
 import kotlinx.coroutines.delay
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
- * `driving` - the ticket-11/20 glance screen, rebuilt to the cockpit-hub mock Kevin approved
- * 2026-08-08. Full-bleed, no [ui.common.StatusLine], no hard-key row, a glance ceiling of THREE
- * readouts (the dial plus two pods) plus the Alfred line and the EXIT key - nothing else. Entry
- * is always an OFFER (ticket 11 answer §1: [FleetScreen]'s UPLINK panel `DRIVE MODE` row navigates
- * here on tap - see that file's `DriveModeOfferRow`); this screen never triggers itself.
+ * `driving` - the retro-instrument-panel rebuild (drive-ui ticket 04, direction approved by
+ * Kevin 2026-08-16 off a reference 80s dashboard photo: "look at the bars and shit. retro
+ * futuristic vibes. think akira, think evangelion"). Full-bleed, no [ui.common.StatusLine], no
+ * hard-key row. Entry is always an OFFER (ticket 11 answer §1, carried over unchanged: [FleetScreen]'s
+ * UPLINK panel `DRIVE MODE` row navigates here on tap - see that file's `DriveModeOfferRow`); this
+ * screen never triggers itself.
  *
- * **No theatre** (ticket 04 answer §5: "driving mode gets NO theatre - it is exempt from even the
- * three rationed moments"). No boot sweep, no draw-in, no ambient cursor, no continuous animation
- * anywhere in this file - the dial and pods redraw only when a poll tick actually changes the
- * underlying reading, because they read plain [androidx.compose.runtime.State] values directly
- * into a `Canvas` rather than animating toward them. Entry and exit are instant `LegionShell`/
- * `NavHost` transitions, the same as any other pop; nothing in this file reads
- * [com.kevin.legion.ui.theme.deckMotionEnabled] or [com.kevin.legion.ui.theme.DRAW_IN_MS] because
- * there is nothing here to gate.
+ * **The centrepiece is a segmented-column instrument, not a swept arc.** SPEED is the primary
+ * readout (drive-ui ticket 04 answer Q12 - RPM no longer wins by default; this screen used to have
+ * an RPM-leads-speed-fallback dial-selection ladder, [selectDialSource]/[DialSource] in the old
+ * `DrivingDialMath.kt`, and that whole mechanism is GONE, not merely renamed). RPM is the second
+ * instrument, same segmented form, drawn smaller. COOLANT is a fader - a continuous filled track,
+ * not segments, "exactly like the reference's `COLD ▬▬ HOT` slider" (ticket 04's own words).
+ * A drive-in-progress block (ELAPSED/DISTANCE) fills what used to be a third of the screen sitting
+ * empty - see [TripBlock]'s own doc for why both read "NOT TRACKING" rather than a fabricated
+ * number.
  *
- * **Readings live-poll the same way UPLINK does** (ticket 20 build brief item 2): a periodic
- * re-query of `CarDatabase`'s latest [com.kevin.legion.data.local.OdbSample] per PID, the exact
- * mechanism [FleetScreen]'s `UplinkPane` uses for its own LIVE block (`odbSampleDao().getLatest`),
- * not a raw [ObdBluetoothManager.getRpm]/`getCoolantTemp` command sent from here. Those two
- * suspend funs write straight to the same single-socket RFCOMM/BLE connection
- * [com.kevin.legion.vehicle.TelemetryRecorder] is already polling on its own loop while the
- * engine runs and the dongle is connected (traced: `ObdBluetoothManager.sendCommand` has no
+ * **Motion is ALLOWED here now, deliberately, not merely un-banned.** This file used to carry six
+ * doc comments forbidding all animation, citing a retired head-unit "ambient-motion ration" that
+ * CLAUDE.md has lifted twice over (§2, §7) - those comments are gone, not reworded. Ticket 06
+ * (Kevin, overruling the no-interpolation recommendation): **"interpolate its ok. we are adults we
+ * know the gauges are slow."** So the segment fill fraction for SPEED/RPM/COOLANT eases toward
+ * each new poll reading over [BAR_TRANSITION_MS] via `animateFloatAsState`, and because the
+ * instrument is discrete blocks rather than a continuous needle, the eased fraction only ever
+ * changes WHICH segments are lit, not a fabricated in-between value drawn as if it were real - see
+ * [DrivingDialMath.kt]'s file doc for the fuller argument. One ambient liveness signal (a small
+ * dot beside the HUD's link status, [DrivingHudLine]) breathes once per poll tick so a ~2 Hz screen
+ * does not read as frozen. **All of this is gated on [deckMotionEnabled] AND on the link being
+ * live** (ticket 06 Q21) - a manual no-link entry gets zero motion of any kind, same as before.
+ *
+ * **Readings live-poll the same way UPLINK does** (ticket 20 build brief item 2, unchanged by this
+ * rebuild): a periodic re-query of `CarDatabase`'s latest [com.kevin.legion.data.local.OdbSample]
+ * per PID, the exact mechanism [FleetScreen]'s `UplinkPane` uses for its own LIVE block
+ * (`odbSampleDao().getLatest`), not a raw [ObdBluetoothManager.getRpm]/`getCoolantTemp` command
+ * sent from here. Those two suspend funs write straight to the same single-socket RFCOMM/BLE
+ * connection [com.kevin.legion.vehicle.TelemetryRecorder] is already polling on its own loop while
+ * the engine runs and the dongle is connected (traced: `ObdBluetoothManager.sendCommand` has no
  * mutex or command queue visible from this file) - sending a second, independent command stream
  * from this screen risks interleaving with that loop on the same wire. Reading the DB it already
  * writes to is the same "reuse, do not duplicate the OBD read path" posture DRIVES/UPLINK already
- * use for their own panels, and it is the literal instruction in the ticket ("the same way").
+ * use for their own panels. `POLL_MS` is unchanged at 2000 - live cadence is drive-ui ticket 03's
+ * job, blocked on measurement, and out of scope here.
  *
- * **All three PIDs are polled every tick now, unconditionally** - a change from the original
- * two-readout build, which only queried speed when RPM had never been recorded. The cockpit mock
- * needs RPM, speed, AND coolant simultaneously (the dial shows one of RPM/speed, and whichever one
- * the dial is NOT showing still has to fill the second pod - see [selectDialSource]'s doc), so
- * there is no longer a PID this screen can skip querying. Three `getLatest(..., 1)` reads every
- * 2s is not meaningfully more expensive than the original's up-to-two, and correctness (never
- * silently missing the pod's own reading) matters more here than shaving one query.
+ * **All three PIDs are polled every tick, unconditionally** - SPEED and RPM are both always-shown
+ * instruments now (not a dial that picks one), and COOLANT's fader needs its own reading regardless.
  *
  * **Exit: EXIT key, or the link dropping, whichever comes first.** No confirmation dialog either
- * way (ticket 11 answer §2). The link-drop watch polls [ObdBluetoothManager.isConnected] on the
- * same cadence as the readouts rather than a bespoke faster timer - a driver who unplugs the
- * dongle mid-drive is not going to notice a few hundred milliseconds' difference, and a second
- * poll loop here would be motion this screen does not need.
+ * way (ticket 11 answer §2, layout ticket 08 Q27 re-affirms it). The link-drop watch polls
+ * [ObdBluetoothManager.isConnected] on the same cadence as the readouts rather than a bespoke
+ * faster timer - a driver who unplugs the dongle mid-drive is not going to notice a few hundred
+ * milliseconds' difference.
  */
 private const val POLL_MS = 2_000L
 
 /** The clock in the HUD line only needs to be right to the minute (approved mock) - see [clockTime]'s own doc for why the deck never shows seconds. */
 private const val CLOCK_POLL_MS = 60_000L
 
-/** The three PIDs this screen ever asks for. RPM leads per ticket 11 answer §3's default; coolant is the fixed COOLANT pod; speed backs the dial when RPM is unavailable and otherwise fills the second pod. */
+/** The three PIDs this screen ever asks for. */
 private const val PID_RPM = "010C"
 private const val PID_SPEED = "010D"
 private const val PID_COOLANT = "0105"
 
-// Scale ceilings for the dial sweep / pod mini-bars, per the approved mock.
-private const val RPM_SCALE_MAX = 8000f
-private const val SPEED_SCALE_MPH_MAX = 120f
-private const val COOLANT_SCALE_F_MAX = 260f
+/**
+ * Per-vehicle in spirit, NOT yet actually per-vehicle in code, for BOTH scales below -
+ * [com.kevin.legion.data.local.Vehicle] has no redline/top-speed-ceiling column, and adding one
+ * is a Room migration this ticket did not scope (CLAUDE.md §5's migration checklist: verbatim
+ * generated SQL, `exportSchema`, a migration test - none of that belongs in a UI rebuild). Both
+ * constants are the correct values for the one car on this install today; making them real
+ * per-car fields is follow-up work, tracked back to ticket 04 rather than invented here. Do not
+ * read their being `private const val`s as "this is fine forever" - it is "this has no home yet".
+ *
+ * [RPM_SCALE_MAX] (drive-ui ticket 04 answer Q10: "a 4.0L XJ redlines around 4600-5000... per-
+ * vehicle maximum, defaulting to ~5500 for the Jeep").
+ *
+ * [SPEED_SCALE_MPH_MAX] was found still wrong on-device after the RPM fix landed - 120mph on a
+ * Jeep that realistically tops out near 80-85 is the exact same "a scale that can never fill is a
+ * scale that wastes its range" defect ticket 04 already named for RPM, missed one gauge over. Set
+ * to 90: comfortably above the car's real ceiling (so a genuine top-end reading never pins the
+ * bar at full) without spending most of the segment column on speeds this Jeep will never see.
+ */
+private const val RPM_SCALE_MAX = 5500f
+private const val SPEED_SCALE_MPH_MAX = 90f
 
-/** One raw reading plus its worded staleness (never a bare number - CLAUDE.md §4/§7, [relativeAge] discipline carried over from [com.kevin.legion.ui.fleet.buildLiveRows]). Unit conversion (km/h -> mph, C -> F) happens at the READ site below, not here - this struct always holds the PID's own native unit. */
+/**
+ * Coolant renders in Celsius now (ticket 07 answer #2: "it already matches two of the three
+ * screens... DRIVE MODE's `177 F` pod is the outlier and moves"). 130C is roughly the old 260F
+ * ceiling's equivalent ((260-32)*5/9 = 126.7C), rounded to a clean scale value rather than
+ * preserved to the decimal - the old ceiling was never a measured limit, just a scale that had to
+ * clear a hot-running engine.
+ */
+private const val COOLANT_SCALE_C_MAX = 130f
+
+/** Segment resolution for the two segmented columns - SPEED (primary) reads finer than RPM (secondary), matching "same segmented form, smaller" rather than just a shorter bar at the same resolution. */
+private const val SEGMENTS_SPEED = 20
+private const val SEGMENTS_RPM = 14
+
+/** How long a segment column or the coolant fader eases toward a newly-polled reading, when motion is allowed at all (see file doc). Well under [POLL_MS] so one transition always finishes before the next reading can start a new one. */
+private const val BAR_TRANSITION_MS = 650
+
+/** One raw reading plus its worded staleness (never a bare number - CLAUDE.md §4/§7, [relativeAge] discipline carried over from [com.kevin.legion.ui.fleet.buildLiveRows]). [raw] is always the PID's own native unit - km/h for speed (converted to mph at the read site below via [kmhToMph]), and now Celsius for coolant too (ticket 07: no conversion needed, the PID and the display finally agree). */
 private data class DrivingSample(val raw: Float, val age: String)
 
 @Composable
@@ -124,6 +175,12 @@ fun DrivingModeScreen(onExit: () -> Unit) {
     var rpm by remember { mutableStateOf<DrivingSample?>(null) }
     var speed by remember { mutableStateOf<DrivingSample?>(null) }
     var coolant by remember { mutableStateOf<DrivingSample?>(null) }
+    // Increments on every poll iteration, live or not - the sole input to the HUD's liveness
+    // pulse (file doc: "one ambient liveness signal... per poll tick"). A plain counter rather
+    // than deriving "did a reading change" from the samples themselves, because the signal this
+    // exists to give is "the loop is still running", not "a value moved" - those are different
+    // claims and only the first one is what a frozen-looking screen needs.
+    var tickCounter by remember { mutableStateOf(0) }
 
     // Keep-screen-on while this destination is composed - the ticket's own
     // instruction ("keep-screen-on while active"). Tied to DisposableEffect,
@@ -145,10 +202,9 @@ fun DrivingModeScreen(onExit: () -> Unit) {
     }
 
     // The live/last-known poll loop, and the automatic-exit watch on the same
-    // tick (see file doc for why one loop covers both). Runs for as long as
-    // this composable stays on screen; DisposableEffect above tears the
-    // screen-on flag down independently the moment it stops, whichever exit
-    // path fired.
+    // tick. Runs for as long as this composable stays on screen; DisposableEffect
+    // above tears the screen-on flag down independently the moment it stops,
+    // whichever exit path fired.
     LaunchedEffect(Unit) {
         val vehicle = VehicleController.currentVehicle(context)
         // Ticket 04's label rule: the one rule, every surface - see VehicleController.label's doc.
@@ -167,10 +223,9 @@ fun DrivingModeScreen(onExit: () -> Unit) {
                 // Ticket 11 answer §2: the link dropping exits instantly, no
                 // confirmation. This is the ONLY place that condition is
                 // checked - a bespoke faster poll would be exactly the kind
-                // of extra motion ticket 04 answer §5 rules out for this
-                // screen. Entered manually without a link, the EXIT key is
-                // the only way out - there is no link whose drop could mean
-                // "the drive ended".
+                // of extra motion this screen does not need for it. Entered
+                // manually without a link, the EXIT key is the only way out -
+                // there is no link whose drop could mean "the drive ended".
                 onExit()
                 return@LaunchedEffect
             }
@@ -182,6 +237,7 @@ fun DrivingModeScreen(onExit: () -> Unit) {
             rpm = rpmSample?.let { DrivingSample(it.value.toFloat(), relativeAge(it.timestamp, now)) }
             speed = speedSample?.let { DrivingSample(it.value.toFloat(), relativeAge(it.timestamp, now)) }
             coolant = coolantSample?.let { DrivingSample(it.value.toFloat(), relativeAge(it.timestamp, now)) }
+            tickCounter++
             delay(POLL_MS)
         }
     }
@@ -189,15 +245,22 @@ fun DrivingModeScreen(onExit: () -> Unit) {
     val phase by CompanionPhase.phase.collectAsStateWithLifecycle()
     // "Static-per-minute is fine" for this screen's HUD clock - a once-a-
     // minute produceState tick, same cadence MainActivity's own shell clock
-    // uses for the identical reason (ticket 04's ambient-motion ration; a
-    // once-a-second read here would recompose the whole HUD row for no
-    // legibility gain).
+    // uses for the identical reason - a once-a-second read here would
+    // recompose the whole HUD row for no legibility gain.
     val clock by produceState(initialValue = clockTime(System.currentTimeMillis())) {
         while (true) {
             value = clockTime(System.currentTimeMillis())
             delay(CLOCK_POLL_MS)
         }
     }
+
+    // Fix 4's footer band needs a real protocol string, not an invented one - this is the same
+    // StateFlow ObdDeviceScreen already reads for its own "Protocol" row
+    // (`ObdBluetoothManager.adapterInfo`), so this screen adds a second collector onto state that
+    // already exists rather than plumbing a new read path. `null` until the adapter's ATI/ATDP
+    // handshake actually completes, which [TechnicalFooterBand] treats as "leave it out", never
+    // as "print a placeholder".
+    val adapterInfo by ObdBluetoothManager.adapterInfo.collectAsStateWithLifecycle()
 
     DrivingModeContent(
         vehicleName = vehicleName,
@@ -207,15 +270,16 @@ fun DrivingModeScreen(onExit: () -> Unit) {
         speed = speed,
         coolant = coolant,
         // The Alfred status line reuses AssistantStripResolver's own phase
-        // wording (ticket 20 build brief item 2: "reuse whatever state
-        // AssistantStrip reads... show the strip's existing status text") -
-        // no new voice-state vocabulary invented for this one screen.
+        // wording (ticket 20 build brief item 2): no new voice-state
+        // vocabulary invented for this one screen.
         alfredStatus = AssistantStripResolver.phaseLabel(phase),
+        tickCounter = tickCounter,
+        protocolName = adapterInfo?.protocolName,
         onExit = onExit,
     )
 }
 
-/** Plain UI: the cockpit layout with no Room/OBD reference, see the file doc's state-holder split. */
+/** Plain UI: the instrument-panel layout with no Room/OBD reference, see the file doc's state-holder split. */
 @Composable
 private fun DrivingModeContent(
     vehicleName: String,
@@ -225,60 +289,50 @@ private fun DrivingModeContent(
     speed: DrivingSample?,
     coolant: DrivingSample?,
     alfredStatus: String,
+    tickCounter: Int,
+    protocolName: String?,
     onExit: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
+    // The single motion gate for this whole screen (file doc): the OS accessibility signal AND
+    // the link actually being live. A manual no-link entry - or reduced-motion - gets a screen
+    // that jumps straight to every value, never eases toward it.
+    val allowMotion = deckMotionEnabled() && linkLive
+    val transitionSpec = if (allowMotion) tween<Float>(BAR_TRANSITION_MS) else snap()
 
-    // Which reading owns the dial, and which reading (never the same one) owns
-    // the second pod - see selectDialSource's doc for why this reads "has this
-    // PID ever been recorded", not "is the link live right now".
-    val dialSource = selectDialSource(hasRpm = rpm != null, hasSpeed = speed != null)
-    val dialSample = when (dialSource) {
-        DialSource.RPM -> rpm
-        DialSource.SPEED -> speed
-        DialSource.NONE -> null
-    }
-    // Stale means "no live link, but a last-known reading exists" - the
-    // approved mock's own wording ("Stale (link down, last-known) values
-    // render in muted, not amber"). A live link with a reading that is a
-    // couple of poll ticks old is NOT stale under this rule; only a dropped
-    // link demotes the color, same as [DrivingModeContent]'s pods below.
-    val dialStale = !linkLive && dialSample != null
-    val dialFractionValue = when (dialSource) {
-        DialSource.RPM -> dialFraction(dialSample!!.raw, RPM_SCALE_MAX)
-        DialSource.SPEED -> dialFraction(kmhToMph(dialSample!!.raw), SPEED_SCALE_MPH_MAX)
-        DialSource.NONE -> 0f
-    }
-    val dialCenterText = when (dialSource) {
-        DialSource.RPM -> "%.1f".format(dialSample!!.raw / 1000f)
-        DialSource.SPEED -> "%.0f".format(kmhToMph(dialSample!!.raw))
-        DialSource.NONE -> "NO LINK"
-    }
-    val dialUnitLabel = when (dialSource) {
-        DialSource.RPM -> "RPM ×1000"
-        DialSource.SPEED -> "MPH"
-        DialSource.NONE -> ""
-    }
+    // ---- SPEED: the primary readout (ticket 04 answer Q12 - RPM no longer wins by default) ----
+    val speedHasReading = speed != null
+    val speedStale = !linkLive && speedHasReading
+    val speedMph = speed?.let { kmhToMph(it.raw) }
+    val speedRawFraction = speedMph?.let { dialFraction(it, SPEED_SCALE_MPH_MAX) } ?: 0f
+    val speedFraction by animateFloatAsState(targetValue = speedRawFraction, animationSpec = transitionSpec, label = "speed-fraction")
+    val speedValueText = speedMph?.let { "%.0f".format(it) } ?: "NO READING ON FILE"
 
-    // The second pod is always whichever of RPM/speed the dial is NOT
-    // currently showing - "never duplicate the dial's reading in a pod"
-    // (approved mock). When the dial is NONE (neither PID ever recorded),
-    // the second pod defaults to SPEED - it reads "no reading on file"
-    // either way, since neither PID exists yet for this vehicle.
-    val secondPodIsRpm = dialSource == DialSource.SPEED
-    val secondPodSample = if (secondPodIsRpm) rpm else speed
-    val secondPodStale = !linkLive && secondPodSample != null
-    val secondPodValueText = secondPodSample?.let {
-        if (secondPodIsRpm) "${it.raw.toInt()}" else "${kmhToMph(it.raw).toInt()} MPH"
-    }
-    val secondPodFraction = secondPodSample?.let {
-        if (secondPodIsRpm) dialFraction(it.raw, RPM_SCALE_MAX) else dialFraction(kmhToMph(it.raw), SPEED_SCALE_MPH_MAX)
-    } ?: 0f
+    // ---- RPM: the second instrument, same segmented form, smaller ----
+    val rpmHasReading = rpm != null
+    val rpmStale = !linkLive && rpmHasReading
+    val rpmRawFraction = rpm?.let { dialFraction(it.raw, RPM_SCALE_MAX) } ?: 0f
+    val rpmFraction by animateFloatAsState(targetValue = rpmRawFraction, animationSpec = transitionSpec, label = "rpm-fraction")
+    val rpmValueText = rpm?.let { "%.1f".format(it.raw / 1000f) } ?: "NO READING ON FILE"
 
-    val coolantStale = !linkLive && coolant != null
-    val coolantF = coolant?.let { celsiusToFahrenheit(it.raw) }
-    val coolantValueText = coolantF?.let { "${it.toInt()}°F" }
-    val coolantFraction = coolantF?.let { dialFraction(it, COOLANT_SCALE_F_MAX) } ?: 0f
+    // ---- COOLANT: a fader, not segments (ticket 04: "literally what that control is in the photo") ----
+    val coolantHasReading = coolant != null
+    val coolantStale = !linkLive && coolantHasReading
+    val coolantRawFraction = coolant?.let { dialFraction(it.raw, COOLANT_SCALE_C_MAX) } ?: 0f
+    val coolantFraction by animateFloatAsState(targetValue = coolantRawFraction, animationSpec = transitionSpec, label = "coolant-fraction")
+    val coolantValueText = coolant?.let { "%.0f°C".format(it.raw) } ?: "NO READING ON FILE"
+
+    // ---- The one ambient liveness signal (ticket 06 Q19/Q21) ----
+    // Flips every poll tick, live or not; the alpha animation it drives is what actually gates on
+    // allowMotion (below) - a dead link freezes the flag but the HUD never reads it because
+    // DrivingHudLine only draws the dot at all when linkLive is true (see that composable).
+    var pulsePhase by remember { mutableStateOf(false) }
+    LaunchedEffect(tickCounter) { pulsePhase = !pulsePhase }
+    val pulseAlpha by animateFloatAsState(
+        targetValue = if (!allowMotion) 1f else if (pulsePhase) 1f else 0.3f,
+        animationSpec = if (allowMotion) tween(POLL_MS.toInt() - 200) else snap(),
+        label = "liveness-pulse",
+    )
 
     // Full-bleed ground, no StatusLine, no hard-key row - a destination
     // outside the shell chrome (ticket 20 scope note; LegionShell branches on
@@ -294,49 +348,108 @@ private fun DrivingModeContent(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 16.dp),
         ) {
-            DrivingHudLine(vehicleName = vehicleName, linkLive = linkLive, clock = clock)
-            Spacer(Modifier.height(16.dp))
-            DrivingDial(
-                source = dialSource,
-                fraction = dialFractionValue,
-                stale = dialStale,
-                centerText = dialCenterText,
-                unitLabel = dialUnitLabel,
-                ageText = dialSample?.age,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(260.dp),
-            )
-            Spacer(Modifier.height(20.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                DrivingPod(
-                    label = "COOLANT",
-                    valueText = coolantValueText,
-                    ageText = coolant?.age,
-                    stale = coolantStale,
-                    fraction = coolantFraction,
-                    modifier = Modifier.weight(1f),
+            DrivingHudLine(vehicleName = vehicleName, linkLive = linkLive, clock = clock, pulseAlpha = pulseAlpha)
+            Spacer(Modifier.height(12.dp))
+
+            // The two segmented columns. Fix 2 (both installed on the real phone read as
+            // accidentally misaligned - different panel tops AND different panel heights): both
+            // [SegmentColumn]s now get an equal `.fillMaxHeight()` PANEL, full stop, so the
+            // bracket panels themselves share a top and a baseline. RPM staying visually shorter
+            // is preserved as the deliberate hierarchy it always was - it just moved from "a
+            // shorter panel" to a narrower column with fewer segments. It does NOT mean a shorter
+            // bar face: bottom-aligning RPM inside an equal-height panel was tried and left a void
+            // above it (Kevin, on-device 2026-08-16). `verticalAlignment` no longer does
+            // any real work now that both children fill the same height, but is left as `Bottom`
+            // rather than removed - it costs nothing and keeps this Row's behaviour well-defined
+            // if a future caller ever gives one column a shorter modifier again.
+            Row(
+                Modifier.weight(1f).fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                SegmentColumn(
+                    label = "SPEED",
+                    pidCode = PID_SPEED,
+                    valueText = speedValueText,
+                    unitLabel = "MPH",
+                    ageText = speed?.age,
+                    valueStyle = MaterialTheme.typography.displayLarge,
+                    fraction = speedFraction,
+                    totalSegments = SEGMENTS_SPEED,
+                    // No redline on speed - the annotation belongs to RPM's own scale only
+                    // (ticket 04: "top segments of the RPM scale"), so the zone start is pinned
+                    // past the last valid index and no segment ever matches it.
+                    redlineStartIndex = SEGMENTS_SPEED,
+                    stale = speedStale,
+                    hasReading = speedHasReading,
+                    ticks = scaleTicks(SPEED_SCALE_MPH_MAX, 30f),
+                    tickFormatter = { "%.0f".format(it) },
+                    modifier = Modifier.weight(1.3f).fillMaxHeight(),
                 )
-                DrivingPod(
-                    label = if (secondPodIsRpm) "RPM" else "SPEED",
-                    valueText = secondPodValueText,
-                    ageText = secondPodSample?.age,
-                    stale = secondPodStale,
-                    fraction = secondPodFraction,
-                    modifier = Modifier.weight(1f),
+                SegmentColumn(
+                    label = "RPM",
+                    pidCode = PID_RPM,
+                    valueText = rpmValueText,
+                    unitLabel = "×1000",
+                    ageText = rpm?.age,
+                    valueStyle = MaterialTheme.typography.displayMedium,
+                    fraction = rpmFraction,
+                    totalSegments = SEGMENTS_RPM,
+                    redlineStartIndex = redlineSegmentStartIndex(SEGMENTS_RPM),
+                    stale = rpmStale,
+                    hasReading = rpmHasReading,
+                    ticks = scaleTicks(RPM_SCALE_MAX, 1000f),
+                    tickFormatter = { "%.0f".format(it / 1000f) },
+                    // The panel is full height now (see this Row's own comment) - this is the ONE
+                    // remaining place "RPM reads smaller" lives, as the fraction of that full-
+                    // height panel the printed bar face actually occupies, bottom-aligned.
+                    // Fix 2b (Kevin, on-device 2026-08-16): barHeightFraction is GONE, not
+                    // just changed. Bottom-aligning RPM's bar inside an equal-height panel left a
+                    // visible void above it that read as a missing element rather than as
+                    // hierarchy - and the reference photo's EQ display has uniform-height columns
+                    // of differing content, never one column that stops short. Hierarchy now comes
+                    // from WIDTH (speed's 1.3f vs this 1f) and from segment count (20 vs 14).
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
             }
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
+            CoolantFader(
+                pidCode = PID_COOLANT,
+                valueText = coolantValueText,
+                ageText = coolant?.age,
+                stale = coolantStale,
+                hasReading = coolantHasReading,
+                fraction = coolantFraction,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(12.dp))
+            TripBlock(modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(6.dp))
+            // Fix 4's technical footer band - one thin row of printed facts, real values only
+            // (this composable's own instruction: nothing this screen cannot actually source).
+            // Link state duplicates the HUD line on purpose - the HUD line is chrome ("is Alfred
+            // hearing the car"), this line is the instrument face's own technical strip ("what
+            // protocol, how often") - see [TechnicalFooterBand]'s own doc.
+            TechnicalFooterBand(
+                linkLive = linkLive,
+                protocolName = protocolName,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        // Alfred moves to thumb level, just above EXIT (layout ticket 08 Q28) - it used to sit
+        // mid-screen between the pods and the dead third; the dead third is gone and so is the
+        // reason Alfred was floating above it.
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) {
             DrivingAlfredStrip(alfredStatus)
-            Spacer(Modifier.weight(1f))
         }
 
         // The giant EXIT hard-key: bottom, full-width, huge touch target, no
-        // confirmation (ticket 11 answer §2). Approved mock: a 2dp edge-color
-        // border rather than the old solid-quarantine-red fill - EXIT is a
-        // control, not a failed-gate/crisis verdict, so it does not belong in
-        // ticket 03's red family at all; amber letterspaced text on an
-        // outlined key matches the rest of MILSPEC's bracket/outline register.
+        // confirmation (ticket 11 answer §2, layout ticket 08 Q27). A 2dp
+        // edge-color border rather than a solid quarantine-red fill - EXIT is
+        // a control, not a failed-gate/crisis verdict, so it does not belong
+        // in ticket 03's red family at all; amber letterspaced text on an
+        // outlined key matches the rest of the deck's bracket/outline register.
         Box(
             Modifier
                 .fillMaxWidth()
@@ -357,29 +470,39 @@ private fun DrivingModeContent(
 private val EXIT_KEY_HEIGHT = 72.dp
 
 /**
- * The HUD line (approved mock, top of the cockpit): link state left, vehicle name + clock right.
- * Green accent on a live link only - a dropped/never-paired link reads muted, never red (a dead
- * link during manual entry is an expected, informed state per the ticket-11 amendment, not a
+ * The HUD line (top of the panel): link state left, vehicle name + clock right. Green-family
+ * accent ([LegionSemantics.credit], mint) on a live link only - a dropped/never-paired link reads
+ * muted, never red (a dead link during manual entry is an expected, informed state, not a
  * failure), matching ticket 03's "red is exclusively a failed-gate/crisis verdict" contract.
+ *
+ * [pulseAlpha] drives the one small dot beside "LINK LIVE" - the screen's single ambient liveness
+ * signal (ticket 06 Q19/Q21). The dot is only drawn AT ALL when [linkLive] is true: a no-link
+ * screen does not merely get the dot held static, it never gets a dot, which is the simplest way
+ * to satisfy "a no-link screen does not animate" without a second gate to keep in sync with
+ * [DrivingModeContent]'s `allowMotion`.
  */
 @Composable
-private fun DrivingHudLine(vehicleName: String, linkLive: Boolean, clock: String) {
+private fun DrivingHudLine(vehicleName: String, linkLive: Boolean, clock: String, pulseAlpha: Float) {
     val sem = LocalLegionSemantics.current
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            buildAnnotatedString {
-                withStyle(SpanStyle(color = sem.faint)) { append("DRIVE // ") }
-                withStyle(SpanStyle(color = if (linkLive) sem.credit else sem.faint)) {
-                    append(if (linkLive) "LINK LIVE" else "MANUAL · NO LINK")
-                }
-            },
-            style = LegionType.stamp,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(color = sem.faint)) { append("DRIVE // ") }
+                    withStyle(SpanStyle(color = if (linkLive) sem.credit else sem.faint)) {
+                        append(if (linkLive) "LINK LIVE" else "MANUAL · NO LINK")
+                    }
+                },
+                style = LegionType.stamp,
+            )
+            if (linkLive) {
+                Box(Modifier.size(6.dp).background(sem.credit.copy(alpha = pulseAlpha)))
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (vehicleName.isNotBlank()) {
                 // NOT .uppercase() (ticket 04's label rule) - LegionType.stamp is chrome styling,
-                // uppercasing is a chrome concern, and a car's name is DATA the driver typed. This
-                // is exactly how the seedVehicle placeholder used to shout "THIS CAR" here.
+                // uppercasing is a chrome concern, and a car's name is DATA the driver typed.
                 Text(vehicleName, style = LegionType.stamp, color = sem.faint)
             }
             Text(clock, style = LegionType.stamp, color = sem.faint)
@@ -388,110 +511,24 @@ private fun DrivingHudLine(vehicleName: String, linkLive: Boolean, clock: String
 }
 
 /**
- * The center dial: a Canvas arc gauge, sweep/scale math from [DrivingDialMath.kt] (see that
- * file's doc for why the redline is drawn with the raw [DeckChrome] token rather than
- * [LocalLegionSemantics.quarantined]). No animation anywhere in this composable - the arc, the
- * center text, and the ticks are drawn directly from the current [fraction]/[stale]/[centerText]
- * values every recomposition, which only happens when the poll loop actually changes one of them
- * (screen file doc: "no theatre").
+ * A local, lightweight variant of [com.kevin.legion.ui.common.DeckPane]'s corner-bracket
+ * treatment (unchanged reasoning from the pre-rebuild file: `DeckPane`'s header row fights this
+ * screen's centered "label above a giant value" read), factored out here because the rebuild now
+ * has three callers - [SegmentColumn], [CoolantFader], [TripBlock] - instead of the original's
+ * one, and CLAUDE.md's density-without-duplication posture says three copies of the same four
+ * `drawLine` calls is the wrong amount of copy-paste even for a screen-local helper.
  */
 @Composable
-private fun DrivingDial(
-    source: DialSource,
-    fraction: Float,
-    stale: Boolean,
-    centerText: String,
-    unitLabel: String,
-    ageText: String?,
+private fun BracketPanel(
     modifier: Modifier = Modifier,
-) {
-    val sem = LocalLegionSemantics.current
-    val trackColor = sem.ruleFaint
-    val edgeColor = sem.rule
-    val valueColor = if (stale) sem.faint else MaterialTheme.colorScheme.primary
-
-    Box(modifier, contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            val strokeWidthPx = 14.dp.toPx()
-            val diameter = (kotlin.math.min(size.width, size.height) - strokeWidthPx).coerceAtLeast(0f)
-            val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
-            val arcSize = androidx.compose.ui.geometry.Size(diameter, diameter)
-            val stroke = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
-
-            // The dead/live track, full sweep.
-            drawArc(trackColor, DIAL_START_ANGLE_DEG, DIAL_SWEEP_DEG, useCenter = false, topLeft = topLeft, size = arcSize, style = stroke)
-
-            // The redline: a fixed scale annotation, always present, drawn UNDER the
-            // value arc so the amber overlays it once the reading enters the zone -
-            // see DrivingDialMath.kt's file doc for why this is not a ticket-03 STATE
-            // color and stays exempt from that rule.
-            val redlineStart = DIAL_START_ANGLE_DEG + DIAL_SWEEP_DEG * REDLINE_START_FRACTION
-            val redlineSweep = DIAL_SWEEP_DEG * (1f - REDLINE_START_FRACTION)
-            drawArc(DeckChrome, redlineStart, redlineSweep, useCenter = false, topLeft = topLeft, size = arcSize, style = stroke)
-
-            // The value arc - absent entirely when there is nothing to show
-            // (source == NONE), rather than drawing a zero-length arc at the
-            // dead start angle, which would read as a hairline glitch rather
-            // than "no data".
-            if (source != DialSource.NONE) {
-                drawArc(valueColor, DIAL_START_ANGLE_DEG, sweepAngleDegrees(fraction), useCenter = false, topLeft = topLeft, size = arcSize, style = stroke)
-            }
-
-            // Three edge-color tick marks: both ends of the sweep, plus the
-            // sweep's own midpoint - which, for this start angle/span, lands
-            // exactly at the circle's geometric top (see DrivingDialMath.kt's
-            // DIAL_START_ANGLE_DEG doc for the angle arithmetic).
-            val radius = diameter / 2f
-            val center = Offset(topLeft.x + radius, topLeft.y + radius)
-            val tickInset = strokeWidthPx * 1.4f
-            for (tickFraction in listOf(0f, 0.5f, 1f)) {
-                val angleRad = Math.toRadians((DIAL_START_ANGLE_DEG + DIAL_SWEEP_DEG * tickFraction).toDouble())
-                val cosA = cos(angleRad).toFloat()
-                val sinA = sin(angleRad).toFloat()
-                val outer = Offset(center.x + radius * cosA, center.y + radius * sinA)
-                val inner = Offset(center.x + (radius - tickInset) * cosA, center.y + (radius - tickInset) * sinA)
-                drawLine(edgeColor, inner, outer, strokeWidth = 3.dp.toPx())
-            }
-        }
-
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(centerText, style = MaterialTheme.typography.displayLarge, color = valueColor)
-            if (unitLabel.isNotEmpty()) {
-                Text(unitLabel, style = LegionType.stamp, color = sem.faint)
-            }
-            if (ageText != null) {
-                Text(ageText.uppercase(), style = LegionType.stamp, color = sem.faint)
-            }
-        }
-    }
-}
-
-/**
- * One bracket-cornered pod (COOLANT or the dial's complement). A local, lightweight variant of
- * [com.kevin.legion.ui.common.DeckPane]'s corner-bracket treatment rather than a reuse of that
- * component directly - `DeckPane`'s header row (label left, optional accent clause) fights a
- * pod's centered "label above a giant value" read, per the approved mock. The mini-bar is a bare
- * `Canvas` rect-on-rect, not [com.kevin.legion.ui.common.DeckMeter] - `DeckMeter` fills over
- * [com.kevin.legion.ui.theme.DRAW_IN_MS] via `animateFloatAsState`, and this screen's own "no
- * theatre" rule (file doc) means the bar has to jump straight to its value on every poll tick,
- * never animate toward it.
- */
-@Composable
-private fun DrivingPod(
-    label: String,
-    valueText: String?,
-    ageText: String?,
-    stale: Boolean,
-    fraction: Float,
-    modifier: Modifier = Modifier,
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     val bracketColor = sem.rule
     val density = LocalDensity.current
     val bracketStroke = with(density) { 2.dp.toPx() }
     val bracketArm = with(density) { 8.dp.toPx() }
-    val valueColor = if (stale) sem.faint else MaterialTheme.colorScheme.primary
-
     Column(
         modifier
             .background(MaterialTheme.colorScheme.surface)
@@ -502,32 +539,368 @@ private fun DrivingPod(
                 drawLine(bracketColor, Offset(size.width, size.height), Offset(size.width - bracketArm, size.height), bracketStroke)
                 drawLine(bracketColor, Offset(size.width, size.height), Offset(size.width, size.height - bracketArm), bracketStroke)
             }
-            .padding(vertical = 14.dp, horizontal = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(label.uppercase(), style = LegionType.stamp, color = sem.faint)
-        Spacer(Modifier.height(6.dp))
-        // Honest "no reading" text rather than a fabricated placeholder number
-        // when this install has never recorded the PID - same posture as
-        // com.kevin.legion.ui.fleet.buildLiveRows and CLAUDE.md §4/§7.
-        Text(valueText ?: "NO READING ON FILE", style = MaterialTheme.typography.displaySmall, color = valueColor)
+            .padding(vertical = 12.dp, horizontal = 10.dp),
+        horizontalAlignment = horizontalAlignment,
+        content = content,
+    )
+}
+
+/**
+ * One segmented-column instrument (SPEED or RPM). Discrete blocks, not a swept needle - see
+ * [DrivingDialMath.kt]'s file doc for why that is the honesty property of this whole rebuild.
+ *
+ * **[pidCode]** (ticket 04 density pass): prints beside [label] exactly the way [FleetScreen]'s
+ * UPLINK pane already prints `0105 COOLANT`/`ATRV BATTERY` via `DeckFeedRow` - reusing an idiom
+ * this app already ships elsewhere rather than inventing a new one, and it is free density because
+ * the PID is a real constant this file already holds ([PID_SPEED]/[PID_RPM]), not a fabricated
+ * readout.
+ *
+ * **The printed grid** ([ticks]) is now drawn ONCE, behind the entire bar area - both the narrow
+ * tick-number gutter AND the segment canvas beside it - by a `drawBehind` on the outer `Box` below,
+ * not inside the `Canvas` alone. On-device this read as two adjacent components rather than one
+ * printed instrument face, because the old gridlines stopped at the canvas's own left edge and
+ * never crossed the gutter the numbers sit in; ticket 04's own words are "across the full panel
+ * width", and the gutter is part of the panel.
+ *
+ * **[barHeightFraction]** is fix 2: [DrivingModeContent]'s two `SegmentColumn`s used to get
+ * different HEIGHT modifiers on the whole composable (a shorter RPM panel entirely), which on the
+ * real phone read as two panels with different tops and different bottoms - "accidental", not
+ * "hierarchy". The panel passed in via [modifier] is now always the same `.fillMaxHeight()` for
+ * both instruments, so the bracket panels themselves share a top and a baseline; RPM staying
+ * visually smaller is preserved as the one deliberate difference, expressed instead as the
+ * fraction of that equal-height panel's bar area the printed ticks-and-canvas row actually fills,
+ * bottom-aligned within it. `1f` (the default) is the old, unchanged, full-height behaviour.
+ *
+ * **The redline zone now carries a printed `REDLINE` micro-label** (ticket 04 density pass) rather
+ * than relying on colour alone to read as a marked region - see the file doc's [DrivingDialMath.kt]
+ * argument for why the zone's COLOUR stays a static scale marking, never a state signal; the label
+ * is the same kind of annotation, just spelled out in words the way the reference photo spells out
+ * everything on its instrument faces. Shown only when [redlineStartIndex] is actually inside
+ * `[0, totalSegments)` - SPEED's call site pins it past the last valid index specifically so this
+ * checks false and no redline ever gets drawn OR labelled on an instrument that has none.
+ *
+ * [redlineStartIndex] is a SCALE property, not a function of the current reading - pass
+ * [SEGMENTS_SPEED] itself for an instrument with no redline (speed) so no valid segment index ever
+ * matches, and [redlineSegmentStartIndex] for one that has a real zone (RPM). Redline segments
+ * stay visible even unlit (a dim [LegionSemantics.chromeDim], not the fully-transparent normal
+ * track) because the zone is annotation baked into the instrument face - see
+ * [DrivingDialMath.kt]'s file doc, carried over unchanged from the old arc dial.
+ *
+ * [hasReading] false means this PID has never been recorded for this vehicle - the segment bar
+ * draws with nothing lit and [valueText] renders in a smaller fallback style so "NO READING ON
+ * FILE" does not try to set in [valueStyle] (a hero display size) and overflow the column.
+ */
+@Composable
+private fun SegmentColumn(
+    label: String,
+    pidCode: String,
+    valueText: String,
+    unitLabel: String,
+    ageText: String?,
+    valueStyle: androidx.compose.ui.text.TextStyle,
+    fraction: Float,
+    totalSegments: Int,
+    redlineStartIndex: Int,
+    stale: Boolean,
+    hasReading: Boolean,
+    ticks: List<Pair<Float, Float>>,
+    tickFormatter: (Float) -> String,
+    barHeightFraction: Float = 1f,
+    modifier: Modifier = Modifier,
+) {
+    val sem = LocalLegionSemantics.current
+    val liveColor = MaterialTheme.colorScheme.primary
+    val valueColor = if (!hasReading || stale) sem.faint else liveColor
+    val litCount = litSegmentCount(fraction, totalSegments)
+    val litNormalColor = if (stale) sem.faint else liveColor
+    val litRedlineColor = if (stale) sem.faint else DeckChrome
+    val unlitNormalColor = sem.ruleFaint
+    val unlitRedlineColor = sem.chromeDim
+    val gridColor = sem.ruleFaint
+    val hasRedlineZone = redlineStartIndex in 0 until totalSegments
+    val gridStroke = with(LocalDensity.current) { 1.dp.toPx() }
+
+    BracketPanel(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("$pidCode ${label.uppercase()}", style = LegionType.stamp, color = sem.faint)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            valueText,
+            style = if (hasReading) valueStyle else MaterialTheme.typography.labelLarge,
+            color = valueColor,
+            textAlign = TextAlign.Center,
+            maxLines = if (hasReading) 1 else 2,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (hasReading && unitLabel.isNotEmpty()) {
+            Text(unitLabel, style = LegionType.stamp, color = sem.faint)
+        }
+        Spacer(Modifier.height(8.dp))
+        // The full-height bar AREA - equal between SPEED and RPM now (see this composable's own
+        // doc). The grid is drawn here, spanning this Box's FULL width (gutter + canvas), at each
+        // tick's true position within the shorter bottom-aligned bar below when
+        // [barHeightFraction] < 1f, so the printed grid and the printed bar never disagree about
+        // where a tick actually sits.
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .drawBehind {
+                    val barTop = size.height * (1f - barHeightFraction)
+                    val barHeight = size.height * barHeightFraction
+                    for ((tickFraction, _) in ticks) {
+                        val y = barTop + barHeight * (1f - tickFraction.coerceIn(0f, 1f))
+                        drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = gridStroke)
+                    }
+                },
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(barHeightFraction)
+                    .align(Alignment.BottomStart),
+            ) {
+                Box(Modifier.width(20.dp).fillMaxHeight()) {
+                    for ((tickFraction, tickValue) in ticks) {
+                        Text(
+                            tickFormatter(tickValue),
+                            style = LegionType.stamp,
+                            color = sem.faint,
+                            modifier = Modifier.align(BiasAlignment(horizontalBias = 1f, verticalBias = (1f - 2f * tickFraction).coerceIn(-1f, 1f))),
+                        )
+                    }
+                }
+                Spacer(Modifier.width(6.dp))
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        drawSegmentColumn(
+                            litCount = litCount,
+                            totalSegments = totalSegments,
+                            redlineStartIndex = redlineStartIndex,
+                            litColor = litNormalColor,
+                            litRedlineColor = litRedlineColor,
+                            unlitColor = unlitNormalColor,
+                            unlitRedlineColor = unlitRedlineColor,
+                        )
+                    }
+                    if (hasRedlineZone) {
+                        // Sits ABOVE the zone's first segment rather than inside it. Printed on top
+                        // of the segment it names, the label crowded its own bar and fought the
+                        // fill for contrast (seen on device 2026-08-16). Offset up by one segment
+                        // height so it annotates the boundary, which is what it actually marks.
+                        Text(
+                            "REDLINE",
+                            style = LegionType.stamp,
+                            color = litRedlineColor,
+                            maxLines = 1,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(y = (-11).dp)
+                                .padding(end = 2.dp),
+                        )
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(4.dp))
         Text(ageText?.uppercase() ?: " ", style = LegionType.stamp, color = sem.faint)
-        Spacer(Modifier.height(8.dp))
-        val miniBarFillColor = valueColor
-        val miniBarTrackColor = sem.ruleFaint
-        Canvas(Modifier.fillMaxWidth().height(6.dp)) {
-            drawRect(miniBarTrackColor)
-            drawRect(miniBarFillColor, size = size.copy(width = size.width * fraction.coerceIn(0f, 1f)))
-        }
     }
 }
 
 /**
+ * Draws one segmented column's face: [totalSegments] discrete rectangles stacked bottom-up with a
+ * small gap between each - the shape of a physical LED bargraph, which is exactly the register the
+ * reference photo's EQ display is drawn in. The printed grid used to be drawn first, in here -
+ * ticket 04's density pass moved it to a `drawBehind` on [SegmentColumn]'s outer `Box` instead, so
+ * it can span the FULL bar width (the tick-number gutter included, not just this `Canvas`); this
+ * function now only ever draws the segments themselves.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSegmentColumn(
+    litCount: Int,
+    totalSegments: Int,
+    redlineStartIndex: Int,
+    litColor: Color,
+    litRedlineColor: Color,
+    unlitColor: Color,
+    unlitRedlineColor: Color,
+) {
+    if (totalSegments <= 0) return
+    val cellHeight = size.height / totalSegments
+    val gap = cellHeight * 0.16f
+    for (index in 0 until totalSegments) {
+        val lit = index < litCount
+        val redline = isRedlineSegment(index, redlineStartIndex)
+        val color = when {
+            lit && redline -> litRedlineColor
+            lit -> litColor
+            redline -> unlitRedlineColor
+            else -> unlitColor
+        }
+        val top = size.height - (index + 1) * cellHeight + gap / 2f
+        val bottom = size.height - index * cellHeight - gap / 2f
+        drawRect(color, topLeft = Offset(0f, top), size = Size(size.width, (bottom - top).coerceAtLeast(0f)))
+    }
+}
+
+/**
+ * COOLANT as a fader - "literally what that control is in the photo" (ticket 04's own words for
+ * the reference's `COLD ▬▬ HOT` slider). A continuous filled track, not segments: coolant has no
+ * discrete-step reading the way RPM/speed do, and the reference's own fader is a plain analog fill.
+ * Quarter-mark ticks are drawn but unlabelled - the reference prints no numbers on this control
+ * either, only the two end words, so a numeric scale here would be inventing precision the source
+ * photo does not claim.
+ */
+@Composable
+private fun CoolantFader(
+    pidCode: String,
+    valueText: String,
+    ageText: String?,
+    stale: Boolean,
+    hasReading: Boolean,
+    fraction: Float,
+    modifier: Modifier = Modifier,
+) {
+    val sem = LocalLegionSemantics.current
+    val liveColor = MaterialTheme.colorScheme.primary
+    val valueColor = if (!hasReading || stale) sem.faint else liveColor
+    val fillColor = valueColor
+    val trackColor = sem.ruleFaint
+    val tickColor = sem.chromeDim
+
+    BracketPanel(modifier = modifier) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("$pidCode COOLANT", style = LegionType.stamp, color = sem.faint)
+            Text(valueText, style = MaterialTheme.typography.displaySmall, color = valueColor)
+        }
+        Spacer(Modifier.height(8.dp))
+        Canvas(Modifier.fillMaxWidth().height(20.dp)) {
+            drawFaderTrack(fraction = fraction, fillColor = fillColor, trackColor = trackColor, tickColor = tickColor)
+        }
+        Spacer(Modifier.height(4.dp))
+        // Fix 4's scale endpoint labels: the reference dashboard's own fader control prints
+        // numbers on its scale, not just the two end words - "COLD"/"HOT" alone is precisely the
+        // gap ticket 04 named. `0°C` is the PID's own real floor (Celsius cannot read negative
+        // coolant on this instrument's scale); [COOLANT_SCALE_C_MAX] is the same real ceiling
+        // constant [dialFraction]/[CoolantFader]'s own fill already reads off, printed rather
+        // than left implicit.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("COLD · 0°C", style = LegionType.stamp, color = sem.faint)
+            Text("HOT · %.0f°C".format(COOLANT_SCALE_C_MAX), style = LegionType.stamp, color = sem.faint)
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(ageText?.uppercase() ?: " ", style = LegionType.stamp, color = sem.faint)
+    }
+}
+
+/** Draws the fader's track, quarter-mark ticks, and fill - see [CoolantFader]'s own doc for why the ticks carry no numbers. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawFaderTrack(fraction: Float, fillColor: Color, trackColor: Color, tickColor: Color) {
+    drawRect(trackColor, size = size)
+    for (quarter in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
+        val x = size.width * quarter
+        drawLine(tickColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1.dp.toPx())
+    }
+    drawRect(fillColor, size = size.copy(width = size.width * fraction.coerceIn(0f, 1f)))
+}
+
+/**
+ * The drive-in-progress block (layout ticket 08 Q26, trip content ticket 05 Q13) - fills what used
+ * to be the screen's empty third. Trip content ticket 05 found a live trip needs an actual
+ * drive-boundary object - today there is only `driveStartedAt` as a private local in
+ * `AriaForegroundService` and day-granularity `daily_drive_logs`, neither of which is a per-drive
+ * start/end this screen can read - and ticket 05 itself calls that "a data-model decision, not a
+ * UI one". Building that object is explicitly out of scope for this rebuild.
+ *
+ * **MPG is deliberately not a third figure here.** Trip content ticket 05 found LEGION's own
+ * mpg integration is off by roughly 1.7x on this car (`TelemetryRecorder`'s MAF-based gallons
+ * math, filed as ticket 09) - shipping a figure known to be wrong is the estimates rule violated
+ * outright, not merely an unlabelled one.
+ *
+ * **Fix 3 (installed and looked at): two full `TripStat` tiles both reading `NOT TRACKING` is a
+ * lot of screen saying nothing.** While [tracking] is false (today, always - see above), this
+ * collapses to ONE worded line rather than spending two tiles' worth of bracket panel, border, and
+ * vertical space on an absence - the exact "worded absence, never a fabricated placeholder" posture
+ * this file already holds for "NO READING ON FILE" (CLAUDE.md §4/§7), just also honest about how
+ * much SCREEN an absence deserves. [TripStat] is untouched below and is the reactivation point:
+ * flip [tracking] to a real value once ticket 09's drive-boundary object exists, thread real
+ * ELAPSED/DISTANCE text through it, and the two-tile `Row` comes back with zero other changes.
+ */
+@Composable
+private fun TripBlock(modifier: Modifier = Modifier) {
+    val sem = LocalLegionSemantics.current
+    val tracking = false
+    if (tracking) {
+        Row(modifier, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TripStat(label = "ELAPSED", modifier = Modifier.weight(1f))
+            TripStat(label = "DISTANCE", modifier = Modifier.weight(1f))
+        }
+    } else {
+        Text(
+            "TRIP // NOT TRACKING",
+            style = LegionType.stamp,
+            color = sem.faint,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun TripStat(label: String, modifier: Modifier = Modifier) {
+    val sem = LocalLegionSemantics.current
+    BracketPanel(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label.uppercase(), style = LegionType.stamp, color = sem.faint)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "NOT TRACKING",
+            style = MaterialTheme.typography.labelLarge,
+            color = sem.faint,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/**
+ * Fix 4's technical footer band - "one thin row of printed micro-caps facts: protocol/link state,
+ * and the poll cadence. Real values only." Both facts are things this file already, actually
+ * knows:
+ * - **Link state** reuses [linkLive], the same source of truth [DrivingHudLine] renders at the top
+ *   of the screen - this row does not re-derive it a second way.
+ * - **[protocolName]** is [com.kevin.legion.vehicle.ObdBluetoothManager.AdapterInfo.protocolName],
+ *   read off the same `adapterInfo` `StateFlow` `ObdDeviceScreen`'s own "Protocol" row already
+ *   surfaces - gated on `linkLive` the identical way that screen gates its row
+ *   (`if (connected && state.adapterProtocol != null)`), because a link that is currently down can
+ *   still be holding a STALE protocol string from the last successful connect (traced: nothing in
+ *   `ObdBluetoothManager` clears `_adapterInfo` on disconnect, only at the START of the next
+ *   connect attempt) and printing that next to "the poll cadence" would read as a live fact when it
+ *   is not one.
+ * - **Poll cadence** is [POLL_MS] itself, printed rather than left as an implicit constant nobody
+ *   on the outside can see - it is always knowable (a compile-time value, not a reading), so unlike
+ *   the protocol segment it is never conditionally omitted.
+ *
+ * Deliberately NOT included: anything this screen cannot source from state it already holds. No
+ * fabricated bus-utilization percentage, no invented signal-quality figure - the ticket's own
+ * instruction is "if something is not knowable from state the screen already holds, leave it out".
+ */
+@Composable
+private fun TechnicalFooterBand(linkLive: Boolean, protocolName: String?, modifier: Modifier = Modifier) {
+    val sem = LocalLegionSemantics.current
+    val pollSeconds = POLL_MS / 1000f
+    val text = buildString {
+        append(if (linkLive) "LINK LIVE" else "NO LINK")
+        if (linkLive && protocolName != null) {
+            append(" · ")
+            append(protocolName.uppercase())
+        }
+        append(" · POLL %.1fS".format(pollSeconds))
+    }
+    Text(text, style = LegionType.stamp, color = sem.faint, modifier = modifier)
+}
+
+/**
  * The Alfred strip: a green square dot + label on the left, the current voice phase on the right,
- * inside a bordered row - the approved mock's own words. [alfredStatus] is
- * [AssistantStripResolver.phaseLabel]'s output, unchanged wording from the global assistant strip
- * (ticket 20 build brief item 2), so this screen never invents its own voice-state vocabulary.
+ * inside a bordered row - unchanged wording and shape from the pre-rebuild file, only its position
+ * on screen moved (layout ticket 08 Q28: thumb level, just above EXIT). [alfredStatus] is
+ * [AssistantStripResolver.phaseLabel]'s output (ticket 20 build brief item 2), so this screen never
+ * invents its own voice-state vocabulary.
  */
 @Composable
 private fun DrivingAlfredStrip(alfredStatus: String) {
@@ -550,24 +923,27 @@ private fun DrivingAlfredStrip(alfredStatus: String) {
 
 // ------------------------------------------------------------------------ previews
 
-@Preview(name = "Driving mode: RPM live, link up", widthDp = 360, heightDp = 720)
+@Preview(name = "Driving mode: all readings live, RPM in the redline zone", widthDp = 384, heightDp = 832)
 @Composable
-private fun PreviewDrivingModeRpmLive() = LegionTheme {
+private fun PreviewDrivingModeAllLive() = LegionTheme {
     DrivingModeContent(
         vehicleName = "The Wagon",
         linkLive = true,
         clock = "14:07",
-        rpm = DrivingSample(2140f, "just now"),
+        rpm = DrivingSample(5100f, "just now"),
         speed = DrivingSample(88f, "just now"),
         coolant = DrivingSample(92f, "just now"),
         alfredStatus = "Tap to talk",
+        tickCounter = 1,
+        // Fix 4's footer band, the "known protocol, link live" case.
+        protocolName = "ISO 15765-4 CAN (11-bit, 500K) (AUTO)",
         onExit = {},
     )
 }
 
-@Preview(name = "Driving mode: speed dial fallback, no RPM on file", widthDp = 360, heightDp = 720)
+@Preview(name = "Driving mode: link live, RPM never recorded on this install", widthDp = 384, heightDp = 832)
 @Composable
-private fun PreviewDrivingModeSpeedFallback() = LegionTheme {
+private fun PreviewDrivingModeRpmMissing() = LegionTheme {
     DrivingModeContent(
         vehicleName = "The Wagon",
         linkLive = true,
@@ -576,11 +952,15 @@ private fun PreviewDrivingModeSpeedFallback() = LegionTheme {
         speed = DrivingSample(72f, "just now"),
         coolant = DrivingSample(88f, "just now"),
         alfredStatus = "Listening…",
+        tickCounter = 3,
+        // Link live but the ATDP handshake hasn't resolved a protocol yet - the footer band
+        // leaves the protocol segment out entirely rather than printing a placeholder.
+        protocolName = null,
         onExit = {},
     )
 }
 
-@Preview(name = "Driving mode: stale, link down, manual entry", widthDp = 360, heightDp = 720)
+@Preview(name = "Driving mode: stale, link down, manual entry", widthDp = 384, heightDp = 832)
 @Composable
 private fun PreviewDrivingModeStale() = LegionTheme {
     DrivingModeContent(
@@ -591,11 +971,17 @@ private fun PreviewDrivingModeStale() = LegionTheme {
         speed = null,
         coolant = DrivingSample(88f, "3 days ago"),
         alfredStatus = "Tap to talk",
+        tickCounter = 0,
+        // A non-null value here on purpose: this is the STALE-protocol case
+        // (`ObdBluetoothManager` never clears `adapterInfo` on disconnect, only at the next
+        // connect attempt) - the footer band's own `linkLive` gate must hide it even though a
+        // value is present, exactly as [TechnicalFooterBand]'s doc says it will.
+        protocolName = "ISO 15765-4 CAN (11-bit, 500K) (AUTO)",
         onExit = {},
     )
 }
 
-@Preview(name = "Driving mode: no data on file at all", widthDp = 360, heightDp = 720)
+@Preview(name = "Driving mode: no data on file at all", widthDp = 384, heightDp = 832)
 @Composable
 private fun PreviewDrivingModeNoData() = LegionTheme {
     DrivingModeContent(
@@ -606,6 +992,8 @@ private fun PreviewDrivingModeNoData() = LegionTheme {
         speed = null,
         coolant = null,
         alfredStatus = "Tap to talk",
+        tickCounter = 0,
+        protocolName = null,
         onExit = {},
     )
 }
