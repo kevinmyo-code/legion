@@ -212,7 +212,13 @@ object DailyDriveLogController {
         val stats = buildString {
             append("Miles driven today: ${milesDriven.toInt()}. ")
             append("Drives: $driveCount. ")
-            avgMpg?.let { append("Average MPG: ${"%.1f".format(it)}. ") }
+            // Withheld from the PROMPT, not just the UI (ticket 09,
+            // `.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see MpgTrust's own doc): this line
+            // feeds a Gemini call, and a stat handed to the model can resurface paraphrased into
+            // the narrative sentence it writes - "averaging 29.4 mpg" reads just as wrong baked into
+            // prose as it would in a headline figure, and every UI-layer suppression elsewhere in
+            // this app would miss it entirely once it's inside stored, freeform narrative text.
+            if (MpgTrust.SHOW_MPG) avgMpg?.let { append("Average MPG: ${"%.1f".format(it)}. ") }
             append("Trouble codes: $codeCount.")
         }
         val system = AssistantIdentity.shortClause(context) + " " +

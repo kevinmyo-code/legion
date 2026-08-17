@@ -63,6 +63,7 @@ import com.kevin.legion.util.clockTime
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.DiagnosticAgent
 import com.kevin.legion.vehicle.DtcDescriptions
+import com.kevin.legion.vehicle.MpgTrust
 import com.kevin.legion.vehicle.VehicleController.WriteOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -871,17 +872,30 @@ fun RecapDrilldownScreen(recapsNewestFirst: List<MonthlyRecap>, yearlyWrapped: Y
                             )
                         }
                         item(key = "mpg-chart") {
-                            Text(
-                                "AVG MPG",
-                                style = LegionType.stamp,
-                                color = sem.faint,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            )
-                            DeckLineChart(
-                                series = recapMonthPoints(slots) { it.avgMpg },
-                                yLabel = { "%.1f".format(it) },
-                                xLabels = recapMonthXLabels(slots),
-                            )
+                            // Ticket 09 (`.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see
+                            // MpgTrust's own doc): the chart is replaced with a stated reason rather
+                            // than simply vanishing, same "say it in words rather than draw nothing"
+                            // posture this screen already uses for a below-two-recaps trend (above).
+                            if (MpgTrust.SHOW_MPG) {
+                                Text(
+                                    "AVG MPG",
+                                    style = LegionType.stamp,
+                                    color = sem.faint,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                )
+                                DeckLineChart(
+                                    series = recapMonthPoints(slots) { it.avgMpg },
+                                    yLabel = { "%.1f".format(it) },
+                                    xLabels = recapMonthXLabels(slots),
+                                )
+                            } else {
+                                Text(
+                                    MpgTrust.WITHHELD_STAMP,
+                                    style = LegionType.stamp,
+                                    color = sem.faint,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                )
+                            }
                         }
                     }
                     items(recapsNewestFirst, key = { it.id }) { recap ->
@@ -911,7 +925,14 @@ private fun YearlyWrappedPane(wrapped: YearlyWrapped) {
         DeckRow(label = "Year", value = wrapped.year.toString())
         DeckRow(label = "Miles", value = "%.0f mi".format(wrapped.milesDriven))
         DeckRow(label = "Drives", value = wrapped.driveCount.toString())
-        DeckRow(label = "Avg Mpg", value = wrapped.avgMpg?.let { "%.1f".format(it) } ?: "-")
+        // Ticket 09 (`.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see MpgTrust's own doc): a
+        // real avgMpg value is never rendered while suppressed, distinct from the "-" a genuinely
+        // absent value gets, so a driver can tell "withheld" apart from "no data logged".
+        DeckRow(
+            label = "Avg Mpg",
+            value = if (!MpgTrust.SHOW_MPG) MpgTrust.WITHHELD_ROW_VALUE
+                else wrapped.avgMpg?.let { "%.1f".format(it) } ?: "-",
+        )
         DeckRow(label = "Longest", value = wrapped.longestDriveMiles?.let { "%.0f mi".format(it) } ?: "-")
         DeckRow(label = "Codes", value = wrapped.codeEventCount.toString())
         DeckRow(label = "Services", value = wrapped.serviceCount.toString())
@@ -1016,7 +1037,7 @@ private fun DriveLogRow(log: DailyDriveLog) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
         Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
             Text(shortDate(dayMs), style = LegionType.stamp, color = sem.faint)
-            val mpgPart = log.avgMpg?.let { " · %.1f mpg".format(it) }.orEmpty()
+            val mpgPart = mpgSuffix(log.avgMpg) // ticket 09 - see FleetRows.mpgSuffix's own doc
             Text("${log.milesDriven.toInt()} mi$mpgPart", style = LegionType.reading, color = MaterialTheme.colorScheme.onSurface)
         }
         Text(log.narrative, style = MaterialTheme.typography.bodySmall, color = sem.faint)

@@ -23,6 +23,7 @@ import com.kevin.legion.data.local.provenanceWords as entityProvenanceWords
 import com.kevin.legion.data.local.provenanceWordsForSource as entityProvenanceWordsForSource
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.vehicle.MpgTrust
 import com.kevin.legion.util.relativeAge
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.DtcClearController
@@ -874,6 +875,18 @@ internal fun faultDetailKey(eventId: Long, code: String): String = "$eventId:$co
 data class DriveSummaryView(val headline: String, val sub: String, val hasData: Boolean)
 
 /**
+ * The inline " · %.1f mpg" suffix shared by [buildLastDriveSummary]'s headline and
+ * [com.kevin.legion.ui.fleet.DriveLogRow]'s per-day line - a bare empty string while
+ * [MpgTrust.SHOW_MPG] is false (ticket 09, `.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see
+ * that object's own doc), never a placeholder word: an inline suffix simply omitting itself needs
+ * no explanatory text the way a whole vanished CHART would (this file's other mpg surface,
+ * [buildMpgSparkline], is judged the same way at its own call site in `FleetScreen.kt`). `internal`
+ * for direct unit testing, same posture as every other pure builder in this file.
+ */
+internal fun mpgSuffix(avgMpg: Double?): String =
+    if (MpgTrust.SHOW_MPG) avgMpg?.let { " · %.1f mpg".format(it) }.orEmpty() else ""
+
+/**
  * The most recent day with at least one finished drive - a day with a
  * [DailyDriveLog] row but `driveCount == 0` (the hourly refresh writes one for
  * every day, driven or not, see that controller's own doc) is not a "last
@@ -888,7 +901,7 @@ internal fun buildLastDriveSummary(logsNewestFirst: List<DailyDriveLog>, now: Lo
         ?: return DriveSummaryView("NO DRIVES LOGGED", "nothing recorded yet", hasData = false)
     val dayMs = LocalDate.of(last.year, last.month, last.day)
         .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-    val mpgPart = last.avgMpg?.let { " · %.1f mpg".format(it) }.orEmpty()
+    val mpgPart = mpgSuffix(last.avgMpg)
     val driveWord = if (last.driveCount == 1) "drive" else "drives"
     return DriveSummaryView(
         headline = "${last.milesDriven.toInt()} mi$mpgPart",

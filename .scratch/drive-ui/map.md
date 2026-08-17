@@ -123,6 +123,22 @@ cadence before those two resolve.**
   it annoying is worse than a stray exit), the Alfred strip moves to thumb level above it, portrait
   only. Concrete layout lands with the prototype.
 
+- [Every mpg figure for the Jeep is wrong by roughly 1.9x](issues/09-mpg-scale-bug.md)
+  — **SUPPRESSED until a fill-up calibrates it** (Kevin's call, over the "label unverified"
+  treatment provisional ledger rows get). Investigated against a copy of the real database, and
+  **the first hypothesis was wrong**: sparse MAF sampling was suspected, but coverage inside the
+  drive was **100%** and hand re-integration reproduced **29.0 mpg against the recorded 29.36** - so
+  **the formula is faithful and the input is the suspect.** The engine is speed-density, so the PCM
+  **synthesises** `0110` rather than measuring it, and the values run low: **median 4.15 g/s where a
+  4.0L cruising should sit at 15-25.** Netting out a parked gap gives 17 mph average over 20.95
+  miles - city driving, 14-15 mpg for this engine - against the 0.723 gallons LEGION computed:
+  **~1.9x.** `MPG_TRIP` keeps being stored so a factor can be applied retroactively; suppression is
+  display-only behind one flag. **`finalizeDrive`'s gate is split** so `TRIP_MILES` no longer
+  depends on fuel maths - distance had been silently lost on any drive where MAF dropped out.
+  **The bigger finding was incidental: there is no drive boundary.** That "drive" spans 610 minutes
+  around a single 9-hour gap - two sessions `MAX_DT_SEC` stitched into one. Every recap and
+  sparkline is aggregating between resets, not drives.
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Graduates as the frontier advances.

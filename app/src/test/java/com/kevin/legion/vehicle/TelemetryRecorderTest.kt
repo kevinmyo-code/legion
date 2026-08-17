@@ -1,5 +1,6 @@
 package com.kevin.legion.vehicle
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -75,5 +76,41 @@ class TelemetryRecorderTest {
     @Test
     fun `the teleport ceiling is unchanged - still rejects a jump above 5 miles in one tick`() {
         assertFalse(TelemetryRecorder.gpsTickMilesAccepted(5.1))
+    }
+
+    // --- ticket 09: finalizeDrive's split gate (TRIP_MILES no longer hostage to fuel math) -------
+
+    @Test
+    fun `milesWorthRecording and gallonsWorthRecording use the documented MIN_TRIP floors independently`() {
+        // Mirrors MIN_TRIP_MILES = 1.0 / MIN_TRIP_GALLONS = 0.05, strictly-greater-than each -
+        // pinned via behavior rather than reading the private constants directly.
+        assertFalse(TelemetryRecorder.milesWorthRecording(1.0))
+        assertTrue(TelemetryRecorder.milesWorthRecording(1.1))
+        assertFalse(TelemetryRecorder.gallonsWorthRecording(0.05))
+        assertTrue(TelemetryRecorder.gallonsWorthRecording(0.06))
+    }
+
+    @Test
+    fun `tripWriteFor is NONE when neither axis clears its floor`() {
+        assertEquals(TelemetryRecorder.TripWrite.NONE, TelemetryRecorder.tripWriteFor(milesOk = false, gallonsOk = false))
+    }
+
+    @Test
+    fun `tripWriteFor is MILES_ONLY when gallons is zero (or unusably small) but miles is not - the ticket 09 regression`() {
+        // The exact shape of Kevin's Jeep across its whole history: MAF silent or unsupported on a
+        // drive that still genuinely covered distance. Before this ticket, ANY gallons shortfall
+        // zeroed out TRIP_MILES too - this pins the fix: miles alone is enough for TRIP_MILES, and
+        // MPG_TRIP correctly stays withheld (there is no reliable denominator to ratio against).
+        assertEquals(TelemetryRecorder.TripWrite.MILES_ONLY, TelemetryRecorder.tripWriteFor(milesOk = true, gallonsOk = false))
+    }
+
+    @Test
+    fun `tripWriteFor is NONE when gallons alone clears its floor but miles does not - MPG_TRIP never writes off a near-zero numerator`() {
+        assertEquals(TelemetryRecorder.TripWrite.NONE, TelemetryRecorder.tripWriteFor(milesOk = false, gallonsOk = true))
+    }
+
+    @Test
+    fun `tripWriteFor is MILES_AND_MPG only when BOTH axes clear their floor`() {
+        assertEquals(TelemetryRecorder.TripWrite.MILES_AND_MPG, TelemetryRecorder.tripWriteFor(milesOk = true, gallonsOk = true))
     }
 }

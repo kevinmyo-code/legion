@@ -71,6 +71,7 @@ import com.kevin.legion.vehicle.DtcDescriptions
 import com.kevin.legion.vehicle.GarageController
 import com.kevin.legion.vehicle.GaragePreferences
 import com.kevin.legion.vehicle.MaintenanceAgent
+import com.kevin.legion.vehicle.MpgTrust
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.RecallCheckResult
 import com.kevin.legion.vehicle.SymptomAgent
@@ -294,14 +295,18 @@ object LiveToolbox {
         // keeps every existing utterance answering exactly as it did before.
         fns.put(fn(
             name = "get_trend",
+            // "mpg" deliberately absent from this metric list (ticket 09,
+            // `.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see MpgTrust's own doc): mpg display
+            // is suppressed app-wide pending a fill-up calibration, and get_mpg below refuses in
+            // words rather than silently answering through this tool with a wrong number instead.
             description = "Fetch how a vehicle metric has trended over recent weeks from the recorded " +
-                "history (coolant, rpm, voltage, load, fuel_trim, mpg). Use when the driver asks how " +
+                "history (coolant, rpm, voltage, load, fuel_trim). Use when the driver asks how " +
                 "something has been running lately, whether it's been getting worse, or how it compares " +
                 "to before.",
             params = obj(
                 "metric" to schema(
                     "string", "Which metric to trend.",
-                    enum = listOf("coolant", "rpm", "voltage", "load", "fuel_trim", "mpg"),
+                    enum = listOf("coolant", "rpm", "voltage", "load", "fuel_trim"),
                 ),
                 "days" to schema("integer", "How many days back to look. Default 30."),
                 "vehicle" to VEHICLE_PARAM,
@@ -311,9 +316,14 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "get_mpg",
-            description = "Real fuel economy measured from the engine's own airflow plus GPS distance - " +
-                "no fill-up entry needed. Returns the current drive's MPG, the lifetime average, and " +
-                "recent per-drive numbers. Use when the driver asks about gas mileage or fuel economy.",
+            // Description rewritten under MpgTrust.SHOW_MPG == false (ticket 09): the tool stays
+            // registered so the model can still route an mpg question here and get a spoken refusal,
+            // but it must never promise, let alone deliver, a figure while suppressed.
+            description = "Fuel economy is currently WITHHELD on this car - LEGION's own on-board " +
+                "estimate was found to read almost 2x the real figure and needs a tank-to-tank " +
+                "fill-up to calibrate before it can be trusted again. Calling this tool returns that " +
+                "refusal, in words, never a number. Use when the driver asks about gas mileage or " +
+                "fuel economy, so the refusal can be spoken rather than the question going unanswered.",
             params = obj("vehicle" to VEHICLE_PARAM),
             required = listOf(),
         ))
@@ -3905,8 +3915,16 @@ object LiveToolbox {
      * car; asking about the other car gets its recorded per-drive trips only
      * (correctly scoped, straight from `odb_samples`), with a note rather than
      * a silently-wrong figure.
+     *
+     * **Suppressed under [MpgTrust.SHOW_MPG] == false** (ticket 09,
+     * `.scratch/drive-ui/issues/09-mpg-scale-bug.md`): every branch below this refusal is dead
+     * code while the flag is off, kept intact rather than deleted so re-enabling is the flag alone.
+     * The refusal never reaches [TelemetryRecorder] or the DB at all - there is nothing to hedge
+     * partial data against, the model must simply not be handed a number to speak.
      */
     private suspend fun getMpg(context: Context, vehicle: Vehicle): JSONObject {
+        if (!MpgTrust.SHOW_MPG) return result(false, MpgTrust.VOICE_REFUSAL)
+
         val trips = CarDatabase.getDatabase(context).odbSampleDao()
             .getLatest(vehicle.obdMac, "MPG_TRIP", 5)
         val isActiveCar = vehicle.obdMac == ActiveVehicle.current(context)

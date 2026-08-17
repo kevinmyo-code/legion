@@ -179,7 +179,11 @@ object MonthlyRecapController {
         val stats = buildString {
             append("Miles driven: ${milesDriven.toInt()}. ")
             append("Drives: $driveCount. ")
-            avgMpg?.let { append("Average MPG: ${"%.1f".format(it)}. ") }
+            // Withheld from the PROMPT, not just the UI - see DailyDriveLogController.generateNarrative's
+            // doc (ticket 09, `.scratch/drive-ui/issues/09-mpg-scale-bug.md`): a stat handed to Gemini
+            // can resurface paraphrased into the narrative it writes, which every UI-layer suppression
+            // elsewhere in this app would miss once it's baked into stored, freeform narrative text.
+            if (MpgTrust.SHOW_MPG) avgMpg?.let { append("Average MPG: ${"%.1f".format(it)}. ") }
             longestDrive?.let { append("Longest single drive: ${it.toInt()} miles. ") }
             append("Trouble codes seen: $codeCount. ")
             append("Services logged: $serviceCount.")

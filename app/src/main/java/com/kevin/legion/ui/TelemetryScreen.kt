@@ -43,6 +43,7 @@ import com.kevin.legion.ui.fleet.summaryLine
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.vehicle.MpgTrust
 import com.kevin.legion.vehicle.ObdHistory
 import com.kevin.legion.vehicle.VehicleController
 
@@ -98,7 +99,16 @@ fun TelemetryScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         val vehicle = VehicleController.currentVehicle(context)
         val dao = CarDatabase.getDatabase(context).odbSampleDao()
+        // MPG_TRIP is dropped from the picker while MpgTrust.SHOW_MPG is false (ticket 09,
+        // `.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see that object's own doc): this raw
+        // PID history viewer would otherwise chart the exact untrusted figure every other mpg
+        // surface in the app withholds. No extra wording needed for the missing chip - an absent
+        // PID here reads the same as a car that never recorded it, which this screen already
+        // handles honestly (see [orderedPids]'s own doc on an unrecognised PID being MORE data,
+        // never treated as broken - the mirror image applies to a recognised one deliberately
+        // dropped: TRIP_MILES, this PID's sibling, stays selectable, so distance is never hidden).
         val pids = orderedPids(dao.recordedPids(vehicle.obdMac))
+            .let { if (MpgTrust.SHOW_MPG) it else it.filterNot { pid -> pid == "MPG_TRIP" } }
         // AWAIT FIRST, COPY SECOND - same fix as ui/LedgerScreen.kt's reload
         // effect, applied here because this screen has the identical shape:
         // two LaunchedEffects writing one `state` var, with suspend calls

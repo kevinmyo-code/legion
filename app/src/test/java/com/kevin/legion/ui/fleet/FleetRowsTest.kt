@@ -6,6 +6,7 @@ import com.kevin.legion.data.local.DailyDriveLog
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.MonthlyRecap
 import com.kevin.legion.data.local.OdbSample
+import com.kevin.legion.vehicle.MpgTrust
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -485,6 +486,17 @@ class FleetRowsTest {
         val logs = listOf(driveLog(3, 40.0, 28.0), driveLog(2, 5.0, null), driveLog(1, 20.0, 26.5))
         val points = buildMpgSparkline(logs)
         assertEquals(listOf(26.5f, null, 28.0f), points)
+    }
+
+    // -------------------------------------------- mpgSuffix (ticket 09 - see MpgTrust's own doc)
+
+    @Test
+    fun `mpgSuffix is empty while MpgTrust SHOW_MPG is false, regardless of a real avgMpg value`() {
+        // Pins the suppression itself: as long as MpgTrust.SHOW_MPG stays false (the state this
+        // whole ticket puts it in), a genuine, non-null avgMpg must never reach the rendered string.
+        assertEquals(false, MpgTrust.SHOW_MPG)
+        assertEquals("", mpgSuffix(27.1))
+        assertEquals("", mpgSuffix(null))
     }
 
     @Test

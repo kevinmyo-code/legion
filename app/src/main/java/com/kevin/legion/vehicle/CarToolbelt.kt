@@ -47,6 +47,16 @@ object CarToolbelt {
      */
     suspend fun trendSummary(context: Context, metric: String, days: Int, vehicleId: String? = null): String {
         val d = days.coerceIn(1, 365)
+        // "mpg" is refused HERE, ahead of the metric-to-pid map, rather than simply left out of it
+        // (ticket 09, `.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see MpgTrust's own doc): this
+        // formatter is the single point both LiveToolbox.getTrend AND every investigating sub-agent's
+        // get_trend belt tool (below, [trendTool]) funnel through, so gating it here is defense in
+        // depth against either caller's own enum ever offering "mpg" again - the caller-side enums
+        // are ALSO stripped of "mpg" (belt-and-suspenders, not redundant: a stale client-side cache
+        // of the old declaration should still get a refusal, not a wrong number). Re-enable by
+        // flipping [MpgTrust.SHOW_MPG] alone; the `"mpg" -> "MPG_TRIP"` mapping is restored below so
+        // that flip needs no second change here.
+        if (metric == "mpg" && !MpgTrust.SHOW_MPG) return MpgTrust.VOICE_REFUSAL
         val pid = when (metric) {
             "coolant" -> "0105"; "rpm" -> "010C"; "voltage" -> "ATRV"
             "load" -> "0104"; "fuel_trim" -> "0107"; "mpg" -> "MPG_TRIP"
@@ -331,13 +341,17 @@ object CarToolbelt {
 
     // --- Tool factories -----------------------------------------------------
 
+    // "mpg" deliberately absent from this belt tool's metric enum (ticket 09,
+    // `.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see MpgTrust's own doc): mpg display is
+    // suppressed app-wide pending a fill-up calibration, and [trendSummary] itself refuses "mpg"
+    // even if a caller passes it anyway, so this is belt-and-suspenders, not the only guard.
     private fun trendTool(context: Context, vehicleId: String? = null) = AgentTool(
         name = "get_trend",
         description = "How a recorded metric has trended over recent weeks (coolant, rpm, voltage, " +
-            "load, fuel_trim, mpg): count, min/max/average, and recent-vs-earlier comparison. Use to " +
+            "load, fuel_trim): count, min/max/average, and recent-vs-earlier comparison. Use to " +
             "judge whether something is drifting.",
         params = props(
-            "metric" to prop("string", "Which metric.", listOf("coolant", "rpm", "voltage", "load", "fuel_trim", "mpg")),
+            "metric" to prop("string", "Which metric.", listOf("coolant", "rpm", "voltage", "load", "fuel_trim")),
             "days" to prop("integer", "How many days back to look. Default 30."),
         ),
         required = listOf("metric"),

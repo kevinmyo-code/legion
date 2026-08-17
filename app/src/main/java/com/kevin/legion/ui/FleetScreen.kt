@@ -101,6 +101,7 @@ import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.DtcDescriptions
 import com.kevin.legion.vehicle.FleetSpendController
+import com.kevin.legion.vehicle.MpgTrust
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.ObdDeviceRegistry
 import com.kevin.legion.vehicle.VehicleController
@@ -823,7 +824,20 @@ private fun FleetListing(
                     // MPG only, not the panel's old second (miles) sparkline - a HALF tile has room
                     // for one small chart, and MPG is the trend a driver actually watches; DRIVES'
                     // own drilldown (unchanged by this ticket) still carries both series in full.
-                    if (state.mpgSparkline.any { it != null }) {
+                    //
+                    // Ticket 09 (`.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see MpgTrust's own
+                    // doc): while suppressed, the sparkline never renders (checked FIRST, ahead of
+                    // whether there's real data at all - real drive history existing is not the same
+                    // question as whether mpg may be SHOWN), and a stated reason takes its place
+                    // rather than the tile just quietly having one fewer thing in it than usual.
+                    if (!MpgTrust.SHOW_MPG) {
+                        Text(
+                            MpgTrust.WITHHELD_STAMP,
+                            style = LegionType.stamp,
+                            color = LocalLegionSemantics.current.faint,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        )
+                    } else if (state.mpgSparkline.any { it != null }) {
                         DeckSparkline(state.mpgSparkline, modifier = Modifier.padding(horizontal = 12.dp))
                     }
                 }

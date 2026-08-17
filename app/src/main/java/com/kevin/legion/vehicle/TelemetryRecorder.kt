@@ -300,31 +300,86 @@ object TelemetryRecorder {
         }
     }
 
-    /** Writes the drive's MPG_TRIP summary + lifetime aggregates, then resets. */
+    /**
+     * Whether [miles] alone clears the floor worth writing a TRIP_MILES sample for - distance does
+     * not depend on fuel math, so this is the ONLY gate TRIP_MILES needs (ticket 09,
+     * `.scratch/drive-ui/issues/09-mpg-scale-bug.md`). `internal` for direct unit testing, same
+     * posture as [pidWanted]/[gpsTickMilesAccepted].
+     */
+    internal fun milesWorthRecording(miles: Double): Boolean = miles > MIN_TRIP_MILES
+
+    /**
+     * Whether [gallons] alone clears the floor worth trusting as an MPG_TRIP ratio's denominator.
+     * MPG_TRIP additionally needs [milesWorthRecording] on the SAME drive (a ratio is meaningless
+     * off a near-zero numerator too) - see [finalizeDrive]'s doc for why the two gates are now
+     * independent rather than one combined check. `internal` for direct unit testing.
+     */
+    internal fun gallonsWorthRecording(gallons: Double): Boolean = gallons > MIN_TRIP_GALLONS
+
+    /**
+     * What [finalizeDrive] should write for a drive, given whether its accumulated miles/gallons
+     * individually cleared [milesWorthRecording]/[gallonsWorthRecording] (ticket 09,
+     * `.scratch/drive-ui/issues/09-mpg-scale-bug.md`). `MILES_ONLY` is the whole point of this
+     * ticket's split: distance does not depend on fuel math, so a drive with usable miles but no
+     * usable gallons (MAF silent or unsupported - see [finalizeDrive]'s own doc for the 166-vs-945
+     * sample-count finding this closes) still gets its `TRIP_MILES` row, where the old single
+     * combined gate silently wrote NOTHING for it.
+     */
+    internal enum class TripWrite { NONE, MILES_ONLY, MILES_AND_MPG }
+
+    /** Pure decision behind [TripWrite] - `internal` for direct unit testing, same posture as [pidWanted]/[gpsTickMilesAccepted]. */
+    internal fun tripWriteFor(milesOk: Boolean, gallonsOk: Boolean): TripWrite = when {
+        milesOk && gallonsOk -> TripWrite.MILES_AND_MPG
+        milesOk -> TripWrite.MILES_ONLY
+        else -> TripWrite.NONE
+    }
+
+    /**
+     * Writes the drive's TRIP_MILES/MPG_TRIP summary samples + lifetime aggregates, then resets.
+     *
+     * **The two writes are gated INDEPENDENTLY** (ticket 09,
+     * `.scratch/drive-ui/issues/09-mpg-scale-bug.md`'s "related, and probably the same fix"
+     * section, decided via [tripWriteFor]). The old single
+     * `if (miles <= MIN_TRIP_MILES || gallons <= MIN_TRIP_GALLONS) return` gated BOTH behind the
+     * fuel figure, so a drive where MAF fell silent (or was never supported - [MAX_CONSECUTIVE_FAILS]
+     * latches a failing PID off, and MAF, unlike speed, is NOT exempt from that latch - see
+     * [pidWanted]'s doc) recorded no distance either, even though distance does not depend on fuel
+     * math at all. Across Kevin's Jeep's whole history that produced 166 MAF samples against 945
+     * speed samples - most drives silently lost their TRIP_MILES row purely because MPG_TRIP
+     * couldn't be computed. `driveMiles`/`driveGallons` are still reset together unconditionally (a
+     * drive is over either way, and the accumulators must not bleed into the next one), but each
+     * summary sample is now written or withheld on ITS OWN gate.
+     */
     private suspend fun finalizeDrive(context: Context) {
         val miles = driveMiles
         val gallons = driveGallons
         driveMiles = 0.0
         driveGallons = 0.0
-        if (miles <= MIN_TRIP_MILES || gallons <= MIN_TRIP_GALLONS) return
+        val decision = tripWriteFor(milesWorthRecording(miles), gallonsWorthRecording(gallons))
+        if (decision == TripWrite.NONE) return // nothing on either axis worth recording
 
         runCatching {
             val dao = CarDatabase.getDatabase(context).odbSampleDao()
             val now = System.currentTimeMillis()
             val lat = LocationController.state.value?.latitude
             val lng = LocationController.state.value?.longitude
-            dao.insert(
-                OdbSample(
-                    vehicleId = vehicleId(context),
-                    pid = "MPG_TRIP", value = miles / gallons, unit = "mpg",
-                    timestamp = now, lat = lat, lng = lng,
+            // MPG_TRIP needs BOTH axes - a ratio is meaningless off an unreliable denominator - so
+            // it only writes on MILES_AND_MPG, never MILES_ONLY.
+            if (decision == TripWrite.MILES_AND_MPG) {
+                dao.insert(
+                    OdbSample(
+                        vehicleId = vehicleId(context),
+                        pid = "MPG_TRIP", value = miles / gallons, unit = "mpg",
+                        timestamp = now, lat = lat, lng = lng,
+                    )
                 )
-            )
-            // TRIP_MILES: the raw per-drive distance MPG_TRIP was computed from.
-            // Previously only the ratio was kept and this was discarded - added
-            // so MonthlyRecapController can sum/count/max real drives for a
-            // month (miles driven, drive count, longest drive) without having
-            // to reverse-engineer it from the MPG samples.
+            }
+            // TRIP_MILES: the raw per-drive distance MPG_TRIP was computed from (when it could be).
+            // Previously only the ratio was kept and this was discarded - added so
+            // MonthlyRecapController can sum/count/max real drives for a month (miles driven, drive
+            // count, longest drive) without having to reverse-engineer it from the MPG samples.
+            // Writes on EITHER non-NONE decision now - distance does not depend on fuel math, so a
+            // MILES_ONLY drive still gets its distance recorded.
             dao.insert(
                 OdbSample(
                     vehicleId = vehicleId(context),
@@ -333,12 +388,18 @@ object TelemetryRecorder {
                 )
             )
         }
-        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val id = vehicleId(context)
-        p.edit()
-            .putFloat("${id}_gal", p.getFloat("${id}_gal", 0f) + gallons.toFloat())
-            .putFloat("${id}_mi", p.getFloat("${id}_mi", 0f) + miles.toFloat())
-            .apply()
+        // Lifetime gal/mi aggregates (SharedPreferences, read by lifetimeMpg): only meaningful
+        // together, so still folded in only on MILES_AND_MPG - a MILES_ONLY drive contributes
+        // nothing here, same as before this ticket, and correctly so: adding its miles alone would
+        // silently deflate the lifetime mpg denominator's partner.
+        if (decision == TripWrite.MILES_AND_MPG) {
+            val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val id = vehicleId(context)
+            p.edit()
+                .putFloat("${id}_gal", p.getFloat("${id}_gal", 0f) + gallons.toFloat())
+                .putFloat("${id}_mi", p.getFloat("${id}_mi", 0f) + miles.toFloat())
+                .apply()
+        }
     }
 
     /**
