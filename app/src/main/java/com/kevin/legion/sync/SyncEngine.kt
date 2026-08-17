@@ -179,6 +179,11 @@ object SyncEngine {
         // falsifiable facts about the car, same posture as code_events one line up - no
         // `deleted` tombstone, UNION on the portable syncId.
         Spec("code_clear_events", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
+        // drives (`.scratch/drive-ui/issues/05-trip-content.md` Q14): the drive-boundary object -
+        // append-only falsifiable facts about the car, same posture as code_events/code_clear_events
+        // two lines up. A finalised drive never changes after the fact, so UNION on the portable
+        // syncId, no `deleted` tombstone.
+        Spec("drives", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         Spec("oil_analyses", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         // Mutable, last-write-wins.
         Spec("car_tasks", listOf("syncId"), Mode.LWW, naturalPk = false, hasSyncId = true),

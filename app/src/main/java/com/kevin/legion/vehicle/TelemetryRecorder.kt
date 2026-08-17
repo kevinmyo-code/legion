@@ -3,6 +3,7 @@ package com.kevin.legion.vehicle
 import android.content.Context
 import android.util.Log
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.Drive
 import com.kevin.legion.data.local.OdbSample
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.service.ConversationState
@@ -18,7 +19,31 @@ import kotlinx.coroutines.delay
  *  - Only samples while the engine runs (rpm > 0) — a parked car with the
  *    adapter powered contributes nothing but battery drain.
  *  - Skips ticks during a live conversation ([ConversationState.isBusy]) so
- *    PID reads never contend with voice on the mutex-guarded port.
+ *    PID reads never contend with voice on the mutex-guarded port. **This
+ *    check touches NO drive state** - see the link-loss note directly below
+ *    for why that used to not be true.
+ *  - **A lost OBD link (`!ObdBluetoothManager.isConnected`) is NOT the same event as a busy voice
+ *    turn, and used to be treated as one** (`.scratch/drive-ui/issues/05-trip-content.md`/
+ *    `09-mpg-scale-bug.md`'s "bigger finding"). The old guard was a single
+ *    `if (!ObdBluetoothManager.isConnected || ConversationState.isBusy) continue` - because the
+ *    engine-off finalizer sat BELOW that line, a dropped link made every following tick `continue`
+ *    forever: `engineWasOn` stayed `true`, `driveMiles`/`driveGallons` kept accumulating, and the
+ *    next reconnect silently resumed the SAME drive. Measured on Kevin's own database: one
+ *    "finalised drive" spanning 610 minutes around a single 9-hour gap - two sessions merged, with
+ *    `MAX_DT_SEC` the only reason it wasn't worse (it clamps a stale gap's distance/fuel
+ *    contribution, it does not split the drive). [tickGuardFor] now separates the two: busy alone
+ *    is [TickGuard.SKIP_BUSY] (unchanged skip, no drive state touched), a lost link is
+ *    [TickGuard.SKIP_LINK_LOST] and, once it has persisted [LINK_LOST_TICKS] ticks in a row while a
+ *    drive was in progress, ends that drive with [DriveEndReason.LINK_LOST] via [finalizeDrive] -
+ *    same reset shape the engine-off path already used ([linkLostShouldFinalize]'s own doc has the
+ *    threshold reasoning).
+ *  - **[isEngineRunning] now flips `false` on a link-loss finalisation too, which it never did
+ *    before this fix** (before: link loss never called [finalizeDrive] at all, so this flag stayed
+ *    `true` indefinitely across the drop). [AriaForegroundService] reads it to gate periodic sync -
+ *    so a genuinely parked-but-disconnected car now stops triggering syncs after [LINK_LOST_TICKS]
+ *    ticks (2 minutes) instead of forever. Its LAG contract (published from the same loop that
+ *    polls RPM, "at most one TICK_MS stale") is unchanged; only the link-loss case newly reaches a
+ *    `false` transition at all.
  *  - A PID that fails [MAX_CONSECUTIVE_FAILS] reads in a row is dropped for
  *    the rest of the process — cheap supported-PID discovery for older ECUs.
  *    **Speed (PID 010D) is the one exception** (ticket 10,
@@ -66,6 +91,20 @@ object TelemetryRecorder {
     private const val MAX_DT_SEC = 90.0           // longer gap = we weren't driving
     private const val MIN_TRIP_MILES = 1.0
     private const val MIN_TRIP_GALLONS = 0.05
+    // Consecutive rpm-reads-as-zero-or-null ticks before an engine-off is trusted enough to
+    // finalize a drive (60s @ TICK_MS) - unchanged value, named here so it can be compared
+    // directly against LINK_LOST_TICKS below rather than living only as the literal `2` at the
+    // call site.
+    private const val ENGINE_OFF_TICKS = 2
+    // Consecutive !ObdBluetoothManager.isConnected ticks before a lost link is trusted enough to
+    // finalize a drive in progress (2 min @ TICK_MS) - the fix for the link-loss defect this
+    // ticket closes (see the class doc). Deliberately LONGER than ENGINE_OFF_TICKS: an engine
+    // reading 0 rpm for a full minute is unambiguous, but a Bluetooth link that comes back inside
+    // two minutes is not evidence the drive actually ended - a brief blip (weak signal near a
+    // parking structure, the adapter's own reconnect handshake) must not split one real drive into
+    // two the way [MAX_DT_SEC] already protects the distance/fuel MATH inside a single drive from
+    // a momentary gap. This threshold is what decides whether that drive keeps existing at all.
+    private const val LINK_LOST_TICKS = 4
     // Per-tick GPS distance sanity bounds (moved from VehicleController when its
     // separate GPS-only trackTripMileage loop was consolidated into this one,
     // 2026-07-19): below the floor is GPS jitter while parked, above the ceiling
@@ -97,6 +136,9 @@ object TelemetryRecorder {
 
     @Volatile private var driveMiles = 0.0
     @Volatile private var driveGallons = 0.0
+    /** Epoch ms the CURRENT drive began - set when `engineWasOn` flips `true` in [run], read and
+     * reset by [finalizeDrive] into [Drive.startedAt]. `0L` means no drive is in progress. */
+    @Volatile private var driveStartedAt = 0L
 
     /** MPG of the drive in progress, or null until it has accumulated a real mile. */
     fun currentDriveMpg(): Double? =
@@ -141,6 +183,49 @@ object TelemetryRecorder {
      */
     internal fun gpsTickMilesAccepted(gpsMiles: Double): Boolean = gpsMiles in MIN_TICK_MILES..MAX_TICK_MILES
 
+    /**
+     * What a single tick of [run]'s guard should do, given [isBusy] ([ConversationState.isBusy])
+     * and [isConnected] ([ObdBluetoothManager.isConnected]) - the exact split the link-loss defect
+     * needed (see the class doc). **[isBusy] always wins**, regardless of [isConnected]: a voice
+     * turn is never itself evidence a drive ended, so a tick that happens to be both busy AND
+     * disconnected is still [TickGuard.SKIP_BUSY], not [TickGuard.SKIP_LINK_LOST] - it must touch
+     * no drive-ending counter at all, the same guarantee the old combined guard gave (correctly)
+     * for the busy case alone.
+     *
+     * A top-level pure function (not nested inside [run]) so it is directly unit-testable without
+     * Room, Android, Bluetooth, or a running sampling loop - same posture as [pidWanted]/
+     * [gpsTickMilesAccepted].
+     */
+    internal enum class TickGuard { PROCESS, SKIP_BUSY, SKIP_LINK_LOST }
+
+    internal fun tickGuardFor(isBusy: Boolean, isConnected: Boolean): TickGuard = when {
+        isBusy -> TickGuard.SKIP_BUSY
+        !isConnected -> TickGuard.SKIP_LINK_LOST
+        else -> TickGuard.PROCESS
+    }
+
+    /**
+     * Whether [consecutiveLostTicks] of [TickGuard.SKIP_LINK_LOST] in a row, while a drive was in
+     * progress, is enough to trust the link is actually gone rather than a momentary blip - see
+     * [LINK_LOST_TICKS]'s own doc for why this threshold is longer than engine-off's
+     * [ENGINE_OFF_TICKS]. `internal` for direct unit testing, same posture as [tickGuardFor].
+     */
+    internal fun linkLostShouldFinalize(consecutiveLostTicks: Int): Boolean =
+        consecutiveLostTicks >= LINK_LOST_TICKS
+
+    /** Named identically to [ENGINE_OFF_TICKS]'s own comparison at the [run] call site, so a test
+     * can pin the threshold without reading the private constant directly - same posture as
+     * [linkLostShouldFinalize]. */
+    internal fun engineOffShouldFinalize(consecutiveOffTicks: Int): Boolean =
+        consecutiveOffTicks >= ENGINE_OFF_TICKS
+
+    /**
+     * Why a drive ended - stored as plain TEXT on [Drive.endReason] (widening this list later needs
+     * no migration, CLAUDE.md §5). See the class doc's link-loss note for why [LINK_LOST] did not
+     * exist as a reachable outcome before this ticket.
+     */
+    internal enum class DriveEndReason { ENGINE_OFF, LINK_LOST }
+
     /** Infinite sampling loop; launch once from the foreground service. */
     suspend fun run(context: Context) {
         val db = CarDatabase.getDatabase(context)
@@ -150,12 +235,34 @@ object TelemetryRecorder {
         val failCounts = mutableMapOf<String, Int>()
         var engineWasOn = false
         var offTicks = 0
+        var linkLostTicks = 0
         var lastTickAt = 0L
         var lastLocation: android.location.Location? = null
 
         while (true) {
             delay(TICK_MS)
-            if (!ObdBluetoothManager.isConnected || ConversationState.isBusy) continue
+            // tickGuardFor's own doc explains why isBusy always wins and touches no drive state -
+            // the split this ticket needed (see the class doc's link-loss defect).
+            when (tickGuardFor(ConversationState.isBusy, ObdBluetoothManager.isConnected)) {
+                TickGuard.SKIP_BUSY -> continue
+                TickGuard.SKIP_LINK_LOST -> {
+                    if (engineWasOn) {
+                        linkLostTicks++
+                        if (linkLostShouldFinalize(linkLostTicks)) {
+                            finalizeDrive(context, DriveEndReason.LINK_LOST)
+                            engineWasOn = false
+                            isEngineRunning = false
+                            offTicks = 0
+                            linkLostTicks = 0
+                            lastTickAt = 0L
+                            lastLocation = null
+                        }
+                    }
+                    continue
+                }
+                TickGuard.PROCESS -> Unit
+            }
+            linkLostTicks = 0
 
             val rpm = ObdBluetoothManager.getRpm()
             val engineOn = rpm != null && rpm > 0
@@ -163,11 +270,12 @@ object TelemetryRecorder {
             if (!engineOn) {
                 if (engineWasOn) {
                     offTicks++
-                    if (offTicks >= 2) {
-                        finalizeDrive(context)
+                    if (engineOffShouldFinalize(offTicks)) {
+                        finalizeDrive(context, DriveEndReason.ENGINE_OFF)
                         engineWasOn = false
                         isEngineRunning = false
                         offTicks = 0
+                        linkLostTicks = 0
                         lastTickAt = 0L
                         lastLocation = null
                     }
@@ -179,6 +287,7 @@ object TelemetryRecorder {
             if (!engineWasOn) {
                 engineWasOn = true
                 isEngineRunning = true
+                driveStartedAt = System.currentTimeMillis()
                 val coolant = ObdBluetoothManager.getCoolantTemp()
                 if (coolant != null && coolant < COLD_START_C) {
                     coldStartBurst(context, coolant)
@@ -335,6 +444,16 @@ object TelemetryRecorder {
     }
 
     /**
+     * What [finalizeDrive] should write into [Drive.gallons] for [decision] - `null`, never `0.0`,
+     * on anything short of [TripWrite.MILES_AND_MPG] (see [Drive]'s own doc comment for why `0.0`
+     * would be a different, false claim). Factored out as its own pure function, `internal` for
+     * direct unit testing, so this specific "unmeasured is null, not zero" property is pinned
+     * without Room, Android, or a running sampling loop - same posture as [tripWriteFor].
+     */
+    internal fun driveGallonsFor(decision: TripWrite, gallons: Double): Double? =
+        if (decision == TripWrite.MILES_AND_MPG) gallons else null
+
+    /**
      * Writes the drive's TRIP_MILES/MPG_TRIP summary samples + lifetime aggregates, then resets.
      *
      * **The two writes are gated INDEPENDENTLY** (ticket 09,
@@ -349,17 +468,27 @@ object TelemetryRecorder {
      * couldn't be computed. `driveMiles`/`driveGallons` are still reset together unconditionally (a
      * drive is over either way, and the accumulators must not bleed into the next one), but each
      * summary sample is now written or withheld on ITS OWN gate.
+     *
+     * **Also writes one [Drive] row** (`.scratch/drive-ui/issues/05-trip-content.md` Q14) -
+     * ADDITIVE to the two `obd_samples` rows above, not a replacement; [DailyDriveLogController]/
+     * `MonthlyRecapController` keep reading those. `Drive.gallons` is null, never `0.0`, on a
+     * MILES_ONLY drive (same "don't assert an unmeasured quantity" posture as [MpgTrust]) - see
+     * [Drive]'s own doc comment. Written on the SAME `decision != NONE` gate as the two samples
+     * above, so a drive too short to be worth a TRIP_MILES row is equally not worth a `drives` row.
      */
-    private suspend fun finalizeDrive(context: Context) {
+    private suspend fun finalizeDrive(context: Context, endReason: DriveEndReason) {
+        val startedAt = driveStartedAt
         val miles = driveMiles
         val gallons = driveGallons
+        driveStartedAt = 0L
         driveMiles = 0.0
         driveGallons = 0.0
         val decision = tripWriteFor(milesWorthRecording(miles), gallonsWorthRecording(gallons))
         if (decision == TripWrite.NONE) return // nothing on either axis worth recording
 
         runCatching {
-            val dao = CarDatabase.getDatabase(context).odbSampleDao()
+            val db = CarDatabase.getDatabase(context)
+            val dao = db.odbSampleDao()
             val now = System.currentTimeMillis()
             val lat = LocationController.state.value?.latitude
             val lng = LocationController.state.value?.longitude
@@ -385,6 +514,20 @@ object TelemetryRecorder {
                     vehicleId = vehicleId(context),
                     pid = "TRIP_MILES", value = miles, unit = "mi",
                     timestamp = now, lat = lat, lng = lng,
+                )
+            )
+            // The drive-boundary object itself. startedAt falls back to `now` only in the
+            // unreachable-in-practice case where a drive accumulated real miles/gallons without
+            // driveStartedAt ever being set (defensive only - see driveStartedAt's own doc for why
+            // it is always set in the same tick engineWasOn first flips true).
+            db.driveDao().insert(
+                Drive(
+                    vehicleId = vehicleId(context),
+                    startedAt = if (startedAt != 0L) startedAt else now,
+                    endedAt = now,
+                    miles = miles,
+                    gallons = driveGallonsFor(decision, gallons),
+                    endReason = endReason.name,
                 )
             )
         }

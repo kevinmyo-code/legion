@@ -981,3 +981,26 @@ val MIGRATION_21_22 = object : Migration(21, 22) {
         )
     }
 }
+
+/**
+ * v22 -> v23: adds `drives` - a real drive-boundary object
+ * (`.scratch/drive-ui/issues/05-trip-content.md` Q14, `09-mpg-scale-bug.md`'s "bigger finding").
+ * One additive `CREATE TABLE`, nothing existing touched. SQL copied verbatim from the generated
+ * `app/schemas/com.kevin.legion.data.local.CarDatabase/23.json` after a kapt run, per the
+ * additive-migration discipline - see CarDatabase's v23 doc comment and [Drive]'s own.
+ */
+val MIGRATION_22_23 = object : Migration(22, 23) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `drives` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`vehicleId` TEXT NOT NULL, " +
+                "`startedAt` INTEGER NOT NULL, " +
+                "`endedAt` INTEGER NOT NULL, " +
+                "`miles` REAL NOT NULL, " +
+                "`gallons` REAL, " +
+                "`endReason` TEXT NOT NULL, " +
+                "`syncId` TEXT NOT NULL DEFAULT '')"
+        )
+    }
+}

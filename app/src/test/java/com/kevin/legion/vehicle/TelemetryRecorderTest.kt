@@ -2,6 +2,7 @@ package com.kevin.legion.vehicle
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -112,5 +113,82 @@ class TelemetryRecorderTest {
     @Test
     fun `tripWriteFor is MILES_AND_MPG only when BOTH axes clear their floor`() {
         assertEquals(TelemetryRecorder.TripWrite.MILES_AND_MPG, TelemetryRecorder.tripWriteFor(milesOk = true, gallonsOk = true))
+    }
+
+    // --- driveGallonsFor: gallons is null, never 0.0, off a MILES_ONLY/NONE decision -------------
+
+    @Test
+    fun `driveGallonsFor is null for a MILES_ONLY decision - the MAF-silent case, never zero`() {
+        assertNull(TelemetryRecorder.driveGallonsFor(TelemetryRecorder.TripWrite.MILES_ONLY, 0.0))
+        // Even if some residual value had accumulated in the accumulator, MILES_ONLY still means
+        // "don't trust this as a measured quantity" - the decision governs, not the raw number.
+        assertNull(TelemetryRecorder.driveGallonsFor(TelemetryRecorder.TripWrite.MILES_ONLY, 0.02))
+    }
+
+    @Test
+    fun `driveGallonsFor is null for a NONE decision`() {
+        assertNull(TelemetryRecorder.driveGallonsFor(TelemetryRecorder.TripWrite.NONE, 0.0))
+    }
+
+    @Test
+    fun `driveGallonsFor is the real value for a MILES_AND_MPG decision`() {
+        assertEquals(0.723, TelemetryRecorder.driveGallonsFor(TelemetryRecorder.TripWrite.MILES_AND_MPG, 0.723)!!, 0.0001)
+    }
+
+    // --- ticket 05/09's own defect: the link-loss guard split, and the drive-boundary object -----
+    // (`.scratch/drive-ui/issues/05-trip-content.md`/`09-mpg-scale-bug.md`'s "bigger finding")
+
+    @Test
+    fun `tickGuardFor SKIP_BUSY wins over a lost link - a voice-busy tick must never reach the finalize path`() {
+        // This is the regression pin for the defect itself: the OLD combined guard treated a busy
+        // voice turn and a lost link identically. isBusy must win regardless of isConnected, so a
+        // tick that is simultaneously busy AND disconnected is SKIP_BUSY, never SKIP_LINK_LOST -
+        // run()'s dispatch only increments linkLostTicks (and can only ever finalize a drive) on
+        // SKIP_LINK_LOST, so this proves a busy tick structurally cannot finalize anything.
+        assertEquals(TelemetryRecorder.TickGuard.SKIP_BUSY, TelemetryRecorder.tickGuardFor(isBusy = true, isConnected = false))
+    }
+
+    @Test
+    fun `tickGuardFor SKIP_BUSY when busy and connected - the ordinary voice-turn case, unchanged`() {
+        assertEquals(TelemetryRecorder.TickGuard.SKIP_BUSY, TelemetryRecorder.tickGuardFor(isBusy = true, isConnected = true))
+    }
+
+    @Test
+    fun `tickGuardFor SKIP_LINK_LOST when not busy and not connected - the case run() used to silently continue on forever`() {
+        assertEquals(TelemetryRecorder.TickGuard.SKIP_LINK_LOST, TelemetryRecorder.tickGuardFor(isBusy = false, isConnected = false))
+    }
+
+    @Test
+    fun `tickGuardFor PROCESS when not busy and connected - the ordinary sampling tick`() {
+        assertEquals(TelemetryRecorder.TickGuard.PROCESS, TelemetryRecorder.tickGuardFor(isBusy = false, isConnected = true))
+    }
+
+    @Test
+    fun `linkLostShouldFinalize is false below LINK_LOST_TICKS and true at or above it`() {
+        // LINK_LOST_TICKS = 4 (2 min @ 30s TICK_MS) - pinned via behavior, not the private constant.
+        assertFalse(TelemetryRecorder.linkLostShouldFinalize(0))
+        assertFalse(TelemetryRecorder.linkLostShouldFinalize(1))
+        assertFalse(TelemetryRecorder.linkLostShouldFinalize(3))
+        assertTrue(TelemetryRecorder.linkLostShouldFinalize(4))
+        assertTrue(TelemetryRecorder.linkLostShouldFinalize(5))
+    }
+
+    @Test
+    fun `engineOffShouldFinalize is false below ENGINE_OFF_TICKS and true at or above it - unchanged threshold, now named`() {
+        // ENGINE_OFF_TICKS = 2 (60s @ 30s TICK_MS) - the SAME threshold run() already used as the
+        // literal `2`; this pins that the extraction didn't change the behavior.
+        assertFalse(TelemetryRecorder.engineOffShouldFinalize(0))
+        assertFalse(TelemetryRecorder.engineOffShouldFinalize(1))
+        assertTrue(TelemetryRecorder.engineOffShouldFinalize(2))
+        assertTrue(TelemetryRecorder.engineOffShouldFinalize(3))
+    }
+
+    @Test
+    fun `LINK_LOST_TICKS is strictly longer than ENGINE_OFF_TICKS - a Bluetooth blip must outlast an unambiguous engine-off before it can end a drive`() {
+        // Pinned via the boundary values themselves rather than reading the private constants -
+        // the exact property the ticket's brief asked to be documented and held.
+        val engineOffThreshold = generateSequence(0) { it + 1 }.first { TelemetryRecorder.engineOffShouldFinalize(it) }
+        val linkLostThreshold = generateSequence(0) { it + 1 }.first { TelemetryRecorder.linkLostShouldFinalize(it) }
+        assertTrue(linkLostThreshold > engineOffThreshold)
     }
 }
