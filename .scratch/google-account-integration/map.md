@@ -119,6 +119,23 @@ Constraints, not open questions. A ticket that contradicts one of these is wrong
   **LEGION never writes the queue-and-push design that silently loses data.** One rule under all of
   it: never answer a mail question from anything but a successful live read.
 
+- **VERIFICATION SWEEP 2026-08-16** (Kevin: "repo is ahead. check and close if true"). Three of the
+  four open BUILD tickets were **already built** and are closed on evidence:
+  [the two Gmail tools](issues/15-gmail-tools.md) (both wired in `declarations()`, briefing shape
+  exact, nothing stored, four distinct failure messages),
+  [read every calendar / write only writable](issues/17-read-all-calendars.md) (the
+  `allGoogleCalendars` / `writableGoogleCalendars` split, correct on both sides, with on-device
+  evidence already on record - the Notes stream went 10 items to 24), and
+  [the calendar read tool](issues/19-calendar-read-tool.md), **whose own title was false** -
+  `read_calendar` ships, is wired, reuses `eventsInWindow`, and refuses in words when the grant is
+  missing. **Fourth instance of the repo being ahead of its docs** (lessons L24).
+  **[The ship pass](issues/16-ship-pass.md) is genuinely NOT built** and its five remaining items
+  are now listed on it; item 2 needs Kevin's wording for a CLAUDE.md §7 guardrail and gates the rest.
+  **One hole found on the way past:** the mail read-through rule is enforced on the episodic path but
+  **`remember` is not gated on it**, so mail content can still reach permanent memory -
+  [the remember leak](issues/21-remember-leak.md).
+
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Graduates as the frontier advances.

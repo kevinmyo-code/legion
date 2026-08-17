@@ -1,7 +1,7 @@
 # BUILD: the two Gmail tools
 
 Type: task
-Status: open
+Status: resolved (2026-08-16, verified built)
 Blocked by: 09, 12
 
 ## Question
@@ -33,3 +33,34 @@ Nothing to decide. Graduated 2026-08-13 from [ticket 05](05-what-counts-as-worth
 - On the device: one real briefing, one real search, and confirm Alfred spoke the query.
 - Force each of the four failures - airplane mode, revoked grant, never-granted - and confirm the
   messages differ.
+
+## Answer
+
+**VERIFIED BUILT 2026-08-16** (Kevin: "repo is ahead. check and close if true"). Closed on evidence,
+not assumption. All `traced`.
+
+- **Both tools ship and are WIRED**: `search_mail` (`LiveToolbox.kt:1210-1223`) and `read_mail`
+  (`:1225-1234`), both inside `declarations()` (spanning `:114-1386`), **not**
+  `onboardingDeclarations()` (`:4574`) - the trap `LiveToolboxDeclarationSetTest.kt:8-27` documents.
+  Dispatched at `:1537-1538`. Descriptions match ticket 05's table string for string.
+- **The briefing shape is exact**: `BRIEFING_QUERY = "is:unread in:inbox category:primary
+  newer_than:2d"` (`GmailToolLogic.kt:23`), `BRIEFING_CAP = 10` (`:28`), a blank query forces the
+  briefing and ignores `limit` (`:44-51`), over-cap reports the true total from `resultSizeEstimate`
+  (`LiveToolbox.kt:1776-1779`), empty says so in words (`:1783`). Search caps at 5 (`:31, 49-50`).
+- **Nothing is stored.** No Gmail entity or DAO exists anywhere; `gmail/` holds only `GmailAuth`,
+  `GmailClient`, `GmailToolLogic`. The episodic exclusion is enforced by dropping the WHOLE turn
+  (`GeminiLiveSession.kt:694`), flagged when the call ARRIVES rather than after dispatch (`:863`),
+  and pinned by `GeminiLiveSessionEpisodicExclusionTest.kt`.
+- **Four distinct failure messages** with the never-granted vs lapsed split routed through
+  `GoogleGrantResolver` (`GmailToolLogic.kt:77-105`), distinctness asserted at
+  `GmailToolLogicTest.kt:140`.
+
+### Two gaps found while verifying - neither reopens this ticket
+
+1. **Point 3's disclosure is available but never instructed.** The query rides the payload
+   (`LiveToolbox.kt:1773`, commented "so Alfred always has it to say"), but **no prompt text
+   anywhere tells him to say it** - a grep for such wording across `app/src` is empty, and neither
+   tool description carries it. The guardrail is offered, not enforced. `traced`.
+2. **Point 5 is only half-enforced, and that half is a real hole** - see
+   [the remember leak](21-remember-leak.md), filed as its own ticket because it is a defect in the
+   mail read-through rule rather than unfinished work on this one.

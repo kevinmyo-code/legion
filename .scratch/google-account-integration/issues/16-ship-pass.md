@@ -34,3 +34,27 @@ The named ones, restated so they cannot be lost:
 - **Ticket 15's test**: nothing mail-shaped reaches the episodic log.
 - **Ticket 12's device check**: revoke Drive access and confirm the app says so.
 - Install by hash, per `memory/`: "Success" from `pm install` can install a different APK.
+
+## Verification 2026-08-16 - NOT BUILT, and here is exactly what is left
+
+Checked against the tree while closing the rest of this effort. Every item below is `traced`.
+**This is the only google-account ticket with real work remaining** - 15, 17 and 19 were verified
+built and closed the same day.
+
+1. **The falsified comments are still in the tree.** Ticket 04 killed the "a calendar event is the
+   same entity as a list item" claim, but it still reads that way at `data/local/ListItem.kt:10-11`
+   and `:56`, and at `data/local/ItemList.kt:8-9`. `notes/NotesController.kt` and `ui/notes/` are
+   clean - only these three sites lie.
+2. **CLAUDE.md §7 has no third-party read-through guardrail.** §7 spans `CLAUDE.md:238-268`; there
+   is no such bullet. `library/decisions.md:2370` still records it as "NOT yet applied and not yet
+   put to Kevin" - so **this one needs Kevin's wording before it can be written.**
+3. **The feature-add checklist has no corresponding line** (`CLAUDE.md:270-285`).
+4. **`memory/MEMORY.md` is stale in the other direction**: it lists console tickets 09 and 11 as
+   "still needing Kevin" when both are `Status: resolved` and `decisions.md:2379-2405` records the
+   consent screen in production and the scope granted on-device.
+5. **No `decisions.md` build entry exists for tickets 12-15/17/19**, and no ship-pass accounting of
+   their verification steps. Ticket 14's spike (does a provider-inserted event reach Google?) has no
+   recorded outcome; ticket 13's render and ticket 12's revoke check likewise.
+
+**Item 2 is the gate.** It needs a decision from Kevin, not code, and the rest is bookkeeping that
+should not be done piecemeal around it.

@@ -45,8 +45,13 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
   (pause/skip) should now work for everything, not just Spotify. **Untested since granting.**
 - **Onboarding has no screen. Firebase not wired**, so a swallowed exception is invisible.
   **Crisis resource is US-only (988).**
-- Google console work still needing Kevin: `.scratch/google-account-integration/` tickets 11
-  (publish consent screen) and 09 (add the Gmail scope). Drive OAuth itself CLEARED 2026-08-13.
+- ~~Google console work still needing Kevin~~ **DONE** - tickets 09 and 11 are both resolved; the
+  consent screen is in production and the Gmail scope is granted on-device
+  (`library/decisions.md:2379-2405`). This line was stale for days. Drive OAuth CLEARED 2026-08-13.
+- **NEW, found 2026-08-16 while verifying the Gmail tools: mail can still reach permanent memory.**
+  The read-through rule is enforced on the episodic path (the whole turn is dropped) but **`remember`
+  is not gated on it** - it writes `MemoryEntry` directly via `AriaBrain.kt:158-169`. Ticket
+  `.scratch/google-account-integration/issues/21-remember-leak.md`.
 - **Ticket 07 on `.scratch/android-auto/` needs Kevin**: settled decision 1 was taken on a premise
   since falsified, so "two surfaces, deliberately" has to be re-taken.
 

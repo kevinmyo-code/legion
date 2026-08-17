@@ -1,7 +1,7 @@
 # BUILD: Alfred cannot read the calendar at all
 
 Type: task
-Status: open
+Status: resolved (2026-08-16, verified built - premise was false)
 Blocked by: -
 
 ## Question
@@ -41,3 +41,23 @@ never had a calendar counterpart. The map's own **conflict-awareness** item in "
 
 On the device, by voice: "what's on my calendar this week" returns the real events, and the answer
 includes something from a read-only calendar (e.g. a US holiday) once ticket 17 has landed.
+
+## Answer
+
+**VERIFIED BUILT 2026-08-16 - the ticket's own premise was false.** Alfred can read the calendar.
+Closed on evidence. All `traced`.
+
+- **`read_calendar` is declared and WIRED**: `LiveToolbox.kt:1241-1258`, inside `declarations()`,
+  dispatched at `:1539` to `readCalendar` (`:1834`). Returns `title`, `start`, `end`, `all_day`
+  (`:1846-1860`) over a required `from`/`to` window.
+- **It reuses `eventsInWindow`** (`:1843`) rather than issuing a second `CalendarContract` query, so
+  it inherits [ticket 17](17-read-all-calendars.md)'s all-calendars read - the description's promise
+  about subscribed and read-only calendars is therefore true rather than aspirational.
+- **A missing `READ_CALENDAR` grant refuses in words and names the screen**, checked BEFORE parsing
+  (`:1835-1837`): "I don't have permission to read your calendar yet. Grant calendar access from the
+  Today screen to let me see it." (`CalendarReadToolLogic.kt:23-25`). It returns `success=false`
+  with **no** `events` array, so an ungranted read can never be mistaken for an empty calendar -
+  pinned by `CalendarReadToolLogicTest.kt:67, 76`. A separate message covers a malformed window.
+
+This is the fourth time today a ticket described work the tree already had. See
+`library/lessons.md` L24.
