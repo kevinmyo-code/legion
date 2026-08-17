@@ -80,7 +80,8 @@ account in `library/decisions.md` (2026-08-16) and `library/lessons.md` L24-L28.
   the `clear_codes` VOICE path have none of them been exercised. Migration test still never run.
 - **BUILT + INSTALLED: the music fix** (`d683d2c`, `ccef947`), found by Kevin in use. `on-device`:
   banner renders in Setup with correct copy, and its button lands on
-  `Settings$NotificationAccessSettingsActivity`. See Blocking - the grant is still not given.
+  `Settings$NotificationAccessSettingsActivity`. **Kevin granted the access 2026-08-16**, so
+  the banner should now be absent and transport should work for everything - neither retested.
 - **Still live:** 05 comms (paused mid-ticket), 08 morning brief, 18 inbox, 19 people dates.
 - **STANDING RULE from five premise-deaths: grep the premise and confirm the data source before
   spending a session on any ticket** (L25). The map lists what a JARVIS could do, not what Kevin has.
