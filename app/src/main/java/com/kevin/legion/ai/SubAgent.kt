@@ -41,6 +41,23 @@ import java.net.URL
  */
 data class AskOutcome(val text: String?, val promptTokens: Int?, val candidatesTokens: Int?)
 
+/**
+ * Requests Gemini's structured-output mode on one [SubAgent.askTyped] call: `generationConfig`
+ * carries `responseMimeType = "application/json"` paired with [responseSchema], the OpenAPI-3.0-
+ * SUBSET schema object the Generative Language API actually accepts (NOT full JSON Schema - no
+ * `$ref`, no `oneOf`; the supported field set is `type`/`format`/`description`/`nullable`/`enum`/
+ * `items`/`properties`/`required`/`propertyOrdering`, and `type` values are the proto `Type`
+ * enum's names - `"STRING"`/`"OBJECT"`/`"ARRAY"`, uppercase, not JSON Schema's lowercase).
+ *
+ * Optional and off by default (ticket 21): [SubAgent.askTyped]'s `structuredOutput` parameter of
+ * this type defaults to null, so [SubAgent]'s three other production callers
+ * ([com.kevin.legion.ai.MemoryConsolidator], [com.kevin.legion.ai.ReflectionEngine],
+ * [com.kevin.legion.service.AmbientListener]) - none of which pass one - see byte-identical
+ * request bodies to before this ticket. Only [com.kevin.legion.advisor.AdvisorAgent] supplies one,
+ * from [com.kevin.legion.advisor.AdvisorAnswer.responseSchema].
+ */
+data class StructuredOutputRequest(val responseSchema: JSONObject)
+
 class SubAgent(
     private val systemInstruction: String = "",
     private val useSearch: Boolean = true,
@@ -98,12 +115,21 @@ class SubAgent(
         }
     }
 
-    /** Shared request body for [ask] and [askWithUsage] - same shape, different response handling. */
-    private fun buildAskBody(
+    /**
+     * Shared request body for [ask], [askWithUsage], and [askTyped] - same shape, different
+     * response handling. [structuredOutput], when non-null, adds a `generationConfig` carrying
+     * `responseMimeType = "application/json"` plus the caller's `responseSchema` (ticket 21).
+     * Defaulted to null so [ask]/[askWithUsage] - neither of which passes one - are byte-identical
+     * to before this parameter existed. `internal` (not private) so [SubAgentStructuredOutputTest]
+     * can assert the built body's shape directly, the same pattern [userParts] and
+     * [parseUsageMetadata] already use for network-free coverage.
+     */
+    internal fun buildAskBody(
         context: String,
         question: String,
         imageBytes: ByteArray?,
         imageMimeType: String,
+        structuredOutput: StructuredOutputRequest? = null,
     ): JSONObject {
         val userText = buildString {
             if (context.isNotBlank()) append(context).append("\n\n")
@@ -121,6 +147,12 @@ class SubAgent(
             if (useSearch) {
                 put("tools", JSONArray().put(JSONObject().put("google_search", JSONObject())))
             }
+            if (structuredOutput != null) {
+                put("generationConfig", JSONObject().apply {
+                    put("responseMimeType", "application/json")
+                    put("responseSchema", structuredOutput.responseSchema)
+                })
+            }
         }
     }
 
@@ -134,30 +166,22 @@ class SubAgent(
      * [useSearch] is set, google_search grounds the answer in this same POST
      * (allowed here because there are no function declarations to conflict with,
      * unlike in [investigate]).
+     *
+     * [structuredOutput], when supplied, asks Gemini's own structured-output mode to enforce the
+     * caller's `responseSchema` (ticket 21 - see [StructuredOutputRequest]'s doc comment for the
+     * accepted schema shape). Defaults to null: a caller that doesn't pass one gets the exact same
+     * request body this method sent before this parameter existed - shared with [buildAskBody],
+     * which is what actually assembles the body now (removes what used to be a second, drifting
+     * copy of the same JSON-shape logic).
      */
     suspend fun askTyped(
         context: String,
         question: String,
         imageBytes: ByteArray? = null,
         imageMimeType: String = "image/jpeg",
+        structuredOutput: StructuredOutputRequest? = null,
     ): AgentResult = withContext(Dispatchers.IO) {
-        val userText = buildString {
-            if (context.isNotBlank()) append(context).append("\n\n")
-            append(question)
-        }
-        val body = JSONObject().apply {
-            if (systemInstruction.isNotBlank()) {
-                put("systemInstruction", JSONObject().put(
-                    "parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
-            }
-            put("contents", JSONArray().put(JSONObject().apply {
-                put("role", "user")
-                put("parts", userParts(userText, imageBytes, imageMimeType))
-            }))
-            if (useSearch) {
-                put("tools", JSONArray().put(JSONObject().put("google_search", JSONObject())))
-            }
-        }
+        val body = buildAskBody(context, question, imageBytes, imageMimeType, structuredOutput)
         when (val o = postRaw(body)) {
             is HttpOutcome.Ok -> extractText(o.json)?.let { AgentResult.Success(it) } ?: AgentResult.Failed
             is HttpOutcome.HttpError -> classify(o)

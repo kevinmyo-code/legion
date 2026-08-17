@@ -2865,15 +2865,18 @@ object LiveToolbox {
      * hit every branch - most importantly [AdvisorResult.ParseFailed] - directly, `internal` for
      * that reason.
      *
-     * Ticket 18's "known weakness": `SubAgent.askTyped` enforces no output schema (traced), so the
-     * model's reply occasionally fails to parse into [com.kevin.legion.advisor.AdvisorAnswer]'s
-     * shape. **The prose is still good coaching - it is the JSON envelope that failed** - so
-     * [AdvisorResult.ParseFailed] carries the raw text and this branch RELAYS it, with a plain
-     * caveat that there is no concrete proposal behind it. Discarding the words because their
-     * wrapper was malformed would turn a formatting problem into a silent loss of the advice
-     * itself. What is genuinely lost is only the structured half: no proposal to accept, and no
-     * per-figure `basis` tags - which is why the caveat says so rather than implying a normal
-     * answer. Ticket 21 (harden structured output) owns stopping this path from firing at all.
+     * Ticket 18's "known weakness", narrowed by ticket 21 but not eliminated: `AdvisorAgent` now
+     * hands `SubAgent.askTyped` a real `responseSchema` (machine-enforced), on top of
+     * [com.kevin.legion.advisor.AdvisorAnswer.RESPONSE_SCHEMA]'s prose copy in the system
+     * instruction (belt and braces - see that constant's doc comment for why both stay). A schema
+     * makes malformed output less likely, not impossible, so the model's reply can still fail to
+     * parse into [com.kevin.legion.advisor.AdvisorAnswer]'s shape. **The prose is still good
+     * coaching - it is the JSON envelope that failed** - so [AdvisorResult.ParseFailed] carries the
+     * raw text and this branch RELAYS it, with a plain caveat that there is no concrete proposal
+     * behind it. Discarding the words because their wrapper was malformed would turn a formatting
+     * problem into a silent loss of the advice itself. What is genuinely lost is only the
+     * structured half: no proposal to accept, and no per-figure `basis` tags - which is why the
+     * caveat says so rather than implying a normal answer.
      */
     internal fun mapAdvisorResult(outcome: AdvisorResult): JSONObject = when (outcome) {
         is AdvisorResult.Success -> {

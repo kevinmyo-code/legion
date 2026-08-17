@@ -48,15 +48,18 @@ data class AdvisorAnswer(
 ) {
     companion object {
         /**
-         * The response shape composed into every [HarnessPrompt]-governed call. Gemini Flash's
-         * `generateContent` structured-output plumbing (`responseSchema`/`responseMimeType` in
-         * `generationConfig`) is NOT wired into [com.kevin.legion.ai.SubAgent.askTyped] - traced:
-         * that function builds a plain body with no `generationConfig` at all. Wiring that through
-         * is out of this ticket's scope (it would change [com.kevin.legion.ai.SubAgent] itself,
-         * which every other caller of `askTyped` also depends on staying shaped as it is), so this
-         * schema is enforced by INSTRUCTION in the prompt, and [parse] is the actual gate: text
-         * that does not parse into this shape is a hard failure for the harness to surface, never
-         * a best-effort partial read of whatever came back.
+         * The response shape composed into every [HarnessPrompt]-governed call, enforced by
+         * INSTRUCTION in the prompt text. **As of ticket 21 this is belt, not the whole harness**:
+         * [com.kevin.legion.ai.SubAgent.askTyped] now also accepts a real
+         * `responseSchema`/`responseMimeType` (`generationConfig`), and [responseSchema] below is
+         * the machine-enforced braces half - [AdvisorAgent] passes both, on purpose. Kept here
+         * rather than deleted: a `generationConfig` schema constrains shape but not English
+         * meaning (nothing in it says a `figures[].basis` of `"record"` must actually be a real
+         * digest figure and not a guess), and Kevin's ticket note is explicit not to remove this
+         * copy without evidence the model still complies without it, which this build has no way
+         * to gather (no live key in this environment - see ticket 21 item 4). [parse] is still the
+         * actual gate either way: text that does not parse into this shape is a hard failure for
+         * the harness to surface, never a best-effort partial read of whatever came back.
          */
         const val RESPONSE_SCHEMA = """
 Respond with ONLY one JSON object, no prose outside it, no markdown code fence, shaped exactly:
@@ -68,6 +71,64 @@ Respond with ONLY one JSON object, no prose outside it, no markdown code fence, 
   "proposal": "<a JSON string describing a proposed write, or omit this field entirely if you are proposing nothing>"
 }
 """
+
+        /**
+         * [RESPONSE_SCHEMA]'s prose contract, translated into the Gemini `responseSchema` object
+         * (an OpenAPI-3.0 SUBSET - see [com.kevin.legion.ai.StructuredOutputRequest]'s doc comment
+         * for the accepted field list, checked against it deliberately before writing this rather
+         * than guessed). Two translation choices worth naming:
+         *  - `figures` and `proposal` are NOT in `required` - [RESPONSE_SCHEMA]'s prose already
+         *    allows an empty/omitted `figures` array and an omitted `proposal`, and [parse] treats
+         *    a missing `figures` as empty and a missing/blank `proposal` as null, so making either
+         *    required here would fight the parser's own leniency rather than mirror it.
+         *  - `proposal` carries `"nullable": true` alongside `"type": "STRING"` - Gemini distinguishes
+         *    "this key may be absent" (an optional, non-required property) from "this key's value
+         *    may literally be JSON `null`"; the model has been seen doing either for "nothing
+         *    proposed", and [parse] already accepts both (`!obj.has("proposal") || obj.isNull(...)`).
+         *
+         * Returns a fresh [JSONObject] on every call rather than a shared constant - a [JSONObject]
+         * is mutable, and nothing here should risk one caller's request body sharing live state
+         * with another's.
+         */
+        fun responseSchema(): JSONObject = JSONObject().apply {
+            put("type", "OBJECT")
+            put("properties", JSONObject().apply {
+                put("spoken", JSONObject().apply {
+                    put("type", "STRING")
+                    put("description", "Short, voice-length spoken answer.")
+                })
+                put("figures", JSONObject().apply {
+                    put("type", "ARRAY")
+                    put("description", "Numbers or facts cited in the answer, if any.")
+                    put("items", JSONObject().apply {
+                        put("type", "OBJECT")
+                        put("properties", JSONObject().apply {
+                            put("label", JSONObject().apply {
+                                put("type", "STRING")
+                                put("description", "What this number or fact is.")
+                            })
+                            put("value", JSONObject().apply {
+                                put("type", "STRING")
+                                put("description", "The number or fact, as text.")
+                            })
+                            put("basis", JSONObject().apply {
+                                put("type", "STRING")
+                                put("enum", JSONArray().put("record").put("estimate").put("playbook"))
+                            })
+                        })
+                        put("required", JSONArray().put("label").put("value").put("basis"))
+                        put("propertyOrdering", JSONArray().put("label").put("value").put("basis"))
+                    })
+                })
+                put("proposal", JSONObject().apply {
+                    put("type", "STRING")
+                    put("nullable", true)
+                    put("description", "A JSON string describing a proposed write, or omitted/null if proposing nothing.")
+                })
+            })
+            put("required", JSONArray().put("spoken"))
+            put("propertyOrdering", JSONArray().put("spoken").put("figures").put("proposal"))
+        }
 
         /**
          * Parses one exchange out of the model's raw response text. Tolerates a

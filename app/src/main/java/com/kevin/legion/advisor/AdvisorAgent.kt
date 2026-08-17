@@ -3,6 +3,7 @@ package com.kevin.legion.advisor
 import android.content.Context
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.ai.StructuredOutputRequest
 import com.kevin.legion.ai.SubAgent
 import com.kevin.legion.ai.personaFor
 import com.kevin.legion.data.local.AdvisorAdvice
@@ -89,7 +90,14 @@ class AdvisorAgent(
         val systemInstruction = composeSystemInstruction(personaShortClause)
         val promptContext = composeContext(brief, digest, goals, adviceLog)
 
-        val result = subAgentFactory(systemInstruction).askTyped(context = promptContext, question = question)
+        val result = subAgentFactory(systemInstruction).askTyped(
+            context = promptContext,
+            question = question,
+            // Ticket 21: the prose contract in the system instruction (AdvisorAnswer.RESPONSE_SCHEMA,
+            // via composeSystemInstruction) stays as belt; this is the braces - Gemini's own
+            // structured-output enforcement, machine-checked before the text ever reaches parse().
+            structuredOutput = StructuredOutputRequest(AdvisorAnswer.responseSchema()),
+        )
 
         return when (result) {
             is AgentResult.Success -> {
