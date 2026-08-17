@@ -1212,7 +1212,10 @@ object LiveToolbox {
             description = "Search Kevin's Gmail. `query` uses Gmail search syntax; plain words " +
                 "search full text. Returns sender, subject, date and a one-line snippet - never " +
                 "the full message. Call with no query for a briefing of unread mail from the " +
-                "last two days. Read-only; you cannot send, reply to, or delete mail.",
+                "last two days. Read-only; you cannot send, reply to, or delete mail. The result's " +
+                "`query` field is the search that actually ran - if you translated Kevin's words " +
+                "into it yourself, say that query back to him so a bad translation is visible " +
+                "rather than a confident wrong answer.",
             params = obj(
                 "query" to schema("string", "Gmail search syntax (from:, subject:, after:, plain " +
                     "words for full text). Omit entirely for the unread briefing."),
@@ -1389,8 +1392,21 @@ object LiveToolbox {
      * Runs a tool call. Returns a JSON response to hand back to Gemini, or null
      * if the tool is UI-scoped (`show_saved_places`) and must be handled by the
      * caller that owns the screen.
+     *
+     * [touchedReadThroughToolThisTurn] (ticket 21, google-account-integration) is what the
+     * "remember" branch below checks via [rememberBlockedByReadThroughTool] before writing
+     * anything to permanent memory. Defaulted to `false` so every existing call site - the one
+     * production caller that doesn't care ([LiveSessionController] passes the real value only
+     * for its own dispatch call) and every test in this module that constructs its own args and
+     * has nothing to do with mail - keeps compiling and behaving exactly as before. Only
+     * [LiveSessionController.handleToolCall] ever passes `true`.
      */
-    suspend fun dispatch(context: Context, name: String, args: JSONObject): JSONObject? {
+    suspend fun dispatch(
+        context: Context,
+        name: String,
+        args: JSONObject,
+        touchedReadThroughToolThisTurn: Boolean = false,
+    ): JSONObject? {
         MidnightEvents.toolDispatched(name)
         // Category A guard (ticket 01 §0): if a live-hardware tool got handed a
         // `vehicle` argument anyway (the model shouldn't, since these declare no
@@ -1486,7 +1502,17 @@ object LiveToolbox {
                     context, args.optInt("year"), args.optString("make"), args.optString("model")
                 )
             )
-            "remember" -> result(success = true, message = AriaBrain.get(context).remember(args.optString("text")))
+            // Ticket 21 (google-account-integration, "close the remember leak"): refuse in words
+            // rather than silently stripping or quietly recording provenance - the mail
+            // read-through rule (CLAUDE.md §7, ticket 07) is written as absolute ("mail is read,
+            // used, dropped"), and a refusal is the only implementation consistent with that. See
+            // rememberBlockedByReadThroughTool's doc for why this checks a pre-reduced boolean
+            // rather than re-testing tool names here.
+            "remember" -> if (rememberBlockedByReadThroughTool(touchedReadThroughToolThisTurn)) {
+                result(success = false, message = REMEMBER_MAIL_REFUSAL)
+            } else {
+                result(success = true, message = AriaBrain.get(context).remember(args.optString("text")))
+            }
             "recall_memory" -> recallMemory(context, args.optString("query"))
             // Absorbed the retired add_car_task/complete_car_task/remove_car_task/list_car_tasks
             // (ticket 10) - car items are now just items on the list named "Car".
@@ -1570,6 +1596,45 @@ object LiveToolbox {
      * truth so a third mail-shaped tool later doesn't need a second place taught about it.
      */
     val EPISODIC_EXCLUDED_TOOLS = setOf("search_mail", "read_mail")
+
+    /**
+     * Ticket 21 (google-account-integration, "close the remember leak"): the gate `remember`'s
+     * dispatch branch applies before writing anything to permanent memory. The episodic exclusion
+     * above already keeps a mail-touched turn out of [com.kevin.legion.data.local.EpisodicTurn]/
+     * [com.kevin.legion.data.local.CompanionMemory] - this closes the second, independent hole
+     * ticket 21 found: nothing stopped `remember` writing a
+     * [com.kevin.legion.data.local.MemoryEntry] row in that SAME turn, so a driver saying "remember
+     * that" right after Alfred read an email put mail content straight into permanent memory, with
+     * no provenance, because the turn that would have recorded where it came from was the one
+     * thing correctly dropped.
+     *
+     * A one-line wrapper, not inlined into `dispatch`'s "remember" case, so the decision is its own
+     * named, plain-JVM unit test target - same reasoning as
+     * [com.kevin.legion.service.GeminiLiveSession.isEpisodicExcludedTool].
+     *
+     * Takes [touchedExcludedTool] as an already-reduced boolean, not a tool name or a set of names
+     * called this turn, because that IS the production shape: [com.kevin.legion.service.GeminiLiveSession]
+     * already reduces "did any tool this turn match [EPISODIC_EXCLUDED_TOOLS]" down to one boolean
+     * (`mailToolCalledThisTurn`, exposed read-only via `readThroughToolTouchedThisTurn()`) the
+     * moment a matching functionCall arrives off the socket, via [com.kevin.legion.service.GeminiLiveSession.isEpisodicExcludedTool].
+     * That is the one place the actual SET MEMBERSHIP test against [EPISODIC_EXCLUDED_TOOLS] runs
+     * - its own doc comment explains why *that* function takes the set as an injectable parameter
+     * (a test proves the membership test generalises to whatever joins the set later without a
+     * code change) rather than re-testing membership a second, parallel time here, which could
+     * quietly drift from what production actually decides.
+     */
+    internal fun rememberBlockedByReadThroughTool(touchedExcludedTool: Boolean): Boolean =
+        touchedExcludedTool
+
+    /**
+     * The worded refusal `remember` returns when [rememberBlockedByReadThroughTool] fires
+     * (ticket 21). Says plainly that mail is never kept, that this is deliberate rather than a
+     * bug, and what the driver can do instead - the register the ticket asked for, no jargon, no
+     * rule numbers, matching [AriaBrain]'s own REMEMBER_ACKS for tone rather than reading like a
+     * system error.
+     */
+    private const val REMEMBER_MAIL_REFUSAL = "I don't keep anything from mail - that's on " +
+        "purpose, not a slip. Tell me the fact yourself, in your own words, and I'll remember that."
 
     /**
      * Category A guard (ticket 01 §0): these tools read whichever car the OBD

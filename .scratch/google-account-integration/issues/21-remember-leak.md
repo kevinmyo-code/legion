@@ -1,7 +1,7 @@
 # Mail can still reach permanent memory through `remember`
 
 Type: grilling
-Status: open
+Status: resolved (2026-08-16) - remember refuses; Q5 memory audit left open
 Blocked by: -
 
 ## Question
@@ -61,3 +61,45 @@ search query he ran. The query rides the payload (`LiveToolbox.kt:1773`) with a 
 Alfred always has it to say", but **no prompt text anywhere instructs him to say it** - grep across
 `app/src` is empty and neither tool description carries the wording. The guardrail is offered to the
 model, never asked for. Fix it here or fold it into whatever wording this ticket produces.
+
+## Answer
+
+**Closed 2026-08-16. `remember` REFUSES in a turn that touched a read-through tool.**
+
+Decision taken by Stark under Kevin's "build everything that's not blocked" instruction, on the
+grounds that the rule already on the books is absolute - "the guarantee this rule exists to give is
+that mail was never stored, not that something remembered to scrub it" - and refusing is the only
+implementation consistent with it.
+
+**The wording:** "I don't keep anything from mail - that's on purpose, not a slip. Tell me the fact
+yourself, in your own words, and I'll remember that."
+
+**The cost, stated rather than hidden:** Alfred cannot remember a fact the driver just learned from
+an email, even asked directly. Q2 of this ticket - whether "the driver explicitly asked" is a valid
+exception, per the garage precedent - **is deliberately answered NO for now**, and reversing it is a
+one-line change if it annoys Kevin in use.
+
+**Gated on set membership, never on the two literal tool names.** `EPISODIC_EXCLUDED_TOOLS` will
+grow - the hands-and-senses map makes it the precedent for every future read-through sense. Anything
+that joins it inherits this protection automatically. Proven by a test that adds a fake name to the
+set and asserts it also blocks.
+
+**Q3 answered: there is no second route.** Checked in full, `traced`, not grepped:
+- `MemoryConsolidator.consolidatePending` reads **only** `EpisodicTurn` rows - and `captureEpisodicTurn`
+  already drops the entire turn before any row exists to consolidate from.
+- `ReflectionEngine` reads **only** memories already tagged `CONSOLIDATED` - one hop further
+  downstream of the same scrubbed input.
+- `CompanionReset` touches these tables for deletion only.
+- No other file under `app/src/main` writes `MemoryEntry` or `CompanionMemory`.
+
+**Q5 (what is already in memory) is NOT answered** and is left open deliberately: if anything was
+captured this way before today it is sitting in `CompanionMemory` now, and nobody has audited it.
+That needs Kevin, since only he can recognise a memory that came from an email.
+
+**The smaller sibling is fixed too.** `search_mail`'s description now instructs Alfred to say the
+query back when he translated Kevin's words into it himself, "so a bad translation is visible rather
+than a confident wrong answer". The guardrail was previously offered in the payload and never asked
+for.
+
+**Not verified on-device** - saying "remember that" right after a mail read on the phone has not
+been tried.

@@ -526,6 +526,25 @@ class GeminiLiveSession(
         webSocket?.send(msg.toString())
     }
 
+    /**
+     * Ticket 21 (google-account-integration, "close the remember leak"): read-only window onto
+     * [mailToolCalledThisTurn] for `remember`'s dispatch-time gate. The episodic exclusion above
+     * already keeps a mail-touched turn out of [com.kevin.legion.data.local.EpisodicTurn], but
+     * `remember` is a second, independent writer straight into
+     * [com.kevin.legion.data.local.MemoryEntry] that never checked this flag at all - a driver
+     * saying "remember that" right after Alfred read an email put mail content into permanent
+     * memory, in the same turn [captureEpisodicTurn] was correctly throwing away as unrecordable.
+     *
+     * [LiveSessionController] is the only caller (its own [handleToolCall] reads this once, right
+     * before calling [LiveToolbox.dispatch]) and hands the value in as a plain boolean rather than
+     * `dispatch` reaching back into a live session instance - the smallest surface that closes the
+     * hole without threading a boolean through every one of `dispatch`'s other branches or every
+     * test call site that constructs its own [org.json.JSONObject] args and never touches this at
+     * all. See [LiveToolbox.rememberBlockedByReadThroughTool] for why the actual refusal decision
+     * lives as its own free function instead of being inlined here or into `dispatch`.
+     */
+    fun readThroughToolTouchedThisTurn(): Boolean = mailToolCalledThisTurn
+
     val isActive: Boolean get() = running.get() && !closed.get()
 
     // --- WebSocket -------------------------------------------------------
@@ -1506,9 +1525,21 @@ class GeminiLiveSession(
          * function is deliberately the one seam that can, and it is the exact production
          * decision [handleToolCall] uses, not a re-implementation a test could pass while the
          * real path drifts.
+         *
+         * [excludedTools] defaults to the real [LiveToolbox.EPISODIC_EXCLUDED_TOOLS] and every
+         * production call site (just [handleToolCall]) relies on that default and never overrides
+         * it. The parameter exists so a test can hand in a different set and prove this genuinely
+         * decides by SET MEMBERSHIP rather than by hardcoding "search_mail"/"read_mail" as
+         * literals - ticket 21 (google-account-integration) needed exactly that proof for
+         * [LiveToolbox.rememberBlockedByReadThroughTool], which is built on the same guarantee:
+         * whatever else joins [LiveToolbox.EPISODIC_EXCLUDED_TOOLS] later (the map's own standing
+         * rule - it is "precedent for every future read-through sense") must be excluded here, and
+         * gated in `remember`, with zero code change in either place.
          */
-        internal fun isEpisodicExcludedTool(toolName: String): Boolean =
-            toolName in LiveToolbox.EPISODIC_EXCLUDED_TOOLS
+        internal fun isEpisodicExcludedTool(
+            toolName: String,
+            excludedTools: Set<String> = LiveToolbox.EPISODIC_EXCLUDED_TOOLS,
+        ): Boolean = toolName in excludedTools
 
         // Live caption tail length (see captionTail). Sized for the caption
         // boxes' ~2-3 line, ~13-15sp, ~460dp-max-width rendering - long enough

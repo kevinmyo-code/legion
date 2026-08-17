@@ -545,8 +545,13 @@ class LiveSessionController(context: Context) {
                             openPantryImport()
                             JSONObject().put("success", true)
                         }
-                        else -> LiveToolbox.dispatch(appContext, call.name, call.args)
-                            ?: JSONObject().put("success", true)
+                        // Ticket 21 (google-account-integration): s.readThroughToolTouchedThisTurn()
+                        // is what `remember`'s dispatch branch gates on - see that accessor's doc
+                        // for why the flag is read here, off the live session, rather than dispatch
+                        // reaching back into GeminiLiveSession itself.
+                        else -> LiveToolbox.dispatch(
+                            appContext, call.name, call.args, s.readThroughToolTouchedThisTurn(),
+                        ) ?: JSONObject().put("success", true)
                     }
                 } ?: JSONObject()
                     .put("success", false)
