@@ -944,6 +944,13 @@ internal fun buildMpgSparkline(logsNewestFirst: List<DailyDriveLog>): List<Float
  * feeds a genuinely sparse window (e.g. a car with days it did not exist yet)
  * is not silently miscompiled into treating an absent day as zero.
  */
+// NO CURRENT RENDERER, deliberately kept (2026-08-16). Its `FleetUiState.milesSparkline` field was
+// computed every load and read by no composable after the mission-control rebuild dropped the second
+// DRIVES chart - that dead wiring is deleted. This pure builder stays because
+// [com.kevin.legion.ui.TodayGapResolvers]'s own doc cites it to explain an on-device bug (a tile
+// reading "0 MI" above a caption naming a drive from two weeks back, because this series carries a
+// real 0.0 for an undriven calendar day rather than a gap). Deleting it would orphan that lesson.
+// If DRIVES ever regains a second series, this is what feeds it - see quant-viz ticket 17.
 internal fun buildMilesSparkline(logsNewestFirst: List<DailyDriveLog>): List<Float?> =
     logsNewestFirst.asReversed().map { it.milesDriven.toFloat() }
 

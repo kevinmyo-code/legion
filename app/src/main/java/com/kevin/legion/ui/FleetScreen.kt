@@ -79,7 +79,6 @@ import com.kevin.legion.ui.fleet.buildDueRows
 import com.kevin.legion.ui.fleet.buildFleetSpendView
 import com.kevin.legion.ui.fleet.buildLastDriveSummary
 import com.kevin.legion.ui.fleet.buildLiveRows
-import com.kevin.legion.ui.fleet.buildMilesSparkline
 import com.kevin.legion.ui.fleet.buildMpgSparkline
 import com.kevin.legion.ui.fleet.capFaultRows
 import com.kevin.legion.ui.fleet.distinctFaultsByFirstSeen
@@ -277,8 +276,6 @@ data class FleetUiState(
     val driveSummary: DriveSummaryView = DriveSummaryView("NO DRIVES LOGGED", "nothing recorded yet", hasData = false),
     /** DRIVES panel: oldest-first MPG points for [DeckSparkline], from the same rows as [driveSummary] - see [buildMpgSparkline]. */
     val mpgSparkline: List<Float?> = emptyList(),
-    /** DRIVES panel (quant-viz ticket 12): oldest-first miles-driven points for the second [DeckSparkline], same rows as [mpgSparkline] - see [buildMilesSparkline]. */
-    val milesSparkline: List<Float?> = emptyList(),
     /** DRIVES drilldown: the raw recent logs, newest-first, for [DriveHistoryDrilldownScreen]. */
     val recentDriveLogs: List<DailyDriveLog> = emptyList(),
     /** RECAPS drilldown (quant-viz ticket 05): every [MonthlyRecap] on file, newest-first - same list [recapCount] is `.size` of, not a second query. */
@@ -501,7 +498,6 @@ fun FleetScreen(
             vinOnFile = vinOnFile,
             driveSummary = buildLastDriveSummary(recentLogs, now),
             mpgSparkline = buildMpgSparkline(recentLogs),
-            milesSparkline = buildMilesSparkline(recentLogs),
             recentDriveLogs = recentLogs,
             monthlyRecaps = monthlyRecaps,
             yearlyWrapped = yearlyWrapped,
@@ -822,8 +818,14 @@ private fun FleetListing(
                     modifier = Modifier.clickable(onClick = onOpenDrives),
                 ) {
                     // MPG only, not the panel's old second (miles) sparkline - a HALF tile has room
-                    // for one small chart, and MPG is the trend a driver actually watches; DRIVES'
-                    // own drilldown (unchanged by this ticket) still carries both series in full.
+                    // for one small chart, and MPG is the trend a driver actually watches.
+                    //
+                    // CORRECTED 2026-08-16: this comment used to claim "DRIVES' own drilldown still
+                    // carries both series in full". It does not and never did -
+                    // DriveHistoryDrilldownScreen has no chart at all. The miles series was computed
+                    // into FleetUiState and rendered nowhere for days, with this comment pointing
+                    // readers at a screen that would have reassured them it was fine. The builder
+                    // and the state field are deleted rather than left dead.
                     //
                     // Ticket 09 (`.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see MpgTrust's own
                     // doc): while suppressed, the sparkline never renders (checked FIRST, ahead of
