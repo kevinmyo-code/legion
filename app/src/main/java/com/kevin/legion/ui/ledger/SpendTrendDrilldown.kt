@@ -18,12 +18,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ledger.LedgerEntity
 import com.kevin.legion.ledger.MonthSpend
-import com.kevin.legion.ledger.formatCents
 import com.kevin.legion.ledger.formatMoney
 import com.kevin.legion.ui.common.DeckBar
 import com.kevin.legion.ui.common.DeckBarChart
+import com.kevin.legion.ui.common.DeckBarLabelRow
 import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.common.SectionHeader
+import com.kevin.legion.ui.common.deckWholeDollarLabel
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -79,7 +80,14 @@ fun SpendTrendDrilldown(
                     modifier = Modifier.padding(12.dp),
                 )
                 else -> {
-                    DeckBarChart(bars = monthlySpendBars(trend))
+                    val bars = monthlySpendBars(trend)
+                    DeckBarChart(bars = bars)
+                    // ticket (Kevin, 2026-08-16): "spend by month bar chart needs month labels...
+                    // as well" - the same [DeckBarLabelRow] the CRED category chart already draws,
+                    // not a second hand-rolled copy. A gap month's `null` slot still occupies its
+                    // own cell, so the label row stays aligned with the chart's own gap-marker
+                    // column above it.
+                    DeckBarLabelRow(bars)
                     LazyColumn(Modifier.fillMaxSize()) {
                         items(trend.sortedByDescending { it.month }, key = { it.month.toString() }) { spend ->
                             SpendTrendRow(spend, entity)
@@ -133,24 +141,27 @@ private fun SpendTrendRow(spend: MonthSpend, entity: LedgerEntity) {
  * function's own gap-vs-zero doc comment) draws as `null`, the kit's own gap slot. `internal`, not
  * `private`, so this is plain-JUnit-testable without Compose or Robolectric.
  *
- * [DeckBar.valueLabel] is set ONLY on the LATEST month in [trend] (ticket 04: no per-bar labels
- * otherwise) - the latest ELEMENT of [trend], not necessarily the latest calendar month in the
- * reconstructed span, since [trend] can legitimately end before "now" if the current month itself
- * has no coverage yet.
+ * **[DeckBar.valueLabel] is set on every PRESENT month** (Kevin, 2026-08-16: "spend by month bar
+ * chart needs... data labels on each bar as well" - the original ticket 04 call, latest-month-only,
+ * did not survive first contact with a driver actually reading the chart). An ABSENT month stays
+ * `null` end to end - the whole bar is a gap slot, not just its label, so there is nothing to label
+ * - the gap-vs-zero invariant this function exists to enforce would be undermined by printing a
+ * number over a slot the bar itself refuses to draw as data. [deckWholeDollarLabel], not
+ * [com.kevin.legion.ledger.formatCents] - see that function's own doc for why a bar-top label at a
+ * 12-column month chart needs a narrower precision than a list row.
  */
 internal fun monthlySpendBars(trend: List<MonthSpend>): List<DeckBar?> {
     if (trend.isEmpty()) return emptyList()
     val byMonth = trend.associateBy { it.month }
     val start = trend.first().month
     val end = trend.last().month
-    val latestMonth = trend.last().month
     val months = generateSequence(start) { it.plusMonths(1) }.takeWhile { !it.isAfter(end) }.toList()
     return months.map { month ->
         val spend = byMonth[month] ?: return@map null
         DeckBar(
             label = monthAbbrevLabel(month),
             value = spend.totalCents.toFloat(),
-            valueLabel = if (month == latestMonth) formatCents(spend.totalCents) else null,
+            valueLabel = deckWholeDollarLabel(spend.totalCents),
         )
     }
 }

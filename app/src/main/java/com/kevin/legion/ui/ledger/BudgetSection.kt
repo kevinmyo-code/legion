@@ -25,8 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.data.local.IngestMethod
@@ -40,14 +38,14 @@ import com.kevin.legion.ledger.LedgerEntity
 import com.kevin.legion.ledger.MonthSpend
 import com.kevin.legion.ledger.UncategorizedSpend
 import com.kevin.legion.ledger.displayDescription
-import com.kevin.legion.ledger.formatCents
 import com.kevin.legion.ledger.formatMoney
 import com.kevin.legion.ui.common.DeckBar
 import com.kevin.legion.ui.common.DeckBarChart
-import com.kevin.legion.ui.common.DeckMarkerType
+import com.kevin.legion.ui.common.DeckBarLabelRow
 import com.kevin.legion.ui.common.DeckMeter
 import com.kevin.legion.ui.common.DeckSparkline
 import com.kevin.legion.ui.common.Hairline
+import com.kevin.legion.ui.common.deckWholeDollarLabel
 import com.kevin.legion.util.documentDateCompact
 import com.kevin.legion.plan.TrustTier
 import com.kevin.legion.ui.theme.LegionTheme
@@ -378,9 +376,24 @@ internal fun spendTrendSparklinePoints(spendTrend: List<MonthSpend>): List<Float
  * [DeckBar.targetValue] carries the category's own budget when one is set (the kit's amber dashed
  * tick), so the hero reads as spend-against-target per category, not just relative sizes. `OTHER`
  * carries none: the folded lines' targets are a mix of set and unset, and summing them would draw a
- * tick that understates itself. [DeckBar.mark] flags a category holding
- * [com.kevin.legion.data.local.IngestMethod.UNRECONCILED] rows with the kit's own
- * [DeckMarkerType.PROVISIONAL] cross - shape, never colour alone.
+ * tick that understates itself.
+ *
+ * **Every bar carries [DeckBar.valueLabel]** (Kevin, 2026-08-16: "I need the data label... on top
+ * of all the bars just like groceries" - the pre-existing behaviour, largest-bar-only, was a
+ * leftover of the chart's first cut, not a deliberate design). [deckWholeDollarLabel], not
+ * [com.kevin.legion.ledger.formatCents] - see that function's own doc for why a bar-top label
+ * needs a different precision than a list row.
+ *
+ * **[DeckBar.mark] is always `null` here now** (same date, "I don't need the x's on the bars" -
+ * the [com.kevin.legion.ui.common.DeckMarkerType.PROVISIONAL] cross this used to draw on a
+ * category holding [com.kevin.legion.data.local.IngestMethod.UNRECONCILED] rows). This is safe to
+ * drop, and ONLY safe to drop, because [BudgetLineRow] already states the same fact in words
+ * directly beneath this chart for every affected category ("includes pending transactions not yet
+ * on a statement", [provisionalLabel]) - CLAUDE.md §4 rule 7 demands the disclosure live in words
+ * somewhere on the pane, never demands it be repeated as a glyph too, and a glyph with no
+ * accompanying words would have been the violation, not a glyph that duplicates words already
+ * present. [com.kevin.legion.ui.common.DeckMarkerType] itself is untouched - other panels still
+ * mark with it; only this chart's two construction sites stopped passing it.
  *
  * `internal`, not `private`, so a plain JUnit test can pin the sum invariant without Compose.
  */
@@ -388,32 +401,33 @@ internal fun categorySpendBars(budget: BudgetVsActual, maxBars: Int = 6): List<D
     val spent = budget.lines.filter { it.gap.actual > 0L }.sortedByDescending { it.gap.actual }
     if (spent.isEmpty()) return emptyList()
 
-    fun bar(line: BudgetLine, isLargest: Boolean) = DeckBar(
+    fun bar(line: BudgetLine) = DeckBar(
         label = line.category,
         value = line.gap.actual.toFloat(),
         targetValue = line.gap.target.takeIf { it > 0L }?.toFloat(),
-        valueLabel = if (isLargest) formatCents(line.gap.actual) else null,
-        mark = if (line.hasProvisionalRows) DeckMarkerType.PROVISIONAL else null,
+        valueLabel = deckWholeDollarLabel(line.gap.actual),
+        mark = null,
     )
 
-    if (spent.size <= maxBars) return spent.mapIndexed { i, line -> bar(line, isLargest = i == 0) }
+    if (spent.size <= maxBars) return spent.map { bar(it) }
 
     val named = spent.take(maxBars - 1)
     val folded = spent.drop(maxBars - 1)
-    return named.mapIndexed { i, line -> bar(line, isLargest = i == 0) } + DeckBar(
+    val foldedTotal = folded.sumOf { it.gap.actual }
+    return named.map { bar(it) } + DeckBar(
         label = "OTHER ${folded.size}",
-        value = folded.sumOf { it.gap.actual }.toFloat(),
-        valueLabel = null,
-        mark = if (folded.any { it.hasProvisionalRows }) DeckMarkerType.PROVISIONAL else null,
+        value = foldedTotal.toFloat(),
+        valueLabel = deckWholeDollarLabel(foldedTotal),
+        mark = null,
     )
 }
 
 /**
- * [categorySpendBars] drawn, plus the label row [DeckBarChart] itself does not draw (that component
- * renders [DeckBar.label] nowhere - only the selective [DeckBar.valueLabel] above a bar - so an
- * unlabelled category chart would be six anonymous columns). One equal-weight cell per bar, in the
- * SAME order, so a label sits under its own column; long category names ellipsise rather than
- * wrapping the row to two lines and pushing the columns out of alignment.
+ * [categorySpendBars] drawn, plus [DeckBarLabelRow] - extracted (2026-08-16) into the shared chart
+ * kit rather than hand-rolled here, since [SpendTrendDrilldown]'s month chart needed the identical
+ * label row and a second hand-rolled copy is exactly the drift this repo's conventions exist to
+ * avoid. See [DeckBarLabelRow]'s own doc for the equal-weight-cell/ellipsis/gap-slot-alignment
+ * contract this call inherits unchanged.
  *
  * Renders nothing at all when [bars] is empty - a month with no categorised spend has no chart to
  * draw, and the pane's own words say so instead.
@@ -421,25 +435,12 @@ internal fun categorySpendBars(budget: BudgetVsActual, maxBars: Int = 6): List<D
 @Composable
 internal fun CategorySpendChart(bars: List<DeckBar>, modifier: Modifier = Modifier) {
     if (bars.isEmpty()) return
-    val sem = LocalLegionSemantics.current
     Column(modifier.fillMaxWidth()) {
         // 140dp, not the kit's 180dp drilldown default: measured on device (360x806dp, 2026-08-15),
         // the taller chart pushed the category labels and the uncategorised sentence under the
         // mic bar, so the figure and what it is made of could not be read in one glance.
         DeckBarChart(bars = bars, height = 140.dp)
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-            for (bar in bars) {
-                Text(
-                    bar.label.uppercase(),
-                    style = LegionType.stamp,
-                    color = sem.faint,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
+        DeckBarLabelRow(bars)
     }
 }
 

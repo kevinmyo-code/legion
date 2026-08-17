@@ -346,3 +346,54 @@ fun computeBarScale(bars: List<DeckBar?>, paddingFraction: Float = 0.15f): Chart
  * whichever screen ticket ends up wiring a real BURN/FLOW panel to it.
  */
 fun centsLabel(cents: Long): String = formatCents(cents)
+
+/**
+ * A bar's own on-chart value label (Kevin, 2026-08-16: "I need the data label... on top of all
+ * the bars"), used by both [com.kevin.legion.ui.ledger.categorySpendBars] (the CRED spend-hero
+ * chart, up to 6 columns) and [com.kevin.legion.ui.ledger.monthlySpendBars] (the spend-by-month
+ * drilldown, up to 12). [centsLabel]'s `"1,842.12"` is the right precision for a list row read at
+ * leisure; it is the wrong precision for a label stamped ABOVE a ~28-30dp-wide bar column - twelve
+ * of those at 384dp phone width overlap their neighbours immediately (see the ticket's own build
+ * report for the arithmetic). This is the label built for that column width instead: whole
+ * dollars, no cents, and abbreviated once the number itself gets wide enough to threaten the
+ * column - Kevin reads the current single-bar label as "238", so whole dollars is what he is
+ * already reading, not a new register.
+ *
+ * **Three bands, all integer-only ([Long] the whole way through - CLAUDE.md §4 rule three's "money
+ * is Long cents, never Double" extends here even though the OUTPUT is a display string, not a
+ * stored figure, because the ROUNDING itself must be exact and reproducible, not float-drift-prone):**
+ * - **Under $1,000**: the plain whole-dollar figure, e.g. `238.06 -> "238"`. Three digits, no
+ *   thousands separator needed - a column this narrow has no room for one anyway.
+ * - **$1,000 up to $9,999.xx**: one decimal of thousands, e.g. `3_500.00 -> "3.5k"` - a bare `"4k"`
+ *   would round two adjacent categories (`$3,500` and `$4,400`) onto the same label, which is a
+ *   worse lie for a chart whose whole job is comparing bar heights than one extra character costs.
+ *   The trailing `.0` is dropped when rounding lands exactly on a multiple of $1,000 (`3_000.00 ->
+ *   "3k"`, not `"3.0k"`) - a decimal that carries no information is chart noise, not precision.
+ * - **$10,000 and up**: whole thousands only, e.g. `12_400.00 -> "12k"` - a fifth character
+ *   (`"12.4k"`) is exactly the width this function exists to refuse at a 12-column month chart;
+ *   personal ledger totals this large are also rare enough that the extra decimal buys little.
+ *
+ * **Rounding is round-half-up**, done as pure integer arithmetic (`(cents + 50) / 100` for the
+ * whole-dollar step, the same "add half a unit, then truncate" trick one level up for the
+ * thousands step) rather than [Math.round] on a [Double] - `23850L` (`$238.50`) must round to
+ * `239`, not silently do something else on a platform whose float rounding mode differs.
+ * `internal`, not `private`, so [DeckChartDataTest] can pin every band and both boundaries without
+ * Compose.
+ */
+internal fun deckWholeDollarLabel(cents: Long): String {
+    val sign = if (cents < 0) "-" else ""
+    val absCents = kotlin.math.abs(cents)
+    // Round to the nearest whole dollar first - every band below reads off this, never off cents.
+    val dollars = (absCents + 50L) / 100L
+    if (dollars < 1_000L) return "$sign$dollars"
+    if (dollars < 10_000L) {
+        // One decimal of thousands: e.g. dollars=3500 -> tenths=35 -> "3.5k".
+        val tenths = (dollars + 50L) / 100L
+        val whole = tenths / 10L
+        val frac = tenths % 10L
+        return if (frac == 0L) "$sign${whole}k" else "$sign$whole.${frac}k"
+    }
+    // Whole thousands only: e.g. dollars=12400 -> 12 -> "12k".
+    val wholeK = (dollars + 500L) / 1_000L
+    return "$sign${wholeK}k"
+}

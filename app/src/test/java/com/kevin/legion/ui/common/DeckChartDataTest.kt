@@ -237,6 +237,61 @@ class DeckChartDataTest {
         assertEquals("10,000.01", centsLabel(1_000_001L))
     }
 
+    // ---------------------------------------------------- deckWholeDollarLabel (bar-top labels)
+
+    @Test
+    fun `deckWholeDollarLabel rounds a sub-dollar remainder down to the whole dollar`() {
+        // 238.06 -> "238" - the brief's own worked example (238 is what Kevin already reads on
+        // the single-bar CRED label today, so this is the register the whole-dollar band matches).
+        assertEquals("238", deckWholeDollarLabel(23_806L))
+    }
+
+    @Test
+    fun `deckWholeDollarLabel on an exact whole dollar is unchanged by rounding`() {
+        assertEquals("1", deckWholeDollarLabel(100L))
+        assertEquals("238", deckWholeDollarLabel(23_800L))
+    }
+
+    @Test
+    fun `deckWholeDollarLabel rounds a half-dollar UP, not down or to even`() {
+        // 238.50 -> 239, not 238 - round-half-up, done as integer math (see the function's own
+        // doc for why this never touches Double).
+        assertEquals("239", deckWholeDollarLabel(23_850L))
+        assertEquals("1", deckWholeDollarLabel(50L)) // 0.50 -> 1
+    }
+
+    @Test
+    fun `deckWholeDollarLabel either side of the 1,000-dollar k-cutover`() {
+        assertEquals("999", deckWholeDollarLabel(99_900L)) // $999.00 - still plain digits
+        assertEquals("1k", deckWholeDollarLabel(100_000L)) // $1,000.00 - now abbreviated
+    }
+
+    @Test
+    fun `deckWholeDollarLabel carries one decimal of thousands below 10k, exactly the brief's own example`() {
+        // 3,500.00 -> "3.5k" - the brief's own worked example.
+        assertEquals("3.5k", deckWholeDollarLabel(350_000L))
+    }
+
+    @Test
+    fun `deckWholeDollarLabel drops a decimal that rounds to exactly a whole thousand`() {
+        // 3,000.00 -> "3k", never "3.0k" - a decimal that carries no information is chart noise.
+        assertEquals("3k", deckWholeDollarLabel(300_000L))
+    }
+
+    @Test
+    fun `deckWholeDollarLabel either side of the 10,000-dollar decimal cutover`() {
+        // Just below 10k: still one decimal of thousands (9,950 rounds to the 10.0k tenths cell).
+        assertEquals("10k", deckWholeDollarLabel(995_000L))
+        // At or above 10k: whole thousands only, no decimal - 12,400.00 -> "12k", the brief's own
+        // worked example.
+        assertEquals("12k", deckWholeDollarLabel(1_240_000L))
+    }
+
+    @Test
+    fun `deckWholeDollarLabel on a large value stays whole-thousands and rounds to the nearest one`() {
+        assertEquals("235k", deckWholeDollarLabel(23_456_789L)) // $234,567.89 -> 235k
+    }
+
     // --------------------------------------------------------------- degenerate cases
 
     @Test

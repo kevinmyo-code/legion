@@ -12,7 +12,6 @@ import com.kevin.legion.ledger.MonthSpend
 import com.kevin.legion.ledger.UncategorizedSpend
 import com.kevin.legion.plan.PlanGap
 import com.kevin.legion.plan.TrustTier
-import com.kevin.legion.ui.common.DeckMarkerType
 import java.time.YearMonth
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
@@ -128,12 +127,14 @@ class BudgetSectionTest {
     }
 
     @Test
-    fun `bars are biggest first and only the biggest carries a value label`() {
+    fun `bars are biggest first and EVERY bar carries a value label`() {
+        // 2026-08-16: "I need the data label... on top of all the bars" - the old
+        // largest-bar-only behaviour is gone; both bars below must carry one now.
         val bars = categorySpendBars(budget(listOf(line("Dining Out", 10_00L), line("Groceries", 90_00L))))
 
         assertEquals(listOf("Groceries", "Dining Out"), bars.map { it.label })
-        assertEquals("90.00", bars[0].valueLabel)
-        assertNull(bars[1].valueLabel)
+        assertEquals("90", bars[0].valueLabel)
+        assertEquals("10", bars[1].valueLabel)
     }
 
     @Test
@@ -157,10 +158,14 @@ class BudgetSectionTest {
     }
 
     @Test
-    fun `a category holding unreconciled rows is marked by SHAPE, and a target draws its own tick`() {
+    fun `a category holding unreconciled rows carries no mark - the words below the chart carry rule 7, not a glyph - and a target still draws its own tick`() {
+        // 2026-08-16: "I don't need the x's on the bars" - the PROVISIONAL cross this chart used
+        // to draw is gone; BudgetLineRow's "includes pending transactions not yet on a statement"
+        // is the CLAUDE.md §4 rule 7 disclosure now, and it was always the disclosure - the cross
+        // was redundant reinforcement, never the only place the fact was said.
         val bars = categorySpendBars(budget(listOf(line("Groceries", 41_200L, targetCents = 60_000L, provisional = true))))
 
-        assertEquals(DeckMarkerType.PROVISIONAL, bars.single().mark)
+        assertNull(bars.single().mark)
         assertEquals(60_000f, bars.single().targetValue)
     }
 

@@ -55,7 +55,9 @@ class SpendTrendDrilldownTest {
     }
 
     @Test
-    fun `only the LATEST element of trend gets a value label, even when it ends before a later gap month would`() {
+    fun `every PRESENT month gets a value label, not just the latest`() {
+        // 2026-08-16: "spend by month bar chart needs... data labels on each bar as well" - the
+        // old latest-month-only behaviour is gone.
         val trend = listOf(
             MonthSpend(YearMonth.of(2026, 5), totalCents = 100_00L, isComplete = true, hasProvisionalRows = false),
             MonthSpend(YearMonth.of(2026, 6), totalCents = 200_00L, isComplete = true, hasProvisionalRows = false),
@@ -63,8 +65,21 @@ class SpendTrendDrilldownTest {
 
         val bars = monthlySpendBars(trend)
 
-        assertNull(bars[0]!!.valueLabel)
-        assertEquals("200.00", bars[1]!!.valueLabel)
+        assertEquals("100", bars[0]!!.valueLabel)
+        assertEquals("200", bars[1]!!.valueLabel)
+    }
+
+    @Test
+    fun `an absent gap month stays a fully null slot - no valueLabel to gap-fill`() {
+        val trend = listOf(
+            MonthSpend(YearMonth.of(2026, 5), totalCents = 412_00L, isComplete = true, hasProvisionalRows = false),
+            // June deliberately absent.
+            MonthSpend(YearMonth.of(2026, 7), totalCents = 388_50L, isComplete = true, hasProvisionalRows = false),
+        )
+
+        val bars = monthlySpendBars(trend)
+
+        assertNull(bars[1]) // the whole slot is null, not just its label
     }
 
     @Test
@@ -80,6 +95,6 @@ class SpendTrendDrilldownTest {
 
         assertEquals(1, bars.size)
         assertEquals(50_00f, bars.single()!!.value)
-        assertEquals("50.00", bars.single()!!.valueLabel)
+        assertEquals("50", bars.single()!!.valueLabel)
     }
 }

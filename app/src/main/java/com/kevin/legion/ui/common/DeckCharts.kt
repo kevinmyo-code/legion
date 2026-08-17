@@ -40,6 +40,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -607,6 +608,43 @@ fun DeckBarChart(bars: List<DeckBar?>, modifier: Modifier = Modifier, height: Dp
                 val markY = (size.height - height - markRadius - 3.dp.toPx()).coerceAtLeast(markRadius)
                 drawDeckMarker(bar.mark, Offset(x + barWidth / 2f, markY), markerColor, markRadius)
             }
+        }
+    }
+}
+
+/**
+ * The label row [DeckBarChart] itself does not draw - that Canvas renders [DeckBar.label] nowhere,
+ * only the selective [DeckBar.valueLabel] above a bar, so an unlabelled bar chart is anonymous
+ * columns (mission-control CRED-chart-labels ticket, Kevin 2026-08-16: "spend by month bar chart
+ * needs month labels"). Extracted here so [com.kevin.legion.ui.ledger.CategorySpendChart] (which
+ * had been hand-rolling exactly this Row since the SPEND-hero ticket) and
+ * [com.kevin.legion.ui.ledger.SpendTrendDrilldown]'s new month-label row share ONE definition
+ * rather than drifting into two - the same "one reusable primitive, not a second hand-rolled copy"
+ * posture every other Deck* composable in this file already holds itself to.
+ *
+ * One equal-weight cell per [bars] entry, in the SAME order, so a label sits under its own column;
+ * long labels ellipsise on one line rather than wrapping and pushing the columns out of alignment.
+ * **A `null` entry renders an empty cell that still occupies its weighted slot** - the exact
+ * behaviour [DeckBarChart] itself gives an absent slot (a held place, not a collapsed one), so a
+ * gap month's label cell stays aligned with its own (gap-marker) column rather than shifting every
+ * label after it one slot to the left. Renders nothing at all when [bars] is empty, matching
+ * [DeckBarChart]'s own "nothing to draw" posture for that case.
+ */
+@Composable
+fun DeckBarLabelRow(bars: List<DeckBar?>, modifier: Modifier = Modifier) {
+    if (bars.isEmpty()) return
+    val sem = LocalLegionSemantics.current
+    Row(modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        for (bar in bars) {
+            Text(
+                bar?.label?.uppercase().orEmpty(),
+                style = LegionType.stamp,
+                color = sem.faint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
