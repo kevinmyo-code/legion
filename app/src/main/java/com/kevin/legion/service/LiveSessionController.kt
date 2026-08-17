@@ -618,9 +618,13 @@ class LiveSessionController(context: Context) {
 
         // The investigating specialists (SubAgent.investigate: <=4 model POSTs on a
         // 30s budget, plus a one-shot fallback). Give them room without letting a
-        // truly hung call wedge the turn forever.
+        // truly hung call wedge the turn forever. The five ask_* dispatchers
+        // (2026-08-17, LiveToolbox.DISPATCHED's doc comment) run the SAME investigate
+        // loop shape - they need the same longer leash, not the snappy tool timeout.
         private const val SUB_AGENT_TOOL_TIMEOUT_MS = 45_000L
-        private val SUB_AGENT_TOOLS =
-            setOf("diagnose_codes", "triage_symptom", "ask_maintenance", "check_cold_start")
+        private val SUB_AGENT_TOOLS = setOf(
+            "diagnose_codes", "triage_symptom", "ask_maintenance", "check_cold_start",
+            "ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_mail",
+        )
     }
 }

@@ -4,8 +4,11 @@ import android.content.Context
 import android.content.Intent
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.ai.AgentResult
+import com.kevin.legion.ai.AgentTool
 import com.kevin.legion.ai.AriaBrain
+import com.kevin.legion.ai.AssistantIdentity
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.ai.SubAgent
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.advisor.AdvisorAspect
@@ -110,8 +113,13 @@ object LiveToolbox {
     private val VEHICLE_PARAM: JSONObject
         get() = schema("string", "Which car, by name or model. Omit for the car currently being driven.")
 
-    /** Function declarations to advertise in the Live setup message. */
-    fun declarations(): JSONArray {
+    /**
+     * The full, un-filtered declaration set - every tool this file knows how to build, dispatched
+     * ones included. [declarations] (the one actually sent to the Live setup message) filters this
+     * down; [agentToolsFor] slices it back out per domain for a dispatcher's own sub-agent. Kept
+     * `private` - nothing outside this file should ever advertise the unfiltered set to a model.
+     */
+    private fun allDeclarations(): JSONArray {
         val fns = JSONArray()
 
         // Category A - live-hardware tools (fleet-wide voice, ticket 01 §0). The
@@ -986,45 +994,46 @@ object LiveToolbox {
         // place-trigger verb for the new model, so none is added here.
         fns.put(fn(
             name = "manage_item",
-            description = "Add, tick off, untick, remove, schedule (time and/or repeat), or skip one " +
-                "occurrence of ONE item. There is exactly ONE list - car to-dos, errands, " +
-                "reminders and notes all go on it - so never ask which list, and never " +
-                "mention lists in the plural. A dated appointment (see 'kind') instead goes onto the " +
-                "driver's Google Calendar, not this list. " +
-                "WHEN THE DRIVER GIVES A DATE OR TIME, PASS IT ON THIS SAME 'add' CALL via date/time. " +
-                "Do NOT add the item first and schedule it in a second call: that is how an " +
-                "appointment ends up stored with no date at all. Use 'schedule' only to change the " +
-                "date of an item that already exists, or to set up a repeat. " +
-                "For tick/untick/remove/schedule/skip, 'item' is the existing item's text to match, " +
-                "fuzzily - never a position like 'the third one'. A recurring item can never be " +
-                "ticked (edit its repeat instead).",
+            // Trimmed 2026-08-17 (~1,004-token declaration was the single largest of the 79):
+            // condensed the top-level description and cut the repeated "Only for 'schedule' with"
+            // prefix off every repeat_* param (the field names and this description already carry
+            // that context) without dropping any distinct rule, enum value, or capability - notes/
+            // lists/calendar stays genuinely multi-shaped, this only removes restated words.
+            description = "Add, tick, untick, remove, schedule (time and/or repeat), or skip one " +
+                "occurrence of ONE item - the app's only list: car to-dos, errands, reminders, and " +
+                "notes all live on it, so never ask which list or mention lists in the plural. A " +
+                "dated appointment (see 'kind') goes to Google Calendar instead of this list. Pass " +
+                "any date/time the driver gives on the SAME 'add' call via date/time - never add " +
+                "first and schedule in a second call, which stores an appointment with no date at " +
+                "all. Use 'schedule' only to change an existing item's date or set up a repeat. " +
+                "For every action but 'add', 'item' fuzzily matches the existing item's text, " +
+                "never a position like 'the third one'. A recurring item can't be ticked - edit " +
+                "its repeat instead.",
             params = obj(
                 "action" to schema("string", "What to do.",
                     enum = listOf("add", "tick", "untick", "remove", "schedule", "skip")),
                 "item" to schema("string", "For 'add', the new item's text. For every other action, which existing item to match, in the driver's words."),
-                "date" to schema("string", "Calendar date, yyyy-MM-dd. For 'add' and 'schedule': when the item is due - ALWAYS pass this on the 'add' call if the driver said when. For 'skip': which occurrence to skip."),
-                "time" to schema("string", "24-hour clock time, HH:mm. For 'add' and 'schedule', only if the driver gave a specific time - omit for an all-day item. Requires 'date'."),
-                "kind" to schema("string", "Only for 'add', when a date is given. Whether this is a " +
-                    "real calendar appointment - it goes on the driver's Google Calendar, e.g. " +
-                    "'dentist Tuesday at 3', 'lunch with Sam Friday' - or a personal reminder that " +
-                    "stays local and private, e.g. 'remind me to change the oil Tuesday', 'don't " +
-                    "forget to call mom'. If genuinely unclear which one the driver means, omit this " +
-                    "entirely - it then defaults to reminder.",
+                "date" to schema("string", "Calendar date, yyyy-MM-dd. For 'add'/'schedule': the item's due date - always pass it on 'add' if the driver said one. For 'skip': which occurrence to skip."),
+                "time" to schema("string", "24-hour HH:mm. For 'add'/'schedule' only if a specific time was given - omit for an all-day item. Requires 'date'."),
+                "kind" to schema("string", "Only for 'add' with a date. 'appointment' goes to Google " +
+                    "Calendar (e.g. 'dentist Tuesday at 3', 'lunch with Sam Friday'); 'reminder' " +
+                    "stays local and private (e.g. 'remind me to change the oil', 'don't forget to " +
+                    "call mom'). Omit if genuinely unclear - defaults to reminder.",
                     enum = listOf("appointment", "reminder")),
-                "repeat_kind" to schema("string", "Only for 'schedule'. Omit entirely to leave any existing repeat untouched; pass 'none' to clear one.",
+                "repeat_kind" to schema("string", "Only for 'schedule'. Omit to leave any existing repeat untouched; 'none' clears one.",
                     enum = listOf("none", "daily", "weekly", "monthly_on_date", "yearly")),
-                "repeat_every" to schema("integer", "Only for 'schedule' with repeat_kind daily/weekly/monthly_on_date: every N days/weeks/months. Defaults to 1."),
-                "repeat_days" to schema("string", "Only for 'schedule' with repeat_kind weekly: comma-separated days, e.g. 'MON,WED,FRI'."),
-                "repeat_month" to schema("integer", "Only for 'schedule' with repeat_kind yearly: month, 1-12."),
-                "repeat_day" to schema("integer", "Only for 'schedule' with repeat_kind monthly_on_date or yearly: day of month, 1-31. A day past the month's end lands on that month's last day."),
-                "repeat_end_kind" to schema("string", "Only for 'schedule' with a repeat_kind set. Defaults to 'never'.",
+                "repeat_every" to schema("integer", "Every N days/weeks/months for repeat_kind daily/weekly/monthly_on_date. Defaults to 1."),
+                "repeat_days" to schema("string", "Comma-separated days for repeat_kind weekly, e.g. 'MON,WED,FRI'."),
+                "repeat_month" to schema("integer", "Month, 1-12, for repeat_kind yearly."),
+                "repeat_day" to schema("integer", "Day of month, 1-31, for repeat_kind monthly_on_date or yearly. Past the month's end lands on its last day."),
+                "repeat_end_kind" to schema("string", "Only with a repeat_kind set. Defaults to 'never'.",
                     enum = listOf("never", "on_date", "after_count")),
-                "repeat_end_date" to schema("string", "Only for repeat_end_kind on_date: yyyy-MM-dd, the last date the series can occur on."),
-                "repeat_end_count" to schema("integer", "Only for repeat_end_kind after_count: how many occurrences the series has, total."),
-                "exact" to schema("boolean", "Only for 'schedule', and only when the driver specifically asks for a precise, " +
-                    "punctual alarm (e.g. 'wake me up at exactly 6am, don't be late'). Omit for the default, which already " +
-                    "fires within about an hour of the time and needs no extra permission. If exact permission isn't " +
-                    "available, this silently falls back to the default and the reply must say so."),
+                "repeat_end_date" to schema("string", "For repeat_end_kind on_date: yyyy-MM-dd, the series' last possible date."),
+                "repeat_end_count" to schema("integer", "For repeat_end_kind after_count: total occurrences."),
+                "exact" to schema("boolean", "Only for 'schedule', only when the driver wants a precise, punctual " +
+                    "alarm (e.g. 'wake me up at exactly 6am, don't be late'). Omit for the default, which fires " +
+                    "within about an hour and needs no extra permission. Falls back silently to the default if " +
+                    "exact permission isn't available - the reply must say so."),
             ),
             required = listOf("action"),
         ))
@@ -1389,6 +1398,194 @@ object LiveToolbox {
     }
 
     /**
+     * Every dispatched tool name, grouped under the short domain key its dispatcher (`ask_fleet`/
+     * `ask_body`/`ask_goals`/`ask_pantry`/`ask_mail`) hands to [agentToolsFor]. Single source of
+     * truth for BOTH [declarations] (which must hide every name here from the live session) and
+     * [agentToolsFor] (which hands each domain's own names to its sub-agent), so the two can never
+     * disagree about who owns a tool.
+     *
+     * A misspelt entry here FAILS OPEN, not closed: the filter in [declarations] matches nothing,
+     * so the real tool stays live-declared and simply never migrates behind its dispatcher, and
+     * the sub-agent is handed a name [dispatch] does not know. The cost is a silently unshrunk
+     * token block, not a lost capability - which is exactly why `every DISPATCHED name resolves to
+     * a real declaration` is asserted in `LiveToolboxDeclarationSetTest` rather than left to
+     * review.
+     *
+     * Gemini Live's `setup` message re-bills its whole tool-declaration block on every turn - there
+     * is no mid-session tool update, no `toolConfig` on Live, and no context caching for Live
+     * models - and Google's own guidance caps the active set at 10-20 tools. This moved five whole
+     * domains (~25 tools) behind dispatchers that route to a Flash REST sub-agent instead, the same
+     * shape [diagnoseCodes]/[triageSymptom]/[askMaintenance]/[checkColdStart] already used before
+     * this ticket generalised it.
+     *
+     * Everything NOT listed here stays a live declaration on purpose, each for its own reason:
+     * `clear_codes` (confirm/REFUSED protocol, unverified on a real car), `manage_vehicle`/
+     * `register_vehicle`/`set_odometer`/`set_maintenance_interval` (identity/config the maintenance
+     * math reads back), `activate_garage` (acts on the physical world), `set_goal`/`close_goal`/
+     * `accept_proposal` (lifecycle plus an explicit-consent protocol), `set_meal_target`/
+     * `set_sleep_target` (config the meters read), `import_receipt`/`import_statement`/
+     * `show_saved_places` (UI-scoped - [dispatch] returns null for these, and a sub-agent has no
+     * screen to hand them to, so dispatching one from inside an investigate loop would be a silent
+     * no-op), and every money/notes/media/place/core tool.
+     */
+    private val DISPATCHED: Map<String, List<String>> = mapOf(
+        "fleet" to listOf(
+            "read_vehicle_sensor", "get_vehicle_data", "get_codes", "diagnose_codes",
+            "get_code_history", "check_readiness", "check_cold_start", "get_mpg", "get_specs",
+            "lookup_vin", "check_recalls", "list_vehicles", "get_next_service", "ask_maintenance",
+            "triage_symptom", "list_build_history", "get_trend", "log_service", "log_past_service",
+            "log_build_entry",
+        ),
+        "body" to listOf(
+            "list_recent_meals", "get_meal_gap", "list_recent_sleep", "get_sleep_gap",
+            "list_recent_workouts", "get_workout_gap", "get_health", "log_meal", "log_sleep",
+            "log_bodyweight", "log_workout_set", "create_workout_plan",
+        ),
+        "goals" to listOf("list_goals", "ask_advisor"),
+        "pantry" to listOf("list_recent_groceries", "get_grocery_spend", "manage_grocery"),
+        "mail" to listOf("search_mail", "read_mail"),
+    )
+
+    /**
+     * The single required parameter every dispatcher tool below takes: a plain-English question
+     * routed to that domain's own sub-agent, which then pulls whichever of the domain's real tools
+     * its reasoning needs via [agentToolsFor].
+     */
+    private val DISPATCHER_QUESTION_PARAM: JSONObject
+        get() = obj("question" to schema("string", "The driver's question, in their own words."))
+
+    /**
+     * Function declarations to advertise in the Live setup message: [allDeclarations] minus every
+     * name [DISPATCHED] claims, plus the five dispatcher tools that stand in for them. This is the
+     * ~13,300-token, 79-tool block the setup message used to carry in full on every turn - Live
+     * re-bills the whole thing every turn, so trimming it is the entire point of this split (see
+     * [DISPATCHED]'s doc comment for why).
+     */
+    fun declarations(): JSONArray {
+        val dispatchedNames = DISPATCHED.values.flatten().toSet()
+        val all = allDeclarations()
+        val fns = JSONArray()
+        for (i in 0 until all.length()) {
+            val decl = all.getJSONObject(i)
+            if (decl.getString("name") !in dispatchedNames) fns.put(decl)
+        }
+
+        fns.put(fn(
+            name = "ask_fleet",
+            description = "Anything about the cars: live sensor readings, trouble codes, mileage, " +
+                "specs, recalls, service history, maintenance schedules, or the build log. Ask a " +
+                "plain-English question; the answer comes back as text to speak.",
+            params = DISPATCHER_QUESTION_PARAM,
+            required = listOf("question"),
+        ))
+        fns.put(fn(
+            name = "ask_body",
+            description = "Anything about meals, sleep, workouts, or bodyweight: recent logs, how " +
+                "today or this week compares to target, logging a new meal, night of sleep, " +
+                "workout set, or weigh-in, or building a workout plan. Ask a plain-English " +
+                "question; the answer comes back as text to speak.",
+            params = DISPATCHER_QUESTION_PARAM,
+            required = listOf("question"),
+        ))
+        fns.put(fn(
+            name = "ask_goals",
+            description = "Anything about the driver's long-term goals or domain-advisor coaching " +
+                "across fitness, planning, the car, or money: listing current goals, or asking an " +
+                "advisor for grounded advice. Ask a plain-English question; the answer comes back " +
+                "as text to speak.",
+            params = DISPATCHER_QUESTION_PARAM,
+            required = listOf("question"),
+        ))
+        fns.put(fn(
+            name = "ask_pantry",
+            description = "Anything about groceries: recently logged items and their estimated " +
+                "macros, total grocery spend by currency, or the current shopping trip list. Ask a " +
+                "plain-English question; the answer comes back as text to speak.",
+            params = DISPATCHER_QUESTION_PARAM,
+            required = listOf("question"),
+        ))
+        fns.put(fn(
+            name = "ask_mail",
+            description = "Anything about Kevin's Gmail: searching for messages or reading one in " +
+                "full. Read-only. Ask a plain-English question; the answer comes back as text to " +
+                "speak.",
+            params = DISPATCHER_QUESTION_PARAM,
+            required = listOf("question"),
+        ))
+
+        return fns
+    }
+
+    /**
+     * Builds the [AgentTool] list a dispatcher's own [SubAgent.investigate] loop gets for
+     * [domain] - the real declarations [DISPATCHED] hides from the live session, handed to a
+     * sub-agent instead so it can pull exactly the ones its reasoning needs. Name/description/
+     * params/required come straight off the same [allDeclarations] JSON the live model used to
+     * see before this ticket, so the sub-agent reasons from the SAME descriptions, not a
+     * re-authored summary that could drift from what [dispatch] actually does. Each tool's
+     * [AgentTool.run] just replays the call through [dispatch] - the same function the live
+     * session itself called directly before this ticket, so a dispatched tool's behavior is
+     * unchanged, only who calls it and how the result gets back to the driver.
+     */
+    fun agentToolsFor(domain: String, context: Context): List<AgentTool> {
+        val names = DISPATCHED[domain] ?: return emptyList()
+        val byName = allDeclarations().let { all ->
+            (0 until all.length()).map { all.getJSONObject(it) }.associateBy { it.getString("name") }
+        }
+        return names.mapNotNull { name ->
+            val decl = byName[name] ?: return@mapNotNull null
+            val params = decl.getJSONObject("parameters")
+            val properties = params.optJSONObject("properties") ?: JSONObject()
+            val requiredArr = params.optJSONArray("required") ?: JSONArray()
+            val required = (0 until requiredArr.length()).map { requiredArr.getString(it) }
+            AgentTool(
+                name = name,
+                description = decl.getString("description"),
+                params = properties,
+                required = required,
+                timeoutMs = 8_000,
+                run = { args -> dispatch(context, name, args)?.toString() ?: "{}" },
+            )
+        }
+    }
+
+    // --- Dispatcher grounding clauses -------------------------------------
+    //
+    // Same shape as DiagnosticAgent/SymptomAgent/MaintenanceAgent's own `system(context)`
+    // functions: AssistantIdentity's compressed sub-agent clause, plus what this particular
+    // investigate loop is for and how to use the tools it's handed. Kept short - this text is
+    // billed on every dispatcher call, not just once like the live setup block.
+
+    private fun fleetDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
+        " You are reasoning about the driver's cars using the tools you're given: live sensor " +
+        "readings, trouble codes, mileage, specs, recalls, service history, and maintenance " +
+        "scheduling and logging. Pull only what would change your answer, then answer in plain " +
+        "spoken text, no markdown."
+
+    private fun bodyDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
+        " You are reasoning about the driver's meals, sleep, workouts, and bodyweight using the " +
+        "tools you're given. Calorie and macro figures are LLM estimates, never measured - always " +
+        "phrase them as estimates, never as fact. Pull only what would change your answer, then " +
+        "answer in plain spoken text, no markdown."
+
+    private fun goalsDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
+        " You are reasoning about the driver's long-term goals and, when asked, handing off to a " +
+        "domain advisor for grounded coaching or planning advice using the tools you're given. " +
+        "Pull only what would change your answer, then answer in plain spoken text, no markdown."
+
+    private fun pantryDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
+        " You are reasoning about the driver's groceries using the tools you're given: recently " +
+        "logged items and their estimated macros, total spend by currency, and the current " +
+        "shopping trip list. Macro/calorie figures are estimates, never measured - phrase them " +
+        "that way. Pull only what would change your answer, then answer in plain spoken text, no " +
+        "markdown."
+
+    private fun mailDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
+        " You are searching and reading the driver's Gmail using the tools you're given. " +
+        "Read-only - you cannot send, reply to, or delete mail. Pull only what would change your " +
+        "answer, then answer in plain spoken text, no markdown."
+
+    /**
      * Runs a tool call. Returns a JSON response to hand back to Gemini, or null
      * if the tool is UI-scoped (`show_saved_places`) and must be handled by the
      * caller that owns the screen.
@@ -1435,6 +1632,57 @@ object LiveToolbox {
                     .put("history", history)
             }
             "triage_symptom" -> triageSymptom(context, args)
+            // The five dispatchers (see DISPATCHED's doc comment): each hands a bounded
+            // investigate loop only the real tools its own domain needs (agentToolsFor), so a
+            // dispatched tool's underlying behavior - including the CATEGORY_A_TOOLS guard above,
+            // which still runs because these AgentTools call back into this same dispatch() - is
+            // completely unchanged from before this ticket. Only who calls it, and how the result
+            // gets back to the driver, changed.
+            "ask_fleet" -> agentResult("I couldn't reach the fleet specialist just now - try again in a sec.") {
+                SubAgent(systemInstruction = fleetDispatchGrounding(context)).investigate(
+                    context = "",
+                    question = args.optString("question"),
+                    tools = agentToolsFor("fleet", context),
+                    maxModelCalls = 4,
+                    budgetMs = 30_000,
+                )
+            }
+            "ask_body" -> agentResult("I couldn't reach the health specialist just now - try again in a sec.") {
+                SubAgent(systemInstruction = bodyDispatchGrounding(context)).investigate(
+                    context = "",
+                    question = args.optString("question"),
+                    tools = agentToolsFor("body", context),
+                    maxModelCalls = 4,
+                    budgetMs = 30_000,
+                )
+            }
+            "ask_goals" -> agentResult("I couldn't reach the goals specialist just now - try again in a sec.") {
+                SubAgent(systemInstruction = goalsDispatchGrounding(context)).investigate(
+                    context = "",
+                    question = args.optString("question"),
+                    tools = agentToolsFor("goals", context),
+                    maxModelCalls = 4,
+                    budgetMs = 30_000,
+                )
+            }
+            "ask_pantry" -> agentResult("I couldn't reach the grocery specialist just now - try again in a sec.") {
+                SubAgent(systemInstruction = pantryDispatchGrounding(context)).investigate(
+                    context = "",
+                    question = args.optString("question"),
+                    tools = agentToolsFor("pantry", context),
+                    maxModelCalls = 4,
+                    budgetMs = 30_000,
+                )
+            }
+            "ask_mail" -> agentResult("I couldn't reach your mail just now - try again in a sec.") {
+                SubAgent(systemInstruction = mailDispatchGrounding(context)).investigate(
+                    context = "",
+                    question = args.optString("question"),
+                    tools = agentToolsFor("mail", context),
+                    maxModelCalls = 4,
+                    budgetMs = 30_000,
+                )
+            }
             "get_health" -> getHealth()
             "get_trend" -> withResolvedVehicle(context, args) { getTrend(context, args, it.obdMac) }
             "get_mpg" -> withResolvedVehicle(context, args) { getMpg(context, it) }
@@ -1595,7 +1843,15 @@ object LiveToolbox {
      * the driver's or Alfred's spoken text for the turn, not just a side value. Single source of
      * truth so a third mail-shaped tool later doesn't need a second place taught about it.
      */
-    val EPISODIC_EXCLUDED_TOOLS = setOf("search_mail", "read_mail")
+    // "ask_mail" (2026-08-17, dispatcher split): the live session only ever sees "ask_mail" off
+    // the socket now - "search_mail"/"read_mail" moved behind it (DISPATCHED's doc comment) and
+    // are no longer declared to the live model at all. GeminiLiveSession.isEpisodicExcludedTool
+    // matches the functionCall NAME as it arrives off the socket, before dispatch runs, so without
+    // "ask_mail" here the read-through exclusion this set exists for would silently stop firing -
+    // the two original names stay too, since dispatch still runs them internally inside ask_mail's
+    // own investigate loop (agentToolsFor("mail", ...)), and a future direct caller of either
+    // should still be caught.
+    val EPISODIC_EXCLUDED_TOOLS = setOf("search_mail", "read_mail", "ask_mail")
 
     /**
      * Ticket 21 (google-account-integration, "close the remember leak"): the gate `remember`'s

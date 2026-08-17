@@ -32,6 +32,16 @@ class GeminiLiveSessionEpisodicExclusionTest {
         assertTrue(GeminiLiveSession.isEpisodicExcludedTool("read_mail"))
     }
 
+    /**
+     * 2026-08-17 (dispatcher split): the live session only ever sees "ask_mail" off the socket now
+     * - search_mail/read_mail moved behind it and are no longer declared to the live model, so
+     * without this the read-through exclusion would silently stop firing on every real mail turn.
+     */
+    @Test
+    fun `ask_mail is excluded from episodic persistence`() {
+        assertTrue(GeminiLiveSession.isEpisodicExcludedTool("ask_mail"))
+    }
+
     @Test
     fun `an ordinary tool is NOT excluded - the flag must not swallow unrelated turns`() {
         assertFalse(GeminiLiveSession.isEpisodicExcludedTool("get_vehicle_data"))
@@ -46,7 +56,10 @@ class GeminiLiveSessionEpisodicExclusionTest {
     }
 
     @Test
-    fun `the excluded set is exactly the two mail tools - guards against silent drift`() {
-        assertEquals(setOf("search_mail", "read_mail"), LiveToolbox.EPISODIC_EXCLUDED_TOOLS)
+    fun `the excluded set is exactly the three mail-shaped tool names - guards against silent drift`() {
+        // Three, not two, since 2026-08-17: the original two names stay (dispatch still runs them
+        // internally inside ask_mail's own investigate loop, and a future direct caller of either
+        // should still be caught), and "ask_mail" joined them - see the doc comment above.
+        assertEquals(setOf("search_mail", "read_mail", "ask_mail"), LiveToolbox.EPISODIC_EXCLUDED_TOOLS)
     }
 }
