@@ -1,6 +1,6 @@
 # 09 - SET TARGET affordance in the category drilldown
 
-Status: OPEN. Follow-on: Kevin asked (2026-08-13) "set a budget target so i can see the meters".
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 The legion-shape ticket 06 decision D9 said targets are "set by voice AND screen"; only the voice
 half (`set_budget` in LiveToolbox) was ever built. This is the missing screen half, minimal.
 
@@ -35,3 +35,12 @@ half (`set_budget` in LiveToolbox) was ever built. This is the missing screen ha
 - [ ] `compileDebugKotlin -Pnokey` + `testDebugUnitTest` green.
 - [ ] Uncategorised bucket shows no affordance.
 - [ ] On-device: set a real target through the new UI; meter renders in BudgetSection.
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.

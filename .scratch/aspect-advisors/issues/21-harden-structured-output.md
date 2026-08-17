@@ -31,3 +31,21 @@ The Gemini REST API supports `responseSchema` inside `generationConfig`. The wor
 agent AND the pantry vision path (`imageBytes`), so a change to its request body needs its own
 blast radius and its own regression run. It is also not blocking - the advisors work without it,
 just less reliably.
+
+## Verification 2026-08-16 - NOT BUILT, premise still true today
+
+Swept against the tree. **None of the four items has landed.** All `traced`.
+
+- **Item 1, `generationConfig` on `SubAgent`: absent.** Grep for
+  `generationConfig|responseSchema|responseMimeType` in `ai/SubAgent.kt` returns **zero hits**.
+  `askTyped` (`:138-165`) and the shared `buildAskBody` (`:101-124`) send only `systemInstruction`,
+  `contents`, and conditionally `tools.google_search`.
+- **Item 2, pass AdvisorAnswer's schema from the harness: absent.** `advisor/AdvisorAnswer.kt:49-70`
+  still documents the gap in its own KDoc and ships `RESPONSE_SCHEMA` as **prompt text enforced by
+  instruction**. `AdvisorAgent.kt:92` calls plain `askTyped`.
+- **Item 3 was already true before this ticket** - `AdvisorAnswer.parse` (`:72-74`) and the
+  `ParseFailed` branch (`LiveToolbox.kt:2803`) both predate it.
+- **Item 4, token-cost measurement: no evidence anywhere in the tree.**
+
+**The blast radius is exactly what the ticket feared:** `askTyped` has four production callers -
+`AdvisorAgent.kt:92`, `MemoryConsolidator.kt:93`, `ReflectionEngine.kt:84`, `AmbientListener.kt:233`.

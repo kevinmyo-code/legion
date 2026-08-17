@@ -1,6 +1,6 @@
 # 13 - Notes tab agenda density strip
 
-Status: OPEN. Kevin's glanceable ruling: every tab face carries inline viz. Notes' only real
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 series is schedule density.
 
 ## Spec (`ui/NotesScreen.kt`, resolver in `ui/notes/`)
@@ -27,3 +27,22 @@ series is schedule density.
 - [ ] `compileDebugKotlin -Pnokey` + `testDebugUnitTest` green.
 - [ ] No ui/common change.
 - [ ] On-device: Notes face shows the 7-day strip; empty week renders a flat baseline, not blank.
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.
+
+### Exception on this ticket - deleted on purpose, and that is compliance
+
+`WeekAheadStrip` returns zero matches anywhere under `app/src/`. **That is ticket 14's explicit
+instruction** ("Replace `WeekAheadStrip` entirely - delete it and its call site"). Its pure layer
+survived and is reused exactly as 14 required: `buildWeekAheadDayCounts` / `dayOfWeekLetter` in
+`ui/notes/CalendarAgendaResolver.kt`, still tested, now feeding the month calendar
+(`NotesScreen.kt:239`).
+
+Absence here is compliance, not a regression.

@@ -117,3 +117,21 @@ Pulling only `legion_database` without its `-wal` showed **0 goals** right after
 visibly on screen. Room runs in WAL mode and the write was still in `legion_database-wal`. **Pull
 all three files** or the read is silently stale - the same class of trap as `adb shell cat`
 corrupting a binary pull.
+
+## Verification 2026-08-16 - NOT A BUILD TICKET; its code half is verified present
+
+Swept during the all-effort sweep. The ticket body already records honest partial execution; this
+adds the code-side confirmation. All `traced`.
+
+**Verified in code:** `ask_advisor`, `accept_proposal`, `set_goal`, `list_goals` and `close_goal` are
+all declared inside `declarations()` (`LiveToolbox.kt:1322`, `:1344`, `:1371` - and
+`onboardingDeclarations()` does not begin until `:4574`) and dispatched (`:1542-1544`). That is the
+exact trap `LiveToolboxDeclarationSetTest.kt:8-27` exists for, and the test pins it. **Item 4's
+expired proposal refuses in words** (`:2886-2893`, TTL constant `:2776`). Item 5's rules half lives
+in `advisor/HarnessPrompt.kt:5-9`. `GoalsPanel` is mounted on CRED (`LedgerScreen.kt:919`). No
+orphans.
+
+**Everything remaining is voice or device work** and cannot be closed from here: asking each of the
+five aspects aloud and hearing a real answer; a proposal heard, accepted by voice, written and seen;
+tier-in-words as actually spoken; the tone half; running the instrumented migration test; digest
+token measurement against real data; real voice-path latency.

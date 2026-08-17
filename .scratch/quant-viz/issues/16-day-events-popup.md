@@ -1,6 +1,6 @@
 # 16 - Tapping a calendar day pops up what is on that day
 
-Status: OPEN. Kevin, 2026-08-14: "i see dots on calendar dates. tapping the date with event on it
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 should pop up a UI showing things due on that date."
 
 ## Why the current behaviour reads as broken
@@ -82,3 +82,12 @@ surface (ticket 15). This ticket ADDS a popup; it removes nothing.
 - [ ] On-device (QA): tapping a dotted day pops the dialog listing that day's entries, the row
       count matches the dots drawn on that cell, a Google row shows `CAL`, `SHOW IN LIST` filters
       the list below and closes, `CLOSE` dismisses, and an undotted day says "Nothing on this day."
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.

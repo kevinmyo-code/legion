@@ -1,6 +1,6 @@
 # 06 - Oil analysis small multiples
 
-Status: OPEN. Lane B (fleet). Depends on 01 (`DeckSmallMultiple`).
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 ## What
 
@@ -43,3 +43,12 @@ series, shape over numbers, latest number printed once per row.
 - [ ] Every numeric field of `OilAnalysis` accounted for (rendered or in the hidden count) -
       enumerate them in the commit message.
 - [ ] On-device (map-level): drilldown opens; with zero analyses the empty sentence shows.
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.

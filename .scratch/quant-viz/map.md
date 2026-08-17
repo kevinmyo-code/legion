@@ -68,3 +68,29 @@ check is the only real render, per L11).
   impossible-and-why before the lane reports built (CLAUDE.md §8 L11).
 - On-device: APK installed (sha256-verified per MEMORY.md), each new surface opened, charts render
   with Kevin's real data, gap slots visibly distinct from zero bars on at least one screen.
+
+
+## VERIFICATION SWEEP 2026-08-16
+
+Kevin: "check every ticket if built or not. repo is ahead. then close whats done."
+
+**All 16 tickets were built, wired and tested. Every `Status: OPEN` line was stale** - the effort
+shipped and nobody flipped them, so the tracker advertised 16 phantom open tickets and every
+frontier query over `.scratch/` was wrong. `MEMORY.md` was right; the tracker was not. All 16 are
+now closed with per-ticket evidence on the tickets themselves.
+
+**Three carried exceptions, and none is a quant-viz failure - all three were caused by LATER work:**
+
+- **Ticket 05 Part C and ticket 12 are silent REGRESSIONS.** The maintenance due meter shipped in
+  `7c6a5ca` and was dropped by the mission-control rebuild `a09aa68`; the DRIVES miles sparkline is
+  computed into state and rendered nowhere, while a code comment claims a drilldown still shows it.
+  Both are filed as [two shipped visualisations vanished](issues/17-silent-regressions.md).
+- **Ticket 11's SLEEP sparkline relocated** to BodyScreen when SYSTEMS SWEEP was dissolved by the
+  same commit. Not lost, but ticket 11's Today requirement no longer holds and the move was never
+  recorded.
+- **Ticket 10 moved one tap in** - its sparkline and daily bars now render in the BUDGET drilldown
+  rather than on the Money face. Nothing lost.
+
+**The lesson worth keeping: a screen rebuild replaced composables wholesale, the pure layers
+survived with their tests still green, and two features silently disappeared.** The test suite could
+not have caught it - `dueFraction` still computes correctly and is still tested; nothing renders it.

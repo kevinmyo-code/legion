@@ -1,6 +1,6 @@
 # 15 - LOG tab: ONE scroll surface, and the false-empty past day
 
-Status: OPEN. **Ticket 14's scroll fix did not work.** QA on-device 2026-08-14: with the calendar
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 expanded the inbox list is still unreachable; only collapsing the calendar restores scrolling.
 Kevin's original complaint reproduces. This ticket replaces that fix with the correct one.
 
@@ -85,3 +85,12 @@ Fix: when `dayFilterStartMs` is non-null, the fetch window must COVER that day.
 - [ ] On-device (QA, BLOCKING): the list scrolls with the calendar EXPANDED, on a fresh launch,
       without collapsing anything. The calendar scrolls up out of view as Kevin scrolls. This is
       the checkbox that ticket 14 failed - it is the pass/fail of this ticket.
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.

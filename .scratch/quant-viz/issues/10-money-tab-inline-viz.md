@@ -1,6 +1,6 @@
 # 10 - Money tab inline viz (glanceable face)
 
-Status: OPEN. Kevin's 2026-08-13 glanceable ruling (map taste call 1, revised). DEPENDS ON ticket
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 09 landing first - same files (`ui/LedgerScreen.kt`, `ui/ledger/`), do not run concurrently.
 
 ## What
@@ -35,3 +35,19 @@ pieces, both from data the screen (or controller) already computes:
 - [ ] `compileDebugKotlin -Pnokey` + `testDebugUnitTest` green.
 - [ ] No change to ui/common/.
 - [ ] On-device: Money tab face shows sparkline + daily bars at first glance with real data.
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.
+
+### Note on this ticket - built, then moved one tap in
+
+Everything this ticket built still renders in production, but **not on the Money tab face**.
+`LedgerScreen.kt:600` records that the block moved into `BudgetDrilldownScreen` during
+mission-control ticket 16; the Money face now shows `SpendPane`'s category bar hero
+(`LedgerScreen.kt:1013-1060`). Nothing was lost; the placement changed.

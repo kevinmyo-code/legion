@@ -1,6 +1,6 @@
 # 14 - LOG tab: month calendar replaces the WEEK AHEAD strip, and the scroll regression
 
-Status: OPEN. Kevin, 2026-08-14: "i cant scroll down anymore. the visual obscures the scroll
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 interface. lets make it a calendar with events on it. and then the list that currently have
 below it."
 
@@ -111,3 +111,12 @@ fun eventDotCount(eventCount: Int): Int
 - [ ] On-device (QA): the inbox list scrolls again with the calendar shown AND collapsed; tapping
       a day filters the list and the SHOW ALL line appears; today's cell is visibly distinct from
       a selected cell.
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.

@@ -75,3 +75,21 @@ what it always produced.** The entity is what changes, never the shipped migrati
 - `reasoned`: that Room tolerates an unexpected on-disk default because expected-null is treated as
   "don't care". Inferred from the app running at v19 with this drift present, not from reading
   Room's source.
+
+## Verification 2026-08-16 - NOT BUILT. The drift is LIVE at v23.
+
+Re-checked because this ticket is old enough to have gone stale. **It has not.** All `traced`.
+
+- `data/local/LedgerTransaction.kt:97` - `val categoryPending: Boolean = false`, **still with no
+  `@ColumnInfo(defaultValue = ...)`**. The same line number the ticket cited.
+- The shipped migration is correctly untouched: `Migrations.kt:176` still adds the column with
+  `INTEGER NOT NULL DEFAULT 0`.
+- **The drift has now propagated through three further schema versions.** The database is **v23**,
+  not the v20 this ticket was written against. In `app/schemas/.../23.json` the column's `createSql`
+  carries **no DEFAULT**, and its field object carries **no `defaultValue` key at all**.
+- The house pattern it points at is still followed everywhere else - `@ColumnInfo(defaultValue = ...)`
+  on `CarTask.kt:31,33,39`, `Goal.kt:90,91`, `DriveReassignment.kt:35,45`, `ChassisQuirk.kt:38`.
+
+**Not dead code:** `categoryPendingRows()` (`LedgerTransactionDao.kt:351`) feeds
+`LedgerController.kt:744` and the CATEGORIZE drilldown (`LedgerScreen.kt:548`). Five writers and
+eight readers, all live.

@@ -1,6 +1,6 @@
 # 03 - Category drilldown daily-spend bars
 
-Status: OPEN. Lane A (ledger). Depends on 01 (`bucketDailySumCents`).
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 ## What
 
@@ -39,3 +39,12 @@ existing transaction list. The list stays exactly as it is.
 - [ ] No second Room query added for rows the screen already had.
 - [ ] On-device (map-level): open a real category; bars match the listed transactions by eye;
       uncovered days show the gap underline.
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.

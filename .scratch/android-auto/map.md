@@ -139,6 +139,30 @@ Constraints, not open questions. A ticket that contradicts one of these is wrong
   **replaces** the app's own `AudioRecord`; one APK can be both media and template. Out-of-scope
   ruling sharpened, not reversed.
 
+- **VERIFICATION SWEEP 2026-08-16** (Kevin: "check every ticket if built or not. repo is ahead").
+  **Nothing closed, and that is the finding.** Nine of the ten open tickets are **not build tickets**
+  - 07, 08, 09, 10, 11 and 12 need a RULING FROM KEVIN; 06, 13 and 14 need a HEAD UNIT. Only
+  [the live session can be silenced](issues/15-live-session-silenced.md) is partially built, and it
+  is annotated in place. Unlike `.scratch/google-account-integration/`, **these tickets are not
+  stale docs - they are genuinely blocked, mostly on Kevin.**
+  **Three findings from the sweep:**
+  1. **Ticket 13's defect is STILL LIVE and its file has never been edited.** `git log --
+     vehicle/Elm327Io.kt` returns exactly one commit, the original seed. `readUntilPrompt` still
+     polls `available()` and never blocks on `read()`, and `ObdResponseParser.isFailureResponse`
+     still returns true for a blank response - **so a quiet Bluetooth link and a car-side "NO DATA"
+     are still indistinguishable**, `_connectionState` still reads CONNECTED, and a K-line re-init
+     fires at what may be a Bluetooth problem. Same defect class as the clear-DTC transaction rule.
+  2. **`isSilenced` only reaches a debug screen** - one production consumer mirrors it into
+     `CarProbeLog`; no driver-facing surface reads it.
+  3. **A fifth orphan**: `BleTransport.closed` (`:70`) is written by `shutdown()` (`:80`) and
+     **never read** - `available()` and both `read()` overloads ignore it.
+  **Two deviations already documented in the code but worth surfacing:** ticket 06 said a stub
+  serving an empty browse root was enough and that ticket 08's tree contents must not be pre-empted;
+  `LegionMediaLibraryService` serves four real rows built from live Room data, with its own doc
+  admitting it was "built PROVISIONALLY per Kevin's direct ask". And ticket 14 said the call probe
+  must stay on a throwaway branch; those files are on `feat/mission-control`.
+
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Graduates as the frontier advances.

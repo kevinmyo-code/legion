@@ -620,3 +620,29 @@ and it should be found before any future convergence attempt.**
   rows. Not a hypothesis worth recording yet, because the two offered so far were both wrong.
 - Backups: `scratchpad/backup-20260816/` (post-dedup) and `scratchpad/backup-preconverge/`, both in a
   SESSION-TEMP directory.
+
+## Verification 2026-08-16 - PARTIALLY BUILT, and the defective path is UNTOUCHED
+
+Swept against the tree. All `traced` unless noted.
+
+**Stage 2 LANDED.** `MidnightImport.recordSentinelReassignments` (`:557-578`), called from the real
+import path (`:329`), writes `drive_reassignments` with a deterministic syncId, INSERT OR REPLACE,
+self-moves skipped (`:561`), and the forward-bound range `0 .. System.currentTimeMillis()`
+(`:559`, `:570-571`) rather than `Long.MAX_VALUE`. Covered by
+`MidnightImportReassignmentRuleTest.kt`. **Its convergence claim was withdrawn by this ticket
+itself** and remains unexplained.
+
+**Stage 1 was REVERTED** and survives only as `git stash@{0}` - "stage-1 rekey fix, HANGS on device -
+needs rework".
+
+**So the bug's own code path is unchanged.** `MidnightImport.rekeyExistingRows` (`:468-501`) is still
+a plain UPDATE ... SET vehicleId WHERE identity AND vehicleId (`:490-493`), with **no
+destination-occupancy check and no delete-the-source branch**.
+
+**What stops it today is device state, not a fix** (`reasoned`, from traced code): the
+`KEY_COMPLETED = "completed_v3"` latch (`:132`, read `:263`, set `:339` only when `failedTables == 0`)
+latched on Kevin's phone after 17 colliding rows were deleted by hand. **Any device whose import has
+not latched still carries the bug** - which includes the retired A17k if it is ever run again.
+
+**Also still open, and documented in the code itself** (`:547-555`): `applyReassignments` rewrites
+`obd_samples` only.

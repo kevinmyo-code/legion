@@ -38,3 +38,29 @@ Do:
 
 This is a phone-side defect with or without the car. If it reproduces, it should not wait for the
 rest of this map.
+
+## Verification 2026-08-16 - PARTIALLY BUILT
+
+Checked against the tree during the all-effort sweep. Kept OPEN: two items are unmet. All `traced`.
+
+**Built:**
+- `MODIFY_AUDIO_SETTINGS` in the manifest (`AndroidManifest.xml:28`).
+- **The capture source was switched**: `GeminiLiveSession.kt:934` uses
+  `MediaRecorder.AudioSource.VOICE_COMMUNICATION`, plus `setPrivacySensitive(true)` on API 30+
+  (`:937-939`). `VOICE_RECOGNITION` survives only in the explanatory comment (`:909`). **This is on
+  the core voice path, not a car-only branch.**
+- **Silencing is detectable**: an `AudioManager.AudioRecordingCallback` registered at `:980`
+  (API 29+ guard at `:961`) reads `isClientSilenced` for the matching session id, flips `_isSilenced`
+  (`:274-275`), logs `MIC_SILENCED` to `CarProbeLog` (`:974`), explicitly logs the sub-API-29 gap
+  (`:982-986`), and resets on teardown (`:1074-1075`).
+
+**Not built:**
+- **Item 1, the device experiment, has never run.** Still `traced`, never `tested`; nothing has
+  plugged into a head unit.
+- **Item 5 is untouched**: the manifest still declares `connectedDevice|dataSync|microphone`
+  (`:150-154`) with no reference anywhere to Android 15's six-hour `dataSync` cap.
+
+**And the signal only reaches a debug screen.** `isSilenced` has exactly one production consumer -
+`LiveSessionController.kt:118-124`, which mirrors it into `CarProbeLog`. No `AssistantStrip`,
+notification or overlay reads it. So the ticket's own goal, "LEGION should be able to say I am being
+silenced", is satisfied only on a Settings diagnostic page, not to the driver.

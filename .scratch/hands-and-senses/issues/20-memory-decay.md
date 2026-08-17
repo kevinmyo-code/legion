@@ -67,3 +67,40 @@ Decide:
    migration (additive-only rules apply - dropping a table is not additive, so decide carefully).
 8. **The Drive backup.** The whole database syncs; memories ride along. Nothing to decide unless
    forgetting must also propagate - confirm a deleted memory does not come back on restore.
+
+## Verification 2026-08-16 - THE PREMISE IS HALF FALSE, and this effort shrinks
+
+Swept against the tree before this graduates to its own map. The map's settled decision 11 claims
+"no decay function, no pruning, no retrieval scorer". **Two of those three are wrong.** All `traced`.
+
+**A decay function EXISTS and is wired.** `ai/AriaBrain.kt:452-458` -
+`score() = RECENCY_WEIGHT * recencyDecay + IMPORTANCE_WEIGHT * (importance/10) + RELEVANCE_WEIGHT * relevance`,
+with `recencyDecay = RECENCY_DECAY_PER_HOUR ^ hoursSinceAccess`. Constants at `:745-748`: **0.99 per
+hour, all three weights 1.0**, documented as the Generative Agents default with a **~69 hour
+half-life** (`:739-744`). Dated "Ticket 03 (2026-07-22)" - this is months-old code.
+
+**A retrieval scorer EXISTS and is wired.** `recallMemories` (`:401-427`) scans both stores, hard
+-gates on keyword overlap (`:417`), sorts by `score()` (`:419`), takes `RECALL_LIMIT = 6` (`:737`),
+and **rehearses** by calling `companionMemoryDao.touch()` (`:424`). Reachable: `recall_memory`
+declared at `LiveToolbox.kt:1073` inside `declarations()`, dispatched `:1490`, called `:2023`.
+
+**Only PRUNING is genuinely absent** - `CompanionMemoryDao` has no age or score-based delete. And
+that is **a stated design position, not an omission**: `AriaBrain.kt:741-743` says "the 'forgetting'
+is a score falling out of the top `RECALL_LIMIT`, not a purge."
+
+**`embeddingVector` is an ORPHAN FIELD.** Declared `CompanionMemory.kt:52` with `embeddingModel` at
+`:53`; **zero other references anywhere.** Nothing writes it, nothing reads it. `relevance()` is
+keyword overlap only (`:467-471`).
+
+**The legacy `MemoryEntry` table is live**, read every recall as `Candidate.Legacy`
+(`AriaBrain.kt:431`) with a hardcoded neutral importance of 5 (`:436`) and `timestamp` doing duty as
+both createdAt and lastAccessedAt (`:439-441`).
+
+### What this leaves for the `memory-decay` map
+
+**Answered already, do not re-decide:** the decay curve (0.99/hr, equal weights, ~69h half-life) and
+whether embeddings were ever wired (**no** - the field exists and is dead).
+
+**Genuinely open:** pruning (against a documented no-purge position), unforgettability, the legacy
+`MemoryEntry` Room decision, backup semantics, and whether the orphan `embeddingVector` field should
+be filled or deleted.

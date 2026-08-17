@@ -1,6 +1,6 @@
 # 04 - Monthly spend trend drilldown
 
-Status: OPEN. Lane A (ledger). Depends on 01.
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 ## What
 
@@ -53,3 +53,12 @@ suspend fun monthlySpendTrend(context: Context, entity: LedgerEntity, maxMonths:
 - [ ] The current month's bar equals BudgetSection's own displayed total for that month.
 - [ ] On-device (map-level): tap month label, trend opens, figures match month-by-month
       navigation via the existing arrows.
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.

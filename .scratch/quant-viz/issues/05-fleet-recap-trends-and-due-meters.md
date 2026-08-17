@@ -1,6 +1,6 @@
 # 05 - Fleet recap trends, maintenance due meters, wrapped surface
 
-Status: OPEN. Lane B (fleet). Depends on 01.
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 Three write-only or text-only fleet datasets get read surfaces. All additive.
 
@@ -46,3 +46,24 @@ Three write-only or text-only fleet datasets get read surfaces. All additive.
 - [ ] No new queries where a DAO accessor already exists.
 - [ ] On-device (map-level): recap drilldown opens; with Kevin's data (may be sparse) empty/one-
       recap states render their sentences, not blank space.
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.
+
+### Exception on this ticket - Part C is a REGRESSION, not unbuilt work
+
+Parts A (recap trends) and B (yearly wrapped) are built and wired. **Part C, the maintenance due
+meter, was built in commit `7c6a5ca` and then DROPPED by the mission-control rebuild `a09aa68`.**
+`DueRowView.fraction` (`ui/fleet/FleetRows.kt:111`, computed `:311`) and `ScheduleRowView.fraction`
+(`:378`, `:417`) are now **orphaned data with no renderer** - `dueFraction` is still pure and still
+unit-tested (`FleetRowsTest.kt:147-187`), and nothing draws it. Repo-wide `DeckMeter` callers are
+only `GoalsPanel`, `BudgetSection`, `TodayScreen` and the theme preview.
+
+Filed as part of [the silent-regression ticket](17-silent-regressions.md). Closing THIS ticket
+because it was genuinely delivered; the loss belongs to whatever removed it.

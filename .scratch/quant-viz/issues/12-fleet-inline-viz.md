@@ -1,6 +1,6 @@
 # 12 - Fleet tab inline additions
 
-Status: OPEN. Kevin's glanceable ruling. Fleet already has the DRIVES MPG sparkline and the
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 MAINTENANCE due meters (ticket 05); two additions to the tab FACE.
 
 ## Spec (`ui/FleetScreen.kt`, `ui/fleet/FleetRows.kt`)
@@ -25,3 +25,26 @@ MAINTENANCE due meters (ticket 05); two additions to the tab FACE.
 - [ ] No new DB queries (both series from already-loaded state - trace it in the commit message).
 - [ ] On-device: Fleet face shows MPG + miles sparklines; RECAPS strip appears only when >= 2
       recaps exist (Kevin has 1 - expect the count + sentence today).
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.
+
+### Exception on this ticket - the miles sparkline is orphaned AND a code comment lies about it
+
+The RECAPS strip is built and wired (`FleetDrilldowns.kt:224-236`), one tap in.
+
+**`buildMilesSparkline` (`ui/fleet/FleetRows.kt:947`) is computed into `FleetUiState.milesSparkline`
+(`FleetScreen.kt:504`, field `:281`) and read by NO composable.** The DRIVES tile renders MPG only
+(`:833-842`).
+
+**Worse, the comment at `FleetScreen.kt:824-826` claims "DRIVES' own drilldown still carries both
+series in full". That is false** - `DriveHistoryDrilldownScreen` (`FleetDrilldowns.kt:994-1029`) has
+no chart at all. There is also no test for `buildMilesSparkline`, while `buildMpgSparkline` has one.
+
+Filed in [the silent-regression ticket](17-silent-regressions.md).

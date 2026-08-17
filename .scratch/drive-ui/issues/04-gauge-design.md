@@ -1,7 +1,7 @@
 # What the gauges actually are
 
 Type: prototype
-Status: open - direction settled, prototype pending
+Status: resolved (2026-08-16, verified built)
 Blocked by: -
 
 ## Question
@@ -79,3 +79,29 @@ becomes something it expresses natively. This is why
 
 **Still open: the prototype itself.** Two or three concrete renderings, installed and screenshotted,
 for Kevin to react to. This ticket resolves when he picks one.
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against the tree. **Every one of this ticket's own answers shipped** in commit `1ff4807`,
+`ui/DrivingModeScreen.kt`. All `traced`.
+
+| Requirement | Where |
+|---|---|
+| Segment columns replace the swept arc | `SegmentColumn` `:594`, `drawSegmentColumn` `:717-742`. **`DrivingDial` no longer exists anywhere** |
+| Scale ticks on a grid behind the readout | `drawBehind` on the bar box, `:647-654`, spanning gutter + canvas |
+| Coolant as a COLD-HOT fader | `CoolantFader` `:753`, endpoint labels `:786-787` |
+| Redline as scale annotation, never state colour | `redlineStartIndex` `:603`, `isRedlineSegment` `:731`, printed label `:690-699`; speed pins it out of range `:382` |
+| Dense and labelled | PID code beside every label `:624`, `:771`; `TechnicalFooterBand` `:433` |
+| Q10 RPM ceiling 5500 | `:148` |
+| Q12 SPEED primary | `:370-388` - first, `displayLarge`, weight 1.3f, 20 segments against RPM's 14 |
+| Q11 dial does not graduate to `ui/common/` | it was deleted rather than moved |
+| Q5 stale treatment survives | stale flags `:305`/`:313`/`:320`, `sem.faint` demotion `:613`, worded age `:705`/`:790` |
+
+**Two honest caveats on the close:**
+1. **The literal deliverable was "two or three renderings for Kevin to pick from"; ONE was built and
+   iterated on device instead.** The close condition ("resolves when he picks one") was met by a
+   different route - four install-and-look rounds with Kevin steering each. Recording the deviation
+   rather than pretending the ticket was followed.
+2. **Per-vehicle scales are stated, not built.** `RPM_SCALE_MAX`/`SPEED_SCALE_MPH_MAX` are
+   `private const val` (`:148`), and `:130-147` records why: `Vehicle` has no redline or top-speed
+   column and adding one is a Room migration that was out of scope. **Still true, still owed.**

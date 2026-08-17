@@ -1,7 +1,7 @@
 # Layout for a phone that is 384 x 832, not a head unit
 
 Type: prototype
-Status: open - decisions settled, layout pending the prototype
+Status: open - Q27/Q28 met; Q26 now UNBLOCKED by the drives table (v23)
 Blocked by: 04, 05
 
 ## Question
@@ -46,3 +46,30 @@ nothing to lay out until those decide what exists.
 **Still open:** the concrete layout, which lands with [the gauge prototype](04-gauge-design.md).
 Kevin's reference direction is dense-and-labelled rather than minimal, so the layout question is
 now "what earns a place on a busy instrument panel", not "how do we fill a void".
+
+## Verification 2026-08-16 - PARTIALLY BUILT, and the blocker is now stale
+
+Swept against `ui/DrivingModeScreen.kt` after commit `1ff4807`. All `traced`.
+
+**Met:** Q27 EXIT keeps no confirm (`:453-466`, bordered 72dp key straight to `onExit`); Q28 the
+Alfred strip sits at thumb level directly above EXIT (`:443-445`).
+
+**NOT met - Q26, the dead third:** `TripBlock` (`:827-843`) hardcodes `val tracking = false` and
+renders one `"TRIP // NOT TRACKING"` line. **`TripStat` (`:846`) is unreachable dead code behind
+that constant** - the sixth orphan found today. None of trip content's three figures render.
+
+**The stated blocker is STALE, and it went stale inside the same session that wrote it.** The doc at
+`:805-810` says no drive-boundary object exists. Commit `61a62b0` - **three commits later the same
+evening** - added the `drives` table at Room v23 with `startedAt`/`endedAt`/`miles`/`gallons`/
+`endReason`, plus `data/local/Drive.kt` and `DriveDao.kt`. `TelemetryRecorder` writes it;
+`DrivingModeScreen` never reads it, still calling only `odbSampleDao().getLatest` (`:234-236`).
+
+**So Q26 is unblocked and this ticket is takeable now.** It needs the screen to read `drives` and
+flip that boolean, plus the comment corrected.
+
+**Q29 portrait-only is NOT enforced:** `AndroidManifest.xml:106` is still
+`screenOrientation="unspecified"` and the screen never touches orientation. Arguably a scoping call
+rather than a build item, but it is not true in code today.
+
+**Also outstanding from trip content:** no post-drive summary on exit - `onExit` is a bare
+navigation callback.

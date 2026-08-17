@@ -1,6 +1,6 @@
 # 11 - Today tab glance viz
 
-Status: OPEN. Kevin's glanceable ruling reverses cyberdeck-ui ticket 06 answer #4 ("home is the
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 pre-flight check, zero charts") - recorded in map taste call 1. Fixed pane order stays; the
 panes gain shape, not new sections.
 
@@ -30,3 +30,21 @@ panes gain shape, not new sections.
 - [ ] No duplicated series math (sparkline sources traced to the same controller calls the
       module screens use - name them in the commit message).
 - [ ] On-device: Today shows intake + sleep + ledger sparklines at a glance.
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.
+
+### Exception on this ticket - the SLEEP sparkline relocated
+
+INTAKE and cumulative-spend sparklines are on Today and wired. TRAINING and FLEET were skipped, which
+this ticket explicitly permits. **The SLEEP sparkline was built (`087d8f9`) and then left Today when
+SYSTEMS SWEEP was dissolved by `a09aa68`**; the same series now renders on `ui/BodyScreen.kt:439-440`.
+
+**Relocated, not lost** - but this ticket's own Today requirement no longer holds. Recorded rather
+than quietly closed.

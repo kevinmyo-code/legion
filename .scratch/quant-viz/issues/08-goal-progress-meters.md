@@ -1,6 +1,6 @@
 # 08 - Goal progress meters
 
-Status: OPEN. Lane C. Depends on 01.
+Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 ## What
 
@@ -53,3 +53,12 @@ fun accumulationProgress(currentValue: Double, targetValue: Double?): Float?
 - [ ] `compileDebugKotlin -Pnokey` + `testDebugUnitTest` green.
 - [ ] No meter rendered for bodyweight goals (grep the diff).
 - [ ] On-device (map-level): a savings goal shows meter + words; a prose goal is unchanged.
+
+## VERIFIED BUILT 2026-08-16 - closed
+
+Swept against HEAD during the all-effort verification. **Every one of this effort's 16 tickets was
+built, wired to a production path, and unit-tested where it had a pure layer.** Each has a landing
+commit. `MEMORY.md` was right that the effort shipped; **these `Status:` lines were simply never
+flipped**, so the tracker counted 16 phantom open tickets and any frontier query was wrong.
+
+Full per-ticket evidence is in the sweep record on `../map.md`.
