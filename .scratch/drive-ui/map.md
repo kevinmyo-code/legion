@@ -78,9 +78,10 @@ cadence before those two resolve.**
   **One real unused lever exists**: the ELM327 **responses digit** (`010C1`, telling it to stop
   waiting after one reply) is NOT CAN-only and LEGION never uses it. `ATE0` saves ~1.3 ms and is
   hygiene, not a lever; adaptive timing defaults to AT1/ST=205 ms and is never overridden.
-  **MAF is the headline finding: the Jeep 4.0L is speed-density with NO MAF sensor**, and the
-  standard conditions `0110` on the vehicle having one - so **MAF-based instantaneous mpg is very
-  probably impossible on this car.** `0104` is the only near-mandatory PID in the set.
+  **The MAF conclusion was FALSIFIED the same day** - see the correction on the ticket. It reasoned
+  from the 4.0L being speed-density that `0110` would never answer; **Kevin's database has 166 MAF
+  samples on that exact car**, so the PCM synthesises one. The mechanical claim was right and the
+  conclusion drawn from it was wrong. `0104` is still the only near-mandatory PID in the set.
   Bluetooth is noise (<5%); the `Thread.sleep(20)` costs ~6% and is the cheapest millisecond
   available. **Biggest uncertainty, worth 2-3x on the number: how many ECUs answer, and the
   Chrysler PCM's actual P1/P2** - the standard delegates those to the manufacturer, which is
@@ -88,18 +89,49 @@ cadence before those two resolve.**
   **Bottom line for the whole map: a live gauge on this car steps about twice a second. Any UI
   implying smooth continuous motion is lying about the bus.**
 
+- [What moves on a screen that has never moved](issues/06-motion-policy.md)
+  — **Kevin overruled the recommendation: interpolation is ALLOWED.** "interpolate its ok. we are
+  adults we know the gauges are slow." Stark had argued no value-easing ever, since at ~2 Hz the
+  screen invents ~28 frames between every pair of real readings. Kevin's counter stands on record:
+  a personal app for two adults who know the bus is slow, with worded staleness on every reading.
+  **The design direction then largely dissolved the question** - segment columns are discrete by
+  construction and cannot imply a value between two readings, so the honest answer and the handsome
+  one turned out to be the same. One liveness signal per tick; all motion gated on
+  `deckMotionEnabled()` **and** on the link being live.
+- [Pick one temperature unit and mean it](issues/07-temperature-units.md)
+  — **Celsius, app-wide, rendered and spoken alike.** It already matches UPLINK and FAULTS, so
+  DRIVE MODE's `177 F` is the outlier and moves. Distance and speed stay imperial - a deliberate
+  mixed system, not an oversight. Conversion moves out of the call sites into one formatter,
+  because each surface converting inline is exactly how three screens came to disagree.
+- [What makes a DRIVE legible, not just a moment](issues/05-trip-content.md)
+  — **Elapsed, distance, average mpg**, plus a post-drive summary on exit. **A drive needs a real
+  boundary object** - today there is only a private local and day-granularity logs.
+  **`finalizeDrive`'s gate must be split**: it currently writes no `TRIP_MILES` unless
+  `gallons > 0.05`, so distance is held hostage to fuel maths it does not depend on. **mpg is not
+  rendered live until [the scale bug](issues/09-mpg-scale-bug.md) resolves.**
+- [What the gauges actually are](issues/04-gauge-design.md)
+  — **Direction settled by Kevin with a reference photo**
+  ([research/04-reference-dashboard.jpeg](research/04-reference-dashboard.jpeg)): "look at the bars
+  and shit. retro futuristic vibes. think akira, think evangelion". **Segmented EQ-style columns
+  replace the swept arc**, scale ticks printed on a grid behind the readout, coolant as a
+  `COLD - HOT` fader, redline as orange caps that are scale annotation rather than state colour,
+  amber-dominant, **dense and labelled rather than minimal**. **SPEED becomes primary, not RPM.**
+  `RPM_SCALE_MAX` drops from 8000 to a per-vehicle ~5500, because a 4.0L XJ redlines near 5000 and
+  the needle currently never leaves the bottom half. Prototype pending.
+- [Layout for a phone that is 384 x 832](issues/08-layout.md)
+  — **The dead third takes the trip block.** EXIT keeps no confirm (it is the only control; making
+  it annoying is worse than a stray exit), the Alfred strip moves to thumb level above it, portrait
+  only. Concrete layout lands with the prototype.
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Graduates as the frontier advances.
 
-- ~~**Instantaneous mpg.**~~ **ALL BUT RULED OUT 2026-08-16** by
-  [the bus reality](issues/01-bus-reality-research.md): the Jeep 4.0L is **speed-density with no MAF
-  sensor**, and the standard conditions `0110` on the vehicle having one, so it will almost certainly
-  never answer. Not moved to Out of scope only because [ticket 02](issues/02-measure-the-bus.md)
-  still has to confirm `0110` is silent on the actual car - a MAP-based estimate off `010B` is the
-  only surviving avenue and would be an estimate of an estimate.
-  **[Trip content](issues/05-trip-content.md) should assume instantaneous mpg is unavailable** and
-  argue from average-over-known-distance instead.
+- **Instantaneous mpg is BACK ON, but the number is wrong.** The no-MAF conclusion was falsified by
+  Kevin's own data (166 `0110` samples on the Jeep). However the one finalised drive reads **29.4
+  mpg**, and a 4.0L XJ does 15-18 - so LEGION's MAF integration is out by roughly 1.7x. Owned by
+  [the mpg scale bug](issues/09-mpg-scale-bug.md); nothing renders live mpg until it resolves.
+
 - **Landscape / mounted orientation.** The manifest is `unspecified` and the screen never touches
   orientation. Whether a phone in a vent mount wants a different layout waits on
   [layout](issues/08-layout.md) settling the portrait case first.

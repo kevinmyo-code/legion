@@ -1,7 +1,7 @@
 # Live cadence: how fast, and who owns the poll?
 
 Type: grilling
-Status: open
+Status: open - answers settled, BLOCKED on ticket 02 for the numbers
 Blocked by: 01, 02
 
 ## Question
@@ -32,3 +32,31 @@ therefore renders data up to 30 seconds stale even with a live link. Decide:
    rather than just freezing?
 6. **The four PID lists (settled decision 4).** Consolidate or leave them. If consolidating, say
    what owns the canonical list.
+
+## Answer (settled in principle; the numbers still wait on ticket 02)
+
+**Stark's recommendations, put to Kevin 2026-08-16 in the 29-question blast, unopposed.** Recorded
+now so the design can proceed, but **this ticket does not close until
+[ticket 02](02-measure-the-bus.md) supplies real numbers** - Kevin does not have the car.
+
+1. **`TelemetryRecorder` owns the fast lane.** It speeds up while drive mode is foreground and slows
+   back after. One owner of the port; no second command stream, so settled decision 6's interleaving
+   argument is answered rather than overridden.
+2. **Per-PID tiers, not a uniform tick.** RPM and speed every cycle; coolant every tenth. Since each
+   PID costs 150-250 ms **linearly** (ticket 01) and coolant changes once a minute, tiering nearly
+   doubles the rate on the readings that actually move. `PidSpec.fast` already exists unused for
+   exactly this.
+3. **Fast-lane data is DISPLAY-ONLY and is not written to `obd_samples`.** 18 MB/year at 30 s
+   becomes roughly 500 MB/year at 2 Hz, and nothing downstream reads it. This also keeps the
+   `obd_samples` retention question out of the fog.
+4. **`isEngineRunning` is DECOUPLED from the display cadence.** It gates Drive sync in
+   `AriaForegroundService`; sync policy must not change because a screen is open (settled
+   decision 5).
+5. **Voice wins every collision, and the screen SAYS SO.** `TelemetryRecorder` already skips its
+   tick entirely when `ConversationState.isBusy`; at 2 Hz that becomes common. Readings go
+   stale-styled with worded cause, never silently frozen.
+6. **Send the ELM327 responses digit (`010C1`) - but only behind ticket 02.** Ticket 01 found it is
+   NOT CAN-only and is never used today, and it is worth most of the 1.3 -> 2.7 Hz gap. It asserts
+   how many ECUs will answer, and asserting that wrongly loses replies. **Measure first.**
+7. **The four PID lists consolidate** behind one canonical registry (settled decision 4). Build
+   detail, not a taste call.

@@ -1,7 +1,7 @@
 # Layout for a phone that is 384 x 832, not a head unit
 
 Type: prototype
-Status: open
+Status: open - decisions settled, layout pending the prototype
 Blocked by: 04, 05
 
 ## Question
@@ -27,3 +27,22 @@ nothing to lay out until those decide what exists.
 5. **What the shell already does.** `MainActivity` strips its chrome for this route
    (`MainActivity.kt:299`, `:369`, `:398`) while still respecting insets. Any layout works inside
    that, and does not re-solve it.
+
+## Answer (settled, pending the prototype)
+
+**Stark's recommendations, put to Kevin 2026-08-16, unopposed.**
+
+- **Q26 - fill the dead third with trip content.** A third of a glance screen earning nothing is
+  waste rather than restraint. Confirmed as the tenant by
+  [trip content](05-trip-content.md)'s three figures.
+- **Q27 - EXIT keeps no confirm dialog.** It is the only control on the screen; making it annoying
+  is worse than an occasional stray exit.
+- **Q28 - the Alfred strip moves to thumb level**, just above EXIT, rather than sitting mid-screen
+  between the pods and the void.
+- **Q29 - portrait only.** Landscape stays in the fog until a mount actually exists.
+- **384 x 832 dp is re-measured, not inherited.** Every figure in `.scratch/mission-control/` was
+  measured against the retired A17k at 360 x 806.
+
+**Still open:** the concrete layout, which lands with [the gauge prototype](04-gauge-design.md).
+Kevin's reference direction is dense-and-labelled rather than minimal, so the layout question is
+now "what earns a place on a busy instrument panel", not "how do we fill a void".

@@ -135,3 +135,28 @@ as the shape of the answer, not the answer. Ticket 02 must capture: (1) `0100`/`
 (2) wall-clock per-PID round trip for `010C`, mean/p50/p95 over a few hundred samples; (3) response
 line count per request with `ATH1`; (4) A/B of `010C` vs `010C1`, `ATAT1` vs `ATAT2`, blocking read vs
 the 20 ms sleep; (5) how often `reinitProtocolLocked` fires on a real drive.
+
+## CORRECTION 2026-08-16 - the MAF conclusion is FALSIFIED by Kevin's own data
+
+This ticket concluded the Jeep 4.0L is speed-density with no MAF sensor, that `0110` "will almost
+certainly never answer", and that MAF-based instantaneous mpg is "very probably impossible on this
+car". **That is wrong, and it was overturned within the hour by querying the real database.**
+
+- `12:34:56:11:22:33` is the 1998 Jeep Cherokee, confirmed against the `vehicles` table.
+- It carries **166 `0110` samples** with plausible values (2.28, 11.24, 15.68 g/s).
+- It has a finalised drive: `TRIP_MILES` 20.7 mi, `MPG_TRIP` 29.4 mpg.
+
+**The mechanical claim was right and the conclusion drawn from it was wrong.** The engine genuinely
+is speed-density; the PCM nonetheless synthesises and reports a `0110` value. "No MAF sensor" does
+not imply "no `0110` response".
+
+**The lesson, and it is the same one four other findings taught today: the database was RIGHT THERE.**
+This was researched from standards documents and community reports when a single query against a
+copy of the car's own history would have settled it. Research the parts you cannot measure; measure
+the parts you can.
+
+**Everything else in this ticket stands** - the batching finding is traced to two independent primary
+sources, and the timing analysis is unaffected. Only the PID-support conclusion was overturned.
+
+**Consequence:** instantaneous mpg is back on the table, but the figure LEGION currently computes is
+probably ~1.7x too high. See [the mpg scale bug](09-mpg-scale-bug.md).

@@ -1,7 +1,7 @@
 # What moves on a screen that has never moved
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: -
 
 ## Question
@@ -28,3 +28,38 @@ So the question is open for the first time. Decide:
    is a driving screen exactly where ambient motion is worst?
 5. **`deckMotionEnabled()` stays regardless** - it reads the OS animator scale and is a genuine
    accessibility path. Any motion decided here is gated on it, no exceptions.
+
+## Answer
+
+**Resolved 2026-08-16 by Kevin.** Status: resolved.
+
+**Q18 - does the needle ease between two real readings? KEVIN OVERRULED THE RECOMMENDATION.**
+Stark recommended no value interpolation ever, on the grounds that at ~2 Hz the screen would draw
+~28 invented frames between every pair of real numbers, and that this is the estimates rule
+(CLAUDE.md section 4 rule 5) applied to motion.
+
+Kevin: **"18 > interpolate its ok. we are adults we know the gauges are slow."**
+
+**Interpolation between real readings is ALLOWED.** The reasoning is legitimate and is recorded
+rather than merely accepted: this is a personal app for two adults who know the bus is slow, the
+CLAUDE.md safety amendment already draws the line at deceiving the user rather than at smoothing a
+display, and every reading on this screen already carries **worded staleness** - so nothing is
+hidden from the driver even when the motion is smooth.
+
+**But the design direction Kevin gave in the same message largely dissolves the question.** Ticket
+04's segmented-bar language is **discrete by construction** - a column of blocks cannot imply a
+value between two segments the way a swept needle can. So the honest and the handsome answer turn
+out to be the same one, and interpolation ends up applying to segment-level transitions rather than
+to a continuously-swept pointer.
+
+**The rest of ticket 06, per Stark's recommendations, unopposed:**
+- **Q19 - something must move so that slow does not read as frozen.** A freshness signal on each
+  poll tick. Motion that signals recency is honest; motion that asserts a value is the thing to
+  watch.
+- **Q20 - `DeckMeter` is still NOT reused for the pods**, but the reason has changed. It is no
+  longer "no animation allowed" (that ban is dead, settled decision 1); it is that `DeckMeter` is a
+  continuous fill and the pods are becoming segmented.
+- **Q21 - one ambient liveness signal**, gated on `deckMotionEnabled()` AND on the link being live.
+  A no-link screen does not animate.
+- **`deckMotionEnabled()` stays regardless.** It reads the OS animator scale and is a live
+  accessibility path.

@@ -1,7 +1,7 @@
 # Pick one temperature unit and mean it
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: -
 
 ## Question
@@ -36,3 +36,28 @@ Decide:
    at a time.
 
 **This ticket carries its own build spec** - it is small enough not to graduate a build effort.
+
+## Answer
+
+**Resolved 2026-08-16.** Stark's recommendations, put to Kevin in the 29-question blast and
+unopposed. Status: resolved.
+
+1. **One unit, app-wide, for rendered text.** Three screens disagreeing is drift, not a decision.
+2. **Temperature is CELSIUS.** It already matches two of the three screens (UPLINK's live gauge and
+   the FAULTS freeze frame) and the raw PID value, so it is the smallest correct change. **DRIVE
+   MODE's `177 F` pod is the outlier and moves.**
+3. **Distance and speed stay IMPERIAL** - mph and miles - matching the odometer, DRIVES, the recaps,
+   and a US driver. A mixed system is deliberate here, not an oversight: Celsius temperature beside
+   imperial distance is what the underlying PIDs and the user's own frame respectively call for.
+4. **Spoken output must NOT differ from rendered output.** `CarToolbelt.freezeHighlights` currently
+   speaks Fahrenheit and moves to Celsius with everything else, otherwise the assistant contradicts
+   the screen out loud.
+5. **The conversion moves out of the call sites.** Each surface converting inline is exactly how
+   three answers happened; one formatter owns it.
+6. **Sweep for other silent disagreements while this is open** - pressure, MAF (g/s), voltage,
+   speed - rather than finding them one screenshot at a time.
+
+**Recorded as Stark's own error, and the reason this ticket exists:** on 2026-08-16 the FAULTS
+freeze frame was changed from Fahrenheit to Celsius on a "screens match screens" argument, without
+checking DRIVE MODE - the third screen, which renders Fahrenheit. The fix was right locally and
+asserted an app-wide consistency that did not exist.
