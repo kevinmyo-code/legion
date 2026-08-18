@@ -1447,12 +1447,35 @@ object LiveToolbox {
     )
 
     /**
-     * The single required parameter every dispatcher tool below takes: a plain-English question
-     * routed to that domain's own sub-agent, which then pulls whichever of the domain's real tools
-     * its reasoning needs via [agentToolsFor].
+     * The parameters every dispatcher tool below takes.
+     *
+     * `question` is the plain-English request routed to that domain's own sub-agent, which then
+     * pulls whichever of the domain's real tools its reasoning needs via [agentToolsFor].
+     *
+     * `intent` (2026-08-18) is the explicit write-intent signal [agentResult]'s `requireMutation`
+     * doc comment said this file was missing. [dispatch] previously saw nothing but free prose, so
+     * it could not tell "log my three sets of squats" from "what did I lift last week" without
+     * guessing, and the gate therefore shipped switched off. It is not a guess when the MODEL
+     * declares it - the same shape `accept_proposal` already uses in requiring an explicit id
+     * rather than trusting prose. Deliberately NOT in `required`: an omission degrades to exactly
+     * today's behaviour (treated as a read, gate off) rather than failing the call, so a model
+     * that ignores the field is never worse off than before this existed.
      */
-    private val DISPATCHER_QUESTION_PARAM: JSONObject
-        get() = obj("question" to schema("string", "The driver's question, in their own words."))
+    private val DISPATCHER_PARAMS: JSONObject
+        get() = obj(
+            "question" to schema(
+                "string",
+                "The driver's question or instruction, in their own words.",
+            ),
+            "intent" to schema(
+                "string",
+                "\"record\" when the driver is asking for something to be written down, logged, " +
+                    "saved, or changed. \"ask\" when they only want information back. Set this " +
+                    "honestly: a \"record\" call that writes nothing is reported to the driver as " +
+                    "a failure rather than answered around.",
+                enum = listOf("record", "ask"),
+            ),
+        )
 
     /**
      * Function declarations to advertise in the Live setup message: [allDeclarations] minus every
@@ -1475,25 +1498,31 @@ object LiveToolbox {
             description = "Anything about the cars: live sensor readings, trouble codes, mileage, " +
                 "specs, recalls, service history, maintenance schedules, or the build log. Ask a " +
                 "plain-English question; the answer comes back as text to speak.",
-            params = DISPATCHER_QUESTION_PARAM,
+            params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
         fns.put(fn(
             name = "ask_body",
-            description = "Anything about meals, sleep, workouts, or bodyweight: recent logs, how " +
-                "today or this week compares to target, logging a new meal, night of sleep, " +
-                "workout set, or weigh-in, or building a workout plan. Ask a plain-English " +
-                "question; the answer comes back as text to speak.",
-            params = DISPATCHER_QUESTION_PARAM,
+            description = "The driver's own body and training, and the ONLY route that can record " +
+                "any of it: logging a workout set (lift, weight, reps), a meal, a night's sleep, " +
+                "or a weigh-in, building a workout plan, and reading back recent meals, sleep, " +
+                "workouts or bodyweight and how today or this week compares to target. Anything " +
+                "the driver phrases as having just eaten, slept, lifted, weighed in, or done a " +
+                "set belongs here, including when they frame it as progress toward a goal. Ask a " +
+                "plain-English question; the answer comes back as text to speak.",
+            params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
         fns.put(fn(
             name = "ask_goals",
-            description = "Anything about the driver's long-term goals or domain-advisor coaching " +
-                "across fitness, planning, the car, or money: listing current goals, or asking an " +
-                "advisor for grounded advice. Ask a plain-English question; the answer comes back " +
-                "as text to speak.",
-            params = DISPATCHER_QUESTION_PARAM,
+            description = "The driver's long-term goals and a domain advisor's coaching, and " +
+                "nothing else: listing the goals currently set, or asking an advisor to reason " +
+                "about progress and what to do next. Advice and reading only - it records NOTHING. " +
+                "A workout, meal, sleep or weigh-in goes to ask_body even when the driver mentions " +
+                "a goal in the same breath; car service goes to ask_fleet; groceries to " +
+                "ask_pantry; and setting or closing a goal is set_goal/close_goal, not this. Ask a " +
+                "plain-English question; the answer comes back as text to speak.",
+            params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
         fns.put(fn(
@@ -1501,7 +1530,7 @@ object LiveToolbox {
             description = "Anything about groceries: recently logged items and their estimated " +
                 "macros, total grocery spend by currency, or the current shopping trip list. Ask a " +
                 "plain-English question; the answer comes back as text to speak.",
-            params = DISPATCHER_QUESTION_PARAM,
+            params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
         fns.put(fn(
@@ -1509,7 +1538,7 @@ object LiveToolbox {
             description = "Anything about Kevin's Gmail: searching for messages or reading one in " +
                 "full. Read-only. Ask a plain-English question; the answer comes back as text to " +
                 "speak.",
-            params = DISPATCHER_QUESTION_PARAM,
+            params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
 
@@ -1562,6 +1591,38 @@ object LiveToolbox {
     private fun mutatingToolsFor(domain: String): Set<String> =
         (DISPATCHED[domain] ?: emptyList()).toSet().intersect(MUTATING_TOOLS)
 
+    /**
+     * The clause every dispatcher grounding below ends with, derived from [domain]'s OWN
+     * [mutatingToolsFor] set so it can never drift from what the sub-agent was actually handed.
+     *
+     * This is the structural half of the 2026-08-17 routing defect (`memory/MEMORY.md`, "START
+     * HERE"). Kevin spoke workout sets; logcat proves the live model routed the request to
+     * `ask_goals`, whose domain holds only `list_goals`/`ask_advisor` and cannot write a set under
+     * any circumstances. The sub-agent answered in prose anyway, [agentResult] wrapped that prose
+     * as `success: true`, and the driver was told it was recorded while nothing reached Room.
+     * Sharpening the two tool descriptions makes that routing less likely; this clause makes the
+     * LIE impossible even when routing still goes wrong, which is the part that has to hold.
+     *
+     * A domain with no writable tool at all (`goals`, `mail`) is told so in as many words and told
+     * to refuse rather than answer around a request to record something. Every other domain is
+     * told not to claim a write it did not perform. Neither replaces the mechanical gate - a
+     * `record`-intent call that touches no mutating tool is refused by [successOrMutationRefusal]
+     * regardless of what the sub-agent says - it just makes the prose match the refusal.
+     */
+    internal fun dispatchBoundaryClause(domain: String): String =
+        if (mutatingToolsFor(domain).isEmpty()) {
+            " You have NO tool that writes anything - you cannot log, record, save, or change any " +
+                "data at all. If the driver asked for something to be recorded, that request " +
+                "reached the wrong specialist: say plainly that nothing was recorded and that you " +
+                "cannot record it. Never say or imply something was logged, saved, recorded, or " +
+                "updated."
+        } else {
+            " Never say or imply something was logged, saved, recorded, or updated unless you " +
+                "actually called the tool that does it and it reported success. If the request " +
+                "needs something none of your tools can do, say plainly that you did not do it " +
+                "rather than answering around it."
+        }
+
     // --- Dispatcher grounding clauses -------------------------------------
     //
     // Same shape as DiagnosticAgent/SymptomAgent/MaintenanceAgent's own `system(context)`
@@ -1573,30 +1634,35 @@ object LiveToolbox {
         " You are reasoning about the driver's cars using the tools you're given: live sensor " +
         "readings, trouble codes, mileage, specs, recalls, service history, and maintenance " +
         "scheduling and logging. Pull only what would change your answer, then answer in plain " +
-        "spoken text, no markdown."
+        "spoken text, no markdown." +
+        dispatchBoundaryClause("fleet")
 
     private fun bodyDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are reasoning about the driver's meals, sleep, workouts, and bodyweight using the " +
         "tools you're given. Calorie and macro figures are LLM estimates, never measured - always " +
         "phrase them as estimates, never as fact. Pull only what would change your answer, then " +
-        "answer in plain spoken text, no markdown."
+        "answer in plain spoken text, no markdown." +
+        dispatchBoundaryClause("body")
 
     private fun goalsDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are reasoning about the driver's long-term goals and, when asked, handing off to a " +
         "domain advisor for grounded coaching or planning advice using the tools you're given. " +
-        "Pull only what would change your answer, then answer in plain spoken text, no markdown."
+        "Pull only what would change your answer, then answer in plain spoken text, no markdown." +
+        dispatchBoundaryClause("goals")
 
     private fun pantryDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are reasoning about the driver's groceries using the tools you're given: recently " +
         "logged items and their estimated macros, total spend by currency, and the current " +
         "shopping trip list. Macro/calorie figures are estimates, never measured - phrase them " +
         "that way. Pull only what would change your answer, then answer in plain spoken text, no " +
-        "markdown."
+        "markdown." +
+        dispatchBoundaryClause("pantry")
 
     private fun mailDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are searching and reading the driver's Gmail using the tools you're given. " +
         "Read-only - you cannot send, reply to, or delete mail. Pull only what would change your " +
-        "answer, then answer in plain spoken text, no markdown."
+        "answer, then answer in plain spoken text, no markdown." +
+        dispatchBoundaryClause("mail")
 
     /**
      * Runs a tool call. Returns a JSON response to hand back to Gemini, or null
@@ -1651,7 +1717,14 @@ object LiveToolbox {
             // which still runs because these AgentTools call back into this same dispatch() - is
             // completely unchanged from before this ticket. Only who calls it, and how the result
             // gets back to the driver, changed.
-            "ask_fleet" -> agentResult("I couldn't reach the fleet specialist just now - try again in a sec.") {
+            // The model's own declared write-intent (DISPATCHER_PARAMS' `intent`), not a guess
+            // made from the question prose - see agentResult's requireMutation doc comment for
+            // why this file refused to guess it. Absent or unrecognised reads as a plain read,
+            // which is exactly the pre-2026-08-18 behaviour.
+            "ask_fleet" -> agentResult(
+                "I couldn't reach the fleet specialist just now - try again in a sec.",
+                requireMutation = wantsWrite(args),
+            ) {
                 SubAgent(systemInstruction = fleetDispatchGrounding(context)).investigate(
                     context = "",
                     question = args.optString("question"),
@@ -1661,7 +1734,10 @@ object LiveToolbox {
                     mutatingToolNames = mutatingToolsFor("fleet"),
                 )
             }
-            "ask_body" -> agentResult("I couldn't reach the health specialist just now - try again in a sec.") {
+            "ask_body" -> agentResult(
+                "I couldn't reach the health specialist just now - try again in a sec.",
+                requireMutation = wantsWrite(args),
+            ) {
                 SubAgent(systemInstruction = bodyDispatchGrounding(context)).investigate(
                     context = "",
                     question = args.optString("question"),
@@ -1671,7 +1747,10 @@ object LiveToolbox {
                     mutatingToolNames = mutatingToolsFor("body"),
                 )
             }
-            "ask_goals" -> agentResult("I couldn't reach the goals specialist just now - try again in a sec.") {
+            "ask_goals" -> agentResult(
+                "I couldn't reach the goals specialist just now - try again in a sec.",
+                requireMutation = wantsWrite(args),
+            ) {
                 SubAgent(systemInstruction = goalsDispatchGrounding(context)).investigate(
                     context = "",
                     question = args.optString("question"),
@@ -1681,7 +1760,10 @@ object LiveToolbox {
                     mutatingToolNames = mutatingToolsFor("goals"),
                 )
             }
-            "ask_pantry" -> agentResult("I couldn't reach the grocery specialist just now - try again in a sec.") {
+            "ask_pantry" -> agentResult(
+                "I couldn't reach the grocery specialist just now - try again in a sec.",
+                requireMutation = wantsWrite(args),
+            ) {
                 SubAgent(systemInstruction = pantryDispatchGrounding(context)).investigate(
                     context = "",
                     question = args.optString("question"),
@@ -1691,7 +1773,10 @@ object LiveToolbox {
                     mutatingToolNames = mutatingToolsFor("pantry"),
                 )
             }
-            "ask_mail" -> agentResult("I couldn't reach your mail just now - try again in a sec.") {
+            "ask_mail" -> agentResult(
+                "I couldn't reach your mail just now - try again in a sec.",
+                requireMutation = wantsWrite(args),
+            ) {
                 SubAgent(systemInstruction = mailDispatchGrounding(context)).investigate(
                     context = "",
                     question = args.optString("question"),
@@ -4168,22 +4253,24 @@ object LiveToolbox {
      * this is unit-testable without a real Gemini call, same shape as [LiveSessionController]'s
      * `shouldRestoreAfterToolCall`).
      *
-     * Defaults to `false` at every current call site (all five `ask_<domain>` dispatches, and
-     * every other [agentResult] caller in this file, none of which is even domain-shaped for a
-     * write). This is the honest, DOCUMENTED gap this fix leaves open: [dispatch] only ever sees
-     * `args.optString("question")` - free prose - for an `ask_<domain>` call, and there is no
-     * reliable, non-guessing way from that string alone to tell "log my three sets of squats" (a
-     * write) from "what did I lift last week" (a read) - both are legitimate questions the SAME
-     * dispatcher answers. Turning this on unconditionally for a domain that mixes reads and writes
-     * (fleet/body/pantry) would refuse every legitimate read that happens not to need a mutating
-     * tool; turning it on for a domain with NO mutating tools at all in its [DISPATCHED] list
-     * (goals/mail) would refuse EVERY call, including the reads that are its entire job. Per the
-     * brief's own critical constraint ("if you cannot cleanly tell write-shaped from read-shaped
-     * requests, implement the weaker but still correct version"), this fix stops at making the
-     * mechanism real, tested, and available - not at guessing driver intent from text. The
-     * plumbing is what closes the actual reported defect class once a caller CAN tell (e.g. a
-     * dispatcher schema later extended with an explicit intent argument the model itself declares,
-     * the same way `accept_proposal` already requires an explicit id rather than trusting prose).
+     * **Switched on 2026-08-18 for the five `ask_<domain>` dispatches, via [wantsWrite].** It
+     * landed defaulting to `false` everywhere because [dispatch] then saw nothing but free prose,
+     * and no reliable, non-guessing reading of that prose separates "log my three sets of squats"
+     * (a write) from "what did I lift last week" (a read) - both are legitimate questions the SAME
+     * dispatcher answers, so turning it on unconditionally would have refused every read that
+     * happened not to need a mutating tool, and refused EVERY call to a domain with no mutating
+     * tool at all (goals/mail). That doc comment named its own way out: "a dispatcher schema later
+     * extended with an explicit intent argument the model itself declares." That argument now
+     * exists ([DISPATCHER_PARAMS]' `intent`), so nothing here is guessing - the model states it,
+     * and an absent or unrecognised value reads as a read, i.e. exactly the old behaviour.
+     *
+     * This is what makes 2026-08-17's reported failure mechanically impossible rather than merely
+     * less likely: a `record`-intent request routed to `ask_goals` finds a domain whose
+     * [mutatingToolsFor] set is empty, so `mutatingToolsCalled` comes back empty by construction,
+     * so the driver is told it was NOT written down instead of being told it was recorded.
+     *
+     * Every other [agentResult] caller in this file still defaults to `false`; none of them is
+     * domain-shaped for a write.
      */
     private suspend fun agentResult(
         failMessage: String,
@@ -5073,6 +5160,17 @@ object LiveToolbox {
      * plain, generic "not recorded" refusal takes its place instead. `internal` (not private) so
      * [LiveToolboxMutationGateTest] can exercise the three cases directly.
      */
+    /**
+     * Whether an `ask_<domain>` call declared itself a WRITE, read off [DISPATCHER_PARAMS]' own
+     * `intent` argument rather than inferred from the question prose.
+     *
+     * Anything other than the exact string `record` - absent, empty, misspelt, or a model that
+     * simply ignores the optional field - reads as a plain read. That default is the whole reason
+     * this is safe to switch on: the worst case is the pre-2026-08-18 behaviour, never a refused
+     * legitimate question.
+     */
+    internal fun wantsWrite(args: JSONObject): Boolean = args.optString("intent") == "record"
+
     internal fun successOrMutationRefusal(
         subAgentText: String,
         mutatingToolsCalled: List<String>,

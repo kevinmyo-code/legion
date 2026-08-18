@@ -263,21 +263,28 @@ switch, nothing exempt**, `CrisisDetector` untouched.
 
 ## Notes for next session
 
-- **START HERE: the routing bug.** 2026-08-17, Kevin spoke workout sets; nothing was written and
-  he was told it was recorded. **Confirmed `on-device` from logcat**: `log_workout_set` was NEVER
-  called. Every `tool_dispatched` line in the 21:42-21:45 window is `get_current_time`,
-  `ask_goals`, `list_goals`, `ask_advisor`, `manage_item`, and the `SubAgent: investigate round`
-  lines show only `[list_goals]` and `[ask_advisor]`. **The live model routed a workout-logging
-  request to `ask_goals`**, whose domain (`DISPATCHED["goals"]`) holds only `list_goals` and
-  `ask_advisor` and structurally cannot write a set. So the defect is ROUTING, not just the
-  confirmation hole. His `set_goal` write landed only because `set_goal` is live-declared and never
-  goes through a sub-agent. Start by reading the five `ask_<domain>` declaration texts against each
-  other - the likely cause is `ask_goals`' description claiming territory `ask_body` owns.
-- **The mutation gate exists but is OFF.** `f97e1d8` plumbed `requireMutation` end to end with
-  tests, defaulting `false` everywhere, because `dispatch()` only sees free prose and guessing
-  write-intent would break legitimate reads. **Tonight's exact failure is therefore NOT auto-refused
-  today.** Turning it on needs a real write-intent signal, most likely an explicit argument on the
-  dispatcher schema. That is the follow-up, and it is what makes the gate worth having.
+- **The routing bug is FIXED in code, UNVERIFIED on-device.** 2026-08-17 Kevin spoke workout sets;
+  nothing was written and he was told it was recorded. Logcat proved `log_workout_set` was never
+  called and that the live model routed the request to `ask_goals`, whose domain holds only
+  `list_goals`/`ask_advisor`. Three layers landed, weakest first:
+  1. `ask_goals`' description no longer claims fitness/planning/car/money territory and now says
+     outright that it records nothing; `ask_body` now leads with the driver's own words and claims
+     exclusivity over recording a set, meal, sleep, or weigh-in.
+  2. Every dispatcher grounding ends in `dispatchBoundaryClause(domain)`, derived from that
+     domain's own writable tools, so a zero-write domain is told in words that it cannot record and
+     must say so rather than answering around it.
+  3. **The mutation gate is now ON for all five dispatchers.** `DISPATCHER_PARAMS` gained an
+     optional `intent` enum (`record`/`ask`) the model declares itself, so `wantsWrite(args)` reads
+     a stated fact instead of guessing prose - the exact way out the old `requireMutation` doc
+     comment named. A `record`-intent call into `goals`/`mail` can never report a mutation, so it
+     is REFUSED. Tonight's exact failure is now mechanically impossible, not merely less likely.
+  Layer 3 is the only one that holds mechanically; 1 and 2 are prompt text. Six tests in
+  `LiveToolboxDispatchRoutingTest`, all green, `reasoned`+`tested` - **nothing here is `on-device`
+  yet. Next session: speak a set on the phone and confirm the row lands.**
+- **Unrelated pre-existing failure found while running the suite:**
+  `BioDigestBuilderTest.bodyweight reports a weekly average, never one line per reading` fails on a
+  CLEAN tree (verified by stashing). Expects a 181.0 weekly average, gets per-week lines
+  `wk0 180.0lbs wk-1 182.0lbs`. Not caused by the routing fix; not touched by it.
 - **Verified tonight `on-device`:** the mic pass (`a28b792` and its seven parents) - 11 captures,
   one under a second, against 4-of-20 sub-second before. Improved, NOT proven fixed; one 559ms
   sample could be a legitimate short turn or the retry firing.
