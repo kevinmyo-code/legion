@@ -91,6 +91,13 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
     val phase by CompanionPhase.phase.collectAsStateWithLifecycle()
     val caption by CompanionPhase.caption.collectAsStateWithLifecycle()
 
+    // Ticket 15's signal, finally reaching the driver. It used to stop at
+    // CarProbeLog and the Settings diagnostic page, which meant the one state
+    // where LEGION cannot hear was the one state it never said out loud.
+    // False on API 28 and below means "not known to be silenced" - the platform
+    // offers no signal there at all - never "confirmed hearing you".
+    val silenced by CompanionPhase.silenced.collectAsStateWithLifecycle()
+
     // The permission is real Android state, not implied by the toggle - a
     // driver can revoke RECORD_AUDIO from system Settings at any point while
     // the assistant stays "on" (the service keeps running; it just fails the
@@ -123,7 +130,7 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
     }
 
     AssistantStripContent(
-        state = AssistantStripResolver.resolve(phase, caption, notice, micGranted),
+        state = AssistantStripResolver.resolve(phase, caption, notice, micGranted, silenced),
         onTap = {
             if (micGranted) {
                 // Never binds, never constructs LiveSessionController here -
@@ -165,7 +172,10 @@ private fun AssistantStripContent(state: AssistantStripResolver.State, onTap: ()
     val sem = LocalLegionSemantics.current
     // ADVISORY (mission-control ticket 13 re-home): a blocked capability, not a failed gate or
     // an active fault - amber, not chrome. See ticket 04's answer, section 1.
-    val labelColor = if (state.micBlocked) sem.estimated else MaterialTheme.colorScheme.onSurface
+    // A silenced capture is the same class of thing - blocked, not faulted - so it
+    // borrows the same advisory treatment. The WORDS carry it either way.
+    val labelColor =
+        if (state.micBlocked || state.silenced) sem.estimated else MaterialTheme.colorScheme.onSurface
 
     Surface(
         modifier = Modifier
@@ -180,7 +190,7 @@ private fun AssistantStripContent(state: AssistantStripResolver.State, onTap: ()
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            PhaseDot(active = state.active, blocked = state.micBlocked)
+            PhaseDot(active = state.active, blocked = state.micBlocked || state.silenced)
             Column(Modifier.weight(1f)) {
                 Text(state.label, style = MaterialTheme.typography.titleMedium, color = labelColor)
                 if (state.subtitle != null) {
@@ -242,7 +252,9 @@ private fun PhaseDot(active: Boolean, blocked: Boolean) {
 @Composable
 private fun PreviewAssistantStripIdle() = LegionTheme {
     AssistantStripContent(
-        state = AssistantStripResolver.resolve(Phase.IDLE, "", null, micGranted = true),
+        state = AssistantStripResolver.resolve(
+            Phase.IDLE, "", null, micGranted = true, silenced = false,
+        ),
         onTap = {},
     )
 }
@@ -253,6 +265,7 @@ private fun PreviewAssistantStripListening() = LegionTheme {
     AssistantStripContent(
         state = AssistantStripResolver.resolve(
             Phase.LISTENING, "how's the oil holding up?", null, micGranted = true,
+            silenced = false,
         ),
         onTap = {},
     )
@@ -264,6 +277,7 @@ private fun PreviewAssistantStripSpeaking() = LegionTheme {
     AssistantStripContent(
         state = AssistantStripResolver.resolve(
             Phase.SPEAKING, "your oil change is about two weeks overdue", null, micGranted = true,
+            silenced = false,
         ),
         onTap = {},
     )
@@ -273,7 +287,9 @@ private fun PreviewAssistantStripSpeaking() = LegionTheme {
 @Composable
 private fun PreviewAssistantStripNotice() = LegionTheme {
     AssistantStripContent(
-        state = AssistantStripResolver.resolve(Phase.IDLE, "", "NO SIGNAL OUT HERE", micGranted = true),
+        state = AssistantStripResolver.resolve(
+            Phase.IDLE, "", "NO SIGNAL OUT HERE", micGranted = true, silenced = false,
+        ),
         onTap = {},
     )
 }
@@ -282,7 +298,20 @@ private fun PreviewAssistantStripNotice() = LegionTheme {
 @Composable
 private fun PreviewAssistantStripMicBlocked() = LegionTheme {
     AssistantStripContent(
-        state = AssistantStripResolver.resolve(Phase.IDLE, "", null, micGranted = false),
+        state = AssistantStripResolver.resolve(
+            Phase.IDLE, "", null, micGranted = false, silenced = false,
+        ),
+        onTap = {},
+    )
+}
+
+@Preview(name = "Assistant strip: silenced by another app", widthDp = 384)
+@Composable
+private fun PreviewAssistantStripSilenced() = LegionTheme {
+    AssistantStripContent(
+        state = AssistantStripResolver.resolve(
+            Phase.LISTENING, "go ahead", null, micGranted = true, silenced = true,
+        ),
         onTap = {},
     )
 }

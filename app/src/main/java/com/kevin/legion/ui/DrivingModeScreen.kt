@@ -121,6 +121,12 @@ import kotlinx.coroutines.delay
  */
 private const val POLL_MS = 2_000L
 
+/**
+ * What the Alfred strip says instead of a phase word while the capture is silenced.
+ * Deliberately short - this line is glanced at from a mount, not read.
+ */
+private const val SILENCED_STATUS = "CAN'T HEAR YOU"
+
 /** The clock in the HUD line only needs to be right to the minute (approved mock) - see [clockTime]'s own doc for why the deck never shows seconds. */
 private const val CLOCK_POLL_MS = 60_000L
 
@@ -275,6 +281,10 @@ fun DrivingModeScreen(onExit: () -> Unit) {
     // as "print a placeholder".
     val adapterInfo by ObdBluetoothManager.adapterInfo.collectAsStateWithLifecycle()
 
+    // Ticket 15's signal. False below API 29 means "not known to be silenced", never
+    // "confirmed hearing you" - the platform offers no equivalent signal there.
+    val silenced by CompanionPhase.silenced.collectAsStateWithLifecycle()
+
     DrivingModeContent(
         vehicleName = vehicleName,
         linkLive = linkLive,
@@ -286,7 +296,13 @@ fun DrivingModeScreen(onExit: () -> Unit) {
         // The Alfred status line reuses AssistantStripResolver's own phase
         // wording (ticket 20 build brief item 2): no new voice-state
         // vocabulary invented for this one screen.
-        alfredStatus = AssistantStripResolver.phaseLabel(phase),
+        //
+        // A silenced capture overrides the phase word here for the same reason it does
+        // on the phone strip (ticket 15) - and it matters MORE here, because the case
+        // that silences LEGION is another app taking a privacy-sensitive capture in the
+        // car, and a driver reading "Listening..." on a mounted phone has no other way
+        // to find out nothing is on the wire.
+        alfredStatus = if (silenced) SILENCED_STATUS else AssistantStripResolver.phaseLabel(phase),
         tickCounter = tickCounter,
         protocolName = adapterInfo?.protocolName,
         onExit = onExit,

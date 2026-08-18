@@ -69,6 +69,16 @@ class LiveSessionController(context: Context) {
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
 
     private var session: GeminiLiveSession? = null
+        set(value) {
+            field = value
+            // A session that is gone cannot still be silenced, and there are ten
+            // assignment sites that drop one. Clearing HERE rather than at each of
+            // them is what stops a stale `true` outliving the socket that raised it
+            // and leaving the strip permanently claiming LEGION is deaf. Whatever
+            // session replaces it publishes its own state through [newSession]'s
+            // collector.
+            if (value == null) CompanionPhase.setSilenced(false)
+        }
 
     // Set once destroy() runs so a final Closed event doesn't re-prewarm a socket
     // on a torn-down controller.
@@ -129,6 +139,12 @@ class LiveSessionController(context: Context) {
         scope.launch {
             s.isSilenced.collect { silenced ->
                 CarProbeLog.log("CarProbeMicSilenced", "GeminiLiveSession.isSilenced=$silenced")
+                // Identity guard: this collector is never cancelled, so a session that
+                // was torn down and replaced can still emit (its own teardown sets the
+                // flag back to false at GeminiLiveSession's `finally`). Only the CURRENT
+                // session may speak for the driver-facing flag; a dead one's late emit
+                // must not stomp the live one's state in either direction.
+                if (session === s) CompanionPhase.setSilenced(silenced)
             }
         }
         return s
