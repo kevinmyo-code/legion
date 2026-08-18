@@ -326,9 +326,17 @@ class SubAgent(
                             if (call.name in mutatingToolNames) mutatingToolsCalled.add(call.name)
                             JSONObject().put("result", out)
                         } else {
+                            Log.w(TAG, "investigate round $postNumber: ${call.name} timed out")
                             JSONObject().put("error", "timed out")
                         }
                     } catch (e: Exception) {
+                        // A thrown tool used to vanish into the {"error": ...} fed back to the
+                        // model with no trace on-device (CLAUDE.md §4 rule 6's shape one layer up:
+                        // "called and failed" must not be invisible). Logged, not swallowed - this
+                        // is what would have shown ask_goals actually attempting (and losing) a
+                        // write during the defect this whole change traces back to, had one been
+                        // attempted and thrown instead of never being called at all.
+                        Log.w(TAG, "investigate round $postNumber: ${call.name} failed: ${e.message}")
                         JSONObject().put("error", e.message ?: "tool failed")
                     }
                 }
