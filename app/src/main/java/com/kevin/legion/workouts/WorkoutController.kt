@@ -18,6 +18,18 @@ import com.kevin.legion.util.shortDate
  */
 object WorkoutController {
     /**
+     * Outcome of a voice/tool write, same shape and same reason as
+     * [com.kevin.legion.vehicle.VehicleController.WriteOutcome]: [success] is derived from what
+     * actually landed (a validated input plus a completed insert), never asserted by the caller.
+     * Added because [logSet] used to return a bare `String` and `LiveToolbox`'s `log_workout_set`
+     * dispatch hardcoded `success = true` above it regardless of what that string said - the exact
+     * defect class ticket 05 closed for `set_odometer`/`log_service`, found again here 2026-08-17
+     * (a driver's spoken sets during a 21:42-21:45 session never reached `workout_set_logs`, and
+     * the app told him they had). [message] is what the caller speaks either way.
+     */
+    data class WriteOutcome(val success: Boolean, val message: String)
+
+    /**
      * D21: hands the driver's stated [goal] to [WorkoutPlanAgent], then stores the result as the
      * new current [WorkoutPlan] + [WorkoutPlanItem] rows, effective from THIS week (D2's "copy
      * forward" - nothing before this week's boundary is touched or deleted). Returns a spoken
@@ -53,6 +65,14 @@ object WorkoutController {
      * `log_workout_set` tool declares `required` (ticket 11 D35) - everything else here is
      * optional detail that may simply not have been said. D37: [TrustTier.REPORTED] is stamped
      * here, at the write site, unconditionally - there is no branch that could forget it.
+     *
+     * Validates BEFORE writing (2026-08-17 fix): a blank [exercise] or a non-positive [sets] used
+     * to be inserted as-is, producing a garbage row the driver had no reason to expect (nothing
+     * upstream stopped a misheard or empty argument from reaching this far). Refused in words, same
+     * "no anchor, no claim" posture the rest of this codebase uses for a bad write - never a
+     * silent no-op. [WriteOutcome.success] on the write path is derived from the DAO's own
+     * `insert` returning a real row id (Room's autoincrement id is always > 0 for a landed row),
+     * not asserted - this closes the exact gap `log_workout_set`'s dispatch used to hardcode.
      */
     suspend fun logSet(
         context: Context,
@@ -61,9 +81,14 @@ object WorkoutController {
         reps: Int?,
         weightValue: Double?,
         weightUnit: String?,
-    ): String {
+    ): WriteOutcome {
+        if (exercise.isBlank())
+            return WriteOutcome(false, "I didn't catch which exercise - say the name and I'll log it.")
+        if (sets <= 0)
+            return WriteOutcome(false, "That's not a set count I can log - how many sets?")
+
         val now = System.currentTimeMillis()
-        CarDatabase.getDatabase(context).workoutSetLogDao().insert(
+        val rowId = CarDatabase.getDatabase(context).workoutSetLogDao().insert(
             WorkoutSetLog(
                 exercise = exercise,
                 sets = sets,
@@ -77,7 +102,11 @@ object WorkoutController {
         // D34: the tool response states what was written, no separate confirm turn.
         val weightPhrase = if (weightValue != null) " at $weightValue${weightUnit ?: ""}" else ""
         val repsPhrase = if (reps != null) " of $reps" else ""
-        return "$sets sets$repsPhrase of $exercise$weightPhrase, logged."
+        return if (rowId > 0) {
+            WriteOutcome(true, "$sets sets$repsPhrase of $exercise$weightPhrase, logged.")
+        } else {
+            WriteOutcome(false, "That didn't save - try logging it again.")
+        }
     }
 
     /** D23: bodyweight is its own reported measurement, not a field on [WorkoutSetLog]. */

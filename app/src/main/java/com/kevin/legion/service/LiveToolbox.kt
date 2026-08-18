@@ -2911,17 +2911,22 @@ object LiveToolbox {
      * Dispatches log_workout_set. `weight`/`weight_unit` travel together - a weight value with no
      * stated unit defaults to lbs rather than being dropped, since the driver clearly meant
      * something by naming a number.
+     *
+     * success is now DERIVED from [WorkoutController.logSet]'s [WorkoutController.WriteOutcome],
+     * never hardcoded - same fix as set_odometer/log_service (comment at ~1708 above), applied
+     * here 2026-08-17 after a measured on-device defect: a driver's spoken sets during a real
+     * session never reached `workout_set_logs` (the write path never even ran that night - see
+     * SubAgent's investigate-loop fix in the prior commit), yet the old `success = true` here would
+     * have told him it was recorded even on a genuine write failure or a garbage argument.
      */
     private suspend fun logWorkoutSet(context: Context, args: JSONObject): JSONObject {
         val weight = if (args.has("weight")) args.optDouble("weight").takeIf { !it.isNaN() } else null
         val weightUnit = if (weight != null) args.optString("weight_unit", "lbs") else null
         val reps = if (args.has("reps")) args.optInt("reps") else null
-        return result(
-            success = true,
-            message = WorkoutController.logSet(
-                context, args.optString("exercise"), args.optInt("sets"), reps, weight, weightUnit,
-            ),
+        val outcome = WorkoutController.logSet(
+            context, args.optString("exercise"), args.optInt("sets"), reps, weight, weightUnit,
         )
+        return result(success = outcome.success, message = outcome.message)
     }
 
     /** D24's weekly session gap, worded for the model to speak. */
