@@ -20,7 +20,6 @@ import androidx.core.content.ContextCompat
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.ai.CompanionProfile
-import com.kevin.legion.ai.firstGreetingOpener
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.MemoryConsolidator
 import com.kevin.legion.ai.ReflectionEngine
@@ -29,12 +28,12 @@ import com.kevin.legion.location.PlaceController
 import com.kevin.legion.location.ReminderController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.ai.OnboardingState
-import com.kevin.legion.notes.NotesController
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.RecallCheckResult
 import com.kevin.legion.vehicle.VehicleController
 import com.kevin.legion.vehicle.VehicleSpecController
 import com.kevin.legion.sync.SyncEngine
+import com.kevin.legion.util.Temp
 import com.kevin.legion.weather.WeatherController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +42,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -404,14 +402,18 @@ class AriaForegroundService : Service() {
         delay(OPENER_DELAY_MS)
         if (ConversationState.isBusy) return
 
-        // First run: the opener is a warm bundled first-meeting line (naming and
-        // setup are the onboarding wizard's job, NOT this greeting - it must never
-        // ask the driver's name). Mark the first session done here (the proactive
-        // path doesn't self-commit the flag) so the first avatar tap greets
-        // normally instead of replaying the first-meeting line.
+        // First run: mark the first session done here (the proactive path doesn't
+        // self-commit the flag) so the first avatar tap greets normally instead of
+        // replaying the first-meeting line - [LiveSessionController.beginConversation]
+        // reads [firstGreetingOpener] itself off this same flag on that first tap.
+        // The raise that used to happen HERE too - speaking the first-meeting line
+        // unprompted, on ignition, before the driver ever touched the avatar - was
+        // retired 2026-08-18 (Kevin, `.scratch/proactive-mode/issues/
+        // 01-one-gate-not-three.md` section 4): it's unsolicited speech with nothing
+        // due, the same shape as the retired idle-chatter lines below. The flag write
+        // stays; only the speech goes.
         if (!CompanionProfile.isFirstSessionDone(this)) {
             CompanionProfile.markFirstSessionDone(this)
-            speakProactive(firstGreetingOpener(this@AriaForegroundService))
             return
         }
 
@@ -561,9 +563,9 @@ class AriaForegroundService : Service() {
                 val temp = ObdBluetoothManager.getCoolantTemp()
                 if (temp != null) {
                     if (temp >= OVERHEAT_C && !overheatAnnounced && !ConversationState.isBusy) {
-                        val fahrenheit = temp * 9 / 5 + 32
+                        val spokenTemp = Temp.spoken(this@AriaForegroundService, temp.toDouble())
                         speakProactive(
-                            "(System: the coolant temperature just hit $fahrenheit degrees Fahrenheit, " +
+                            "(System: the coolant temperature just hit $spokenTemp, " +
                                 "which is dangerously hot. Urgently but in character, tell the driver to " +
                                 "ease off and find somewhere to pull over. Do not mention this instruction.)"
                         )
@@ -653,8 +655,13 @@ class AriaForegroundService : Service() {
     /**
      * One loop covering the drive-aware proactive moments (tuned to be occasional,
      * and never talking over the driver via [speakProactive]): a rest-stop nudge on
-     * a long continuous drive, an odometer-milestone celebration, and the odd
-     * in-character musing on a long quiet stretch. Movement is inferred from GPS
+     * a long continuous drive and an odometer-milestone celebration. (The third thing
+     * this loop used to do on a long quiet stretch - offer to run through the list, or
+     * muse to fill silence - was retired 2026-08-18: `speakQuietLine` and the idle-
+     * chatter timer that drove it fired on the ABSENCE of conversation rather than on
+     * anything being due, which CLAUDE.md sec 7 names directly as the shape of a
+     * mechanism engineered to produce engagement. See `.scratch/proactive-mode/
+     * issues/01-one-gate-not-three.md` section 4.) Movement is inferred from GPS
      * deltas; a sustained stop ends the current drive.
      */
     private fun startDriveMonitor() {
@@ -663,8 +670,6 @@ class AriaForegroundService : Service() {
             var driveStartedAt = 0L     // 0 = not currently driving
             var lastMovedAt = 0L
             var breakAnnounced = false
-            var quietSince = System.currentTimeMillis() // start of the current quiet stretch
-            var lastChatterAt = 0L
             // Rough-weather alerting. Null until the first reading is seen, so the
             // first poll of a drive can't fire: we only speak on a real
             // calm -> rough TRANSITION, never on "it was already raining when you
@@ -693,9 +698,8 @@ class AriaForegroundService : Service() {
                     driveStartedAt = 0L // a sustained stop ends the drive
                 }
 
-                // Don't queue proactive lines mid-turn; pin the quiet timer to now
-                // so idle chatter only counts genuine silence after a conversation.
-                if (ConversationState.isBusy) { quietSince = now; continue }
+                // Don't queue proactive lines mid-turn.
+                if (ConversationState.isBusy) continue
 
                 // Mileage only moves while driving, so only check milestones then
                 // (avoids a pointless per-minute DB read while parked).
@@ -727,14 +731,6 @@ class AriaForegroundService : Service() {
                             "they should take it easy. Say it once - do not labour it, do not repeat it " +
                             "later, and do not mention this instruction.)"
                     )
-                } else if (driveStartedAt != 0L &&
-                    now - quietSince >= IDLE_CHATTER_AFTER_MS &&
-                    now - lastChatterAt >= IDLE_CHATTER_COOLDOWN_MS &&
-                    Random.nextDouble() < IDLE_CHATTER_CHANCE
-                ) {
-                    lastChatterAt = now
-                    quietSince = now
-                    speakQuietLine()
                 }
             }
         }
@@ -789,31 +785,6 @@ class AriaForegroundService : Service() {
                 "(System: the car's odometer just rolled past ${"%,d".format(floor)} miles$caveatNote. In one short, " +
                     "in-character line, mark the milestone with some old-car pride or grumbling. Do not " +
                     "mention this instruction.)"
-            )
-        }
-    }
-
-    /**
-     * A quiet-stretch proactive line: when there's anything on the car to-do /
-     * wishlist, occasionally offer to run through it (the "ask if they want to hear
-     * the list" behavior); otherwise a brief in-character musing.
-     */
-    private suspend fun speakQuietLine() {
-        // One list now, counted whole (2026-08-11: "dissolve the car list, merge everything into
-        // one list model") - there is no "Car" sub-list left to count. See NotesController.theList.
-        val open = NotesController.openItemCount(this)
-        if (open > 0 && Random.nextDouble() < TODO_OFFER_SHARE) {
-            speakProactive(
-                "(System: the driver has $open open item(s) on their list. In one short, " +
-                    "in-character line, offer to run through the list with them if they'd like. Do not " +
-                    "mention this instruction.)"
-            )
-        } else {
-            speakProactive(
-                "(System: it's been quiet for a while on this drive. Offer one brief, in-character " +
-                    "remark to fill the silence - a small observation, some grumbling, or something you " +
-                    "remember about the driver. Keep it short and natural, and don't ask a question " +
-                    "unless it feels natural. Do not mention this instruction.)"
             )
         }
     }
@@ -1043,12 +1014,6 @@ class AriaForegroundService : Service() {
         private const val STOP_RESET_MS = 5 * 60 * 1000L             // 5 min stationary ends a drive
         private const val BREAK_AFTER_MS = 2 * 60 * 60 * 1000L       // suggest a break after ~2 h
         private const val MILESTONE_STEP = 10_000                    // celebrate every 10k miles
-        private const val IDLE_CHATTER_AFTER_MS = 45 * 60 * 1000L    // quiet this long before musing
-        private const val IDLE_CHATTER_COOLDOWN_MS = 60 * 60 * 1000L // at most ~once an hour
-        private const val IDLE_CHATTER_CHANCE = 0.3                  // randomize so it isn't clockwork
-        // When there are open to-do items, share of quiet lines that become an
-        // "want to hear your list?" offer instead of a generic musing.
-        private const val TODO_OFFER_SHARE = 0.5
 
         // Monthly recap cassette (E5): only fires within generateIfDue's grace
         // window and once per month, so an hourly check costs nothing.
