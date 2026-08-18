@@ -18,9 +18,30 @@ The same `dumpsys activity services com.kevin.legion` line also reported:
 startForegroundDelayMs:123489
 ```
 
-**123 seconds between `startForegroundService()` and the service actually calling
-`startForeground()`.** The documented platform window is **10 seconds**, after which the system
-throws `ForegroundServiceDidNotStartInTimeException` and kills the process.
+Read at the time as **123 seconds between `startForegroundService()` and the service actually
+calling `startForeground()`**, against a documented **10 second** window after which the system
+throws `ForegroundServiceDidNotStartInTimeException`. **See the section below - a second
+measurement makes that reading doubtful.**
+
+## A SECOND MEASUREMENT THAT UNDERCUTS THE READING ABOVE (2026-08-17, same evening)
+
+A later `dumpsys` on a healthy, app-open, foreground service reported:
+
+```
+startForegroundDelayMs:554912
+```
+
+**554 seconds, on a service that is demonstrably running and was never killed**, with the app TOP
+on screen and `isForeground=true`. If this field meant "time between `startForegroundService()` and
+`startForeground()`" against a 10-second window, that service could not exist. So the field
+probably does NOT mean what this ticket first assumed, and the "latent fatal
+`ForegroundServiceDidNotStartInTimeException`" framing below is **an inference, not a finding.**
+
+Both numbers are real and were read off the device. What they MEAN is open. Establish that first,
+from AOSP source or platform documentation, before spending any effort on a fix. If the field turns
+out to be benign (a cumulative deferral counter, a time-since-last-promotion, anything other than
+the start-to-startForeground gap) then this ticket closes as a misreading and the only thing worth
+keeping is the lesson about it.
 
 ## Why it did not crash this time, probably
 
