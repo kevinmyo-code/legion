@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -779,59 +780,74 @@ fun LedgerContent(
     onOpenUncategorized: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
+    // 2026-08-18 regression fix: this used to be a plain `Column(fillMaxSize())` holding the title
+    // row, FolderConnectionRow, AccountMappingSection, ScanStatusSection etc. as FIXED (non-scrolling)
+    // content, with `LedgerListing`'s own LazyColumn as the only scroll surface, sized to whatever
+    // height was left over. Adding NominatedAccountSection to that fixed region (commit 77a4fbf) grew
+    // it past the viewport on-device: a plain Column's non-weighted children never yield space back,
+    // so the leftover height for the LazyColumn collapsed to ~0 and the whole tab stopped scrolling.
+    // Same "ONE scroll surface" constraint `ui.notes.InboxScreen`'s own LazyColumn comment documents -
+    // everything below the MONEY title now lives as items in a SINGLE LazyColumn, this one, so growth
+    // in any section (this one, or the next) degrades into "scroll further", never "stop scrolling".
     Surface(modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("MONEY", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // A grocery receipt is a purchase (2026-08-07 brief) -
-                    // pantry's read screen lives under Money now, reached
-                    // from here rather than its own tab.
-                    TextButton(onClick = onOpenGroceries) {
-                        Text("GROCERIES", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                    }
-                    // Mission-control ticket 16: now opens the CATEGORIZE drilldown rather than
-                    // instant-firing the categorise action - that action lives INSIDE the drilldown
-                    // now (an explicit RUN CATEGORIZATION button), because this screen is where its
-                    // own results land. The count said in words, not a bare badge (CLAUDE.md §4) -
-                    // same convention SectionHeader's own right-hand count already used pre-ticket-16.
-                    val toCategorizeCount = state.pending.size + LedgerCategoryResolver.groupPendingGuesses(state.pendingCategoryGuesses).size
-                    TextButton(onClick = onOpenCategorize) {
-                        Text(
-                            if (toCategorizeCount > 0) "CATEGORIZE ($toCategorizeCount)" else "CATEGORIZE",
-                            style = LegionType.stamp,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                    TextButton(onClick = onOpenImport) {
-                        Text("IMPORT", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+        LazyColumn(Modifier.fillMaxSize()) {
+            item(key = "money-title-row") {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("MONEY", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // A grocery receipt is a purchase (2026-08-07 brief) -
+                        // pantry's read screen lives under Money now, reached
+                        // from here rather than its own tab.
+                        TextButton(onClick = onOpenGroceries) {
+                            Text("GROCERIES", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                        }
+                        // Mission-control ticket 16: now opens the CATEGORIZE drilldown rather than
+                        // instant-firing the categorise action - that action lives INSIDE the drilldown
+                        // now (an explicit RUN CATEGORIZATION button), because this screen is where its
+                        // own results land. The count said in words, not a bare badge (CLAUDE.md §4) -
+                        // same convention SectionHeader's own right-hand count already used pre-ticket-16.
+                        val toCategorizeCount = state.pending.size + LedgerCategoryResolver.groupPendingGuesses(state.pendingCategoryGuesses).size
+                        TextButton(onClick = onOpenCategorize) {
+                            Text(
+                                if (toCategorizeCount > 0) "CATEGORIZE ($toCategorizeCount)" else "CATEGORIZE",
+                                style = LegionType.stamp,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        TextButton(onClick = onOpenImport) {
+                            Text("IMPORT", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
 
-            FolderConnectionRow(
-                folder = state.folder,
-                scanState = state.scanState,
-                onConnect = onConnectFolder,
-                onChangeFolder = onChangeFolder,
-                onDisconnectFolder = onDisconnectFolder,
-                onScanNow = onScanNow,
-            )
+            item(key = "money-folder-connection") {
+                FolderConnectionRow(
+                    folder = state.folder,
+                    scanState = state.scanState,
+                    onConnect = onConnectFolder,
+                    onChangeFolder = onChangeFolder,
+                    onDisconnectFolder = onDisconnectFolder,
+                    onScanNow = onScanNow,
+                )
+            }
             // Only meaningful once a folder is actually connected - renders
             // nothing itself when state.accountFolders is empty (a flat
             // connected folder with no per-account subfolders), see
             // AccountMappingSection's doc comment.
             if (state.folder is LedgerFolderUiState.Connected) {
-                AccountMappingSection(
-                    folders = state.accountFolders,
-                    mapping = state.accountMapping,
-                    knownAccountIds = state.balances.map { it.accountId }.distinct(),
-                    onAssign = onAssignAccount,
-                )
+                item(key = "money-account-mapping") {
+                    AccountMappingSection(
+                        folders = state.accountFolders,
+                        mapping = state.accountMapping,
+                        knownAccountIds = state.balances.map { it.accountId }.distinct(),
+                        onAssign = onAssignAccount,
+                    )
+                }
             }
             // The nomination picker (2026-08-18) - not gated on a connected folder the way
             // AccountMappingSection above is: an account can carry balances from a hand-picked PDF
@@ -840,35 +856,41 @@ fun LedgerContent(
             // early-return AccountMappingSection's own doc comment states. groupAccountBalances,
             // not the raw list - same render-site grouping discipline every other reader of
             // state.balances on this screen follows (see that function's own doc comment).
-            NominatedAccountSection(
-                balances = groupAccountBalances(state.balances),
-                nominatedAccountId = state.nominatedAccountId,
-                onNominate = onNominateAccount,
-            )
-            Hairline()
-            ScanStatusSection(
-                scanState = state.scanState,
-                hasGeminiKey = state.hasGeminiKey,
-                onApprove = onApproveLlm,
-                onDecline = onDeclineLlm,
-                onOpenKeySettings = onOpenKeySettings,
-            )
+            item(key = "money-nominated-account") {
+                NominatedAccountSection(
+                    balances = groupAccountBalances(state.balances),
+                    nominatedAccountId = state.nominatedAccountId,
+                    onNominate = onNominateAccount,
+                )
+            }
+            item(key = "money-hairline-and-scan-status") {
+                Hairline()
+                ScanStatusSection(
+                    scanState = state.scanState,
+                    hasGeminiKey = state.hasGeminiKey,
+                    onApprove = onApproveLlm,
+                    onDecline = onDeclineLlm,
+                    onOpenKeySettings = onOpenKeySettings,
+                )
+            }
 
             when {
-                state.loading -> Text(
-                    "Loading...",
-                    style = LegionType.stamp,
-                    color = sem.ghost,
-                    modifier = Modifier.padding(12.dp),
-                )
+                state.loading -> item(key = "money-loading") {
+                    Text(
+                        "Loading...",
+                        style = LegionType.stamp,
+                        color = sem.ghost,
+                        modifier = Modifier.padding(12.dp),
+                    )
+                }
                 // Only rendered while nothing is actively scanning -
                 // ScanStatusSection above already communicates progress, and
                 // showing a "nothing here" message next to a live progress
                 // bar would read as contradictory.
                 state.transactions.isEmpty() && state.quarantined.isEmpty() &&
                     (state.scanState is ScanState.Idle || state.scanState is ScanState.Finished) ->
-                    LedgerEmptySection(state, onOpenImport, onScanNow)
-                else -> LedgerListing(
+                    item(key = "money-empty") { LedgerEmptySection(state, onOpenImport, onScanNow) }
+                else -> ledgerListingItems(
                     state, onPrevPnlMonth, onNextPnlMonth, onOpenCategorize, onOpenQuarantine,
                     onOpenBudget, onOpenBalances, onOpenTrend, onOpenUncategorized,
                 )
@@ -922,8 +944,15 @@ private fun LedgerEmptySection(state: LedgerUiState, onOpenImport: () -> Unit, o
  * BALANCES' full account list one tap in from their own tiles, START OVER moved to Setup entirely
  * (`ui.SettingsScreen`'s own `PurgeLedgerRow` now).
  */
-@Composable
-private fun LedgerListing(
+/**
+ * `LazyListScope` extension, not a `@Composable` with its own `LazyColumn` - see the 2026-08-18
+ * regression comment on [LedgerContent]'s call site. This function used to own a second, nested
+ * `LazyColumn`; it now just appends `item`/`items` calls onto the CALLER's single LazyColumn, so
+ * the whole MONEY tab (title, folder setup, account pickers, and this listing) shares one scroll
+ * surface instead of this one silently competing with a fixed-height header region above it for
+ * the viewport.
+ */
+private fun LazyListScope.ledgerListingItems(
     state: LedgerUiState,
     onPrevPnlMonth: () -> Unit,
     onNextPnlMonth: () -> Unit,
@@ -934,74 +963,72 @@ private fun LedgerListing(
     onOpenTrend: () -> Unit,
     onOpenUncategorized: () -> Unit,
 ) {
-    LazyColumn(Modifier.fillMaxSize()) {
-        // Ticket 19's GOALS panel - CRED aspect (personal-finance advisor's own key, see
-        // com.kevin.legion.advisor.playbooks.CredPlaybook's doc comment). Sits above every other
-        // panel, unchanged by this ticket's tiling - see GoalsPanel's own doc comment for why it is
-        // self-contained rather than folded into LedgerUiState.
-        item(key = "goals") {
-            com.kevin.legion.ui.goals.GoalsPanel(aspect = "cred")
-            Hairline()
+    // Ticket 19's GOALS panel - CRED aspect (personal-finance advisor's own key, see
+    // com.kevin.legion.advisor.playbooks.CredPlaybook's doc comment). Sits above every other
+    // panel, unchanged by this ticket's tiling - see GoalsPanel's own doc comment for why it is
+    // self-contained rather than folded into LedgerUiState.
+    item(key = "goals") {
+        com.kevin.legion.ui.goals.GoalsPanel(aspect = "cred")
+        Hairline()
+    }
+
+    // ------------------------------------------------------------ SPEND (FULL, hero)
+    // Only once the US entity has at least one month of data to show - `state.pnlMonth` stays
+    // null until `monthsWithData` resolves to something real, matching the old US BUDGET
+    // section's own gate (a fresh install with zero transactions never renders a month picker
+    // with nothing to page through).
+    val pnlMonth = state.pnlMonth
+    if (state.pnlMonthsWithData.isNotEmpty() && pnlMonth != null) {
+        item(key = "spend-pane") {
+            val index = state.pnlMonthsWithData.indexOf(pnlMonth)
+            SpendPane(
+                state = state,
+                canGoPrevMonth = index > 0,
+                canGoNextMonth = index in 0 until state.pnlMonthsWithData.lastIndex,
+                onPrevMonth = onPrevPnlMonth,
+                onNextMonth = onNextPnlMonth,
+                onOpenTrend = onOpenTrend,
+                onOpenQuarantine = onOpenQuarantine,
+                onOpenUncategorized = onOpenUncategorized,
+            )
         }
 
-        // ------------------------------------------------------------ SPEND (FULL, hero)
-        // Only once the US entity has at least one month of data to show - `state.pnlMonth` stays
-        // null until `monthsWithData` resolves to something real, matching the old US BUDGET
-        // section's own gate (a fresh install with zero transactions never renders a month picker
-        // with nothing to page through).
-        val pnlMonth = state.pnlMonth
-        if (state.pnlMonthsWithData.isNotEmpty() && pnlMonth != null) {
-            item(key = "spend-pane") {
-                val index = state.pnlMonthsWithData.indexOf(pnlMonth)
-                SpendPane(
-                    state = state,
-                    canGoPrevMonth = index > 0,
-                    canGoNextMonth = index in 0 until state.pnlMonthsWithData.lastIndex,
-                    onPrevMonth = onPrevPnlMonth,
-                    onNextMonth = onNextPnlMonth,
-                    onOpenTrend = onOpenTrend,
-                    onOpenQuarantine = onOpenQuarantine,
-                    onOpenUncategorized = onOpenUncategorized,
+        // ---------------------------------------------------- BUDGET / BALANCES (HALF tiles)
+        // Same EqualHeightRow/HalfTile shell HOME's own BIO/CRED/FLEET/LOG row, BodyScreen's
+        // INTAKE/SLEEP row, and FleetScreen's MAINTENANCE/DRIVES row all already use - see
+        // `ui.common.DeckTiles.kt`'s own doc comment for why a bare `Row(IntrinsicSize.Min)`
+        // cannot be substituted (it crashes on-device against a DeckPane child).
+        item(key = "tile-row-budget-balances") {
+            val budgetTile = buildBudgetTile(state.budgetVsActual)
+            val groupedBalances = groupAccountBalances(state.balances)
+            val balancesTile = buildBalancesTile(groupedBalances)
+            EqualHeightRow(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalGap = 9.dp) {
+                HalfTile(
+                    header = "Budget",
+                    hero = budgetTile.hero,
+                    caption = budgetTile.caption,
+                    modifier = Modifier.clickable(onClick = onOpenBudget),
+                )
+                HalfTile(
+                    header = "Balances",
+                    hero = balancesTile.hero,
+                    caption = balancesTile.caption,
+                    modifier = Modifier.clickable(onClick = onOpenBalances),
                 )
             }
-
-            // ---------------------------------------------------- BUDGET / BALANCES (HALF tiles)
-            // Same EqualHeightRow/HalfTile shell HOME's own BIO/CRED/FLEET/LOG row, BodyScreen's
-            // INTAKE/SLEEP row, and FleetScreen's MAINTENANCE/DRIVES row all already use - see
-            // `ui.common.DeckTiles.kt`'s own doc comment for why a bare `Row(IntrinsicSize.Min)`
-            // cannot be substituted (it crashes on-device against a DeckPane child).
-            item(key = "tile-row-budget-balances") {
-                val budgetTile = buildBudgetTile(state.budgetVsActual)
-                val groupedBalances = groupAccountBalances(state.balances)
-                val balancesTile = buildBalancesTile(groupedBalances)
-                EqualHeightRow(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalGap = 9.dp) {
-                    HalfTile(
-                        header = "Budget",
-                        hero = budgetTile.hero,
-                        caption = budgetTile.caption,
-                        modifier = Modifier.clickable(onClick = onOpenBudget),
-                    )
-                    HalfTile(
-                        header = "Balances",
-                        hero = balancesTile.hero,
-                        caption = balancesTile.caption,
-                        modifier = Modifier.clickable(onClick = onOpenBalances),
-                    )
-                }
-            }
-            item(key = "spend-row-spacer") { Spacer(Modifier.height(14.dp)) }
         }
-
-        // ------------------------------------------------------------ RECENT ACTIVITY (FULL, list)
-        if (state.transactions.isNotEmpty()) {
-            item(key = "activity-header") { SectionHeader("RECENT ACTIVITY") }
-            items(state.transactions, key = { "t-${it.id}" }) { txn ->
-                LedgerTransactionRow(txn)
-                Hairline()
-            }
-        }
-        item(key = "bottom-spacer") { Spacer(Modifier.height(24.dp)) }
+        item(key = "spend-row-spacer") { Spacer(Modifier.height(14.dp)) }
     }
+
+    // ------------------------------------------------------------ RECENT ACTIVITY (FULL, list)
+    if (state.transactions.isNotEmpty()) {
+        item(key = "activity-header") { SectionHeader("RECENT ACTIVITY") }
+        items(state.transactions, key = { "t-${it.id}" }) { txn ->
+            LedgerTransactionRow(txn)
+            Hairline()
+        }
+    }
+    item(key = "bottom-spacer") { Spacer(Modifier.height(24.dp)) }
 }
 
 /**
