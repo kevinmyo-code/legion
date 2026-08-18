@@ -7,6 +7,7 @@ import com.kevin.legion.ui.AgendaSource
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.TextStyle
 import java.util.Locale
 
@@ -122,8 +123,37 @@ fun buildAgendaCalendarNotice(calendarPermissionGranted: Boolean, entryCount: In
  * having queried exactly `[dayStarts.first(), dayStarts.last() + 1 day)`, same contract
  * [com.kevin.legion.ui.common.bucketDailySumCents] already holds its callers to.
  */
+/**
+ * The local day an [AgendaEntry] belongs in, as a device-zone day-start key index-aligned with the
+ * `dayStarts` [buildWeekAheadDayCounts] is handed and the `dayStart` [entriesForDay] filters on.
+ *
+ * **The two halves of this merged stream do not anchor an all-day entry the same way, and treating
+ * them alike put every Google all-day appointment one day early on the month grid for anyone west
+ * of UTC.** Found 2026-08-18 on-device: two appointments spoken for 18 August, correct in the row
+ * list and in Google Calendar itself, rendered on 17 August in the grid.
+ *
+ * - A [AgendaSource.GOOGLE] all-day event's `timeMs` is **UTC midnight** of its calendar date -
+ *   Android's `CalendarContract` all-day convention, written that way deliberately by
+ *   [com.kevin.legion.calendar.CalendarProvider.insertEvent] and read back unmodified. Reading it
+ *   through the device zone at UTC-5 yields 19:00 the PREVIOUS day, hence the off-by-one. The date
+ *   is recovered through [ZoneOffset.UTC] and only THEN re-anchored to the local day-start the
+ *   caller's buckets use. `ui/notes/InboxScreen.kt`'s `epochToZonedLocalDate` is the same rule.
+ * - Everything else - every [AgendaSource.LOCAL] row, all-day or timed - is a genuine device-zone
+ *   instant (`LiveToolbox.addAppointment`'s `fallbackStartsAt`, `NotesController.addItemDue`), so
+ *   it keeps [dayStartEpoch] unchanged. Reading a LOCAL all-day row through UTC would break it in
+ *   the opposite direction, which is why this branches on the SOURCE and not on [AgendaEntry.allDay]
+ *   alone.
+ */
+fun agendaDayStart(entry: AgendaEntry, zone: ZoneId = ZoneId.systemDefault()): Long =
+    if (entry.allDay && entry.source == AgendaSource.GOOGLE) {
+        Instant.ofEpochMilli(entry.timeMs).atZone(ZoneOffset.UTC).toLocalDate()
+            .atStartOfDay(zone).toInstant().toEpochMilli()
+    } else {
+        dayStartEpoch(entry.timeMs, zone)
+    }
+
 fun buildWeekAheadDayCounts(entries: List<AgendaEntry>, dayStarts: List<Long>, zone: ZoneId = ZoneId.systemDefault()): List<Int> {
-    val grouped = entries.groupBy { dayStartEpoch(it.timeMs, zone) }
+    val grouped = entries.groupBy { agendaDayStart(it, zone) }
     return dayStarts.map { day -> grouped[day]?.size ?: 0 }
 }
 
@@ -204,12 +234,13 @@ fun eventDotCount(eventCount: Int): Int = when {
  * "dots promised events a differently-windowed list denied").
  *
  * Ordering is display order, not chronological: all-day entries first (an all-day entry's
- * [AgendaEntry.timeMs] is a local-midnight stamp with no meaningful clock reading, so sorting it
- * among timed entries by that stamp would misplace it), then timed entries ascending by
+ * [AgendaEntry.timeMs] is a midnight stamp - device-zone for a LOCAL row, UTC for a GOOGLE one,
+ * see [agendaDayStart] - with no meaningful clock reading, so sorting it among timed entries by
+ * that stamp would misplace it), then timed entries ascending by
  * [AgendaEntry.timeMs]. [sortedWith] is a stable sort, so two entries with equal sort keys (two
  * all-day entries, or a genuine timestamp tie) keep their incoming relative order rather than being
  * reshuffled on every rebuild.
  */
 fun entriesForDay(entries: List<AgendaEntry>, dayStart: Long, zone: ZoneId = ZoneId.systemDefault()): List<AgendaEntry> =
-    entries.filter { dayStartEpoch(it.timeMs, zone) == dayStart }
+    entries.filter { agendaDayStart(it, zone) == dayStart }
         .sortedWith(compareBy({ if (it.allDay) 0L else 1L }, { it.timeMs }))

@@ -345,4 +345,97 @@ class CalendarAgendaResolverTest {
             )
         }
     }
+
+    // ---------------------------------------- 2026-08-18: the Google all-day off-by-one
+
+    /**
+     * The exact on-device report: two appointments spoken for 18 August 2026 read correctly in the
+     * row list and in Google Calendar, and rendered on 17 August in the month grid.
+     *
+     * The fixture is deliberately built the way the WRITE path builds it - UTC midnight, per
+     * `CalendarProvider.insertEvent`'s all-day convention - not the way the older tests in this
+     * file build an all-day entry (a device-zone day-start). That mismatch is precisely why those
+     * tests could not have caught this: their fixture and the code under test shared one zone
+     * convention by construction, so the two conventions never met.
+     */
+    private fun googleAllDay(label: String, y: Int, m: Int, d: Int) = AgendaEntry(
+        label = label,
+        timeMs = java.time.LocalDate.of(y, m, d)
+            .atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(),
+        allDay = true,
+        source = AgendaSource.GOOGLE,
+    )
+
+    @Test
+    fun `a Google all-day event buckets on its own date, not the day before`() {
+        val aug18 = dayStartMs(2026, 8, 18)
+        val entries = listOf(
+            googleAllDay("Optimum", 2026, 8, 18),
+            googleAllDay("Financial aid office", 2026, 8, 18),
+        )
+
+        assertEquals(
+            listOf("Optimum", "Financial aid office"),
+            entriesForDay(entries, aug18, zone).map { it.label },
+        )
+        assertTrue(
+            "nothing may land on 17 August",
+            entriesForDay(entries, dayStartMs(2026, 8, 17), zone).isEmpty(),
+        )
+    }
+
+    @Test
+    fun `the week-ahead dots put a Google all-day event on the right day`() {
+        val today = dayStartMs(2026, 8, 16)
+        val dayStarts = sevenDayStarts(today)
+        val counts = buildWeekAheadDayCounts(listOf(googleAllDay("Optimum", 2026, 8, 18)), dayStarts, zone)
+
+        assertEquals("17 Aug must be empty", 0, counts[1])
+        assertEquals("18 Aug carries the event", 1, counts[2])
+    }
+
+    @Test
+    fun `a LOCAL all-day entry still buckets by device zone`() {
+        // The other half of the fix: a local reminder's startsAt IS a device-zone midnight
+        // (LiveToolbox.addAppointment's fallbackStartsAt), so reading it through UTC would push it
+        // a day the OTHER way. Branching on source rather than on allDay is what keeps this true.
+        val aug18 = dayStartMs(2026, 8, 18)
+        val entries = listOf(AgendaEntry("Bin day", timeMs = aug18, allDay = true))
+
+        assertEquals(listOf("Bin day"), entriesForDay(entries, aug18, zone).map { it.label })
+        assertTrue(entriesForDay(entries, dayStartMs(2026, 8, 19), zone).isEmpty())
+    }
+
+    @Test
+    fun `a timed Google event is untouched by the all-day rule`() {
+        val aug18 = dayStartMs(2026, 8, 18)
+        val entry = AgendaEntry(
+            label = "Standup",
+            timeMs = aug18 + 9 * 60 * 60 * 1000,
+            allDay = false,
+            source = AgendaSource.GOOGLE,
+        )
+
+        assertEquals(listOf("Standup"), entriesForDay(listOf(entry), aug18, zone).map { it.label })
+    }
+
+    @Test
+    fun `dots and popup still agree with a mixed local-Google all-day stream`() {
+        val today = dayStartMs(2026, 8, 16)
+        val dayStarts = sevenDayStarts(today)
+        val merged = listOf(
+            googleAllDay("Optimum", 2026, 8, 18),
+            AgendaEntry("Bin day", timeMs = dayStartMs(2026, 8, 18), allDay = true),
+            AgendaEntry("Dentist", timeMs = dayStartMs(2026, 8, 17) + 3 * 60 * 60 * 1000, allDay = false),
+        )
+        val counts = buildWeekAheadDayCounts(merged, dayStarts, zone)
+
+        dayStarts.forEachIndexed { index, day ->
+            assertEquals(
+                "day index $index: entriesForDay size must equal the dot-count source count",
+                counts[index],
+                entriesForDay(merged, day, zone).size,
+            )
+        }
+    }
 }
