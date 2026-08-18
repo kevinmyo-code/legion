@@ -3,8 +3,8 @@ map: ledger-drive-ingestion
 ticket: 13
 title: "`categoryPending`'s default has drifted: a fresh install and a migrated one differ"
 type: task
-status: open
-status-detail: ""
+status: resolved
+status-detail: "built in 703778a at v23->v24; drift audit re-run 2026-08-18, 0 drifted columns"
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -103,3 +103,33 @@ Re-checked because this ticket is old enough to have gone stale. **It has not.**
 **Not dead code:** `categoryPendingRows()` (`LedgerTransactionDao.kt:351`) feeds
 `LedgerController.kt:744` and the CATEGORIZE drilldown (`LedgerScreen.kt:548`). Five writers and
 eight readers, all live.
+
+## RESOLVED 2026-08-18 - built, and the board was stale
+
+Re-verified rather than rebuilt: the fix had already landed in `703778a` ("Close the
+categoryPending drift, three schema versions late") and this ticket simply never had its status
+changed. Every gate the "What to do" section names was checked against the tree:
+
+- `data/local/LedgerTransaction.kt:98-103` carries `@ColumnInfo(defaultValue = "0")` with a doc
+  comment in `Vehicle.archived`'s style. `traced`
+- `MIGRATION_23_24` (`data/local/Migrations.kt:1008-1035`) is the empty-bodied version bump, doc
+  comment following `MIGRATION_16_17`/`17_18`, registered at `CarDatabase.kt:324`. The database is
+  at v25; two unrelated migrations have shipped on top since. `traced`
+- The shipped `MIGRATION_5_6` at `Migrations.kt:176` is untouched, confirmed by `git log` on the
+  ticket's own commit. `traced`
+- `app/schemas/` v24 and v25 both carry `` `categoryPending` INTEGER NOT NULL DEFAULT 0 `` in
+  `createSql` and `"defaultValue": "0"` on the field; v23 carries neither, as expected. `traced`
+- `git diff --stat app/schemas` after a fresh kapt run is empty - schema JSON regenerates
+  byte-identical. `built`
+- **Drift audit re-run across all 46 entities, 443 fields**: one apparent mismatch,
+  `maintenance_items.intervalSource` (entity `"SEEDED"` vs schema `"'SEEDED'"`), traced to Room
+  quoting a TEXT literal when it serializes schema JSON - `createSql` matches the shipped migration
+  at `Migrations.kt:904` exactly. **True drift: 0.** `built` for the audit run, `reasoned` for the
+  quoting explanation.
+- Migration test `app/src/androidTest/.../CarDatabaseMigration23To24Test.kt` already exists. It is
+  an instrumented test, so `testDebugUnitTest` does not cover it - **not run on a device here.**
+  `traced`
+
+`./gradlew compileDebugKotlin -Pnokey` green. `testDebugUnitTest` had two failures unrelated to
+this ticket (`BioDigestBuilderTest`, `ProactiveBusTest`), both pre-existing on the branch.
+

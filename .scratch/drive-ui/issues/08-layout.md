@@ -4,7 +4,7 @@ ticket: 08
 title: "Layout for a phone that is 384 x 832, not a head unit"
 type: prototype
 status: open
-status-detail: Q27/Q28 met; Q26 now UNBLOCKED by the drives table (v23)
+status-detail: "Q26/Q27/Q28 built (8123f4e, 8386ec5); Q29 portrait lock and ticket 05's post-drive summary still open"
 blockers: ["04", "05"]
 blocked-by: ["[[04-gauge-design]]", "[[05-trip-content]]"]
 open-blockers: 0
@@ -82,3 +82,33 @@ rather than a build item, but it is not true in code today.
 
 **Also outstanding from trip content:** no post-drive summary on exit - `onExit` is a bare
 navigation callback.
+
+## 2026-08-18 verification - mostly BUILT, and this ticket's own earlier note is stale
+
+Re-read against the tree. The screen was rebuilt in `8123f4e` and the trip block given real numbers
+in `8386ec5`, both 2026-08-16. **The two SHAs this ticket cited above, `1ff4807` and `61a62b0`, do
+not exist in this repo's history** - treat the citations, not the code, as the error.
+
+| Item | State | Evidence |
+|---|---|---|
+| Q26 the dead third takes trip content | BUILT, narrower than ticket 05 asked | `DrivingModeScreen.kt:442`, `:863-887`. The hardcoded `val tracking = false` is gone; `TripStat` is reachable |
+| Q27 EXIT keeps no confirm | BUILT | `:469-482`, straight `.clickable(onExit)`, no dialog |
+| Q28 Alfred strip at thumb level | BUILT | `:459-461`, between the instrument column and EXIT |
+| 384x832 re-measured, not inherited | BUILT at preview level | all four previews `widthDp = 384, heightDp = 832` (`:970`, `:999`, `:1020`, `:1042`) |
+| Q29 portrait only | **NOT BUILT** | `AndroidManifest.xml:106` is still `screenOrientation="unspecified"` |
+
+Two honest deviations, neither silent:
+
+- Ticket 05 Q13 asked for **three** figures for the drive **in progress**; what shipped is **two**
+  (ELAPSED, DISTANCE) for the **last finished** drive, labelled `LAST DRIVE · <age>`. MPG is
+  deliberately withheld (`ui/DrivingDialMath.kt:140-142`, `MpgTrust.SHOW_MPG = false`, ticket 09).
+  Documented at `DrivingModeScreen.kt:832-846` and in `8386ec5`'s commit body.
+- Ticket 05 Q16's **post-drive summary on exit is NOT built** - `MainActivity.kt:525` is a bare
+  `popBackStack()`.
+
+**Not screenshot-verified.** The dead third is gone *structurally* (`reasoned` from the layout: the
+content column and the segment Row both take `weight(1f)`, and fader/trip/footer/Alfred/EXIT fill
+below), but nobody has run it on the A25 since the rebuild.
+
+All rows above `traced`.
+

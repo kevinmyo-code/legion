@@ -4,7 +4,7 @@ ticket: 15
 title: The live session can be silenced with no error
 type: task
 status: open
-status-detail: ""
+status-detail: "driver-facing surface built 2026-08-18; item 1 (device experiment) and item 5 (dataSync cap) still unmet"
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -73,3 +73,37 @@ Checked against the tree during the all-effort sweep. Kept OPEN: two items are u
 `LiveSessionController.kt:118-124`, which mirrors it into `CarProbeLog`. No `AssistantStrip`,
 notification or overlay reads it. So the ticket's own goal, "LEGION should be able to say I am being
 silenced", is satisfied only on a Settings diagnostic page, not to the driver.
+
+## 2026-08-18 - the signal now reaches the driver. Two items still unmet.
+
+The 2026-08-16 check's closing complaint ("the signal only reaches a debug screen") is closed.
+`isSilenced` had exactly one production consumer, `LiveSessionController`'s mirror into
+`CarProbeLog`; it now reaches both surfaces a driver actually looks at.
+
+Built, `built` (compiles; `AssistantStripResolverTest` green, 4 new cases):
+
+- `service/CompanionPhase.silenced` - a process-global `StateFlow`, mirrored from the session by
+  `LiveSessionController.newSession()`. A `StateFlow` and NOT `notice`, because silencing is an
+  ONGOING condition and a four-second flash would clear while LEGION was still deaf.
+- Two correctness guards on the mirror, both for the same "a dead session outlives its socket"
+  shape: an identity check (`session === s`) so a torn-down session's late emit cannot stomp the
+  live one, and a clear in `session`'s own property setter so a stale `true` cannot survive any of
+  the ten sites that drop a session.
+- `AssistantStripResolver.resolve` takes `silenced` and returns
+  **"Can't hear you - another app has the microphone"** with the subtitle "Close it, or tap to try
+  again". It outranks the phase and the notice, and loses only to a missing RECORD_AUDIO grant.
+  Words, not colour (CLAUDE.md §7); the amber advisory treatment is secondary.
+- `ui/DrivingModeScreen.kt`'s Alfred strip reads **CAN'T HEAR YOU** in place of the phase word. This
+  is the surface that matters most for this ticket - the app that silences LEGION is another
+  privacy-sensitive capture in the car, and a driver glancing at a mounted phone has no other way
+  to learn nothing is on the wire.
+
+Still unmet, and neither is code:
+
+1. **Item 1, the device experiment, has still never run.** The whole mechanism remains `traced`.
+   What shipped is the honest response to that - LEGION can now SAY it is silenced - but nobody has
+   yet started a session, invoked "Hey Google" over the top, and watched the flag flip. Below API
+   29 there is no signal at all, so a `false` means "not known to be silenced", never "hearing you".
+2. **Item 5, the Android 15 six-hour `dataSync` cap**, is untouched. The manifest still declares
+   `connectedDevice|dataSync|microphone` with no reference to the cap anywhere.
+

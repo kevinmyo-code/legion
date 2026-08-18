@@ -13,71 +13,70 @@ Open tickets whose blockers are all resolved.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
-| [[android-auto\|android-auto]] | [[06-get-a-sideloaded-build-visible-in-android-auto\|06]] | task | Get a sideloaded build visible in Android Auto |
-| [[android-auto\|android-auto]] | [[07-fallback-if-the-call-does-not-render\|07]] | grilling | What if Android Auto will not render the call? |
-| [[android-auto\|android-auto]] | [[08-what-the-browse-tree-holds\|08]] | grilling | What is in the browse tree, and who writes the briefings? |
-| [[android-auto\|android-auto]] | [[09-what-the-car-aware-prompt-changes\|09]] | grilling | What does the car-aware prompt actually change? |
-| [[android-auto\|android-auto]] | [[10-session-lifecycle-and-cost\|10]] | grilling | How long does the call stay open, and what does that cost? |
-| [[android-auto\|android-auto]] | [[11-duck-or-pause-the-music\|11]] | grilling | Duck the music, or pause it? |
-| [[android-auto\|android-auto]] | [[12-clone-and-run-with-two-manual-toggles\|12]] | grilling | Does clone-and-run survive two manual toggles? |
-| [[android-auto\|android-auto]] | [[13-prove-the-obd-silent-stall\|13]] | task | Prove or kill the OBD silent-stall claim |
-| [[android-auto\|android-auto]] | [[15-the-live-session-can-be-silenced\|15]] | task | The live session can be silenced with no error |
-| [[aspect-advisors\|aspect-advisors]] | [[20-ship-pass\|20]] | task | Ship pass: advisors answering on the phone |
-| [[drive-ui\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
-| [[drive-ui\|drive-ui]] | [[08-layout\|08]] | prototype | Layout for a phone that is 384 x 832, not a head unit |
-| [[goal-keeping\|goal-keeping]] | [[01-what-on-track-means\|01]] | grilling | What \"on track\" actually means, per shape of goal |
-| [[google-account-integration\|google-account-integration]] | [[16-ship-pass\|16]] | task | BUILD: ship pass - the destination gate |
-| [[hands-and-senses\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
-| [[hands-and-senses\|hands-and-senses]] | [[05-comms\|05]] | grilling | Comms: place a call, send a text |
-| [[hands-and-senses\|hands-and-senses]] | [[07-wrench-mode-shape\|07]] | grilling | Wrench mode: live stream or snap-and-ask, and how the car's history gets in the room |
-| [[hands-and-senses\|hands-and-senses]] | [[08-morning-brief\|08]] | grilling | Morning brief: a configurable skill, not a feed |
-| [[hands-and-senses\|hands-and-senses]] | [[15-location-intelligence\|15]] | grilling | Location intelligence: what LEGION knows about where you are, and when it speaks first |
-| [[hands-and-senses\|hands-and-senses]] | [[17-document-vault\|17]] | grilling | The document vault: LEGION reads the papers that run your life |
-| [[hands-and-senses\|hands-and-senses]] | [[18-inbox-intelligence\|18]] | grilling | Inbox intelligence: packages and travel, from mail LEGION can already read |
-| [[hands-and-senses\|hands-and-senses]] | [[19-people-dates\|19]] | grilling | The people in Kevin's life: dates and facts he tells it |
-| [[hands-and-senses\|hands-and-senses]] | [[20-memory-decay\|20]] | grilling | Memory that forgets like a person does |
-| [[ledger-drive-ingestion\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
-| [[ledger-drive-ingestion\|ledger-drive-ingestion]] | [[13-categorypending-default-drift\|13]] | task | `categoryPending`'s default has drifted: a fresh install and a migrated one differ |
-| [[proactive-mode\|proactive-mode]] | [[02-trigger-engine\|02]] | grilling | What decides there is something worth saying |
-| [[proactive-mode\|proactive-mode]] | [[03-compulsion-test\|03]] | grilling | The compulsion line, written as a test rather than a vibe |
-| [[proactive-mode\|proactive-mode]] | [[04-categories-storage-and-surface\|04]] | grilling | Five switches that actually switch something |
-| [[proactive-mode\|proactive-mode]] | [[06-delivery\|06]] | grilling | Speak, notify, or wait |
-| [[proactive-mode\|proactive-mode]] | [[08-proactive-register\|08]] | grilling | How Alfred sounds when nobody asked him anything |
-| [[proactive-mode\|proactive-mode]] | [[09-fgs-start-delay\|09]] | bug | The boot-started service takes 123s to call startForeground, against a 10s window |
-| [[quant-viz\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
+| [[.scratch/android-auto/map\|android-auto]] | [[06-get-a-sideloaded-build-visible-in-android-auto\|06]] | task | Get a sideloaded build visible in Android Auto |
+| [[.scratch/android-auto/map\|android-auto]] | [[07-fallback-if-the-call-does-not-render\|07]] | grilling | What if Android Auto will not render the call? |
+| [[.scratch/android-auto/map\|android-auto]] | [[08-what-the-browse-tree-holds\|08]] | grilling | What is in the browse tree, and who writes the briefings? |
+| [[.scratch/android-auto/map\|android-auto]] | [[09-what-the-car-aware-prompt-changes\|09]] | grilling | What does the car-aware prompt actually change? |
+| [[.scratch/android-auto/map\|android-auto]] | [[10-session-lifecycle-and-cost\|10]] | grilling | How long does the call stay open, and what does that cost? |
+| [[.scratch/android-auto/map\|android-auto]] | [[11-duck-or-pause-the-music\|11]] | grilling | Duck the music, or pause it? |
+| [[.scratch/android-auto/map\|android-auto]] | [[12-clone-and-run-with-two-manual-toggles\|12]] | grilling | Does clone-and-run survive two manual toggles? |
+| [[.scratch/android-auto/map\|android-auto]] | [[13-prove-the-obd-silent-stall\|13]] | task | Prove or kill the OBD silent-stall claim |
+| [[.scratch/android-auto/map\|android-auto]] | [[15-the-live-session-can-be-silenced\|15]] | task | The live session can be silenced with no error |
+| [[.scratch/aspect-advisors/map\|aspect-advisors]] | [[20-ship-pass\|20]] | task | Ship pass: advisors answering on the phone |
+| [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
+| [[.scratch/drive-ui/map\|drive-ui]] | [[08-layout\|08]] | prototype | Layout for a phone that is 384 x 832, not a head unit |
+| [[.scratch/goal-keeping/map\|goal-keeping]] | [[01-what-on-track-means\|01]] | grilling | What \"on track\" actually means, per shape of goal |
+| [[.scratch/google-account-integration/map\|google-account-integration]] | [[16-ship-pass\|16]] | task | BUILD: ship pass - the destination gate |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[05-comms\|05]] | grilling | Comms: place a call, send a text |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[07-wrench-mode-shape\|07]] | grilling | Wrench mode: live stream or snap-and-ask, and how the car's history gets in the room |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[08-morning-brief\|08]] | grilling | Morning brief: a configurable skill, not a feed |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[15-location-intelligence\|15]] | grilling | Location intelligence: what LEGION knows about where you are, and when it speaks first |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[17-document-vault\|17]] | grilling | The document vault: LEGION reads the papers that run your life |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[18-inbox-intelligence\|18]] | grilling | Inbox intelligence: packages and travel, from mail LEGION can already read |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[19-people-dates\|19]] | grilling | The people in Kevin's life: dates and facts he tells it |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-memory-decay\|20]] | grilling | Memory that forgets like a person does |
+| [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
+| [[.scratch/proactive-mode/map\|proactive-mode]] | [[02-trigger-engine\|02]] | grilling | What decides there is something worth saying |
+| [[.scratch/proactive-mode/map\|proactive-mode]] | [[03-compulsion-test\|03]] | grilling | The compulsion line, written as a test rather than a vibe |
+| [[.scratch/proactive-mode/map\|proactive-mode]] | [[04-categories-storage-and-surface\|04]] | grilling | Five switches that actually switch something |
+| [[.scratch/proactive-mode/map\|proactive-mode]] | [[06-delivery\|06]] | grilling | Speak, notify, or wait |
+| [[.scratch/proactive-mode/map\|proactive-mode]] | [[08-proactive-register\|08]] | grilling | How Alfred sounds when nobody asked him anything |
+| [[.scratch/proactive-mode/map\|proactive-mode]] | [[09-fgs-start-delay\|09]] | bug | The boot-started service takes 123s to call startForeground, against a 10s window |
+| [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
 
 ## Blocked
 
 | Map | Ticket | Type | What | Waiting on |
 |---|---|---|---|---|
-| [[android-auto\|android-auto]] | [[14-does-gearhead-draw-the-call\|14]] | task | Does gearhead actually draw the call?  waiting on [[06-get-a-sideloaded-build-visible-in-android-auto\|06]] |
-| [[drive-ui\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
-| [[goal-keeping\|goal-keeping]] | [[02-what-makes-a-goal-trackable\|02]] | grilling | What makes a goal trackable, and how set_goal captures it  waiting on [[01-what-on-track-means\|01]] |
-| [[goal-keeping\|goal-keeping]] | [[03-the-check-in-record\|03]] | grilling | The check-in record: how a spoken answer becomes a falsifiable fact  waiting on [[01-what-on-track-means\|01]] |
-| [[goal-keeping\|goal-keeping]] | [[04-when-a-moment-is-worth-it\|04]] | grilling | What makes a moment worth interrupting  waiting on [[01-what-on-track-means\|01]], [[03-the-check-in-record\|03]] |
-| [[goal-keeping\|goal-keeping]] | [[05-revision-and-retirement\|05]] | grilling | What prompts a revision, and what an abandoned goal costs  waiting on [[01-what-on-track-means\|01]], [[03-the-check-in-record\|03]] |
-| [[goal-keeping\|goal-keeping]] | [[06-advisor-with-an-opinion-about-time\|06]] | grilling | Where the advisor learns to hold an opinion about time  waiting on [[04-when-a-moment-is-worth-it\|04]] |
-| [[goal-keeping\|goal-keeping]] | [[07-which-surface-says-it\|07]] | grilling | Which surface says it, and how it coordinates with the five categories  waiting on [[04-when-a-moment-is-worth-it\|04]] |
-| [[proactive-mode\|proactive-mode]] | [[05-quiet-hours-and-budget\|05]] | grilling | Quiet hours, and how often Alfred may speak at all  waiting on [[03-compulsion-test\|03]] |
+| [[.scratch/android-auto/map\|android-auto]] | [[14-does-gearhead-draw-the-call\|14]] | task | Does gearhead actually draw the call?  waiting on [[06-get-a-sideloaded-build-visible-in-android-auto\|06]] |
+| [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
+| [[.scratch/goal-keeping/map\|goal-keeping]] | [[02-what-makes-a-goal-trackable\|02]] | grilling | What makes a goal trackable, and how set_goal captures it  waiting on [[01-what-on-track-means\|01]] |
+| [[.scratch/goal-keeping/map\|goal-keeping]] | [[03-the-check-in-record\|03]] | grilling | The check-in record: how a spoken answer becomes a falsifiable fact  waiting on [[01-what-on-track-means\|01]] |
+| [[.scratch/goal-keeping/map\|goal-keeping]] | [[04-when-a-moment-is-worth-it\|04]] | grilling | What makes a moment worth interrupting  waiting on [[01-what-on-track-means\|01]], [[03-the-check-in-record\|03]] |
+| [[.scratch/goal-keeping/map\|goal-keeping]] | [[05-revision-and-retirement\|05]] | grilling | What prompts a revision, and what an abandoned goal costs  waiting on [[01-what-on-track-means\|01]], [[03-the-check-in-record\|03]] |
+| [[.scratch/goal-keeping/map\|goal-keeping]] | [[06-advisor-with-an-opinion-about-time\|06]] | grilling | Where the advisor learns to hold an opinion about time  waiting on [[04-when-a-moment-is-worth-it\|04]] |
+| [[.scratch/goal-keeping/map\|goal-keeping]] | [[07-which-surface-says-it\|07]] | grilling | Which surface says it, and how it coordinates with the five categories  waiting on [[04-when-a-moment-is-worth-it\|04]] |
+| [[.scratch/proactive-mode/map\|proactive-mode]] | [[05-quiet-hours-and-budget\|05]] | grilling | Quiet hours, and how often Alfred may speak at all  waiting on [[03-compulsion-test\|03]] |
 
 ## Maps
 
 | Map | Tickets | Open | Canvas |
 |---|---|---|---|
-| [[android-auto\|android-auto]] | 16 | 10 | [[android-auto.canvas\|open]] |
-| [[aspect-advisors\|aspect-advisors]] | 21 | 1 | [[aspect-advisors.canvas\|open]] |
-| [[cyberdeck-ui\|cyberdeck-ui]] | 21 | 0 | [[cyberdeck-ui.canvas\|open]] |
-| [[drive-ui\|drive-ui]] | 9 | 3 | [[drive-ui.canvas\|open]] |
-| [[fleet-maintenance\|fleet-maintenance]] | 18 | 0 | [[fleet-maintenance.canvas\|open]] |
-| [[fleet-wide-voice\|fleet-wide-voice]] | 1 | 0 | [[fleet-wide-voice.canvas\|open]] |
-| [[goal-keeping\|goal-keeping]] | 8 | 7 | [[goal-keeping.canvas\|open]] |
-| [[google-account-integration\|google-account-integration]] | 23 | 1 | [[google-account-integration.canvas\|open]] |
-| [[hands-and-senses\|hands-and-senses]] | 21 | 9 | [[hands-and-senses.canvas\|open]] |
-| [[import-sync-duplication\|import-sync-duplication]] | 1 | 0 | [[import-sync-duplication.canvas\|open]] |
-| [[ledger-drive-ingestion\|ledger-drive-ingestion]] | 13 | 2 | [[ledger-drive-ingestion.canvas\|open]] |
-| [[ledger-pnl\|ledger-pnl]] | 1 | 0 | [[ledger-pnl.canvas\|open]] |
-| [[legion-shape\|legion-shape]] | 12 | 0 | [[legion-shape.canvas\|open]] |
-| [[mission-control\|mission-control]] | 16 | 0 | [[mission-control.canvas\|open]] |
-| [[notes-lists-calendar\|notes-lists-calendar]] | 12 | 0 | [[notes-lists-calendar.canvas\|open]] |
-| [[proactive-mode\|proactive-mode]] | 9 | 7 | [[proactive-mode.canvas\|open]] |
-| [[quant-viz\|quant-viz]] | 17 | 1 | [[quant-viz.canvas\|open]] |
+| [[.scratch/android-auto/map\|android-auto]] | 16 | 10 | [[.scratch/android-auto/android-auto.canvas\|open]] |
+| [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 1 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
+| [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
+| [[.scratch/drive-ui/map\|drive-ui]] | 9 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
+| [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
+| fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
+| [[.scratch/goal-keeping/map\|goal-keeping]] | 8 | 7 | [[.scratch/goal-keeping/goal-keeping.canvas\|open]] |
+| [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 1 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 21 | 9 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
+| [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
+| [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
+| ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |
+| [[.scratch/legion-shape/map\|legion-shape]] | 12 | 0 | [[.scratch/legion-shape/legion-shape.canvas\|open]] |
+| [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
+| [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
+| [[.scratch/proactive-mode/map\|proactive-mode]] | 9 | 7 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
+| [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
