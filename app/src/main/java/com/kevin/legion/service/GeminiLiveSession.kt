@@ -30,6 +30,7 @@ import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.vehicle.ActiveVehicle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -1270,7 +1271,28 @@ class GeminiLiveSession(
      * growing while the consumer is still feeding the track, so this also covers
      * "chunks not handed over yet" without a second condition. The timeout keeps a
      * stalled track from wedging the mic shut forever.
+     *
+     * head >= framesWritten IS NOT "drained" ON ITS OWN (2026-08-17, measured defect):
+     * [framesWritten] only advances inside [playAudio], AFTER a chunk is dequeued from
+     * [audioQueue] and written to the track. Model-turn audio streams in as separate
+     * WebSocket messages (see `handleServerContent`'s modelTurn branch), each one just
+     * `trySend`-ed onto that channel - so there is a real window where the consumer has
+     * caught up to everything it has been HANDED so far (head >= framesWritten holds) while
+     * a later chunk is still sitting unconsumed in the channel, having arrived off the
+     * socket but not yet reached [playAudio]. Comparing only head-vs-written treats that
+     * window as "drained": the mic reopens, `record.startRecording()` runs, and the tail of
+     * Zero's own reply plays out AFTER capture has already started - on a phone speaker
+     * that is exactly the reopen-then-sub-second-close shape this file's mic-loop measured
+     * (dumpsys appops RECORD_AUDIO history: healthy turns 15367/13256/9171/5582/4374 ms vs
+     * bad turns 964/991/663/276 ms). The server VAD hears the assistant's own tail through
+     * the open mic, treats it as a short complete utterance, and replies before the driver
+     * ever gets a word in. The queue itself has no cheap "did I miss a send" signal, so
+     * checking [Channel.isEmpty] on every poll (in addition to the head check, not instead
+     * of it - the head check is still what proves the LAST written chunk has actually left
+     * the speaker) is the fix: drained now means both "nothing left to write" AND "nothing
+     * written has yet to play."
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun awaitPlaybackDrained() {
         val deadline = System.currentTimeMillis() + PLAYBACK_DRAIN_TIMEOUT_MS
         while (System.currentTimeMillis() < deadline) {
@@ -1290,7 +1312,10 @@ class GeminiLiveSession(
                     null
                 }
             } ?: break
-            if (head >= framesWritten) break
+            // Both conditions, not either: the head check proves the track has finished
+            // PLAYING everything it was given; the queue check proves nothing is waiting to
+            // be given to it. Either alone is exactly the gap measured above.
+            if (head >= framesWritten && audioQueue.isEmpty) break
             delay(PLAYBACK_DRAIN_POLL_MS)
         }
         // Small settle after the last sample lands - the HAL needs a beat to release
