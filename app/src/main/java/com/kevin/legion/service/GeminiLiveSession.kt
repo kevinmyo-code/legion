@@ -283,6 +283,27 @@ class GeminiLiveSession(
     }
     private var audioFocusRequest: AudioFocusRequest? = null
 
+    // Registered on every requestAudioFocus() call below (2026-08-17) - previously the
+    // AudioFocusRequest had no listener at all, so a TRANSIENT focus loss (a notification
+    // tone, an incoming call, Spotify grabbing focus) was completely invisible: nothing
+    // logged it, and nothing could correlate one against a bad turn's timing. DIAGNOSTIC
+    // ONLY - this does not change capture behavior on any focus transition. Nothing has
+    // yet shown focus loss is actually implicated in the "sometimes it doesn't hear me"
+    // reports; that has to be established from a real log pull before it's worth reacting
+    // to. Adding capture-altering logic here on spec, before that evidence exists, would be
+    // exactly the kind of guess this file's own delicacy warns against.
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        val name = when (focusChange) {
+            AudioManager.AUDIOFOCUS_GAIN -> "AUDIOFOCUS_GAIN"
+            AudioManager.AUDIOFOCUS_LOSS -> "AUDIOFOCUS_LOSS"
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> "AUDIOFOCUS_LOSS_TRANSIENT"
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> "AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK"
+            else -> "unknown($focusChange)"
+        }
+        Log.d(TAG, "audio focus change: $name")
+        CarProbeLog.log("AUDIO_FOCUS", "focus change: $name")
+    }
+
     // The MIC_HANDOFF_MS delay gives anything else briefly holding the mic (e.g.
     // system audio routing) a moment to release it before we grab it - only
     // relevant for the first capture of a session. Re-applying it on every turn
@@ -1687,13 +1708,16 @@ class GeminiLiveSession(
             val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                 .setAudioAttributes(attributes)
                 .setWillPauseWhenDucked(false)
+                .setOnAudioFocusChangeListener(audioFocusChangeListener, Handler(Looper.getMainLooper()))
                 .build()
             audioFocusRequest = req
             audioManager.requestAudioFocus(req)
         } else {
             @Suppress("DEPRECATION")
             audioManager.requestAudioFocus(
-                null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                audioFocusChangeListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK,
             )
         }
     }
@@ -1703,8 +1727,11 @@ class GeminiLiveSession(
             audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
             audioFocusRequest = null
         } else {
+            // Pass the SAME listener instance passed to requestAudioFocus() above -
+            // the legacy API matches abandon-to-request by listener identity, so
+            // passing null here would silently no-op the abandon on API < O.
             @Suppress("DEPRECATION")
-            audioManager.abandonAudioFocus(null)
+            audioManager.abandonAudioFocus(audioFocusChangeListener)
         }
     }
 
