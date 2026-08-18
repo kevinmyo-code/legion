@@ -88,7 +88,11 @@ class AdvisorAgent(
         val personaShortClause = personaFor(CompanionProfile.persona(context)).shortClause
 
         val systemInstruction = composeSystemInstruction(personaShortClause)
-        val promptContext = composeContext(brief, digest, goals, adviceLog)
+        // The driver's own edit of this aspect's doctrine when there is one, the shipped playbook
+        // otherwise - see Priming.forAdvisor. Falls back to brief.playbook only for an aspect that
+        // Priming does not map at all, which today is none of them (HOME returns null from both).
+        val playbook = Priming.forAdvisor(context, brief.aspect) ?: brief.playbook
+        val promptContext = composeContext(brief, digest, goals, adviceLog, playbook)
 
         val result = subAgentFactory(systemInstruction).askTyped(
             context = promptContext,
@@ -177,8 +181,15 @@ class AdvisorAgent(
             digest: String,
             goals: List<Goal>,
             adviceLog: List<AdvisorAdvice>,
+            /**
+             * The doctrine to prime this exchange with, resolved by [Priming.forAdvisor] against
+             * the driver's own edits. Defaults to the brief's compile-time playbook so every
+             * existing caller and test keeps its exact previous behaviour, and so this function
+             * stays pure - it does not read the filesystem, [ask] does.
+             */
+            playbook: String? = brief.playbook,
         ): String = buildString {
-            brief.playbook?.let {
+            playbook?.let {
                 append("PLAYBOOK:\n").append(it.trim()).append("\n\n")
             }
             brief.synthesisNote?.let {
