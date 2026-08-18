@@ -308,58 +308,45 @@ class TodayGapResolversTest {
         )
         val tile = buildCredTile(budgetFixture(listOf(line)), "AUG")
         assertEquals("$2,418", tile.hero)
-        assertEquals("OF $3,000 AUG", tile.caption)
+        assertEquals("spent so far", tile.caption)
     }
 
-    /** 2026-08-18: `THROUGH <date>`/`NOT COVERED YET` replaced the old bare `COVERAGE GAP`. */
     private fun aug(day: Int): Long = LocalDate.of(2026, 8, day).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 
+    /**
+     * 2026-08-18, Kevin: "2 figures, 2 subtitles: $847 spent so far, $1208 in debit account.
+     * thats it." The caption is now CONSTANT - it says what the figure IS, not how complete it is.
+     *
+     * These three fixtures are the ones that used to produce `THROUGH AUG 5`, `NOT COVERED YET`
+     * and `OF $3,000 AUG`. They are kept, rather than deleted with the branches, because the point
+     * worth protecting is that NONE of them changes the caption any more. A future edit that
+     * reintroduces a coverage or target variant here fails these.
+     */
     @Test
-    fun `CRED tile - incomplete coverage reads THROUGH the minimum account's own through-date`() {
+    fun `CRED tile - caption is always 'spent so far', whatever the coverage`() {
         val line = BudgetLine(
             category = "Groceries",
             gap = PlanGap(target = 300_000L, actual = 241_800L, gap = 58_200L, tier = TrustTier.PROVEN),
             hasProvisionalRows = false,
             hasPendingCategoryGuesses = false,
         )
-        // One account good through the 12th, another good through the 5th - the SUM above the
-        // caption is only trustworthy through the 5th, the minimum, not the later account's own date.
-        val coverage = listOf(
+        val partial = listOf(
             AccountCoverage("checking", coversWholeMonth = false, coveredFromMs = aug(1), coveredToMs = aug(12), coveredThroughMs = aug(12)),
             AccountCoverage("card", coversWholeMonth = false, coveredFromMs = aug(1), coveredToMs = aug(5), coveredThroughMs = aug(5)),
         )
-        val tile = buildCredTile(budgetFixture(listOf(line), coverage = coverage), "AUG")
-        assertEquals("THROUGH AUG 5", tile.caption)
-    }
-
-    @Test
-    fun `CRED tile - empty coverage says NOT COVERED YET, never a date`() {
-        val line = BudgetLine(
-            category = "Groceries",
-            gap = PlanGap(target = 300_000L, actual = 241_800L, gap = 58_200L, tier = TrustTier.PROVEN),
-            hasProvisionalRows = false,
-            hasPendingCategoryGuesses = false,
-        )
-        val tile = buildCredTile(budgetFixture(listOf(line), complete = false), "AUG")
-        assertEquals("NOT COVERED YET", tile.caption)
-    }
-
-    @Test
-    fun `CRED tile - one account never reaching month start says NOT COVERED YET, not the other account's date`() {
-        val line = BudgetLine(
-            category = "Groceries",
-            gap = PlanGap(target = 300_000L, actual = 241_800L, gap = 58_200L, tier = TrustTier.PROVEN),
-            hasProvisionalRows = false,
-            hasPendingCategoryGuesses = false,
-        )
-        // "card" never reaches Aug 1 at all (its own coveredThroughMs is null) - printing the
-        // "checking" account's date here would silently drop "card" out of an honest total.
-        val coverage = listOf(
+        val neverReachesStart = listOf(
             AccountCoverage("checking", coversWholeMonth = false, coveredFromMs = aug(1), coveredToMs = aug(12), coveredThroughMs = aug(12)),
             AccountCoverage("card", coversWholeMonth = false, coveredFromMs = aug(20), coveredToMs = aug(31), coveredThroughMs = null),
         )
-        val tile = buildCredTile(budgetFixture(listOf(line), coverage = coverage), "AUG")
-        assertEquals("NOT COVERED YET", tile.caption)
+
+        assertEquals("spent so far", buildCredTile(budgetFixture(listOf(line), coverage = partial), "AUG").caption)
+        assertEquals("spent so far", buildCredTile(budgetFixture(listOf(line), coverage = neverReachesStart), "AUG").caption)
+        assertEquals("spent so far", buildCredTile(budgetFixture(listOf(line), complete = false), "AUG").caption)
+        // A fully covered month with a target set reads the same - the "OF $3,000 AUG" comparison
+        // went with the same instruction.
+        assertEquals("spent so far", buildCredTile(budgetFixture(listOf(line)), "AUG").caption)
+        // The hero itself is untouched by any of this.
+        assertEquals("$2,418", buildCredTile(budgetFixture(listOf(line)), "AUG").hero)
     }
 
     @Test
@@ -372,7 +359,7 @@ class TodayGapResolversTest {
         )
         val tile = buildCredTile(budgetFixture(listOf(line)), "AUG")
         assertEquals("$50", tile.hero)
-        assertEquals("NO TARGET SET", tile.caption)
+        assertEquals("spent so far", tile.caption)
     }
 
     @Test
@@ -382,7 +369,7 @@ class TodayGapResolversTest {
         // and TodayScreen states the excluded figure beside the tile in words.
         val tile = buildCredTile(budgetFixture(emptyList(), uncategorizedCents = 5_000L), "AUG")
         assertEquals("$0", tile.hero)
-        assertEquals("NO TARGET SET", tile.caption)
+        assertEquals("spent so far", tile.caption)
     }
 
     @Test
@@ -609,26 +596,37 @@ class TodayGapResolversTest {
         assertTrue(line.isAdvisory)
     }
 
+    /**
+     * 2026-08-18, Kevin's own words for this line: "$1208 in debit account". The figure stands
+     * alone as a hero and the account moves into the subtitle, so the two figures on this tile
+     * read as a matched pair.
+     *
+     * **The as-of date is deliberately absent from THIS surface.** It still ships in full on
+     * Money's balance row. See buildCredBalanceLine's own comment for why the later instruction
+     * wins and what the fix is if a stale figure reading as current here ever bites.
+     */
     @Test
-    fun `a real balance with no as-of date never prints an as-of line`() {
+    fun `the normal case is the figure, with the account named in the subtitle`() {
+        val asOfMs = LocalDate.of(2026, 8, 12).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         val balances = listOf(
-            AccountBalance("BOFA-CHECKING", LedgerCurrency.USD, balanceCents = 381_200L, asOfMs = null),
+            AccountBalance("debit", LedgerCurrency.USD, balanceCents = 120_800L, asOfMs = asOfMs),
         )
-        val line = buildCredBalanceLine(balances, nominatedAccountId = "BOFA-CHECKING")
-        assertEquals("$3,812 BOFA-CHECKING", line.primary)
-        assertNull(line.secondary)
+        val line = buildCredBalanceLine(balances, nominatedAccountId = "debit")
+        assertEquals("$1,208", line.primary)
+        assertEquals("in debit account", line.secondary)
         assertTrue(!line.isAdvisory)
     }
 
     @Test
-    fun `the normal case shows the figure, the account, and its printed as-of date`() {
-        val asOfMs = LocalDate.of(2026, 8, 12).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-        val balances = listOf(
-            AccountBalance("BOFA-CHECKING", LedgerCurrency.USD, balanceCents = 381_200L, asOfMs = asOfMs),
-        )
-        val line = buildCredBalanceLine(balances, nominatedAccountId = "BOFA-CHECKING")
-        assertEquals("$3,812 BOFA-CHECKING", line.primary)
-        assertEquals("as of Aug 12", line.secondary)
-        assertTrue(!line.isAdvisory)
+    fun `an as-of date present or absent makes no difference to what this tile prints`() {
+        val dated = AccountBalance("debit", LedgerCurrency.USD, balanceCents = 120_800L,
+            asOfMs = LocalDate.of(2026, 8, 12).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
+        val undated = AccountBalance("debit", LedgerCurrency.USD, balanceCents = 120_800L, asOfMs = null)
+
+        val withDate = buildCredBalanceLine(listOf(dated), nominatedAccountId = "debit")
+        val withoutDate = buildCredBalanceLine(listOf(undated), nominatedAccountId = "debit")
+
+        assertEquals(withDate.primary, withoutDate.primary)
+        assertEquals(withDate.secondary, withoutDate.secondary)
     }
 }

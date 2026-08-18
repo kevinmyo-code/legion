@@ -385,6 +385,15 @@ private fun TodayListing(
         item(key = "tile-row-bio-cred") {
             val monthLabel = ledgerSweepMonthLabel(YearMonth.now())
             val credTile = buildCredTile(state.budget, monthLabel)
+            // The nominated account's own balance (2026-08-18, Kevin: "no need for the line
+            // graph. just how much I've used so far and what's the balance") - see
+            // buildCredBalanceLine's own doc comment for every branch. Declared HERE, beside
+            // credTile, rather than inside the tile's `extra` lambda, because the tile's own
+            // `secondHero`/`secondCaption` parameters read it too.
+            val credBalanceLine = buildCredBalanceLine(
+                com.kevin.legion.ledger.groupAccountBalances(state.ledgerBalances),
+                state.nominatedAccountId,
+            )
             val fleetTile = buildFleetTile(state.maintenanceRows, state.maintenanceUnknownCount)
             val logTile = buildLogTile(state.openTaskCount, state.notesMissedCount, state.logHasAnyItems)
             // Equal-height tiles (ticket 05's grammar treats HALF as ONE shape, not two shapes
@@ -407,42 +416,32 @@ private fun TodayListing(
                     hero = credTile.hero,
                     caption = credTile.caption,
                     modifier = Modifier.clickable(onClick = { onOpenCategory(null) }),
+                    // Two figures, two subtitles, and nothing else (Kevin, 2026-08-18). Only a real
+                    // balance earns the second hero slot; every advisory state renders as a
+                    // sentence in `extra` instead - see that block's own comment.
+                    secondHero = credBalanceLine.primary.takeIf { !credBalanceLine.isAdvisory },
+                    secondCaption = credBalanceLine.secondary?.takeIf { !credBalanceLine.isAdvisory },
                 ) {
-                    // The nominated account's own balance (2026-08-18, Kevin: "no need for the line
-                    // graph. just how much I've used so far and what's the balance") - see
-                    // buildCredBalanceLine's own doc comment for every branch. Two short lines max,
-                    // matching this slot's other resident (the uncategorised disclosure below):
-                    // primary always renders, secondary only when there is a second sentence to say.
-                    val credBalanceLine = buildCredBalanceLine(
-                        com.kevin.legion.ledger.groupAccountBalances(state.ledgerBalances),
-                        state.nominatedAccountId,
-                    )
-                    Text(
-                        credBalanceLine.primary,
-                        style = LegionType.stamp,
-                        color = if (credBalanceLine.isAdvisory) LocalLegionSemantics.current.estimated else LocalLegionSemantics.current.data,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    )
-                    if (credBalanceLine.secondary != null) {
+                    // An advisory ("NO ACCOUNT NOMINATED", "<id> NOT FOUND", "no balance ever
+                    // printed") is a SENTENCE, not a figure, so it stays stamp-sized down here
+                    // rather than being forced through the hero slot - a 20-character string in
+                    // displayMedium is exactly the overflow HalfTileHero's own doc warns about.
+                    // The real figure goes through `secondHero` above; see the branch that sets it.
+                    if (credBalanceLine.isAdvisory) {
                         Text(
-                            credBalanceLine.secondary,
-                            style = LegionType.stamp,
-                            color = LocalLegionSemantics.current.faint,
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                        )
-                    }
-                    // The uncategorised bucket is NOT in the hero figure above (Kevin, 2026-08-15) -
-                    // stated here in the tile's own `extra` slot rather than appended to `caption`,
-                    // which is one ellipsised line and would silently swallow half the sentence. See
-                    // buildCredTile's doc comment.
-                    val budget = state.budget
-                    if (budget != null && budget.uncategorized.spentCents > 0L) {
-                        Text(
-                            "${compactMoneyHero(budget.uncategorized.spentCents, budget.entity.currency)} UNCATEGORISED, NOT COUNTED",
+                            credBalanceLine.primary,
                             style = LegionType.stamp,
                             color = LocalLegionSemantics.current.estimated,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                         )
+                        if (credBalanceLine.secondary != null) {
+                            Text(
+                                credBalanceLine.secondary,
+                                style = LegionType.stamp,
+                                color = LocalLegionSemantics.current.faint,
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                            )
+                        }
                     }
                 }
             }

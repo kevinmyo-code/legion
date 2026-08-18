@@ -114,11 +114,22 @@ fun HalfTile(
     hero: String,
     caption: String,
     modifier: Modifier = Modifier,
+    secondHero: String? = null,
+    secondCaption: String? = null,
     extra: @Composable () -> Unit = {},
 ) {
     DeckPane(header = header, modifier = modifier, stretchToParentHeight = true) {
         HalfTileHero(hero)
         HalfTileCaption(caption)
+        // A SECOND figure in the same grammar, not a smaller stamp line under the first (Kevin,
+        // 2026-08-18, of HOME's CRED tile: "2 figures, 2 subtitles"). Drawing the second one in
+        // `extra` with stamp type would have made it read as a footnote to the first rather than
+        // its equal, which is the opposite of what a spend figure and a balance are to each other.
+        // Optional, so every other caller renders exactly as before.
+        if (secondHero != null) {
+            HalfTileHero(secondHero)
+            if (secondCaption != null) HalfTileCaption(secondCaption)
+        }
         extra()
     }
 }

@@ -333,12 +333,20 @@ fun buildCredTile(budget: BudgetVsActual?, monthLabel: String): CredTileData {
     val spentCents = budget.spentCents
     val targetCents = budget.lines.sumOf { it.gap.target }
     val hero = compactMoneyHero(spentCents, budget.entity.currency)
-    val caption = when {
-        !budget.isComplete -> coverageThroughCaption(budget)
-        targetCents > 0 -> "OF ${compactMoneyHero(targetCents, budget.entity.currency)} $monthLabel"
-        else -> "NO TARGET SET"
-    }
-    return CredTileData(hero = hero, caption = caption)
+    // **One caption, always** (Kevin, 2026-08-18): "i dont need to know not covered yet. remove
+    // that line... 2 figures, 2 subtitles: $847 spent so far, $1208 in debit account. thats it."
+    //
+    // The THROUGH <date> / NOT COVERED YET wording this replaces lasted a matter of hours, and it
+    // was not wrong - it was redundant HERE. He knows the month is not over. The coverage dates
+    // still reach him where there is room to explain them: LedgerScreen's SPEND pane
+    // (coverageSentence, per-account), and CredDigestBuilder's voice line. This tile is a glance
+    // surface beside BIO, and a glance surface that spends a line restating what its owner already
+    // knows has spent the only line it had.
+    //
+    // [targetCents] is deliberately unused now - the "OF $X AUG" budget comparison went with the
+    // same instruction. Left computed above so the diff is honest about what was dropped rather
+    // than quietly deleting the concept; delete it if a second surface never wants it back.
+    return CredTileData(hero = hero, caption = "spent so far")
 }
 
 /**
@@ -409,10 +417,19 @@ fun buildCredBalanceLine(balances: List<AccountBalance>, nominatedAccountId: Str
         return CredBalanceLine(primary = label, secondary = "no balance ever printed for this account", isAdvisory = true)
     }
     val amount = compactMoneyHero(balanceCents, balance.currency)
-    // Null stays null here, never "as of" against a missing date - the caller renders no second
-    // line at all in that case (see the data class doc comment's fourth branch).
-    val asOf = balance.asOfMs?.let { "as of ${documentDateCompact(it)}" }
-    return CredBalanceLine(primary = "$amount $label", secondary = asOf, isAdvisory = false)
+    // "$1208" / "in debit account" - Kevin's own words for the shape he wants, with the account
+    // moved off the figure line and into the subtitle so the two heroes on this tile read as a
+    // matched pair.
+    //
+    // **The `as of <date>` line is deliberately NOT here**, and this is the one place that costs
+    // something: he asked for it three hours earlier ("and if the account balance is stale") and
+    // then asked for exactly two subtitles. Both are his calls and the second is the later one, so
+    // it wins. The staleness disclosure still ships in full on Money's own balance row
+    // (`ui/ledger/LedgerRows.kt`, "as of Aug 12" / "no balance ever printed for this account"),
+    // which is the surface that exists to answer that question. Flagged to him rather than
+    // resolved silently - if a stale figure reading as current on HOME turns out to bite, the fix
+    // is to fold the date into this subtitle, not to add a third line.
+    return CredBalanceLine(primary = amount, secondary = "in $label account", isAdvisory = false)
 }
 
 /**
