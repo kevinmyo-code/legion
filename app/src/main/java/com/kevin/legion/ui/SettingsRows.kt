@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -22,9 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ui.common.DeckButton
+import com.kevin.legion.ui.common.DeckRadio
+import com.kevin.legion.ui.common.DeckSwitch
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.util.TempUnit
 
 /**
  * Plain UI half of [SettingsScreen] (the state-holder/UI split,
@@ -148,6 +152,79 @@ fun RecallAlertsRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
                 )
             }
             Switch(checked = enabled, onCheckedChange = onToggle)
+        }
+    }
+}
+
+/**
+ * The proactive master switch ([com.kevin.legion.service.ProactivePreferences.muted], inverted for
+ * display - the row reads "Proactive speech", not "Muted"). `.scratch/proactive-mode/issues/
+ * 01-one-gate-not-three.md` (2026-08-18): `setMuted`/`toggle` had zero callers anywhere before this
+ * row, so the kill switch this whole effort depends on had never been reachable by a human. Uses
+ * [DeckSwitch] rather than [RecallAlertsRow]/[IgnitionRow]'s raw Material `Switch` - those predate
+ * ticket 09's deck control set; this is new work and adopts it directly rather than copying the
+ * pattern this map is here to move away from.
+ *
+ * **A true kill switch, stated as one** (settled decision 2, `.scratch/proactive-mode/map.md`):
+ * flipping this off does not just quiet nudges. It silences every line Alfred would otherwise say
+ * unprompted - openers, alerts, reminders, and the incoming-call announcement alike, all now routed
+ * through [com.kevin.legion.service.ProactiveBus.speakIfAllowed] - and separately stops
+ * [com.kevin.legion.service.AmbientListener] from listening at all, not merely from reacting
+ * (Kevin's explicit requirement, unchanged by this ticket). The status line says both, in words,
+ * rather than leaving either as an implied consequence of "muted".
+ */
+@Composable
+fun ProactiveSpeechRow(proactiveOn: Boolean, onToggle: (Boolean) -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Proactive speech", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(
+                        if (proactiveOn) {
+                            "On - Alfred may speak first: openers, alerts, reminders, incoming calls"
+                        } else {
+                            "Off - stops every unprompted line, including incoming-call announcements, " +
+                                "and stops ambient listening too. Talking to Alfred yourself still works."
+                        },
+                        style = LegionType.stamp,
+                        color = sem.faint,
+                    )
+                }
+                DeckSwitch(checked = proactiveOn, onCheckedChange = onToggle)
+            }
+        }
+    }
+}
+
+/**
+ * The driver's chosen temperature unit ([com.kevin.legion.util.Temp]), a two-way choice with no
+ * destination screen of its own - ticket 07, amended 2026-08-18 to make the unit a setting rather
+ * than fixed Celsius. Uses [DeckRadio] rather than a Material `RadioButton`/`Switch` pair,
+ * matching the deck control set the other new mission-control rows on this screen already prefer
+ * over raw Material controls.
+ */
+@Composable
+fun TemperatureUnitRow(unit: TempUnit, onSelect: (TempUnit) -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text("Temperature unit", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                "Coolant and intake-air readings, everywhere they're shown or spoken.",
+                style = LegionType.stamp,
+                color = sem.faint,
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                DeckRadio(selected = unit == TempUnit.CELSIUS, onClick = { onSelect(TempUnit.CELSIUS) }, label = TempUnit.CELSIUS.spokenWord)
+                DeckRadio(selected = unit == TempUnit.FAHRENHEIT, onClick = { onSelect(TempUnit.FAHRENHEIT) }, label = TempUnit.FAHRENHEIT.spokenWord)
+            }
         }
     }
 }
@@ -285,4 +362,16 @@ private fun PreviewRecallAlertsOff() = LegionTheme {
 @Composable
 private fun PreviewRecallAlertsOn() = LegionTheme {
     Surface { RecallAlertsRow(enabled = true, onToggle = {}) }
+}
+
+@Preview(name = "Settings: proactive speech on", widthDp = 360)
+@Composable
+private fun PreviewProactiveSpeechOn() = LegionTheme {
+    Surface { ProactiveSpeechRow(proactiveOn = true, onToggle = {}) }
+}
+
+@Preview(name = "Settings: proactive speech off", widthDp = 360)
+@Composable
+private fun PreviewProactiveSpeechOff() = LegionTheme {
+    Surface { ProactiveSpeechRow(proactiveOn = false, onToggle = {}) }
 }

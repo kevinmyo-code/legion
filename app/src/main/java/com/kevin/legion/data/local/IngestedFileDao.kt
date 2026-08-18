@@ -49,6 +49,24 @@ interface IngestedFileDao {
     suspend fun listQuarantined(): List<IngestedFile>
 
     /**
+     * Just the count of [listQuarantined] - mission-control ticket 04's ALARM segment build. The
+     * shell status line (`MainActivity.kt`'s `LegionShell`) polls this every `STATUS_POLL_MS` to
+     * decide whether `StatusLine`'s `alarmCount` is nonzero; it does not need the rows themselves,
+     * only whether there are any, so this is a `COUNT(*)` rather than reusing [listQuarantined] and
+     * throwing the list away. Same `state = 'QUARANTINED'` filter, same table, cheap either way -
+     * `ingested_files` is a per-account-per-file ledger, not a row-per-transaction table.
+     *
+     * **This is the ALARM tier's ONLY source.** Ticket 04's other named ALARM example, an active
+     * vehicle fault (DTC), is deliberately NOT wired here or anywhere else the shell polls - see
+     * `TodayGapResolvers.kt`'s `buildAlertRows` doc, which already states the reason in writing: a
+     * DTC read is a live OBD scan, not persisted state anything can cheaply poll. Do not "complete"
+     * this by adding a DTC read to the shell poll; that would turn a cheap indexed count into a
+     * Bluetooth round trip on a timer.
+     */
+    @Query("SELECT COUNT(*) FROM ingested_files WHERE state = 'QUARANTINED'")
+    suspend fun countQuarantined(): Int
+
+    /**
      * The explicit-retry transition from [IngestedFile]'s own state diagram:
      * `QUARANTINED --explicit user retry--> NEW`. Only flips the state back
      * to [IngestState.NEW] so the next scan re-examines the file; it does

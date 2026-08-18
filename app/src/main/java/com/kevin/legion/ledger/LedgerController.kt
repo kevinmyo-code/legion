@@ -937,6 +937,13 @@ object LedgerController {
     suspend fun quarantinedFiles(context: Context): List<IngestedFile> =
         CarDatabase.getDatabase(context).ingestedFileDao().listQuarantined()
 
+    /** Just the count - mission-control ticket 04's shell ALARM segment, see
+     * [com.kevin.legion.data.local.IngestedFileDao.countQuarantined]'s own doc for why this is a
+     * count query rather than [quarantinedFiles] with the list thrown away, and for why DTC is
+     * deliberately not a second source here. */
+    suspend fun quarantinedCount(context: Context): Int =
+        CarDatabase.getDatabase(context).ingestedFileDao().countQuarantined()
+
     /**
      * The quarantine row's RETRY action (resolution §6). Only flips the
      * record back to [com.kevin.legion.data.local.IngestState.NEW] - it does

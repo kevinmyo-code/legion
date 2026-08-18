@@ -21,6 +21,8 @@ package com.kevin.legion.ui
  *              + settings/companions <- companion profile picker (Part 2, 2026-08-02)
  *              + settings/drive-sync <- Connect Google Drive (2026-08-03)
  *              + settings/spotify    <- Connect Spotify (2026-08-12)
+ *              + settings/playbooks  <- edit advisor doctrine per topic (2026-08-18)
+ *              + settings/memory     <- view/delete what the assistant remembers (2026-08-18)
  * ```
  *
  * Plain string constants rather than a sealed class with typed args: nothing
@@ -85,6 +87,22 @@ object LegionRoute {
 
     /** Connect Google Drive - the entry point that makes [com.kevin.legion.sync.SyncEngine] reachable (2026-08-03). */
     const val SETTINGS_DRIVE_SYNC = "settings/drive-sync"
+
+    /**
+     * The driver's own editor for [com.kevin.legion.advisor.PrimingTopic]'s four bodies of
+     * doctrine (2026-08-18) - see [com.kevin.legion.ui.companions.PlaybookScreen]. The list-to-
+     * editor drill-down inside it is internal Compose state, same posture [NOTES]'s own doc
+     * comment states for its LISTS | CALENDAR toggle, so this is one route, not five.
+     */
+    const val SETTINGS_PLAYBOOKS = "settings/playbooks"
+
+    /**
+     * "What it remembers" (2026-08-18) - see [com.kevin.legion.ui.companions.MemoryScreen]. Reads
+     * and deletes from both [com.kevin.legion.data.local.MemoryEntry] (explicit "remember X") and
+     * [com.kevin.legion.data.local.CompanionMemory] (consolidated/reflected). No sub-routes: the
+     * only interaction below the list is a delete, not a drill-down.
+     */
+    const val SETTINGS_MEMORY = "settings/memory"
 
     /**
      * The Android Auto probe harness's on-screen readout (`.scratch/android-auto/map.md`

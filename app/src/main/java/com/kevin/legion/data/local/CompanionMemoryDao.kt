@@ -17,6 +17,21 @@ interface CompanionMemoryDao {
     @Query("SELECT * FROM companion_memories WHERE vehicleId = :vehicleId AND source = :source ORDER BY createdAt DESC")
     suspend fun bySource(vehicleId: String, source: String): List<CompanionMemory>
 
+    /**
+     * Every consolidated/reflected memory, newest first, across ALL cars - the read behind the
+     * driver-facing memory screen (2026-08-18). Deliberately not scoped to the active car the way
+     * [getRecent] is: the screen exists so the driver can find and delete a wrong memory, and a
+     * memory attached to a car he is not sitting in is exactly the one he would otherwise never
+     * see.
+     */
+    @Query("SELECT * FROM companion_memories ORDER BY createdAt DESC LIMIT :limit")
+    suspend fun allRecent(limit: Int): List<CompanionMemory>
+
+    /** Deletes one memory the driver rejected. Nothing rewrites it: the consolidation pass reads
+     * [EpisodicTurn]s, which are cleared once consolidated, so a deleted row does not come back. */
+    @Query("DELETE FROM companion_memories WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     /** Refreshes recency on recall (mirrors the old MemoryEntry.touch()) - ticket 03's decay input. */
     @Query("UPDATE companion_memories SET lastAccessedAt = :ts WHERE id = :id")
     suspend fun touch(id: Long, ts: Long)

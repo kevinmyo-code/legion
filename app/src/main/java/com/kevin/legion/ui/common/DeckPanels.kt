@@ -135,9 +135,27 @@ fun DeckPane(
     // but the on-device symptom said otherwise, and a shared file this many screens read from is
     // not the place to leave an unresolved contradiction sitting on `reasoned` alone.
     stretchToParentHeight: Boolean = false,
+    // Mission-control ticket 04's ALARM pane treatment ("panelAlarm fill on the pane, and the
+    // pane's border at full chrome"), wired by ticket 04's build ("`DeckPane` gets an opt-in
+    // `alarm: Boolean = false`"). Opt-in, defaulting false, so every existing caller across the
+    // app is byte-for-byte unaffected - the same posture as [stretchToParentHeight] just above.
+    // The only caller passing `true` today is TodayScreen's ALERTS pane, when
+    // [com.kevin.legion.ui.TodayGapResolvers.buildAlertRows] returns at least one
+    // [com.kevin.legion.ui.AlertTier.ALARM] row.
+    alarm: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
+    // Ticket 04 section 2's two ALARM materials that land on the frame itself (the pill's own
+    // inverted/pulsing treatment is a SEPARATE call site's job, not this shared primitive's - see
+    // TodayScreen's ALERTS pane, which renders its own [QuarantineTag] pills per-row): the fill
+    // swaps from ordinary panel to [MaterialTheme.colorScheme.errorContainer] (`panelAlarm`,
+    // `#170604` - see Theme.kt's DarkScheme doc), and the border swaps from the everyday structural
+    // [LegionSemantics.chromeDim] to full-strength [LegionSemantics.chrome], the same red every
+    // other alarm surface in the app (DeckBezel's registration ticks, the shell's AlarmSegment)
+    // reserves for "something is actually live" (ticket 03's "one hue, spent rarely" audit).
+    val paneFill = if (alarm) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface
+    val paneBorder = if (alarm) sem.chrome else sem.chromeDim
     BoxWithConstraints(modifier.fillMaxWidth()) {
         Column(
             Modifier
@@ -150,8 +168,8 @@ fun DeckPane(
                 // own top rule, pushed down by this padding, lands at y=8dp -
                 // exactly centered under the pill, 8dp above / 8dp below.
                 .padding(top = 8.dp)
-                .background(MaterialTheme.colorScheme.surface)
-                .border(1.dp, sem.chromeDim)
+                .background(paneFill)
+                .border(1.dp, paneBorder)
                 .padding(start = 9.dp, top = 13.dp, end = 9.dp, bottom = 9.dp),
         ) {
             content()
@@ -159,7 +177,13 @@ fun DeckPane(
         DeckLabelPill(
             header = header,
             headerAccent = headerAccent,
-            pillBackground = pillBackground,
+            // Follows the pane's own fill while alarming (ticket 04 build item 5's "pill background
+            // following the pane so it still occludes the top rule correctly") - the pill's bottom
+            // half overlaps the frame's own top border (see the padding-math comment above), so a
+            // pill background that stayed at the caller's ordinary [pillBackground] would show a
+            // visible seam of the wrong colour sitting on top of the alarm fill instead of
+            // continuing it, right where it most needs to read as one continuous alarm block.
+            pillBackground = if (alarm) MaterialTheme.colorScheme.errorContainer else pillBackground,
             // Pane width minus 16dp, per ticket 03 section 2's "max width"
             // row. Never negative: a pane narrower than 16dp is already a
             // broken layout upstream, not a case this clamp should hide.
@@ -167,6 +191,7 @@ fun DeckPane(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(start = 8.dp),
+            alarm = alarm,
         )
     }
 }
@@ -176,6 +201,16 @@ fun DeckPane(
  * beside the frame, not a decoration inside it - see [DeckPane]'s doc for why it cannot be a child
  * of the frame's own [Column]. Not exported: every caller reaches it through [DeckPane], same
  * posture as keeping this file's helpers scoped to what a build ticket is actually meant to call.
+ *
+ * **[alarm] (ticket 04 build item 7): the ~0.5Hz pulse belongs HERE**, on the alarming pane's own
+ * label pill, not on the shell status line's `AlarmSegment` - that composable's own doc is explicit
+ * it stays static, and section 2 of the ticket's answer is explicit the static chrome-fill-plus-word
+ * treatment already carries the whole meaning on its own; the pulse here is a bonus, never the sole
+ * carrier, which is exactly what makes collapsing it to solid under reduced motion (below) safe
+ * rather than a silent loss of the escalation. `~2s period` per the ticket - 1000ms up, 1000ms down,
+ * `RepeatMode.Reverse`. Alpha is read at DRAW time via the `graphicsLayer` lambda overload, same
+ * "drive draw-phase reads, not composition" discipline [StatusLine]'s own cursor already uses, so
+ * the pulse invalidates only this small leaf rather than recomposing the whole pane above it.
  */
 @Composable
 private fun DeckLabelPill(
@@ -184,13 +219,32 @@ private fun DeckLabelPill(
     pillBackground: Color,
     maxWidth: Dp,
     modifier: Modifier = Modifier,
+    alarm: Boolean = false,
 ) {
     val sem = LocalLegionSemantics.current
     val pillShape = RoundedCornerShape(2.dp)
+    val motionEnabled = deckMotionEnabled()
+    val pillAlpha = if (alarm && motionEnabled) {
+        val transition = rememberInfiniteTransition(label = "alarm-pill-pulse")
+        transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.55f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1000),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "alarm-pill-pulse-alpha",
+        )
+    } else {
+        // Reduced motion (or a non-alarm pill, which never animated in the first place) - solid,
+        // no InfiniteTransition created at all, matching [StatusLine]'s cursor's own branch.
+        remember { mutableStateOf(1f) }
+    }
     Box(
         modifier
             .widthIn(max = maxWidth)
             .height(16.dp)
+            .graphicsLayer { alpha = pillAlpha.value }
             .clip(pillShape)
             .background(pillBackground)
             .border(1.dp, sem.chrome, pillShape)
@@ -737,15 +791,21 @@ fun DeckSectionRule(label: String, modifier: Modifier = Modifier) {
  * 1. **[alarmCount] / [onOpenAlarm] / [keySegment]** (ticket 04 answer, section 6: "while an ALARM
  *    is present, the segment replaces SYNC and OBD; they return when it clears. The clock and date
  *    stay."). [left] keeps carrying whatever the caller normally shows in that slot (today: the
- *    combined `SYNC ... OBD ... KEY ...` string built by `shellStatusLine`); [keySegment] is the
+ *    `SYNC ... OBD ...` half of `MainActivity.kt`'s `shellStatusLine` split); [keySegment] is the
  *    part that must survive an alarm (the ticket's "KEY" clause) and is rendered AFTER the alarm
- *    pill instead of [left] once [alarmCount] is greater than zero. **There is no alarm state
- *    source yet** - nothing in the app today can compute a nonzero [alarmCount], per ticket 04's
- *    own tier table (ALARM is quarantine + active DTC, neither wired to this line). `MainActivity`
- *    passes neither parameter, so [alarmCount] stays `0`, [keySegment] stays `null`, and this
- *    composable renders exactly [left] as before - the branch below is real, reviewable code, not
- *    a stub, but it is currently dead by construction until a later ticket both wires a real alarm
- *    source AND splits `shellStatusLine`'s one combined string into a `left`/`keySegment` pair.
+ *    pill instead of [left] once [alarmCount] is greater than zero.
+ *
+ *    **WIRED, ticket 04's build (2026-08-18)**: `LegionShell` now folds
+ *    [com.kevin.legion.ledger.LedgerController.quarantinedCount] into the same `STATUS_POLL_MS`
+ *    poll that already refreshed `shellStatusLine`, splits that function's old single string into
+ *    `left` / `keySegment` via the pure `formatShellStatusLine`, and passes both plus the live
+ *    count through to this composable, with `onOpenAlarm` navigating to `LegionRoute.TODAY`
+ *    (ticket 04 answer §6: "tapping the segment navigates to TODAY", where the ALERTS pane lists
+ *    every alarm - not to Money, since several ALARM rows can be live at once and ALERTS is the
+ *    surface that owns the list, not any one aspect). An active vehicle fault (DTC) is ticket 04's
+ *    OTHER named ALARM example and is deliberately NOT a second source feeding [alarmCount] here -
+ *    see `IngestedFileDao.countQuarantined`'s own doc for why (a DTC read is a live OBD scan, not
+ *    persisted state this poll can cheaply add).
  *    Rendered as the ticket's "inverted pill treatment: solid `chrome` fill, `ground`-coloured
  *    text" - see the private `AlarmSegment` helper below. Tapping it calls [onOpenAlarm].
  * 2. **[cursorSolid]** (ticket 07 answer, "the cursor yields": "on a surface that defines its own

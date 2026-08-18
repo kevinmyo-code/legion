@@ -41,6 +41,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.kevin.legion.ai.GeminiKeyProvider
+import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.service.ReminderAlarmReceiver
@@ -49,6 +50,8 @@ import com.kevin.legion.sync.SyncEngine
 import com.kevin.legion.ui.assistant.AssistantStrip
 import com.kevin.legion.ui.common.DeckBezel
 import com.kevin.legion.ui.common.StatusLine
+import com.kevin.legion.ui.companions.MemoryScreen
+import com.kevin.legion.ui.companions.PlaybookScreen
 import com.kevin.legion.ui.sync.GoogleAccessScreen
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -300,9 +303,14 @@ private fun LegionShell(
     // not claiming), so a short poll is honest and costs nothing worth
     // avoiding. STATUS_POLL_MS is well under the OBD/Drive/key state going
     // stale in a way anyone would notice on a status line, not a live meter.
-    val statusLeft by produceState(initialValue = shellStatusLine(context)) {
+    //
+    // Mission-control ticket 04 build: [ShellStatus.alarmCount] rides the SAME poll rather than a
+    // second timer (ticket 04 build section 4) - one more cheap, synchronous-from-this-coroutine's
+    // point of view suspend read (a `COUNT(*)` over `ingested_files`) alongside the three that were
+    // already here.
+    val shellStatus by produceState(initialValue = ShellStatus(shellStatusLine(context), 0)) {
         while (true) {
-            value = shellStatusLine(context)
+            value = ShellStatus(shellStatusLine(context), LedgerController.quarantinedCount(context))
             delay(STATUS_POLL_MS)
         }
     }
@@ -428,15 +436,26 @@ private fun LegionShell(
                 // you into a settings tree.
                 if (!isDrivingMode) {
                     StatusLine(
-                        left = statusLeft,
+                        left = shellStatus.parts.left,
                         clock = clock,
                         onOpenSettings = {
                             navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
                         },
+                        // Ticket 04 build section 3: KEY survives an alarm, riding alongside the
+                        // alarm pill instead of folding into [left].
+                        keySegment = shellStatus.parts.keySegment,
+                        alarmCount = shellStatus.alarmCount,
+                        // Ticket 04 answer §6: "tapping the segment navigates to TODAY" - the
+                        // ALERTS pane there lists every alarm, not just this one; see
+                        // [ShellStatus]'s own doc for why Money is not the target.
+                        onOpenAlarm = { navController.navigate(LegionRoute.TODAY) { launchSingleTop = true } },
                         // Ticket 07 answer §1, "the cursor yields": solid, not blinking, for
                         // exactly as long as FLEET's own uplink sweep is genuinely running -
-                        // see [fleetSweepActive]'s own doc above for how that boolean gets here.
-                        cursorSolid = fleetSweepActive,
+                        // see [fleetSweepActive]'s own doc above for how that boolean gets here -
+                        // OR (ticket 04 answer §8's precedence stack: "while an alarm pane is on
+                        // screen the shell's cursor stops") while an alarm is live anywhere in the
+                        // app, not just on the surface currently in view.
+                        cursorSolid = fleetSweepActive || shellStatus.alarmCount > 0,
                     )
                 }
                 NavHost(
@@ -555,6 +574,8 @@ private fun LegionShell(
                     onOpenGoogleAccess = { navController.navigate(LegionRoute.SETTINGS_GOOGLE) },
                     onOpenSpotify = { navController.navigate(LegionRoute.SETTINGS_SPOTIFY) },
                     onOpenCarProbe = { navController.navigate(LegionRoute.SETTINGS_CAR_PROBE) },
+                    onOpenPlaybooks = { navController.navigate(LegionRoute.SETTINGS_PLAYBOOKS) },
+                    onOpenMemory = { navController.navigate(LegionRoute.SETTINGS_MEMORY) },
                 )
             }
             composable(LegionRoute.SETTINGS_KEY) {
@@ -579,6 +600,15 @@ private fun LegionShell(
             // see CarProbeScreen's own doc for why this exists at all.
             composable(LegionRoute.SETTINGS_CAR_PROBE) {
                 CarProbeScreen(onBack = { navController.popBackStack() })
+            }
+            // Playbook/memory build (2026-08-18): both are single-screen, no sub-routes of their
+            // own - the list-to-editor drill-down inside PlaybookScreen is internal Compose state,
+            // see LegionRoute.SETTINGS_PLAYBOOKS's own doc comment.
+            composable(LegionRoute.SETTINGS_PLAYBOOKS) {
+                PlaybookScreen(onBack = { navController.popBackStack() })
+            }
+            composable(LegionRoute.SETTINGS_MEMORY) {
+                MemoryScreen(onBack = { navController.popBackStack() })
             }
             // authOk/authNonce carry the browser round trip's outcome down from the exchange
             // effect above - see its own comment for why the exchange cannot live in this screen.
@@ -629,12 +659,44 @@ private fun LegionShell(
  *    check the assistant and every LLM call path already uses; no key
  *    material is read or logged, only presence.
  */
-private fun shellStatusLine(context: Context): String {
-    val sync = if (SyncCapability.syncAvailable(context)) "ON" else "OFF"
-    val obd = if (ObdBluetoothManager.isConnected) "LINK" else "NO LINK"
-    val key = if (GeminiKeyProvider.hasKey()) "ARMED" else "NOT SET"
-    return "SYNC $sync   OBD $obd   KEY $key"
+private fun shellStatusLine(context: Context): ShellStatusLineParts {
+    val sync = SyncCapability.syncAvailable(context)
+    val obd = ObdBluetoothManager.isConnected
+    val key = GeminiKeyProvider.hasKey()
+    return formatShellStatusLine(sync, obd, key)
 }
+
+/**
+ * The two segments [StatusLine] needs (mission-control ticket 04 build, section 3 of the brief):
+ * `left` carries `SYNC ... OBD ...`, `keySegment` carries `KEY ...` on its own - the split ticket
+ * 04 answer §6 requires so an ALARM segment can replace [left] while [keySegment] survives next to
+ * it ("while an alarm is present the segment replaces SYNC and OBD, and KEY survives").
+ */
+data class ShellStatusLineParts(val left: String, val keySegment: String)
+
+/**
+ * The pure half of [shellStatusLine] - three already-resolved booleans in, two formatted strings
+ * out, no [Context] read, so this is the piece that is actually unit-testable without an Android
+ * runtime (see `ShellStatusLineTest.kt`). [shellStatusLine] itself stays impure on purpose: it is
+ * the one place that reads [SyncCapability]/[ObdBluetoothManager]/[GeminiKeyProvider], and this
+ * function's whole job is to not need to know how those three booleans were produced.
+ */
+internal fun formatShellStatusLine(syncOn: Boolean, obdConnected: Boolean, keyArmed: Boolean): ShellStatusLineParts {
+    val sync = if (syncOn) "ON" else "OFF"
+    val obd = if (obdConnected) "LINK" else "NO LINK"
+    val key = if (keyArmed) "ARMED" else "NOT SET"
+    return ShellStatusLineParts(left = "SYNC $sync   OBD $obd", keySegment = "KEY $key")
+}
+
+/**
+ * [LegionShell]'s combined status-line/alarm poll state (mission-control ticket 04 build, section
+ * 4: "fold the quarantine count into the existing STATUS_POLL_MS poll... do not add a second
+ * timer"). [alarmCount] is
+ * [com.kevin.legion.ledger.LedgerController.quarantinedCount] - see that function's own doc, and
+ * [com.kevin.legion.data.local.IngestedFileDao.countQuarantined]'s, for why this is the ALARM
+ * tier's only source and why an active DTC is deliberately not a second one.
+ */
+private data class ShellStatus(val parts: ShellStatusLineParts, val alarmCount: Int)
 
 /** [LegionShell]'s StatusLine left-segment poll interval - see [shellStatusLine]'s doc for why this is a poll, not a push. */
 private const val STATUS_POLL_MS = 4_000L

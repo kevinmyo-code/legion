@@ -523,6 +523,25 @@ class TodayGapResolversTest {
     }
 
     @Test
+    fun `alertRowsHaveAlarm is true exactly when an ALARM row is present`() {
+        val withAlarm = buildAlertRows(
+            quarantined = listOf(quarantinedFile("a.pdf")),
+            hasGeminiKey = false,
+            overdueGoals = listOf(overdueGoal("bio")),
+        )
+        assertTrue(alertRowsHaveAlarm(withAlarm))
+
+        val advisoryOnly = buildAlertRows(
+            quarantined = emptyList(),
+            hasGeminiKey = false,
+            overdueGoals = listOf(overdueGoal("bio")),
+        )
+        assertTrue(!alertRowsHaveAlarm(advisoryOnly))
+
+        assertTrue(!alertRowsHaveAlarm(emptyList()))
+    }
+
+    @Test
     fun `alertTargetForAspect routes every real aspect and falls back to NONE for HOME or unknown`() {
         assertEquals(AlertTarget.BIO, alertTargetForAspect(AdvisorAspect.BIO))
         assertEquals(AlertTarget.LOG, alertTargetForAspect(AdvisorAspect.LOG))

@@ -523,6 +523,17 @@ fun buildAlertRows(quarantined: List<IngestedFile>, hasGeminiKey: Boolean, overd
     return alarms + advisories
 }
 
+/**
+ * Whether [rows] holds at least one [AlertTier.ALARM] entry - mission-control ticket 04 build,
+ * "the ALERTS pane on TodayScreen passes `alarm = true` when it holds any ALARM row." Pulled out
+ * of `TodayScreen.kt`'s `DeckPane(header = "Alerts", alarm = ...)` call site as its own named,
+ * pure function rather than left inline specifically so it is unit-testable without Compose - see
+ * [TodayGapResolversTest]'s coverage. [buildAlertRows] already puts ALARM rows first (ticket 11
+ * section 3), but this checks the whole list rather than relying on that ordering, so it stays
+ * correct even if a future caller changes it.
+ */
+fun alertRowsHaveAlarm(rows: List<AlertRowData>): Boolean = rows.any { it.tier == AlertTier.ALARM }
+
 /** Routes a [Goal.aspect] to the tile/tab that owns it. [AdvisorAspect.HOME] and an unrecognised
  * key both fall to [AlertTarget.NONE] rather than a guessed destination - no write path ever mints a
  * `home`-aspect goal ([com.kevin.legion.advisor.AdvisorBriefs.HOME]'s `writableOps = emptySet()`),

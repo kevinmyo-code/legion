@@ -499,8 +499,14 @@ private fun TodayListing(
         // ------------------------------------------------------------ ALERTS (FULL, "everything needing you")
         item(key = "alerts-pane") {
             val rows = buildAlertRows(state.quarantinedFiles, state.hasGeminiKey, state.overdueGoals)
+            // Mission-control ticket 04 build: this pane carries the ALARM tier's own worded rows
+            // ([QuarantineTag] below), so it is also the one place in the app that renders
+            // [DeckPane]'s `alarm` treatment - true exactly when at least one row is
+            // [AlertTier.ALARM] (today, always a quarantined file; see [buildAlertRows]'s doc for
+            // why an active DTC is deliberately not a second source of this flag).
+            val alarm = alertRowsHaveAlarm(rows)
             // Same "no extra top padding" reasoning as the AGENDA pane above.
-            DeckPane(header = "Alerts") {
+            DeckPane(header = "Alerts", alarm = alarm) {
                 if (rows.isEmpty()) {
                     Text(
                         "0 ALERTS · ALL SYSTEMS NOMINAL",

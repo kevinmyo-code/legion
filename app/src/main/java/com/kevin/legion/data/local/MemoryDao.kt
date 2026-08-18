@@ -23,6 +23,11 @@ interface MemoryDao {
     @Query("UPDATE memories SET timestamp = :ts WHERE id = :id")
     suspend fun touch(id: Long, ts: Long)
 
+    /** Deletes one explicitly-remembered fact the driver rejected on the memory screen
+     * (2026-08-18). */
+    @Query("DELETE FROM memories WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     /** Clears every memory (the "forget everything" reset). */
     @Query("DELETE FROM memories")
     suspend fun deleteAll()

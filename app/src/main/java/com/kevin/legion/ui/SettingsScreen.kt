@@ -28,21 +28,28 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.kevin.legion.advisor.PlaybookStore
+import com.kevin.legion.advisor.PrimingTopic
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.CompanionProfileStore
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.personaFor
+import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.service.AssistantIgnition
 import com.kevin.legion.service.DebugSettings
+import com.kevin.legion.service.ProactivePreferences
 import com.kevin.legion.sync.SyncCapability
 import com.kevin.legion.ui.media.MediaTransportAccessBanner
 import com.kevin.legion.ui.spotify.SpotifyConnectResolver
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.util.Temp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * `settings` tab. Owns the assistant ignition toggle (ticket 07 resolution
@@ -73,6 +80,11 @@ import kotlinx.coroutines.launch
  * on-device (the sole suspend one, the companion profile, already had its own
  * nonce-keyed reload).
  */
+/** Shared with `settings/memory`'s own MEMORY_LIMIT - kept as a separate named constant here
+ * rather than importing that private one, since this screen only needs it to keep its own
+ * headline count from ever exceeding what the destination screen can actually show. */
+private const val MEMORY_SETTINGS_SCAN = 200
+
 @Composable
 fun SettingsScreen(
     onOpenKeyScreen: () -> Unit,
@@ -80,6 +92,8 @@ fun SettingsScreen(
     onOpenGoogleAccess: () -> Unit,
     onOpenSpotify: () -> Unit,
     onOpenCarProbe: () -> Unit,
+    onOpenPlaybooks: () -> Unit,
+    onOpenMemory: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -93,6 +107,11 @@ fun SettingsScreen(
     var reloadNonce by remember { mutableStateOf(0) }
 
     var recallAlertsOn by remember { mutableStateOf(DebugSettings.recallAlertsEnabled(context)) }
+    // The proactive master switch (`.scratch/proactive-mode/issues/01-one-gate-not-three.md`) -
+    // stored inverted (ProactivePreferences.muted) but shown as "Proactive speech" so the row reads
+    // as what it does, not as a double negative.
+    var proactiveOn by remember { mutableStateOf(!ProactivePreferences.isMuted(context)) }
+    var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
     var hasKey by remember { mutableStateOf(GeminiKeyProvider.hasKey()) }
     var driveConnected by remember { mutableStateOf(SyncCapability.syncAvailable(context)) }
     var playServices by remember { mutableStateOf(SyncCapability.playServicesAvailable(context)) }
@@ -110,13 +129,38 @@ fun SettingsScreen(
     // from inside the app.
     var hasMediaAccess by remember { mutableStateOf(NowPlayingController.hasAccess(context)) }
 
+    // Playbook/memory ticket (2026-08-18): counts for the two new rows below, both cheap enough
+    // to re-read on every ON_RESUME the same way the other five status reads on this screen do.
+    var editedPlaybookCount by remember { mutableStateOf(0) }
+    var storedMemoryCount by remember { mutableStateOf(0) }
+
     suspend fun reloadActiveProfile() {
         val profile = CompanionProfileStore.activeProfile(context)
         activeName = profile?.assistantName
         activeBlurb = profile?.let { personaFor(it.persona).blurb }
     }
 
-    LaunchedEffect(reloadNonce) { reloadActiveProfile() }
+    // [PlaybookStore] is raw blocking file IO (its own doc comment), so the read is wrapped in
+    // Dispatchers.IO here same as every other caller must. The memory counts below are Room
+    // suspend DAO calls, which already dispatch off this thread on their own - no wrap needed,
+    // same posture ai/AriaBrain.kt's own memoryDao/companionMemoryDao calls take.
+    //
+    // Both counts are capped at MEMORY_SETTINGS_SCAN - `settings/memory`'s own screen fetches with
+    // the same limit, so this status line can never claim a bigger number than that screen can
+    // actually show, rather than running a second, uncapped query just to headline a count.
+    suspend fun reloadPlaybookAndMemoryStatus() {
+        editedPlaybookCount = withContext(Dispatchers.IO) {
+            PrimingTopic.entries.count { PlaybookStore.isCustomised(context, it) }
+        }
+        val db = CarDatabase.getDatabase(context)
+        storedMemoryCount = db.memoryDao().getRecent(MEMORY_SETTINGS_SCAN).size +
+            db.companionMemoryDao().allRecent(MEMORY_SETTINGS_SCAN).size
+    }
+
+    LaunchedEffect(reloadNonce) {
+        reloadActiveProfile()
+        reloadPlaybookAndMemoryStatus()
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         reloadNonce++
         enabled = AssistantIgnition.isEnabled(context)
@@ -129,6 +173,8 @@ fun SettingsScreen(
         )
         hasMediaAccess = NowPlayingController.hasAccess(context)
         recallAlertsOn = DebugSettings.recallAlertsEnabled(context)
+        temperatureUnit = Temp.unit(context)
+        proactiveOn = !ProactivePreferences.isMuted(context)
     }
 
     // Step 2 of the chain: RECORD_AUDIO. Only reached once POST_NOTIFICATIONS
@@ -206,6 +252,31 @@ fun SettingsScreen(
             ActiveCompanionRow(name = activeName, blurb = activeBlurb, onOpenCompanions = onOpenCompanions)
 
             Spacer(Modifier.height(8.dp))
+            // Mission-control playbook/memory build (2026-08-18): the doctrine the assistant
+            // primes itself with before it answers, and what it has actually remembered - both
+            // previously invisible and uneditable outside a rebuild.
+            SettingsNavRow(
+                label = "Playbooks",
+                status = if (editedPlaybookCount > 0) {
+                    "$editedPlaybookCount of ${PrimingTopic.entries.size} edited"
+                } else {
+                    "All ${PrimingTopic.entries.size} on the shipped default"
+                },
+                onClick = onOpenPlaybooks,
+            )
+
+            Spacer(Modifier.height(8.dp))
+            SettingsNavRow(
+                label = "Memory",
+                status = if (storedMemoryCount > 0) {
+                    "$storedMemoryCount memories stored"
+                } else {
+                    "Nothing remembered yet"
+                },
+                onClick = onOpenMemory,
+            )
+
+            Spacer(Modifier.height(8.dp))
             // attention on "Not set": no key means the assistant and every LLM fallback path
             // are dead, which is the one genuinely blocking state on this screen.
             SettingsNavRow(
@@ -253,6 +324,30 @@ fun SettingsScreen(
                 onToggle = { on ->
                     DebugSettings.setRecallAlerts(context, on)
                     recallAlertsOn = on
+                },
+            )
+
+            // Ticket `.scratch/proactive-mode/issues/01-one-gate-not-three.md`: the master kill
+            // switch this whole effort depends on, wired to a Settings row for the first time -
+            // ProactivePreferences.setMuted had zero callers anywhere before this.
+            Spacer(Modifier.height(8.dp))
+            ProactiveSpeechRow(
+                proactiveOn = proactiveOn,
+                onToggle = { on ->
+                    ProactivePreferences.setMuted(context, !on)
+                    proactiveOn = on
+                },
+            )
+
+            // Ticket 07, amended 2026-08-18: the unit is a setting, not a fixed Celsius. Every
+            // temperature surface (UPLINK, DRIVE MODE, FAULTS, TELEMETRY, and the assistant's own
+            // voice) reads this same value through com.kevin.legion.util.Temp.
+            Spacer(Modifier.height(8.dp))
+            TemperatureUnitRow(
+                unit = temperatureUnit,
+                onSelect = { unit ->
+                    Temp.setUnit(context, unit)
+                    temperatureUnit = unit
                 },
             )
 
