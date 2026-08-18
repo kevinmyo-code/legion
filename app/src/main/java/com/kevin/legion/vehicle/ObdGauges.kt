@@ -1,5 +1,7 @@
 package com.kevin.legion.vehicle
 
+import android.content.Context
+import com.kevin.legion.util.Temp
 import kotlin.math.roundToInt
 
 /**
@@ -22,26 +24,29 @@ enum class ObdGauge(
     val key: String,
     val label: String,
     val supportPid: Int?,
-    private val reader: suspend () -> String?,
+    private val reader: suspend (Context) -> String?,
 ) {
-    COOLANT("coolant", "TEMP", 0x05, {
-        ObdBluetoothManager.getCoolantTemp()?.let { "${(it * 9 / 5) + 32}°" }
+    // No caller in app/src/main as of the ticket-07 sweep (2026-08-18) - this strip appears to be
+    // dead. Routed through Temp anyway rather than leaving a second Celsius-to-Fahrenheit
+    // convention alive in the tree; see util/Units.kt's doc for why one formatter owns this.
+    COOLANT("coolant", "TEMP", 0x05, { context ->
+        ObdBluetoothManager.getCoolantTemp()?.let { Temp.text(context, it.toDouble(), decimals = 0).dropLast(1) + "°" }
     }),
-    VOLTS("volts", "VOLTS", null, {
+    VOLTS("volts", "VOLTS", null, { _ ->
         ObdBluetoothManager.getBatteryVoltage()?.let { "%.1f".format(it) }
     }),
-    FUEL("fuel", "FUEL", 0x2F, {
+    FUEL("fuel", "FUEL", 0x2F, { _ ->
         ObdBluetoothManager.getFuelLevel()?.let { "${it.roundToInt()}%" }
     }),
-    INTAKE_AIR("iat", "IAT", 0x0F, {
-        ObdBluetoothManager.getIntakeAirTemp()?.let { "${(it * 9 / 5) + 32}°" }
+    INTAKE_AIR("iat", "IAT", 0x0F, { context ->
+        ObdBluetoothManager.getIntakeAirTemp()?.let { Temp.text(context, it.toDouble(), decimals = 0).dropLast(1) + "°" }
     }),
-    LONG_FUEL_TRIM("ltft", "LTFT", 0x07, {
+    LONG_FUEL_TRIM("ltft", "LTFT", 0x07, { _ ->
         ObdBluetoothManager.getLongFuelTrim()?.let { "%+.0f%%".format(it) }
     });
 
     /** Live-reads this gauge and returns a display string, or null if unavailable. */
-    suspend fun read(): String? = reader()
+    suspend fun read(context: Context): String? = reader(context)
 
     /**
      * True if this gauge should be offered/read for a car whose supported-PID

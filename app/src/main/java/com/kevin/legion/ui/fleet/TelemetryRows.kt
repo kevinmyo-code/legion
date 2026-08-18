@@ -75,7 +75,10 @@ fun rangeStartMs(range: TelemetryRange, now: Long): Long =
  * precision, and "0.0 rpm" for a stopped engine reads as a broken sensor.
  */
 internal fun decimalsFor(unit: String): Int = when (unit) {
-    "rpm", "km/h", "°C", "C" -> 0
+    // "°C"/"C" is the raw stored unit; "°F" is what a temperature series carries once
+    // [com.kevin.legion.util.Temp] has relabelled its axis to the driver's chosen unit (ticket 07) -
+    // both read as whole numbers, same as rpm and km/h.
+    "rpm", "km/h", "°C", "C", "°F" -> 0
     else -> 1
 }
 

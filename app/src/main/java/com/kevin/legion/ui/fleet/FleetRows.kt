@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.fleet
 
+import android.content.Context
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +25,7 @@ import com.kevin.legion.data.local.provenanceWordsForSource as entityProvenanceW
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.vehicle.MpgTrust
+import com.kevin.legion.util.Temp
 import com.kevin.legion.util.relativeAge
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.DtcClearController
@@ -68,12 +70,15 @@ data class LiveRowView(val label: String, val value: String, val sub: String, va
  * TelemetryRecorder writes them - "0105", "ATRV", "0107" - see that object's
  * `run` loop.
  */
-private data class LiveGauge(val pid: String, val label: String, val format: (Double) -> String)
+private data class LiveGauge(val pid: String, val label: String, val format: (Context, Double) -> String)
 
+// Coolant's formatter routes through [Temp] rather than hardcoding "C" (ticket 07, amended
+// 2026-08-18) - this is the UPLINK live gauge the freeze-frame drilldown and DRIVE MODE pod both
+// have to match, so a hardcoded unit here would silently reopen the same drift the ticket closed.
 private val LIVE_GAUGES = listOf(
-    LiveGauge("0105", "Coolant") { v -> "${v.toInt()} C" },
-    LiveGauge("ATRV", "Battery") { v -> "%.1f V".format(v) },
-    LiveGauge("0107", "Fuel trim, long") { v -> "%+.1f %%".format(v) },
+    LiveGauge("0105", "Coolant") { context, v -> Temp.text(context, v) },
+    LiveGauge("ATRV", "Battery") { _, v -> "%.1f V".format(v) },
+    LiveGauge("0107", "Fuel trim, long") { _, v -> "%+.1f %%".format(v) },
 )
 
 /** PIDs [buildLiveRows] wants a latest sample for - drives the DAO reads in the state holder. */
@@ -84,10 +89,10 @@ internal val LIVE_GAUGE_PIDS: List<String> = LIVE_GAUGES.map { it.pid }
  * install has never recorded that PID - never a fabricated "no data" value
  * standing in for a number). `internal` for direct unit testing.
  */
-internal fun buildLiveRows(samplesByPid: Map<String, OdbSample?>, now: Long): List<LiveRowView> =
+internal fun buildLiveRows(context: Context, samplesByPid: Map<String, OdbSample?>, now: Long): List<LiveRowView> =
     LIVE_GAUGES.mapNotNull { gauge ->
         val sample = samplesByPid[gauge.pid] ?: return@mapNotNull null
-        LiveRowView(gauge.label, gauge.format(sample.value), relativeAge(sample.timestamp, now), pid = gauge.pid)
+        LiveRowView(gauge.label, gauge.format(context, sample.value), relativeAge(sample.timestamp, now), pid = gauge.pid)
     }
 
 // ------------------------------------------------------------- DUE (pure)
@@ -622,34 +627,30 @@ data class FreezeFrameReading(val label: String, val value: String)
  * [json] is simply OMITTED from the result, never rendered as a zero (CLAUDE.md §4: a value the
  * source did not record must never masquerade as a recorded one).
  *
- * Coolant and intake-air temperature convert C->F, and speed converts km/h->mph, matching every
- * OTHER human-facing (as opposed to raw-PID-feed) surface already in this app -
- * [com.kevin.legion.ui.DrivingModeScreen]'s gauges and `CarToolbelt.freezeHighlights`'s own spoken
- * summary both make the identical two conversions. RPM, load %, MAF, and both fuel-trim
- * percentages are reported in the ECU's own native unit - there is no "human" unit to convert them
- * into. Returns an EMPTY list for blank or unparseable [json]; the caller states "no freeze frame
- * recorded" in words rather than rendering nothing silently. `internal` for direct unit testing,
- * same posture as every other pure builder in this file.
+ * Coolant and intake-air temperature render in the driver's chosen unit via [Temp] (ticket 07,
+ * amended 2026-08-18 to make the unit a setting rather than fixed Celsius), and speed converts
+ * km/h->mph, matching every OTHER human-facing (as opposed to raw-PID-feed) surface already in
+ * this app - [com.kevin.legion.ui.DrivingModeScreen]'s gauges and `CarToolbelt.freezeHighlights`'s
+ * own spoken summary all go through the same [Temp] formatter now, so this drilldown can no longer
+ * disagree with the pane it opened from or with what the assistant says out loud. RPM, load %,
+ * MAF, and both fuel-trim percentages are reported in the ECU's own native unit - there is no
+ * "human" unit to convert them into. Returns an EMPTY list for blank or unparseable [json]; the
+ * caller states "no freeze frame recorded" in words rather than rendering nothing silently.
+ * `internal` for direct unit testing, same posture as every other pure builder in this file.
  */
-internal fun formatFreezeFrame(json: String): List<FreezeFrameReading> {
+internal fun formatFreezeFrame(context: Context, json: String): List<FreezeFrameReading> {
     if (json.isBlank()) return emptyList()
     val o = runCatching { JSONObject(json) }.getOrNull() ?: return emptyList()
     fun value(key: String): Double? = if (o.has(key)) o.optDouble(key, Double.NaN).takeUnless { it.isNaN() } else null
     return listOfNotNull(
         value("rpm")?.let { FreezeFrameReading("RPM", it.toInt().toString()) },
-        // Celsius, NOT Fahrenheit. The first build of this screen converted, following
-        // CarToolbelt.freezeHighlights - but that is the SPOKEN surface, and this is a screen
-        // whose parent pane renders "81 C" for the same reading (UplinkPane's live COOLANT
-        // gauge). A drilldown disagreeing with the pane it opened from is the worse
-        // inconsistency, so screens match screens. Distance stays imperial (mph) because every
-        // other screen figure already is - the odometer, DRIVES, the recaps.
-        value("coolant_c")?.let { FreezeFrameReading("COOLANT", "${it.toInt()} C") },
+        value("coolant_c")?.let { FreezeFrameReading("COOLANT", Temp.text(context, it)) },
         value("speed_kmh")?.let { FreezeFrameReading("SPEED", "${(it * 0.621371).roundToInt()} mph") },
         value("load_pct")?.let { FreezeFrameReading("LOAD", "${it.toInt()}%") },
         value("maf_gs")?.let { FreezeFrameReading("MAF", "%.1f g/s".format(it)) },
         value("stft_pct")?.let { FreezeFrameReading("STFT", "%+.1f%%".format(it)) },
         value("ltft_pct")?.let { FreezeFrameReading("LTFT", "%+.1f%%".format(it)) },
-        value("iat_c")?.let { FreezeFrameReading("IAT", "${it.toInt()} C") },
+        value("iat_c")?.let { FreezeFrameReading("IAT", Temp.text(context, it)) },
     )
 }
 

@@ -43,6 +43,7 @@ import com.kevin.legion.ui.fleet.summaryLine
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.util.Temp
 import com.kevin.legion.vehicle.MpgTrust
 import com.kevin.legion.vehicle.ObdHistory
 import com.kevin.legion.vehicle.VehicleController
@@ -151,15 +152,27 @@ fun TelemetryScreen(onBack: () -> Unit) {
         // The unit comes from the newest sample for this PID overall, not from
         // the window: an empty window still has to label its (absent) axis, and
         // TelemetryRecorder writes one unit per PID for the life of the row.
-        val unit = rows.firstOrNull()?.unit ?: dao.getLatest(vehicle.obdMac, pid, 1).firstOrNull()?.unit.orEmpty()
-        val summary = dao.summarize(vehicle.obdMac, pid, fromMs, now)
+        val storedUnit = rows.firstOrNull()?.unit ?: dao.getLatest(vehicle.obdMac, pid, 1).firstOrNull()?.unit.orEmpty()
+        val rawSummary = dao.summarize(vehicle.obdMac, pid, fromMs, now)
+        // Ticket 07 (amended 2026-08-18): a temperature series is stored Celsius, same as every
+        // other reading, and converts at render time only. [Temp.isCelsiusLabel] recognises the
+        // stored unit; a non-temperature series ("rpm", "V", "g/s"...) is untouched by both the
+        // values and the label - [Temp.labelFor] returns [storedUnit] unchanged for those.
+        val tempUnit = Temp.unit(context)
+        val isTemp = Temp.isCelsiusLabel(storedUnit)
+        val unit = Temp.labelFor(context, storedUnit)
+        val summary = if (isTemp && rawSummary != null) rawSummary.copy(
+            min = Temp.convert(rawSummary.min, tempUnit),
+            max = Temp.convert(rawSummary.max, tempUnit),
+            avg = Temp.convert(rawSummary.avg, tempUnit),
+        ) else rawSummary
         state = state.copy(
             selectedPid = pid,
             range = range,
             unit = unit,
             summary = summary,
             series = buildSeries(
-                samples = rows.map { it.timestamp to it.value },
+                samples = rows.map { it.timestamp to (if (isTemp) Temp.convert(it.value, tempUnit) else it.value) },
                 unit = unit,
                 rawCount = rows.size,
                 rowCap = ROW_CAP,

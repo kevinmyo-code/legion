@@ -4,6 +4,7 @@ import android.content.Context
 import com.kevin.legion.ai.AgentTool
 import com.kevin.legion.ai.SubAgent
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.util.Temp
 import com.kevin.legion.util.shortDate
 import org.json.JSONArray
 import org.json.JSONObject
@@ -32,8 +33,9 @@ object CarToolbelt {
 
     /**
      * Trend over recorded obd_samples: count, min/max/avg, and a first-half vs
-     * second-half comparison. Temperatures are converted to Fahrenheit. This is
-     * the aggregation the Live `get_trend` tool delegates to. [vehicleId] is
+     * second-half comparison. Temperatures are converted to the driver's chosen
+     * unit ([com.kevin.legion.util.Temp]). This is the aggregation the Live
+     * `get_trend` tool delegates to. [vehicleId] is
      * the fleet-wide-voice override (ticket 01, "category B" stored-data
      * tool) - null means the active car, unchanged; this is the ONE formatter
      * below actually wired to a tool's `vehicle` argument today
@@ -69,9 +71,10 @@ object CarToolbelt {
         if (samples.size < 5) return "Not enough history yet for $metric - keep driving and it builds up."
 
         val isTemp = pid == "0105"
-        fun conv(v: Double) = if (isTemp) v * 9 / 5 + 32 else v
+        val tempUnit = Temp.unit(context)
+        fun conv(v: Double) = if (isTemp) Temp.convert(v, tempUnit) else v
         val values = samples.map { conv(it.value) }
-        val unit = if (isTemp) "F" else samples.first().unit
+        val unit = if (isTemp) tempUnit.symbol else samples.first().unit
         val half = values.size / 2
         val earlier = values.take(half).average()
         val recent = values.drop(half).average()
@@ -112,7 +115,7 @@ object CarToolbelt {
                 // Capturing confirmed-ness at write time would be the stronger fix and needs a new
                 // column - out of ticket 10's scope, deliberately not built here.
                 e.mileage?.let { append(" at about ${"%,d".format(it)} mi (estimated)") }
-                val ff = freezeHighlights(e.freezeFrameJson)
+                val ff = freezeHighlights(context, e.freezeFrameJson)
                 if (ff.isNotBlank()) append(" [").append(ff).append("]")
             }
         }
@@ -203,19 +206,19 @@ object CarToolbelt {
     }
 
     /** Live sensor read for the requested items (comma vocabulary in the tool desc). */
-    suspend fun liveSnapshot(items: List<String>): String {
+    suspend fun liveSnapshot(context: Context, items: List<String>): String {
         if (!ObdBluetoothManager.isConnected) return "OBD not connected."
         val wanted = if (items.isEmpty()) listOf("rpm", "coolant", "voltage") else items
         val out = mutableListOf<String>()
         for (item in wanted) {
             when (item.lowercase()) {
                 "rpm" -> ObdBluetoothManager.getRpm()?.let { out.add("rpm $it") }
-                "coolant" -> ObdBluetoothManager.getCoolantTemp()?.let { out.add("coolant ${it * 9 / 5 + 32}F") }
+                "coolant" -> ObdBluetoothManager.getCoolantTemp()?.let { out.add("coolant ${Temp.text(context, it.toDouble())}") }
                 "voltage" -> ObdBluetoothManager.getBatteryVoltage()?.let { out.add("battery ${"%.1f".format(it)}V") }
                 "load" -> ObdBluetoothManager.getEngineLoad()?.let { out.add("load ${"%.0f".format(it)}%") }
                 "stft" -> ObdBluetoothManager.getShortFuelTrim()?.let { out.add("stft ${"%+.1f".format(it)}%") }
                 "ltft" -> ObdBluetoothManager.getLongFuelTrim()?.let { out.add("ltft ${"%+.1f".format(it)}%") }
-                "iat" -> ObdBluetoothManager.getIntakeAirTemp()?.let { out.add("iat ${it * 9 / 5 + 32}F") }
+                "iat" -> ObdBluetoothManager.getIntakeAirTemp()?.let { out.add("iat ${Temp.text(context, it.toDouble())}") }
                 "maf" -> ObdBluetoothManager.getMaf()?.let { out.add("maf ${"%.1f".format(it)}g/s") }
                 "speed" -> ObdBluetoothManager.getSpeedKmh()?.let { out.add("speed ${(it * 0.621371).roundToInt()}mph") }
                 "fuel_level" -> ObdBluetoothManager.getFuelLevel()?.let { out.add("fuel ${"%.0f".format(it)}%") }
@@ -319,7 +322,7 @@ object CarToolbelt {
     // [trendSummary]'s doc.
 
     fun forDiagnostics(context: Context, vehicleId: String? = null): List<AgentTool> = listOf(
-        codeHistoryTool(context, vehicleId), liveDataTool(), trendTool(context, vehicleId),
+        codeHistoryTool(context, vehicleId), liveDataTool(context), trendTool(context, vehicleId),
         readinessTool(), specsTool(context, vehicleId), quirksTool(context, vehicleId), webLookupTool(),
     )
 
@@ -374,16 +377,17 @@ object CarToolbelt {
         timeoutMs = 5_000,
     ) { args -> serviceHistory(context, args.optInt("limit", 10), vehicleId) }
 
-    private fun liveDataTool() = AgentTool(
+    private fun liveDataTool(context: Context) = AgentTool(
         name = "read_live_data",
         description = "Read live sensor values off the OBD port right now. items is a comma list from: " +
             "rpm, coolant, voltage, load, stft, ltft, iat, maf, speed, fuel_level. Returns 'OBD not " +
-            "connected' if the adapter is unplugged.",
+            "connected' if the adapter is unplugged. coolant and iat are already in the driver's " +
+            "chosen temperature unit - do not convert them.",
         params = props("items" to prop("string", "Comma-separated sensor names to read.")),
         required = listOf("items"),
         timeoutMs = 12_000,
     ) { args ->
-        liveSnapshot(args.optString("items").split(",").map { it.trim() }.filter { it.isNotBlank() })
+        liveSnapshot(context, args.optString("items").split(",").map { it.trim() }.filter { it.isNotBlank() })
     }
 
     private fun readinessTool() = AgentTool(
@@ -451,13 +455,13 @@ object CarToolbelt {
         codesJson
     }
 
-    private fun freezeHighlights(json: String): String {
+    private fun freezeHighlights(context: Context, json: String): String {
         if (json.isBlank()) return ""
         return try {
             val o = JSONObject(json)
             listOfNotNull(
                 if (o.has("rpm")) "rpm ${o.getDouble("rpm").toInt()}" else null,
-                if (o.has("coolant_c")) "coolant ${(o.getDouble("coolant_c") * 9 / 5 + 32).toInt()}F" else null,
+                if (o.has("coolant_c")) "coolant ${Temp.text(context, o.getDouble("coolant_c"))}" else null,
                 if (o.has("load_pct")) "load ${o.getDouble("load_pct").toInt()}%" else null,
             ).joinToString(" ")
         } catch (e: Exception) {

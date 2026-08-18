@@ -59,6 +59,7 @@ import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.theme.deckMotionEnabled
+import com.kevin.legion.util.Temp
 import com.kevin.legion.util.clockTime
 import com.kevin.legion.util.relativeAge
 import com.kevin.legion.vehicle.ObdBluetoothManager
@@ -308,6 +309,7 @@ private fun DrivingModeContent(
     onExit: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
+    val context = LocalContext.current
     // The single motion gate for this whole screen (file doc): the OS accessibility signal AND
     // the link actually being live. A manual no-link entry - or reduced-motion - gets a screen
     // that jumps straight to every value, never eases toward it.
@@ -334,7 +336,7 @@ private fun DrivingModeContent(
     val coolantStale = !linkLive && coolantHasReading
     val coolantRawFraction = coolant?.let { dialFraction(it.raw, COOLANT_SCALE_C_MAX) } ?: 0f
     val coolantFraction by animateFloatAsState(targetValue = coolantRawFraction, animationSpec = transitionSpec, label = "coolant-fraction")
-    val coolantValueText = coolant?.let { "%.0f°C".format(it.raw) } ?: "NO READING ON FILE"
+    val coolantValueText = coolant?.let { Temp.text(context, it.raw.toDouble()) } ?: "NO READING ON FILE"
 
     // ---- The one ambient liveness signal (ticket 06 Q19/Q21) ----
     // Flips every poll tick, live or not; the alpha animation it drives is what actually gates on
@@ -774,6 +776,7 @@ private fun CoolantFader(
     modifier: Modifier = Modifier,
 ) {
     val sem = LocalLegionSemantics.current
+    val context = LocalContext.current
     val liveColor = MaterialTheme.colorScheme.primary
     val valueColor = if (!hasReading || stale) sem.faint else liveColor
     val fillColor = valueColor
@@ -794,11 +797,13 @@ private fun CoolantFader(
         // numbers on its scale, not just the two end words - "COLD"/"HOT" alone is precisely the
         // gap ticket 04 named. `0°C` is the PID's own real floor (Celsius cannot read negative
         // coolant on this instrument's scale); [COOLANT_SCALE_C_MAX] is the same real ceiling
-        // constant [dialFraction]/[CoolantFader]'s own fill already reads off, printed rather
-        // than left implicit.
+        // constant [dialFraction]/[CoolantFader]'s own fill already reads off. Both endpoints are
+        // Celsius constants and render through [Temp.text] like every other coolant figure, per
+        // ticket 07's amendment - the SCALE stays fixed in Celsius (it is the real PID floor/
+        // ceiling), only its printed label follows the driver's chosen unit.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("COLD · 0°C", style = LegionType.stamp, color = sem.faint)
-            Text("HOT · %.0f°C".format(COOLANT_SCALE_C_MAX), style = LegionType.stamp, color = sem.faint)
+            Text("COLD · ${Temp.text(context, 0.0)}", style = LegionType.stamp, color = sem.faint)
+            Text("HOT · ${Temp.text(context, COOLANT_SCALE_C_MAX.toDouble())}", style = LegionType.stamp, color = sem.faint)
         }
         Spacer(Modifier.height(4.dp))
         Text(ageText?.uppercase() ?: " ", style = LegionType.stamp, color = sem.faint)

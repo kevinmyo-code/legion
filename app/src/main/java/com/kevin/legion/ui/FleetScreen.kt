@@ -472,7 +472,7 @@ fun FleetScreen(
             mileageValueText = VehicleController.mileageValueText(vehicle),
             mileageCaveatText = VehicleController.mileageCaveat(vehicle, now).orEmpty(),
             connected = ObdBluetoothManager.isConnected,
-            liveRows = buildLiveRows(samplesByPid, now),
+            liveRows = buildLiveRows(context, samplesByPid, now),
             dueRows = buildDueRows(items, currentMileage, vehicle.odometerBaseline == 0, now),
             maintenanceItems = items,
             maintenanceUnknownCount = items.count { VehicleController.isUnknown(it) },

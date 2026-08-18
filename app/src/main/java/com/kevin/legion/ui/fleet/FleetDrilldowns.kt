@@ -60,6 +60,7 @@ import com.kevin.legion.ui.common.SectionHeader
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.util.Temp
 import com.kevin.legion.util.clockTime
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.DiagnosticAgent
@@ -1247,7 +1248,7 @@ private fun FaultEventRow(
     val sem = LocalLegionSemantics.current
     val context = LocalContext.current
     val codes = remember(event.id) { codesInEvent(event) }
-    val freezeFrame = remember(event.id) { formatFreezeFrame(event.freezeFrameJson) }
+    val freezeFrame = remember(event.id, Temp.unit(context)) { formatFreezeFrame(context, event.freezeFrameJson) }
     val mileageText = remember(event.id) { faultEventMileageText(event.mileage) }
 
     // `null` means "still loading"; an empty list is a genuine "queried, nothing in the window" -

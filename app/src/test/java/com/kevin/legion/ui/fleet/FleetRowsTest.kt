@@ -10,14 +10,22 @@ import com.kevin.legion.vehicle.MpgTrust
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import kotlin.math.roundToInt
 
 /**
- * Pure-logic coverage for [buildDueRows] / [distinctFaultsByFirstSeen] /
- * [groupThousands] - ticket 09's FLEET DUE and FAULTS blocks. No Room, no
- * Android dependency, plain JVM test (same posture as [com.kevin.legion.ui.ledger.LedgerEmptyStateResolverTest]).
+ * Coverage for [buildDueRows] / [distinctFaultsByFirstSeen] / [groupThousands] / [buildLiveRows] /
+ * [formatFreezeFrame] - ticket 09's FLEET DUE and FAULTS blocks. Most of this was pure-JVM, no
+ * Room, no Android dependency (same posture as [com.kevin.legion.ui.ledger.LedgerEmptyStateResolverTest]);
+ * it picked up Robolectric only when [buildLiveRows]/[formatFreezeFrame] started reading
+ * [com.kevin.legion.util.Temp]'s SharedPreferences-backed unit setting (ticket 07), same reasoning
+ * as [com.kevin.legion.ai.CompanionProfileTest].
  */
+@RunWith(RobolectricTestRunner::class)
 class FleetRowsTest {
+    private val context = RuntimeEnvironment.getApplication()
     private val vehicleId = "test-mac"
     private val now = 1_700_000_000_000L
     private val monthMs = 30L * 24 * 60 * 60 * 1000
@@ -26,16 +34,16 @@ class FleetRowsTest {
     fun `buildLiveRows formats each present gauge and stamps its age`() {
         val coolant = OdbSample(vehicleId = vehicleId, pid = "0105", value = 88.0, unit = "C", timestamp = now - 3 * 24 * 60 * 60_000)
         val samples = mapOf("0105" to coolant, "ATRV" to null, "0107" to null)
-        val rows = buildLiveRows(samples, now)
+        val rows = buildLiveRows(context, samples, now)
         assertEquals(1, rows.size)
         assertEquals("Coolant", rows[0].label)
-        assertEquals("88 C", rows[0].value)
+        assertEquals("88°C", rows[0].value) // Celsius is the default unit (ticket 07)
         assertEquals("3 days ago", rows[0].sub)
     }
 
     @Test
     fun `buildLiveRows omits a gauge this install has never recorded, rather than faking a value`() {
-        val rows = buildLiveRows(mapOf("0105" to null, "ATRV" to null, "0107" to null), now)
+        val rows = buildLiveRows(context, mapOf("0105" to null, "ATRV" to null, "0107" to null), now)
         assertEquals(emptyList<LiveRowView>(), rows)
     }
 
@@ -702,19 +710,19 @@ class FleetRowsTest {
     }
 
     @Test
-    fun `formatFreezeFrame renders all eight PIDs present, temps in C to match UPLINK and speed in mph`() {
+    fun `formatFreezeFrame renders all eight PIDs present, temps in the driver's unit to match UPLINK and speed in mph`() {
         val json = """{"rpm":2400,"coolant_c":90,"speed_kmh":64.4,"load_pct":38,"maf_gs":12.3,"stft_pct":2.5,"ltft_pct":-1.2,"iat_c":25}"""
-        val readings = formatFreezeFrame(json)
+        val readings = formatFreezeFrame(context, json)
         assertEquals(
             listOf(
                 FreezeFrameReading("RPM", "2400"),
-                FreezeFrameReading("COOLANT", "90 C"),
+                FreezeFrameReading("COOLANT", "90°C"), // Celsius is the default unit (ticket 07)
                 FreezeFrameReading("SPEED", "40 mph"),
                 FreezeFrameReading("LOAD", "38%"),
                 FreezeFrameReading("MAF", "12.3 g/s"),
                 FreezeFrameReading("STFT", "+2.5%"),
                 FreezeFrameReading("LTFT", "-1.2%"),
-                FreezeFrameReading("IAT", "25 C"),
+                FreezeFrameReading("IAT", "25°C"),
             ),
             readings,
         )
@@ -723,18 +731,18 @@ class FleetRowsTest {
     @Test
     fun `formatFreezeFrame omits a missing key rather than rendering it as zero`() {
         val json = """{"rpm":900,"coolant_c":85}"""
-        val readings = formatFreezeFrame(json)
-        assertEquals(listOf(FreezeFrameReading("RPM", "900"), FreezeFrameReading("COOLANT", "85 C")), readings)
+        val readings = formatFreezeFrame(context, json)
+        assertEquals(listOf(FreezeFrameReading("RPM", "900"), FreezeFrameReading("COOLANT", "85°C")), readings)
     }
 
     @Test
     fun `formatFreezeFrame returns empty for a blank freeze frame, the caller says so in words`() {
-        assertEquals(emptyList<FreezeFrameReading>(), formatFreezeFrame(""))
+        assertEquals(emptyList<FreezeFrameReading>(), formatFreezeFrame(context, ""))
     }
 
     @Test
     fun `formatFreezeFrame returns empty for unparseable json rather than throwing`() {
-        assertEquals(emptyList<FreezeFrameReading>(), formatFreezeFrame("not json"))
+        assertEquals(emptyList<FreezeFrameReading>(), formatFreezeFrame(context, "not json"))
     }
 
     @Test
