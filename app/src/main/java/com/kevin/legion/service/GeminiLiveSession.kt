@@ -102,7 +102,13 @@ sealed interface LiveEvent {
      * closed). A tap resumes instantly via [GeminiLiveSession.beginConversation]
      * with no reconnect. The socket fully closes (â†’ [Closed]) after the warm hold.
      */
-    data object Idle : LiveEvent
+    /**
+     * The conversation ended but the socket is still warm. [backstop] is true only when
+     * the 30-minute no-input cap ([CONVERSATION_BACKSTOP_MS]) ended it rather than the
+     * driver or a proactive line - the one case the driver never asked for and must
+     * therefore be TOLD about (Kevin, 2026-08-18: on screen, not spoken).
+     */
+    data class Idle(val backstop: Boolean) : LiveEvent
     /** The session ended (closed, timed out, or errored). */
     data class Closed(val reason: String) : LiveEvent
 }
@@ -119,8 +125,9 @@ sealed interface LiveEvent {
  *    and we run it half-duplex - the mic is muted while Zero speaks (so he
  *    doesn't hear himself through the head-unit speakers and interrupt himself)
  *    and reopened the moment he finishes, then the chat ends after
- *    [IDLE_TIMEOUT_MS] of silence - **speak-only sessions only**; a hands-free
- *    conversation waits indefinitely, see [armIdleTimeout].
+ *    [IDLE_TIMEOUT_MS] of silence - **speak-only sessions only**. A hands-free
+ *    conversation has no timeout, only the thirty-minute forgotten-conversation
+ *    cap in [armConversationBackstop].
  *  - **Speak-only** (`vad = false`): the proactive engine injects a line via
  *    [sendText]; Zero speaks it and the mic never opens.
  *
@@ -184,7 +191,8 @@ class GeminiLiveSession(
     // No caller has ever passed this parameter, so hands-free conversation ran on
     // the same 10 seconds and died on the same benign pauses - on a drive, where
     // they are more frequent, not less. A conversation no longer consults this at
-    // all (Kevin, 2026-08-18); it waits until the driver ends it.
+    // all (Kevin, 2026-08-18); it waits for the driver, bounded only by
+    // [armConversationBackstop]'s thirty-minute forgotten-conversation cap.
     @Volatile private var idleTimeoutMs = IDLE_TIMEOUT_MS
     @Volatile private var conversationActive = false
     private var warmHoldJob: Job? = null
@@ -970,26 +978,28 @@ class GeminiLiveSession(
                     suppressMicNextTurn = false
                     parkWarm()
                 }
-                // Conversation: hand the mic back and wait for the driver's reply,
-                // stay ducked through the chat, and WAIT INDEFINITELY.
+                // Conversation: hand the mic back and wait for the driver's reply, and
+                // stay ducked through the chat.
                 //
-                // **No idle timer here (Kevin, 2026-08-18).** This branch used to arm
-                // one, and a 10s quiet spell parked the socket, stopped the mic and put
-                // the strip back to "Tap to talk" with nothing said about it. On a drive
-                // that is a normal pause - a mirror check, a merge, finishing a thought -
-                // so the conversation appeared to "drop after 3 turns". The identical
-                // failure had already been found once during onboarding and fixed with
-                // the per-session [idleTimeoutMs] override (see its own comment); no
-                // caller ever passed one, so every conversation still ran on 10 seconds.
+                // **No conversational timeout here (Kevin, 2026-08-18).** This branch used
+                // to arm a 10s one, and a quiet spell parked the socket, stopped the mic
+                // and put the strip back to "Tap to talk" with nothing said about it. On a
+                // drive that is a normal pause - a mirror check, a merge, finishing a
+                // thought - so the conversation appeared to "drop after 3 turns". The
+                // identical failure had already been found once during onboarding and
+                // fixed with the per-session [idleTimeoutMs] override (see its own
+                // comment); no caller ever passed one, so every conversation still ran on
+                // 10 seconds.
                 //
-                // A hands-free conversation now ends only when the driver ends it
-                // (tapping the strip: LiveSessionController.onTap's `inConversation ->
-                // stop()`), when the socket dies (which flashes a notice), or on the
-                // crisis path. Any timer left armed from a previous turn is cancelled so
-                // a stale one cannot fire mid-chat.
+                // What is armed instead is [armConversationBackstop] - thirty minutes,
+                // which is a forgotten-conversation cap rather than a timeout, and which
+                // announces itself. A conversation otherwise ends only when the driver
+                // ends it (tapping the strip: LiveSessionController.onTap's
+                // `inConversation -> stop()`), when the socket dies (which flashes a
+                // notice), or on the crisis path.
                 vadMode -> {
-                    idleJob?.cancel(); idleJob = null
                     openMicForUser()
+                    armConversationBackstop()
                 }
                 // Cold speak-only proactive: bring music back, then close shortly.
                 else -> {
@@ -1666,6 +1676,38 @@ class GeminiLiveSession(
      * Cancelled the moment the driver's input transcript starts arriving (see
      * handleServerContent), and by the conversation branch above.
      */
+    /**
+     * The only thing that can end a hands-free conversation the driver did not end
+     * himself: **thirty minutes with no input at all** ([CONVERSATION_BACKSTOP_MS]).
+     *
+     * Kevin's call, 2026-08-18, in two parts. First, that a conversation waits for him
+     * rather than for a timer - the old 10s idle park is what made a drive feel like it
+     * "dropped after 3 turns", and no length short enough to be a timeout is long enough
+     * to survive a merge. Second, asked directly about the consequence, that there
+     * should still be a backstop, because a conversation left running holds a live mic
+     * and a billed session on his own key until the service dies.
+     *
+     * Thirty minutes is not a guess at how long a pause can be. It is far past any
+     * plausible one, so reaching it means the conversation was FORGOTTEN, which is the
+     * only case this exists for. It parks warm rather than closing, so a tap resumes
+     * instantly; [WARM_HOLD_MS] then closes the socket for real shortly after.
+     *
+     * Re-armed on every completed turn and cancelled the moment the driver's input
+     * transcript starts arriving (see handleServerContent), so it measures silence, not
+     * conversation length. A two-hour chat with a reply every few minutes never trips it.
+     *
+     * Unlike the timer it replaces, this one SAYS SO - see [LiveEvent.Idle.backstop].
+     */
+    private fun armConversationBackstop() {
+        idleJob?.cancel()
+        idleJob = io.launch {
+            delay(CONVERSATION_BACKSTOP_MS)
+            if (!running.get()) return@launch
+            Log.d(TAG, "conversation backstop reached after ${CONVERSATION_BACKSTOP_MS}ms of no input")
+            parkWarm(backstop = true)
+        }
+    }
+
     private fun armIdleTimeout() {
         idleJob?.cancel()
         idleJob = io.launch {
@@ -1681,7 +1723,7 @@ class GeminiLiveSession(
      * hold timer that fully closes the socket after [WARM_HOLD_MS] of no use (so
      * an unused warm connection doesn't linger and bill indefinitely).
      */
-    private fun parkWarm() {
+    private fun parkWarm(backstop: Boolean = false) {
         idleJob?.cancel(); idleJob = null
         conversationActive = false
         capturing = false
@@ -1689,7 +1731,7 @@ class GeminiLiveSession(
         restoreAudio()
         ConversationState.setBusy(false)
         warm.set(true)
-        emit(LiveEvent.Idle)
+        emit(LiveEvent.Idle(backstop))
         warmHoldJob?.cancel()
         warmHoldJob = io.launch {
             delay(WARM_HOLD_MS)
@@ -1934,6 +1976,12 @@ class GeminiLiveSession(
         // fully closes. Long enough that follow-up turns through a drive resume
         // instantly; short enough that an idle warm connection (and its cloud
         // billing) doesn't linger. Reconnect is lazy on the next tap.
+        /**
+         * How long a hands-free conversation may sit with NO driver input before it parks
+         * itself. See [armConversationBackstop] - a forgotten-conversation backstop, not a
+         * conversational timeout, which is why it is measured in tens of minutes.
+         */
+        private const val CONVERSATION_BACKSTOP_MS = 30 * 60 * 1000L
         private const val WARM_HOLD_MS = 3 * 60 * 1000L
         private const val NORMAL_CLOSE = 1000
         // Below this, a real (vadMode) conversational turn forwarded suspiciously little mic

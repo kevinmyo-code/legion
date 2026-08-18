@@ -504,6 +504,14 @@ class LiveSessionController(context: Context) {
                 // segment is already closed).
                 conversationMode = false
                 set(Phase.IDLE, IDLE_STATUS)
+                // The thirty-minute forgotten-conversation cap is the ONE way a chat
+                // ends that the driver did not ask for, so it is the one that has to
+                // say so. Everything else reaching here he did himself (tapped to stop)
+                // or never started (a proactive line parking its own socket), and
+                // narrating those would be noise. On screen only, per Kevin 2026-08-18 -
+                // this fires after half an hour of nothing, which is precisely when
+                // nobody is listening for a spoken line.
+                if (event.backstop) CompanionPhase.showNotice("STOPPED LISTENING - TAP TO TALK")
             }
             is LiveEvent.Subtitle -> {
                 _subtitle.tryEmit(event.text)
