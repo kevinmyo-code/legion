@@ -300,6 +300,20 @@ class GeminiLiveSession(
     // bytes means Gemini got no new audio. A healthy turn forwards tens of KB.
     @Volatile private var bytesThisTurn = 0L
 
+    // Whether micLoop has already spent this turn's ONE short-capture retry
+    // (2026-08-17, measured alongside the two defects above: dumpsys appops
+    // RECORD_AUDIO history shows the mic genuinely opening and closing again
+    // under a second on bad turns - 964/991/663/276 ms against healthy turns'
+    // 15367/13256/9171/5582/4374 ms). A capture that dies that fast, forwarding
+    // next to nothing, almost certainly means the server's VAD end-pointed on
+    // noise or a stray sound rather than real speech - accepting the model's
+    // reply to it treats a turn the driver never got to speak in as an answered
+    // question. micLoop reopens the mic once per turn when it sees that shape;
+    // this flag is what stops "once" from becoming "forever" if the retry comes
+    // up short too (a genuinely dead mic must still surface as broken, not loop
+    // silently). Reset to false in [openMicForUser] - a fresh turn, fresh retry.
+    @Volatile private var retriedThisTurn = false
+
     // What Gemini transcribed the driver as saying this turn, accumulated from
     // inputTranscription deltas and logged on turnComplete. Paired with
     // bytesThisTurn this pins down the "repeat" bug: distinct presses that yield
@@ -489,6 +503,13 @@ class GeminiLiveSession(
         idleJob?.cancel()
         duckNow()
         bytesThisTurn = 0L
+        // A fresh driver turn - the short-capture retry (see [retriedThisTurn]'s
+        // own doc, consumed in micLoop) gets one fresh attempt per turn, not one
+        // for the whole session. Reset here rather than only after a successful
+        // full-length turn, so a genuinely short but INTENTIONAL driver utterance
+        // ("yes", "no", "stop") on turn N+1 isn't penalized by a retry spent on
+        // turn N.
+        retriedThisTurn = false
         // Only the very first open flushes the pre-roll buffer; flushing every
         // turn would clip the start of the driver's reply.
         val firstOpen = !vadMicOpenedOnce
@@ -1083,12 +1104,71 @@ class GeminiLiveSession(
         // Distinguishes "this session's very first mic-open" from "turn 2+
         // re-open", so the settle delay below only applies to the latter.
         var everCaptured = false
+        // Bytes forwarded and wall-clock time since the CURRENT record.startRecording()
+        // call, as opposed to [bytesThisTurn] (bytes since [openMicForUser], which a
+        // successful retry deliberately does NOT reset - see the short-capture block
+        // below). Both reset every time recording actually (re)starts, first-open or
+        // retry alike.
+        var recordingStartedAtMs = 0L
+        var bytesSinceOpen = 0L
         try {
             while (isActive && running.get()) {
                 if (webSocket == null) break
 
                 if (!capturing) {
                     if (recording) {
+                        // Short-capture retry (2026-08-17): decide BEFORE stopping the
+                        // record, while we still have this capture's own numbers. See
+                        // [retriedThisTurn]'s declaration for the measured shape this
+                        // catches - vadMode is required because capturing only ever
+                        // reads true via [openMicForUser], which only runs in
+                        // conversation mode; a speak-only proactive line never opens
+                        // the mic at all, so there is nothing here to retry.
+                        val heldMs = System.currentTimeMillis() - recordingStartedAtMs
+                        val short = vadMode &&
+                            heldMs < SHORT_CAPTURE_RETRY_WINDOW_MS &&
+                            bytesSinceOpen < SILENT_TURN_BYTES_THRESHOLD
+                        if (short && !retriedThisTurn) {
+                            // Treat this as a false end-of-turn rather than a real
+                            // answer: reopen right here, bypassing the normal
+                            // turnComplete -> openMicForUser handback, so the driver
+                            // gets a second window with no round trip through
+                            // whatever short reply the model may already be
+                            // generating. capturing is forced back on directly
+                            // (rather than waiting for the server) because there is
+                            // no server-side "undo the end-of-turn" message to send -
+                            // this is a purely local mitigation, and a legitimate
+                            // half-duplex mute (the model actually starting to speak)
+                            // will simply reassert capturing=false again on its own
+                            // the moment real model audio arrives.
+                            retriedThisTurn = true
+                            Log.w(TAG, "micLoop: short capture (${bytesSinceOpen}b in " +
+                                "${heldMs}ms) - reopening mic once rather than accepting " +
+                                "as a heard turn")
+                            CarProbeLog.log(
+                                "MIC_SHORT_CAPTURE",
+                                "reopening once: bytes=$bytesSinceOpen heldMs=$heldMs",
+                            )
+                            capturing = true
+                            recordingStartedAtMs = System.currentTimeMillis()
+                            bytesSinceOpen = 0L
+                            continue // recording is still true; skip straight to reading
+                        }
+                        if (short && retriedThisTurn) {
+                            // The retry ALSO came up short - this is no longer "maybe
+                            // noise", it's a capture that cannot hold on to a real
+                            // driver turn twice in a row. Accept the model's reply
+                            // this time (retrying again risks the loop the ticket
+                            // explicitly ruled out) but say so, rather than let the
+                            // driver think they were heard when they weren't.
+                            Log.w(TAG, "micLoop: retry also came up short " +
+                                "(${bytesSinceOpen}b in ${heldMs}ms) - accepting and notifying")
+                            CarProbeLog.log(
+                                "MIC_SHORT_CAPTURE",
+                                "retry also short: bytes=$bytesSinceOpen heldMs=$heldMs",
+                            )
+                            CompanionPhase.showNotice("DIDN'T CATCH THAT - TRY AGAIN")
+                        }
                         try { record.stop() } catch (_: Exception) {}
                         recording = false
                     }
@@ -1104,7 +1184,7 @@ class GeminiLiveSession(
                     try {
                         if (recording) record.stop()
                         // B10/B12 (2026-07-23): turn 1's mic-open already waited
-                        // MIC_HANDOFF_MS above, before this loop started. Every
+                        // MIC_HANDOFF_MS above, before this loop began. Every
                         // later re-open (turn 2+) goes straight from Zero's own
                         // playback into AudioRecord.startRecording(). The earlier
                         // fix here was a fixed 120ms guess, and a field drive still
@@ -1117,6 +1197,8 @@ class GeminiLiveSession(
                         record.startRecording()
                         everCaptured = true
                         recording = true
+                        recordingStartedAtMs = System.currentTimeMillis()
+                        bytesSinceOpen = 0L
                     } catch (e: Exception) {
                         Log.w(TAG, "Capture start/flush failed: ${e.message}")
                         delay(20)
@@ -1130,6 +1212,7 @@ class GeminiLiveSession(
                 // forward audio that belongs to an active turn.
                 if (!capturing) continue
                 bytesThisTurn += n
+                bytesSinceOpen += n
                 val b64 = Base64.encodeToString(buffer, 0, n, Base64.NO_WRAP)
                 sendRealtimeInput(JSONObject().put(
                     "audio",
@@ -1675,5 +1758,14 @@ class GeminiLiveSession(
         // Triggers a forced non-fatal report, not just a breadcrumb, so the next field drive
         // actually produces retrievable Crashlytics data for B9/B10/B12.
         private const val SILENT_TURN_BYTES_THRESHOLD = 2_000L
+        // Short-capture retry window (2026-08-17): a capture that closes THIS soon
+        // after opening, forwarding fewer than SILENT_TURN_BYTES_THRESHOLD bytes, is
+        // treated as a false end-of-turn rather than a real (if terse) reply - see
+        // [retriedThisTurn]'s declaration for the measured on-device shape (bad turns
+        // closing in well under a second, healthy ones running 4-15s). Comfortably
+        // above the very shortest measured bad-turn duration (276ms) so genuine noise
+        // blips are caught, comfortably below the shortest measured healthy turn
+        // (4374ms) so a real short driver reply is never mistaken for one.
+        private const val SHORT_CAPTURE_RETRY_WINDOW_MS = 1_200L
     }
 }
