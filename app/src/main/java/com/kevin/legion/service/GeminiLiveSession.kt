@@ -1047,7 +1047,13 @@ class GeminiLiveSession(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             recordBuilder.setPrivacySensitive(true)
         }
-        val record = recordBuilder.build()
+        // var, not val: on AudioRecord.ERROR_DEAD_OBJECT below, the read loop rebuilds this
+        // once from the same recordBuilder rather than crashing capture outright for the
+        // rest of the session. The recordingCallback closure just below and the effects
+        // list further down both read `record`/`audioSessionId` dynamically at the point
+        // they're used, so a reassignment here is picked up by both without any further
+        // change - see the read-loop's error branch for where the reassignment happens.
+        var record = recordBuilder.build()
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             Log.w(TAG, "AudioRecord init failed")
             record.release()
@@ -1102,7 +1108,10 @@ class GeminiLiveSession(
         // Without this, once navigation is running its continuous voice
         // guidance bleeds into every captured turn. Both effects are
         // hardware-dependent; skip them where unavailable.
-        val effects = if (isEmulator) {
+        // var alongside `record` above: a dead-object recreation tears down and rebuilds
+        // this list too, since the old effects were bound to the OLD AudioRecord's session
+        // id and are meaningless (and leak-risk) once that record is released.
+        var effects = if (isEmulator) {
             Log.w(TAG, "Emulator detected: skipping hardware voice effects, and note the " +
                 "virtual mic may replay the same host audio every turn - validate on real hardware.")
             emptyList()
@@ -1132,6 +1141,11 @@ class GeminiLiveSession(
         // retry alike.
         var recordingStartedAtMs = 0L
         var bytesSinceOpen = 0L
+        // Caps the ERROR_DEAD_OBJECT recreation below at once per SESSION (not per turn,
+        // unlike [retriedThisTurn] above) - a dead AudioRecord is a hardware/driver-level
+        // failure, not a VAD hiccup, and micLoop itself only runs once per session (see
+        // [startMic]'s isActive guard), so this local naturally scopes to that lifetime.
+        var recreatedRecordOnce = false
         try {
             while (isActive && running.get()) {
                 if (webSocket == null) break
@@ -1237,7 +1251,56 @@ class GeminiLiveSession(
                 }
 
                 val n = record.read(buffer, 0, buffer.size)
-                if (n <= 0) continue
+                if (n < 0) {
+                    // record.read() returns a negative AudioRecord.ERROR_* constant on
+                    // failure, not a byte count - ERROR_INVALID_OPERATION (-3), ERROR_BAD_VALUE
+                    // (-2), ERROR_DEAD_OBJECT (-6), and plain ERROR (-1) were previously
+                    // indistinguishable here from "n == 0, no data arrived yet", and
+                    // (unlike the `!capturing` branch above, which delays 20ms) this path had
+                    // NO delay at all - a dead AudioRecord busy-loops silently forever,
+                    // burning a core and producing nothing anyone would ever see or hear.
+                    val errorName = when (n) {
+                        AudioRecord.ERROR_INVALID_OPERATION -> "ERROR_INVALID_OPERATION"
+                        AudioRecord.ERROR_BAD_VALUE -> "ERROR_BAD_VALUE"
+                        AudioRecord.ERROR_DEAD_OBJECT -> "ERROR_DEAD_OBJECT"
+                        AudioRecord.ERROR -> "ERROR"
+                        else -> "unknown($n)"
+                    }
+                    Log.w(TAG, "micLoop: record.read failed: $errorName")
+                    CarProbeLog.log("MIC_READ_ERROR", "record.read failed: $errorName")
+                    if (n == AudioRecord.ERROR_DEAD_OBJECT && !recreatedRecordOnce) {
+                        // The HAL/driver dropped the object out from under us - stopping and
+                        // re-starting the SAME AudioRecord instance won't help (it's the
+                        // instance itself that's dead), so build a fresh one from the same
+                        // recordBuilder config instead. One attempt only: if the platform is
+                        // handing out dead AudioRecords, a second one is unlikely to fare
+                        // better, and this must not become the busy-loop it's fixing.
+                        recreatedRecordOnce = true
+                        Log.w(TAG, "micLoop: AudioRecord died, recreating once")
+                        CarProbeLog.log("MIC_DEAD_OBJECT", "recreating AudioRecord once")
+                        runCatching { record.stop() }
+                        runCatching { record.release() }
+                        effects.forEach { runCatching { it.release() } }
+                        val fresh = recordBuilder.build()
+                        if (fresh.state == AudioRecord.STATE_INITIALIZED) {
+                            record = fresh
+                            effects = if (isEmulator) emptyList() else attachVoiceEffects(record.audioSessionId)
+                            // Force the top of the loop to go through the normal
+                            // startRecording() path again (with its own
+                            // awaitPlaybackDrained() settle) rather than assuming the new
+                            // object is instantly ready to read from.
+                            recording = false
+                        } else {
+                            Log.w(TAG, "micLoop: AudioRecord recreation also failed, closing session")
+                            fresh.release()
+                            closeSession("microphone unavailable")
+                            break
+                        }
+                    }
+                    delay(RECORD_READ_ERROR_BACKOFF_MS)
+                    continue
+                }
+                if (n == 0) continue
                 // capturing may have flipped false during the blocking read; only
                 // forward audio that belongs to an active turn.
                 if (!capturing) continue
@@ -1804,5 +1867,10 @@ class GeminiLiveSession(
         // blips are caught, comfortably below the shortest measured healthy turn
         // (4374ms) so a real short driver reply is never mistaken for one.
         private const val SHORT_CAPTURE_RETRY_WINDOW_MS = 1_200L
+        // Backoff after a record.read() error (2026-08-17). Matches the `!capturing`
+        // branch's own idle delay just above in the loop - the point is only that SOME
+        // delay exists, so a persistently failing AudioRecord can't busy-loop the thread;
+        // it does not need to be tuned separately from that value.
+        private const val RECORD_READ_ERROR_BACKOFF_MS = 20L
     }
 }
