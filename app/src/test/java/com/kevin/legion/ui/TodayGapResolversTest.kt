@@ -6,6 +6,7 @@ import com.kevin.legion.data.local.Goal
 import com.kevin.legion.data.local.IngestedFile
 import com.kevin.legion.data.local.IngestState
 import com.kevin.legion.data.local.LedgerCurrency
+import com.kevin.legion.ledger.AccountBalance
 import com.kevin.legion.ledger.AccountCoverage
 import com.kevin.legion.ledger.BudgetLine
 import com.kevin.legion.ledger.BudgetVsActual
@@ -209,57 +210,6 @@ class TodayGapResolversTest {
     @Test
     fun `notes summary is honest when nothing is due`() {
         assertEquals("Nothing due today", notesSummaryMessage(dueTodayCount = 0, missedCount = 0))
-    }
-
-    // -------------------------------------------------- ledger cumulative spend (ticket 11 item 2)
-
-    @Test
-    fun `cumulative fold accumulates exact Long cents across covered days`() {
-        val daily = listOf(1_000L, 2_500L, 0L, 4_000L)
-        assertEquals(listOf(1_000L, 3_500L, 3_500L, 7_500L), cumulativeDailySpendCents(daily))
-    }
-
-    @Test
-    fun `a gap day renders null and does not disturb the running total`() {
-        val daily = listOf(1_000L, null, 2_000L)
-        assertEquals(listOf(1_000L, null, 3_000L), cumulativeDailySpendCents(daily))
-    }
-
-    @Test
-    fun `a gap day resumes at the next covered day's accumulated total, never carrying the last value forward onto the gap itself`() {
-        // The gap day (index 1) must stay null, not read as 500L (the last-known total) -
-        // that would silently claim the gap day spent zero, which nobody verified.
-        val daily = listOf(500L, null, null, 300L)
-        val out = cumulativeDailySpendCents(daily)
-        assertNull(out[1])
-        assertNull(out[2])
-        assertEquals(800L, out[3])
-    }
-
-    @Test
-    fun `leading gap days stay null and the running total starts from the first covered day`() {
-        val daily = listOf(null, null, 750L, 250L)
-        assertEquals(listOf(null, null, 750L, 1_000L), cumulativeDailySpendCents(daily))
-    }
-
-    @Test
-    fun `all-gap series stays entirely null`() {
-        val daily = listOf<Long?>(null, null, null)
-        assertEquals(listOf<Long?>(null, null, null), cumulativeDailySpendCents(daily))
-    }
-
-    @Test
-    fun `empty series folds to an empty series`() {
-        assertEquals(emptyList<Long?>(), cumulativeDailySpendCents(emptyList()))
-    }
-
-    @Test
-    fun `truncation at today is the caller's job, not this function's - it folds whatever list it is handed`() {
-        // This function does no date math (see its own doc comment) - a 3-entry list already
-        // truncated by the caller just folds as a 3-entry list, proving there is no hidden
-        // "expects a full month" assumption baked in here.
-        val daily = listOf(100L, 200L)
-        assertEquals(listOf(100L, 300L), cumulativeDailySpendCents(daily))
     }
 
     // -------------------------------------------------------- mission-control ticket 16: HALF tiles
@@ -615,5 +565,70 @@ class TodayGapResolversTest {
         val summary = capAlertRows(rows)
         assertEquals(5, summary.visible.size)
         assertEquals(2, summary.overflowCount)
+    }
+
+    // ---------------------------------------------- CRED tile balance line (2026-08-18, Kevin)
+
+    @Test
+    fun `nothing nominated says so and where to fix it, never guesses an account`() {
+        val balances = listOf(
+            AccountBalance("BOFA-CHECKING", LedgerCurrency.USD, balanceCents = 381_200L, asOfMs = 1_000L),
+        )
+        val line = buildCredBalanceLine(balances, nominatedAccountId = null)
+        assertEquals("NO ACCOUNT NOMINATED", line.primary)
+        assertEquals("set one in Money", line.secondary)
+        assertTrue(line.isAdvisory)
+    }
+
+    @Test
+    fun `a blank nominated id is treated the same as none`() {
+        val line = buildCredBalanceLine(emptyList(), nominatedAccountId = "   ")
+        assertEquals("NO ACCOUNT NOMINATED", line.primary)
+        assertTrue(line.isAdvisory)
+    }
+
+    @Test
+    fun `nominated account no longer present says so plainly, never falls back to another account`() {
+        val balances = listOf(
+            AccountBalance("DBS-CHECKING", LedgerCurrency.SGD, balanceCents = 216_582L, asOfMs = 1_000L),
+        )
+        val line = buildCredBalanceLine(balances, nominatedAccountId = "BOFA-CHECKING")
+        assertEquals("BOFA-CHECKING NOT FOUND", line.primary)
+        assertEquals("renamed or no longer seen - pick a different account in Money", line.secondary)
+        assertTrue(line.isAdvisory)
+    }
+
+    @Test
+    fun `a nominated account that never printed a balance reuses BalancesSection's own words`() {
+        val balances = listOf(
+            AccountBalance("BOFA ****4471", LedgerCurrency.USD, balanceCents = null, asOfMs = null),
+        )
+        val line = buildCredBalanceLine(balances, nominatedAccountId = "BOFA ****4471")
+        assertEquals("BOFA ****4471", line.primary)
+        assertEquals("no balance ever printed for this account", line.secondary)
+        assertTrue(line.isAdvisory)
+    }
+
+    @Test
+    fun `a real balance with no as-of date never prints an as-of line`() {
+        val balances = listOf(
+            AccountBalance("BOFA-CHECKING", LedgerCurrency.USD, balanceCents = 381_200L, asOfMs = null),
+        )
+        val line = buildCredBalanceLine(balances, nominatedAccountId = "BOFA-CHECKING")
+        assertEquals("$3,812 BOFA-CHECKING", line.primary)
+        assertNull(line.secondary)
+        assertTrue(!line.isAdvisory)
+    }
+
+    @Test
+    fun `the normal case shows the figure, the account, and its printed as-of date`() {
+        val asOfMs = LocalDate.of(2026, 8, 12).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val balances = listOf(
+            AccountBalance("BOFA-CHECKING", LedgerCurrency.USD, balanceCents = 381_200L, asOfMs = asOfMs),
+        )
+        val line = buildCredBalanceLine(balances, nominatedAccountId = "BOFA-CHECKING")
+        assertEquals("$3,812 BOFA-CHECKING", line.primary)
+        assertEquals("as of Aug 12", line.secondary)
+        assertTrue(!line.isAdvisory)
     }
 }

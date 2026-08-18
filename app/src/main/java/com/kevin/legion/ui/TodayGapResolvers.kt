@@ -6,10 +6,12 @@ import com.kevin.legion.data.local.DailyDriveLog
 import com.kevin.legion.data.local.Goal
 import com.kevin.legion.data.local.IngestedFile
 import com.kevin.legion.data.local.LedgerCurrency
+import com.kevin.legion.ledger.AccountBalance
 import com.kevin.legion.ledger.BudgetLine
 import com.kevin.legion.ledger.BudgetVsActual
 import com.kevin.legion.ledger.UncategorizedSpend
 import com.kevin.legion.ledger.formatMoney
+import com.kevin.legion.ledger.maskedAccountLabel
 import com.kevin.legion.meals.DailyMealGap
 import com.kevin.legion.meals.MacroTotals
 import com.kevin.legion.meals.dayEndEpoch
@@ -355,6 +357,65 @@ private fun coverageThroughCaption(budget: BudgetVsActual): String {
 }
 
 /**
+ * CRED tile's balance line (2026-08-18, Kevin: "no need for the line graph. just how much I've
+ * used so far and what's the balance"). LEGION cannot tell a cash account from a card, so rather
+ * than guess it renders exactly ONE account - whichever [nominatedAccountId] names
+ * ([LedgerNominatedAccountPreferences]) - and its own [AccountBalance.asOfMs] date, never a
+ * silently-picked default and never a fallback to a different account when the nominated one goes
+ * missing (CLAUDE.md §4 rule 7: a disclosure gap is stated in words, never left blank).
+ *
+ * [balances] is expected to already be [com.kevin.legion.ledger.groupAccountBalances]'d by the
+ * caller - same "grouping is a render-site concern" discipline [groupAccountBalances]'s own doc
+ * comment states, restated here rather than grouping a second time inside this function.
+ *
+ * Four distinct silent/partial states, each its own sentence, never collapsed:
+ *  - [nominatedAccountId] null/blank -> nothing picked yet, says so and where to fix it.
+ *  - not present in [balances] (renamed folder, purged rows) -> says so plainly, never falls back
+ *    to another account in the list.
+ *  - present but [AccountBalance.balanceCents] null -> the exact words
+ *    [com.kevin.legion.ui.ledger.LedgerRows]' `BalancesSection` already uses for this state
+ *    (Bank of America's card layout, which never prints a running balance at all) - one phrasing,
+ *    reused, never invented twice.
+ *  - present, a real balance, but [AccountBalance.asOfMs] null -> [secondary] is null; the tile
+ *    never prints "as of" against a date it does not have.
+ *
+ * [isAdvisory] is `true` for every branch except the normal figure-plus-date one, so the thin
+ * Composable wrapper can pick a colour off this field directly rather than re-deriving "is this a
+ * problem" from the string it's about to print.
+ */
+data class CredBalanceLine(val primary: String, val secondary: String?, val isAdvisory: Boolean)
+
+fun buildCredBalanceLine(balances: List<AccountBalance>, nominatedAccountId: String?): CredBalanceLine {
+    if (nominatedAccountId.isNullOrBlank()) {
+        return CredBalanceLine(
+            primary = "NO ACCOUNT NOMINATED",
+            secondary = "set one in Money",
+            isAdvisory = true,
+        )
+    }
+    val balance = balances.firstOrNull { it.accountId == nominatedAccountId }
+    if (balance == null) {
+        return CredBalanceLine(
+            primary = "${maskedAccountLabel(nominatedAccountId)} NOT FOUND",
+            secondary = "renamed or no longer seen - pick a different account in Money",
+            isAdvisory = true,
+        )
+    }
+    val label = maskedAccountLabel(balance.accountId)
+    val balanceCents = balance.balanceCents
+    if (balanceCents == null) {
+        // Same words BalancesSection already uses for this exact state - see this
+        // function's own doc comment for why that reuse is deliberate, not laziness.
+        return CredBalanceLine(primary = label, secondary = "no balance ever printed for this account", isAdvisory = true)
+    }
+    val amount = compactMoneyHero(balanceCents, balance.currency)
+    // Null stays null here, never "as of" against a missing date - the caller renders no second
+    // line at all in that case (see the data class doc comment's fourth branch).
+    val asOf = balance.asOfMs?.let { "as of ${documentDateCompact(it)}" }
+    return CredBalanceLine(primary = "$amount $label", secondary = asOf, isAdvisory = false)
+}
+
+/**
  * FLEET tile: [rows] is [com.kevin.legion.ui.fleet.buildDueRows]'s already-sorted (overdue-first)
  * output, re-shaped rather than recomputed, same posture [buildMaintenanceGapRowData] states for
  * its own row above. `NO LINK` (no maintenance schedule at all) is the silent-domain wording the
@@ -588,42 +649,3 @@ fun capAlertRows(rows: List<AlertRowData>, max: Int = 5): AlertsSummary =
 /** The short month abbreviation for the CRED tile's caption, e.g. "AUG" - fixed-width three letters regardless of locale. */
 fun ledgerSweepMonthLabel(month: YearMonth): String =
     month.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).uppercase(Locale.ENGLISH)
-
-/**
- * Quant-viz ticket 11 item 2 (unblocked 2026-08-13 by
- * [com.kevin.legion.ledger.LedgerController.monthOperatingExpenses] landing in 23c1dd5, after the
- * original ticket 11 build - 087d8f9 - skipped this row for want of a public LedgerController call
- * that returned a month's rows): folds one day-per-entry month-to-date spend series -
- * [com.kevin.legion.ui.common.bucketDailySumCents]'s `Long?` output, `0L` a genuinely-zero-spend
- * covered day, `null` an uncovered gap, see that function's own doc comment - into a RUNNING
- * cumulative total, pen-lift-on-gap.
- *
- * A gap day (`null`) renders `null` - [com.kevin.legion.ui.common.DeckSparkline] lifts the pen
- * rather than drawing a false flat segment across a day nothing verifies. This is the file doc's
- * gap-never-zero invariant read one level up: a gap in the DAILY figure must stay a gap in the
- * CUMULATIVE figure too, never silently smoothed over. The running total itself is untouched by a
- * gap day - it neither adds an unknown amount nor resets - so the very next covered day's rendered
- * value already reflects every covered day up to and including it, exactly as if the gap day were
- * never in the series at all. Taste call, not derived (Kevin's build brief, 2026-08-14): a version
- * that instead carried the LAST-known running total forward onto the gap day's own slot would
- * silently claim that day spent nothing, precisely the lie [bucketDailySumCents]'s null/zero split
- * exists to refuse.
- *
- * [daily] is expected to already be truncated at today - the caller only ever asks
- * [com.kevin.legion.ui.common.bucketDailySumCents] for `[monthStart, now]`, never the rest of the
- * month (ticket 11 item 2: "days after today are not rendered"). This function does no date math of
- * its own and has no opinion about "today"; it only folds whatever list it is handed, left to right.
- * `Long` all the way through (CLAUDE.md §4 rule 3) - the caller converts to `Float` only at the
- * point list handed to [com.kevin.legion.ui.common.DeckSparkline].
- */
-fun cumulativeDailySpendCents(daily: List<Long?>): List<Long?> {
-    var running = 0L
-    return daily.map { cents ->
-        if (cents == null) {
-            null
-        } else {
-            running += cents
-            running
-        }
-    }
-}

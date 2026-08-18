@@ -49,6 +49,7 @@ import com.kevin.legion.data.local.LedgerTransaction
 import com.kevin.legion.ledger.AccountBalance
 import com.kevin.legion.ledger.DiscoveredAccountFolder
 import com.kevin.legion.ledger.LedgerAccountMappingPreferences
+import com.kevin.legion.ledger.LedgerNominatedAccountPreferences
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ledger.LedgerEntity
 import com.kevin.legion.ledger.BudgetVsActual
@@ -66,6 +67,7 @@ import com.kevin.legion.ui.common.HalfTile
 import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.SectionHeader
 import com.kevin.legion.ui.ledger.AccountMappingSection
+import com.kevin.legion.ui.ledger.NominatedAccountSection
 import com.kevin.legion.ui.ledger.BalancesDrilldownScreen
 import com.kevin.legion.ui.ledger.BudgetDrilldownScreen
 import com.kevin.legion.ui.ledger.CategorizeDrilldownScreen
@@ -138,6 +140,9 @@ data class LedgerUiState(
     val hasGeminiKey: Boolean = true,
     val accountFolders: List<DiscoveredAccountFolder> = emptyList(),
     val accountMapping: Map<String, String> = emptyMap(),
+    /** Which account HOME's CRED tile shows a balance for (2026-08-18) - null means never picked.
+     * See [com.kevin.legion.ledger.LedgerNominatedAccountPreferences]'s own doc comment. */
+    val nominatedAccountId: String? = null,
     // Ticket 06 (`.scratch/legion-shape/issues/06-budget-versus-actual.md`):
     // US-entity monthly budget-versus-actual, replacing the old P&L.
     // `pnlMonthsWithData` bounds the month picker (never page past what
@@ -223,6 +228,7 @@ fun LedgerScreen(
     // currently exist).
     var accountFolders by remember { mutableStateOf<List<DiscoveredAccountFolder>>(emptyList()) }
     val accountMapping by LedgerAccountMappingPreferences.mapping.collectAsStateWithLifecycle()
+    val nominatedAccountId by LedgerNominatedAccountPreferences.nominatedAccountId.collectAsStateWithLifecycle()
 
     // The add-category affordance (Kevin 2026-08-07) - live signals, same "outside `state`,
     // merged into `fullState` each recomposition" split `folder`/`scanState`/`hasGeminiKey` use.
@@ -657,7 +663,7 @@ fun LedgerScreen(
     // source of truth.
     val fullState = state.copy(
         folder = folderUi, scanState = scanState, hasGeminiKey = hasGeminiKey,
-        accountFolders = accountFolders, accountMapping = accountMapping,
+        accountFolders = accountFolders, accountMapping = accountMapping, nominatedAccountId = nominatedAccountId,
         addCategoryError = addCategoryError, addCategorySuccessNonce = addCategorySuccessNonce,
     )
 
@@ -690,6 +696,9 @@ fun LedgerScreen(
         onOpenKeySettings = onOpenKeySettings,
         onAssignAccount = { folderId, accountId ->
             LedgerAccountMappingPreferences.setMapping(context, folderId, accountId)
+        },
+        onNominateAccount = { accountId ->
+            LedgerNominatedAccountPreferences.setNominated(context, accountId)
         },
         // Mission-control ticket 16's CRED rebuild - the four new nav targets the shed sections
         // moved into. See the `showCategorize`/`showQuarantine`/`showBudget`/`showBalances` blocks
@@ -753,6 +762,8 @@ fun LedgerContent(
     onDeclineLlm: () -> Unit,
     onOpenKeySettings: () -> Unit,
     onAssignAccount: (folderId: String, accountId: String?) -> Unit,
+    // The nomination picker (2026-08-18) - see NominatedAccountSection's own doc comment.
+    onNominateAccount: (accountId: String?) -> Unit,
     onPrevPnlMonth: () -> Unit,
     onNextPnlMonth: () -> Unit,
     // Mission-control ticket 16's CRED rebuild: the four nav targets the shed sections moved into -
@@ -822,6 +833,18 @@ fun LedgerContent(
                     onAssign = onAssignAccount,
                 )
             }
+            // The nomination picker (2026-08-18) - not gated on a connected folder the way
+            // AccountMappingSection above is: an account can carry balances from a hand-picked PDF
+            // import alone, with no Drive folder ever connected, and it's still nominatable.
+            // Renders nothing itself when state.balances is empty, same "say plainly what applies"
+            // early-return AccountMappingSection's own doc comment states. groupAccountBalances,
+            // not the raw list - same render-site grouping discipline every other reader of
+            // state.balances on this screen follows (see that function's own doc comment).
+            NominatedAccountSection(
+                balances = groupAccountBalances(state.balances),
+                nominatedAccountId = state.nominatedAccountId,
+                onNominate = onNominateAccount,
+            )
             Hairline()
             ScanStatusSection(
                 scanState = state.scanState,
@@ -989,9 +1012,11 @@ private fun LedgerListing(
  * **The hero visual is [com.kevin.legion.ui.ledger.categorySpendBars] (Kevin, 2026-08-15).** It
  * replaces the month-to-date cumulative sparkline this pane carried since ticket 16 - one hero
  * visual, and the question the pane answers is "where did the money go", which a running total
- * cannot show. The sparkline itself is not retired: HOME's own CRED tile still renders it
- * ([TodayScreen]'s `ledgerCumulativeSparkline`), and the month-over-month trend is one tap in via
- * [onOpenTrend]. Uncategorised spend is in neither the hero figure nor the chart, and the sentence
+ * cannot show. **HOME's own CRED tile dropped its sparkline entirely on 2026-08-18** (Kevin: "no
+ * need for the line graph") in favour of the nominated account's own balance -
+ * [TodayGapResolvers.buildCredBalanceLine] - so this pane's chart is now the only place a spend
+ * TREND renders at all; the month-over-month trend is one tap in via [onOpenTrend]. Uncategorised
+ * spend is in neither the hero figure nor the chart, and the sentence
  * under the chart says so in words whenever there is any - see
  * [com.kevin.legion.ledger.UncategorizedSpend]'s own doc comment for why that disclosure is what
  * makes the exclusion honest rather than hidden.
@@ -1254,7 +1279,7 @@ private fun PreviewLedgerLoading() = LegionTheme {
     LedgerContent(
         LedgerUiState(loading = true),
         onOpenImport = {}, onOpenGroceries = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onPrevPnlMonth = {}, onNextPnlMonth = {},
+        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
         onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
     )
 }
@@ -1265,7 +1290,7 @@ private fun PreviewLedgerEmptyNoFolder() = LegionTheme {
     LedgerContent(
         LedgerUiState(loading = false),
         onOpenImport = {}, onOpenGroceries = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onPrevPnlMonth = {}, onNextPnlMonth = {},
+        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
         onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
     )
 }
@@ -1280,7 +1305,7 @@ private fun PreviewLedgerEmptyNothingNew() = LegionTheme {
             scanState = ScanState.Finished(FileResults(skipped = 6)),
         ),
         onOpenImport = {}, onOpenGroceries = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onPrevPnlMonth = {}, onNextPnlMonth = {},
+        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
         onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
     )
 }
@@ -1295,7 +1320,7 @@ private fun PreviewLedgerEmptyLooksEmpty() = LegionTheme {
             scanState = ScanState.Finished(FileResults()),
         ),
         onOpenImport = {}, onOpenGroceries = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onPrevPnlMonth = {}, onNextPnlMonth = {},
+        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
         onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
     )
 }
@@ -1313,7 +1338,7 @@ private fun PreviewLedgerAwaitingApproval() = LegionTheme {
             ),
         ),
         onOpenImport = {}, onOpenGroceries = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onPrevPnlMonth = {}, onNextPnlMonth = {},
+        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
         onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
     )
 }
@@ -1393,7 +1418,7 @@ private fun PreviewLedgerPopulated() = LegionTheme {
             ),
         ),
         onOpenImport = {}, onOpenGroceries = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onPrevPnlMonth = {}, onNextPnlMonth = {},
+        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
         onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
     )
 }

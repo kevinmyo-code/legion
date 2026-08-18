@@ -23,7 +23,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.clickable
+import com.kevin.legion.ledger.AccountBalance
 import com.kevin.legion.ledger.DiscoveredAccountFolder
+import com.kevin.legion.ledger.maskedAccountLabel
 import com.kevin.legion.ui.common.SectionHeader
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
@@ -70,6 +73,84 @@ fun AccountMappingSection(
                 knownAccountIds = knownAccountIds,
                 onAssign = { accountId -> onAssign(folder.folderId, accountId) },
             )
+        }
+    }
+}
+
+/**
+ * The nomination picker (2026-08-18, Kevin): which ONE [AccountBalance.accountId] HOME's CRED
+ * tile shows a balance for - see [LedgerNominatedAccountPreferences]'s own doc comment for why
+ * this is a driver-picked account rather than a guessed default. Hosted alongside
+ * [AccountMappingSection] rather than a new screen, same "the minimum UI the ticket asks for"
+ * posture that section's own doc comment states, and for the same reason: this IS where the other
+ * ledger setup already lives.
+ *
+ * **Every account is shown WITH whether it prints a balance, never hidden** - a driver who
+ * nominates an account that never prints one (Bank of America's card layout) is allowed to; the
+ * point is he can't do it blind. The exact words match [com.kevin.legion.ui.ledger.LedgerRows]'
+ * `BalancesSection` disclosure line, never a second phrasing for the same fact.
+ */
+@Composable
+fun NominatedAccountSection(
+    balances: List<AccountBalance>,
+    nominatedAccountId: String?,
+    onNominate: (accountId: String?) -> Unit,
+) {
+    if (balances.isEmpty()) return
+    val sem = LocalLegionSemantics.current
+    Column(Modifier.fillMaxWidth()) {
+        SectionHeader("NOMINATED ACCOUNT")
+        Text(
+            "HOME's CRED tile shows this one account's balance - LEGION can't tell a cash account " +
+                "from a card, so it never guesses which one.",
+            style = MaterialTheme.typography.bodySmall,
+            color = sem.faint,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        )
+        balances.forEach { balance ->
+            NominatedAccountRow(
+                balance = balance,
+                isNominated = balance.accountId == nominatedAccountId,
+                onNominate = { onNominate(balance.accountId) },
+            )
+        }
+        if (nominatedAccountId != null) {
+            TextButton(
+                onClick = { onNominate(null) },
+                modifier = Modifier.padding(horizontal = 8.dp),
+            ) { Text("CLEAR NOMINATION", style = LegionType.stamp, color = sem.faint) }
+        }
+    }
+}
+
+@Composable
+private fun NominatedAccountRow(
+    balance: AccountBalance,
+    isNominated: Boolean,
+    onNominate: () -> Unit,
+) {
+    val sem = LocalLegionSemantics.current
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onNominate).padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column {
+            Text(maskedAccountLabel(balance.accountId), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            // Same exact words BalancesSection's own "as of" line uses for this state - see
+            // NominatedAccountSection's own doc comment for why this is a reuse, not a second phrasing.
+            Text(
+                if (balance.balanceCents != null) "prints a balance" else "no balance ever printed for this account",
+                style = LegionType.stamp,
+                color = sem.faint,
+            )
+        }
+        if (isNominated) {
+            Text("NOMINATED", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+        } else {
+            TextButton(onClick = onNominate) {
+                Text("SET", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+            }
         }
     }
 }
@@ -171,6 +252,36 @@ private fun PreviewAccountMappingSectionEmpty() = LegionTheme {
             mapping = emptyMap(),
             knownAccountIds = emptyList(),
             onAssign = { _, _ -> },
+        )
+    }
+}
+
+@Preview(name = "Nominated account: one printed, one never printed, none picked yet", widthDp = 360)
+@Composable
+private fun PreviewNominatedAccountSectionUnset() = LegionTheme {
+    Surface {
+        NominatedAccountSection(
+            balances = listOf(
+                AccountBalance("BOFA-CHECKING", com.kevin.legion.data.local.LedgerCurrency.USD, 381_200L, asOfMs = 0L),
+                AccountBalance("BOFA ****4471", com.kevin.legion.data.local.LedgerCurrency.USD, null, asOfMs = null),
+            ),
+            nominatedAccountId = null,
+            onNominate = {},
+        )
+    }
+}
+
+@Preview(name = "Nominated account: one already picked", widthDp = 360)
+@Composable
+private fun PreviewNominatedAccountSectionSet() = LegionTheme {
+    Surface {
+        NominatedAccountSection(
+            balances = listOf(
+                AccountBalance("BOFA-CHECKING", com.kevin.legion.data.local.LedgerCurrency.USD, 381_200L, asOfMs = 0L),
+                AccountBalance("BOFA ****4471", com.kevin.legion.data.local.LedgerCurrency.USD, null, asOfMs = null),
+            ),
+            nominatedAccountId = "BOFA-CHECKING",
+            onNominate = {},
         )
     }
 }

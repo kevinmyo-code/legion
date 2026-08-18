@@ -51,7 +51,6 @@ import com.kevin.legion.ui.common.DeckTagStyle
 import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.HalfTile
 import com.kevin.legion.ui.common.QuarantineTag
-import com.kevin.legion.ui.common.bucketDailySumCents
 import com.kevin.legion.ui.common.deckRangeStartMs
 import com.kevin.legion.ui.fleet.DueRowView
 import com.kevin.legion.ui.fleet.buildDueRows
@@ -67,8 +66,6 @@ import com.kevin.legion.vehicle.VehicleController
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
-import java.time.ZoneOffset
-import kotlin.math.abs
 
 /**
  * `today` tab, the deck's HOME surface. **Rebuilt mission-control ticket 16** to ticket 11's
@@ -125,14 +122,17 @@ data class TodayUiState(
     val intakeSparkline: List<Float?> = emptyList(),
     /** BIO tile (ticket 16): [TodayGapResolvers.buildBioTile]'s already-formatted hero/caption. */
     val bioTile: BioTileData = BioTileData(hero = "NOT LOGGED", caption = "no weigh-ins yet"),
-    /** Null while the month hasn't loaded yet - same contract [com.kevin.legion.ui.LedgerUiState.budgetVsActual] uses. CRED tile content is derived from this at render time by `buildCredTile`, not stored pre-formatted, because it also feeds [ledgerCumulativeSparkline]'s own load. */
+    /** Null while the month hasn't loaded yet - same contract [com.kevin.legion.ui.LedgerUiState.budgetVsActual] uses. CRED tile content is derived from this at render time by `buildCredTile`. */
     val budget: BudgetVsActual? = null,
-    /** Quant-viz ticket 11 item 2: CRED tile's month-to-date cumulative daily spend, truncated at
-     * today. Built from [LedgerController.monthOperatingExpenses] folded through
-     * [com.kevin.legion.ui.common.bucketDailySumCents] then [cumulativeDailySpendCents] - the SAME
-     * [budget]'s own [BudgetVsActual.coverage] this screen already loaded, never a second coverage
-     * fetch. */
-    val ledgerCumulativeSparkline: List<Float?> = emptyList(),
+    /** CRED tile balance line (2026-08-18, Kevin: "how much I've used so far and what's the
+     * balance"): every account [LedgerController.accountBalances] has ever seen, [groupAccountBalances]-
+     * collapsed the SAME way [LedgerScreen]'s own BALANCES surface collapses them so a card split
+     * across two accountIds never shows twice. [buildCredBalanceLine] resolves which one (if any)
+     * matches [nominatedAccountId] and what to print. */
+    val ledgerBalances: List<com.kevin.legion.ledger.AccountBalance> = emptyList(),
+    /** CRED tile balance line: which account [LedgerNominatedAccountPreferences] currently points
+     * at - null means the driver has never nominated one. */
+    val nominatedAccountId: String? = null,
     val maintenanceRows: List<DueRowView> = emptyList(),
     /** FLEET tile (ticket 09): items with no anchor at all - [buildFleetTile] must know this to stop
      * reading OK while the schedule has unanchored items, see that function's own doc comment. */
@@ -228,27 +228,12 @@ fun TodayScreen(
         // ui.LedgerScreen's own budget section reads.
         val budget = LedgerController.budgetVsActual(context, LedgerEntity.US, YearMonth.now())
 
-        // CRED tile sparkline (quant-viz ticket 11 item 2): month-to-date cumulative daily spend,
-        // truncated at today - reuses budget's OWN BudgetVsActual.coverage rather than a second
-        // coverage fetch, same reuse discipline com.kevin.legion.ui.ledger.categoryDailySpendBars
-        // follows for the drilldown's identical chart. UTC throughout (never device zone) - txnDate
-        // is stamped atStartOfDay(UTC) by every parser, exactly the convention that file's own doc
-        // comment documents and MEMORY.md already records one prior "dates a day early" bug for
-        // getting wrong.
-        val month = YearMonth.now()
-        val monthStartMs = month.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-        val ledgerTxns = LedgerController.monthOperatingExpenses(context, LedgerEntity.US, month)
-        val ledgerSamples = ledgerTxns.map { it.txnDate to abs(it.amountCents) }
-        val ledgerCoveredRanges = budget.coverage.mapNotNull { c ->
-            val from = c.coveredFromMs
-            val to = c.coveredToMs
-            if (from != null && to != null) from..to else null
-        }
-        // endMs = now, never the rest of the month - bucketDailySumCents/dailyBuckets stop at the
-        // UTC calendar day containing `now`, which is exactly ticket 11 item 2's "days after today
-        // are not rendered" without a separate truncation step.
-        val ledgerDailyCents = bucketDailySumCents(ledgerSamples, monthStartMs, now, ledgerCoveredRanges, zone = ZoneOffset.UTC)
-        val ledgerCumulativeSparkline = cumulativeDailySpendCents(ledgerDailyCents).map { it?.toFloat() }
+        // CRED tile balance line (2026-08-18, Kevin): the nominated account's own printed balance,
+        // grouped the same way ui.LedgerScreen's BALANCES surface groups state.balances before
+        // rendering (see LedgerController.groupAccountBalances's doc comment on why grouping is a
+        // render-site concern, never accountBalances()'s own job).
+        val ledgerBalances = LedgerController.accountBalances(context)
+        val nominatedAccountId = com.kevin.legion.ledger.LedgerNominatedAccountPreferences.nominatedAccountId.value
 
         // FLEET tile: the active vehicle's maintenance schedule, same rows ui.FleetScreen's DUE
         // block builds from the same MaintenanceItem list - see buildDueRows's own doc for the
@@ -316,7 +301,8 @@ fun TodayScreen(
             intakeSparkline = intakeSparkline,
             bioTile = bioTile,
             budget = budget,
-            ledgerCumulativeSparkline = ledgerCumulativeSparkline,
+            ledgerBalances = ledgerBalances,
+            nominatedAccountId = nominatedAccountId,
             maintenanceRows = buildDueRows(items, currentMileage, vehicle.odometerBaseline == 0, now),
             maintenanceUnknownCount = items.count { VehicleController.isUnknown(it) },
             openTaskCount = openTaskCount,
@@ -422,11 +408,28 @@ private fun TodayListing(
                     caption = credTile.caption,
                     modifier = Modifier.clickable(onClick = { onOpenCategory(null) }),
                 ) {
-                    // The LEDGER cumulative sparkline that already ships, moved onto the CRED tile
-                    // wholesale (ticket 16) - suppressed when every day in the window is a gap, same
-                    // guard IntakePane's own sparkline uses, rather than drawing an empty canvas.
-                    if (state.ledgerCumulativeSparkline.any { it != null }) {
-                        DeckSparkline(state.ledgerCumulativeSparkline, modifier = Modifier.padding(horizontal = 12.dp))
+                    // The nominated account's own balance (2026-08-18, Kevin: "no need for the line
+                    // graph. just how much I've used so far and what's the balance") - see
+                    // buildCredBalanceLine's own doc comment for every branch. Two short lines max,
+                    // matching this slot's other resident (the uncategorised disclosure below):
+                    // primary always renders, secondary only when there is a second sentence to say.
+                    val credBalanceLine = buildCredBalanceLine(
+                        com.kevin.legion.ledger.groupAccountBalances(state.ledgerBalances),
+                        state.nominatedAccountId,
+                    )
+                    Text(
+                        credBalanceLine.primary,
+                        style = LegionType.stamp,
+                        color = if (credBalanceLine.isAdvisory) LocalLegionSemantics.current.estimated else LocalLegionSemantics.current.data,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                    if (credBalanceLine.secondary != null) {
+                        Text(
+                            credBalanceLine.secondary,
+                            style = LegionType.stamp,
+                            color = LocalLegionSemantics.current.faint,
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
                     }
                     // The uncategorised bucket is NOT in the hero figure above (Kevin, 2026-08-15) -
                     // stated here in the tile's own `extra` slot rather than appended to `caption`,
@@ -711,7 +714,15 @@ private fun PreviewTodayMixed() = LegionTheme {
             paceFraction = 0.62f,
             intakeSparkline = listOf(2100f, null, 1980f, 2250f, 1650f, null, null),
             bioTile = BioTileData(hero = "82.4", caption = "KG - DOWN 4WK"),
-            ledgerCumulativeSparkline = listOf(4120f, 9840f, null, 18_800f, 24_100f, 24_100f, 41_200f),
+            ledgerBalances = listOf(
+                com.kevin.legion.ledger.AccountBalance(
+                    accountId = "BOFA-CHECKING",
+                    currency = com.kevin.legion.data.local.LedgerCurrency.USD,
+                    balanceCents = 381_200L,
+                    asOfMs = PREVIEW_CRED_AS_OF_MS,
+                ),
+            ),
+            nominatedAccountId = "BOFA-CHECKING",
             budget = BudgetVsActual(
                 entity = LedgerEntity.US,
                 month = YearMonth.now(),
@@ -754,6 +765,95 @@ private fun PreviewTodayMixed() = LegionTheme {
             ),
             hasGeminiKey = true,
             overdueGoals = emptyList(),
+        ),
+    )
+}
+
+/** A fixed UTC-midnight instant (2026-08-12) for the CRED tile's "as of" previews - [com.kevin.legion.util.documentDateCompact] reads document dates in UTC, matching [com.kevin.legion.ui.ledger.LedgerRows]'s own `PREVIEW_AS_OF_MS`. */
+private val PREVIEW_CRED_AS_OF_MS = java.time.LocalDate.of(2026, 8, 12).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+
+/** Base state PreviewTodayMixed already builds, minus the CRED balance line, reused by the four
+ * CRED-balance-state previews below so each one only has to vary [TodayUiState.ledgerBalances] /
+ * [TodayUiState.nominatedAccountId] - see [buildCredBalanceLine]'s own doc comment for what each
+ * state means. */
+private fun previewCredBaseState() = TodayUiState(
+    loading = false,
+    mealGap = DailyMealGap.NotLogged,
+    hasMealTarget = true,
+    bioTile = BioTileData(hero = "82.4", caption = "KG - DOWN 4WK"),
+    budget = BudgetVsActual(
+        entity = LedgerEntity.US,
+        month = YearMonth.now(),
+        lines = emptyList(),
+        uncategorized = UncategorizedSpend(spentCents = 0L, hasProvisionalRows = false),
+        coverage = emptyList(),
+        excludedOwnAccountMovements = com.kevin.legion.ledger.ExcludedOwnAccountMovements(0, 0L, emptyList()),
+    ),
+    maintenanceRows = emptyList(),
+    openTaskCount = 0,
+    logHasAnyItems = false,
+    agendaEntries = emptyList(),
+    quarantinedFiles = emptyList(),
+    hasGeminiKey = true,
+    overdueGoals = emptyList(),
+)
+
+@Preview(name = "Today: CRED balance - nothing nominated", widthDp = 360, heightDp = 900)
+@Composable
+private fun PreviewCredBalanceNotNominated() = LegionTheme {
+    TodayContent(previewCredBaseState().copy(nominatedAccountId = null))
+}
+
+@Preview(name = "Today: CRED balance - nominated account not found", widthDp = 360, heightDp = 900)
+@Composable
+private fun PreviewCredBalanceNotFound() = LegionTheme {
+    TodayContent(
+        previewCredBaseState().copy(
+            nominatedAccountId = "BOFA-CHECKING",
+            ledgerBalances = listOf(
+                com.kevin.legion.ledger.AccountBalance(
+                    accountId = "DBS-CHECKING",
+                    currency = com.kevin.legion.data.local.LedgerCurrency.SGD,
+                    balanceCents = 216_582L,
+                    asOfMs = PREVIEW_CRED_AS_OF_MS,
+                ),
+            ),
+        ),
+    )
+}
+
+@Preview(name = "Today: CRED balance - no balance ever printed (BofA card)", widthDp = 360, heightDp = 900)
+@Composable
+private fun PreviewCredBalanceNeverPrinted() = LegionTheme {
+    TodayContent(
+        previewCredBaseState().copy(
+            nominatedAccountId = "BOFA ****4471",
+            ledgerBalances = listOf(
+                com.kevin.legion.ledger.AccountBalance(
+                    accountId = "BOFA ****4471",
+                    currency = com.kevin.legion.data.local.LedgerCurrency.USD,
+                    balanceCents = null,
+                    asOfMs = null,
+                ),
+            ),
+        ),
+    )
+}
+
+@Preview(name = "Today: CRED balance - real figure, no as-of date", widthDp = 360, heightDp = 900)
+@Composable
+private fun PreviewCredBalanceNoAsOf() = LegionTheme {
+    TodayContent(
+        previewCredBaseState().copy(
+            nominatedAccountId = "BOFA-CHECKING",
+            ledgerBalances = listOf(
+                com.kevin.legion.ledger.AccountBalance(
+                    accountId = "BOFA-CHECKING",
+                    currency = com.kevin.legion.data.local.LedgerCurrency.USD,
+                    balanceCents = 381_200L,
+                    asOfMs = null,
+                ),
+            ),
         ),
     )
 }

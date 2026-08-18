@@ -7,6 +7,7 @@ import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.data.MidnightImport
 import com.kevin.legion.ledger.LedgerAccountMappingPreferences
 import com.kevin.legion.ledger.LedgerFolderPreferences
+import com.kevin.legion.ledger.LedgerNominatedAccountPreferences
 import com.kevin.legion.service.ProactivePreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +56,9 @@ class MidnightApplication : Application() {
         // reasoning as the three above, added for the per-account-subfolder
         // + CSV ingestion ticket.
         LedgerAccountMappingPreferences.init(this)
+        // HOME's CRED tile balance line (2026-08-18) - same L12 reasoning as the three caches
+        // above: must be live before the first Today-tab composition, not just after AriaForegroundService starts.
+        LedgerNominatedAccountPreferences.init(this)
 
         // Named companion profiles (multi-companion, 2026-08-02): seed one
         // profile from a pre-existing single identity if this install predates
