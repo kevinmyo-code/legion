@@ -44,6 +44,25 @@ object LocationController {
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
     }
 
+    /**
+     * True if GPS or network location is switched on system-wide, independent of whether THIS
+     * app has been granted permission to use it. Exists so callers - specifically
+     * `get_current_location`'s "why is this null" branching - can tell a driver who granted the
+     * permission but left Location off in Android's quick settings apart from a driver who is
+     * simply still acquiring a fix, two situations [init] itself doesn't need to distinguish
+     * (it just skips a disabled provider and moves on) but a spoken answer does. Reads off
+     * whichever [LocationManager] [init] already resolved when possible so this doesn't need its
+     * own permission check to ask the system service for one; falls back to a fresh lookup for a
+     * caller that runs before [init] ever succeeded (e.g. permission was granted but init hasn't
+     * been re-run yet in this process).
+     */
+    fun anyProviderEnabled(context: Context): Boolean {
+        val lm = locationManager
+            ?: context.applicationContext.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            ?: return false
+        return lm.isProviderEnabled(LocationManager.GPS_PROVIDER) || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+    }
+
     /** Safe to call repeatedly - retries until location permission is granted. */
     @SuppressLint("MissingPermission")
     fun init(context: Context) {

@@ -194,6 +194,20 @@ class MainActivity : ComponentActivity() {
         runCatching {
             com.kevin.legion.service.AssistantIgnition.resumeIfEnabled(applicationContext)
         }.onFailure { com.kevin.legion.MidnightEvents.appStartWorkFailed("resume_promote_mic", it) }
+        // Re-run LocationController.init on every foreground return, not just at service
+        // creation (2026-08-17 fix). init() early-returns without latching `initialized` when
+        // permission isn't granted yet, and its doc has always promised "safe to call
+        // repeatedly - retries until location permission is granted" - but AriaForegroundService
+        // .onCreate was the ONLY place in the app that ever called it, so a driver who granted
+        // location from Android's Settings screen and came straight back here got nothing until
+        // the service happened to restart. onResume is exactly the moment that grant becomes
+        // observable (returning from Settings always resumes this Activity), and init() is a
+        // no-op once already initialized, so this costs nothing on every other resume. Same
+        // guarded-runCatching shape as the mic promotion above: a permission plumbing failure
+        // here must degrade to "still no location", never crash a screen unlock.
+        runCatching {
+            com.kevin.legion.location.LocationController.init(applicationContext)
+        }.onFailure { com.kevin.legion.MidnightEvents.appStartWorkFailed("resume_init_location", it) }
         SyncEngine.maybeAutoSync(applicationContext)
         // Silent App Remote re-attach (2026-08-12). App Remote drops on its own whenever the
         // Spotify app is killed or backgrounded long enough, and nothing reconnected it - so

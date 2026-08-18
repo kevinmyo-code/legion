@@ -4772,8 +4772,30 @@ object LiveToolbox {
      * sec 9's "network calls degrade gracefully" rule).
      */
     private suspend fun getCurrentLocation(context: Context): JSONObject {
+        // init() is idempotent (see its own doc) and, critically, seeds state from
+        // getLastKnownLocation synchronously - so a driver who just granted location in Android
+        // Settings and comes straight back to a voice call gets an immediate answer instead of
+        // waiting on the first live update. Before this call the ONLY caller of init() anywhere
+        // in the app was AriaForegroundService.onCreate, so a permission granted after the
+        // service already started did nothing until the service was recreated - traced via
+        // `grep -rn "LocationController.init"`, one hit.
+        LocationController.init(context)
         val loc = LocationController.state.value
-            ?: return result(success = false, message = "I don't have a GPS fix yet.")
+            ?: return when {
+                // The one actionable case: LEGION itself was never granted location. Everything
+                // else below is the phone's own settings, not something re-asking the tool fixes.
+                !LocationController.hasPermission(context) -> result(success = false,
+                    message = "LEGION doesn't have location permission. Grant it in Android's " +
+                        "app settings for LEGION and try again.")
+                // Permission granted, but the driver (or a battery saver mode) has both GPS and
+                // network location switched off system-wide - a different fix than "wait longer".
+                !LocationController.anyProviderEnabled(context) -> result(success = false,
+                    message = "Location services are switched off on the phone. Turn on GPS or " +
+                        "network location and try again.")
+                // Permission granted, a provider is on, there's just no fix yet - this is the
+                // ONLY case the old blanket message was actually true for.
+                else -> result(success = false, message = "I don't have a GPS fix yet.")
+            }
 
         val coords = "(lat ${loc.latitude}, lng ${loc.longitude})"
         val label = withContext(Dispatchers.IO) {
