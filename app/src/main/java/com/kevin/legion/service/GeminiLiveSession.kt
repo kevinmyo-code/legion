@@ -208,6 +208,26 @@ class GeminiLiveSession(
     @Volatile private var framesWritten: Long = 0
     private var speakingThisTurn = false
 
+    // Monotonic generation counter, bumped by [flushAudio] every time queued model
+    // audio is discarded (barge-in tap in [beginConversation], the server's own
+    // "interrupted" signal, or [checkForCrisis]). Exists to close a race the driver
+    // hit as "the mic I just opened by tapping shut itself again" (2026-08-17,
+    // measured alongside the awaitPlaybackDrained defect above): a barge-in tap
+    // flushes audio, clears [speakingThisTurn], and opens the mic - but nothing
+    // tells the SERVER a barge-in happened, so a `modelTurn` WebSocket message
+    // that was already in flight when the tap landed can still arrive afterward.
+    // That stale message hits `handleServerContent`'s `!speakingThisTurn` branch,
+    // which - reasonably, for a NORMAL turn - sets speakingThisTurn back to true
+    // and (half-duplex) shuts the mic that was just opened for the driver.
+    // `handleServerContent` snapshots this counter once per incoming message and
+    // compares it against the live value before touching speakingThisTurn/
+    // capturing for that message's audio chunks - a mismatch means the chunk
+    // belongs to a turn this session has already moved past, and it is dropped
+    // rather than acted on. @Volatile to match this file's existing flag style
+    // (speakingThisTurn/capturing/flushCapture): written wherever [flushAudio]
+    // runs, read on the socket callback thread.
+    @Volatile private var turnGeneration: Int = 0
+
     // HYPOTHESIS FIX (B12, unverified as of 2026-07-07 - a driver-reported
     // "turn goes silent, only plays back after I tap again"). AudioTrack.write()
     // is a blocking call; previously it ran synchronously inside the OkHttp
@@ -780,9 +800,26 @@ class GeminiLiveSession(
         }
 
         content.optJSONObject("modelTurn")?.optJSONArray("parts")?.let { parts ->
+            // Snapshot ONCE per incoming message, right before touching any audio chunk
+            // it carries - see [turnGeneration]'s declaration doc for the race this
+            // closes. Anything above this point in the function (crisis detection) may
+            // itself have already bumped the counter for THIS message; that's fine and
+            // intended, it just means this message's own chunks are compared against
+            // the post-bump value, which they'll match (nothing external can have
+            // bumped it again in between).
+            val myTurnGeneration = turnGeneration
             for (i in 0 until parts.length()) {
                 val data = parts.optJSONObject(i)?.optJSONObject("inlineData")?.optString("data")
                 if (!data.isNullOrEmpty()) {
+                    if (myTurnGeneration != turnGeneration) {
+                        // Superseded: a barge-in/interrupt/crisis flush landed between this
+                        // message being sent by the server and being processed here. Drop
+                        // the chunk outright - do not flip speakingThisTurn or capturing
+                        // (that would re-close a mic the driver just opened by tapping) and
+                        // do not enqueue it for playback (that would speak the tail of a
+                        // reply the driver already interrupted).
+                        continue
+                    }
                     if (!speakingThisTurn) {
                         speakingThisTurn = true
                         // Half-duplex: mute the mic while Zero speaks so his own
@@ -1231,6 +1268,13 @@ class GeminiLiveSession(
 
     /** Barge-in: drop any audio still queued so Zero stops mid-sentence. */
     private fun flushAudio() {
+        // Bump the generation FIRST, before anything else - see [turnGeneration]'s
+        // declaration doc. Any modelTurn message still in flight on the socket
+        // callback thread snapshots this counter when it arrives; bumping it here
+        // guarantees that snapshot can never match again, so a stale chunk from the
+        // turn being flushed is recognized as stale the moment it shows up, however
+        // soon after this call that is.
+        turnGeneration++
         // Discard chunks not yet handed to the AudioTrack too, not just what's
         // already in its hardware buffer - otherwise stale queued audio could
         // still play out after the "interruption" once the consumer catches up.
