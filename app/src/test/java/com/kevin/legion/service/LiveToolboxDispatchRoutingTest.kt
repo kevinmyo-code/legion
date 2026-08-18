@@ -59,14 +59,15 @@ class LiveToolboxDispatchRoutingTest {
     fun `ask_goals does not claim any of ask_body's territory`() {
         val goals = descriptionOf("ask_goals")
         for (word in listOf("fitness", "workout", "meal", "sleep", "bodyweight", "weigh-in")) {
-            // "a workout, meal, sleep or weigh-in goes to ask_body" is the one legitimate use of
-            // these words here: naming the other domain to push the request there. Anything else
-            // is a claim on territory this domain cannot serve.
+            // Naming the destination is the one legitimate use of these words here. That
+            // destination changed on 2026-08-18: the eight write tools came back out from behind
+            // the dispatchers, so a set now goes to log_workout_set BY NAME rather than to
+            // ask_body. Anything else is a claim on territory this domain cannot serve.
             assertTrue(
                 "ask_goals' description says \"$word\" without handing it to ask_body - this is " +
                     "the exact overlap that routed \"log my sets\" into a domain holding only " +
                     "list_goals and ask_advisor",
-                word !in goals || "ask_body" in goals,
+                word !in goals || "log_workout_set" in goals,
             )
         }
         assertTrue(
@@ -76,18 +77,34 @@ class LiveToolboxDispatchRoutingTest {
         )
     }
 
-    /** ask_body has to be findable by the words a driver actually speaks, not by a category name. */
+    /**
+     * ask_body stopped being a write path on 2026-08-18 (Kevin's call): the five body log tools are
+     * declared directly to the live session again, because a mis-routed WRITE is the failure this
+     * app has actually suffered twice and no description beat a tool the model could not see.
+     *
+     * So the assertion inverts. What used to be required - "the ONLY route that can record any of
+     * it" - is now the lie. The description must say it records nothing and must name the tools
+     * that do, exactly as ask_goals already had to.
+     */
     @Test
-    fun `ask_body advertises itself as the only place a workout set gets recorded`() {
+    fun `ask_body says it records nothing and names the tools that do`() {
         val body = descriptionOf("ask_body")
-        for (word in listOf("workout set", "reps", "meal", "sleep", "weigh-in", "record")) {
+        assertTrue(
+            "ask_body must say outright that it records nothing - it holds no writable tool now, " +
+                "and the live model has no other way to learn that",
+            "records nothing" in body,
+        )
+        for (tool in listOf("log_meal", "log_sleep", "log_workout_set", "log_bodyweight")) {
+            assertTrue(
+                "ask_body must name \"$tool\" as where a record actually goes",
+                tool in body,
+            )
+        }
+        // Still findable by the words a driver speaks - the reason it is worded around real speech
+        // rather than category names has not changed, only which side of the read/write line it is on.
+        for (word in listOf("meal", "sleep", "workouts", "bodyweight")) {
             assertTrue("ask_body's description must name \"$word\"", word in body)
         }
-        assertTrue(
-            "ask_body must claim exclusivity over recording - otherwise nothing tells the model " +
-                "that ask_goals is the wrong door for a set",
-            "only" in body,
-        )
     }
 
     /**
@@ -169,24 +186,19 @@ class LiveToolboxDispatchRoutingTest {
      */
     @Test
     fun `a domain with no writable tool is told it cannot record anything`() {
-        for (domain in listOf("goals", "mail")) {
+        // All five joined this group on 2026-08-18. manage_grocery came out from behind ask_pantry
+        // after a grocery add kept landing on the persistent list, and Kevin's measured call then
+        // pulled the other eight write tools out of fleet and body for the same reason. Every
+        // dispatcher is a read path now, so every one of them must say so - which is the mechanical
+        // half of the fix: a write that still mis-routes into one is refused in words, not answered
+        // around. If a domain ever regains a write tool, this loop is where that shows up.
+        for (domain in listOf("fleet", "body", "goals", "mail", "pantry")) {
             val clause = LiveToolbox.dispatchBoundaryClause(domain).lowercase()
             assertTrue(
                 "\"$domain\" holds no mutating tool, so its sub-agent must be told it cannot write",
                 "no tool that writes anything" in clause,
             )
             assertTrue("\"$domain\" must be told to say nothing was recorded", "nothing was recorded" in clause)
-        }
-        for (domain in listOf("fleet", "body", "pantry")) {
-            val clause = LiveToolbox.dispatchBoundaryClause(domain).lowercase()
-            assertFalse(
-                "\"$domain\" CAN write - telling its sub-agent it cannot would break real logging",
-                "no tool that writes anything" in clause,
-            )
-            assertTrue(
-                "\"$domain\" must still be barred from claiming a write it did not perform",
-                "unless you" in clause && "reported success" in clause,
-            )
         }
     }
 }

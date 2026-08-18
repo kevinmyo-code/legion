@@ -120,6 +120,69 @@ class LiveToolboxDeclarationSetTest {
         }
     }
 
+    /**
+     * The grocery mis-route, 2026-08-18. Kevin said "I need to buy tums, add it to groceries list"
+     * and it landed on the persistent list instead of the shopping trip.
+     *
+     * Nothing was broken in the sense of throwing: `manage_item` did exactly what it was asked. The
+     * defect was in what the live model was TOLD. `manage_item` described itself as "the app's only
+     * list ... never ask which list or mention lists in the plural", which is a flat claim that no
+     * other list exists, and `manage_grocery` is hidden behind `ask_pantry` so the model cannot see
+     * it to know better. `ask_pantry` meanwhile led with logged items, macros and spend - it read as
+     * an analytics tool, not somewhere you can add a line to a shopping list.
+     *
+     * Same shape as the 2026-08-17 `ask_goals` mis-route (see that tool's own description): a tool
+     * over-claiming its domain while the tool that actually owns the request is invisible. This test
+     * is the tripwire for the copy, since no behavioural test can see a routing decision the model
+     * makes before any of our code runs.
+     */
+    @Test
+    fun `the list tools tell the model where groceries actually go`() {
+        val live = LiveToolbox.declarations()
+        fun descriptionOf(name: String): String =
+            (0 until live.length()).map { live.getJSONObject(it) }
+                .first { it.getString("name") == name }
+                .getString("description")
+
+        // The fix that actually held: the model can SEE the grocery tool. Everything below is
+        // secondary to this one assertion.
+        assertTrue(
+            "manage_grocery must be declared directly to the live session - a model cannot route " +
+                "to a tool it cannot see, which is what the description-only fix failed to beat",
+            "manage_grocery" in names(live),
+        )
+
+        val manageItem = descriptionOf("manage_item")
+        assertTrue(
+            "manage_item must name manage_grocery as the grocery destination, not claim to be the " +
+                "only list there is",
+            manageItem.contains("manage_grocery"),
+        )
+        assertTrue(
+            "manage_item must say out loud that shopping is not its job",
+            manageItem.contains("grocery", ignoreCase = true) &&
+                manageItem.contains("shopping", ignoreCase = true),
+        )
+        assertFalse(
+            "manage_item must not tell the model it is the app's ONLY list - it is the only " +
+                "PERSISTENT one, and the claim is what sent tums to the wrong place",
+            manageItem.contains("the app's only list"),
+        )
+
+        // ask_pantry went back to read-only when manage_grocery came out from behind it. If it
+        // ever claims the shopping list again there are two doors to the same place and the
+        // mis-route can return.
+        val askPantry = descriptionOf("ask_pantry")
+        assertTrue(
+            "ask_pantry must say it records nothing now that it holds no mutating tool",
+            askPantry.contains("Read-only", ignoreCase = true),
+        )
+        assertTrue(
+            "ask_pantry must hand the shopping list to manage_grocery by name",
+            askPantry.contains("manage_grocery"),
+        )
+    }
+
     /** ask_mail's whole point is that mail never reaches the live socket by its real name again. */
     @Test
     fun `EPISODIC_EXCLUDED_TOOLS carries ask_mail alongside the original two names`() {
@@ -213,16 +276,14 @@ class LiveToolboxDeclarationSetTest {
                 "read_vehicle_sensor", "get_vehicle_data", "get_codes", "diagnose_codes",
                 "get_code_history", "check_readiness", "check_cold_start", "get_mpg", "get_specs",
                 "lookup_vin", "check_recalls", "list_vehicles", "get_next_service", "ask_maintenance",
-                "triage_symptom", "list_build_history", "get_trend", "log_service", "log_past_service",
-                "log_build_entry",
+                "triage_symptom", "list_build_history", "get_trend",
             ),
             "body" to listOf(
                 "list_recent_meals", "get_meal_gap", "list_recent_sleep", "get_sleep_gap",
-                "list_recent_workouts", "get_workout_gap", "get_health", "log_meal", "log_sleep",
-                "log_bodyweight", "log_workout_set", "create_workout_plan",
+                "list_recent_workouts", "get_workout_gap", "get_health",
             ),
             "goals" to listOf("list_goals", "ask_advisor"),
-            "pantry" to listOf("list_recent_groceries", "get_grocery_spend", "manage_grocery"),
+            "pantry" to listOf("list_recent_groceries", "get_grocery_spend"),
             "mail" to listOf("search_mail", "read_mail"),
         )
     }

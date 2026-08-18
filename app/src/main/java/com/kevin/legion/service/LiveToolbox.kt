@@ -17,6 +17,7 @@ import com.kevin.legion.advisor.AdvisorAgent
 import com.kevin.legion.advisor.AdvisorProposalExecutor
 import com.kevin.legion.advisor.AdvisorResult
 import com.kevin.legion.advisor.HarnessPrompt
+import com.kevin.legion.advisor.Priming
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ledger.LedgerEntity
@@ -30,6 +31,7 @@ import com.kevin.legion.meals.MealController
 import com.kevin.legion.workouts.WorkoutController
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
+import com.kevin.legion.util.Temp
 import com.kevin.legion.util.documentDate
 import com.kevin.legion.util.shortDate
 import java.time.YearMonth
@@ -135,7 +137,9 @@ object LiveToolbox {
                 "codes are present. Use whenever the driver asks what any of those are RIGHT NOW - " +
                 "'how much fuel have I got', 'what's the temp', 'how's the battery'. To explain " +
                 "what a code MEANS or how to FIX it, use diagnose_codes instead. Reads the OBD " +
-                "dongle in the car it is plugged into right now. Cannot answer for any other car.",
+                "dongle in the car it is plugged into right now. Cannot answer for any other car. " +
+                "coolant_temp and intake_air_temp return `temperature` already in the driver's " +
+                "chosen unit (see `temperatureUnit`) - do not convert it.",
             params = obj(
                 "metric" to schema("string", "Which live reading to fetch.",
                     enum = listOf(
@@ -266,7 +270,8 @@ object LiveToolbox {
                 "temperature, and whether any trouble codes are stored. Use when the driver asks if " +
                 "the car's okay, wants a health check, or is about to set off on a long drive (a " +
                 "pre-trip check). Reads the OBD dongle in the car it is plugged into right now. Cannot " +
-                "answer for any other car.",
+                "answer for any other car. The coolant reading is already in the driver's chosen " +
+                "unit (see coolantUnit) - do not convert it.",
             params = obj(),
             required = listOf(),
         ))
@@ -1000,8 +1005,12 @@ object LiveToolbox {
             // that context) without dropping any distinct rule, enum value, or capability - notes/
             // lists/calendar stays genuinely multi-shaped, this only removes restated words.
             description = "Add, tick, untick, remove, schedule (time and/or repeat), or skip one " +
-                "occurrence of ONE item - the app's only list: car to-dos, errands, reminders, and " +
-                "notes all live on it, so never ask which list or mention lists in the plural. A " +
+                "occurrence of ONE item on the driver's ONE PERSISTENT list: car to-dos, errands, " +
+                "reminders, and notes all live on it, so never ask which of those to use or " +
+                "mention lists in the plural. NOT for shopping: the grocery/shopping list is a " +
+                "separate short-lived trip list with its own tool, so 'add tums to the grocery " +
+                "list', 'put milk on the shopping list' and anything else naming groceries or " +
+                "shopping goes to manage_grocery - never here. A " +
                 "dated appointment (see 'kind') goes to Google Calendar instead of this list. Pass " +
                 "any date/time the driver gives on the SAME 'add' call via date/time - never add " +
                 "first and schedule in a second call, which stores an appointment with no date at " +
@@ -1429,20 +1438,47 @@ object LiveToolbox {
      * no-op), and every money/notes/media/place/core tool.
      */
     private val DISPATCHED: Map<String, List<String>> = mapOf(
+        // WRITES CAME BACK OUT, 2026-08-18 (Kevin's call, measured). Every tool below is a READ.
+        // The eight write tools this map used to hide - log_service, log_past_service,
+        // log_build_entry, log_meal, log_sleep, log_bodyweight, log_workout_set,
+        // create_workout_plan - are declared directly to the live session again.
+        //
+        // Why writes specifically, and not the whole split: both mis-routes this app has actually
+        // suffered were writes. Spoken workout sets reached `ask_goals`, which cannot log a set,
+        // and the driver was told it was recorded (2026-08-17). "Add tums to the groceries list"
+        // reached `manage_item` and landed on the persistent list (2026-08-18). A mis-routed READ
+        // costs a slightly worse answer; a mis-routed WRITE either lands in the wrong store or gets
+        // claimed and never happens, and no amount of description tuning beat a tool the model
+        // could not see. Measured cost of bringing the eight back: about 1,374 tokens of the
+        // roughly 5,700 the split saves, leaving most of the saving intact - the reads, which are
+        // the bulk of the block and the half that was never implicated, stay hidden.
+        //
+        // Consequence, and it is deliberate: `fleet` and `body` now hold no mutating tool, so
+        // [dispatchBoundaryClause] tells both sub-agents they can record NOTHING, and a write that
+        // still mis-routes into one is refused out loud instead of answered around.
         "fleet" to listOf(
             "read_vehicle_sensor", "get_vehicle_data", "get_codes", "diagnose_codes",
             "get_code_history", "check_readiness", "check_cold_start", "get_mpg", "get_specs",
             "lookup_vin", "check_recalls", "list_vehicles", "get_next_service", "ask_maintenance",
-            "triage_symptom", "list_build_history", "get_trend", "log_service", "log_past_service",
-            "log_build_entry",
+            "triage_symptom", "list_build_history", "get_trend",
         ),
         "body" to listOf(
             "list_recent_meals", "get_meal_gap", "list_recent_sleep", "get_sleep_gap",
-            "list_recent_workouts", "get_workout_gap", "get_health", "log_meal", "log_sleep",
-            "log_bodyweight", "log_workout_set", "create_workout_plan",
+            "list_recent_workouts", "get_workout_gap", "get_health",
         ),
         "goals" to listOf("list_goals", "ask_advisor"),
-        "pantry" to listOf("list_recent_groceries", "get_grocery_spend", "manage_grocery"),
+        // manage_grocery came BACK OUT of this list on 2026-08-18 and is declared directly to the
+        // live session again. Kevin said "I need to buy tums, add it to groceries list" and it
+        // landed on the persistent list; sharpening manage_item's and ask_pantry's descriptions did
+        // not fix it on a retry. The model cannot route to a tool it cannot see, and no wording on
+        // the two tools it COULD see was going to beat a tool literally named for the list the
+        // driver named. That costs one declaration's tokens on every session, which is exactly what
+        // hiding it was buying - the trade was re-made deliberately, in favour of the write landing
+        // in the right place. Consequence, and it is the point: `pantry` now holds no mutating tool
+        // at all, so dispatchBoundaryClause tells its sub-agent in as many words that it can record
+        // NOTHING, and a grocery add mis-routed to ask_pantry is refused out loud instead of being
+        // answered around.
+        "pantry" to listOf("list_recent_groceries", "get_grocery_spend"),
         "mail" to listOf("search_mail", "read_mail"),
     )
 
@@ -1495,20 +1531,22 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "ask_fleet",
-            description = "Anything about the cars: live sensor readings, trouble codes, mileage, " +
-                "specs, recalls, service history, maintenance schedules, or the build log. Ask a " +
+            description = "READING anything about the cars: live sensor readings, trouble codes, " +
+                "mileage, specs, recalls, service history, maintenance schedules, or the build " +
+                "log. Read-only - it records NOTHING. Recording work that was done is " +
+                "log_service, log_past_service or log_build_entry, never here. Ask a " +
                 "plain-English question; the answer comes back as text to speak.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
         fns.put(fn(
             name = "ask_body",
-            description = "The driver's own body and training, and the ONLY route that can record " +
-                "any of it: logging a workout set (lift, weight, reps), a meal, a night's sleep, " +
-                "or a weigh-in, building a workout plan, and reading back recent meals, sleep, " +
-                "workouts or bodyweight and how today or this week compares to target. Anything " +
-                "the driver phrases as having just eaten, slept, lifted, weighed in, or done a " +
-                "set belongs here, including when they frame it as progress toward a goal. Ask a " +
+            description = "READING BACK the driver's own body and training: recent meals, sleep, " +
+                "workouts or bodyweight, and how today or this week compares to target. " +
+                "Read-only - it records NOTHING. Anything the driver phrases as having just " +
+                "eaten, slept, lifted or weighed in is a RECORD and goes to the named tool for " +
+                "it - log_meal, log_sleep, log_workout_set, log_bodyweight, create_workout_plan - " +
+                "never here, including when they frame it as progress toward a goal. Ask a " +
                 "plain-English question; the answer comes back as text to speak.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
@@ -1518,17 +1556,21 @@ object LiveToolbox {
             description = "The driver's long-term goals and a domain advisor's coaching, and " +
                 "nothing else: listing the goals currently set, or asking an advisor to reason " +
                 "about progress and what to do next. Advice and reading only - it records NOTHING. " +
-                "A workout, meal, sleep or weigh-in goes to ask_body even when the driver mentions " +
-                "a goal in the same breath; car service goes to ask_fleet; groceries to " +
-                "ask_pantry; and setting or closing a goal is set_goal/close_goal, not this. Ask a " +
+                "A workout, meal, sleep or weigh-in is a RECORD and goes to its own named log tool " +
+                "(log_workout_set, log_meal, log_sleep, log_bodyweight) even when the driver " +
+                "mentions a goal in the same breath; reading about the cars goes to ask_fleet; " +
+                "groceries to manage_grocery; and setting or closing a goal is " +
+                "set_goal/close_goal, not this. Ask a " +
                 "plain-English question; the answer comes back as text to speak.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
         ))
         fns.put(fn(
             name = "ask_pantry",
-            description = "Anything about groceries: recently logged items and their estimated " +
-                "macros, total grocery spend by currency, or the current shopping trip list. Ask a " +
+            description = "Grocery HISTORY and spending: items logged from past receipts with " +
+                "their estimated macros, and total grocery spend by currency. Read-only - it " +
+                "records nothing and cannot touch the shopping list. Adding to, ticking off, or " +
+                "reading back the CURRENT shopping trip is manage_grocery, not this. Ask a " +
                 "plain-English question; the answer comes back as text to speak.",
             params = DISPATCHER_PARAMS,
             required = listOf("question"),
@@ -1629,26 +1671,38 @@ object LiveToolbox {
     // functions: AssistantIdentity's compressed sub-agent clause, plus what this particular
     // investigate loop is for and how to use the tools it's handed. Kept short - this text is
     // billed on every dispatcher call, not just once like the live setup block.
+    //
+    // Every one of them ends with Priming.dispatchClause, which is the empty string for a domain
+    // that reads no doctrine (goals/pantry/mail today - see Priming.topicForDispatchDomain for why
+    // each of those is a decision and not a hole) and the driver's own playbook plus the
+    // basis-honesty clause for one that does. Appended to all five rather than only to the two
+    // that are primed today so re-routing a domain is a one-line change in Priming, not a hunt
+    // through this file - and so the token cost of a playbook is visible in exactly one place.
+    // A primed domain is materially more expensive: the playbook rides EVERY model call in the
+    // bounded investigate loop (up to four), not once per dispatch.
 
     private fun fleetDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are reasoning about the driver's cars using the tools you're given: live sensor " +
         "readings, trouble codes, mileage, specs, recalls, service history, and maintenance " +
         "scheduling and logging. Pull only what would change your answer, then answer in plain " +
         "spoken text, no markdown." +
-        dispatchBoundaryClause("fleet")
+        dispatchBoundaryClause("fleet") +
+        Priming.dispatchClause(context, "fleet")
 
     private fun bodyDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are reasoning about the driver's meals, sleep, workouts, and bodyweight using the " +
         "tools you're given. Calorie and macro figures are LLM estimates, never measured - always " +
         "phrase them as estimates, never as fact. Pull only what would change your answer, then " +
         "answer in plain spoken text, no markdown." +
-        dispatchBoundaryClause("body")
+        dispatchBoundaryClause("body") +
+        Priming.dispatchClause(context, "body")
 
     private fun goalsDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are reasoning about the driver's long-term goals and, when asked, handing off to a " +
         "domain advisor for grounded coaching or planning advice using the tools you're given. " +
         "Pull only what would change your answer, then answer in plain spoken text, no markdown." +
-        dispatchBoundaryClause("goals")
+        dispatchBoundaryClause("goals") +
+        Priming.dispatchClause(context, "goals")
 
     private fun pantryDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are reasoning about the driver's groceries using the tools you're given: recently " +
@@ -1656,13 +1710,15 @@ object LiveToolbox {
         "shopping trip list. Macro/calorie figures are estimates, never measured - phrase them " +
         "that way. Pull only what would change your answer, then answer in plain spoken text, no " +
         "markdown." +
-        dispatchBoundaryClause("pantry")
+        dispatchBoundaryClause("pantry") +
+        Priming.dispatchClause(context, "pantry")
 
     private fun mailDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are searching and reading the driver's Gmail using the tools you're given. " +
         "Read-only - you cannot send, reply to, or delete mail. Pull only what would change your " +
         "answer, then answer in plain spoken text, no markdown." +
-        dispatchBoundaryClause("mail")
+        dispatchBoundaryClause("mail") +
+        Priming.dispatchClause(context, "mail")
 
     /**
      * Runs a tool call. Returns a JSON response to hand back to Gemini, or null
@@ -1694,7 +1750,7 @@ object LiveToolbox {
             refuseIfNotConnectedCar(context, args)?.let { return it }
         }
         return when (name) {
-            "get_vehicle_data" -> getVehicleData(args.optString("metric"))
+            "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
             "get_codes" -> getCodes(context)
             "get_current_time" -> getCurrentTime()
             "diagnose_codes" -> diagnoseCodes(context, args)
@@ -1786,7 +1842,7 @@ object LiveToolbox {
                     mutatingToolNames = mutatingToolsFor("mail"),
                 )
             }
-            "get_health" -> getHealth()
+            "get_health" -> getHealth(context)
             "get_trend" -> withResolvedVehicle(context, args) { getTrend(context, args, it.obdMac) }
             "get_mpg" -> withResolvedVehicle(context, args) { getMpg(context, it) }
             "check_readiness" -> checkReadiness()
@@ -4322,7 +4378,7 @@ object LiveToolbox {
         val readings = StringBuilder()
         var codes = emptyList<String>()
         if (ObdBluetoothManager.isConnected) {
-            ObdBluetoothManager.getCoolantTemp()?.let { readings.append("coolant ${it}C (${it * 9 / 5 + 32}F); ") }
+            ObdBluetoothManager.getCoolantTemp()?.let { readings.append("coolant ${Temp.text(context, it.toDouble())} (driver's unit, already converted - do not convert again); ") }
             ObdBluetoothManager.getRpm()?.let { readings.append("RPM $it; ") }
             ObdBluetoothManager.getBatteryVoltage()?.let { readings.append("battery ${"%.1f".format(it)}V; ") }
             codes = ObdBluetoothManager.getDtcCodes()
@@ -4338,7 +4394,7 @@ object LiveToolbox {
      * the raw readings plus any obvious concern flags for Zero to phrase; the
      * model interprets and speaks them in character.
      */
-    private suspend fun getHealth(): JSONObject {
+    private suspend fun getHealth(context: Context): JSONObject {
         if (!ObdBluetoothManager.isConnected) {
             return JSONObject().put("connected", false)
                 .put("note", "OBD adapter not connected; tell the driver to check it's plugged in.")
@@ -4346,16 +4402,17 @@ object LiveToolbox {
         val coolant = ObdBluetoothManager.getCoolantTemp()
         val voltage = ObdBluetoothManager.getBatteryVoltage()
         val codes = ObdBluetoothManager.getDtcCodes()
+        val coolantUnit = Temp.unit(context)
 
         val concerns = JSONArray()
         if (voltage != null && voltage < LOW_VOLTAGE) concerns.put("Battery voltage is low (${"%.1f".format(voltage)}V) - it may be weak or not charging.")
-        if (coolant != null && coolant >= HOT_COOLANT_C) concerns.put("Coolant is running hot (${coolant}C).")
+        if (coolant != null && coolant >= HOT_COOLANT_C) concerns.put("Coolant is running hot (${Temp.text(context, coolant.toDouble())}).")
         if (codes.isNotEmpty()) concerns.put("${codes.size} stored trouble code(s): ${codes.joinToString(", ")}.")
         val healthSummary = if (concerns.length() == 0) "Everything reads normal - no codes, voltage and temperature look fine." else null
 
         val glanceRows = buildList {
             if (voltage != null) add(GlanceRow("Battery", "${"%.1f".format(voltage)}V"))
-            if (coolant != null) add(GlanceRow("Coolant", "${coolant}°C"))
+            if (coolant != null) add(GlanceRow("Coolant", Temp.text(context, coolant.toDouble())))
             for (i in 0 until concerns.length()) add(GlanceRow("Note", concerns.getString(i)))
         }
         GlanceCardController.show(
@@ -4370,7 +4427,7 @@ object LiveToolbox {
 
         return JSONObject().put("connected", true).apply {
             if (voltage != null) put("batteryVolts", voltage)
-            if (coolant != null) put("coolantC", coolant).put("coolantF", coolant * 9 / 5 + 32)
+            if (coolant != null) put("coolant", Temp.convert(coolant.toDouble(), coolantUnit)).put("coolantUnit", coolantUnit.symbol)
             put("storedCodeCount", codes.size)
             put("concerns", concerns)
             if (healthSummary != null) put("summary", healthSummary)
@@ -4748,7 +4805,7 @@ object LiveToolbox {
         }
     }
 
-    private suspend fun getVehicleData(metric: String): JSONObject {
+    private suspend fun getVehicleData(context: Context, metric: String): JSONObject {
         if (!ObdBluetoothManager.isConnected) {
             return JSONObject().put("connected", false)
                 .put("note", "OBD adapter not connected; tell the driver to check it's plugged in.")
@@ -4786,7 +4843,8 @@ object LiveToolbox {
             }
             "coolant_temp" -> {
                 val c = ObdBluetoothManager.getCoolantTemp()
-                reading(0x05, c) { put("celsius", c).put("fahrenheit", c!! * 9 / 5 + 32) }
+                val unit = Temp.unit(context)
+                reading(0x05, c) { put("temperature", Temp.convert(c!!.toDouble(), unit)).put("temperatureUnit", unit.symbol) }
             }
             "rpm" -> {
                 val rpm = ObdBluetoothManager.getRpm()
@@ -4810,7 +4868,8 @@ object LiveToolbox {
             }
             "intake_air_temp" -> {
                 val iat = ObdBluetoothManager.getIntakeAirTemp()
-                reading(0x0F, iat) { put("celsius", iat).put("fahrenheit", iat!! * 9 / 5 + 32) }
+                val unit = Temp.unit(context)
+                reading(0x0F, iat) { put("temperature", Temp.convert(iat!!.toDouble(), unit)).put("temperatureUnit", unit.symbol) }
             }
             "maf" -> {
                 val maf = ObdBluetoothManager.getMaf()
