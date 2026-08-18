@@ -74,6 +74,7 @@ app/src/debug/assets/midnight_import/
 
 # Obsidian: share the vault config, not the per-machine window layout
 .obsidian/workspace*.json
+.obsidian/appearance.json
 .obsidian/cache
 .obsidian/plugins/
 .obsidian/themes/
