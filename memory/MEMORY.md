@@ -25,7 +25,7 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
     mission-control motion vocabulary was dormant. **That motion has never been observed by anyone,
     on any device, and it is now running.** Treat as untested, not as shipped-and-fine.
 - **SIX domains: fleet, ledger, pantry, body, notes/lists/calendar, plus goals/advisors.** Tabs:
-  Today, Money, Body, Fleet, Notes, Setup. **1481 unit tests, 2 FAILING** (2026-08-17) - both
+  Today, Money, Body, Fleet, Notes, Setup. **1485 unit tests, 2 FAILING** (2026-08-17) - both
   `BioDigestBuilderTest`, proven pre-existing by running that class alone at HEAD in a clean
   worktree. The old "1474 green" line was wrong. **The suite is NOT green. Do not claim it is.**
 - **Room is v25.** v24->v25 indexed `obd_samples` on `(vehicleId, pid, timestamp)` - the table had
@@ -71,9 +71,15 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
   - **CAUSE FOUND 2026-08-17 and fixed in `80a1758`:** nothing started `AriaForegroundService`
     except the Settings toggle - not app launch, not boot - so after any reboot or process death
     the assistant was dead while every surface read On. The 12h run proved it SURVIVES once
-    started (same pid, same starttime, 6% battery over 7h53m, bucket still 10). **The fix has not
-    survived a real reboot yet**; the process-importance check that decides the mic type is
-    `reasoned` from the platform docs, not measured. See `.scratch/proactive-mode/research/`.
+    started (same pid, same starttime, 6% battery over 7h53m, bucket still 10).
+    **THE REBOOT WAS DONE 2026-08-17 AND THE FIX HELD** - the service came up from `BootReceiver`
+    (`tempAllowListReason: BOOT_COMPLETED`, callingUid 1000, `startForegroundCount=1`,
+    `isForeground=true`, nothing thrown), `on-device`. **Still unverified: whether the boot start
+    omits the microphone FGS type** as the commit claims - LEGION was open on screen, so
+    `types=0x91` may be `MainActivity.onResume`'s promotion. Needs a reboot nobody opens the app
+    after. **NEW: that same record showed `startForegroundDelayMs:123489`** - 123s against a 10s
+    platform window, a latent fatal `ForegroundServiceDidNotStartInTimeException`; ticket
+    `.scratch/proactive-mode/issues/09-fgs-start-delay.md`. See `.scratch/proactive-mode/research/`.
 - **Compose previews have never been rendered**, any screen, ever - now including `CarProbeScreen`
   and `ExcludedOwnAccountMovementsScreen`. `assets/dtc_descriptions_seed.json` has NEVER existed.
   The 30 voice clips have never been HEARD.
@@ -84,6 +90,25 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
   screen only, never aloud.
 
 ## In-flight
+
+**THE DISPATCHERS BROKE MEAL LOGGING, FOUND BY KEVIN IN USE 2026-08-17, FIXED AND VERIFIED.**
+He asked it to log meals; the UI sat on "Listening..." for ~5 minutes and wrote nothing.
+- **`b1868d8` moved `log_meal` behind `ask_body` -> `SubAgent.investigate`**, so a blocking HTTP call
+  nested inside another blocking HTTP call. **`ai/SubAgent.kt.postOnce` was not `suspend`**, and
+  Kotlin cancellation is cooperative, so **all three timeouts above it were inert** (AgentTool 8s,
+  investigate 30s, `handleToolCall` 45s). A timeout is only real if the thing under it suspends.
+- **`handleToolCall` was the only `handleEvent` branch that never set a `Phase`**, so every tool call
+  rendered as "Listening...". The user-visible bug and the real bug were two separate defects.
+- **PROOF the dispatched path had NEVER worked:** `meal_logs` held 7 rows, newest 08:38 that day;
+  `b1868d8` was authored 09:21 the same day. Not one row ever written through `ask_body`.
+- Fixed in `18e0582` (real cancellation via `disconnect()` on cancel), `57ed400` (`Phase.THINKING` /
+  "Working..." refcounted across concurrent calls, 5 new tests), `170a76c` (`sendToolResponse`
+  returns the socket `send()` boolean and surfaces a dropped response).
+- **VERIFIED `on-device`** on a hash-verified install: same request re-spoken, rows 8 and 9 written
+  in the same second, so two `log_meal` calls in one round both wrote. **`170a76c` is unexercised** -
+  it needs a socket death mid-tool-call.
+- **The lesson that generalises: `b1868d8` was a cost fix measured only by declaration COUNT.** It
+  changed the execution shape of 25 tools and no write path was run before it was trusted.
 
 **HANDS AND SENSES TRIAGED, 2026-08-16 (session 9).** Map `.scratch/hands-and-senses/`. Five of
 nine ticket-sized items closed WITHOUT being answered; **only ticket 01 produced code**. Full
@@ -248,6 +273,15 @@ switch, nothing exempt**, `CrisisDetector` untouched.
 - **Device quirks:** logcat filters the app's own logs (surface diagnostics in the UI); `adb push` to
   `/data/local/tmp` is OEM-blocked, route via `/sdcard`; no `sqlite3` on device - pull the file;
   `pm clear` OEM-blocked; unsigned `.ps1` refused; `uiautomator dump` serves STALE content.
+- **Git Bash mangles every device path** (`/data/...` becomes `C:/...Git/data/...`) - export
+  `MSYS_NO_PATHCONV=1`. Hit again 2026-08-17 on `run-as cat`; the proactive-mode ticket 07
+  resolution already blamed this for the `/data/local/tmp` line above, so treat that line as suspect.
+- **Wireless adb does NOT survive a reboot** (Samsung turns the toggle off) and drops on its own.
+  When the host lists nothing but the phone says debugging is on, `adb kill-server && adb start-server`
+  re-runs mDNS and finds it; `adb reconnect` did not. The port changes every time.
+- **Pull the DB WITH its `-wal` and `-shm`** into one directory (three `adb exec-out run-as ... cat`),
+  then read it with host `python3`'s `sqlite3` - it replays the WAL, so uncheckpointed writes show up.
+  There is no `sqlite3` binary on the host or the device.
 - **Real statements: copy in, run, DELETE.** Never commit money data; fixtures are invented.
 
 ## Library + how to update this file
