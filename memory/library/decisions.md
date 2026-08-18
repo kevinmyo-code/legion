@@ -4040,3 +4040,30 @@ reads the OS animator scale and is a live accessibility path, not a dead constra
 frame was aligned to UPLINK earlier the same day on a "screens match screens" argument, **without
 checking the driving screen** - which is the third screen and renders `177 F` where the other two
 render Celsius. The fix was right locally and asserted a consistency that did not exist.
+
+## 2026-08-17 - Meal-logging hang: timeout is not real without suspension (feat/mission-control, BUILT)
+
+**Event:** 2026-08-17, Kevin spoke a request to log several meals (he reported it mid-session; the exact clock time was never established, and the last meal row before the fix is 08:38). UI sat on "Listening..." ~5 minutes, nothing logged. Reported same session. [on-device, user-reported]
+
+**Root chain:** Commit b1868d8 (same morning, 09:21) put five domains behind ask_<domain> dispatchers to cut the re-billed Live setup block from 79 declarations to 45. That moved log_meal out of a flat live tool and behind ask_body -> SubAgent.investigate (maxModelCalls 4), and each round's log_meal makes its OWN nested blocking SubAgent.ask for the macro estimate. **Blocking HTTP nested inside blocking HTTP, with every governing timeout inert per L29.**
+
+**Proof the dispatched path had never worked:** meal_logs held 7 rows, newest 2026-08-17 08:38, and b1868d8 was authored 09:21 the same day. Not one row written through ask_body. [on-device, DB pulled off the phone and queried with WAL]
+
+**Three fixes committed on feat/mission-control, not pushed:**
+- 18e0582: SubAgent.postOnce now suspend fun with withContext(Dispatchers.IO) + coroutineContext.job.invokeOnCompletion { connection.disconnect() }. Cancellation force-closes the socket instead of waiting cooperatively on blocked I/O. L29 rule. [built]
+- 57ed400: Phase.THINKING/"Working..." during a tool call, refcounted for concurrent calls in one turn, 5 new passing unit tests. L30 rule. [built, tested]
+- 170a76c: sendToolResponse returns the OkHttp send boolean; a response sent into a dead socket now logs and shows "CONNECTION LOST - TAP TO RETRY" in conversation mode only. [built; untested - needs socket death mid-tool-call]
+
+**Verification after fix:** same request re-spoken on a hash-verified install (75a78f6c...), meal_logs rows 8 and 9 written at 19:08:42, both in the same second (two log_meal calls in one investigate round). trustTier REPORTED, macro estimates recorded. [on-device]
+
+**Standing implication:** b1868d8 was a cost fix that was never exercised against a real write path before being trusted. The dispatcher rewiring changed the execution shape of 25 tools and only the declaration COUNT was measured. **No tool-domain write path was regression-tested when it moved from a flat tool to a dispatched-SubAgent path.** The suite was green across that change and stayed green while the path was dead - the hang lives in cancellation semantics against a real socket, which no unit test in this repo exercises.
+
+### Assumptions ledger
+
+| Claim | Tag |
+|---|---|
+| ask_body dispatcher never written through before b1868d8 | **`on-device`** - DB pulled and queried; row 7 at 08:38, commit at 09:21, row 8 at 19:08 after fix |
+| All three timeouts were present but inert | **`traced`** - AgentTool.timeoutMs (8s), SubAgent.investigate budgetMs (30s), LiveSessionController.handleToolCall withTimeoutOrNull (45s), all readable in commits 18e0582/57ed400 diffs |
+| Nested HTTP is the real timeout ceiling | **`traced`** - connectTimeout 15s/readTimeout 30s per attempt times one retry, all in HttpURLConnection constructor and call, readable from fix commit diff |
+| Fix 3 (sendToolResponse dead-socket detection) unexercised | **`untested`** - it needs a socket death mid-tool-call, which was never produced |
+| Suite (1485 tests, 2 pre-existing failures) | **`built`** - `./gradlew testDebugUnitTest` passed; BioDigestBuilderTest failures pre-date these fixes |

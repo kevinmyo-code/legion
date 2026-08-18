@@ -680,3 +680,35 @@ correctly, since `createSql` already carries backticks around `${TABLE_NAME}`.
 database.
 
 **Status:** CLOSED. See [[L23]] for the WAL-file discipline this builds on.
+
+## L29 - A timeout wrapped around blocking Java I/O is not a timeout (2026-08-17)
+
+**Context:** feat/mission-control, commits 18e0582 / 57ed400 / 170a76c. Three nested timeout layers sat above a non-suspending HttpURLConnection call in `SubAgent.postOnce` (Java socket-blocking I/O). Kotlin cancellation is cooperative, so a thread parked in Java socket I/O ignores it. The three timeouts were all present, named, and commented: AgentTool.timeoutMs (8s for dispatched body tools), SubAgent.investigate's 30s budgetMs, and LiveSessionController.handleToolCall's 45s withTimeoutOrNull. **All three were inert.** The real ceiling was connectTimeout 15s / readTimeout 30s per attempt times one retry, and nested HTTP inside HTTP in a tool dispatch chain added up to 45+ seconds of potential hang before they fired.
+
+**Discovery:** meal-logging hung for ~5 minutes on feat/mission-control after commit b1868d8 put five domains (including body domain with log_meal) behind ask_<domain> dispatchers. The hang chain: ask_body -> SubAgent.investigate -> log_meal -> nested SubAgent.ask for macro estimate, each blocking HTTP without a real timeout guard. No build flag caught it; the dispatchers had never been run against a real write path before b1868d8 trusted them.
+
+**Fix:** suspend fun wrapper + withContext(Dispatchers.IO) + coroutineContext.job.invokeOnCompletion { connection.disconnect() }. On cancellation, the invokeOnCompletion handler force-closes the socket, waking the blocked thread. [traced, then proven by the fix working on-device]
+
+**Root class:** non-suspending I/O. A timeout is only real if the thing under it suspends. Kotlin cancellation cannot interrupt Java blocking calls.
+
+**Rule:** When wrapping withTimeoutOrNull around anything that reaches java.net (HttpURLConnection, Socket, etc.), verify the call suspends or make cancellation force the socket shut. A timeout that depends on cooperative cancellation and a blocking call is a lie on both ends. This is load-bearing for any SubAgent dispatch that talks to a network service.
+
+**Regression check:** SubAgent.postOnce or any similar method that wraps java.net calls, verified as suspend fun or verified as having a socket-close on cancellation.
+
+**Status:** CLOSED. Rule recorded here. Commit 18e0582 converted postOnce to suspend + withContext(Dispatchers.IO), with explicit socket close on cancellation. Also landed commit 57ed400 (Phase.THINKING during tool calls) as a dependent fix to the meal-logging hang defect.
+
+## L30 - A long operation with no phase change reads as a dead app (2026-08-17)
+
+**Context:** same session/commits as L29. LiveSessionController.handleToolCall was the only branch of handleEvent that never called set(Phase,...). Phase stayed on whatever TurnComplete left, which is LISTENING/"Listening...". So every tool call, however long (30s meal-logging investigations, 45s timeout boundaries), rendered as "Listening..." the whole time.
+
+**Discovery:** user report "stuck at listening and didnt do anything for like 5 minutes." The app was working (meal logs wrote correctly once the timeout bug was fixed), but every user-visible signal said it was hung.
+
+**Fix:** set(Phase.THINKING) at the start of a tool call, with reference counting because multiple tools can run in one turn. The conversation UI now shows "Working..." during tool invocation. Commit 57ed400: Phase.THINKING handling, five new unit tests for concurrent tool calls (the concurrent case was untested in the first code).
+
+**Root class:** UI feedback. A synchronous operation feels instant; a long async operation without intermediate feedback feels like a hang.
+
+**Rule:** every branch of a state machine that can take more than ~500ms must emit a phase or progress update. If an operation is long, signal it. A tool dispatch is fundamentally long (network+LLM calls) and must change state to signal it is not hung.
+
+**Regression check:** a handleEvent branch that calls an async operation without an intermediate phase change, or a tool invocation that does not set a THINKING/WORKING state.
+
+**Status:** CLOSED. Rule recorded here. Commit 57ed400 graduated the rule into code: Phase.THINKING handling in LiveSessionController with reference-counted concurrent calls.
