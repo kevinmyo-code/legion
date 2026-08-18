@@ -119,7 +119,8 @@ sealed interface LiveEvent {
  *    and we run it half-duplex - the mic is muted while Zero speaks (so he
  *    doesn't hear himself through the head-unit speakers and interrupt himself)
  *    and reopened the moment he finishes, then the chat ends after
- *    [IDLE_TIMEOUT_MS] of driver silence.
+ *    [IDLE_TIMEOUT_MS] of silence - **speak-only sessions only**; a hands-free
+ *    conversation waits indefinitely, see [armIdleTimeout].
  *  - **Speak-only** (`vad = false`): the proactive engine injects a line via
  *    [sendText]; Zero speaks it and the mic never opens.
  *
@@ -171,13 +172,19 @@ class GeminiLiveSession(
     // socket. Only meaningful when [keepWarm] is on (the tap-driven chat path).
     private val warm = AtomicBoolean(false)
     @Volatile private var keepWarm = false
-    // How long the driver can go quiet before armIdleTimeout() closes/parks the
-    // session (see its doc). Configurable per-[start] call: onboarding needs a
-    // much longer grace period than routine command-response turns - the main
-    // app's default (IDLE_TIMEOUT_MS, 10s) was being hit by completely normal
-    // "let me think about that" pauses during open-ended onboarding questions
+    // How long a SPEAK-ONLY session waits before armIdleTimeout() closes it (see
+    // its doc). Configurable per-[start] call: onboarding needs a much longer
+    // grace period than routine command-response turns - the main app's default
+    // (IDLE_TIMEOUT_MS, 10s) was being hit by completely normal "let me think
+    // about that" pauses during open-ended onboarding questions
     // (name/personality/car trim), and ConversationalOnboardingScreen's ChatStep
     // was treating that benign timeout exactly like a real network failure.
+    //
+    // **That finding was right and its fix was never applied where it mattered.**
+    // No caller has ever passed this parameter, so hands-free conversation ran on
+    // the same 10 seconds and died on the same benign pauses - on a drive, where
+    // they are more frequent, not less. A conversation no longer consults this at
+    // all (Kevin, 2026-08-18); it waits until the driver ends it.
     @Volatile private var idleTimeoutMs = IDLE_TIMEOUT_MS
     @Volatile private var conversationActive = false
     private var warmHoldJob: Job? = null
@@ -963,12 +970,26 @@ class GeminiLiveSession(
                     suppressMicNextTurn = false
                     parkWarm()
                 }
-                // Conversation: hand the mic back and wait for the driver's reply;
-                // stay ducked through the chat. The idle timer below either parks
-                // the socket warm (keepWarm) or closes it after the driver's quiet.
+                // Conversation: hand the mic back and wait for the driver's reply,
+                // stay ducked through the chat, and WAIT INDEFINITELY.
+                //
+                // **No idle timer here (Kevin, 2026-08-18).** This branch used to arm
+                // one, and a 10s quiet spell parked the socket, stopped the mic and put
+                // the strip back to "Tap to talk" with nothing said about it. On a drive
+                // that is a normal pause - a mirror check, a merge, finishing a thought -
+                // so the conversation appeared to "drop after 3 turns". The identical
+                // failure had already been found once during onboarding and fixed with
+                // the per-session [idleTimeoutMs] override (see its own comment); no
+                // caller ever passed one, so every conversation still ran on 10 seconds.
+                //
+                // A hands-free conversation now ends only when the driver ends it
+                // (tapping the strip: LiveSessionController.onTap's `inConversation ->
+                // stop()`), when the socket dies (which flashes a notice), or on the
+                // crisis path. Any timer left armed from a previous turn is cancelled so
+                // a stale one cannot fire mid-chat.
                 vadMode -> {
+                    idleJob?.cancel(); idleJob = null
                     openMicForUser()
-                    armIdleTimeout()
                 }
                 // Cold speak-only proactive: bring music back, then close shortly.
                 else -> {
@@ -1634,21 +1655,23 @@ class GeminiLiveSession(
     // --- Idle auto-close -------------------------------------------------
 
     /**
-     * After a completed turn, close the session if the driver doesn't speak
-     * again within [IDLE_TIMEOUT_MS]. In conversation mode this is what ends the
-     * hands-free chat once the driver goes quiet; it also bounds the cloud mic
-     * stream (and cost) to active conversation. Cancelled the moment the driver's
-     * input transcript starts arriving (see handleServerContent).
+     * Close a **speak-only** session if nothing follows within [idleTimeoutMs].
+     *
+     * **This no longer governs hands-free conversation** (Kevin, 2026-08-18) - see the
+     * `vadMode` branch of the turn-complete handler for why a conversation now waits
+     * indefinitely instead. The only remaining caller is the cold proactive branch,
+     * where [vadMode] is false, there is no mic open, and nothing is worth keeping warm
+     * for: the companion said its line and the socket should go.
+     *
+     * Cancelled the moment the driver's input transcript starts arriving (see
+     * handleServerContent), and by the conversation branch above.
      */
     private fun armIdleTimeout() {
         idleJob?.cancel()
         idleJob = io.launch {
             delay(idleTimeoutMs)
             if (!running.get()) return@launch
-            // Conversation that went quiet: keep the socket warm for a quick
-            // resume if we can, otherwise close. Cold speak-only sessions always
-            // close (nothing to keep warm for).
-            if (keepWarm && vadMode) parkWarm() else closeSession("idle")
+            closeSession("idle")
         }
     }
 
