@@ -263,6 +263,18 @@ switch, nothing exempt**, `CrisisDetector` untouched.
 
 ## Notes for next session
 
+- **TRAINING revamp is charted WEEK-FIRST (Kevin, 2026-08-17, chosen against previews):** weekly
+  plan-vs-actual meters per lift lead the face, last session's sets below. Run `/wayfinder` for the
+  map; it is user-invoke-only, so an agent cannot chart it.
+- **The recommendation engine is an EFFORT, deferred (Kevin, 2026-08-17).** His want, verbatim: "a
+  daily to do checklist of workouts etc. based on recommendation engine". It is NOT part of the
+  TRAINING revamp - it needs its own map (recommendation inputs, how a recommendation is labelled
+  so it never reads as fact, and the write path implied by ticking an item off, which collides with
+  the read-mostly posture). Do not let it ride along inside a screen ticket.
+- **Blocking trap for any per-exercise meter:** logged names are lowercase free text ("leg press"),
+  plan names are titlecase ("Leg Press"), and NOTHING joins them today. Measure the matching against
+  real rows before designing on top of it.
+
 - **Four bugs this session were found by LOOKING AT THE DATA, none by 955 tests.** Same shape as
   L15: each component individually correct, wrong in aggregate. Pull the DB and query it.
 - **A decision put to Kevin twice, with numbers in between, beat the first answer.** He first chose
