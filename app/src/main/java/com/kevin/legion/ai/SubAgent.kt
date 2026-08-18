@@ -207,11 +207,27 @@ class SubAgent(
     }
 
     /**
-     * Tool-using investigation loop. Runs up to [maxModelCalls] model POSTs
-     * (the last is a forced answer-only round with function calling disabled),
-     * within a whole-loop [budgetMs] deadline. Between rounds it executes the
-     * [AgentTool]s the model requested and feeds the results back. Returns a
-     * typed [AgentResult].
+     * Tool-using investigation loop. Runs up to [maxModelCalls] model POSTs, within a whole-loop
+     * [budgetMs] deadline. Between rounds it executes the [AgentTool]s the model requested and
+     * feeds the results back. Returns a typed [AgentResult].
+     *
+     * [mutatingToolNames] (2026-08-17) names, among [tools], the ones that WRITE - the caller's own
+     * knowledge, since [AgentTool] itself carries no such flag (see [AgentTool]'s doc comment: it
+     * was written for the read-only case and never grew one). Defaulted to `emptySet()` so every
+     * caller that predates this parameter (every one as of this fix) is byte-identical: nothing is
+     * tracked, [AgentResult.Success.mutatingToolsCalled] comes back empty either way. The loop
+     * itself never decides whether a write was REQUIRED - see [AgentResult.Success]'s doc comment
+     * for why that decision stays with the caller.
+     *
+     * Round budgeting (2026-08-17 fix, "the forced-answer trap"): the OLD shape forced
+     * `functionCallingConfig.mode = "NONE"` on round [maxModelCalls] itself, so a loop that had
+     * spent its whole budget on read tools physically could not call a write tool on its last
+     * round - it could only ever answer in prose, and prose claiming "logged it" is exactly what
+     * reached the driver with nothing written. Tools now stay enabled through round
+     * [maxModelCalls] (nudged, same as before, to wrap up); ONLY if the model still isn't done by
+     * then does round `maxModelCalls + 1` force a tool-free answer as the true backstop. This
+     * spends at most one extra POST, only when the model is still mid-call at the old cutoff -
+     * a normal answer at or before round [maxModelCalls] costs exactly what it always did.
      */
     suspend fun investigate(
         context: String,
@@ -219,9 +235,11 @@ class SubAgent(
         tools: List<AgentTool>,
         maxModelCalls: Int = 4,
         budgetMs: Long = 30_000,
+        mutatingToolNames: Set<String> = emptySet(),
     ): AgentResult = withContext(Dispatchers.IO) {
-        withTimeoutOrNull(budgetMs) { runInvestigation(context, question, tools, maxModelCalls) }
-            ?: AgentResult.Failed
+        withTimeoutOrNull(budgetMs) {
+            runInvestigation(context, question, tools, maxModelCalls, mutatingToolNames)
+        } ?: AgentResult.Failed
     }
 
     private suspend fun runInvestigation(
@@ -229,9 +247,15 @@ class SubAgent(
         question: String,
         tools: List<AgentTool>,
         maxModelCalls: Int,
+        mutatingToolNames: Set<String>,
     ): AgentResult {
         val toolsByName = tools.associateBy { it.name }
         val declarations = AgentProtocol.declarations(tools)
+        // The loop's own record of which mutating tools it actually dispatched, in call order -
+        // never read from MidnightEvents or any other side channel (this file's own state, per
+        // the brief: the loop is the one place that KNOWS a call was really made, not merely
+        // requested by the model or claimed in its prose).
+        val mutatingToolsCalled = mutableListOf<String>()
 
         val contents = JSONArray().put(
             JSONObject()
@@ -245,7 +269,10 @@ class SubAgent(
         var postNumber = 0
         while (true) {
             postNumber++
-            val forceAnswer = postNumber >= maxModelCalls
+            // See this fun's doc comment: the hard tool-free cutoff is now maxModelCalls + 1, not
+            // maxModelCalls, so a write that was still outstanding at the old cutoff gets one more
+            // real chance to run instead of being forced straight to prose.
+            val forceAnswer = postNumber > maxModelCalls
 
             val body = JSONObject().apply {
                 if (systemInstruction.isNotBlank()) {
@@ -273,7 +300,11 @@ class SubAgent(
             val calls = AgentProtocol.functionCalls(json)
             if (calls.isEmpty() || forceAnswer) {
                 val text = AgentProtocol.answerText(json)
-                return if (text != null) AgentResult.Success(text) else AgentResult.Failed
+                return if (text != null) {
+                    AgentResult.Success(text, mutatingToolsCalled = mutatingToolsCalled.toList())
+                } else {
+                    AgentResult.Failed
+                }
             }
 
             // Echo the model turn verbatim (parts may carry thoughtSignature).
@@ -289,8 +320,14 @@ class SubAgent(
                 } else {
                     try {
                         val out = withTimeoutOrNull(tool.timeoutMs) { tool.run(call.args) }
-                        if (out != null) JSONObject().put("result", out)
-                        else JSONObject().put("error", "timed out")
+                        if (out != null) {
+                            // Only recorded on a completed, non-throwing run - a timeout below
+                            // falls into the "timed out" branch, never marked as called.
+                            if (call.name in mutatingToolNames) mutatingToolsCalled.add(call.name)
+                            JSONObject().put("result", out)
+                        } else {
+                            JSONObject().put("error", "timed out")
+                        }
                     } catch (e: Exception) {
                         JSONObject().put("error", e.message ?: "tool failed")
                     }
@@ -298,7 +335,11 @@ class SubAgent(
                 results.add(AgentProtocol.ToolResult(call.name, call.id, response))
             }
 
-            // If the NEXT post is the forced-answer round, nudge now.
+            // Unchanged timing from before this fix: the nudge starts feeding into round
+            // maxModelCalls - what used to BE the forced, tool-free round and is now instead the
+            // last tool-enabled round (see this fun's doc comment). The model still hears "wrap
+            // up" at the same point it always did; it just isn't physically barred from using
+            // that round to actually finish an outstanding write.
             val nudge = if ((postNumber + 1) >= maxModelCalls) "Answer now with what you have." else null
             contents.put(AgentProtocol.functionResponseContent(results, nudge))
         }

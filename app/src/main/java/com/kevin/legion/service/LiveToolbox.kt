@@ -1549,6 +1549,19 @@ object LiveToolbox {
         }
     }
 
+    /**
+     * [domain]'s own tool names, narrowed to the ones [MUTATING_TOOLS] says actually write - the
+     * `mutatingToolNames` argument every `ask_<domain>` handler hands its [SubAgent.investigate]
+     * call, so the loop's own [AgentResult.Success.mutatingToolsCalled] account is accurate for
+     * THAT domain specifically (a domain like "goals" or "mail" whose [DISPATCHED] list contains
+     * no mutating name at all correctly always gets back an empty list - there is nothing in its
+     * tool set that could ever populate one, which is itself information: neither domain can write
+     * anything through its dispatcher today, only through the separate live-declared lifecycle
+     * tools [DISPATCHED]'s own doc comment names).
+     */
+    private fun mutatingToolsFor(domain: String): Set<String> =
+        (DISPATCHED[domain] ?: emptyList()).toSet().intersect(MUTATING_TOOLS)
+
     // --- Dispatcher grounding clauses -------------------------------------
     //
     // Same shape as DiagnosticAgent/SymptomAgent/MaintenanceAgent's own `system(context)`
@@ -1645,6 +1658,7 @@ object LiveToolbox {
                     tools = agentToolsFor("fleet", context),
                     maxModelCalls = 4,
                     budgetMs = 30_000,
+                    mutatingToolNames = mutatingToolsFor("fleet"),
                 )
             }
             "ask_body" -> agentResult("I couldn't reach the health specialist just now - try again in a sec.") {
@@ -1654,6 +1668,7 @@ object LiveToolbox {
                     tools = agentToolsFor("body", context),
                     maxModelCalls = 4,
                     budgetMs = 30_000,
+                    mutatingToolNames = mutatingToolsFor("body"),
                 )
             }
             "ask_goals" -> agentResult("I couldn't reach the goals specialist just now - try again in a sec.") {
@@ -1663,6 +1678,7 @@ object LiveToolbox {
                     tools = agentToolsFor("goals", context),
                     maxModelCalls = 4,
                     budgetMs = 30_000,
+                    mutatingToolNames = mutatingToolsFor("goals"),
                 )
             }
             "ask_pantry" -> agentResult("I couldn't reach the grocery specialist just now - try again in a sec.") {
@@ -1672,6 +1688,7 @@ object LiveToolbox {
                     tools = agentToolsFor("pantry", context),
                     maxModelCalls = 4,
                     budgetMs = 30_000,
+                    mutatingToolNames = mutatingToolsFor("pantry"),
                 )
             }
             "ask_mail" -> agentResult("I couldn't reach your mail just now - try again in a sec.") {
@@ -1681,6 +1698,7 @@ object LiveToolbox {
                     tools = agentToolsFor("mail", context),
                     maxModelCalls = 4,
                     budgetMs = 30_000,
+                    mutatingToolNames = mutatingToolsFor("mail"),
                 )
             }
             "get_health" -> getHealth()
@@ -1832,6 +1850,36 @@ object LiveToolbox {
     private val CATEGORY_A_TOOLS = setOf(
         "get_vehicle_data", "get_health", "check_readiness", "get_codes",
         "diagnose_codes", "triage_symptom", "check_cold_start", "clear_codes",
+    )
+
+    /**
+     * Every tool name whose [dispatch] branch WRITES - inserts, updates, or deletes a Room row, or
+     * (`activate_garage`) actuates a real physical device. Named explicitly rather than inferred
+     * from a prefix at call time (2026-08-17, defect trace: `ai/SubAgent.kt`'s investigate loop
+     * could report success on an `ask_<domain>` dispatch that never actually wrote anything - see
+     * [agentResult]'s `requireMutation` doc comment). An explicit set survives a future tool being
+     * named `save_x` or `note_y` that a `log_*`/`set_*` prefix check would miss, and is the one
+     * place a reviewer can check "is this tool a write" without reading its whole branch.
+     *
+     * CATEGORY_A_TOOLS above answers a different question (does this tool touch the connected
+     * car's LIVE hardware) - `clear_codes` is in both sets for two independent reasons, and several
+     * tools below are in this one only.
+     *
+     * `ask_fleet`/`ask_body`/`ask_goals`/`ask_pantry`/`ask_mail` themselves are deliberately NOT
+     * listed - a dispatcher is a router, not a write; whether ONE PARTICULAR call into it wrote
+     * anything is exactly what [agentToolsFor]'s `mutatingToolNames` argument (built by intersecting
+     * this set with a domain's own [DISPATCHED] list) tells [SubAgent.investigate] to track.
+     * `show_saved_places`/`import_statement`/`import_receipt` are UI-scoped hand-offs - [dispatch]
+     * itself writes nothing for them, the screen it launches does, downstream of this file entirely.
+     */
+    private val MUTATING_TOOLS = setOf(
+        "clear_codes", "set_reminder", "tag_place", "forget_place", "set_odometer", "log_service",
+        "log_past_service", "set_maintenance_interval", "register_vehicle", "remember",
+        "manage_item", "manage_grocery", "log_build_entry", "activate_garage",
+        "categorize_transactions", "set_category", "log_pending_transaction",
+        "clear_pending_transaction", "create_workout_plan", "log_workout_set", "log_bodyweight",
+        "log_meal", "set_meal_target", "set_budget", "log_sleep", "set_sleep_target",
+        "undo_last_log", "manage_vehicle", "set_goal", "close_goal", "accept_proposal",
     )
 
     /**
@@ -4108,8 +4156,35 @@ object LiveToolbox {
      * key health for the Setup screen. [call] is only invoked (spending a real
      * Gemini call) once a key is actually saved - no tiers anymore (the
      * commercial model was retired 2026-07-31), every install is BYO-key only.
+     *
+     * [requireMutation] (2026-08-17): when true, a [AgentResult.Success] whose
+     * [AgentResult.Success.mutatingToolsCalled] came back empty is reported as a FAILURE, never
+     * the sub-agent's own prose - see [successOrMutationRefusal] (pulled out as a pure function so
+     * this is unit-testable without a real Gemini call, same shape as [LiveSessionController]'s
+     * `shouldRestoreAfterToolCall`).
+     *
+     * Defaults to `false` at every current call site (all five `ask_<domain>` dispatches, and
+     * every other [agentResult] caller in this file, none of which is even domain-shaped for a
+     * write). This is the honest, DOCUMENTED gap this fix leaves open: [dispatch] only ever sees
+     * `args.optString("question")` - free prose - for an `ask_<domain>` call, and there is no
+     * reliable, non-guessing way from that string alone to tell "log my three sets of squats" (a
+     * write) from "what did I lift last week" (a read) - both are legitimate questions the SAME
+     * dispatcher answers. Turning this on unconditionally for a domain that mixes reads and writes
+     * (fleet/body/pantry) would refuse every legitimate read that happens not to need a mutating
+     * tool; turning it on for a domain with NO mutating tools at all in its [DISPATCHED] list
+     * (goals/mail) would refuse EVERY call, including the reads that are its entire job. Per the
+     * brief's own critical constraint ("if you cannot cleanly tell write-shaped from read-shaped
+     * requests, implement the weaker but still correct version"), this fix stops at making the
+     * mechanism real, tested, and available - not at guessing driver intent from text. The
+     * plumbing is what closes the actual reported defect class once a caller CAN tell (e.g. a
+     * dispatcher schema later extended with an explicit intent argument the model itself declares,
+     * the same way `accept_proposal` already requires an explicit id rather than trusting prose).
      */
-    private suspend fun agentResult(failMessage: String, call: suspend () -> AgentResult): JSONObject {
+    private suspend fun agentResult(
+        failMessage: String,
+        requireMutation: Boolean = false,
+        call: suspend () -> AgentResult,
+    ): JSONObject {
         if (!GeminiKeyProvider.hasKey()) {
             return result(
                 false,
@@ -4117,7 +4192,10 @@ object LiveToolbox {
             )
         }
         return when (val r = call()) {
-            is AgentResult.Success -> { KeyHealth.noteOk(); result(true, r.text) }
+            is AgentResult.Success -> {
+                KeyHealth.noteOk()
+                successOrMutationRefusal(r.text, r.mutatingToolsCalled, requireMutation)
+            }
             AgentResult.RateLimited -> {
                 KeyHealth.noteRateLimited()
                 result(false, "The Gemini key just hit its rate limit - give it a minute and ask me again.")
@@ -4980,6 +5058,25 @@ object LiveToolbox {
 
     private fun result(success: Boolean, message: String?): JSONObject =
         JSONObject().put("success", success).apply { if (message != null) put("message", message) }
+
+    /**
+     * Pure decision extracted out of [agentResult] so it's unit-testable without a real Gemini
+     * call: when [requireMutation] is false, or [mutatingToolsCalled] is non-empty, the sub-agent's
+     * own [subAgentText] is what the driver hears, success. When [requireMutation] is true and
+     * NOTHING mutating ran, [subAgentText] is discarded entirely - never spoken, since it is
+     * exactly the shape of text that caused this fix ("logged it" over nothing written) - and a
+     * plain, generic "not recorded" refusal takes its place instead. `internal` (not private) so
+     * [LiveToolboxMutationGateTest] can exercise the three cases directly.
+     */
+    internal fun successOrMutationRefusal(
+        subAgentText: String,
+        mutatingToolsCalled: List<String>,
+        requireMutation: Boolean,
+    ): JSONObject = if (requireMutation && mutatingToolsCalled.isEmpty()) {
+        result(false, "That didn't get written down - nothing changed. Try again and I'll log it properly.")
+    } else {
+        result(true, subAgentText)
+    }
 
     // --- JSON schema helpers --------------------------------------------
 
