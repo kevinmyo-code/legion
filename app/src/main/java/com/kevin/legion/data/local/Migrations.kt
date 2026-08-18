@@ -1071,3 +1071,26 @@ val MIGRATION_24_25 = object : Migration(24, 25) {
         )
     }
 }
+
+/**
+ * v25 -> v26: adds `music_play_history` (LEGION's own observed-listening log, ticket 05
+ * `.scratch/drive-test-2026-08-18/issues/05-reading-kevins-spotify-library.md`). One additive
+ * `CREATE TABLE`, nothing existing touched. SQL copied verbatim from the generated
+ * `app/schemas/com.kevin.legion.data.local.CarDatabase/26.json` after a kapt run, per the
+ * additive-migration discipline - see [CarDatabase]'s v26 doc comment and
+ * [MusicPlayHistoryEntry]'s own.
+ */
+val MIGRATION_25_26 = object : Migration(25, 26) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `music_play_history` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`title` TEXT NOT NULL, " +
+                "`artist` TEXT NOT NULL, " +
+                "`album` TEXT NOT NULL, " +
+                "`spotifyUri` TEXT, " +
+                "`startedAt` INTEGER NOT NULL, " +
+                "`startedByLegion` INTEGER NOT NULL DEFAULT 0)"
+        )
+    }
+}

@@ -194,6 +194,13 @@ import androidx.room.RoomDatabase
  * additive, one `CREATE INDEX IF NOT EXISTS`, nothing existing touched. See [OdbSample]'s own doc
  * comment for which of [OdbSampleDao]'s queries this serves, which it does not, and why a second
  * index was judged not worth the extra write cost on the app's single largest table.
+ *
+ * v26: `music_play_history` (LEGION's OWN observed-listening log, `browse_my_music`'s
+ * `legion_history` source, `.scratch/drive-test-2026-08-18/issues/05-reading-kevins-spotify-library.md`).
+ * One additive `CREATE TABLE`, nothing existing touched. See [MusicPlayHistoryEntry]'s own doc
+ * comment for why this is a genuinely different table from Spotify's own recently-played read
+ * ([com.kevin.legion.media.RecentlyPlayedTrack]) and not the retired music-taste ledger back
+ * under a new name.
  */
 @Database(
     entities = [
@@ -219,8 +226,9 @@ import androidx.room.RoomDatabase
         Goal::class, AdvisorAdvice::class,
         CodeClearEvent::class,
         Drive::class,
+        MusicPlayHistoryEntry::class,
     ],
-    version = 25,
+    version = 26,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -270,6 +278,7 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun advisorAdviceDao(): AdvisorAdviceDao
     abstract fun codeClearEventDao(): CodeClearEventDao
     abstract fun driveDao(): DriveDao
+    abstract fun musicPlayHistoryDao(): MusicPlayHistoryDao
 
     companion object {
         @Volatile
@@ -301,7 +310,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 25
+        const val SCHEMA_VERSION = 26
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -322,6 +331,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
                         MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
                         MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
+                        MIGRATION_25_26,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it
