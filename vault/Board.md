@@ -25,7 +25,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | [[20-ship-pass\|20]] | task | Ship pass: advisors answering on the phone |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | [[02-context-dies-with-the-socket\|02]] | task | The context dies with the socket, and nothing says so |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | [[03-no-navigation-capability\|03]] | task | The assistant said it opened Maps. There is no map feature at all. |
-| [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | [[05-reading-kevins-spotify-library\|05]] | grilling | Reading Kevin's own Spotify library |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[08-layout\|08]] | prototype | Layout for a phone that is 384 x 832, not a head unit |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[01-what-on-track-means\|01]] | grilling | What \"on track\" actually means, per shape of goal |
@@ -70,7 +69,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 10 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 1 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
-| [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 4 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
+| [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 3 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 9 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |

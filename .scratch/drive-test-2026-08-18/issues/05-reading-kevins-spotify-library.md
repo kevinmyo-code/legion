@@ -3,8 +3,8 @@ map: drive-test-2026-08-18
 ticket: 05
 title: "Reading Kevin's own Spotify library"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "decided and built 2026-08-18 (a19ab4d, 18e881c); on-device QA and the re-auth still owed"
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -101,3 +101,47 @@ worse. It belongs in [ticket 04](04-what-the-assistant-says-when-it-cannot.md)'s
       change is considered shipped. `on-device`.
 - [ ] Whichever way the `play_music` description bug is resolved: ask for an album by name and
       confirm what happens matches what the description promises.
+
+## RESOLVED 2026-08-18 - Kevin answered all three, and it is built
+
+Asked directly, answered in one line: *"spotify > do it now. legion keeps its own listening
+history."*
+
+| Question | Answer |
+|---|---|
+| When does the re-auth land? | **Now.** He is at a desk, not driving, which is the only condition that mattered. |
+| Spotify's history, or LEGION's own? | **Both.** `recently_played` and the top rankings are Spotify's; `legion_history` is LEGION's own. |
+| Does `play_music` gain album/playlist? | **Yes** - widen the search, not narrow the description. He asked for albums. |
+
+Built in `a19ab4d` (the history table) and `18e881c` (the library reads and the tool).
+
+**One tool, not five.** `browse_my_music(source, limit)` with `source` in `saved_albums`,
+`recently_played`, `top_artists`, `top_tracks`, `legion_history`. There are already 89 tools and a
+bloated surface makes the live model worse at choosing; five near-identical declarations would have
+made that worse for no gain.
+
+**Whose numbers they are is written into the tool description**, which is the reason this map
+exists. Spotify's rankings are named as Spotify's and as covering every device he uses Spotify on.
+`legion_history` is named as LEGION's own observation of this device only, and any "favourite"
+drawn from it as LEGION's inference from what it happened to see. A failure states its cause and is
+never allowed to read as "you have nothing".
+
+**The re-auth trap was handled, not just noted.** `isAuthorized` compares the granted scope string
+against `SCOPES`, so widening it invalidates the existing grant by design. The Setup screen would
+otherwise have shown a button identical to the one he already pressed; it now reads **"Needs
+re-approving"** with copy saying nothing was lost, and both music tools fail in words naming the
+same cause.
+
+### Still owed
+
+- **On-device QA. Nothing here has touched a real Spotify account.** The four endpoints, album and
+  playlist search against real results, and the re-auth flow are all `reasoned`, never `tested`.
+- `MusicPlayHistoryEntry.spotifyUri` is always null - MediaSession metadata carries no URI and App
+  Remote's player state is not wired in. Documented on the entity.
+- `LIBRARY_LIMIT = 10` is inherited by inference. `SEARCH_LIMIT` was probed value-by-value on
+  2026-08-12; this ceiling was not, and says so.
+- The v25 to v26 migration test compiles but has never run - `connectedAndroidTest` would uninstall
+  the app and take Kevin's real data.
+- A `memory/library/decisions.md` entry for the three calls above. Not filed here because that file
+  is mid-edit from an earlier session.
+
