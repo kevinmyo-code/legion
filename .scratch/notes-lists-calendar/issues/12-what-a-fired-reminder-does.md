@@ -1,8 +1,17 @@
+---
+map: notes-lists-calendar
+ticket: 12
+title: "What does a fired reminder actually do?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01", "03"]
+blocked-by: ["[[01-entity-model-and-cartask-migration]]", "[[03-android-alarm-mechanism]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What does a fired reminder actually do?
-
-Type: grilling
-Status: resolved
-Blocked by: 01, 03
 
 Graduated from the map's fog 2026-08-07. It was not specifiable while the alarm mechanism was
 unknown; ticket 03 settled that, so it is now a real question. **This is the last open decision on

@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 07
+title: "What of Kevin's mail and calendar reaches Gemini, is stored, or is spoken aloud?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What of Kevin's mail and calendar reaches Gemini, is stored, or is spoken aloud?
-
-Type: grilling
-Status: resolved
-Blocked by: -
 
 ## Question
 

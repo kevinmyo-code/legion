@@ -1,8 +1,15 @@
+---
+map: hands-and-senses
+title: "Map: Hands and senses"
+charted: 2026-08-16
+charted-by: ""
+effort: "`.scratch/hands-and-senses/`"
+tickets: 21
+open: 9
+status: open
+tags: [map]
+---
 # Map: Hands and senses
-
-Label: `wayfinder:map`
-Effort: `.scratch/hands-and-senses/`
-Charted: 2026-08-16
 
 ## Destination
 
@@ -224,7 +231,6 @@ new senses below are what a JARVIS does that a dashboard does not.
   because `AmbientListener` and `TelephonyController` bypass `ProactiveGate` entirely. Also verified
   while charting: **`setMuted` has ZERO callers** - the switch exists and nothing can flip it, so
   proactive is currently ON with no way to turn it off.
-
 
 ## Efforts in disguise
 

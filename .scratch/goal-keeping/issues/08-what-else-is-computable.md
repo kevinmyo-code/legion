@@ -1,8 +1,17 @@
+---
+map: goal-keeping
+ticket: 08
+title: What else in the app's own records can be computed deterministically
+type: research
+status: resolved
+status-detail: "2026-08-18, research subagent"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What else in the app's own records can be computed deterministically
-
-Type: research
-Status: resolved (2026-08-18, research subagent)
-Blocked by: -
 
 ## Question
 
@@ -91,4 +100,3 @@ at 365 days, which floors any long-window vehicle metric.
 
 **Nothing was built or run.** The arithmetic claims (the 14.3 fraction, the 0-kcal coercion) are
 `reasoned` from the code, not executed.
-

@@ -1,8 +1,15 @@
+---
+map: drive-ui
+title: "Map: Drive UI"
+charted: 2026-08-16
+charted-by: ""
+effort: "`.scratch/drive-ui/`"
+tickets: 9
+open: 3
+status: open
+tags: [map]
+---
 # Map: Drive UI
-
-Label: `wayfinder:map`
-Effort: `.scratch/drive-ui/`
-Charted: 2026-08-16
 
 ## Destination
 

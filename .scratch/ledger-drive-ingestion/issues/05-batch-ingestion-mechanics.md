@@ -1,8 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 05
+title: "How does a folder of statements actually get ingested?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01", "03"]
+blocked-by: ["[[01-saf-drive-folder-feasibility]]", "[[03-ingested-file-ledger]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # How does a folder of statements actually get ingested?
-
-Type: grilling
-Status: resolved
-Blocked by: 01 (resolved), 03 (resolved)
 
 ## Question
 

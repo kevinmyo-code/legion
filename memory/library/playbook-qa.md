@@ -1,3 +1,10 @@
+---
+shelf: playbook-qa
+status: frozen
+kind: playbook
+tags: [library]
+---
+
 # QA/QC Playbook
 
 > **STATUS: FROZEN ARCHIVE (banner added 2026-08-01).** This shelf is Midnight AI history: a

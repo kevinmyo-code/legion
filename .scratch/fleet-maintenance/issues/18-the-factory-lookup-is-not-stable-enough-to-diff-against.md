@@ -1,7 +1,17 @@
+---
+map: fleet-maintenance
+ticket: 18
+title: The factory lookup is not stable enough to diff against
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # The factory lookup is not stable enough to diff against
-
-Type: grilling
-Status: resolved
 
 ## Question
 

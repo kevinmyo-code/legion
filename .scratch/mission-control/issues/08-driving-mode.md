@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 08
+title: "Driving mode: aesthetic vs the zero-theatre safety rule"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01", "04"]
+blocked-by: ["[[01-palette-tokens]]", "[[04-alarm-without-hue]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Driving mode: aesthetic vs the zero-theatre safety rule
-
-Type: grilling
-Status: resolved
-Blocked by: 01, 04
 
 ## Question
 

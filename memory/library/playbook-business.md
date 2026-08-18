@@ -1,3 +1,10 @@
+---
+shelf: playbook-business
+status: frozen
+kind: playbook
+tags: [library]
+---
+
 # Business & Research Playbook
 
 > **STATUS: FROZEN ARCHIVE (banner added 2026-08-01).** This shelf is Midnight AI history: a

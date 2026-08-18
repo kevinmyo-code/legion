@@ -1,3 +1,10 @@
+---
+shelf: blocking
+status: frozen
+kind: blocking
+tags: [library]
+---
+
 # Blocking
 
 > **STATUS: FROZEN ARCHIVE (banner added 2026-08-01).** This shelf is Midnight AI history: a

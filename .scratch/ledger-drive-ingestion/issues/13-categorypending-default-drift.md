@@ -1,7 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 13
+title: "`categoryPending`'s default has drifted: a fresh install and a migrated one differ"
+type: task
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # `categoryPending`'s default has drifted: a fresh install and a migrated one differ
-
-Type: task
-Status: open
 
 ## Question
 

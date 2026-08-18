@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 20
+title: "BUILD: Gmail reads \"Granted\" and the assistant still cannot read mail"
+type: task
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # BUILD: Gmail reads "Granted" and the assistant still cannot read mail
-
-Type: task
-Status: resolved
-Blocked by: -
 
 ## Answer
 

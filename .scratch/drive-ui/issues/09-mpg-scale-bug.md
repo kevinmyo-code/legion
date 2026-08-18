@@ -1,8 +1,17 @@
+---
+map: drive-ui
+ticket: 09
+title: Every mpg figure for the Jeep is wrong by roughly 1.9x
+type: grilling
+status: resolved
+status-detail: "2026-08-16, Kevin - suppress until calibrated"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Every mpg figure for the Jeep is wrong by roughly 1.9x
-
-Type: grilling
-Status: resolved (2026-08-16, Kevin - suppress until calibrated)
-Blocked by: -
 
 ## Question
 

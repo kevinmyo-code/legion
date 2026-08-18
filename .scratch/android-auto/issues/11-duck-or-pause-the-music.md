@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 11
+title: "Duck the music, or pause it?"
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Duck the music, or pause it?
-
-Type: grilling
-Status: open
-Blocked by: -
 
 ## Question
 

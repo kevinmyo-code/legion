@@ -1,8 +1,15 @@
+---
+map: notes-lists-calendar
+title: "Map: Notes, lists and a local calendar"
+charted: 2026-08-07
+charted-by: ""
+effort: "`.scratch/notes-lists-calendar/`"
+tickets: 12
+open: 0
+status: closed
+tags: [map]
+---
 # Map: Notes, lists and a local calendar
-
-Label: `wayfinder:map`
-Effort: `.scratch/notes-lists-calendar/`
-Charted: 2026-08-07
 
 ## Destination
 

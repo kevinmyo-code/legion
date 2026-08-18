@@ -1,7 +1,17 @@
-﻿# The Jeep row lost its identity and its odometer, in normal use
-
-Type: grilling
-Status: resolved (2026-08-15) - fix dispatched, not yet built
+---
+map: fleet-maintenance
+ticket: 13
+title: "The Jeep row lost its identity and its odometer, in normal use"
+type: grilling
+status: resolved
+status-detail: "2026-08-15, fix dispatched, not yet built"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# The Jeep row lost its identity and its odometer, in normal use
 
 ## Question
 
@@ -216,4 +226,3 @@ year/make/model as non-identifying. `a09aa68` made all seeding blank, which ends
   contradiction - not from any stored history.
 - **Not yet `built` or `tested`.** The fix is specified here and dispatched; nothing in this answer
   claims it works.
-

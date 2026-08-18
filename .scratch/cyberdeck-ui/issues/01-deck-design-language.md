@@ -1,7 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 01
+title: Deck design language
+type: prototype
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Deck design language
-
-Type: prototype
-Status: resolved
 
 ## Question
 

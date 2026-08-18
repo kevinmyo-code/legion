@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 06
+title: "Where does Google auth live in the UI, and what happens when it lapses?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["03", "11"]
+blocked-by: ["[[03-gmail-scope-floor]]", "[[11-publish-the-consent-screen-now]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Where does Google auth live in the UI, and what happens when it lapses?
-
-Type: grilling
-Status: resolved
-Blocked by: 03, 11
 
 ## Question
 

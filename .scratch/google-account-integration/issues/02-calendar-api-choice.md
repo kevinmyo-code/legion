@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 02
+title: "CalendarContract or the Calendar REST API?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # CalendarContract or the Calendar REST API?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

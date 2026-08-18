@@ -1,3 +1,14 @@
+---
+map: import-sync-duplication
+title: Import rekey vs UNION sync
+charted: 2026-08-16
+charted-by: ""
+effort: ""
+tickets: 1
+open: 0
+status: closed
+tags: [map]
+---
 # Import rekey vs UNION sync
 
 Charted 2026-08-16, from a defect found while installing an unrelated build.

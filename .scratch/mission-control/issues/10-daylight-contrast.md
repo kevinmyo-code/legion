@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 10
+title: "Daylight contrast floors, measured on-device"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["01", "02"]
+blocked-by: ["[[01-palette-tokens]]", "[[02-bundled-mono]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Daylight contrast floors, measured on-device
-
-Type: task
-Status: resolved
-Blocked by: 01, 02 - ticket 13 LANDED 2026-08-14, so the APK now exists. Remaining blockers are Kevin, the phone and direct sun.
 
 ## Question
 

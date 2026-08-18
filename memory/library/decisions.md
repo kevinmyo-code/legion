@@ -1,3 +1,10 @@
+---
+shelf: decisions
+status: live
+kind: decisions
+tags: [library]
+---
+
 # Decisions
 
 > **STATUS: LIVE, with a frozen tail (banner added 2026-08-01).** This shelf still governs

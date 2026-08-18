@@ -1,6 +1,18 @@
+---
+map: quant-viz
+ticket: 12
+title: 12 - Fleet tab inline additions
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 12 - Fleet tab inline additions
 
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 MAINTENANCE due meters (ticket 05); two additions to the tab FACE.
 
 ## Spec (`ui/FleetScreen.kt`, `ui/fleet/FleetRows.kt`)

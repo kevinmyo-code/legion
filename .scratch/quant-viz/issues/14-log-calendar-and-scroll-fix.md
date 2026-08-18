@@ -1,6 +1,18 @@
+---
+map: quant-viz
+ticket: 14
+title: "14 - LOG tab: month calendar replaces the WEEK AHEAD strip, and the scroll regression"
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 14 - LOG tab: month calendar replaces the WEEK AHEAD strip, and the scroll regression
 
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 interface. lets make it a calendar with events on it. and then the list that currently have
 below it."
 

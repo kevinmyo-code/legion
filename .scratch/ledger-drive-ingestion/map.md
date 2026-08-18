@@ -1,8 +1,15 @@
+---
+map: ledger-drive-ingestion
+title: "Map: Ledger Drive-folder ingestion + basic UI"
+charted: 2026-08-01
+charted-by: ""
+effort: "`.scratch/ledger-drive-ingestion/`"
+tickets: 13
+open: 2
+status: open
+tags: [map]
+---
 # Map: Ledger Drive-folder ingestion + basic UI
-
-Label: `wayfinder:map`
-Effort: `.scratch/ledger-drive-ingestion/`
-Charted: 2026-08-01
 
 ## Destination
 

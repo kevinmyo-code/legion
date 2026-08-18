@@ -1,8 +1,17 @@
+---
+map: aspect-advisors
+ticket: 08
+title: Aspect digests
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-advisor-contract]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Aspect digests
-
-Type: grilling
-Status: resolved
-Blocked by: 01
 
 ## Question
 

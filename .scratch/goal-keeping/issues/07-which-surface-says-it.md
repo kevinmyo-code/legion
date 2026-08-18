@@ -1,8 +1,17 @@
+---
+map: goal-keeping
+ticket: 07
+title: "Which surface says it, and how it coordinates with the five categories"
+type: grilling
+status: open
+status-detail: ""
+blockers: ["04"]
+blocked-by: ["[[04-when-a-moment-is-worth-it]]"]
+open-blockers: 1
+ready: false
+tags: [ticket]
+---
 # Which surface says it, and how it coordinates with the five categories
-
-Type: grilling
-Status: open
-Blocked by: 04
 
 ## Question
 

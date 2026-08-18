@@ -1,8 +1,17 @@
+---
+map: drive-ui
+ticket: 02
+title: Measure the real round trip on Kevin's car
+type: task
+status: open
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-bus-reality-research]]"]
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Measure the real round trip on Kevin's car
-
-Type: task
-Status: open
-Blocked by: 01
 
 ## Question
 

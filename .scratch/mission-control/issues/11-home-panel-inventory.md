@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 11
+title: "Per-surface panel inventory: HOME first"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["05"]
+blocked-by: ["[[05-tiling-grammar]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Per-surface panel inventory: HOME first
-
-Type: grilling
-Status: resolved
-Blocked by: 05
 
 ## Question
 

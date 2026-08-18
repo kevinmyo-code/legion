@@ -1,9 +1,15 @@
+---
+map: proactive-mode
+title: "Map: Proactive mode"
+charted: 2026-08-16
+charted-by: ""
+effort: "`.scratch/proactive-mode/`"
+tickets: 9
+open: 7
+status: open
+tags: [map]
+---
 # Map: Proactive mode
-
-Label: `wayfinder:map`
-Effort: `.scratch/proactive-mode/`
-Charted: 2026-08-16
-Graduated from: `.scratch/hands-and-senses/issues/21-proactive-mode.md`
 
 ## Destination
 
@@ -88,7 +94,6 @@ ticket carried eight decision clusters plus a build.
   partial Doze exemption in one prompt; and tell Kevin to mark LEGION "never sleeping".
   **Ten items need the phone. The gate on all of them: does `AriaForegroundService` survive a
   12-hour screen-off unplugged run at all? Run that first.**
-
 
 ## Not yet specified
 

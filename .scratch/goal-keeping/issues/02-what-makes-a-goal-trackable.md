@@ -1,8 +1,17 @@
+---
+map: goal-keeping
+ticket: 02
+title: "What makes a goal trackable, and how set_goal captures it"
+type: grilling
+status: open
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-what-on-track-means]]"]
+open-blockers: 1
+ready: false
+tags: [ticket]
+---
 # What makes a goal trackable, and how set_goal captures it
-
-Type: grilling
-Status: open
-Blocked by: 01
 
 ## Question
 

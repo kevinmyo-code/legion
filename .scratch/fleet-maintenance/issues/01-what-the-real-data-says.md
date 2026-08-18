@@ -1,7 +1,17 @@
+---
+map: fleet-maintenance
+ticket: 01
+title: What the real data on the phone actually says
+type: task
+status: resolved
+status-detail: 2026-08-15
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What the real data on the phone actually says
-
-Type: task
-Status: resolved (2026-08-15)
 
 ## Question
 
@@ -279,4 +289,3 @@ use is a data-loss defect that will undo any fix this map ships. Charted as tick
   fingerprint fits exactly (only that path writes an anchor without a date) but no log confirms it.
 - `reasoned`: that the Jeep had a valid identity on 2026-07-18 and a valid odometer on 2026-08-12.
   Inferred from what the seeding and logging code paths require, not from a stored history.
-

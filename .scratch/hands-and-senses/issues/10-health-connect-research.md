@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 10
+title: "What does Health Connect actually expose, and on what terms?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What does Health Connect actually expose, and on what terms?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

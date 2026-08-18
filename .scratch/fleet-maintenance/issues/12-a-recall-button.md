@@ -1,8 +1,17 @@
-﻿# A recall button
-
-Type: task
-Status: resolved (2026-08-15)
-Blocked by: 04, 13   # 04 resolved 2026-08-15, 13 resolved 2026-08-15 - UNBLOCKED
+---
+map: fleet-maintenance
+ticket: 12
+title: A recall button
+type: task
+status: resolved
+status-detail: 2026-08-15
+blockers: ["04", "13"]
+blocked-by: ["[[04-one-car-label-rule]]", "[[13-the-jeep-row-lost-its-identity]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# A recall button
 
 ## Input from ticket 01 (2026-08-15) - this ticket got worse
 
@@ -198,4 +207,3 @@ gate choice rather than by new copy. Confirm it reads that way once both land.
   original justification.
 - `on-device`: Kevin's row now carries `1998 / Jeep / Cherokee`, so it passes the new gate.
 - **Not built.**
-

@@ -1,8 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 04
+title: "What makes two identical transaction lines distinct?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What makes two identical transaction lines distinct?
-
-Type: grilling
-Status: resolved
-Blocked by: (none)
 
 ## Question
 

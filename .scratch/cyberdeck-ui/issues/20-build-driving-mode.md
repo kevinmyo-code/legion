@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 20
+title: "Build: driving mode"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["13"]
+blocked-by: ["[[13-build-shell]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: driving mode
-
-Type: task
-Status: resolved
-Blocked by: 13
 
 ## Question
 

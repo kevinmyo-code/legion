@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 16
+title: "Does the document vault need retrieval machinery at all?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Does the document vault need retrieval machinery at all?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

@@ -1,8 +1,17 @@
+---
+map: aspect-advisors
+ticket: 20
+title: "Ship pass: advisors answering on the phone"
+type: task
+status: open
+status-detail: ""
+blockers: ["15", "18", "19"]
+blocked-by: ["[[15-build-playbook-briefs]]", "[[18-build-ask-advisor-and-accept]]", "[[19-build-goal-tools-and-panel]]"]
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Ship pass: advisors answering on the phone
-
-Type: task
-Status: open
-Blocked by: 15, 18, 19
 
 ## Question
 

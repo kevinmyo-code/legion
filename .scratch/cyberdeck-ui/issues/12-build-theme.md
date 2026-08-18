@@ -1,7 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 12
+title: "Build: MILSPEC theme and tokens"
+type: task
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: MILSPEC theme and tokens
-
-Type: task
-Status: resolved
 
 ## Question
 

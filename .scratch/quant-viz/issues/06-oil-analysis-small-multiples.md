@@ -1,6 +1,17 @@
+---
+map: quant-viz
+ticket: 06
+title: 06 - Oil analysis small multiples
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 06 - Oil analysis small multiples
-
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 ## What
 

@@ -1,8 +1,17 @@
+---
+map: notes-lists-calendar
+ticket: 02
+title: "Can the model actually read Kevin's real handwritten list?"
+type: task
+status: closed
+status-detail: out of scope
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Can the model actually read Kevin's real handwritten list?
-
-Type: task
-Status: closed (out of scope)
-Blocked by: none
 
 Closed 2026-08-07 as OUT OF SCOPE, not resolved. Kevin cut photo ingestion for lists mid-effort.
 The probe harness was written and compiled but never run, so **nothing was learned about whether

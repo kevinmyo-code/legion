@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 12
+title: "Per-surface panel inventories: BIO, LOG, FLEET, CRED"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["11"]
+blocked-by: ["[[11-home-panel-inventory]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Per-surface panel inventories: BIO, LOG, FLEET, CRED
-
-Type: grilling
-Status: resolved
-Blocked by: 11
 
 ## Question
 

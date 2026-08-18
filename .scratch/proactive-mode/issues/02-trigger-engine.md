@@ -1,8 +1,17 @@
+---
+map: proactive-mode
+ticket: 02
+title: What decides there is something worth saying
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # What decides there is something worth saying
-
-Type: grilling
-Status: open
-Blocked by: -
 
 ## Question
 

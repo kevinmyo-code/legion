@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 13
+title: "BUILD: read Google Calendar onto the agenda"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["12"]
+blocked-by: ["[[12-google-grant-plumbing]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # BUILD: read Google Calendar onto the agenda
-
-Type: task
-Status: resolved
-Blocked by: 12
 
 ## Answer
 

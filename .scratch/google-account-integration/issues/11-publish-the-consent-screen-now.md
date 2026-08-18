@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 11
+title: "Press Publish now, while only Drive is at stake"
+type: task
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Press Publish now, while only Drive is at stake
-
-Type: task
-Status: resolved
-Blocked by: -
 
 ## Question
 

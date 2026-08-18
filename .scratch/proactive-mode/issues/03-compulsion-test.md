@@ -1,8 +1,17 @@
+---
+map: proactive-mode
+ticket: 03
+title: "The compulsion line, written as a test rather than a vibe"
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # The compulsion line, written as a test rather than a vibe
-
-Type: grilling
-Status: open
-Blocked by: -
 
 ## Question
 

@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 03
+title: "Bezel, label pills, and panel chrome"
+type: prototype
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-palette-tokens]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Bezel, label pills, and panel chrome
-
-Type: prototype
-Status: resolved
-Blocked by: 01
 
 ## Question
 

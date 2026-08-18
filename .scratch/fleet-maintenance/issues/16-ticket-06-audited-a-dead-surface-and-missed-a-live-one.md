@@ -1,7 +1,17 @@
+---
+map: fleet-maintenance
+ticket: 16
+title: Ticket 06 audited a dead surface and missed the live one behind it
+type: task
+status: resolved
+status-detail: 2026-08-15
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Ticket 06 audited a dead surface and missed the live one behind it
-
-Type: task
-Status: resolved (2026-08-15)
 
 ## Question
 

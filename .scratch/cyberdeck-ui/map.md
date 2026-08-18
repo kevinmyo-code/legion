@@ -1,7 +1,15 @@
+---
+map: cyberdeck-ui
+title: "Map: Cyberdeck UI overhaul"
+charted: 2026-08-07
+charted-by: Kevin + Fable
+effort: ""
+tickets: 21
+open: 0
+status: closed
+tags: [map]
+---
 # Map: Cyberdeck UI overhaul
-
-Label: wayfinder:map
-Charted: 2026-08-07 (Kevin + Fable)
 
 > **PARTLY SUPERSEDED 2026-08-14 by `.scratch/mission-control/`.** This map SHIPPED and stays here
 > as history; do not resume it. Superseded by that effort: ticket 01 (the MILSPEC palette), ticket

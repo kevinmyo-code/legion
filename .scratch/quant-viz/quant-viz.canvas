@@ -1,0 +1,175 @@
+{
+  "nodes": [
+    {
+      "id": "15af897930666c03",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/01-chart-kit-groundwork.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "4cf69bcbf647db1b",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/02-budget-line-meters.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "5dc98ce5e189e699",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/03-category-drilldown-daily-bars.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "222b3fe815954ff3",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/04-monthly-spend-trend.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "b15ccc7e36bd872f",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/05-fleet-recap-trends-and-due-meters.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "9dc29267efc10e7b",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/06-oil-analysis-small-multiples.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "119948b9b8707f3d",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/07-pantry-spend-panel.md",
+      "x": 0,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "1a41fca7f4942013",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/08-goal-progress-meters.md",
+      "x": 0,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "8c7870bb32605b78",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/09-set-target-affordance.md",
+      "x": 0,
+      "y": 1200,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "f69391279d81910b",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/10-money-tab-inline-viz.md",
+      "x": 0,
+      "y": 1350,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "cfc7e218dd5135a1",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/11-today-glance-viz.md",
+      "x": 0,
+      "y": 1500,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "7a1607a0e54f205c",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/12-fleet-inline-viz.md",
+      "x": 0,
+      "y": 1650,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "cc51ff3d58a1850d",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/13-notes-agenda-density.md",
+      "x": 0,
+      "y": 1800,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "af057046a75e1858",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/14-log-calendar-and-scroll-fix.md",
+      "x": 0,
+      "y": 1950,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "f994f3c517a297b0",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/15-log-single-scroll-surface.md",
+      "x": 0,
+      "y": 2100,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "68824e80f49abe21",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/16-day-events-popup.md",
+      "x": 0,
+      "y": 2250,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "b1da684ec14def7a",
+      "type": "file",
+      "file": ".scratch/quant-viz/issues/17-silent-regressions.md",
+      "x": 0,
+      "y": 2400,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    }
+  ],
+  "edges": []
+}

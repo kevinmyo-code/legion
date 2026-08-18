@@ -1,8 +1,17 @@
+---
+map: aspect-advisors
+ticket: 11
+title: Token and latency budget
+type: task
+status: resolved
+status-detail: ""
+blockers: ["01", "08", "12"]
+blocked-by: ["[[01-advisor-contract]]", "[[08-aspect-digests]]", "[[12-lean-toolbox]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Token and latency budget
-
-Type: task
-Status: resolved
-Blocked by: 01, 08, 12
 
 ## Question
 

@@ -1,8 +1,17 @@
+---
+map: proactive-mode
+ticket: 04
+title: Five switches that actually switch something
+type: grilling
+status: open
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-one-gate-not-three]]"]
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Five switches that actually switch something
-
-Type: grilling
-Status: open
-Blocked by: 01
 
 ## Question
 

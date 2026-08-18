@@ -1,8 +1,17 @@
+---
+map: aspect-advisors
+ticket: 16
+title: "Build: BIO and CRED digest builders"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["11", "13"]
+blocked-by: ["[[11-token-latency-budget]]", "[[13-build-goal-store]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: BIO and CRED digest builders
-
-Type: task
-Status: resolved
-Blocked by: 11, 13
 
 ## Question
 

@@ -1,8 +1,17 @@
+---
+map: legion-shape
+ticket: 06
+title: "What is the ledger's budget-versus-actual, exactly?"
+type: grilling
+status: resolved
+status-detail: "2026-08-07, Kevin"
+blockers: ["05", "07"]
+blocked-by: ["[[05-target-log-gap-vocabulary]]", "[[07-categorisation]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What is the ledger's budget-versus-actual, exactly?
-
-Type: grilling
-Status: resolved (2026-08-07, Kevin)
-Blocked by: 05, 07
 
 ## Question
 

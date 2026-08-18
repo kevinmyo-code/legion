@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 03
+title: Semantic color under the deck
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-deck-design-language]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Semantic color under the deck
-
-Type: grilling
-Status: resolved
-Blocked by: 01
 
 ## Question
 

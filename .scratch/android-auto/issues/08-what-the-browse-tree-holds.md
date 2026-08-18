@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 08
+title: "What is in the browse tree, and who writes the briefings?"
+type: grilling
+status: open
+status-detail: ""
+blockers: ["02", "03"]
+blocked-by: ["[[02-what-a-sideloaded-media-app-needs]]", "[[03-does-voice-search-still-deliver-a-raw-query]]"]
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # What is in the browse tree, and who writes the briefings?
-
-Type: grilling
-Status: open
-Blocked by: 02, 03
 
 ## Question
 

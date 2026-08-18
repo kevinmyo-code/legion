@@ -1,8 +1,17 @@
+---
+map: goal-keeping
+ticket: 06
+title: Where the advisor learns to hold an opinion about time
+type: grilling
+status: open
+status-detail: ""
+blockers: ["04"]
+blocked-by: ["[[04-when-a-moment-is-worth-it]]"]
+open-blockers: 1
+ready: false
+tags: [ticket]
+---
 # Where the advisor learns to hold an opinion about time
-
-Type: grilling
-Status: open
-Blocked by: 04
 
 ## Question
 

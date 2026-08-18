@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 14
+title: "Does gearhead actually draw the call?"
+type: task
+status: open
+status-detail: ""
+blockers: ["06"]
+blocked-by: ["[[06-get-a-sideloaded-build-visible-in-android-auto]]"]
+open-blockers: 1
+ready: false
+tags: [ticket]
+---
 # Does gearhead actually draw the call?
-
-Type: task
-Status: open
-Blocked by: 06
 
 ## Question
 

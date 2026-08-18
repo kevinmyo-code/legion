@@ -1,7 +1,17 @@
+---
+map: aspect-advisors
+ticket: 21
+title: "Harden structured output: give SubAgent a responseSchema"
+type: task
+status: resolved
+status-detail: "2026-08-16, built; schema shape unverified against a live call"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Harden structured output: give SubAgent a responseSchema
-
-Type: task
-Status: resolved (2026-08-16) - built; schema shape unverified against a live call
 
 ## Question
 

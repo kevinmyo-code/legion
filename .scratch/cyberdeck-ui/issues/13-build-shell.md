@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 13
+title: "Build: shell, hard keys, status line, boot"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["12"]
+blocked-by: ["[[12-build-theme]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: shell, hard keys, status line, boot
-
-Type: task
-Status: resolved
-Blocked by: 12
 
 ## Question
 

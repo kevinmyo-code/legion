@@ -1,8 +1,15 @@
+---
+map: aspect-advisors
+title: "Map: Aspect advisors"
+charted: 2026-08-13
+charted-by: Kevin + Fable
+effort: "`.scratch/aspect-advisors/`"
+tickets: 21
+open: 1
+status: open
+tags: [map]
+---
 # Map: Aspect advisors
-
-Label: wayfinder:map
-Effort: `.scratch/aspect-advisors/`
-Charted: 2026-08-13 (Kevin + Fable)
 
 ## Destination
 

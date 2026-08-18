@@ -1,8 +1,17 @@
+---
+map: legion-shape
+ticket: 05
+title: "What exactly is a target, a log entry, and a gap?"
+type: grilling
+status: resolved
+status-detail: "2026-08-07, Kevin"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What exactly is a target, a log entry, and a gap?
-
-Type: grilling
-Status: resolved (2026-08-07, Kevin)
-Blocked by: (none - this is the frontier)
 
 ## Question
 

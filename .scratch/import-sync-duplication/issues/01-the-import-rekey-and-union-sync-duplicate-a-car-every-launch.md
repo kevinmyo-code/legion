@@ -1,7 +1,17 @@
+---
+map: import-sync-duplication
+ticket: 01
+title: The import rekey and UNION sync duplicate a car's history on every launch
+type: task
+status: fixed
+status-detail: "2026-08-16, set-based rekey; NEVER RUN against the real condition"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # The import rekey and UNION sync duplicate a car's history on every launch
-
-Type: task
-Status: fixed (2026-08-16) - set-based rekey; NEVER RUN against the real condition
 
 ## What is happening
 

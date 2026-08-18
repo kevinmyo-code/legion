@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 13
+title: Prove or kill the OBD silent-stall claim
+type: task
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Prove or kill the OBD silent-stall claim
-
-Type: task
-Status: open
-Blocked by: -
 
 ## Question
 

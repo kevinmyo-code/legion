@@ -1,8 +1,17 @@
+---
+map: goal-keeping
+ticket: 03
+title: "The check-in record: how a spoken answer becomes a falsifiable fact"
+type: grilling
+status: open
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-what-on-track-means]]"]
+open-blockers: 1
+ready: false
+tags: [ticket]
+---
 # The check-in record: how a spoken answer becomes a falsifiable fact
-
-Type: grilling
-Status: open
-Blocked by: 01
 
 ## Question
 

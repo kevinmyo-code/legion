@@ -1,8 +1,17 @@
+---
+map: notes-lists-calendar
+ticket: 04
+title: "How does recurrence work?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01", "03"]
+blocked-by: ["[[01-entity-model-and-cartask-migration]]", "[[03-android-alarm-mechanism]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # How does recurrence work?
-
-Type: grilling
-Status: resolved
-Blocked by: 01, 03
 
 ## Question
 

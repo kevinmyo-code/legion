@@ -1,7 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 11
+title: Driving mode
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Driving mode
-
-Type: grilling
-Status: resolved
 
 ## Question
 

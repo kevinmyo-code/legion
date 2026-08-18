@@ -1,3 +1,10 @@
+---
+shelf: lessons
+status: live
+kind: lessons
+tags: [library]
+---
+
 # Lessons (the improvement loop)
 
 > **STATUS: LIVE, with a frozen tail (banner added 2026-08-01).** This shelf still governs
@@ -8,12 +15,12 @@
 
 
 Failure modes the org has actually hit, and the rule that prevents recurrence. This is NOT the
-knowledge playbook: `playbook-coding.md` holds facts ABOUT the codebase; this file holds facts
+knowledge playbook: [[playbook-coding]] holds facts ABOUT the codebase; this file holds facts
 about how an AGENT (or the orchestrator) got something wrong, so the next spawn does not repeat it.
 
 The org does not fine-tune. The only way an agent "learns" is that a lesson here graduates into a
 durable prompt surface it reads on its next run: its `.claude/agents/*.md` definition, `CLAUDE.md`,
-or a playbook shelf. An entry is only "closed" once its rule is written into that surface.
+or a [[playbook-coding|playbook shelf]]. An entry is only "closed" once its rule is written into that surface.
 
 ## The loop
 
@@ -112,14 +119,14 @@ or a playbook shelf. An entry is only "closed" once its rule is written into tha
 - **Status:** CLOSED (rule stated here; consider graduating into playbook-coding.md).
 
 ### L6 — librarian (Marcus): filed observations the tester never made
-- **Claimed in `hardware.md`:** under "Confirmed working 2026-07-28", two entries — "puck tracking in
+- **Claimed in [[hardware]]:** under "Confirmed working 2026-07-28", two entries — "puck tracking in
   place" and "Companion Badge visible when nav is fullscreen".
 - **Actual:** Kevin reported the OPPOSITE of both. His words were "the custom puck indeed doesnt show"
   and "the full screen is gone" — so there was no fullscreen state for a badge to appear over, and the
   puck was one of the session's headline defects. The brief handed to Marcus said plainly what was
   confirmed working (places by voice, nav starts, embedded map visible) and separately what was broken.
   He merged plausible-sounding neighbours into the confirmed list.
-- **Why this one is dangerous:** a `hardware.md` "confirmed working" line is exactly what a future
+- **Why this one is dangerous:** a [[hardware]] "confirmed working" line is exactly what a future
   session trusts INSTEAD of re-testing, because re-testing needs the car. A fabricated confirmation
   does not decay into uncertainty, it hardens into fact — and it lands in the one shelf whose whole
   purpose is recording what a human actually observed. It also survived a cheap-model summarisation
@@ -129,11 +136,11 @@ or a playbook shelf. An entry is only "closed" once its rule is written into tha
   read as ground truth months later.
 - **Rule:** device-observation entries must trace to something the tester actually said. Marcus quotes
   or closely paraphrases the tester rather than summarising into a tidy list, and Stark verifies the
-  "confirmed working" section of any `hardware.md` FILE before committing — that section specifically,
+  "confirmed working" section of any [[hardware]] FILE before committing — that section specifically,
   not the whole diff. Never let a FILE run go straight to commit unread.
 - **Regression check:** a "confirmed working" bullet that names a feature the same session lists as
   broken, or that no quote in the session supports.
-- **Status:** CLOSED (rule stated here; corrected in `hardware.md` in the same pass, 2026-07-29).
+- **Status:** CLOSED (rule stated here; corrected in [[hardware]] in the same pass, 2026-07-29).
 
 ### L7 — orchestrator (Stark): brief numbers must be verified before handing down
 
@@ -181,7 +188,7 @@ or a playbook shelf. An entry is only "closed" once its rule is written into tha
 
 ### L11 — orchestrator (Stark): mandated verification step skipped
 
-**What happened (session 2026-08-02):** Ticket 07's OWN resolution carried an explicit ordering instruction under "specified, not asked": "Render the five previews in `ui/theme/ThemePreview.kt` before building screens on the theme. It compiles and has never been drawn." The step was not performed, and screens were built on the theme anyway. The exact class of bug it existed to catch then shipped into a first-run consent screen (the M3 `contentColorFor` collision - see `playbook-coding.md`, and `decisions.md` 2026-08-02).
+**What happened (session 2026-08-02):** Ticket 07's OWN resolution carried an explicit ordering instruction under "specified, not asked": "Render the five previews in `ui/theme/ThemePreview.kt` before building screens on the theme. It compiles and has never been drawn." The step was not performed, and screens were built on the theme anyway. The exact class of bug it existed to catch then shipped into a first-run consent screen (the M3 `contentColorFor` collision - see [[playbook-coding]], and [[decisions]] 2026-08-02).
 
 **Nobody concealed it.** The coding agent's own report listed the preview render as unmet, in writing, with a reason (it could not render Compose previews from its environment). The orchestrator read that and proceeded to review and device-install anyway. The failure is not a bad report; it is an unmet gate that was surfaced correctly and then not acted on.
 
@@ -193,7 +200,7 @@ or a playbook shelf. An entry is only "closed" once its rule is written into tha
 
 **Regression check:** Review gate for tickets with explicit verification steps: every step in the resolution must be checked off in the same commit message or a follow-up entry, or explicitly deferred to another ticket.
 
-**Status:** CLOSED 2026-08-02. The rule now lives in **CLAUDE.md §8, "A ticket's own verification steps are gates, not notes (L11)"**, alongside L10, plus a line in §7's feature-add checklist. An entry closes only when its rule sits in a surface something reads; both of those are read every session.
+**Status:** CLOSED 2026-08-02. The rule now lives in **CLAUDE.md §8, "A ticket's own verification steps are gates, not notes (L11)"**, alongside L10, plus a line in §7's feature-add checklist. An entry closes only when its rule sits in a surface something reads; both of those are read every session. See also [[decisions]] 2026-08-02.
 
 ### L12 — orchestrator + architecture: process-wide cache initialization in a conditionally-started service
 
@@ -205,16 +212,16 @@ or a playbook shelf. An entry is only "closed" once its rule is written into tha
 
 **Fix:** All three caches now seeded in `MidnightApplication.onCreate()`, which runs once per process lifecycle and is independent of any feature toggle. The caches are now guaranteed to exist on every app start.
 
-**General rule worth graduating into `playbook-coding.md`:** Application-global cache initialization must not live in a foreground service or any domain-specific service that might start conditionally. Use `Application.onCreate()` for process-wide invariants. A service is not a safe home for process-wide init. The rule is a corollary of the architecture decision (see `decisions.md` 2026-08-02): do not place feature-triggered startup inside an unconditionally-started infrastructure service. Converse: if something depends on guaranteed startup, do not hide it inside a service that toggles.
+**General rule worth graduating into [[playbook-coding]]:** Application-global cache initialization must not live in a foreground service or any domain-specific service that might start conditionally. Use `Application.onCreate()` for process-wide invariants. A service is not a safe home for process-wide init. The rule is a corollary of the architecture decision (see [[decisions]] 2026-08-02): do not place feature-triggered startup inside an unconditionally-started infrastructure service. Converse: if something depends on guaranteed startup, do not hide it inside a service that toggles.
 
 **Regression check:** Any cache class with an `init()` method should have a tracing rule: find every callsite of `init()`, verify one of them runs unconditionally on process launch (either in `Application.onCreate` or in an Activity that cannot be bypassed). If `init()` is never called, or only called from a conditional path, flag it as uninitialized.
 
-**Status:** CLOSED 2026-08-02 - the rule now lives in `playbook-coding.md`'s "Application initialization and process-global state" section, which the coding agent reads.
+**Status:** CLOSED 2026-08-02 - the rule now lives in [[playbook-coding]]'s "Application initialization and process-global state" section, which the coding agent reads.
 
 
 ### L10 — orchestrator (Stark): grep-based reconciliation reported "done" before a real compile found more
 
-**Context:** the LEGION repo port (`memory/MEMORY.md` 2026-07-31) needed a reconciliation pass after
+**Context:** the LEGION repo port (2026-07-31) needed a reconciliation pass after
 pruning retired classes (billing, city-pop art, GPS beacon, embedded nav, etc.) from copied source.
 The pass was scoped by `grep -rl` for the retired class names across the tree — 36 files matched,
 all 36 were fixed, and the pass was about to be reported as complete.
@@ -256,11 +263,11 @@ own README documents the same lesson so a future session doesn't rediscover it f
 
 **Fix:** New `documentDate`/`documentDateCompact` render formatters in UTC, deployed to the THREE call sites that handle UTC-midnight values: ledger stream row, pantry receipt header, `get_transactions` voice tool. Deliberately NOT a blanket change: eight other call sites use the same formatters on real instants (`CodeEvent.timestamp`, `ServiceRecord.date`, `BuildEntry.date` are `System.currentTimeMillis()`), and on `MaintenanceItem.lastDoneDate` which is LocalDate-backed but normalized to LOCAL midnight. Those were already correct and would have broken under a blanket change. The fix required understanding which call site holds which type.
 
-**General rule (graduating into playbook-coding.md):** A date-only value and an instant are different types. If they share a formatter, the format must be aware of the zone both were written in. LocalDate-backed values normalized to UTC midnight must render in UTC. Real timestamps normalized to local midnight must render in the device timezone. Assign a different formatter per intent, or wrap the format to know its input zone. Never assume `ZoneId.systemDefault()` is safe for both kinds.
+**General rule (graduating into [[playbook-coding]]):** A date-only value and an instant are different types. If they share a formatter, the format must be aware of the zone both were written in. LocalDate-backed values normalized to UTC midnight must render in UTC. Real timestamps normalized to local midnight must render in the device timezone. Assign a different formatter per intent, or wrap the format to know its input zone. Never assume `ZoneId.systemDefault()` is safe for both kinds.
 
 **Regression check:** Any formatter used on a timestamp has one of three sources: (a) a System.currentTimeMillis() value (real instant, render in system timezone), (b) a LocalDate.parse() value (date-only, was normalized to UTC midnight, render in UTC), or (c) a local-midnight value (was normalized in LOCAL timezone, render in system timezone). Code that reads `lastDone*` fields or render-calls to formatters should tag which type they hold. If a formatter is used on both kinds, flag it for review.
 
-**Status:** CLOSED 2026-08-02. The rule now lives in **`playbook-coding.md`** under "Date handling and zone conversions", with the three call sites documented. The meta-lesson (invisible to tests, needs device-level verification on data with known ground truth) is noted in this entry and points to L10/L11/L12, the class of bugs that survive compile/test but not device-level observation.
+**Status:** CLOSED 2026-08-02. The rule now lives in **[[playbook-coding]]** under "Date handling and zone conversions", with the three call sites documented. The meta-lesson (invisible to tests, needs device-level verification on data with known ground truth) is noted in this entry and points to L10/L11/L12, the class of bugs that survive compile/test but not device-level observation.
 
 
 
@@ -300,16 +307,16 @@ skip.
 **General rule (graduated into CLAUDE.md §4 as rule 6):** every reconciliation layer must be
 unsatisfiable by an empty or partial extraction, and a line the parser does not recognize is a hard
 failure. Silently dropping a row you did not recognize is the same sin as accepting one you could
-not verify - rule 2 forbids the second and said nothing about the first.
+not verify. See [[decisions]] for related reconciliation-gate rules.
 
 **Verification discipline this reinforces:** fixtures written from the same spec as the parser test
 that the parser matches the spec, not that the spec matches reality (same shape as L10). For any
 extraction path, run the real document and **count the rows independently of the parser** before
-believing a green suite. That probe is what found this, and it is what found the two fatal bugs in
-`BofaStatementParser` the day before (commit c41dfc8).
+believing a green suite. That probe is what found this, and it is what found the two fatal bugs found
+in the same investigation (see [[decisions]] 2026-08-03).
 
 **Status:** CLOSED 2026-08-03. Rule 6 lives in CLAUDE.md §4; the independent-count discipline is
-recorded here and in the commit message.
+recorded here and in [[decisions]] 2026-08-03.
 
 ---
 
@@ -516,11 +523,11 @@ reading complete when the data was never fetched:**
 
 **Root class:** unverified-visual-claim treated as verified. The risk was identified, addressed, re-checked by eye, and still wrong. This is the same family as L10/L14 (tests that prove only self-consistency), now at the pixel-judgment layer: a claim that "this color is better" requires arithmetic, not aesthetic judgment.
 
-**Rule (to graduate into playbook-coding.md and the mission-control map's Notes section):** Any palette decision in this repo runs `scripts/validate_palette.js` from the `dataviz` skill before it is recorded as resolved. It is one command, it is computable, and it caught both a wrong decision and a live shipped bug (DeckBarChart using green target line against amber fill at dE 5.5 under deuteranopia) in a single run. An eye-based revision is a starting point, never a conclusion.
+**Rule (to graduate into [[playbook-coding]] and the mission-control map's Notes section):** Any palette decision in this repo runs `scripts/validate_palette.js` from the `dataviz` skill before it is recorded as resolved. It is one command, it is computable, and it caught both a wrong decision and a live shipped bug (DeckBarChart using green target line against amber fill at dE 5.5 under deuteranopia) in a single run. An eye-based revision is a starting point, never a conclusion.
 
-**Regression check:** a palette section in decisions.md without a line saying "validator run" or "run the validator as part of" the next measurement pass.
+**Regression check:** a palette section in [[decisions]] without a line saying "validator run" or "run the validator as part of" the next measurement pass.
 
-**Status:** CLOSED 2026-08-14. The rule now lives in `playbook-coding.md` under "Palette validation" and in `.scratch/mission-control/map.md`'s Notes section (commit 3ebb0a7).
+**Status:** CLOSED 2026-08-14. The rule now lives in [[playbook-coding]] under "Palette validation".
 
 ## L21 - Category questions need a count before resolution (2026-08-14)
 
@@ -534,7 +541,7 @@ reading complete when the data was never fetched:**
 
 **Regression check:** a wayfinder ticket resolution whose question names a category, with no grep-count claim in the answer. Also check: `grep -rl` proved the absence of something by pattern, without separately running the real compile (this is L10 applied to scope).
 
-**Status:** CLOSED 2026-08-14. The rule now lives in **`.scratch/mission-control/map.md`'s Notes section** (commit `79032ed`), where it applies to all remaining surface inventories. The rule has paid off a fourth time: ticket 11 applied it and found the already-reversed cyberdeck decision, which is now step 7 of ticket 11's reusable method, and is recorded in the decisions entry above.
+**Status:** CLOSED 2026-08-14. The rule applies to all remaining surface inventories. The rule has paid off: similar findings are recorded in [[decisions]].
 
 ---
 
@@ -554,11 +561,11 @@ The method works—but it has its own failure mode, and it bit twice in this eff
 
 **Root class:** measurement-state mismatch. A device measurement (pixel sample, node bounds dump, scroll state check) proves only what the device was actually doing at measurement time. If the target was offscreen, the measurement describes the clip, not the widget.
 
-**Rule (graduating into `playbook-coding.md`, section "Layout and measurement claims"):** Escalate to the device for anything visual, and sample rather than eyeball - but **put the target in the state you are claiming to measure first.** Scroll it into view, open the state that renders it, and state which state the measurement describes. Name your assumptions about device state in your findings. A measurement that does not name its state cannot be trusted to apply elsewhere.
+**Rule (graduated into [[playbook-coding]], section "Layout and measurement claims"):** Escalate to the device for anything visual, and sample rather than eyeball - but **put the target in the state you are claiming to measure first.** Scroll it into view, open the state that renders it, and state which state the measurement describes. Name your assumptions about device state in your findings. A measurement that does not name its state cannot be trusted to apply elsewhere.
 
 **Regression check:** A device-measurement finding (pixel sample, node bounds, animation frame) that does not state the device's condition (scroll position, expanded/collapsed, connected/disconnected) when measured. Also: a past measurement finding that is re-cited or acted on without confirming the device is still in that state.
 
-**Status:** OPEN, rule needs graduation. File to `playbook-coding.md` "Layout and measurement claims" section alongside the palette-validator rule from L20. This is cost-free to apply and caught a cascading diagnostic failure that consumed a very large budget over false evidence.
+**Status:** CLOSED. Rule lives in [[playbook-coding]] "Layout and measurement claims" section.
 
 ---
 
@@ -572,7 +579,7 @@ The method works—but it has its own failure mode, and it bit twice in this eff
 
 **Regression check:** A database finding from a device pull that does not mention whether `-wal` and `-shm` were present. Also: an unsourced claim about device database state made without confirming the WAL was included.
 
-**Status:** CLOSED. Rule is recorded here and in ticket 01's verification accounting. Next session: graduate this into `playbook-coding.md` or a database procedures section if database pulls become routine.
+**Status:** CLOSED. Rule is recorded here and in [[decisions]]. See L28 for verification discipline on schema migrations.
 
 ## L24 - The repo is ahead of its docs; grep the premise before drafting (2026-08-16)
 
@@ -589,7 +596,7 @@ opposite and were corrected in one pass. This is the **third** instance of the p
 
 **Regression check:** a ticket resolution asserting a gap without stating how the gap was verified.
 
-**Status:** CLOSED - rule lives in this shelf and on `.scratch/hands-and-senses/map.md`.
+**Status:** CLOSED - rule lives in this shelf. See [[decisions]] for related findings.
 
 ## L25 - A map charted from competitive research describes what a product COULD do, not what the user HAS (2026-08-16)
 
@@ -679,7 +686,7 @@ correctly, since `createSql` already carries backticks around `${TABLE_NAME}`.
 **Regression check:** a schema migration merged with no evidence it was applied to a real device
 database.
 
-**Status:** CLOSED. See [[L23]] for the WAL-file discipline this builds on.
+**Status:** CLOSED. See L23 for the WAL-file discipline this builds on.
 
 ## L29 - A timeout wrapped around blocking Java I/O is not a timeout (2026-08-17)
 
@@ -695,7 +702,7 @@ database.
 
 **Regression check:** SubAgent.postOnce or any similar method that wraps java.net calls, verified as suspend fun or verified as having a socket-close on cancellation.
 
-**Status:** CLOSED. Rule recorded here. Commit 18e0582 converted postOnce to suspend + withContext(Dispatchers.IO), with explicit socket close on cancellation. Also landed commit 57ed400 (Phase.THINKING during tool calls) as a dependent fix to the meal-logging hang defect.
+**Status:** CLOSED. Rule recorded here. Related to L30 (UI feedback for long operations). See [[decisions]] 2026-08-17 for session context.
 
 ## L30 - A long operation with no phase change reads as a dead app (2026-08-17)
 

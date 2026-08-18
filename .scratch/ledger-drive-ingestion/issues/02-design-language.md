@@ -1,8 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 02
+title: "What does this app look like?"
+type: prototype
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What does this app look like?
-
-Type: prototype
-Status: resolved
-Blocked by: (none)
 
 ## Question
 

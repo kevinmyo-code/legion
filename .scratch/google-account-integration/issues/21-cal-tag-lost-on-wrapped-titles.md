@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 21
+title: "BUILD: the CAL tag vanishes when an event title wraps"
+type: task
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # BUILD: the CAL tag vanishes when an event title wraps
-
-Type: task
-Status: resolved
-Blocked by: -
 
 ## Answer
 

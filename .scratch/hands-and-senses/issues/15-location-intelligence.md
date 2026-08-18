@@ -1,9 +1,18 @@
+---
+map: hands-and-senses
+ticket: 15
+title: "Location intelligence: what LEGION knows about where you are, and when it speaks first"
+type: grilling
+status: open
+status-detail: ""
+blockers: ["14"]
+blocked-by: ["[[14-location-intel-research]]"]
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Location intelligence: what LEGION knows about where you are, and when it speaks first
 
-Type: grilling
-Status: open
-Blocked by: 14
-Scope: **EFFORT, not a ticket.** Chart `.scratch/location-intelligence/` first, using this body as
 raw material; [ticket 14's findings](14-location-intel-research.md) become that map's resolved
 research. The five numbered clusters below are each roughly a ticket. See map.md, "Efforts in
 disguise".

@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 21
+title: "Ship pass: on-device QA and map close"
+type: task
+status: closed
+status-detail: "2026-08-16, superseded; unrun QA recorded on the ticket"
+blockers: ["15", "16", "17", "18", "19", "20"]
+blocked-by: ["[[15-build-home]]", "[[16-build-bio]]", "[[17-build-cred]]", "[[18-build-fleet]]", "[[19-build-log-pantry]]", "[[20-build-driving-mode]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Ship pass: on-device QA and map close
-
-Type: task
-Status: closed (2026-08-16) - superseded; unrun QA recorded on the ticket
-Blocked by: 15, 16, 17, 18, 19, 20
 
 ## Question
 

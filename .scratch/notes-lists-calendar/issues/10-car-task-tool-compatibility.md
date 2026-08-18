@@ -1,8 +1,17 @@
+---
+map: notes-lists-calendar
+ticket: 10
+title: "Do the car-task voice tools survive absorption?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-entity-model-and-cartask-migration]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Do the car-task voice tools survive absorption?
-
-Type: grilling
-Status: resolved
-Blocked by: 01
 
 ## Question
 

@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 10
+title: Pantry + Notes/Agenda/Lists surfaces
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-deck-design-language]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Pantry + Notes/Agenda/Lists surfaces
-
-Type: grilling
-Status: resolved
-Blocked by: 01
 
 ## Question
 

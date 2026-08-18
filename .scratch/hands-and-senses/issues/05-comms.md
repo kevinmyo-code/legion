@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 05
+title: "Comms: place a call, send a text"
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Comms: place a call, send a text
-
-Type: grilling
-Status: open
-Blocked by: -
 
 ## Question
 

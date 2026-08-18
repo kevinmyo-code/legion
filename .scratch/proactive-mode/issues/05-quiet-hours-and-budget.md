@@ -1,8 +1,17 @@
+---
+map: proactive-mode
+ticket: 05
+title: "Quiet hours, and how often Alfred may speak at all"
+type: grilling
+status: open
+status-detail: ""
+blockers: ["03"]
+blocked-by: ["[[03-compulsion-test]]"]
+open-blockers: 1
+ready: false
+tags: [ticket]
+---
 # Quiet hours, and how often Alfred may speak at all
-
-Type: grilling
-Status: open
-Blocked by: 03
 
 ## Question
 

@@ -1,8 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 12
+title: "Mid-cycle card CSV: a provisional tier under the reconciliation gate"
+type: build-spec
+status: resolved
+status-detail: "4 calls, Kevin, 2026-08-06, ONE flagged collision, see §0"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Mid-cycle card CSV: a provisional tier under the reconciliation gate
-
-Type: build-spec
-Status: resolved (4 calls, Kevin, 2026-08-06) - ONE flagged collision, see §0
-Blocked by: (none)
 
 ## Question
 

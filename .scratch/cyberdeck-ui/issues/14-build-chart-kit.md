@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 14
+title: "Build: deck chart kit"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["12"]
+blocked-by: ["[[12-build-theme]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: deck chart kit
-
-Type: task
-Status: resolved
-Blocked by: 12
 
 ## Question
 

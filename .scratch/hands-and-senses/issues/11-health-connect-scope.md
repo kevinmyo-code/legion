@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 11
+title: "Health Connect: what does LEGION do with a body's data?"
+type: grilling
+status: archived
+status-detail: "Kevin, 2026-08-16, no wearable to read from"
+blockers: ["10"]
+blocked-by: ["[[10-health-connect-research]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Health Connect: what does LEGION do with a body's data?
-
-Type: grilling
-Status: archived (Kevin, 2026-08-16) - no wearable to read from
-Blocked by: 10
 
 ## Question
 

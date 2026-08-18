@@ -1,8 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 03
+title: "What identifies a statement file as already ingested?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-saf-drive-folder-feasibility]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What identifies a statement file as already ingested?
-
-Type: grilling
-Status: resolved
-Blocked by: 01 (resolved)
 
 ## Question
 

@@ -1,6 +1,18 @@
+---
+map: quant-viz
+ticket: 13
+title: 13 - Notes tab agenda density strip
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 13 - Notes tab agenda density strip
 
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 series is schedule density.
 
 ## Spec (`ui/NotesScreen.kt`, resolver in `ui/notes/`)

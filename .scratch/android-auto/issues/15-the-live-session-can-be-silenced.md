@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 15
+title: The live session can be silenced with no error
+type: task
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # The live session can be silenced with no error
-
-Type: task
-Status: open
-Blocked by: -
 
 ## Question
 

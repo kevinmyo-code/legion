@@ -1,8 +1,17 @@
+---
+map: legion-shape
+ticket: 10
+title: "What is the cars domain, under the new shape?"
+type: grilling
+status: resolved
+status-detail: "2026-08-07, Kevin"
+blockers: ["05"]
+blocked-by: ["[[05-target-log-gap-vocabulary]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What is the cars domain, under the new shape?
-
-Type: grilling
-Status: resolved (2026-08-07, Kevin)
-Blocked by: 05
 
 ## Question
 

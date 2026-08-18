@@ -1,6 +1,17 @@
+---
+map: quant-viz
+ticket: 07
+title: 07 - Pantry spend panel + monthly bars
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 07 - Pantry spend panel + monthly bars
-
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 ## What
 

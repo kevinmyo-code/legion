@@ -1,8 +1,17 @@
+---
+map: notes-lists-calendar
+ticket: 09
+title: "How does this sync across two phones?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-entity-model-and-cartask-migration]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # How does this sync across two phones?
-
-Type: grilling
-Status: resolved
-Blocked by: 01
 
 ## Question
 

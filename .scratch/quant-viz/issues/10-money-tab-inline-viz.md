@@ -1,6 +1,18 @@
+---
+map: quant-viz
+ticket: 10
+title: 10 - Money tab inline viz (glanceable face)
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 10 - Money tab inline viz (glanceable face)
 
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 09 landing first - same files (`ui/LedgerScreen.kt`, `ui/ledger/`), do not run concurrently.
 
 ## What

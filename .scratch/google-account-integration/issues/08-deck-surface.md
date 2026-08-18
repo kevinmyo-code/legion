@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 08
+title: "What do mail and calendar look like on the deck?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["04"]
+blocked-by: ["[[04-what-happens-to-local-timed-items]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What do mail and calendar look like on the deck?
-
-Type: grilling
-Status: resolved
-Blocked by: 04
 
 ## Question
 

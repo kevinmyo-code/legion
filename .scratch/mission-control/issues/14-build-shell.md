@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 14
+title: "Build: bezel, shell, status line, nav keys and boot"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["13"]
+blocked-by: ["[[13-build-theme-and-controls]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: bezel, shell, status line, nav keys and boot
-
-Type: task
-Status: resolved
-Blocked by: 13
 
 ## Question
 

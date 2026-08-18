@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 04
+title: "Who gets the microphone, and what happens to Spotify?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Who gets the microphone, and what happens to Spotify?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

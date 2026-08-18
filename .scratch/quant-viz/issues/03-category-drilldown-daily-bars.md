@@ -1,6 +1,17 @@
+---
+map: quant-viz
+ticket: 03
+title: 03 - Category drilldown daily-spend bars
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 03 - Category drilldown daily-spend bars
-
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 ## What
 

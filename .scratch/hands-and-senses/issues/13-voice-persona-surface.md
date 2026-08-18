@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 13
+title: "Voice and persona: the picker surface and the reconnect"
+type: grilling
+status: closed
+status-detail: "Kevin, 2026-08-16, already built"
+blockers: ["12"]
+blocked-by: ["[[12-assistant-identity]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Voice and persona: the picker surface and the reconnect
-
-Type: grilling
-Status: closed (Kevin, 2026-08-16) - already built
-Blocked by: 12
 
 ## Question
 

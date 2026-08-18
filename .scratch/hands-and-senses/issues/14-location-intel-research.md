@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 14
+title: "What location data can LEGION actually get, and on what terms?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What location data can LEGION actually get, and on what terms?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

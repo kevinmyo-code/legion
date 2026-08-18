@@ -1,8 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 10
+title: "Does ledger data sync across devices, and does the file ledger sync with it?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["03"]
+blocked-by: ["[[03-ingested-file-ledger]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Does ledger data sync across devices, and does the file ledger sync with it?
-
-Type: grilling
-Status: resolved
-Blocked by: 03 (resolved)
 
 ## Question
 

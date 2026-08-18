@@ -1,8 +1,17 @@
+---
+map: aspect-advisors
+ticket: 03
+title: The propose-accept-write protocol
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01", "02"]
+blocked-by: ["[[01-advisor-contract]]", "[[02-goal-store]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # The propose-accept-write protocol
-
-Type: grilling
-Status: resolved
-Blocked by: 01, 02
 
 ## Question
 

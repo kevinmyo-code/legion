@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 16
+title: "Build: BIO rebuild"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["13", "14"]
+blocked-by: ["[[13-build-shell]]", "[[14-build-chart-kit]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: BIO rebuild
-
-Type: task
-Status: resolved
-Blocked by: 13, 14
 
 ## Question
 

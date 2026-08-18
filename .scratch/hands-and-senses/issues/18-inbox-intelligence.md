@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 18
+title: "Inbox intelligence: packages and travel, from mail LEGION can already read"
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Inbox intelligence: packages and travel, from mail LEGION can already read
-
-Type: grilling
-Status: open
-Blocked by: -
 
 ## Question
 

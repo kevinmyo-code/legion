@@ -1,8 +1,17 @@
-﻿# Hand-added items, and what "delete" means under sync
-
-Type: grilling
-Status: resolved (2026-08-15)
-Blocked by: 05   # resolved 2026-08-15 - UNBLOCKED
+---
+map: fleet-maintenance
+ticket: 07
+title: "Hand-added items, and what \"delete\" means under sync"
+type: grilling
+status: resolved
+status-detail: 2026-08-15
+blockers: ["05"]
+blocked-by: ["[[05-an-edit-that-actually-sticks]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# Hand-added items, and what "delete" means under sync
 
 ## Question
 
@@ -204,4 +213,3 @@ Binding on whoever builds this (L11):
   `car_tasks`/`places`, and `maintenance_items` meets the stated precondition - but **sync has never
   run at all**, so no tombstone of any kind has ever propagated on this device.
 - **Not built.** **Unblocks 08.**
-

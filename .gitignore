@@ -52,6 +52,7 @@ Thumbs.db
 !.scratch/*/issues/**
 !.scratch/*/research/
 !.scratch/*/research/**
+!.scratch/*/*.canvas
 
 # Background-agent worktree scratch space
 .claude/worktrees/
@@ -70,3 +71,9 @@ app/src/main/assets/midnight_import/
 # Moved to a debug-only source set 2026-08-17 so a release APK structurally cannot
 # package it (app/build.gradle.kts explains why a packaging filter was rejected).
 app/src/debug/assets/midnight_import/
+
+# Obsidian: share the vault config, not the per-machine window layout
+.obsidian/workspace*.json
+.obsidian/cache
+.obsidian/plugins/
+.obsidian/themes/

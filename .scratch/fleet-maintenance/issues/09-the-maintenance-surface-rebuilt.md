@@ -1,8 +1,17 @@
-﻿# The maintenance surface, rebuilt
-
-Type: prototype
-Status: resolved (2026-08-15)
-Blocked by: 05, 06   # both resolved 2026-08-15 - UNBLOCKED
+---
+map: fleet-maintenance
+ticket: 09
+title: "The maintenance surface, rebuilt"
+type: prototype
+status: resolved
+status-detail: 2026-08-15
+blockers: ["05", "06"]
+blocked-by: ["[[05-an-edit-that-actually-sticks]]", "[[06-a-seeded-interval-is-a-guess]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# The maintenance surface, rebuilt
 
 ## Question
 
@@ -163,4 +172,3 @@ mission-control decision. Mission-control's visual language is settled and reuse
 - `on-device`: the tile reading `OK / NEXT BRAKE FLUID -` on 2026-08-15 with seven unknowns.
 - `reasoned`: that ~11 rows per screen follows from 48dp against 560dp; not measured on the device.
 - **Not built. Unblocks 11.**
-

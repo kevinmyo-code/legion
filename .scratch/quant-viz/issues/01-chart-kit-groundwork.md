@@ -1,6 +1,17 @@
+---
+map: quant-viz
+ticket: 01
+title: "01 - Chart-kit groundwork: bucketDailySumCents + DeckSmallMultiple"
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 01 - Chart-kit groundwork: bucketDailySumCents + DeckSmallMultiple
-
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 ## Part A: `bucketDailySumCents` (pure, `ui/common/DeckChartData.kt`)
 

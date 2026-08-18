@@ -1,3 +1,10 @@
+---
+shelf: backlog-recaps
+status: frozen
+kind: backlog
+tags: [library]
+---
+
 # Backlog: Recaps (Wrapped family)
 
 > **STATUS: FROZEN ARCHIVE (banner added 2026-08-01).** This shelf is Midnight AI history: a

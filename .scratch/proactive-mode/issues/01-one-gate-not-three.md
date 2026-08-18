@@ -1,8 +1,17 @@
+---
+map: proactive-mode
+ticket: 01
+title: "One gate, not three"
+type: grilling
+status: resolved
+status-detail: "2026-08-18, Kevin - 3 calls, plus one premise correction"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # One gate, not three
-
-Type: grilling
-Status: resolved (2026-08-18, Kevin - 3 calls, plus one premise correction)
-Blocked by: -
 
 ## Question
 

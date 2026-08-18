@@ -1,7 +1,17 @@
+---
+map: aspect-advisors
+ticket: 12
+title: "Research: lean toolbox - tool discovery for the live session"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Research: lean toolbox - tool discovery for the live session
-
-Type: research
-Status: resolved
 
 ## Question
 

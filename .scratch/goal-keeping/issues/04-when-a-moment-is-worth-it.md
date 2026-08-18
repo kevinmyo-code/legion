@@ -1,8 +1,17 @@
+---
+map: goal-keeping
+ticket: 04
+title: What makes a moment worth interrupting
+type: grilling
+status: open
+status-detail: ""
+blockers: ["01", "03"]
+blocked-by: ["[[01-what-on-track-means]]", "[[03-the-check-in-record]]"]
+open-blockers: 2
+ready: false
+tags: [ticket]
+---
 # What makes a moment worth interrupting
-
-Type: grilling
-Status: open
-Blocked by: 01, 03
 
 ## Question
 

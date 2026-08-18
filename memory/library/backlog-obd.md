@@ -1,3 +1,10 @@
+---
+shelf: backlog-obd
+status: frozen
+kind: backlog
+tags: [library]
+---
+
 # Backlog: OBD
 
 > **STATUS: FROZEN ARCHIVE (banner added 2026-08-01).** This shelf is Midnight AI history: a
@@ -68,7 +75,7 @@ dependencies added (BleTransport uses framework-standard `BluetoothGattCallback`
 BLE library). Zero impact on RFCOMM code path or emulator path.
 
 **Pending on-device validation (2026-07-12):** Outlander commute with FlyRoadTech BLE dongle
-(Kevin's daily driver, [[hardware.md#Test vehicles]], phone-only test rig). Validation checklist:
+(Kevin's daily driver, [[hardware#Test vehicles]], phone-only test rig). Validation checklist:
 - BLE scan completion + device advertisement display
 - First connection (transport auto-detect or manual BLE select)
 - Command/response flow over GATT (HM-10 characteristic write/read vs Nordic UART)
@@ -80,7 +87,7 @@ BLE library). Zero impact on RFCOMM code path or emulator path.
 
 **UNRESOLVED FEATURE IDEA, NOT DECIDED. Kevin's dump, filed not grilled.** Track and drift modes in
 the TrackAddict shape: lap timing, per-session records, high-rate OBD telemetry logs. Tribe fit is
-excellent - [[../../CLAUDE.md]] §1's target is JDM / affordable-enthusiast, and track days are where
+excellent - `CLAUDE.md` §1's target is JDM / affordable-enthusiast, and track days are where
 that tribe actually is. Two safety/strategy notes worth keeping: it is squarely §9.1-safe (anchored
 to falsifiable reality - a lap time is either real or it isn't, the opposite of unfalsifiable memory
 about the user), and it pushes drivers toward real-world community (track days, meetups), which §9.1
@@ -100,7 +107,7 @@ not speculation:**
    lap anyway.
 2. **Drift mode probably needs an IMU the head unit does not have.** Drift scoring needs yaw rate and
    slip angle, i.e. a gyro + accelerometer. Cheap AOSP 8-10 double-DINs frequently ship without any
-   IMU. Same shape as the TPMS finding (see [[MEMORY.md]]): a good instinct with a hardware floor
+   IMU. Same shape as the TPMS finding (see `memory/MEMORY.md`): a good instinct with a hardware floor
    under it. **Check `SensorManager` for TYPE_GYROSCOPE / TYPE_ACCELEROMETER on the real unit before
    this gets planned.** If absent, drift mode is either dead or a BYO-hardware path.
 

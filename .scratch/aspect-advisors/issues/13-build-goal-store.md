@@ -1,7 +1,17 @@
+---
+map: aspect-advisors
+ticket: 13
+title: "Build: goal store and advice log"
+type: task
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: goal store and advice log
-
-Type: task
-Status: resolved
 
 ## Question
 

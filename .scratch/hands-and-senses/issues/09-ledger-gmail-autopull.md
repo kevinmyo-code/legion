@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 09
+title: "Ledger auto-pull: statements walk from the inbox into the gate"
+type: grilling
+status: killed
+status-detail: "Kevin, 2026-08-16, statements do not arrive in Gmail"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Ledger auto-pull: statements walk from the inbox into the gate
-
-Type: grilling
-Status: killed (Kevin, 2026-08-16) - statements do not arrive in Gmail
-Blocked by: -
 
 ## Question
 

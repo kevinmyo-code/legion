@@ -1,8 +1,15 @@
+---
+map: android-auto
+title: "Map: LEGION in the car (Android Auto)"
+charted: 2026-08-13
+charted-by: ""
+effort: "`.scratch/android-auto/`"
+tickets: 16
+open: 10
+status: open
+tags: [map]
+---
 # Map: LEGION in the car (Android Auto)
-
-Label: `wayfinder:map`
-Effort: `.scratch/android-auto/`
-Charted: 2026-08-13
 
 ## Destination
 
@@ -161,7 +168,6 @@ Constraints, not open questions. A ticket that contradicts one of these is wrong
   `LegionMediaLibraryService` serves four real rows built from live Room data, with its own doc
   admitting it was "built PROVISIONALLY per Kevin's direct ask". And ticket 14 said the call probe
   must stay on a throwaway branch; those files are on `feat/mission-control`.
-
 
 ## Not yet specified
 

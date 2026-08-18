@@ -1,6 +1,18 @@
+---
+map: quant-viz
+ticket: 15
+title: "15 - LOG tab: ONE scroll surface, and the false-empty past day"
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 15 - LOG tab: ONE scroll surface, and the false-empty past day
 
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 expanded the inbox list is still unreachable; only collapsing the calendar restores scrolling.
 Kevin's original complaint reproduces. This ticket replaces that fix with the correct one.
 

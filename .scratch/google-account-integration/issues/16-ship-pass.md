@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 16
+title: "BUILD: ship pass - the destination gate"
+type: task
+status: open
+status-detail: ""
+blockers: ["13", "14", "15"]
+blocked-by: ["[[13-calendar-read]]", "[[14-calendar-write]]", "[[15-gmail-tools]]"]
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # BUILD: ship pass - the destination gate
-
-Type: task
-Status: open
-Blocked by: 13, 14, 15
 
 ## Question
 

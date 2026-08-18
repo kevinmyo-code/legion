@@ -1,7 +1,17 @@
+---
+map: aspect-advisors
+ticket: 02
+title: The goal store
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # The goal store
-
-Type: grilling
-Status: resolved
 
 ## Question
 

@@ -1,8 +1,17 @@
-﻿# One car label rule, across twelve surfaces
-
-Type: grilling
-Status: resolved (2026-08-15)
-Blocked by: 01
+---
+map: fleet-maintenance
+ticket: 04
+title: "One car label rule, across twelve surfaces"
+type: grilling
+status: resolved
+status-detail: 2026-08-15
+blockers: ["01"]
+blocked-by: ["[[01-what-the-real-data-says]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# One car label rule, across twelve surfaces
 
 ## Input from ticket 01 (2026-08-15) - cause identified, question narrowed
 
@@ -225,4 +234,3 @@ Binding on whoever builds this (L11):
   de-duplication clause needing to fire on the common case, but no other car in the roster has a
   trim on file to test it against.
 - **Not built.** Nothing in this answer has been implemented.
-

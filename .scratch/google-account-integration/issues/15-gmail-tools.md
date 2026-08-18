@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 15
+title: "BUILD: the two Gmail tools"
+type: task
+status: resolved
+status-detail: "2026-08-16, verified built"
+blockers: ["09", "12"]
+blocked-by: ["[[09-add-scopes-to-the-client]]", "[[12-google-grant-plumbing]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # BUILD: the two Gmail tools
-
-Type: task
-Status: resolved (2026-08-16, verified built)
-Blocked by: 09, 12
 
 ## Question
 

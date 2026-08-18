@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 07
+title: "Ambient motion budget, one element per surface"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["03"]
+blocked-by: ["[[03-bezel-and-chrome]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Ambient motion budget, one element per surface
-
-Type: grilling
-Status: resolved
-Blocked by: 03
 
 ## Question
 

@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 18
+title: "BUILD: the Calendar row says \"Not set up yet\" while calendar is working"
+type: task
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # BUILD: the Calendar row says "Not set up yet" while calendar is working
-
-Type: task
-Status: resolved
-Blocked by: -
 
 ## Question
 

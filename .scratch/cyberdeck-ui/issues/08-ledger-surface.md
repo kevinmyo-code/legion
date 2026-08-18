@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 08
+title: "Ledger surface: resource monitor"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01", "02"]
+blocked-by: ["[[01-deck-design-language]]", "[[02-chart-rendering]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Ledger surface: resource monitor
-
-Type: grilling
-Status: resolved
-Blocked by: 01, 02
 
 ## Question
 

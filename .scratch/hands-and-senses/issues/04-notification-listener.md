@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 04
+title: "Notification listener: the phone as a sense"
+type: grilling
+status: archived
+status-detail: "Kevin, 2026-08-16, not needed for now"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Notification listener: the phone as a sense
-
-Type: grilling
-Status: archived (Kevin, 2026-08-16) - not needed for now
-Blocked by: -
 
 ## Question
 

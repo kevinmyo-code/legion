@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 06
+title: Chart kit recoloured under two hues
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01", "04"]
+blocked-by: ["[[01-palette-tokens]]", "[[04-alarm-without-hue]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Chart kit recoloured under two hues
-
-Type: grilling
-Status: resolved
-Blocked by: 01, 04
 
 ## Question
 

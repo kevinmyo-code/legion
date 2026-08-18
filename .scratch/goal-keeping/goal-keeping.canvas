@@ -1,0 +1,142 @@
+{
+  "nodes": [
+    {
+      "id": "5d4740197e28b343",
+      "type": "file",
+      "file": ".scratch/goal-keeping/issues/01-what-on-track-means.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "71341b7a442e8f5a",
+      "type": "file",
+      "file": ".scratch/goal-keeping/issues/08-what-else-is-computable.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "08b682a8aa4eccac",
+      "type": "file",
+      "file": ".scratch/goal-keeping/issues/02-what-makes-a-goal-trackable.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "ada1793d3a9b8a63",
+      "type": "file",
+      "file": ".scratch/goal-keeping/issues/03-the-check-in-record.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "7cfd328d60f7ce7a",
+      "type": "file",
+      "file": ".scratch/goal-keeping/issues/04-when-a-moment-is-worth-it.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "111ebfc32ce79571",
+      "type": "file",
+      "file": ".scratch/goal-keeping/issues/05-revision-and-retirement.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "4cc8951b0a4ea412",
+      "type": "file",
+      "file": ".scratch/goal-keeping/issues/06-advisor-with-an-opinion-about-time.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "6fea72a124c20ebe",
+      "type": "file",
+      "file": ".scratch/goal-keeping/issues/07-which-surface-says-it.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    }
+  ],
+  "edges": [
+    {
+      "id": "d473cb39791337a9",
+      "fromNode": "5d4740197e28b343",
+      "fromSide": "right",
+      "toNode": "08b682a8aa4eccac",
+      "toSide": "left"
+    },
+    {
+      "id": "4e000017b6c1acab",
+      "fromNode": "5d4740197e28b343",
+      "fromSide": "right",
+      "toNode": "ada1793d3a9b8a63",
+      "toSide": "left"
+    },
+    {
+      "id": "dca7620b2853c453",
+      "fromNode": "5d4740197e28b343",
+      "fromSide": "right",
+      "toNode": "7cfd328d60f7ce7a",
+      "toSide": "left"
+    },
+    {
+      "id": "12819cf99dc88ece",
+      "fromNode": "ada1793d3a9b8a63",
+      "fromSide": "right",
+      "toNode": "7cfd328d60f7ce7a",
+      "toSide": "left"
+    },
+    {
+      "id": "de771df0c5e41e05",
+      "fromNode": "5d4740197e28b343",
+      "fromSide": "right",
+      "toNode": "111ebfc32ce79571",
+      "toSide": "left"
+    },
+    {
+      "id": "fa5d92ba572bf56e",
+      "fromNode": "ada1793d3a9b8a63",
+      "fromSide": "right",
+      "toNode": "111ebfc32ce79571",
+      "toSide": "left"
+    },
+    {
+      "id": "d8a142d2bfc2b4bb",
+      "fromNode": "7cfd328d60f7ce7a",
+      "fromSide": "right",
+      "toNode": "4cc8951b0a4ea412",
+      "toSide": "left"
+    },
+    {
+      "id": "598367c182b09b1e",
+      "fromNode": "7cfd328d60f7ce7a",
+      "fromSide": "right",
+      "toNode": "6fea72a124c20ebe",
+      "toSide": "left"
+    }
+  ]
+}

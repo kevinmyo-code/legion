@@ -1,8 +1,17 @@
+---
+map: notes-lists-calendar
+ticket: 11
+title: "How do lists get archived, and how is one reused next year?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-entity-model-and-cartask-migration]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # How do lists get archived, and how is one reused next year?
-
-Type: grilling
-Status: resolved
-Blocked by: 01
 
 Graduated from the map's fog 2026-08-07 and resolved the same session. Absorbs two fog patches at
 once - "archiving, deleting and finding" and "templates" - because Kevin's answer settled both in one

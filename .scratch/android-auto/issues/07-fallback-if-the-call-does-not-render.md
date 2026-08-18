@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 07
+title: "What if Android Auto will not render the call?"
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # What if Android Auto will not render the call?
-
-Type: grilling
-Status: open
-Blocked by: -
 
 ## REFRAMED 2026-08-13, after tickets 01 and 04 resolved
 

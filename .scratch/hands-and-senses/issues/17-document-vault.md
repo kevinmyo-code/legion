@@ -1,9 +1,18 @@
+---
+map: hands-and-senses
+ticket: 17
+title: "The document vault: LEGION reads the papers that run your life"
+type: grilling
+status: open
+status-detail: ""
+blockers: ["16"]
+blocked-by: ["[[16-vault-retrieval-research]]"]
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # The document vault: LEGION reads the papers that run your life
 
-Type: grilling
-Status: open
-Blocked by: 16
-Scope: **EFFORT, not a ticket - and the largest single capability on the map.** Chart
 `.scratch/document-vault/` first, using this body as raw material;
 [ticket 16's findings](16-vault-retrieval-research.md) become that map's resolved research, and its
 ten spikes (S6 and S8 first) become that map's opening work. See map.md, "Efforts in disguise".

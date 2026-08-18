@@ -1,8 +1,17 @@
+---
+map: proactive-mode
+ticket: 08
+title: How Alfred sounds when nobody asked him anything
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # How Alfred sounds when nobody asked him anything
-
-Type: grilling
-Status: open
-Blocked by: -
 
 ## Question
 

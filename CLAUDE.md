@@ -419,3 +419,32 @@ banner at the top and `INDEX.md` carries a status column. Read the banner before
 
 Do not act on a FROZEN shelf's blockers, sprints, or backlog items. They describe a head-unit car
 launcher with a commercial model, and all three of those premises are dead.
+
+---
+
+## 12. The Obsidian vault layer
+
+Added 2026-08-18 so Kevin can browse the library, the maps, and the tickets himself instead of
+asking for the next map every session. The repo root IS the vault; nothing moved.
+
+- **Tickets stay the source of truth.** Their `Type` / `Status` / `Blocked by` header lines now live
+  in YAML frontmatter instead of the body. Same information, same place, machine-readable.
+- **`tools/obsidian_sync.py` regenerates the derived layer** and is idempotent. Run it after editing
+  any ticket header or adding a ticket:
+
+  ```
+  python tools/obsidian_sync.py          # write
+  python tools/obsidian_sync.py --check  # report only
+  ```
+
+  It rewrites ticket and map frontmatter, one `.canvas` dependency graph per map, and `vault/Board.md`.
+- **Never hand-edit `vault/Board.md` or a `.canvas`.** Edit the ticket, re-run the script.
+- **`ready: true` on a ticket means open with every blocker resolved.** It is computed, so it goes
+  stale the moment a status changes without a re-run. Treat a stale board as a script that was not
+  run, not as a fact.
+- Vault entry points live in `vault/`: `LEGION.md` (hand-written home), `Board.md` (generated),
+  and three Bases (`Tickets`, `Maps`, `Library`). `.obsidian/` holds shared config; per-machine
+  workspace state is gitignored.
+- `memory/library/` shelves carry `shelf` / `status` / `kind` frontmatter and wikilink each other.
+  **Do not wikilink source code paths** - the graph is for the knowledge library, and hundreds of
+  code nodes would drown it. Code paths stay in backticks.

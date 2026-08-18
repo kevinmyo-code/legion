@@ -1,6 +1,17 @@
+---
+map: quant-viz
+ticket: 05
+title: "05 - Fleet recap trends, maintenance due meters, wrapped surface"
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 05 - Fleet recap trends, maintenance due meters, wrapped surface
-
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 Three write-only or text-only fleet datasets get read surfaces. All additive.
 

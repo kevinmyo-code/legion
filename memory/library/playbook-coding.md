@@ -1,3 +1,10 @@
+---
+shelf: playbook-coding
+status: partly-live
+kind: playbook
+tags: [library]
+---
+
 # Coding Playbook
 
 Accumulated architecture notes and conventions for the coding agent. Maintained by the librarian:
@@ -48,7 +55,7 @@ Midnight AI (historical names in older notes: Moose, Aria, Nightrunner; same app
 - DECISION 2026-06-28 (from Business memo): MediaSession is permanent, Spotify Web API & App
   Remote are both blocked for solo devs (5-user dev cap, Extended Quota needs a 250k-MAU
   business). Invest only in MediaSession reliability; do not add a Spotify OAuth backend. See
-  library/playbook-business.md.
+  [[playbook-business]].
 - Tools are dispatched in `service/LiveToolbox.kt`: `controlMusic` (search returns optimistic
   success, a known false-success bug).
 

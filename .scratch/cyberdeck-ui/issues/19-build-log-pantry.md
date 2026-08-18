@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 19
+title: "Build: LOG timeline and Pantry reskin"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["13"]
+blocked-by: ["[[13-build-shell]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: LOG timeline and Pantry reskin
-
-Type: task
-Status: resolved
-Blocked by: 13
 
 ## Question
 

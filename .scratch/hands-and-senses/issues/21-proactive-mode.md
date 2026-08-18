@@ -1,9 +1,18 @@
+---
+map: hands-and-senses
+ticket: 21
+title: "The proactive switch: Alfred speaks first"
+type: grilling
+status: graduated
+status-detail: (2026-08-16) to .scratch/proactive-mode/
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # The proactive switch: Alfred speaks first
 
-Type: grilling
-Status: graduated (2026-08-16) to .scratch/proactive-mode/
-Blocked by: -
-Scope: **EFFORT, not a ticket.** Chart `.scratch/proactive-mode/` first, using this body as raw
 material. **Question 3 is already SETTLED by Kevin and carries over as a settled decision of the
 new map, not as an open question.** Every other raising ticket across LEGION inherits this map's
 rules. See map.md, "Efforts in disguise".

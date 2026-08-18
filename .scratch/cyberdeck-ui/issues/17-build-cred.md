@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 17
+title: "Build: CRED rebuild"
+type: task
+status: closed
+status-detail: "2026-08-16, superseded by .scratch/mission-control/"
+blockers: ["13", "14"]
+blocked-by: ["[[13-build-shell]]", "[[14-build-chart-kit]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: CRED rebuild
-
-Type: task
-Status: closed (2026-08-16) - superseded by .scratch/mission-control/
-Blocked by: 13, 14
 
 ## Question
 

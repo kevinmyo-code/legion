@@ -1,7 +1,17 @@
-﻿# What a 1998 Jeep Cherokee actually needs
-
-Type: research
-Status: resolved (2026-08-15)
+---
+map: fleet-maintenance
+ticket: 02
+title: What a 1998 Jeep Cherokee actually needs
+type: research
+status: resolved
+status-detail: 2026-08-15
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# What a 1998 Jeep Cherokee actually needs
 
 ## Question
 
@@ -130,4 +140,3 @@ canonical ten - which was the test this ticket existed to run, and the ten fails
 - Not verified by me directly: I am relaying a research subagent's report. The findings are
   internally consistent and the caveats are the kind an agent papering over gaps does not write,
   but **I have not personally read the source FSMs.**
-

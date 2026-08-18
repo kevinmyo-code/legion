@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 19
+title: "BUILD: Alfred cannot read the calendar at all"
+type: task
+status: resolved
+status-detail: "2026-08-16, verified built - premise was false"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # BUILD: Alfred cannot read the calendar at all
-
-Type: task
-Status: resolved (2026-08-16, verified built - premise was false)
-Blocked by: -
 
 ## Question
 

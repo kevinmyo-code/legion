@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 05
+title: "What is \"the inbox that matters\", and how does Kevin ask for mail?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What is "the inbox that matters", and how does Kevin ask for mail?
-
-Type: grilling
-Status: resolved
-Blocked by: -
 
 ## Question
 

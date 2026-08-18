@@ -1,8 +1,17 @@
+---
+map: notes-lists-calendar
+ticket: 08
+title: "What shape is the calendar view?"
+type: prototype
+status: resolved
+status-detail: ""
+blockers: ["01", "04"]
+blocked-by: ["[[01-entity-model-and-cartask-migration]]", "[[04-recurrence-model]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What shape is the calendar view?
-
-Type: prototype
-Status: resolved
-Blocked by: 01, 04
 
 ## Question
 

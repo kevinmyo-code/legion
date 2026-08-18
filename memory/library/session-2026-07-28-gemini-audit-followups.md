@@ -1,3 +1,10 @@
+---
+shelf: session-2026-07-28-gemini-audit-followups
+status: frozen
+kind: session
+tags: [library]
+---
+
 # Session 2026-07-28/29: Gemini agent audit and breakfix on three commits
 
 > **STATUS: FROZEN ARCHIVE (banner added 2026-08-01).** This shelf is Midnight AI history: a

@@ -1,7 +1,17 @@
-﻿# An interval edit that actually sticks
-
-Type: grilling
-Status: resolved (2026-08-15)
+---
+map: fleet-maintenance
+ticket: 05
+title: An interval edit that actually sticks
+type: grilling
+status: resolved
+status-detail: 2026-08-15
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# An interval edit that actually sticks
 
 ## Question
 
@@ -212,4 +222,3 @@ Binding on whoever builds this (L11):
   from the rule's intent (no *silent* overwrite) rather than from its literal wording, and it is
   flagged here as a refinement rather than buried.
 - **Not built.** Nothing here is implemented.
-

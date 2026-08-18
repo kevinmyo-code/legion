@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 12
+title: "Does clone-and-run survive two manual toggles?"
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Does clone-and-run survive two manual toggles?
-
-Type: grilling
-Status: open
-Blocked by: -
 
 **Unblocked 2026-08-13, and it got worse.** Ticket 02: developer mode explicitly covers media apps,
 but **whether the unknown-sources switch survives an Android Auto update is undocumented** - the

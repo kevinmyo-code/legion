@@ -1,8 +1,17 @@
+---
+map: aspect-advisors
+ticket: 10
+title: "Safety, labelling, and the coach's register"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-advisor-contract]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Safety, labelling, and the coach's register
-
-Type: grilling
-Status: resolved
-Blocked by: 01
 
 ## Question
 

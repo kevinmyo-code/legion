@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 04
+title: Alarm escalation when red is chrome
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-palette-tokens]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Alarm escalation when red is chrome
-
-Type: grilling
-Status: resolved
-Blocked by: 01
 
 ## Question
 

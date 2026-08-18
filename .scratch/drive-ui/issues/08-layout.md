@@ -1,8 +1,17 @@
+---
+map: drive-ui
+ticket: 08
+title: "Layout for a phone that is 384 x 832, not a head unit"
+type: prototype
+status: open
+status-detail: Q27/Q28 met; Q26 now UNBLOCKED by the drives table (v23)
+blockers: ["04", "05"]
+blocked-by: ["[[04-gauge-design]]", "[[05-trip-content]]"]
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Layout for a phone that is 384 x 832, not a head unit
-
-Type: prototype
-Status: open - Q27/Q28 met; Q26 now UNBLOCKED by the drives table (v23)
-Blocked by: 04, 05
 
 ## Question
 

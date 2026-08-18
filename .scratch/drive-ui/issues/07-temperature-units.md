@@ -1,8 +1,17 @@
+---
+map: drive-ui
+ticket: 07
+title: Pick one temperature unit and mean it
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Pick one temperature unit and mean it
-
-Type: grilling
-Status: resolved
-Blocked by: -
 
 ## Question
 

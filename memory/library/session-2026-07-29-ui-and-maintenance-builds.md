@@ -1,3 +1,10 @@
+---
+shelf: session-2026-07-29-ui-and-maintenance-builds
+status: frozen
+kind: session
+tags: [library]
+---
+
 # Session 2026-07-29: UI Coherence + Maintenance Schedule
 
 > **STATUS: FROZEN ARCHIVE (banner added 2026-08-01).** This shelf is Midnight AI history: a

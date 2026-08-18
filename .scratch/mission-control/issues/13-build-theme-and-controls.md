@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 13
+title: "Build: theme, tokens, typeface and the control vocabulary"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["01", "02", "04", "09"]
+blocked-by: ["[[01-palette-tokens]]", "[[02-bundled-mono]]", "[[04-alarm-without-hue]]", "[[09-utility-screens]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: theme, tokens, typeface and the control vocabulary
-
-Type: task
-Status: resolved
-Blocked by: 01, 02, 04, 09
 
 ## Question
 

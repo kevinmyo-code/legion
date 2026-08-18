@@ -1,9 +1,18 @@
+---
+map: hands-and-senses
+ticket: 07
+title: "Wrench mode: live stream or snap-and-ask, and how the car's history gets in the room"
+type: grilling
+status: open
+status-detail: ""
+blockers: ["06"]
+blocked-by: ["[[06-wrench-vision-research]]"]
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Wrench mode: live stream or snap-and-ask, and how the car's history gets in the room
 
-Type: grilling
-Status: open
-Blocked by: 06
-Scope: **EFFORT, not a ticket.** Chart `.scratch/wrench-mode/` first, using this body as raw
 material; [ticket 06's findings](06-wrench-vision-research.md) and its five spikes become that
 map's opening work. It later absorbs the glasses peripheral. See map.md, "Efforts in disguise".
 

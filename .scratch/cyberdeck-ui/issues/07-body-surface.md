@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 07
+title: "Body surface: biometrics telemetry"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01", "02"]
+blocked-by: ["[[01-deck-design-language]]", "[[02-chart-rendering]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Body surface: biometrics telemetry
-
-Type: grilling
-Status: resolved
-Blocked by: 01, 02
 
 ## Question
 

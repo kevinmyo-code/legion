@@ -1,8 +1,17 @@
+---
+map: fleet-wide-voice
+ticket: 01
+title: "The assistant should know the whole fleet, not just the car it is sitting in"
+type: build-spec
+status: resolved
+status-detail: "2 calls, Kevin, 2026-08-06"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # The assistant should know the whole fleet, not just the car it is sitting in
-
-Type: build-spec
-Status: resolved (2 calls, Kevin, 2026-08-06)
-Blocked by: (none)
 
 ## Question
 

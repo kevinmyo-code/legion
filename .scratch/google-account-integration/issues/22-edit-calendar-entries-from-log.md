@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 22
+title: "BUILD: edit and delete calendar entries from the Log stream"
+type: task
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # BUILD: edit and delete calendar entries from the Log stream
-
-Type: task
-Status: resolved
-Blocked by: -
 
 ## Question
 

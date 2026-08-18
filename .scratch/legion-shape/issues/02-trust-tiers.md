@@ -1,8 +1,17 @@
+---
+map: legion-shape
+ticket: 02
+title: "How many kinds of truth does the record hold?"
+type: grilling
+status: resolved
+status-detail: "2026-08-06, Kevin"
+blockers: ["01"]
+blocked-by: ["[[01-what-is-legion]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # How many kinds of truth does the record hold?
-
-Type: grilling
-Status: resolved (2026-08-06, Kevin)
-Blocked by: 01
 
 ## Question
 

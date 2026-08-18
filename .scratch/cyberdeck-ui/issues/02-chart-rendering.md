@@ -1,7 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 02
+title: "Chart rendering: library or hand-rolled Canvas"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Chart rendering: library or hand-rolled Canvas
-
-Type: research
-Status: resolved
 
 ## Question
 

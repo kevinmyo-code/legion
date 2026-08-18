@@ -1,8 +1,17 @@
+---
+map: notes-lists-calendar
+ticket: 01
+title: "What is the entity model, and what happens to `car_tasks`?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What is the entity model, and what happens to `car_tasks`?
-
-Type: grilling
-Status: resolved
-Blocked by: none
 
 ## Question
 

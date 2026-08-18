@@ -1,7 +1,17 @@
+---
+map: aspect-advisors
+ticket: 07
+title: "Research: the CRED finance playbook"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Research: the CRED finance playbook
-
-Type: research
-Status: resolved
 
 ## Question
 

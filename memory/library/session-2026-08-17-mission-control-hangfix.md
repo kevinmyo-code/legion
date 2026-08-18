@@ -1,3 +1,10 @@
+---
+shelf: session-2026-08-17-mission-control-hangfix
+status: live
+kind: session
+tags: [library]
+---
+
 # Session 2026-08-17: Meal-logging hang investigation and fix (feat/mission-control)
 
 ## Status: LIVE

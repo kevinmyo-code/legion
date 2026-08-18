@@ -1,8 +1,17 @@
+---
+map: legion-shape
+ticket: 04
+title: "What happens to the P&L?"
+type: grilling
+status: resolved
+status-detail: "2026-08-06, Kevin"
+blockers: ["03"]
+blocked-by: ["[[03-plan-versus-actual]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What happens to the P&L?
-
-Type: grilling
-Status: resolved (2026-08-06, Kevin)
-Blocked by: 03
 
 ## Question
 

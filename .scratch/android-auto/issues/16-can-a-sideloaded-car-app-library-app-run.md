@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 16
+title: "Can a sideloaded Car App Library app run on Android Auto?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Can a sideloaded Car App Library app run on Android Auto?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

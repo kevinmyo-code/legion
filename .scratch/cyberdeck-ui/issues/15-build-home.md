@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 15
+title: "Build: HOME rebuild"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["13"]
+blocked-by: ["[[13-build-shell]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: HOME rebuild
-
-Type: task
-Status: resolved
-Blocked by: 13
 
 ## Question
 

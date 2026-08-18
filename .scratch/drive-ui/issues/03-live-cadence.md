@@ -1,8 +1,17 @@
+---
+map: drive-ui
+ticket: 03
+title: "Live cadence: how fast, and who owns the poll?"
+type: grilling
+status: open
+status-detail: "answers settled, BLOCKED on ticket 02 for the numbers"
+blockers: ["01", "02"]
+blocked-by: ["[[01-bus-reality-research]]", "[[02-measure-the-bus]]"]
+open-blockers: 1
+ready: false
+tags: [ticket]
+---
 # Live cadence: how fast, and who owns the poll?
-
-Type: grilling
-Status: open - answers settled, BLOCKED on ticket 02 for the numbers
-Blocked by: 01, 02
 
 ## Question
 

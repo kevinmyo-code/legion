@@ -1,8 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 06
+title: "How is LLM spend estimated and approved before a batch?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["05"]
+blocked-by: ["[[05-batch-ingestion-mechanics]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # How is LLM spend estimated and approved before a batch?
-
-Type: grilling
-Status: resolved
-Blocked by: 05 (resolved)
 
 ## Question
 

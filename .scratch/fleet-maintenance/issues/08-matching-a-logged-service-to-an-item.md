@@ -1,8 +1,17 @@
-﻿# Matching a logged service to the item it satisfies
-
-Type: grilling
-Status: resolved (2026-08-15)
-Blocked by: 07   # resolved 2026-08-15 - UNBLOCKED
+---
+map: fleet-maintenance
+ticket: 08
+title: Matching a logged service to the item it satisfies
+type: grilling
+status: resolved
+status-detail: 2026-08-15
+blockers: ["07"]
+blocked-by: ["[[07-hand-added-items-and-what-delete-means]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# Matching a logged service to the item it satisfies
 
 ## Question
 
@@ -133,4 +142,3 @@ leaves the anchor alone. Same shape as the VIN write-back's conflict rule, for t
 - `on-device`: the 118,374 vs 118,483 anchor conflict and its fourteen-second gap, from the
   2026-08-15 pull.
 - **Not built.**
-

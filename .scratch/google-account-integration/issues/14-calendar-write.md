@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 14
+title: "BUILD: Alfred puts an appointment on the calendar"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["13"]
+blocked-by: ["[[13-calendar-read]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # BUILD: Alfred puts an appointment on the calendar
-
-Type: task
-Status: resolved
-Blocked by: 13
 
 ## Answer
 

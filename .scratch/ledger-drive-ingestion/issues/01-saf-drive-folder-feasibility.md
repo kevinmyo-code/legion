@@ -1,8 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 01
+title: "Can SAF actually read a Google Drive folder?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Can SAF actually read a Google Drive folder?
-
-Type: research
-Status: resolved
-Blocked by: (none)
 
 ## Question
 

@@ -1,6 +1,17 @@
+---
+map: quant-viz
+ticket: 02
+title: 02 - Budget line meters
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 02 - Budget line meters
-
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 ## What
 

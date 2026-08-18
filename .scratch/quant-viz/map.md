@@ -1,3 +1,14 @@
+---
+map: quant-viz
+title: "Quantitative visualization pass (\"quant-viz\")"
+charted: 2026-08-13
+charted-by: ""
+effort: ""
+tickets: 17
+open: 1
+status: open
+tags: [map]
+---
 # Quantitative visualization pass ("quant-viz")
 
 Charted 2026-08-13 (Fable, session 7 follow-on). Kevin's ask: "the data can be presented in a

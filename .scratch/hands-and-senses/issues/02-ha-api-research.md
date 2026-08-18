@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 02
+title: "What does Home Assistant's local API actually offer a phone voice client?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What does Home Assistant's local API actually offer a phone voice client?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

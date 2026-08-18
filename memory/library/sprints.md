@@ -1,3 +1,10 @@
+---
+shelf: sprints
+status: frozen
+kind: sprints
+tags: [library]
+---
+
 # Sprints
 
 > **STATUS: FROZEN ARCHIVE (banner added 2026-08-01).** This shelf is Midnight AI history: a

@@ -1,3 +1,10 @@
+---
+shelf: archive
+status: frozen
+kind: archive
+tags: [library]
+---
+
 # Archive
 
 > **STATUS: FROZEN ARCHIVE (banner added 2026-08-01).** This shelf is Midnight AI history: a
@@ -23,7 +30,7 @@ filed by the librarian as `memory/library/session-YYYY-MM-DD-<slug>.md`.
 
 ## Split-screen NATIVE fix (found + fixed alongside B3, 2026-07-07)
 
-[SUPERSEDED 2026-07-08 by R1 Companion Badge, see library/decisions.md]
+[SUPERSEDED 2026-07-08 by R1 Companion Badge, see [[decisions]]]
 
 NATIVE mode had no panel fallback: `FLAG_ACTIVITY_LAUNCH_ADJACENT` is a documented no-op from
 Midnight AI's fullscreen home-screen start; NATIVE blindly trusted it with zero verification, so

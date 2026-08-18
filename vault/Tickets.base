@@ -1,0 +1,79 @@
+filters:
+  and:
+    - file.hasTag("ticket")
+
+formulas:
+  where: 'map + " / " + ticket'
+
+properties:
+  status-detail:
+    displayName: "Detail"
+  open-blockers:
+    displayName: "Open blockers"
+  formula.where:
+    displayName: "Where"
+
+views:
+  - type: table
+    name: "Ready now"
+    filters:
+      and:
+        - 'ready == true'
+    order:
+      - formula.where
+      - title
+      - type
+      - map
+    groupBy:
+      property: map
+      direction: ASC
+
+  - type: table
+    name: "Blocked"
+    filters:
+      and:
+        - 'ready == false'
+        - 'open-blockers > 0'
+    order:
+      - formula.where
+      - title
+      - type
+      - blocked-by
+      - open-blockers
+
+  - type: table
+    name: "All open"
+    filters:
+      and:
+        - 'status == "open"'
+    order:
+      - formula.where
+      - title
+      - type
+      - status
+      - blocked-by
+    groupBy:
+      property: map
+      direction: ASC
+
+  - type: table
+    name: "Everything"
+    order:
+      - formula.where
+      - title
+      - type
+      - status
+      - status-detail
+    groupBy:
+      property: status
+      direction: ASC
+
+  - type: cards
+    name: "By type"
+    order:
+      - title
+      - map
+      - status
+    groupBy:
+      property: type
+      direction: ASC

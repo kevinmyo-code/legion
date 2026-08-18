@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 09
+title: Add the new scopes to the registered OAuth client and prove consent on the device
+type: task
+status: resolved
+status-detail: ""
+blockers: ["02", "11"]
+blocked-by: ["[[02-calendar-api-choice]]", "[[11-publish-the-consent-screen-now]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Add the new scopes to the registered OAuth client and prove consent on the device
-
-Type: task
-Status: resolved
-Blocked by: 02, 11
 
 ## Answer
 

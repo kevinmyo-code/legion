@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 12
+title: Write the assistant's actual voice
+type: prototype
+status: closed
+status-detail: "premise falsified, remainder BACK BURNER (Kevin, 2026-08-16)"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Write the assistant's actual voice
-
-Type: prototype
-Status: closed - premise falsified, remainder BACK BURNER (Kevin, 2026-08-16)
-Blocked by: -
 
 ## Question
 

@@ -1,8 +1,17 @@
+---
+map: proactive-mode
+ticket: 07
+title: "What may a background process actually do on Android in 2026?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What may a background process actually do on Android in 2026?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

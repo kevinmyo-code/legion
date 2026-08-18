@@ -1,6 +1,18 @@
+---
+map: quant-viz
+ticket: 11
+title: 11 - Today tab glance viz
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 11 - Today tab glance viz
 
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 pre-flight check, zero charts") - recorded in map taste call 1. Fixed pane order stays; the
 panes gain shape, not new sections.
 

@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 02
+title: "What does a sideloaded media app need to appear in Android Auto?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What does a sideloaded media app need to appear in Android Auto?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

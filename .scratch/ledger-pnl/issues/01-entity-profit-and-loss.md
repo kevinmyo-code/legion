@@ -1,8 +1,17 @@
+---
+map: ledger-pnl
+ticket: 01
+title: "One US entity with a monthly P&L, not a row of account balances"
+type: build-spec
+status: resolved
+status-detail: "4 calls, Kevin, 2026-08-06"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # One US entity with a monthly P&L, not a row of account balances
-
-Type: build-spec
-Status: resolved (4 calls, Kevin, 2026-08-06)
-Blocked by: (none)
 
 ## Question
 

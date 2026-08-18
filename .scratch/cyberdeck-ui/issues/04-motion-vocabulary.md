@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 04
+title: Motion vocabulary
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-deck-design-language]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Motion vocabulary
-
-Type: grilling
-Status: resolved
-Blocked by: 01
 
 ## Question
 

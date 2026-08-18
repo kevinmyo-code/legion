@@ -1,8 +1,17 @@
-﻿# Odometer: manual entry, drift, and what the estimate is worth
-
-Type: grilling
-Status: resolved (2026-08-15)
-Blocked by: 01, 03
+---
+map: fleet-maintenance
+ticket: 10
+title: "Odometer: manual entry, drift, and what the estimate is worth"
+type: grilling
+status: resolved
+status-detail: 2026-08-15
+blockers: ["01", "03"]
+blocked-by: ["[[01-what-the-real-data-says]]", "[[03-reading-a-real-odometer-over-obd]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# Odometer: manual entry, drift, and what the estimate is worth
 
 ## Question
 
@@ -177,4 +186,3 @@ receiving nothing, and `rpm > 0` may be stale. That ticket owns it; note the int
   deadband share, the `wanted()` latch.
 - `reasoned`: that raising the acceptance floor removes the phantom-mile path. Not measured.
 - **Not built.**
-

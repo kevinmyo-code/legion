@@ -1,8 +1,17 @@
+---
+map: aspect-advisors
+ticket: 09
+title: The cross-aspect HOME advisor
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01", "08"]
+blocked-by: ["[[01-advisor-contract]]", "[[08-aspect-digests]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # The cross-aspect HOME advisor
-
-Type: grilling
-Status: resolved
-Blocked by: 01, 08
 
 ## Question
 

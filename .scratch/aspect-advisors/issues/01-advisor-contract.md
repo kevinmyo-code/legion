@@ -1,7 +1,17 @@
+---
+map: aspect-advisors
+ticket: 01
+title: The advisor contract
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # The advisor contract
-
-Type: grilling
-Status: resolved
 
 ## Question
 

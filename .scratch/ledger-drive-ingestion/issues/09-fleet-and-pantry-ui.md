@@ -1,8 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 09
+title: "What do the fleet and pantry screens show?"
+type: prototype
+status: resolved
+status-detail: ""
+blockers: ["02"]
+blocked-by: ["[[02-design-language]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What do the fleet and pantry screens show?
-
-Type: prototype
-Status: resolved
-Blocked by: 02 (resolved)
 
 ## Question
 

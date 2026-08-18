@@ -1,8 +1,17 @@
+---
+map: quant-viz
+ticket: 17
+title: "Two shipped visualisations vanished in a later rebuild, and nothing noticed"
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Two shipped visualisations vanished in a later rebuild, and nothing noticed
-
-Type: grilling
-Status: open
-Blocked by: -
 
 ## Question
 

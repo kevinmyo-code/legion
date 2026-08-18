@@ -1,6 +1,18 @@
+---
+map: quant-viz
+ticket: 09
+title: 09 - SET TARGET affordance in the category drilldown
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 09 - SET TARGET affordance in the category drilldown
 
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 The legion-shape ticket 06 decision D9 said targets are "set by voice AND screen"; only the voice
 half (`set_budget` in LiveToolbox) was ever built. This is the missing screen half, minimal.
 

@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 09
+title: "Fleet + Telemetry surface: vehicle uplink"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01", "02"]
+blocked-by: ["[[01-deck-design-language]]", "[[02-chart-rendering]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Fleet + Telemetry surface: vehicle uplink
-
-Type: grilling
-Status: resolved
-Blocked by: 01, 02
 
 ## Question
 

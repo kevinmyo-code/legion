@@ -1,8 +1,15 @@
+---
+map: google-account-integration
+title: "Map: Gmail and Google Calendar"
+charted: 2026-08-13
+charted-by: ""
+effort: "`.scratch/google-account-integration/`"
+tickets: 23
+open: 1
+status: open
+tags: [map]
+---
 # Map: Gmail and Google Calendar
-
-Label: `wayfinder:map`
-Effort: `.scratch/google-account-integration/`
-Charted: 2026-08-13
 
 ## Destination
 
@@ -134,7 +141,6 @@ Constraints, not open questions. A ticket that contradicts one of these is wrong
   **One hole found on the way past:** the mail read-through rule is enforced on the episodic path but
   **`remember` is not gated on it**, so mail content can still reach permanent memory -
   [the remember leak](issues/21-remember-leak.md).
-
 
 ## Not yet specified
 

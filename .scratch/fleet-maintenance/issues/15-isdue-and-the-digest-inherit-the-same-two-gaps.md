@@ -1,7 +1,17 @@
+---
+map: fleet-maintenance
+ticket: 15
+title: "`isDue` and the fleet digest inherit two gaps this map closed elsewhere"
+type: task
+status: resolved
+status-detail: 2026-08-15
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # `isDue` and the fleet digest inherit two gaps this map closed elsewhere
-
-Type: task
-Status: resolved (2026-08-15)
 
 ## Question
 

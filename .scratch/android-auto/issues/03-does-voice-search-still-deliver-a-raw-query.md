@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 03
+title: "Does voice search still deliver a raw spoken query to a media app?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Does voice search still deliver a raw spoken query to a media app?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

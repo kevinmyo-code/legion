@@ -1,8 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 11
+title: Run the 15-minute SAF probe on a real device
+type: task
+status: open
+status-detail: "mostly done - steps 1-6 run and passed, steps 7-9 blocked on transport"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Run the 15-minute SAF probe on a real device
-
-Type: task
-Status: mostly done - steps 1-6 run and passed, steps 7-9 blocked on transport
-Blocked by: (none)
 
 ## Question
 

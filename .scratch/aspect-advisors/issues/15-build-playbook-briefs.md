@@ -1,8 +1,17 @@
+---
+map: aspect-advisors
+ticket: 15
+title: "Build: ship the four playbooks as briefs"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["11"]
+blocked-by: ["[[11-token-latency-budget]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: ship the four playbooks as briefs
-
-Type: task
-Status: resolved
-Blocked by: 11
 
 ## Question
 

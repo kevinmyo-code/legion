@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 10
+title: "How long does the call stay open, and what does that cost?"
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # How long does the call stay open, and what does that cost?
-
-Type: grilling
-Status: open
-Blocked by: -
 
 **Unblocked 2026-08-13** (tickets 01 and 04 resolved). Two findings land directly on this ticket:
 Telecom imposes **two hard 5-second budgets** - the notification after `addCall`, and remote-surface

@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 01
+title: "Clear DTCs: fleet's first write to the car"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Clear DTCs: fleet's first write to the car
-
-Type: grilling
-Status: resolved
-Blocked by: -
 
 ## Question
 

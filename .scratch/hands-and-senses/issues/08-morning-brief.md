@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 08
+title: "Morning brief: a configurable skill, not a feed"
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Morning brief: a configurable skill, not a feed
-
-Type: grilling
-Status: open
-Blocked by: -
 
 ## Question
 

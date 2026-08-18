@@ -1,6 +1,17 @@
+---
+map: quant-viz
+ticket: 04
+title: 04 - Monthly spend trend drilldown
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 04 - Monthly spend trend drilldown
-
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 ## What
 

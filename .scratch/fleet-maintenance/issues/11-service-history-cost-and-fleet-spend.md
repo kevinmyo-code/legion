@@ -1,8 +1,17 @@
-﻿# Service history, cost capture, and fleet spend
-
-Type: grilling
-Status: resolved (2026-08-15)
-Blocked by: 09   # resolved 2026-08-15 - UNBLOCKED
+---
+map: fleet-maintenance
+ticket: 11
+title: "Service history, cost capture, and fleet spend"
+type: grilling
+status: resolved
+status-detail: 2026-08-15
+blockers: ["09"]
+blocked-by: ["[[09-the-maintenance-surface-rebuilt]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# Service history, cost capture, and fleet spend
 
 ## Question
 
@@ -151,4 +160,3 @@ Design for two hundred records, not two: reverse-chronological, grouped by year.
 - `reasoned`: that the migration is risk-free because the column is empty. Verify with the count
   query before relying on it.
 - **Not built.**
-

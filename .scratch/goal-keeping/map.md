@@ -1,9 +1,15 @@
+---
+map: goal-keeping
+title: "Map: Goal keeping"
+charted: 2026-08-18
+charted-by: ""
+effort: "`.scratch/goal-keeping/`"
+tickets: 8
+open: 7
+status: open
+tags: [map]
+---
 # Map: Goal keeping
-
-Label: `wayfinder:map`
-Effort: `.scratch/goal-keeping/`
-Charted: 2026-08-18
-Related: `.scratch/proactive-mode/` (delivery), `.scratch/aspect-advisors/` (the brain)
 
 ## Destination
 

@@ -1,3 +1,10 @@
+---
+shelf: session-2026-08-02-shell-and-pipeline
+status: live
+kind: session
+tags: [library]
+---
+
 # Session 2026-08-02: Shell and IngestPipeline
 
 > **STATUS: LIVE.** Field notes from second session 2026-08-02, branch `feat/ledger-ingestion`. Hardware verification, defect findings, residual known issues.

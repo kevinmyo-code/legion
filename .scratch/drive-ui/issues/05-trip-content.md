@@ -1,8 +1,17 @@
+---
+map: drive-ui
+ticket: 05
+title: "What makes a DRIVE legible, not just a moment"
+type: grilling
+status: resolved
+status-detail: "pending the mpg scale bug, ticket 09"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What makes a DRIVE legible, not just a moment
-
-Type: grilling
-Status: resolved (pending the mpg scale bug, ticket 09)
-Blocked by: -
 
 ## Question
 

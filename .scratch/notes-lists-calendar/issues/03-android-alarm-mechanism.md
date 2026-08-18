@@ -1,8 +1,17 @@
+---
+map: notes-lists-calendar
+ticket: 03
+title: "What is the alarm mechanism on current Android, and what does it cost?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What is the alarm mechanism on current Android, and what does it cost?
-
-Type: research
-Status: resolved
-Blocked by: none
 
 Resolved 2026-08-07. Full findings with sources: `.scratch/notes-lists-calendar/research/android-alarms.md`.
 

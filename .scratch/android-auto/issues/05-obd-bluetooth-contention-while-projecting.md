@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 05
+title: "Can OBD keep its Bluetooth radio while the phone projects to the car?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Can OBD keep its Bluetooth radio while the phone projects to the car?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

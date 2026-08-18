@@ -1,7 +1,15 @@
+---
+map: mission-control
+title: "Map: Mission Control UI"
+charted: 2026-08-14
+charted-by: Kevin + Opus
+effort: ""
+tickets: 16
+open: 0
+status: closed
+tags: [map]
+---
 # Map: Mission Control UI
-
-Label: wayfinder:map
-Charted: 2026-08-14 (Kevin + Opus)
 
 ## Destination
 

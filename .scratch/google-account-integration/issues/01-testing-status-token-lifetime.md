@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 01
+title: "Does the grant survive, or does it lapse every 7 days?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Does the grant survive, or does it lapse every 7 days?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

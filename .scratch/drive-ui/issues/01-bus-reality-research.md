@@ -1,8 +1,17 @@
+---
+map: drive-ui
+ticket: 01
+title: "What cadence can this car's bus actually sustain?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What cadence can this car's bus actually sustain?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

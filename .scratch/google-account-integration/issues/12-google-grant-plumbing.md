@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 12
+title: "BUILD: Google grant plumbing, and stop losing the reason"
+type: task
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # BUILD: Google grant plumbing, and stop losing the reason
-
-Type: task
-Status: resolved
-Blocked by: -
 
 **Unblocked and built 2026-08-13.** The `Blocked by: 11` was over-tight: the resolver, the
 `tokenOrReason` plumbing and the Setup screen need no console access at all. Only the on-device

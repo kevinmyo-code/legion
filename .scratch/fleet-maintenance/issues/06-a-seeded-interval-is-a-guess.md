@@ -1,8 +1,17 @@
-﻿# A seeded interval is a guess and has to say so
-
-Type: grilling
-Status: resolved (2026-08-15)
-Blocked by: 01, 02
+---
+map: fleet-maintenance
+ticket: 06
+title: A seeded interval is a guess and has to say so
+type: grilling
+status: resolved
+status-detail: 2026-08-15
+blockers: ["01", "02"]
+blocked-by: ["[[01-what-the-real-data-says]]", "[[02-what-a-1998-xj-actually-needs]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# A seeded interval is a guess and has to say so
 
 ## Question
 
@@ -212,4 +221,3 @@ Binding on whoever builds this (L11):
 - `reasoned`: that a `TEXT` column keeps a future `FACTORY` state migration-free. It follows from
   §5's stated rule, but has not been exercised for this column.
 - **Not built.** Nothing here is implemented. **Unblocks the builds of 05, 09 and 14.**
-

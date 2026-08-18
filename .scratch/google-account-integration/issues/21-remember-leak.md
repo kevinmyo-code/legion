@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 21
+title: "Mail can still reach permanent memory through `remember`"
+type: grilling
+status: resolved
+status-detail: "2026-08-16, remember refuses; Q5 memory audit left open"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Mail can still reach permanent memory through `remember`
-
-Type: grilling
-Status: resolved (2026-08-16) - remember refuses; Q5 memory audit left open
-Blocked by: -
 
 ## Question
 

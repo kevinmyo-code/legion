@@ -1,8 +1,17 @@
+---
+map: drive-ui
+ticket: 04
+title: What the gauges actually are
+type: prototype
+status: resolved
+status-detail: "2026-08-16, verified built"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What the gauges actually are
-
-Type: prototype
-Status: resolved (2026-08-16, verified built)
-Blocked by: -
 
 ## Question
 

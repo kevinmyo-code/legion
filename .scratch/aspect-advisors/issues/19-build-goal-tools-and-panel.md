@@ -1,8 +1,17 @@
+---
+map: aspect-advisors
+ticket: 19
+title: "Build: goal voice tools and the GOALS panel"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["13"]
+blocked-by: ["[[13-build-goal-store]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: goal voice tools and the GOALS panel
-
-Type: task
-Status: resolved
-Blocked by: 13
 
 ## Question
 

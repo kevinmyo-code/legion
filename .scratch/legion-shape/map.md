@@ -1,8 +1,15 @@
+---
+map: legion-shape
+title: "Map: What LEGION actually is"
+charted: 2026-08-06
+charted-by: /07
+effort: "`.scratch/legion-shape/`"
+tickets: 12
+open: 0
+status: closed
+tags: [map]
+---
 # Map: What LEGION actually is
-
-Label: `wayfinder:map`
-Effort: `.scratch/legion-shape/`
-Charted: 2026-08-06/07
 
 ## Destination
 

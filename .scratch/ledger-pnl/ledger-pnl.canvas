@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    {
+      "id": "3bcc667b5496dce6",
+      "type": "file",
+      "file": ".scratch/ledger-pnl/issues/01-entity-profit-and-loss.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    }
+  ],
+  "edges": []
+}

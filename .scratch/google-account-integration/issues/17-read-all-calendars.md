@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 17
+title: "BUILD: read from every Google calendar, write only to writable ones"
+type: task
+status: resolved
+status-detail: "2026-08-16, verified built"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # BUILD: read from every Google calendar, write only to writable ones
-
-Type: task
-Status: resolved (2026-08-16, verified built)
-Blocked by: -
 
 ## Question
 

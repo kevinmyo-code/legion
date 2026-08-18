@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 15
+title: "Build: chart kit under one data hue"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["13"]
+blocked-by: ["[[13-build-theme-and-controls]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: chart kit under one data hue
-
-Type: task
-Status: resolved
-Blocked by: 13
 
 ## Question
 

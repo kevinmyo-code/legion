@@ -1,8 +1,17 @@
+---
+map: drive-ui
+ticket: 06
+title: What moves on a screen that has never moved
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What moves on a screen that has never moved
-
-Type: grilling
-Status: resolved
-Blocked by: -
 
 ## Question
 

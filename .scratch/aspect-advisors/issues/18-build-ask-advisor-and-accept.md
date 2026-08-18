@@ -1,8 +1,17 @@
+---
+map: aspect-advisors
+ticket: 18
+title: "Build: ask_advisor and the propose-accept-write path"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["14", "16", "17"]
+blocked-by: ["[[14-build-advisor-harness]]", "[[16-build-digests-bio-cred]]", "[[17-build-digests-fleet-log-home]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: ask_advisor and the propose-accept-write path
-
-Type: task
-Status: resolved
-Blocked by: 14, 16, 17
 
 ## Question
 

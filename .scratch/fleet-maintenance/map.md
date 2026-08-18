@@ -1,7 +1,15 @@
+---
+map: fleet-maintenance
+title: "Map: Fleet maintenance tracking"
+charted: 2026-08-15
+charted-by: Kevin + Opus
+effort: ""
+tickets: 18
+open: 0
+status: closed
+tags: [map]
+---
 # Map: Fleet maintenance tracking
-
-Label: wayfinder:map
-Charted: 2026-08-15 (Kevin + Opus)
 
 ## Destination
 

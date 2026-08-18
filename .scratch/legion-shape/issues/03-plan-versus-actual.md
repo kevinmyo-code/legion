@@ -1,8 +1,17 @@
+---
+map: legion-shape
+ticket: 03
+title: "Is plan-versus-actual one idea or four?"
+type: grilling
+status: resolved
+status-detail: "2026-08-06, Kevin"
+blockers: ["01"]
+blocked-by: ["[[01-what-is-legion]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Is plan-versus-actual one idea or four?
-
-Type: grilling
-Status: resolved (2026-08-06, Kevin)
-Blocked by: 01
 
 ## Question
 

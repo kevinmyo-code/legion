@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 01
+title: "Does Android Auto render a self-managed call at all?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Does Android Auto render a self-managed call at all?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

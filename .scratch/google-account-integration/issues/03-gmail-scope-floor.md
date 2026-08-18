@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 03
+title: "What is the narrowest Gmail scope that does briefing and search?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What is the narrowest Gmail scope that does briefing and search?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

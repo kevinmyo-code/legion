@@ -1,8 +1,17 @@
+---
+map: proactive-mode
+ticket: 09
+title: "The boot-started service takes 123s to call startForeground, against a 10s window"
+type: bug
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # The boot-started service takes 123s to call startForeground, against a 10s window
-
-Type: bug
-Status: open
-Blocked by: -
 
 ## What was measured
 

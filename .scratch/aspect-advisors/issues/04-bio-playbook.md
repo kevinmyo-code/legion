@@ -1,7 +1,17 @@
+---
+map: aspect-advisors
+ticket: 04
+title: "Research: the BIO coaching playbook"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Research: the BIO coaching playbook
-
-Type: research
-Status: resolved
 
 ## Question
 

@@ -1,0 +1,217 @@
+{
+  "nodes": [
+    {
+      "id": "38754c48b8b4d0f8",
+      "type": "file",
+      "file": ".scratch/notes-lists-calendar/issues/01-entity-model-and-cartask-migration.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "9fec188d3e9be3e5",
+      "type": "file",
+      "file": ".scratch/notes-lists-calendar/issues/02-can-it-read-the-real-handwriting.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "76d46de80554f342",
+      "type": "file",
+      "file": ".scratch/notes-lists-calendar/issues/03-android-alarm-mechanism.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "e9af9858b4621ff0",
+      "type": "file",
+      "file": ".scratch/notes-lists-calendar/issues/04-recurrence-model.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "3e9ddddfa8c52903",
+      "type": "file",
+      "file": ".scratch/notes-lists-calendar/issues/05-voice-grammar-for-editing.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "f7cd5fee5a3880ca",
+      "type": "file",
+      "file": ".scratch/notes-lists-calendar/issues/06-photo-to-draft-flow.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "666fa880e78bf264",
+      "type": "file",
+      "file": ".scratch/notes-lists-calendar/issues/07-where-it-lives.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "000c7d1e2344c60b",
+      "type": "file",
+      "file": ".scratch/notes-lists-calendar/issues/09-sync-across-two-phones.md",
+      "x": 520,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "7267d2c61ae55b43",
+      "type": "file",
+      "file": ".scratch/notes-lists-calendar/issues/10-car-task-tool-compatibility.md",
+      "x": 520,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "4062512e8546e19c",
+      "type": "file",
+      "file": ".scratch/notes-lists-calendar/issues/11-archiving-and-reuse.md",
+      "x": 520,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "d03fdb0cc0e28b6e",
+      "type": "file",
+      "file": ".scratch/notes-lists-calendar/issues/12-what-a-fired-reminder-does.md",
+      "x": 520,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "0e82d034a69d0d47",
+      "type": "file",
+      "file": ".scratch/notes-lists-calendar/issues/08-calendar-view-shape.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    }
+  ],
+  "edges": [
+    {
+      "id": "066a2da9df022b81",
+      "fromNode": "38754c48b8b4d0f8",
+      "fromSide": "right",
+      "toNode": "e9af9858b4621ff0",
+      "toSide": "left"
+    },
+    {
+      "id": "d391f8aef9d32b03",
+      "fromNode": "76d46de80554f342",
+      "fromSide": "right",
+      "toNode": "e9af9858b4621ff0",
+      "toSide": "left"
+    },
+    {
+      "id": "9dacb19b7b515617",
+      "fromNode": "38754c48b8b4d0f8",
+      "fromSide": "right",
+      "toNode": "3e9ddddfa8c52903",
+      "toSide": "left"
+    },
+    {
+      "id": "e343176cc85b132e",
+      "fromNode": "38754c48b8b4d0f8",
+      "fromSide": "right",
+      "toNode": "f7cd5fee5a3880ca",
+      "toSide": "left"
+    },
+    {
+      "id": "d00954a1711333e1",
+      "fromNode": "9fec188d3e9be3e5",
+      "fromSide": "right",
+      "toNode": "f7cd5fee5a3880ca",
+      "toSide": "left"
+    },
+    {
+      "id": "d8d149553c3e086c",
+      "fromNode": "38754c48b8b4d0f8",
+      "fromSide": "right",
+      "toNode": "666fa880e78bf264",
+      "toSide": "left"
+    },
+    {
+      "id": "52d870d52b271c47",
+      "fromNode": "38754c48b8b4d0f8",
+      "fromSide": "right",
+      "toNode": "0e82d034a69d0d47",
+      "toSide": "left"
+    },
+    {
+      "id": "6ce52df4ede1330a",
+      "fromNode": "e9af9858b4621ff0",
+      "fromSide": "right",
+      "toNode": "0e82d034a69d0d47",
+      "toSide": "left"
+    },
+    {
+      "id": "ce3ff88d5a4f7f64",
+      "fromNode": "38754c48b8b4d0f8",
+      "fromSide": "right",
+      "toNode": "000c7d1e2344c60b",
+      "toSide": "left"
+    },
+    {
+      "id": "eb97ed9919e509bc",
+      "fromNode": "38754c48b8b4d0f8",
+      "fromSide": "right",
+      "toNode": "7267d2c61ae55b43",
+      "toSide": "left"
+    },
+    {
+      "id": "e940ae71a2b2f6cd",
+      "fromNode": "38754c48b8b4d0f8",
+      "fromSide": "right",
+      "toNode": "4062512e8546e19c",
+      "toSide": "left"
+    },
+    {
+      "id": "b49e86829683a9bc",
+      "fromNode": "38754c48b8b4d0f8",
+      "fromSide": "right",
+      "toNode": "d03fdb0cc0e28b6e",
+      "toSide": "left"
+    },
+    {
+      "id": "86af13e4f8b46ce6",
+      "fromNode": "76d46de80554f342",
+      "fromSide": "right",
+      "toNode": "d03fdb0cc0e28b6e",
+      "toSide": "left"
+    }
+  ]
+}

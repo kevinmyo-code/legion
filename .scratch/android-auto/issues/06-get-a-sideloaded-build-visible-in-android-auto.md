@@ -1,8 +1,17 @@
+---
+map: android-auto
+ticket: 06
+title: Get a sideloaded build visible in Android Auto
+type: task
+status: open
+status-detail: ""
+blockers: ["02"]
+blocked-by: ["[[02-what-a-sideloaded-media-app-needs]]"]
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Get a sideloaded build visible in Android Auto
-
-Type: task
-Status: open
-Blocked by: 02
 
 ## Question
 

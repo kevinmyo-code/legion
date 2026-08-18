@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 19
+title: "The people in Kevin's life: dates and facts he tells it"
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # The people in Kevin's life: dates and facts he tells it
-
-Type: grilling
-Status: open
-Blocked by: -
 
 ## Question
 

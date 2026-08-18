@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 16
+title: "Build: the surfaces, one ticket per surface"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["12", "13", "14", "15"]
+blocked-by: ["[[12-surface-inventories]]", "[[13-build-theme-and-controls]]", "[[14-build-shell]]", "[[15-build-chart-kit]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: the surfaces, one ticket per surface
-
-Type: task
-Status: resolved
-Blocked by: 12, 13, 14, 15
 
 ## Question
 

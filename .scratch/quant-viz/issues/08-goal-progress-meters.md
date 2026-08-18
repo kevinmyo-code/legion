@@ -1,6 +1,17 @@
+---
+map: quant-viz
+ticket: 08
+title: 08 - Goal progress meters
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 08 - Goal progress meters
-
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 
 ## What
 

@@ -1,0 +1,291 @@
+{
+  "nodes": [
+    {
+      "id": "50d59f175cc606ee",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/01-what-the-real-data-says.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "1db67b1393890271",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/02-what-a-1998-xj-actually-needs.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "2bcc211d5d1413e0",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/03-reading-a-real-odometer-over-obd.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "e46e844383b1250f",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/05-an-edit-that-actually-sticks.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "0da052a514a56567",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/13-the-jeep-row-lost-its-identity.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "a15bbe734fc83e5f",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/15-isdue-and-the-digest-inherit-the-same-two-gaps.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "f7f1cde8d5281e65",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md",
+      "x": 0,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "001f048c200129fc",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/17-an-empty-factory-list-is-a-failed-lookup.md",
+      "x": 0,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "16858ddceeb4c027",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/18-the-factory-lookup-is-not-stable-enough-to-diff-against.md",
+      "x": 0,
+      "y": 1200,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "2ab9180960b6ce8e",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/04-one-car-label-rule.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "11ad83822e6ffdbf",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/06-a-seeded-interval-is-a-guess.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "352c89bf90044c85",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/07-hand-added-items-and-what-delete-means.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "40d45e21e9418cf4",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/10-odometer-truth-and-drift.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "d7709084d173606f",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/08-matching-a-logged-service-to-an-item.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "e63a44d51ff62eb9",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/09-the-maintenance-surface-rebuilt.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "08e400c675ddc5dc",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/12-a-recall-button.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "5944c06e06ce2d50",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md",
+      "x": 1040,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "6ac5c320582c2728",
+      "type": "file",
+      "file": ".scratch/fleet-maintenance/issues/11-service-history-cost-and-fleet-spend.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    }
+  ],
+  "edges": [
+    {
+      "id": "5aeed8f4532b4152",
+      "fromNode": "50d59f175cc606ee",
+      "fromSide": "right",
+      "toNode": "2ab9180960b6ce8e",
+      "toSide": "left"
+    },
+    {
+      "id": "2f5a0ceffaa33bd1",
+      "fromNode": "50d59f175cc606ee",
+      "fromSide": "right",
+      "toNode": "11ad83822e6ffdbf",
+      "toSide": "left"
+    },
+    {
+      "id": "ca6328c547b84b20",
+      "fromNode": "1db67b1393890271",
+      "fromSide": "right",
+      "toNode": "11ad83822e6ffdbf",
+      "toSide": "left"
+    },
+    {
+      "id": "23120a0406fad22d",
+      "fromNode": "e46e844383b1250f",
+      "fromSide": "right",
+      "toNode": "352c89bf90044c85",
+      "toSide": "left"
+    },
+    {
+      "id": "d2613955e40d5028",
+      "fromNode": "352c89bf90044c85",
+      "fromSide": "right",
+      "toNode": "d7709084d173606f",
+      "toSide": "left"
+    },
+    {
+      "id": "ee29685545126d76",
+      "fromNode": "e46e844383b1250f",
+      "fromSide": "right",
+      "toNode": "e63a44d51ff62eb9",
+      "toSide": "left"
+    },
+    {
+      "id": "d9cfc93da35ef940",
+      "fromNode": "11ad83822e6ffdbf",
+      "fromSide": "right",
+      "toNode": "e63a44d51ff62eb9",
+      "toSide": "left"
+    },
+    {
+      "id": "29753ab39d76a400",
+      "fromNode": "50d59f175cc606ee",
+      "fromSide": "right",
+      "toNode": "40d45e21e9418cf4",
+      "toSide": "left"
+    },
+    {
+      "id": "2f88e602c905248d",
+      "fromNode": "2bcc211d5d1413e0",
+      "fromSide": "right",
+      "toNode": "40d45e21e9418cf4",
+      "toSide": "left"
+    },
+    {
+      "id": "9e9d440090ae7695",
+      "fromNode": "e63a44d51ff62eb9",
+      "fromSide": "right",
+      "toNode": "6ac5c320582c2728",
+      "toSide": "left"
+    },
+    {
+      "id": "837a487d00d43a84",
+      "fromNode": "2ab9180960b6ce8e",
+      "fromSide": "right",
+      "toNode": "08e400c675ddc5dc",
+      "toSide": "left"
+    },
+    {
+      "id": "9279ba2b55db30c7",
+      "fromNode": "0da052a514a56567",
+      "fromSide": "right",
+      "toNode": "08e400c675ddc5dc",
+      "toSide": "left"
+    },
+    {
+      "id": "57e3cff0b184b8ef",
+      "fromNode": "e46e844383b1250f",
+      "fromSide": "right",
+      "toNode": "5944c06e06ce2d50",
+      "toSide": "left"
+    },
+    {
+      "id": "badb7d97be1ff141",
+      "fromNode": "11ad83822e6ffdbf",
+      "fromSide": "right",
+      "toNode": "5944c06e06ce2d50",
+      "toSide": "left"
+    },
+    {
+      "id": "b6c4ba9e120b1cdf",
+      "fromNode": "352c89bf90044c85",
+      "fromSide": "right",
+      "toNode": "5944c06e06ce2d50",
+      "toSide": "left"
+    }
+  ]
+}

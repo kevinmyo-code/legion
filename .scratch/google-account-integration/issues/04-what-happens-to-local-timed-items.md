@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 04
+title: "Google owns events now - what happens to the local timed items?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Google owns events now - what happens to the local timed items?
-
-Type: grilling
-Status: resolved
-Blocked by: -
 
 **Unblocked 2026-08-13 by [ticket 02](02-calendar-api-choice.md): the store is `CalendarContract`,
 the on-device provider.** Two consequences that change this ticket's shape before you start.

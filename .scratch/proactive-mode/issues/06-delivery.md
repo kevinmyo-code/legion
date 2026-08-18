@@ -1,8 +1,17 @@
+---
+map: proactive-mode
+ticket: 06
+title: "Speak, notify, or wait"
+type: grilling
+status: open
+status-detail: ""
+blockers: ["07"]
+blocked-by: ["[[07-scheduling-research]]"]
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Speak, notify, or wait
-
-Type: grilling
-Status: open
-Blocked by: 07
 
 ## Question
 

@@ -1,0 +1,25 @@
+filters:
+  and:
+    - file.hasTag("library")
+
+views:
+  - type: table
+    name: "Live shelves"
+    filters:
+      not:
+        - 'status == "frozen"'
+    order:
+      - shelf
+      - kind
+      - file.mtime
+
+  - type: table
+    name: "All shelves"
+    order:
+      - shelf
+      - status
+      - kind
+      - file.mtime
+    groupBy:
+      property: status
+      direction: ASC

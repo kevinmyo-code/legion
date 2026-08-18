@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 09
+title: "Utility screens: how far relayout goes"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["05"]
+blocked-by: ["[[05-tiling-grammar]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Utility screens: how far relayout goes
-
-Type: grilling
-Status: resolved
-Blocked by: 05
 
 ## Question
 

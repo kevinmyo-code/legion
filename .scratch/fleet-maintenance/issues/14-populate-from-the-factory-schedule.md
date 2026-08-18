@@ -1,8 +1,17 @@
-﻿# Populate the schedule from the factory recommendation
-
-Type: prototype
-Status: resolved (2026-08-15)
-Blocked by: 05, 06, 07   # all resolved 2026-08-15 - UNBLOCKED
+---
+map: fleet-maintenance
+ticket: 14
+title: Populate the schedule from the factory recommendation
+type: prototype
+status: resolved
+status-detail: 2026-08-15
+blockers: ["05", "06", "07"]
+blocked-by: ["[[05-an-edit-that-actually-sticks]]", "[[06-a-seeded-interval-is-a-guess]]", "[[07-hand-added-items-and-what-delete-means]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# Populate the schedule from the factory recommendation
 
 ## Question
 
@@ -208,4 +217,3 @@ Both call the same function.
   the *automatic* one; the populate can still generate duplicates if the matching is weak, which is
   why (4) above is a gate.
 - **Not built.**
-

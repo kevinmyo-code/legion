@@ -1,8 +1,17 @@
+---
+map: legion-shape
+ticket: 09
+title: "What is the meals domain?"
+type: grilling
+status: resolved
+status-detail: "2026-08-07, Kevin"
+blockers: ["05", "07"]
+blocked-by: ["[[05-target-log-gap-vocabulary]]", "[[07-categorisation]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What is the meals domain?
-
-Type: grilling
-Status: resolved (2026-08-07, Kevin)
-Blocked by: 05, 07
 
 ## Question
 

@@ -1,8 +1,17 @@
+---
+map: notes-lists-calendar
+ticket: 06
+title: "What does the photo-to-draft flow look like?"
+type: prototype
+status: closed
+status-detail: out of scope
+blockers: ["01", "02"]
+blocked-by: ["[[01-entity-model-and-cartask-migration]]", "[[02-can-it-read-the-real-handwriting]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What does the photo-to-draft flow look like?
-
-Type: prototype
-Status: closed (out of scope)
-Blocked by: 01, 02
 
 Closed 2026-08-07 as OUT OF SCOPE, not resolved. Kevin cut photo ingestion for lists mid-effort.
 Charting decision 3, the human-as-reconciliation-gate narrowing this ticket was to have worded, is

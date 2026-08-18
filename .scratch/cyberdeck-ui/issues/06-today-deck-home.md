@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 06
+title: Today as the deck home
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-deck-design-language]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Today as the deck home
-
-Type: grilling
-Status: resolved
-Blocked by: 01
 
 ## Question
 

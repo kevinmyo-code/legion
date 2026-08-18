@@ -1,8 +1,17 @@
+---
+map: google-account-integration
+ticket: 10
+title: "What does the app do when Google is unreachable?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What does the app do when Google is unreachable?
-
-Type: grilling
-Status: resolved
-Blocked by: -
 
 **Mostly collapsed 2026-08-13 by [ticket 02](02-calendar-api-choice.md), exactly as question 1
 anticipated.** `CalendarContract` is an on-device provider, so calendar reads, writes and

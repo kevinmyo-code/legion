@@ -1,7 +1,17 @@
+---
+map: mission-control
+ticket: 01
+title: "Palette, ground, and the two-hue token table"
+type: prototype
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Palette, ground, and the two-hue token table
-
-Type: prototype
-Status: resolved
 
 ## Question
 

@@ -1,7 +1,17 @@
+---
+map: aspect-advisors
+ticket: 05
+title: "Research: the LOG planning playbook"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Research: the LOG planning playbook
-
-Type: research
-Status: resolved
 
 ## Question
 

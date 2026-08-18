@@ -1,8 +1,17 @@
+---
+map: notes-lists-calendar
+ticket: 07
+title: "Where does this live in the app?"
+type: prototype
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-entity-model-and-cartask-migration]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Where does this live in the app?
-
-Type: prototype
-Status: resolved
-Blocked by: 01
 
 ## Question
 

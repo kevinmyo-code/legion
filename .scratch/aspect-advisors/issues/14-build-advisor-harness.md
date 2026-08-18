@@ -1,8 +1,17 @@
+---
+map: aspect-advisors
+ticket: 14
+title: "Build: the AdvisorAgent harness"
+type: task
+status: resolved
+status-detail: ""
+blockers: ["11", "13"]
+blocked-by: ["[[11-token-latency-budget]]", "[[13-build-goal-store]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Build: the AdvisorAgent harness
-
-Type: task
-Status: resolved
-Blocked by: 11, 13
 
 ## Question
 

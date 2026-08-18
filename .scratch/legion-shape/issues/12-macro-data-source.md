@@ -1,8 +1,17 @@
+---
+map: legion-shape
+ticket: 12
+title: "Is there a keyless food/macro data source LEGION could use?"
+type: research
+status: resolved
+status-detail: "2026-08-07, research"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Is there a keyless food/macro data source LEGION could use?
-
-Type: research
-Status: resolved (2026-08-07, research)
-Blocked by: (none)
 
 ## Question
 

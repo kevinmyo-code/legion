@@ -1,8 +1,17 @@
+---
+map: cyberdeck-ui
+ticket: 05
+title: Navigation shell
+type: prototype
+status: resolved
+status-detail: ""
+blockers: ["01"]
+blocked-by: ["[[01-deck-design-language]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Navigation shell
-
-Type: prototype
-Status: resolved
-Blocked by: 01
 
 ## Question
 

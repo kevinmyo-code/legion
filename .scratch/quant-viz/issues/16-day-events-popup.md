@@ -1,6 +1,18 @@
+---
+map: quant-viz
+ticket: 16
+title: 16 - Tapping a calendar day pops up what is on that day
+type: ""
+status: resolved
+status-detail: "2026-08-16, verified built in the all-effort sweep"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # 16 - Tapping a calendar day pops up what is on that day
 
-Status: resolved (2026-08-16, verified built in the all-effort sweep)
 should pop up a UI showing things due on that date."
 
 ## Why the current behaviour reads as broken

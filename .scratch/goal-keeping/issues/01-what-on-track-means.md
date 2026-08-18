@@ -1,8 +1,17 @@
+---
+map: goal-keeping
+ticket: 01
+title: "What \"on track\" actually means, per shape of goal"
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # What "on track" actually means, per shape of goal
-
-Type: grilling
-Status: open
-Blocked by: -
 
 ## Question
 

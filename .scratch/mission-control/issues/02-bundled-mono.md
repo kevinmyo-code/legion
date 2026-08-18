@@ -1,7 +1,17 @@
+---
+map: mission-control
+ticket: 02
+title: "Bundled mono: license, size, glyph and figure coverage"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Bundled mono: license, size, glyph and figure coverage
-
-Type: research
-Status: resolved
 
 ## Question
 

@@ -1,0 +1,194 @@
+{
+  "nodes": [
+    {
+      "id": "aabd22902e908c7c",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/01-does-android-auto-render-a-self-managed-call.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "0bb6fc1454e1e7ae",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/02-what-a-sideloaded-media-app-needs.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "a03e07b83e79a666",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/03-does-voice-search-still-deliver-a-raw-query.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "9c0de188ebf54f72",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/04-microphone-and-audio-focus-while-projecting.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "a2836c4dd8f9e727",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/05-obd-bluetooth-contention-while-projecting.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "f86a4a400824e95b",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/07-fallback-if-the-call-does-not-render.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "b25c792663b0077b",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/09-what-the-car-aware-prompt-changes.md",
+      "x": 0,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "b6ddd163f0ba8938",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/10-session-lifecycle-and-cost.md",
+      "x": 0,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "8008dcde5bc9855b",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/11-duck-or-pause-the-music.md",
+      "x": 0,
+      "y": 1200,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "603f25aae4a04416",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/12-clone-and-run-with-two-manual-toggles.md",
+      "x": 0,
+      "y": 1350,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "a48b19abfc3d9d7a",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/13-prove-the-obd-silent-stall.md",
+      "x": 0,
+      "y": 1500,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f06f609ee504d433",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/15-the-live-session-can-be-silenced.md",
+      "x": 0,
+      "y": 1650,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "5bb0db9a24cd4640",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/16-can-a-sideloaded-car-app-library-app-run.md",
+      "x": 0,
+      "y": 1800,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "dcfda0fe0a181e71",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/06-get-a-sideloaded-build-visible-in-android-auto.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "1b9c78b839bf4967",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/08-what-the-browse-tree-holds.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "810d5191447e2c59",
+      "type": "file",
+      "file": ".scratch/android-auto/issues/14-does-gearhead-draw-the-call.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "7a9bc9af62bbc5a3",
+      "fromNode": "0bb6fc1454e1e7ae",
+      "fromSide": "right",
+      "toNode": "dcfda0fe0a181e71",
+      "toSide": "left"
+    },
+    {
+      "id": "bca65d372b601a23",
+      "fromNode": "0bb6fc1454e1e7ae",
+      "fromSide": "right",
+      "toNode": "1b9c78b839bf4967",
+      "toSide": "left"
+    },
+    {
+      "id": "cc47a0decf594462",
+      "fromNode": "a03e07b83e79a666",
+      "fromSide": "right",
+      "toNode": "1b9c78b839bf4967",
+      "toSide": "left"
+    },
+    {
+      "id": "a4d960122d52125d",
+      "fromNode": "dcfda0fe0a181e71",
+      "fromSide": "right",
+      "toNode": "810d5191447e2c59",
+      "toSide": "left"
+    }
+  ]
+}

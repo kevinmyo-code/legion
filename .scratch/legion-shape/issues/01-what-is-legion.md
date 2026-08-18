@@ -1,8 +1,17 @@
+---
+map: legion-shape
+ticket: 01
+title: "What is LEGION?"
+type: grilling
+status: resolved
+status-detail: "2026-08-06, Kevin"
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What is LEGION?
-
-Type: grilling
-Status: resolved (2026-08-06, Kevin)
-Blocked by: (none)
 
 ## Question
 

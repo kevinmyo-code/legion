@@ -1,3 +1,10 @@
+---
+shelf: backlog-visuals
+status: frozen
+kind: backlog
+tags: [library]
+---
+
 # Backlog: Visuals
 
 > **STATUS: FROZEN ARCHIVE (banner added 2026-08-01).** This shelf is Midnight AI history: a

@@ -1,0 +1,327 @@
+{
+  "nodes": [
+    {
+      "id": "ade73a80addf215f",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/01-palette-tokens.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "8fc4b150ec187d8d",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/02-bundled-mono.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "c57d7daf5c91a207",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/03-bezel-and-chrome.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "7d92d9d507226607",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/04-alarm-without-hue.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "ea12556f99970d73",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/10-daylight-contrast.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "eb2e267473e8634a",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/05-tiling-grammar.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "e17ba7161ad6bead",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/06-chart-kit-recolour.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "411acc355fe3adaf",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/07-motion-budget.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "c3d8f65279d882c5",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/08-driving-mode.md",
+      "x": 1040,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "8c5bcd1d8d99c544",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/09-utility-screens.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "4cf557dda4968a95",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/11-home-panel-inventory.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "599f5d5bf0a1318c",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/12-surface-inventories.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "c7cbdb455ab3ac86",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/13-build-theme-and-controls.md",
+      "x": 2080,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "d9a1770957806bce",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/14-build-shell.md",
+      "x": 2600,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "cef7d81b6c9df8ad",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/15-build-chart-kit.md",
+      "x": 2600,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "b43ba92ab5bb78a7",
+      "type": "file",
+      "file": ".scratch/mission-control/issues/16-build-surfaces.md",
+      "x": 3120,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    }
+  ],
+  "edges": [
+    {
+      "id": "65d400510650a86a",
+      "fromNode": "ade73a80addf215f",
+      "fromSide": "right",
+      "toNode": "c57d7daf5c91a207",
+      "toSide": "left"
+    },
+    {
+      "id": "4ea684cd3e724cf9",
+      "fromNode": "ade73a80addf215f",
+      "fromSide": "right",
+      "toNode": "7d92d9d507226607",
+      "toSide": "left"
+    },
+    {
+      "id": "5fac7b39c21d5cae",
+      "fromNode": "c57d7daf5c91a207",
+      "fromSide": "right",
+      "toNode": "eb2e267473e8634a",
+      "toSide": "left"
+    },
+    {
+      "id": "d587306b5064ded1",
+      "fromNode": "ade73a80addf215f",
+      "fromSide": "right",
+      "toNode": "e17ba7161ad6bead",
+      "toSide": "left"
+    },
+    {
+      "id": "389a741625b1f238",
+      "fromNode": "7d92d9d507226607",
+      "fromSide": "right",
+      "toNode": "e17ba7161ad6bead",
+      "toSide": "left"
+    },
+    {
+      "id": "d6f5e45df4580005",
+      "fromNode": "c57d7daf5c91a207",
+      "fromSide": "right",
+      "toNode": "411acc355fe3adaf",
+      "toSide": "left"
+    },
+    {
+      "id": "baa2b936ec58d6da",
+      "fromNode": "ade73a80addf215f",
+      "fromSide": "right",
+      "toNode": "c3d8f65279d882c5",
+      "toSide": "left"
+    },
+    {
+      "id": "46c06b9660d8b997",
+      "fromNode": "7d92d9d507226607",
+      "fromSide": "right",
+      "toNode": "c3d8f65279d882c5",
+      "toSide": "left"
+    },
+    {
+      "id": "a71d67ae64673972",
+      "fromNode": "eb2e267473e8634a",
+      "fromSide": "right",
+      "toNode": "8c5bcd1d8d99c544",
+      "toSide": "left"
+    },
+    {
+      "id": "d2368a274f26623e",
+      "fromNode": "ade73a80addf215f",
+      "fromSide": "right",
+      "toNode": "ea12556f99970d73",
+      "toSide": "left"
+    },
+    {
+      "id": "1dfb86962d896b62",
+      "fromNode": "8fc4b150ec187d8d",
+      "fromSide": "right",
+      "toNode": "ea12556f99970d73",
+      "toSide": "left"
+    },
+    {
+      "id": "2f2fe6667bab5e68",
+      "fromNode": "eb2e267473e8634a",
+      "fromSide": "right",
+      "toNode": "4cf557dda4968a95",
+      "toSide": "left"
+    },
+    {
+      "id": "fc8c7b154873821d",
+      "fromNode": "4cf557dda4968a95",
+      "fromSide": "right",
+      "toNode": "599f5d5bf0a1318c",
+      "toSide": "left"
+    },
+    {
+      "id": "23f101e2055a2e2c",
+      "fromNode": "ade73a80addf215f",
+      "fromSide": "right",
+      "toNode": "c7cbdb455ab3ac86",
+      "toSide": "left"
+    },
+    {
+      "id": "6bd470edb3034e51",
+      "fromNode": "8fc4b150ec187d8d",
+      "fromSide": "right",
+      "toNode": "c7cbdb455ab3ac86",
+      "toSide": "left"
+    },
+    {
+      "id": "4496e660a7512d66",
+      "fromNode": "7d92d9d507226607",
+      "fromSide": "right",
+      "toNode": "c7cbdb455ab3ac86",
+      "toSide": "left"
+    },
+    {
+      "id": "ae7420bbda33926e",
+      "fromNode": "8c5bcd1d8d99c544",
+      "fromSide": "right",
+      "toNode": "c7cbdb455ab3ac86",
+      "toSide": "left"
+    },
+    {
+      "id": "22c6949c60244f86",
+      "fromNode": "c7cbdb455ab3ac86",
+      "fromSide": "right",
+      "toNode": "d9a1770957806bce",
+      "toSide": "left"
+    },
+    {
+      "id": "dd8b083640bf5b04",
+      "fromNode": "c7cbdb455ab3ac86",
+      "fromSide": "right",
+      "toNode": "cef7d81b6c9df8ad",
+      "toSide": "left"
+    },
+    {
+      "id": "ae6dc2aee898e01c",
+      "fromNode": "599f5d5bf0a1318c",
+      "fromSide": "right",
+      "toNode": "b43ba92ab5bb78a7",
+      "toSide": "left"
+    },
+    {
+      "id": "b958dae39da30595",
+      "fromNode": "c7cbdb455ab3ac86",
+      "fromSide": "right",
+      "toNode": "b43ba92ab5bb78a7",
+      "toSide": "left"
+    },
+    {
+      "id": "4d010485e6ed6c8f",
+      "fromNode": "d9a1770957806bce",
+      "fromSide": "right",
+      "toNode": "b43ba92ab5bb78a7",
+      "toSide": "left"
+    },
+    {
+      "id": "899756f8f31be8c5",
+      "fromNode": "cef7d81b6c9df8ad",
+      "fromSide": "right",
+      "toNode": "b43ba92ab5bb78a7",
+      "toSide": "left"
+    }
+  ]
+}

@@ -1,7 +1,17 @@
+---
+map: aspect-advisors
+ticket: 06
+title: "Research: the FLEET maintenance playbook"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Research: the FLEET maintenance playbook
-
-Type: research
-Status: resolved
 
 ## Question
 

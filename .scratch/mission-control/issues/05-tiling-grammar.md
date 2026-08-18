@@ -1,8 +1,17 @@
+---
+map: mission-control
+ticket: 05
+title: "Console tiling grammar: grid, panel sizes, 48dp floor"
+type: prototype
+status: resolved
+status-detail: ""
+blockers: ["03"]
+blocked-by: ["[[03-bezel-and-chrome]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # Console tiling grammar: grid, panel sizes, 48dp floor
-
-Type: prototype
-Status: resolved
-Blocked by: 03
 
 ## Question
 

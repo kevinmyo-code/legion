@@ -1,7 +1,17 @@
-﻿# Can the adapter read a real odometer, instead of integrating speed?
-
-Type: research
-Status: resolved (2026-08-15)
+---
+map: fleet-maintenance
+ticket: 03
+title: "Can the adapter read a real odometer, instead of integrating speed?"
+type: research
+status: resolved
+status-detail: 2026-08-15
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
+# Can the adapter read a real odometer, instead of integrating speed?
 
 ## Question
 
@@ -152,4 +162,3 @@ nothing useful**:
 - Not verified by me directly: I am relaying a research subagent's report and have not personally
   read the J1979-DA tables or the ELM327 datasheet. The `traced` items above are the exception -
   those are this repo's code and are checkable here.
-

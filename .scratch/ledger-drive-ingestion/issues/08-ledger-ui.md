@@ -1,8 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 08
+title: "What does the ledger UI show?"
+type: prototype
+status: resolved
+status-detail: ""
+blockers: ["02", "03", "05"]
+blocked-by: ["[[02-design-language]]", "[[03-ingested-file-ledger]]", "[[05-batch-ingestion-mechanics]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What does the ledger UI show?
-
-Type: prototype
-Status: resolved
-Blocked by: 02, 03, 05 (all resolved)
 
 ## Question
 

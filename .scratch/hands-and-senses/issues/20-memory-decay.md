@@ -1,9 +1,18 @@
+---
+map: hands-and-senses
+ticket: 20
+title: Memory that forgets like a person does
+type: grilling
+status: open
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
+---
 # Memory that forgets like a person does
 
-Type: grilling
-Status: open
-Blocked by: -
-Scope: **EFFORT, not a ticket.** Chart `.scratch/memory-decay/` first, using this body as raw
 material. It carries a Room decision (the legacy `MemoryEntry` table) and a CLAUDE.md §7 tension,
 so it needs its own settled-decisions block. See map.md, "Efforts in disguise".
 

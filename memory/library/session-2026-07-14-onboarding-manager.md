@@ -1,3 +1,10 @@
+---
+shelf: session-2026-07-14-onboarding-manager
+status: frozen
+kind: session
+tags: [library]
+---
+
 # Session 2026-07-14: Onboarding Manager + Field-Test Fixes
 
 > **STATUS: FROZEN ARCHIVE (banner added 2026-08-01).** This shelf is Midnight AI history: a

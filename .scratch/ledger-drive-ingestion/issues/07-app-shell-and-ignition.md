@@ -1,8 +1,17 @@
+---
+map: ledger-drive-ingestion
+ticket: 07
+title: "What is the app shell, and how does the app start itself?"
+type: grilling
+status: resolved
+status-detail: ""
+blockers: ["02"]
+blocked-by: ["[[02-design-language]]"]
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What is the app shell, and how does the app start itself?
-
-Type: grilling
-Status: resolved
-Blocked by: 02 (resolved)
 
 ## Question
 

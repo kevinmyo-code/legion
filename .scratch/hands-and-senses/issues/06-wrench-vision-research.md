@@ -1,8 +1,17 @@
+---
+map: hands-and-senses
+ticket: 06
+title: "What can Gemini Live video actually do for wrench mode, on Kevin's key?"
+type: research
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # What can Gemini Live video actually do for wrench mode, on Kevin's key?
-
-Type: research
-Status: resolved
-Blocked by: -
 
 ## Question
 

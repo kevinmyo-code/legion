@@ -1,7 +1,17 @@
+---
+map: fleet-maintenance
+ticket: 17
+title: "An empty factory list is a failed lookup, and the guard only covered half of it"
+type: task
+status: resolved
+status-detail: ""
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
+---
 # An empty factory list is a failed lookup, and the guard only covered half of it
-
-Type: task
-Status: resolved
 
 ## Question
 
