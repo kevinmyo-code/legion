@@ -103,6 +103,24 @@ class AriaForegroundService : Service() {
     // Open-recall check runs at most once per process launch.
     @Volatile private var recallChecked = false
 
+    // The foreground-service type bitmask this service actually holds right now, as last
+    // applied via startForeground(). -1 means "never started foreground yet" (cold start,
+    // before onCreate's first startForegroundCompat() call). Tracked explicitly rather than
+    // re-derived, because the platform gives no query for "what type set is this service
+    // CURRENTLY running under" - only startForeground() itself sets it, so we have to
+    // remember what we last asked for. This is the fix for the 2026-08-17 regression: a
+    // process-importance check (isInForegroundEligibleState) is a fine GATE for ACQUIRING a
+    // restricted type the service does not yet hold, but it is not stable - MainActivity
+    // going off-screen after a live conversation flips importance from FOREGROUND to
+    // FOREGROUND_SERVICE (125) with the socket still open and the mic still capturing. If
+    // startForegroundCompat() re-evaluated the gate on every call and rebuilt the type set
+    // from scratch, that ordinary backgrounding would silently strip the microphone type off
+    // an ALREADY-RUNNING, ALREADY-GRANTED capture and kill it stone dead on API 34 - with no
+    // exception, no log signal, nothing but a mic that stops working. See
+    // startForegroundCompat's doc comment for the acquire-vs-retain distinction this field
+    // exists to enforce.
+    @Volatile private var currentForegroundTypes: Int = -1
+
     // Debug-only: lets a turn be driven by typed text over adb instead of the
     // mic. The emulator's virtual mic is unreliable (replays host audio, can't do
     // full-duplex), so this is how you test the brain + voice output there. Null
@@ -819,17 +837,24 @@ class AriaForegroundService : Service() {
     /**
      * True only while this process is actually foreground from the platform's point of view -
      * the documented signal for "an FGS start claiming a while-in-use-restricted type will be
-     * allowed here" (see [startForegroundCompat]'s call site for the defect this exists to
-     * close). `RunningAppProcessInfo.importance` is read off THIS app's own package name from
-     * [android.app.ActivityManager.getRunningAppProcesses] - there is no cheaper documented API
-     * for a service to ask "is my own process foreground right now" than walking that list and
-     * matching its own pid, which is exactly what this does.
+     * allowed here." `RunningAppProcessInfo.importance` is read off THIS app's own package name
+     * from [android.app.ActivityManager.getRunningAppProcesses] - there is no cheaper documented
+     * API for a service to ask "is my own process foreground right now" than walking that list
+     * and matching its own pid, which is exactly what this does.
      *
      * A driver-launched start (`MidnightApplication.onCreate`, or any Settings-toggle start)
      * always reads `IMPORTANCE_FOREGROUND` here because the Activity that triggered it is on
      * screen. A `BootReceiver`-triggered start never does - there is no Activity, no visible UI,
      * nothing above background importance - so this returns false there without [BootReceiver]
      * or [com.kevin.legion.service.AssistantIgnition] needing to say so explicitly.
+     *
+     * ACQUIRE-ONLY, as of 2026-08-17: [startForegroundCompat] consults this ONLY when deciding
+     * whether to newly claim `FOREGROUND_SERVICE_TYPE_MICROPHONE`, never to decide whether to
+     * keep a mic type the service already holds (see that function's doc comment for why - an
+     * off-screen conversation reads FOREGROUND_SERVICE importance, 125, not FOREGROUND, and a
+     * naive re-check on every start would strip the mic off a live capture). Do not widen this
+     * function's use to cover retention; add a new, differently-named check if a genuine
+     * revocation signal is ever needed.
      */
     private fun isInForegroundEligibleState(): Boolean {
         val am = getSystemService(android.app.ActivityManager::class.java) ?: return false
@@ -852,6 +877,24 @@ class AriaForegroundService : Service() {
      * showed again on retry. Each type flag is now gated on actually holding
      * its permission right now, so a missing grant just means that specific
      * capability is unavailable rather than crashing the whole service.
+     *
+     * ACQUIRE vs RETAIN (2026-08-17, fixing the regression the eligibility gate below
+     * introduced the same day): [isInForegroundEligibleState] answers "is a FRESH claim on
+     * the microphone type allowed right now" - it is a gate on ACQUIRING a type the service
+     * does not currently hold, mirroring the real platform rule (a BOOT_COMPLETED-triggered
+     * start can never claim `microphone`, since that type is on the documented
+     * BOOT_COMPLETED-prohibited list at this target SDK). It must NEVER be re-consulted to
+     * decide whether to KEEP a type the service already holds - `onStartCommand` calls this
+     * function UNCONDITIONALLY on every start intent (wake-word hit, car-switch broadcast,
+     * widget tap, retry-after-grant), and every one of those can arrive while MainActivity is
+     * off-screen, at which point process importance reads FOREGROUND_SERVICE (125), not
+     * FOREGROUND (100) - `isInForegroundEligibleState` legitimately returns false there even
+     * though the mic is mid-capture. Re-deriving the type set from that check on every call
+     * would silently downgrade a healthy, already-granted microphone FGS the instant the app
+     * left the screen. So: once `FOREGROUND_SERVICE_TYPE_MICROPHONE` is in
+     * [currentForegroundTypes], it stays there on every subsequent call regardless of the
+     * eligibility check - the OS never asks a running service to re-justify a type it already
+     * granted, and neither does this function.
      */
     private fun startForegroundCompat() {
         val notification = createNotification()
@@ -876,33 +919,21 @@ class AriaForegroundService : Service() {
                 granted(Manifest.permission.BLUETOOTH_CONNECT)
             } else true // pre-S Bluetooth permissions are install-time, not runtime
             if (bluetoothOk) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            // The microphone type additionally requires the app to be in a foreground-eligible
-            // state, not just holding RECORD_AUDIO (2026-08-17, measured defect). At target SDK
-            // 34, `microphone` is on the documented BOOT_COMPLETED-prohibited list -
-            // attempting to claim it from a service started by BootReceiver throws
-            // ForegroundServiceStartNotAllowedException and kills the very service
-            // AssistantIgnition.resumeIfEnabled() was trying to bring back. dataSync/
-            // connectedDevice above are NOT on that list at this target SDK, so they're safe to
-            // request unconditionally on the permission check alone.
-            //
-            // isInForegroundEligibleState below checks RunningAppProcessInfo.importance, the
-            // documented way to ask "is my own process itself currently foreground or the
-            // in-scope kind of background the platform actually permits starting from" (developer.
-            // android.com's own recommended check for whether an FGS start will be allowed) -
-            // IMPORTANCE_FOREGROUND covers the ordinary "user has the app open" case
-            // (MidnightApplication.onCreate), and this deliberately does NOT special-case
-            // BootReceiver's own call by action or intent extra - a boot-triggered start simply
-            // never reaches IMPORTANCE_FOREGROUND, so the check excludes it without needing to
-            // know who's calling. Once the driver actually opens the app,
-            // onStartCommand's own re-declaration of types on every start (see its doc comment
-            // just above) promotes the mic type back in on the very next call.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            // The microphone type is RETAINED unconditionally if we already hold it - see the
+            // ACQUIRE vs RETAIN note in this function's doc comment above. Only when we do NOT
+            // already hold it does the eligibility gate apply, i.e. this is a one-way ratchet:
+            // once granted, mic type survives every subsequent startForegroundCompat() call for
+            // the life of the process, even if importance later drops below FOREGROUND. It can
+            // still be lost the honest way - RECORD_AUDIO revoked mid-run (Settings > Permissions)
+            // - which the `granted()` check below still catches on every call.
+            val alreadyHasMic = currentForegroundTypes != -1 &&
+                (currentForegroundTypes and ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE) != 0
+            val micOk = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
                 granted(Manifest.permission.RECORD_AUDIO) &&
-                isInForegroundEligibleState()
-            ) {
-                types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            }
+                (alreadyHasMic || isInForegroundEligibleState())
+            if (micOk) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             startForeground(NOTIFICATION_ID, notification, types)
+            currentForegroundTypes = types
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
