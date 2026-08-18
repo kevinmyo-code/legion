@@ -34,6 +34,14 @@ import org.robolectric.RuntimeEnvironment
 class BioDigestBuilderTest {
     private val context = RuntimeEnvironment.getApplication()
     private val builder = BioDigestBuilder()
+
+    // Wall-clock on purpose: BioDigestBuilder itself anchors "today"/"this week" to
+    // System.currentTimeMillis() (see BioDigestBuilder.kt:48), so a fixture that seeds "today"'s
+    // rows must share the real clock or the INTAKE/SLEEP "today" assertions below go stale
+    // against whatever the builder actually computed. Anything that needs to stay inside a single
+    // ISO week (see the bodyweight test) derives its offset from `now`'s own week rather than a
+    // fixed day-count back, so it can never cross the Monday boundary regardless of what day this
+    // suite runs on.
     private val now = System.currentTimeMillis()
 
     @Before
@@ -60,7 +68,12 @@ class BioDigestBuilderTest {
     fun `bodyweight reports a weekly average, never one line per reading`() = runBlocking {
         val dao = CarDatabase.getDatabase(context).bodyweightLogDao()
         dao.insert(BodyweightLog(weightValue = 180.0, weightUnit = "lbs", loggedAt = now, trustTier = TrustTier.REPORTED))
-        dao.insert(BodyweightLog(weightValue = 182.0, weightUnit = "lbs", loggedAt = now - 2 * 24 * 60 * 60 * 1000L, trustTier = TrustTier.REPORTED))
+        // Anchored to the START of `now`'s own week rather than "now - 2 days": a fixed day-count
+        // offset crosses the Monday boundary whenever this suite runs on a Monday or Tuesday (it
+        // did, on 2026-08-18, and landed the second reading in the PREVIOUS week, silently
+        // excluding it from the average and producing 180.0 instead of the asserted 181.0).
+        // weekStartEpoch(now) is by definition inside `now`'s own week, so this can never cross.
+        dao.insert(BodyweightLog(weightValue = 182.0, weightUnit = "lbs", loggedAt = weekStartEpoch(now), trustTier = TrustTier.REPORTED))
 
         val digest = builder.build(context)
         val weightLine = digest.lines().first { it.startsWith("WEIGHT") }
