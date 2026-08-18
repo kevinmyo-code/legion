@@ -231,23 +231,32 @@ class GeminiLiveSession(
 
     // Monotonic generation counter, bumped by [flushAudio] every time queued model
     // audio is discarded (barge-in tap in [beginConversation], the server's own
-    // "interrupted" signal, or [checkForCrisis]). Exists to close a race the driver
-    // hit as "the mic I just opened by tapping shut itself again" (2026-08-17,
-    // measured alongside the awaitPlaybackDrained defect above): a barge-in tap
-    // flushes audio, clears [speakingThisTurn], and opens the mic - but nothing
-    // tells the SERVER a barge-in happened, so a `modelTurn` WebSocket message
-    // that was already in flight when the tap landed can still arrive afterward.
-    // That stale message hits `handleServerContent`'s `!speakingThisTurn` branch,
-    // which - reasonably, for a NORMAL turn - sets speakingThisTurn back to true
-    // and (half-duplex) shuts the mic that was just opened for the driver.
+    // "interrupted" signal, [checkForCrisis], and now the short-capture retry in
+    // micLoop too). Exists to close a race the driver hit as "the mic I just opened
+    // by tapping shut itself again" (2026-08-17, measured alongside the
+    // awaitPlaybackDrained defect above): a barge-in tap flushes audio, clears
+    // [speakingThisTurn], and opens the mic - but nothing tells the SERVER a
+    // barge-in happened, so a `modelTurn` WebSocket message that was already in
+    // flight when the tap landed can still arrive afterward. That stale message
+    // hits `handleServerContent`'s `!speakingThisTurn` branch, which - reasonably,
+    // for a NORMAL turn - sets speakingThisTurn back to true and (half-duplex)
+    // shuts the mic that was just opened for the driver.
     // `handleServerContent` snapshots this counter once per incoming message and
     // compares it against the live value before touching speakingThisTurn/
     // capturing for that message's audio chunks - a mismatch means the chunk
     // belongs to a turn this session has already moved past, and it is dropped
-    // rather than acted on. @Volatile to match this file's existing flag style
-    // (speakingThisTurn/capturing/flushCapture): written wherever [flushAudio]
-    // runs, read on the socket callback thread.
-    @Volatile private var turnGeneration: Int = 0
+    // rather than acted on.
+    //
+    // SENIOR REVIEW FIX (2026-08-17): AtomicInteger, not a @Volatile Int with `++`.
+    // flushAudio() has genuinely concurrent callers - the OkHttp socket-callback
+    // thread (handleServerContent's interrupted/crisis branches) and the mic
+    // coroutine (beginConversation's barge-in path, and now micLoop's own retry
+    // branch) can both call it around the same moment. `turnGeneration++` on a
+    // plain volatile field is read-modify-write, not atomic; a lost increment
+    // between two racing callers can land the counter back on a value a stale
+    // snapshotted message still holds, resurrecting the exact race this field
+    // exists to close. incrementAndGet() in [flushAudio], get() everywhere else.
+    private val turnGeneration = java.util.concurrent.atomic.AtomicInteger(0)
 
     // HYPOTHESIS FIX (B12, unverified as of 2026-07-07 - a driver-reported
     // "turn goes silent, only plays back after I tap again"). AudioTrack.write()
@@ -870,11 +879,11 @@ class GeminiLiveSession(
             // intended, it just means this message's own chunks are compared against
             // the post-bump value, which they'll match (nothing external can have
             // bumped it again in between).
-            val myTurnGeneration = turnGeneration
+            val myTurnGeneration = turnGeneration.get()
             for (i in 0 until parts.length()) {
                 val data = parts.optJSONObject(i)?.optJSONObject("inlineData")?.optString("data")
                 if (!data.isNullOrEmpty()) {
-                    if (myTurnGeneration != turnGeneration) {
+                    if (myTurnGeneration != turnGeneration.get()) {
                         // Superseded: a barge-in/interrupt/crisis flush landed between this
                         // message being sent by the server and being processed here. Drop
                         // the chunk outright - do not flip speakingThisTurn or capturing
@@ -1205,6 +1214,18 @@ class GeminiLiveSession(
                                 "MIC_SHORT_CAPTURE",
                                 "reopening once: bytes=$bytesSinceOpen heldMs=$heldMs",
                             )
+                            // SENIOR REVIEW FIX (2026-08-17): the bogus reply itself must be
+                            // discarded before the mic reopens, exactly like the barge-in path
+                            // in beginConversation() - otherwise it is still queued on
+                            // audioQueue / playing on the AudioTrack, the reopened mic captures
+                            // Zero's own voice (the half-duplex violation this file's mic-open
+                            // comment above warns about), and that can re-trigger the same
+                            // false-VAD pattern with the one retry already spent. flushAudio()
+                            // also bumps turnGeneration, which is correct here too: the bogus
+                            // reply's remaining chunks SHOULD be staled out by the same
+                            // mechanism a driver's barge-in tap uses.
+                            flushAudio()
+                            speakingThisTurn = false
                             capturing = true
                             recordingStartedAtMs = System.currentTimeMillis()
                             bytesSinceOpen = 0L
@@ -1299,6 +1320,15 @@ class GeminiLiveSession(
                         recreatedRecordOnce = true
                         Log.w(TAG, "micLoop: AudioRecord died, recreating once")
                         CarProbeLog.log("MIC_DEAD_OBJECT", "recreating AudioRecord once")
+                        // SENIOR REVIEW FIX (2026-08-17): emit the physical close BEFORE
+                        // tearing the dead record down. This stop reaches no other MicClosed
+                        // site - it is not the `!capturing` branch's own emit (capturing is
+                        // still true here; the record just stopped answering), so without
+                        // this the rebuilt record's MicOpened below would be unbalanced
+                        // against no matching close, which the commit that introduced
+                        // MicOpened/MicClosed promised never happens for a real stop.
+                        if (recording) emit(LiveEvent.MicClosed("AudioRecord dead, recreating"))
+                        recording = false
                         runCatching { record.stop() }
                         runCatching { record.release() }
                         effects.forEach { runCatching { it.release() } }
@@ -1306,11 +1336,11 @@ class GeminiLiveSession(
                         if (fresh.state == AudioRecord.STATE_INITIALIZED) {
                             record = fresh
                             effects = if (isEmulator) emptyList() else attachVoiceEffects(record.audioSessionId)
-                            // Force the top of the loop to go through the normal
-                            // startRecording() path again (with its own
-                            // awaitPlaybackDrained() settle) rather than assuming the new
-                            // object is instantly ready to read from.
-                            recording = false
+                            // recording is already false (set above) so the top of the loop
+                            // goes through the normal startRecording() path again (with its
+                            // own awaitPlaybackDrained() settle and its own MicOpened emit)
+                            // rather than assuming the new object is instantly ready to read
+                            // from.
                         } else {
                             Log.w(TAG, "micLoop: AudioRecord recreation also failed, closing session")
                             fresh.release()
@@ -1477,8 +1507,11 @@ class GeminiLiveSession(
         // callback thread snapshots this counter when it arrives; bumping it here
         // guarantees that snapshot can never match again, so a stale chunk from the
         // turn being flushed is recognized as stale the moment it shows up, however
-        // soon after this call that is.
-        turnGeneration++
+        // soon after this call that is. incrementAndGet(), not a plain read-modify-
+        // write - flushAudio() is called from more than one thread (the socket
+        // callback thread and the mic coroutine) and a lost increment here would
+        // silently undo the whole point of this counter.
+        turnGeneration.incrementAndGet()
         // Discard chunks not yet handed to the AudioTrack too, not just what's
         // already in its hardware buffer - otherwise stale queued audio could
         // still play out after the "interruption" once the consumer catches up.
