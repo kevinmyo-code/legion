@@ -162,4 +162,38 @@ class LedgerTransferGateTest {
         // from the key genuinely matching nothing.
         assertEquals(0, LedgerController.previewRecategorizeCount(context, "PAYMENT TO CRD"))
     }
+
+    // ---- uncategorizedTransactionsSplit (2026-08-18 fix): the row-level split behind
+    // uncategorizedMerchants, feeding the CATEGORIZE screen's new UNCATEGORISED/TRANSFERS sections.
+
+    @Test
+    fun `uncategorizedTransactionsSplit puts real merchants in real and transfer-shaped rows in transfers`() = runBlocking {
+        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
+        dao.insertAll(
+            listOf(
+                txn("checking", 130_000, "PAYMENT TO CRD", txnDate = 1_000L),
+                txn("card", -130_000, "PAYMENT FROM CHK", txnDate = 1_000L + 2 * 24L * 60 * 60 * 1000),
+                txn("checking", -5_000, "KROGER #115 CYPRESS TX"),
+                txn("checking", -4_599, "WALMART SUPERCENTER"),
+            ),
+        )
+
+        val split = LedgerController.uncategorizedTransactionsSplit(context)
+
+        assertEquals(2, split.real.size)
+        assertTrue(split.real.any { it.description == "KROGER #115 CYPRESS TX" })
+        assertTrue(split.real.any { it.description == "WALMART SUPERCENTER" })
+        assertEquals(2, split.transfers.size)
+        // Every row in `real` and every row in `transfers` must, between them, account for the
+        // WHOLE uncategorised pool - the exact "count the driver sees must match what the list
+        // shows" requirement (CLAUDE.md §4 rule 6's principle applied to this UI count).
+        assertEquals(dao.uncategorizedTransactions().size, split.real.size + split.transfers.size)
+    }
+
+    @Test
+    fun `uncategorizedTransactionsSplit is empty when nothing is uncategorised`() = runBlocking {
+        val split = LedgerController.uncategorizedTransactionsSplit(context)
+        assertTrue(split.real.isEmpty())
+        assertTrue(split.transfers.isEmpty())
+    }
 }

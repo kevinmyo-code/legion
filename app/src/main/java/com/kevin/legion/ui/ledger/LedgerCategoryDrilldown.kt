@@ -32,12 +32,15 @@ import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
 import com.kevin.legion.ledger.AccountCoverage
+import com.kevin.legion.ledger.BudgetLine
+import com.kevin.legion.ledger.BudgetVsActual
 import com.kevin.legion.ledger.CategorySetResult
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ledger.LedgerEntity
 import com.kevin.legion.ledger.displayDescription
 import com.kevin.legion.ledger.formatCents
 import com.kevin.legion.ledger.formatMoney
+import com.kevin.legion.ledger.uncategorizedExcludedSentence
 import com.kevin.legion.ui.common.DeckBar
 import com.kevin.legion.ui.common.DeckBarChart
 import com.kevin.legion.ui.common.Hairline
@@ -74,12 +77,30 @@ import kotlinx.coroutines.launch
  * never free text. [onPreviewRecategorizeCount] lets the panel show the blast radius BEFORE
  * committing, as the driver edits the derived key.
  *
- * **Daily-spend bars (quant-viz ticket 03).** [month]/[coverage] exist ONLY to feed
- * [categoryDailySpendBars] - `month` bounds the day-by-day sum, `coverage` is
+ * **Daily-spend bars (quant-viz ticket 03), a REAL category only.** [month]/[coverage] exist ONLY
+ * to feed [categoryDailySpendBars] - `month` bounds the day-by-day sum, `coverage` is
  * [com.kevin.legion.ledger.BudgetVsActual.coverage] for that same month, threaded straight through
  * by the caller from the [com.kevin.legion.ledger.BudgetVsActual] it already loaded for the budget
  * section (no new DB read here - see [categoryDailySpendBars]'s own doc comment). The chart sits
  * ABOVE the transaction list, which is unchanged.
+ *
+ * **The uncategorised bucket draws a DIFFERENT chart (Kevin, 2026-08-18: "tapping Cred section
+ * brings me to a chart. its useless. uncategorized dominates the whole thing. exclude it from
+ * visuals").** `HalfTile`'s CRED tap (`ui.TodayScreen`) and the ALARM/quarantine ALERTS rows both
+ * land here with `category == null` directly, skipping the CRED root entirely - so [budget], the
+ * SAME [com.kevin.legion.ledger.BudgetVsActual] the caller already holds for [month], is threaded
+ * in here too, and ONLY for `category == null` this screen draws
+ * [com.kevin.legion.ui.ledger.categorySpendBars]/[com.kevin.legion.ui.ledger.CategorySpendChart] -
+ * the SAME real-category-only breakdown the CRED root's own SPEND hero already draws (uncategorised
+ * never among its bars, by construction - see that function's own doc comment) - instead of
+ * [categoryDailySpendBars]'s per-day total of the uncategorised bucket alone, which is USELESS as a
+ * visual precisely because every one of its bars is, by definition, the exact thing this screen
+ * exists to fix: nothing has been sorted into a category yet. [uncategorizedExcludedSentence] sits
+ * directly under that chart, in words (CLAUDE.md §4 rule 5) - the uncategorised total is never
+ * dropped, only kept out of the PICTURE, matching Kevin's own "keep it disclosed, not hidden" call
+ * on the equivalent SPEND-hero decision. A real category (`category != null`) is unaffected - its
+ * own [categoryDailySpendBars] chart was never the problem (it was already scoped to that one
+ * category, never "dominated" by anything).
  *
  * **SET TARGET affordance (quant-viz ticket 09, Kevin 2026-08-13: "set a budget target so i can see
  * the meters").** Rendered at the TOP of this screen, under the header, ONLY when [category] is a
@@ -107,6 +128,11 @@ fun CategoryDrilldownScreen(
     categoryNames: List<String>,
     month: YearMonth,
     coverage: List<AccountCoverage>,
+    // 2026-08-18 fix: only ever read for the `category == null` branch's own chart - see this
+    // composable's own doc comment. `null` is a safe, defensive "no chart yet" (the real category
+    // path never looks at this field), matching the same "budget loading" window `pnlMonth`'s
+    // caller already has to handle for the BUDGET drilldown.
+    budget: BudgetVsActual?,
     currentTargetCents: Long?,
     setTargetErrorText: String?,
     setTargetSuccessNonce: Int,
@@ -156,19 +182,38 @@ fun CategoryDrilldownScreen(
                     onSet = onSetTarget,
                 )
             }
-            // Rendered unconditionally, even while `loading`/`transactions` is empty - ticket 03's
-            // "render the chart anyway - the kit handles it; do not conditionally hide" - the kit
-            // draws a baseline of gap underlines for an all-null/all-zero series rather than nothing.
-            DeckBarChart(
-                bars = categoryDailySpendBars(transactions, month, coverage),
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            Text(
-                "daily total - days no statement covers are marked, not zero",
-                style = LegionType.stamp,
-                color = sem.faint,
-                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
-            )
+            if (category == null) {
+                // 2026-08-18 fix: the real-category breakdown, uncategorised excluded from the
+                // PICTURE by construction (categorySpendBars never puts it among its own bars) -
+                // see this composable's own doc comment for why the per-day bucket-only chart this
+                // replaces was useless here. Renders nothing when `budget` hasn't loaded yet or has
+                // no categorised spend this month - CategorySpendChart's own "empty bars draws
+                // nothing" behaviour, not a special case added here.
+                val chartBudget = budget
+                if (chartBudget != null) {
+                    CategorySpendChart(categorySpendBars(chartBudget), modifier = Modifier.padding(top = 4.dp))
+                    Text(
+                        uncategorizedExcludedSentence(chartBudget.uncategorized, entity.currency),
+                        style = LegionType.stamp,
+                        color = sem.faint,
+                        modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 4.dp, top = 4.dp),
+                    )
+                }
+            } else {
+                // Rendered unconditionally, even while `loading`/`transactions` is empty - ticket 03's
+                // "render the chart anyway - the kit handles it; do not conditionally hide" - the kit
+                // draws a baseline of gap underlines for an all-null/all-zero series rather than nothing.
+                DeckBarChart(
+                    bars = categoryDailySpendBars(transactions, month, coverage),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Text(
+                    "daily total - days no statement covers are marked, not zero",
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
+                )
+            }
             Hairline()
             when {
                 loading -> Text(
@@ -617,6 +662,34 @@ private val previewCategoryNames = listOf("Dining Out", "Groceries", "Pets", "Sh
 // txnDate, so the chart's bars land inside the month it's drawn for rather than off the edge.
 private val previewMonth = YearMonth.now(ZoneOffset.UTC)
 
+/**
+ * 2026-08-18 fix: a sample [BudgetVsActual] for the uncategorised bucket's own preview, exercising
+ * the new real-category-breakdown chart with a real uncategorised total sitting well above zero -
+ * this is the exact "uncategorized dominates" shape Kevin reported, and the fix's own preview
+ * should show it still stating that total in words even though it is now excluded from the chart.
+ */
+private val previewBudgetForUncategorizedBucket = BudgetVsActual(
+    entity = LedgerEntity.US,
+    month = previewMonth,
+    lines = listOf(
+        BudgetLine(
+            category = "Groceries",
+            gap = com.kevin.legion.plan.PlanGap(target = 60_000L, actual = 41_200L, gap = 18_800L, tier = com.kevin.legion.plan.TrustTier.PROVEN),
+            hasProvisionalRows = false,
+            hasPendingCategoryGuesses = false,
+        ),
+        BudgetLine(
+            category = "Dining Out",
+            gap = com.kevin.legion.plan.PlanGap(target = 20_000L, actual = 24_500L, gap = -4_500L, tier = com.kevin.legion.plan.TrustTier.PROVEN),
+            hasProvisionalRows = false,
+            hasPendingCategoryGuesses = false,
+        ),
+    ),
+    uncategorized = com.kevin.legion.ledger.UncategorizedSpend(spentCents = 812_300L, hasProvisionalRows = false),
+    coverage = emptyList(),
+    excludedOwnAccountMovements = com.kevin.legion.ledger.ExcludedOwnAccountMovements(0, 0L, emptyList()),
+)
+
 @Preview(name = "Category drilldown: a normal category", widthDp = 360, heightDp = 640)
 @Composable
 private fun PreviewCategoryDrilldown() = LegionTheme {
@@ -643,6 +716,9 @@ private fun PreviewCategoryDrilldown() = LegionTheme {
         // "outside every covered range is a gap" branch on every day without a real sample,
         // matching what a category with only sparse rows and no coverage data yet would show.
         coverage = emptyList(),
+        // A real category never reads `budget` (see CategoryDrilldownScreen's own doc comment) -
+        // null is the same safe no-op the real code path treats it as.
+        budget = null,
         // ticket 09: an existing $150 target, so this preview also exercises the words line's
         // "target $X since <month>" branch, not just the affordance's presence.
         currentTargetCents = 15_000L,
@@ -666,9 +742,38 @@ private fun PreviewCategoryDrilldownUncategorizedEmpty() = LegionTheme {
         categoryNames = previewCategoryNames,
         month = previewMonth,
         coverage = emptyList(),
+        // `budget` still loading - the new real-category chart renders nothing rather than crash
+        // or show stale figures, matching CategoryDrilldownScreen's own doc comment.
+        budget = null,
         // ticket 09: the uncategorised bucket never shows the affordance at all - see
         // CategoryDrilldownScreen's own doc comment - so these three are unreachable here, wired to
         // a safe default only because the function signature requires them.
+        currentTargetCents = null,
+        setTargetErrorText = null,
+        setTargetSuccessNonce = 0,
+        onSetTarget = {},
+        onPreviewRecategorizeCount = { 0 },
+        onSetCategory = { _, _ -> CategorySetResult(rowsTouched = 0, merchantsTouched = 0) },
+        onBack = {},
+    )
+}
+
+@Preview(name = "Category drilldown: uncategorised bucket, real-category chart (2026-08-18 fix)", widthDp = 360, heightDp = 720)
+@Composable
+private fun PreviewCategoryDrilldownUncategorizedWithChart() = LegionTheme {
+    CategoryDrilldownScreen(
+        category = null,
+        entity = LedgerEntity.US,
+        transactions = listOf(
+            previewCategorized.copy(id = 10, description = "MOBILE BANKING PAYMENT TO CRD", amountCents = -81230, category = null),
+        ),
+        loading = false,
+        categoryNames = previewCategoryNames,
+        month = previewMonth,
+        coverage = emptyList(),
+        // The exact shape Kevin reported: a large uncategorised total, real categories present too
+        // - this preview is what proves the chart draws THOSE, not the uncategorised bucket itself.
+        budget = previewBudgetForUncategorizedBucket,
         currentTargetCents = null,
         setTargetErrorText = null,
         setTargetSuccessNonce = 0,
@@ -690,6 +795,7 @@ private fun PreviewCategoryDrilldownLoading() = LegionTheme {
         categoryNames = previewCategoryNames,
         month = previewMonth,
         coverage = emptyList(),
+        budget = null,
         // ticket 09: no target set yet - exercises the words line's "no target set" branch.
         currentTargetCents = null,
         setTargetErrorText = null,

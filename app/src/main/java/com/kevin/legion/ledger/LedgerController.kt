@@ -683,30 +683,46 @@ object LedgerController {
      * single month's [budgetVsActual] pairing window.
      */
     suspend fun uncategorizedMerchants(context: Context): UncategorizedMerchants {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        val candidates = dao.uncategorizedTransactions()
-        if (candidates.isEmpty()) return UncategorizedMerchants(emptyList(), 0)
+        val split = uncategorizedTransactionsSplit(context)
+        val keys = split.real.map { extractMerchantKey(it.description) }.distinct()
 
-        val pairingWindow = dao.allTransactions()
-        val analysis = analyzeTransfers(inPeriod = candidates, pairingWindow = pairingWindow)
-        val transferIds = analysis.excluded.mapTo(mutableSetOf()) { it.txn.id }
-
-        val keys = candidates
-            .filterNot { it.id in transferIds }
-            .map { extractMerchantKey(it.description) }
-            .distinct()
-
-        if (transferIds.isNotEmpty()) {
+        if (split.transfers.isNotEmpty()) {
             // Visible, not silent (CLAUDE.md §4 rule 6's principle, applied here to a guesser gate
             // rather than a reconciliation gate): a row dropped from the candidate pool with no
             // trace anywhere is indistinguishable from a row that was never uncategorised at all.
             // The caller-facing half of this lives in LiveToolbox's categorizeTransactions response
             // text (UncategorizedMerchants.transfersSkipped); this log line is the one trace that
             // survives even when nobody is listening to the voice response.
-            Log.d(TAG, "uncategorizedMerchants: skipped ${transferIds.size} transfer-shaped row(s), " +
+            Log.d(TAG, "uncategorizedMerchants: skipped ${split.transfers.size} transfer-shaped row(s), " +
                 "${keys.size} merchant key(s) remain")
         }
-        return UncategorizedMerchants(keys, transferIds.size)
+        return UncategorizedMerchants(keys, split.transfers.size)
+    }
+
+    /**
+     * The full row-level split behind [uncategorizedMerchants] (2026-08-18, the CATEGORIZE
+     * drilldown's "44 uncategorised rows are invisible" fix -
+     * `.scratch/ledger-drive-ingestion/issues/` money/categorize screen). [uncategorizedMerchants]
+     * only ever needed distinct MERCHANT KEYS for the guesser's candidate pool; the driver-facing
+     * "see and hand-categorise" surface needs the actual rows, both the ones that genuinely need a
+     * category ([UncategorizedSplit.real]) and the ones [analyzeTransfers] correctly excludes as
+     * transfer-shaped ([UncategorizedSplit.transfers]) - shown too, per CLAUDE.md §4 rule 6's
+     * principle applied to a UI count: hiding 22 of 44 real rows behind an invisible filter is
+     * exactly the shape of the bug this function exists to stop repeating. Same transfer gate as
+     * [uncategorizedMerchants]'s own doc comment: both [ExclusionReason.MATCHED_TRANSFER] and
+     * [ExclusionReason.SUSPECTED_TRANSFER] rows count as transfers here.
+     */
+    suspend fun uncategorizedTransactionsSplit(context: Context): UncategorizedSplit {
+        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
+        val candidates = dao.uncategorizedTransactions()
+        if (candidates.isEmpty()) return UncategorizedSplit(emptyList(), emptyList())
+
+        val pairingWindow = dao.allTransactions()
+        val analysis = analyzeTransfers(inPeriod = candidates, pairingWindow = pairingWindow)
+        val transferIds = analysis.excluded.mapTo(mutableSetOf()) { it.txn.id }
+
+        val (transfers, real) = candidates.partition { it.id in transferIds }
+        return UncategorizedSplit(real = real, transfers = transfers)
     }
 
     /**
@@ -1098,6 +1114,14 @@ data class CategoryGuessResult(val rowsCategorized: Int, val merchantsCategorize
  * `PAYMENT TO CRD`, can be dozens of rows across many months).
  */
 data class UncategorizedMerchants(val keys: List<String>, val transfersSkipped: Int)
+
+/**
+ * [LedgerController.uncategorizedTransactionsSplit]'s result - every `category IS NULL` row, split
+ * into [real] (needs a category, either by rule, by guess, or by hand) and [transfers] (correctly
+ * excluded by [analyzeTransfers], never sent to a rule or a guess, but not hidden from the driver
+ * either - see that function's own doc comment for why both are surfaced).
+ */
+data class UncategorizedSplit(val real: List<LedgerTransaction>, val transfers: List<LedgerTransaction>)
 
 /**
  * [LedgerController.setCategory]'s result.

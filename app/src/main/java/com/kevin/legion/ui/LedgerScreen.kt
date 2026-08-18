@@ -170,6 +170,18 @@ data class LedgerUiState(
     // existed since ticket 07 with no caller anywhere until this pass wired
     // it. See LedgerController.pendingCategoryGuesses's doc comment.
     val pendingCategoryGuesses: List<LedgerTransaction> = emptyList(),
+    // 2026-08-18 fix ("it says nothing to categorize" while 44 real rows sat uncategorised):
+    // `category IS NULL` rows, split the same way `LedgerController.uncategorizedMerchants`
+    // already splits its own candidate pool - `uncategorized` genuinely needs a category,
+    // `uncategorizedTransfers` is `analyzeTransfers`-excluded but shown anyway rather than hidden
+    // behind an invisible filter. See `ui.ledger.CategorizeDrilldownScreen`'s own doc comment.
+    val uncategorized: List<LedgerTransaction> = emptyList(),
+    val uncategorizedTransfers: List<LedgerTransaction> = emptyList(),
+    // The fixed, Room-stored category list (D14) the new UNCATEGORISED section's hand-set picker
+    // offers - loaded alongside the reload above rather than only inside the category drill-down
+    // effect (`drilldownCategoryNames`), since CategorizeDrilldownScreen can be opened without ever
+    // opening that drill-down.
+    val categoryNames: List<String> = emptyList(),
     // The add-category affordance (Kevin 2026-08-07) - a live signal merged into `fullState` each
     // recomposition, same split `folder`/`scanState` already use, not part of the async DB load
     // above. `addCategoryError` is null until a refusal; `addCategorySuccessNonce` only bumps on a
@@ -314,6 +326,12 @@ fun LedgerScreen(
         // sparkline itself narrows to the ticket's own "up-to-12 months" at its OWN call site
         // (`BudgetSection`'s `spendTrend.takeLast(12)`), not by shrinking what this reload keeps.
         val spendTrend = LedgerController.monthlySpendTrend(context, LedgerEntity.US)
+        // 2026-08-18 fix: the third CATEGORIZE list - see `LedgerUiState.uncategorized`'s own
+        // comment. Loaded eagerly here (not lazily behind opening the CATEGORIZE drilldown) so
+        // HOME/CRED-level counts and the drilldown's own list can never observe two different
+        // moments in time.
+        val uncategorizedSplit = LedgerController.uncategorizedTransactionsSplit(context)
+        val categoryNames = LedgerController.allCategories(context).map { it.name }
         state = state.copy(
             loading = false,
             transactions = transactions,
@@ -323,6 +341,9 @@ fun LedgerScreen(
             pending = pending,
             pendingCategoryGuesses = pendingCategoryGuesses,
             spendTrend = spendTrend,
+            uncategorized = uncategorizedSplit.real,
+            uncategorizedTransfers = uncategorizedSplit.transfers,
+            categoryNames = categoryNames,
         )
     }
 
@@ -446,6 +467,16 @@ fun LedgerScreen(
     var showBudget by remember { mutableStateOf(false) }
     var showBalances by remember { mutableStateOf(false) }
 
+    // RUN CATEGORIZATION's own run-state (2026-08-18 fix) - live signals outside `state`, same
+    // split `addCategoryError`/`addCategorySuccessNonce` already use above, since a mid-run result
+    // must survive a recomposition without fighting the async DB reload over ownership.
+    // `categorizeRulesFixedCount` null = rules have not been run yet this time the screen is open;
+    // `categorizeGuessPool` null = not yet checked what (if anything) is left to guess;
+    // `categorizeGuessResult` null = no guess call has completed yet this time the screen is open.
+    var categorizeRulesFixedCount by remember { mutableStateOf<Int?>(null) }
+    var categorizeGuessPool by remember { mutableStateOf<com.kevin.legion.ledger.UncategorizedMerchants?>(null) }
+    var categorizeGuessResult by remember { mutableStateOf<com.kevin.legion.ledger.CategoryGuessResult?>(null) }
+
     // Hoisted out of the LedgerContent(...) call site below (mission-control ticket 16) so the NEW
     // BUDGET drilldown can page months with the IDENTICAL logic the CRED root's own SPEND hero and
     // the old inline BudgetSection both already relied on - one definition of "page, never past what
@@ -476,6 +507,10 @@ fun LedgerScreen(
             // non-null - falling back to `YearMonth.now()` is a defensive no-op, never actually hit.
             month = pnlMonth ?: YearMonth.now(),
             coverage = state.budgetVsActual?.coverage ?: emptyList(),
+            // 2026-08-18 fix: the uncategorised bucket's own chart is the REAL-category breakdown
+            // now, not a per-day total of the bucket alone - see CategoryDrilldownScreen's own doc
+            // comment. Same `state.budgetVsActual` the BUDGET drilldown already reads, no new load.
+            budget = state.budgetVsActual,
             currentTargetCents = drilldownTargetCents,
             setTargetErrorText = setTargetErrorText,
             setTargetSuccessNonce = setTargetSuccessNonce,
@@ -546,15 +581,32 @@ fun LedgerScreen(
         return
     }
 
-    // Mission-control ticket 16: CATEGORIZE - merges the old PENDING/CATEGORY GUESSES sections.
-    // `onRunCategorize` is the exact action the CRED root's header CATEGORIZE button used to fire
-    // silently (LedgerController.applyCategoryRules then applyCategoryGuesses for whatever's left
-    // uncategorised) - unchanged in substance, only its trigger moved from an instant tap on the
-    // root to an explicit button on the screen where its own results now land.
+    // Mission-control ticket 16: CATEGORIZE - merges the old PENDING/CATEGORY GUESSES sections,
+    // plus (2026-08-18 fix) the UNCATEGORISED/TRANSFERS sections `state.uncategorized`/
+    // `state.uncategorizedTransfers` now carry. RUN CATEGORIZATION used to fire rules-then-guesses
+    // as one silent, unconfirmed action discarding its own `CategoryGuessResult` - split in two
+    // below (`onRunRules`/`onConfirmGuesses`) per `CategorizeDrilldownScreen`'s own doc comment:
+    // rules are free and fire immediately, guessing spends the driver's own Gemini key and sits
+    // behind an explicit second tap.
     if (showCategorize) {
+        // Reset every fresh open, not just every fresh app start - a driver who runs
+        // categorisation, backs out, and comes back later must not see a stale "rules fixed 11
+        // rows" from last time sitting over this visit's (possibly different) numbers.
+        LaunchedEffect(showCategorize) {
+            categorizeRulesFixedCount = null
+            categorizeGuessPool = null
+            categorizeGuessResult = null
+        }
         CategorizeDrilldownScreen(
             pending = state.pending,
             categoryGuesses = LedgerCategoryResolver.groupPendingGuesses(state.pendingCategoryGuesses),
+            uncategorized = state.uncategorized,
+            uncategorizedTransfers = state.uncategorizedTransfers,
+            categoryNames = state.categoryNames,
+            hasGeminiKey = hasGeminiKey,
+            rulesFixedCount = categorizeRulesFixedCount,
+            guessPool = categorizeGuessPool,
+            guessResult = categorizeGuessResult,
             onClearPending = { id ->
                 scope.launch {
                     LedgerController.clearPendingTransaction(context, id)
@@ -567,12 +619,37 @@ fun LedgerScreen(
                     reloadNonce++
                 }
             },
-            onRunCategorize = {
+            onSetRowCategory = { transactionId, category ->
                 scope.launch {
-                    LedgerController.applyCategoryRules(context)
-                    val pool = LedgerController.uncategorizedMerchants(context)
-                    if (pool.keys.isNotEmpty()) LedgerController.applyCategoryGuesses(context, pool.keys)
+                    LedgerController.recategorize(context, transactionId, category)
                     reloadNonce++
+                }
+            },
+            // Step 1: free, local, no confirmation - CLAUDE.md §7's "Gemini call? cheap one-shot
+            // sub-agent where possible" cuts the other way here too: a rule match is a plain SQL
+            // UPDATE, so there is nothing to gate.
+            onRunRules = {
+                scope.launch {
+                    val fixed = LedgerController.applyCategoryRules(context)
+                    categorizeRulesFixedCount = fixed
+                    reloadNonce++
+                    // Loaded from the FRESH pool (after rules just ran, and after reloadNonce's
+                    // uncategorizedTransactionsSplit reload lands) - showing a pre-rules pool size
+                    // here would double-count rows the rules step just fixed.
+                    categorizeGuessPool = LedgerController.uncategorizedMerchants(context)
+                }
+            },
+            onConfirmGuesses = {
+                val pool = categorizeGuessPool
+                if (pool != null && pool.keys.isNotEmpty()) {
+                    scope.launch {
+                        categorizeGuessResult = LedgerController.applyCategoryGuesses(context, pool.keys)
+                        reloadNonce++
+                        // The pool is now stale (every key it named either got a guess or the model
+                        // skipped it) - re-check what's ACTUALLY left rather than leave the old
+                        // count's GUESS CATEGORIES button sitting there re-armable on spent keys.
+                        categorizeGuessPool = LedgerController.uncategorizedMerchants(context)
+                    }
                 }
             },
             onBack = { showCategorize = false },
