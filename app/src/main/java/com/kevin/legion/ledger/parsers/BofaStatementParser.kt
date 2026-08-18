@@ -51,7 +51,7 @@ object BofaStatementParser {
      * that shows up after a page break, which interleaves a name before and
      * a statement date range after it on the same physical line - e.g.
      * "TAYLOR J MORGAN LEE ! Account # 4881 3004 5042 ! June 5, 2026 to July
-     * 8, 2026" (measured on Kevin's real statement, 2026-08-02). "Page N of
+     * 8, 2026" (shape measured on a real statement, values invented). "Page N of
      * M" stays a whole-line match, since on that same statement it really is
      * the entire line with nothing else on it - loosening it too would risk
      * eating a real description line that merely mentions a page number.

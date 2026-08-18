@@ -47,14 +47,14 @@ Installed over the top on the OnePlus CPH2471 (APK sha256 confirmed byte-identic
   read "NOTHING SCHEDULED", and a direct provider query confirmed that is **true** - zero instances
   in the next 24h. Not a false empty.
 - **The Notes stream rendered four real Google events**, each tagged `CAL`, chronologically
-  interleaved and correct: Mara's bday Aug 20, a friend's birthday Sep 4 10:30 AM, Auntie Rose birthday
-  Sep 12 7:00 PM, Partner's Birthday Nov 3. **None of them tickable, none removable** - no checkbox
-  and no REMOVE, while local items kept both. Ticket 04's read-only rule holds in the UI.
+  interleaved and correct: [four real calendar entries verified, names and dates redacted from this
+  public record]. **None of them tickable, none removable** - no checkbox and no REMOVE, while
+  local items kept both. Ticket 04's read-only rule holds in the UI.
 
 ### A real defect the render found, exactly as this class of check is supposed to
 
 **Kevin's US Holidays calendar is invisible.** The device carries four `com.google` calendars:
-Family (700), Company Holidays (700), Personal (700), and **Holidays in United States
+Family (700), a company-holidays calendar (700), Personal (700), and **Holidays in United States
 (200 = read-only)**. `writableGoogleCalendars` filters on `CALENDAR_ACCESS_LEVEL >= 500`, so the
 holidays calendar is dropped - Halloween, Veterans Day, Election Day and Daylight Saving all exist
 in the 90-day window and none of them render.

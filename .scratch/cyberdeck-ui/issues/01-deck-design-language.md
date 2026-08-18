@@ -7,8 +7,8 @@ Status: resolved
 
 What does the diegetic cyberdeck actually look like? Build 2-3 genuinely different takes WITHIN
 the locked dial (diegetic panels, dark-only, numbers-hero, rationed theatre) as throwaway HTML
-mocks of REAL screens with REAL data shapes - Today, Body, Ledger at minimum, using actual logged
-data (1230/2400 kcal, 3x8 leg press, budget vs actual). Kevin reacts, one wins.
+mocks of REAL screens with REAL data shapes - Today, Body, Ledger at minimum, using representative
+data (1450/2200 kcal, 3x8 leg press, budget vs actual). Kevin reacts, one wins.
 
 Resolves: palette (ground, signal hues, how many accents), type stack (mono/display pairing),
 panel language (brackets, borders, headers), density, and the overall temperature of the deck

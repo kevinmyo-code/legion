@@ -24,8 +24,8 @@ Read from the parsers and Kevin's real file, `tested`:
 | `BofaCsvStatementParser.kt:31` | `Online Banking transfer from SAV 8267 Confirmation# 2245981037 ... 30.00` |
 | `currentTransaction_7823.csv` | `PAYMENT FROM SAV 8267 CONF#v1ikbyqeg ... 1300.00` |
 
-So the US side already holds at least three accounts that move money to each other: checking 3119,
-savings 1490, card 4146. Put them in one entity and sum credits and debits naively and the $1,300
+So the US side already holds at least three accounts that move money to each other: checking 5042,
+savings 8267, card 7823. Put them in one entity and sum credits and debits naively and the $1,300
 card payment lands as **$1,300 of income on the card and $1,300 of expense on the savings account**.
 Both sides inflate. If only one of the two statements has been imported, the NET is wrong too, not
 just the gross.

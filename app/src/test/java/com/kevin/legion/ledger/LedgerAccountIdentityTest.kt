@@ -44,7 +44,7 @@ class LedgerAccountIdentityTest {
     @Test
     fun `a savings transfer naming an account never on file is NOT an own-account reference - conservative by design`() {
         // Real shape: `Online Banking transfer from SAV 8267 Confirmation# 1731436758` - Kevin's
-        // real data never had a statement imported for the account ending 1490, so `ownAccountIds`
+        // real data never had a statement imported for the account ending 8267, so `ownAccountIds`
         // (built from LedgerTransactionDao.accountIdsForCurrency) never contains it. Per the
         // 2026-08-13 instruction, the failure that matters is wrongly EXCLUDING real spend, so an
         // unconfirmed reference must return false here rather than guess - this row falls back to
@@ -59,7 +59,7 @@ class LedgerAccountIdentityTest {
 
     @Test
     fun `a Zelle payment TO a person names no account and is never an own-account reference`() {
-        // Real shape: `Zelle payment to  R Alan Cole US Conf# b4nb0qacg` - a person's name, not an
+        // Real shape, name invented: `Zelle payment to  R Alan Cole US Conf# b4nb0qacg` - a person's name, not an
         // account digit, so this must never match regardless of what ownAccountIds contains.
         assertFalse(
             referencesOwnAccount(
@@ -71,7 +71,7 @@ class LedgerAccountIdentityTest {
 
     @Test
     fun `a Zelle payment FROM a person names no account and is never an own-account reference`() {
-        // Real shape: `Zelle payment from JANE R DOE Conf# pwekdcqu8`.
+        // Real shape, name invented: `Zelle payment from JANE R DOE Conf# pwekdcqu8`.
         assertFalse(
             referencesOwnAccount(
                 "Zelle payment from JANE R DOE Conf# pwekdcqu8",
@@ -83,7 +83,7 @@ class LedgerAccountIdentityTest {
     @Test
     fun `a merchant address digit run is never mistaken for an account reference`() {
         // Real false-positive risk this repo measured: `CIRCLE K # 48267 CYPRESS TX` contains the
-        // digits 48267 (which even ENDS in 1490, the savings account's own last-4) purely by
+        // digits 48267 (which even ENDS in 8267, the savings account's own last-4) purely by
         // coincidence of a gas station's store number - it must never match because it is never
         // preceded by CRD/CHK/SAV/ACCT.
         assertFalse(

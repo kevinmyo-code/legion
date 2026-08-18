@@ -216,7 +216,7 @@ class LedgerTransfersTest {
         val result = analyzeTransfers(
             inPeriod = listOf(toUnknownSavings),
             pairingWindow = listOf(toUnknownSavings),
-            ownAccountIds = setOf("4111111111117823", "4111111115042"), // no account ending 1490
+            ownAccountIds = setOf("4111111111117823", "4111111115042"), // no account ending 8267
         )
 
         assertEquals(1, result.operating.size)

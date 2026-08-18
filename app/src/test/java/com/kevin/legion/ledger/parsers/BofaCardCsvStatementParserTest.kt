@@ -144,7 +144,7 @@ class BofaCardCsvStatementParserTest {
         assertEquals(lfResult.map { it.txnDate }, crlfResult.map { it.txnDate })
     }
 
-    /** A card CSV file whose account digits genuinely match the real 4146 fixture is still not claimed by another parser. */
+    /** A card CSV file whose account digits genuinely match the real 7823 fixture is still not claimed by another parser. */
     @Test
     fun `an unrelated CSV is not claimed by the card CSV parser`() {
         val notCardCsv = "Date,Description,Amount\n01/01/2026,Something,1.00\n"

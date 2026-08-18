@@ -11,8 +11,8 @@ library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
   phones were identical at the moment of migration and **`sync/` has still never executed**, so
   anything written to the A17k diverges silently and nothing reconciles it.
   - **Migration verified row-for-row**: 5 vehicles / 54 maintenance items / 2 service records /
-    18,645 obd_samples / 148 ledger rows / 188 ingested_files, and **totals identical to the cent on both
-    sides.** WAL was checkpointed into the main file before the copy and the target's stale
+    18,645 obd_samples / 148 ledger rows / 188 ingested_files, and **totals identical to the cent on
+    both sides.** WAL was checkpointed into the main file before the copy and the target's stale
     `-wal`/`-shm` deleted, so no mismatched journal could replay.
   - **The Gemini key did NOT come across** - it is sealed by the A17k's hardware Keystore, which is
     device-bound by design. Drive authorisation and runtime permissions (mic, calendar) also need
@@ -99,8 +99,8 @@ He asked it to log meals; the UI sat on "Listening..." for ~5 minutes and wrote 
   investigate 30s, `handleToolCall` 45s). A timeout is only real if the thing under it suspends.
 - **`handleToolCall` was the only `handleEvent` branch that never set a `Phase`**, so every tool call
   rendered as "Listening...". The user-visible bug and the real bug were two separate defects.
-- **PROOF the dispatched path had NEVER worked:** `meal_logs` held 7 rows, newest 08:38 that day;
-  `b1868d8` was authored 09:21 the same day. Not one row ever written through `ask_body`.
+- **PROOF the dispatched path had NEVER worked:** `meal_logs` held 7 rows, and the newest predates
+  `b1868d8` (that day's dispatcher commit) by 43 minutes. Not one row ever written through `ask_body`.
 - Fixed in `18e0582` (real cancellation via `disconnect()` on cancel), `57ed400` (`Phase.THINKING` /
   "Working..." refcounted across concurrent calls, 5 new tests), `170a76c` (`sendToolResponse`
   returns the socket `send()` boolean and surfaces a dropped response).
@@ -266,8 +266,9 @@ switch, nothing exempt**, `CrisisDetector` untouched.
 - **Four bugs this session were found by LOOKING AT THE DATA, none by 955 tests.** Same shape as
   L15: each component individually correct, wrong in aggregate. Pull the DB and query it.
 - **A decision put to Kevin twice, with numbers in between, beat the first answer.** He first chose
-  to exclude everything the transfer keywords caught; measuring it first showed that also hides 40
-  `Zelle payment to <person>` rows worth several thousand dollars across 40 `Zelle payment to <person>` rows of real money. He changed his answer.
+  to exclude everything the transfer keywords caught; measuring it first showed that also hides
+  several thousand dollars across 40 `Zelle payment to <person>` rows of real money. He changed his
+  answer.
 - **`adb shell cat` CORRUPTS a binary pull** - use `adb exec-out`, and compare the pulled size
   against `ls -l` on the device. **Verify every install by sha256**, never by "Success".
 - **Device quirks:** logcat filters the app's own logs (surface diagnostics in the UI); `adb push` to

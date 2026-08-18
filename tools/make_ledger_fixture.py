@@ -155,7 +155,7 @@ def main() -> None:
 
 CARD_FIXTURES_DIR = Path(__file__).resolve().parent.parent / "app/src/test/resources/ledger_fixtures"
 
-CARD_ACCOUNT_DIGITS = "5500 7734 1182 7823"
+CARD_ACCOUNT_DIGITS = "5555 5555 5555 7823"
 CARD_ACCOUNT_LAST4 = CARD_ACCOUNT_DIGITS.replace(" ", "")[-4:]
 
 CARD_PREVIOUS_BALANCE = 842150  # $8,421.50, invented

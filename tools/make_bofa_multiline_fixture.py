@@ -36,7 +36,7 @@ Three fixtures:
    starts, which must still quarantine (accumulation is bounded, not
    permissive).
 3. `bofa_summary_and_split_section.pdf` - the SECOND real bug found on
-   Kevin's statement (2026-08-02): a front-page summary block that repeats
+   a real statement: a front-page summary block that repeats
    every section name followed by its own total (not a "Date ..." header),
    plus a section that spans a page break with its header and "Date ..."
    header reprinted and a reprinted account line / "Page N of M" footer

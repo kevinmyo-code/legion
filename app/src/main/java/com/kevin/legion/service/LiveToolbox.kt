@@ -2588,7 +2588,7 @@ object LiveToolbox {
         // account is free-text from the driver's speech, not a stored key, so
         // this matches loosely: an exact accountId, a substring (a driver
         // says "BofA", not "BOFA ****4471"), or the same physical card by
-        // last-4 (sameCard) so "the 4146 card" resolves whether the balance
+        // last-4 (sameCard) so "the 7823 card" resolves whether the balance
         // came from the card's own PDF or its bare-filename CSV entry.
         val matched = allBalances.filter { balance ->
             account.isBlank() || balance.accountId.contains(account, ignoreCase = true) ||

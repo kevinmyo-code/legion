@@ -83,7 +83,7 @@ Read-only throughout. No `uninstall`, no `pm clear`, no writes to the device.
 **Kevin's Jeep has no identity and no odometer, and seven of its ten maintenance items are
 invisible on screen.** The single fact that breaks the most downstream behaviour:
 
-> `currentMileage` for the Jeep evaluates to **0**, while its service anchors sit at **118,483**.
+> `currentMileage` for the Jeep evaluates to **0**, while its service anchors sit at **118,483** (odometer values in this section are invented, offsets preserved for the public record).
 
 Every mileage-based due calculation on the car is computing against an odometer of zero.
 
@@ -188,8 +188,8 @@ Computed from the traced data through the traced code (`buildDueRows` then `toDu
 | Brake Pads | `-` | `no interval on file` |
 | Brake Fluid | `-` | `no interval on file` |
 
-`3,000 - (0 - 118,483)` = 230,483, floored to a multiple of 50. **The oil is reported due in two
-hundred and thirty thousand miles.** Kevin's "the drilldown is not what I want" is a considerable
+`3,000 - (0 - 118,483)` = 121,483, floored to a multiple of 50. **The oil is reported due in
+over a hundred thousand miles.** Kevin's "the drilldown is not what I want" is a considerable
 understatement.
 
 ### 5. The odometer has never been set on this car, and the estimator has never moved it

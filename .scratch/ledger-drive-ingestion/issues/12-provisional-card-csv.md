@@ -31,7 +31,7 @@ Kevin's ask (2026-08-06): ingest it anyway. Decide how, without making §4 mean 
 | Sign split | 38 debits, 2 credits (a merchant refund and a `PAYMENT FROM SAV`) |
 | Balance column | **absent** |
 | Total row | **absent** |
-| Account number | **absent from the file body.** Present only in the filename: `_4146` |
+| Account number | **absent from the file body.** Present only in the filename: `_7823` |
 
 Two consequences fall straight out of that table:
 
@@ -123,7 +123,7 @@ fun sameCard(a: String, b: String): Boolean =
 
 The three places: the supersede delete (§3), the adjusted-balance pairing (§5), and
 `BalancesSection` grouping (§5). Nowhere else. In particular **`resolveDedup` is NOT changed** -
-loosening its key on a suffix would let a checking account ending 4146 absorb card rows.
+loosening its key on a suffix would let a checking account ending 7823 absorb card rows.
 
 **Known weakness, stated rather than hidden:** a suffix match collides if two accounts share a
 last-4. Kevin has four accounts today and no collision. `sameCard` must carry that in a doc comment

@@ -22,7 +22,7 @@ Shipped MILSPEC uses green-black `#0A0D08`. With mint data and red chrome, navy-
 likely fit, but that is a guess until it is drawn.
 
 **Method.** Build 2-3 throwaway HTML mocks of REAL LEGION screens with REAL data shapes - HOME,
-BIO/MASS, and LOG at minimum, using actual logged values (1840 kcal, 82.4 kg, a quarantined
+BIO/MASS, and LOG at minimum, using representative values (2100 kcal, 88.1 kg, a quarantined
 statement, a `-$41.20` debit, an `UNRECONCILED` row). Vary the ground and the exact hue pairs
 across the takes. Kevin reacts, one wins. Do not mock abstract swatch grids - the refs' whole
 argument is about how these hues behave in dense composition, and a swatch grid cannot show that.

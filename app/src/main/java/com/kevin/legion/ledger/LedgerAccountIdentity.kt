@@ -54,7 +54,7 @@ private val ACCOUNT_REFERENCE = Regex("""(?i)\b(?:CRD|CHK|SAV|ACCT)\s*#?\s*(\d{4
  * statement imported ([com.kevin.legion.data.local.LedgerTransactionDao.accountIdsForCurrency]),
  * never every account a description happens to NAME. Kevin's real checking statement references a
  * savings account ("SAV 8267") that has never itself had a statement imported - no accountId on
- * file ends in 1490 - so a row naming it returns `false` here, even though it is obviously his own
+ * file ends in 8267 - so a row naming it returns `false` here, even though it is obviously his own
  * account in reality. Per this repo's own instruction for this call: the failure that matters is
  * wrongly EXCLUDING real spend, and an unmatched reference only falls back to whatever
  * [TRANSFER_KEYWORDS] already decided for it (the pre-existing, unchanged status quo) - never

@@ -4,8 +4,9 @@ Read 2026-08-17 08:07 CDT on the A25. Baseline: [12h-run-baseline.md](12h-run-ba
 Gates the ten on-device items in [scheduling research](07-scheduling.md) §8.
 
 **Elapsed window: 7h53m, not 12h** (00:14:07 -> 08:07:01). The last ~3 minutes are dirty - Kevin
-opened LEGION at 08:04:22, which brought MainActivity to the foreground, connected Spotify App
-Remote and started two live sessions. Everything before 08:04 is undisturbed.
+opened LEGION overnight near the end of the window, which brought MainActivity to the foreground,
+connected Spotify App Remote and started two live sessions. Everything before that point is
+undisturbed.
 
 ## Headline: IT SURVIVED
 
