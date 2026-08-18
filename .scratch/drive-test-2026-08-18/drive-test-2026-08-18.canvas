@@ -1,0 +1,63 @@
+{
+  "nodes": [
+    {
+      "id": "3353e74a41d7b581",
+      "type": "file",
+      "file": ".scratch/drive-test-2026-08-18/issues/01-conversation-waits-for-the-driver.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "df9f635c16f92e8b",
+      "type": "file",
+      "file": ".scratch/drive-test-2026-08-18/issues/02-context-dies-with-the-socket.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "a1d31bb207d2b0d2",
+      "type": "file",
+      "file": ".scratch/drive-test-2026-08-18/issues/03-no-navigation-capability.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "287341590e50a8ff",
+      "type": "file",
+      "file": ".scratch/drive-test-2026-08-18/issues/05-reading-kevins-spotify-library.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "a0f20dfb2b263758",
+      "type": "file",
+      "file": ".scratch/drive-test-2026-08-18/issues/04-what-the-assistant-says-when-it-cannot.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    }
+  ],
+  "edges": [
+    {
+      "id": "4b93126d05723904",
+      "fromNode": "a1d31bb207d2b0d2",
+      "fromSide": "right",
+      "toNode": "a0f20dfb2b263758",
+      "toSide": "left"
+    }
+  ]
+}
