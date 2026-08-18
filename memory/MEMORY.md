@@ -263,6 +263,34 @@ switch, nothing exempt**, `CrisisDetector` untouched.
 
 ## Notes for next session
 
+- **START HERE: the routing bug.** 2026-08-17, Kevin spoke workout sets; nothing was written and
+  he was told it was recorded. **Confirmed `on-device` from logcat**: `log_workout_set` was NEVER
+  called. Every `tool_dispatched` line in the 21:42-21:45 window is `get_current_time`,
+  `ask_goals`, `list_goals`, `ask_advisor`, `manage_item`, and the `SubAgent: investigate round`
+  lines show only `[list_goals]` and `[ask_advisor]`. **The live model routed a workout-logging
+  request to `ask_goals`**, whose domain (`DISPATCHED["goals"]`) holds only `list_goals` and
+  `ask_advisor` and structurally cannot write a set. So the defect is ROUTING, not just the
+  confirmation hole. His `set_goal` write landed only because `set_goal` is live-declared and never
+  goes through a sub-agent. Start by reading the five `ask_<domain>` declaration texts against each
+  other - the likely cause is `ask_goals`' description claiming territory `ask_body` owns.
+- **The mutation gate exists but is OFF.** `f97e1d8` plumbed `requireMutation` end to end with
+  tests, defaulting `false` everywhere, because `dispatch()` only sees free prose and guessing
+  write-intent would break legitimate reads. **Tonight's exact failure is therefore NOT auto-refused
+  today.** Turning it on needs a real write-intent signal, most likely an explicit argument on the
+  dispatcher schema. That is the follow-up, and it is what makes the gate worth having.
+- **Verified tonight `on-device`:** the mic pass (`a28b792` and its seven parents) - 11 captures,
+  one under a second, against 4-of-20 sub-second before. Improved, NOT proven fixed; one 559ms
+  sample could be a legitimate short turn or the retry firing.
+- **Portfolio Phase 1: README rewritten (`0becc7d`), privacy scrubbed at HEAD and through history,
+  force-pushed by Kevin and remote verified.** Still to do: `docs/architecture.md`, three case
+  studies (the gate catching the interest-row hole, the `b1868d8` dispatcher regression, tonight's
+  mic forensics), and a 2-3 minute demo video. **Distribution decided: video is the artifact, repo
+  is the depth, APK on request.** Neither a clone nor an APK can demo itself without the reviewer's
+  own Gemini key - say so in the README so nobody concludes it is broken.
+- **Release APK guard is structural but unconfirmed** (`a4ba553`): the seeding bundle moved to
+  `src/debug/assets/`. No signing keys on this machine, so `assembleRelease` cannot run here.
+  On the next signed build, run `unzip -l <apk> | grep midnight_import` and expect zero.
+
 - **TRAINING revamp is charted WEEK-FIRST (Kevin, 2026-08-17, chosen against previews):** weekly
   plan-vs-actual meters per lift lead the face, last session's sets below. Run `/wayfinder` for the
   map; it is user-invoke-only, so an agent cannot chart it.
