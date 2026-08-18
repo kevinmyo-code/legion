@@ -452,17 +452,34 @@ class LiveSessionController(context: Context) {
                 set(Phase.IDLE, IDLE_STATUS)
             }
             is LiveEvent.TurnComplete -> {
-                // Conversation: the session reopened the mic, so wait for the
-                // driver - still active talk time, segment stays open. Speak-only:
-                // the proactive line just finished, nothing more to do - pause the
-                // segment here (the socket may not fire a separate Idle for this
-                // path, e.g. the cold speak-only session in startProactive).
-                if (conversationMode) {
-                    set(Phase.LISTENING, "Listening...")
-                } else {
+                // Conversation: the session is ABOUT to reopen the mic, so this is
+                // still active talk time and the segment stays open - but it does
+                // NOT claim Listening here anymore (2026-08-17, same defect class as
+                // 57ed400's Phase.THINKING fix: a phase claiming one thing while the
+                // code does another). openMicForUser() has not even run yet at this
+                // point, let alone the real AudioRecord.startRecording() behind
+                // awaitPlaybackDrained() - up to ~1.56s later. LiveEvent.MicOpened
+                // below is the actual signal; leaving the phase alone here means the
+                // UI honestly keeps showing "Speaking..."/whatever it last was until
+                // the mic is truly live, rather than lying "Listening..." early.
+                // Speak-only: the proactive line just finished, nothing more to do -
+                // pause the segment here (the socket may not fire a separate Idle for
+                // this path, e.g. the cold speak-only session in startProactive).
+                if (!conversationMode) {
                     set(Phase.IDLE, IDLE_STATUS)
                 }
             }
+            // The mic has ACTUALLY started capturing - see [LiveEvent.MicOpened]'s doc for
+            // why this, not TurnComplete, is what "Listening..." must be driven off. Not
+            // gated on conversationMode: a bare tap-to-listen (beginConversation with no
+            // opener) also lands here directly from the Connected branch's THINKING state,
+            // and this is the only event that would otherwise ever move it off THINKING.
+            is LiveEvent.MicOpened -> set(Phase.LISTENING, "Listening...")
+            // No phase change: SpeakingStarted already covers the ordinary half-duplex-mute
+            // close (fires effectively simultaneously, off the same server message), and a
+            // session-teardown close is about to be followed by its own Idle/Closed event
+            // that sets phase correctly. See [LiveEvent.MicClosed]'s doc.
+            is LiveEvent.MicClosed -> {}
             is LiveEvent.Idle -> {
                 // Conversation went quiet but the socket is warm - ready for an
                 // instant resume on the next tap. Pause billing here too (also

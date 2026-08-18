@@ -65,6 +65,27 @@ sealed interface LiveEvent {
     data object Interrupted : LiveEvent
     /** Zero finished a turn and is waiting for the driver. */
     data object TurnComplete : LiveEvent
+    /**
+     * The mic has ACTUALLY started capturing - [AudioRecord.startRecording] returned in
+     * micLoop, not merely that [openMicForUser] set the intent to. 2026-08-17: this is the
+     * fix for "shows Listening but the mic is shut" (same defect shape as 57ed400's
+     * Phase.THINKING fix, a UI phase claiming one thing while the code does another). Real
+     * capture sits behind [awaitPlaybackDrained], which can run up to
+     * PLAYBACK_DRAIN_TIMEOUT_MS + MIC_REOPEN_SETTLE_MS (~1.56s) after [TurnComplete] fires -
+     * an owner that flips to "Listening..." on TurnComplete itself is lying to the driver for
+     * up to that long, and keeps lying indefinitely if capture then dies silently. The owner
+     * should gate any "Listening" UI state on THIS event, not on TurnComplete.
+     */
+    data object MicOpened : LiveEvent
+    /**
+     * The mic has ACTUALLY stopped capturing ([AudioRecord.stop] ran in micLoop), whether
+     * because Zero started speaking (half-duplex mute) or the session is tearing down. [why]
+     * mirrors the reason strings already logged to [com.kevin.legion.MidnightEvents.micState].
+     * Not currently consumed for a phase change (SpeakingStarted already covers the ordinary
+     * half-duplex-mute case, effectively simultaneously) - exposed for symmetry with
+     * [MicOpened] and so a future consumer doesn't need a second wiring pass.
+     */
+    data class MicClosed(val why: String) : LiveEvent
     /** Gemini wants a local tool run; reply via [GeminiLiveSession.sendToolResponse]. */
     data class ToolCall(val id: String, val name: String, val args: JSONObject) : LiveEvent
     /** Live transcript of what Zero is saying this turn (debug subtitle), accumulated. */
@@ -1171,6 +1192,10 @@ class GeminiLiveSession(
                         }
                         try { record.stop() } catch (_: Exception) {}
                         recording = false
+                        // Physical close - see [LiveEvent.MicClosed]'s doc for why this is a
+                        // separate signal from the capturing=false flip that led here (that
+                        // flip is the INTENT, this is the platform call actually returning).
+                        emit(LiveEvent.MicClosed(if (short) "short capture, giving up" else "half-duplex mute"))
                     }
                     delay(20) // idle, leaving the HAL free for playback
                     continue
@@ -1199,6 +1224,11 @@ class GeminiLiveSession(
                         recording = true
                         recordingStartedAtMs = System.currentTimeMillis()
                         bytesSinceOpen = 0L
+                        // Physical open, fired AFTER startRecording() actually returns - the
+                        // whole point of this event is that it lags the capturing=true intent
+                        // flip by however long the awaitPlaybackDrained() wait above just took.
+                        // See [LiveEvent.MicOpened]'s doc.
+                        emit(LiveEvent.MicOpened)
                     } catch (e: Exception) {
                         Log.w(TAG, "Capture start/flush failed: ${e.message}")
                         delay(20)
@@ -1224,6 +1254,13 @@ class GeminiLiveSession(
         } finally {
             recordingCallback?.let { audioManager.unregisterAudioRecordingCallback(it) }
             _isSilenced.value = false
+            // A stop reached from HERE (loop broke via `while` condition going false, or an
+            // uncaught exception in the try block above) means capture ended WITHOUT going
+            // through the normal `!capturing` branch's own MicClosed emit - exactly the
+            // "keeps claiming Listening when capture silently dies" case this event exists
+            // to close. Emit before stopping, not after: [record] may already be in a state
+            // where `stop()` throws, and the owner still needs to know capture is over.
+            if (recording) emit(LiveEvent.MicClosed("mic loop ending"))
             try {
                 if (recording) record.stop()
             } catch (_: Exception) {
