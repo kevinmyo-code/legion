@@ -23,6 +23,7 @@ import com.kevin.legion.ui.common.GapSign
 import com.kevin.legion.ui.fleet.DriveSummaryView
 import com.kevin.legion.ui.fleet.DueRowView
 import com.kevin.legion.util.compactDate
+import com.kevin.legion.util.documentDateCompact
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
@@ -303,6 +304,22 @@ fun compactMoneyHero(cents: Long, currency: LedgerCurrency): String {
  * it. [com.kevin.legion.ui.TodayScreen]'s CRED tile renders
  * [com.kevin.legion.ledger.uncategorizedExcludedSentence] in the tile's own `extra` slot instead,
  * and [com.kevin.legion.ui.LedgerScreen]'s full-width SPEND pane states it under the chart.
+ *
+ * **The incomplete-month caption is a DATE, not a warning (2026-08-18, Kevin).** It used to read
+ * `COVERAGE GAP` for any `!budget.isComplete` month - true, but not what he was asking. He already
+ * knows the month is not over; what he wants off a HALF tile is how much he's used SO FAR, as of
+ * when he actually extracted the statements. `"THROUGH AUG 12"` answers that directly: it is the
+ * minimum, across every account in [budget.coverage], of that account's own
+ * [com.kevin.legion.ledger.AccountCoverage.coveredThroughMs] - the MINIMUM because the figure above
+ * it is a SUM across accounts, and a sum is only good through the point every one of its addends
+ * is, the same reasoning [coverageSentence][com.kevin.legion.ui.ledger.coverageSentence] already
+ * applies per-account, one level up. When any account's `coveredThroughMs` is null (it never even
+ * reaches the month's own start - the empty-[budget.coverage] case included, since `mapNotNull`
+ * over nothing is nothing) there is no honest date to print, so the caption says so in words
+ * instead (`NOT COVERED YET`) rather than silently falling back to a date that would read as
+ * current. This is a REWORDING, not a loosening: `!budget.isComplete` still gates the branch,
+ * still CLAUDE.md §4 rule 7 disclosure, just phrased as the answer to "how much so far" instead of
+ * a bare warning he'd already parsed.
  */
 data class CredTileData(val hero: String, val caption: String)
 
@@ -315,11 +332,26 @@ fun buildCredTile(budget: BudgetVsActual?, monthLabel: String): CredTileData {
     val targetCents = budget.lines.sumOf { it.gap.target }
     val hero = compactMoneyHero(spentCents, budget.entity.currency)
     val caption = when {
-        !budget.isComplete -> "COVERAGE GAP"
+        !budget.isComplete -> coverageThroughCaption(budget)
         targetCents > 0 -> "OF ${compactMoneyHero(targetCents, budget.entity.currency)} $monthLabel"
         else -> "NO TARGET SET"
     }
     return CredTileData(hero = hero, caption = caption)
+}
+
+/**
+ * The `THROUGH <DATE>` / `NOT COVERED YET` half of [buildCredTile] - split out so
+ * [TodayGapResolversTest] can exercise the minimum-across-accounts and no-honest-date branches
+ * directly. See [buildCredTile]'s own doc comment for the reasoning; this is only the mechanics.
+ */
+private fun coverageThroughCaption(budget: BudgetVsActual): String {
+    val throughs = budget.coverage.map { it.coveredThroughMs }
+    // Every account must have a real through-date, or the minimum across them would be a lie -
+    // one account that never reaches the month's own start means the SUM above is missing that
+    // account entirely from day one, and no date can honestly describe that.
+    if (throughs.isEmpty() || throughs.any { it == null }) return "NOT COVERED YET"
+    val throughMs = throughs.filterNotNull().min()
+    return "THROUGH ${documentDateCompact(throughMs).uppercase(Locale.ENGLISH)}"
 }
 
 /**

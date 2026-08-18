@@ -33,12 +33,23 @@ package com.kevin.legion.ledger
  * completeness claim - the file passed the reconciliation gate, so within its own dates there is
  * nothing it left out. Stitching SEVERAL files' spans together is a different claim entirely, and
  * it is one no single file's gate underwrites.
+ *
+ * [coveredThroughMs] (added 2026-08-18) is a THIRD, more useful reading than either of the above:
+ * "good through this date", computed by [coveredThroughMs] the pure function - the end of the
+ * unbroken run starting at the month's own start, or null when coverage never reaches the month
+ * start at all. Unlike [coveredToMs] it cannot overstate across an internal hole; unlike
+ * [coversWholeMonth] it is a date, not a boolean, which is what a driver who already knows the
+ * month is not over yet actually wants to see.
  */
 data class AccountCoverage(
     val accountId: String,
     val coversWholeMonth: Boolean,
     val coveredFromMs: Long?,
     val coveredToMs: Long?,
+    // Defaulted (not just added) so every existing positional/named call site in tests and
+    // previews that predates 2026-08-18 keeps compiling unchanged; LedgerController.budgetVsActual
+    // is the one production caller and always supplies a real value.
+    val coveredThroughMs: Long? = null,
 )
 
 /**
@@ -85,3 +96,46 @@ internal fun coversMonthWithoutGaps(
 
 /** One day. See [coversMonthWithoutGaps] for why consecutive statements need it. */
 private const val ADJACENCY_TOLERANCE_MS = 24L * 60 * 60 * 1000
+
+/**
+ * The end of the UNBROKEN run of coverage beginning at [monthStartMs] - "the figure is good
+ * through THIS date", which is a different question from [coversMonthWithoutGaps]'s yes/no and a
+ * MORE HONEST one than [AccountCoverage.coveredToMs] (2026-08-18, Kevin: "i know its not eom yet.
+ * i just want to know how much ive used so far... just change it here" - replacing a warning he
+ * already understood with the date that actually answers his question).
+ *
+ * **Why not just [AccountCoverage.coveredToMs].** That field is the max of every window's own
+ * `toMs`, which overstates exactly when there is an internal hole - two files covering the 1st-10th
+ * and the 20th-31st report `coveredToMs` = the 31st, which reads as "good through the 31st" when
+ * the 11th-19th is missing entirely. This function walks the SAME windows [coversMonthWithoutGaps]
+ * does and stops at the first real gap, so it can never overstate the way the min/max version does
+ * - same failure shape CLAUDE.md §4 rule 6 names, applied to a date instead of a boolean.
+ *
+ * Returns null when coverage never reaches [monthStartMs] at all (empty [windows], or the earliest
+ * window starts after the month begins) - there is no honest "through" date to report, and the
+ * caller must say so in words rather than printing a date that would read as current. Otherwise
+ * returns the reach, capped at [monthEndMs] so a fully-covered month never reports a date past the
+ * month's own end.
+ */
+internal fun coveredThroughMs(
+    windows: List<Pair<Long, Long>>,
+    monthStartMs: Long,
+    monthEndMs: Long,
+): Long? {
+    if (windows.isEmpty()) return null
+
+    val sorted = windows.sortedBy { it.first }
+    // Same "no tolerance on the opening check" posture as coversMonthWithoutGaps: if the
+    // earliest window itself starts after the month begins, the days before it are uncovered
+    // and there is no "through" date at all, not even the 1st.
+    if (sorted.first().first > monthStartMs) return null
+
+    var reach = sorted.first().second
+    for ((from, to) in sorted.drop(1)) {
+        // A real gap stops the run right here - reach is the last day of the
+        // unbroken stretch, not the furthest any later window happens to reach.
+        if (from - reach > ADJACENCY_TOLERANCE_MS) break
+        reach = maxOf(reach, to)
+    }
+    return minOf(reach, monthEndMs)
+}

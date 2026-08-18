@@ -17,7 +17,9 @@ import com.kevin.legion.plan.PlanGap
 import com.kevin.legion.plan.TrustTier
 import com.kevin.legion.ui.common.GapSign
 import com.kevin.legion.ui.fleet.DueRowView
+import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -320,13 +322,22 @@ class TodayGapResolversTest {
         assertEquals("$1", compactMoneyHero(99L, LedgerCurrency.USD))
     }
 
-    private fun budgetFixture(lines: List<BudgetLine>, uncategorizedCents: Long = 0L, complete: Boolean = true): BudgetVsActual =
+    private fun budgetFixture(
+        lines: List<BudgetLine>,
+        uncategorizedCents: Long = 0L,
+        complete: Boolean = true,
+        coverage: List<AccountCoverage>? = null,
+    ): BudgetVsActual =
         BudgetVsActual(
             entity = LedgerEntity.US,
             month = YearMonth.of(2026, 8),
             lines = lines,
             uncategorized = UncategorizedSpend(spentCents = uncategorizedCents, hasProvisionalRows = false),
-            coverage = if (complete) listOf(AccountCoverage("7823", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L)) else emptyList(),
+            coverage = coverage ?: if (complete) {
+                listOf(AccountCoverage("7823", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L, coveredThroughMs = 1L))
+            } else {
+                emptyList()
+            },
             excludedOwnAccountMovements = ExcludedOwnAccountMovements(0, 0L, emptyList()),
         )
 
@@ -350,8 +361,29 @@ class TodayGapResolversTest {
         assertEquals("OF $3,000 AUG", tile.caption)
     }
 
+    /** 2026-08-18: `THROUGH <date>`/`NOT COVERED YET` replaced the old bare `COVERAGE GAP`. */
+    private fun aug(day: Int): Long = LocalDate.of(2026, 8, day).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
     @Test
-    fun `CRED tile - incomplete coverage reads COVERAGE GAP regardless of target`() {
+    fun `CRED tile - incomplete coverage reads THROUGH the minimum account's own through-date`() {
+        val line = BudgetLine(
+            category = "Groceries",
+            gap = PlanGap(target = 300_000L, actual = 241_800L, gap = 58_200L, tier = TrustTier.PROVEN),
+            hasProvisionalRows = false,
+            hasPendingCategoryGuesses = false,
+        )
+        // One account good through the 12th, another good through the 5th - the SUM above the
+        // caption is only trustworthy through the 5th, the minimum, not the later account's own date.
+        val coverage = listOf(
+            AccountCoverage("checking", coversWholeMonth = false, coveredFromMs = aug(1), coveredToMs = aug(12), coveredThroughMs = aug(12)),
+            AccountCoverage("card", coversWholeMonth = false, coveredFromMs = aug(1), coveredToMs = aug(5), coveredThroughMs = aug(5)),
+        )
+        val tile = buildCredTile(budgetFixture(listOf(line), coverage = coverage), "AUG")
+        assertEquals("THROUGH AUG 5", tile.caption)
+    }
+
+    @Test
+    fun `CRED tile - empty coverage says NOT COVERED YET, never a date`() {
         val line = BudgetLine(
             category = "Groceries",
             gap = PlanGap(target = 300_000L, actual = 241_800L, gap = 58_200L, tier = TrustTier.PROVEN),
@@ -359,7 +391,25 @@ class TodayGapResolversTest {
             hasPendingCategoryGuesses = false,
         )
         val tile = buildCredTile(budgetFixture(listOf(line), complete = false), "AUG")
-        assertEquals("COVERAGE GAP", tile.caption)
+        assertEquals("NOT COVERED YET", tile.caption)
+    }
+
+    @Test
+    fun `CRED tile - one account never reaching month start says NOT COVERED YET, not the other account's date`() {
+        val line = BudgetLine(
+            category = "Groceries",
+            gap = PlanGap(target = 300_000L, actual = 241_800L, gap = 58_200L, tier = TrustTier.PROVEN),
+            hasProvisionalRows = false,
+            hasPendingCategoryGuesses = false,
+        )
+        // "card" never reaches Aug 1 at all (its own coveredThroughMs is null) - printing the
+        // "checking" account's date here would silently drop "card" out of an honest total.
+        val coverage = listOf(
+            AccountCoverage("checking", coversWholeMonth = false, coveredFromMs = aug(1), coveredToMs = aug(12), coveredThroughMs = aug(12)),
+            AccountCoverage("card", coversWholeMonth = false, coveredFromMs = aug(20), coveredToMs = aug(31), coveredThroughMs = null),
+        )
+        val tile = buildCredTile(budgetFixture(listOf(line), coverage = coverage), "AUG")
+        assertEquals("NOT COVERED YET", tile.caption)
     }
 
     @Test

@@ -1,6 +1,8 @@
 package com.kevin.legion.ledger
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -76,6 +78,49 @@ class LedgerCoverageTest {
     @Test
     fun `no windows at all never reads as covered`() {
         assertFalse(coversMonthWithoutGaps(emptyList(), MONTH_START, MONTH_END))
+    }
+
+    // -------------------------------------------------------------- coveredThroughMs (2026-08-18)
+
+    @Test
+    fun `no windows has no through-date at all`() {
+        assertNull(coveredThroughMs(emptyList(), MONTH_START, MONTH_END))
+    }
+
+    @Test
+    fun `a window starting after the month start has no through-date`() {
+        // Same "not even the 1st is covered" shape coversMonthWithoutGaps rejects outright.
+        assertNull(coveredThroughMs(listOf((MONTH_START + DAY_MS * 2) to MONTH_END), MONTH_START, MONTH_END))
+    }
+
+    @Test
+    fun `two adjacent windows extend the through-date past the join`() {
+        val windows = listOf(
+            MONTH_START to (MONTH_START + 9 * DAY_MS),
+            (MONTH_START + 10 * DAY_MS) to MONTH_END,
+        )
+        assertEquals(MONTH_END, coveredThroughMs(windows, MONTH_START, MONTH_END))
+    }
+
+    @Test
+    fun `two windows with a hole stop the through-date at the first window's own end`() {
+        // The exact case coveredToMs gets wrong: the outer max is the month end, but the real
+        // "good through" date is the end of the FIRST unbroken run, well before the hole.
+        val windows = listOf(
+            MONTH_START to (MONTH_START + 9 * DAY_MS),
+            (MONTH_START + 19 * DAY_MS) to MONTH_END,
+        )
+        assertEquals(MONTH_START + 9 * DAY_MS, coveredThroughMs(windows, MONTH_START, MONTH_END))
+    }
+
+    @Test
+    fun `full coverage reads through the month's own end, never past it`() {
+        assertEquals(MONTH_END, coveredThroughMs(listOf(MONTH_START to MONTH_END), MONTH_START, MONTH_END))
+    }
+
+    @Test
+    fun `a window reaching past the month end is capped at the month end, not the window's own end`() {
+        assertEquals(MONTH_END, coveredThroughMs(listOf(MONTH_START to (MONTH_END + 5 * DAY_MS)), MONTH_START, MONTH_END))
     }
 
     companion object {

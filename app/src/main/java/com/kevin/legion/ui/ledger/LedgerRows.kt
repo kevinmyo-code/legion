@@ -187,6 +187,17 @@ private fun AccountBalanceRow(balance: AccountBalance) {
                 else -> Text("not stated", style = MaterialTheme.typography.bodySmall, color = sem.faint)
             }
         }
+        // 2026-08-18 (Kevin: "if the account balance is stale"): [AccountBalance.asOfMs] is the
+        // txnDate of the exact row [balanceCents] was read from, so this line says WHEN the
+        // printed figure is from, not just that it might be old. Null is not "unknown" and not
+        // "today" - it is the BofA-card-layout case, where no row for this account has EVER
+        // printed a balance (see [AccountBalance.asOfMs]'s own doc comment), and is worded as its
+        // own distinct sentence rather than silently omitted or read as current.
+        Text(
+            if (balance.asOfMs != null) "as of ${documentDateCompact(balance.asOfMs)}" else "no balance ever printed for this account",
+            style = LegionType.stamp,
+            color = sem.faint,
+        )
         if (balance.isProvisional) {
             // Review finding 5: this used to branch on `balance.balanceCents
             // != null`, which reads as "has this account ever been
@@ -428,6 +439,9 @@ object LedgerEmptyCopy {
 
 // ------------------------------------------------------------------------ previews
 
+/** A fixed UTC-midnight instant (2026-08-12) for the "as of" previews - [documentDateCompact] reads document dates in UTC, so this must be too. */
+private val PREVIEW_AS_OF_MS = java.time.LocalDate.of(2026, 8, 12).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+
 private val previewTxn = LedgerTransaction(
     id = 1,
     sourceFile = "eStmt_2026-07.pdf",
@@ -483,11 +497,31 @@ private fun PreviewBalances() = LegionTheme {
     Surface {
         BalancesSection(
             listOf(
-                AccountBalance("BOFA ****4471", LedgerCurrency.USD, 119_80),
-                AccountBalance("DBS ****8802", LedgerCurrency.SGD, 216_582),
+                AccountBalance("BOFA ****4471", LedgerCurrency.USD, 119_80, asOfMs = PREVIEW_AS_OF_MS),
+                AccountBalance("DBS ****8802", LedgerCurrency.SGD, 216_582, asOfMs = PREVIEW_AS_OF_MS),
             ),
         )
     }
+}
+
+/**
+ * 2026-08-18: the "as of" line's two states, side by side - a real printed balance with the date
+ * it was read from, and the Bank of America card-CSV case where no row has ever printed one at
+ * all. See [AccountBalance.asOfMs]'s own doc comment for why null is a distinct, worded state
+ * rather than a missing date silently omitted.
+ */
+@Preview(name = "Balances: as-of date on a real printed balance", widthDp = 360)
+@Composable
+private fun PreviewBalanceAsOfDated() = LegionTheme {
+    Surface {
+        BalancesSection(listOf(AccountBalance("BOFA ****4471", LedgerCurrency.USD, 119_80, asOfMs = PREVIEW_AS_OF_MS)))
+    }
+}
+
+@Preview(name = "Balances: as-of - no balance ever printed", widthDp = 360)
+@Composable
+private fun PreviewBalanceAsOfUndated() = LegionTheme {
+    Surface { BalancesSection(listOf(AccountBalance("BOFA ****4471", LedgerCurrency.USD, null, asOfMs = null))) }
 }
 
 @Preview(name = "Balances: provisional card CSV rows included, marked unverified", widthDp = 360)

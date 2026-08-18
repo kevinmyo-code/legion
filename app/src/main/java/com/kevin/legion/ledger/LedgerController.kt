@@ -290,13 +290,19 @@ object LedgerController {
             val currency = requireNotNull(dao.currencyForAccount(accountId)) {
                 "accountId '$accountId' came from allAccountIds() but has no rows to read a currency from"
             }
+            // The SAME anchor-date read [AccountBalance.asOfMs] renders (2026-08-18) - one query,
+            // never two, because latestBalanceCents/latestBalanceTxnDate's own doc comments are
+            // explicit the two DAO queries must agree on which row is the anchor. rawAnchorDate is
+            // the query's own nullable result; anchorDate below is that reading with the
+            // Long.MIN_VALUE sentinel folded in for the provisionalDeltaCentsAfter comparison only.
+            val rawAnchorDate = dao.latestBalanceTxnDate(accountId)
             // No printed balance at all (BofA card statements never print one,
             // per LedgerTransactionDao.latestBalanceCents's doc comment) means
             // there is no anchor date either - Long.MIN_VALUE makes "strictly
             // after" true for every UNRECONCILED row that exists, which is
             // correct: with nothing printed, every provisional row is unposted
             // movement, not something a nonexistent balance already covers.
-            val anchorDate = dao.latestBalanceTxnDate(accountId) ?: Long.MIN_VALUE
+            val anchorDate = rawAnchorDate ?: Long.MIN_VALUE
             // currency guard (review finding 3): accountId is free text from
             // the folder-mapping field, so a last-4 suffix match alone can
             // collide across two genuinely unrelated accounts - see the DAO
@@ -312,6 +318,7 @@ object LedgerController {
                 accountId = accountId,
                 currency = currency,
                 balanceCents = balanceCents,
+                asOfMs = rawAnchorDate,
                 provisionalDeltaCents = provisionalDeltaCents,
                 isProvisional = provisionalDeltaCents != 0L,
                 // Review finding 5: "has a printed balance" and "has ever
@@ -421,6 +428,7 @@ object LedgerController {
                 if (txnDao.currencyForAccount(accountId) != entity.currency) return@mapNotNull null
                 val from = rows.minOf { it.fromMs }
                 val to = rows.maxOf { it.toMs }
+                val windows = rows.map { it.fromMs to it.toMs }
                 AccountCoverage(
                     accountId = accountId,
                     // A REAL interval merge, not `from <= start && to >= end`.
@@ -428,14 +436,18 @@ object LedgerController {
                     // file covering the 1st-10th and another covering the
                     // 20th-31st has min = 1st and max = 31st, and a nine-day
                     // hole min/max cannot see. See coversMonthWithoutGaps.
-                    coversWholeMonth = coversMonthWithoutGaps(
-                        rows.map { it.fromMs to it.toMs }, monthStartMs, monthEndMs,
-                    ),
+                    coversWholeMonth = coversMonthWithoutGaps(windows, monthStartMs, monthEndMs),
                     // Still the outer bounds, because that is what the UI
                     // shows the user as "covered from X to Y". The gap, when
                     // there is one, is what coversWholeMonth reports.
                     coveredFromMs = from,
                     coveredToMs = to,
+                    // Same interval merge as coversWholeMonth, walked from the
+                    // month's own start (2026-08-18) - "good through this
+                    // date", null when coverage never reaches the month start
+                    // at all. See coveredThroughMs's own doc comment for why
+                    // this cannot just be coveredToMs.
+                    coveredThroughMs = coveredThroughMs(windows, monthStartMs, monthEndMs),
                 )
             }
 
@@ -1136,6 +1148,14 @@ data class AccountBalance(
     val accountId: String,
     val currency: LedgerCurrency,
     val balanceCents: Long?,
+    // 2026-08-18 (Kevin: "say when the balance was last known"): the txnDate of the exact row
+    // [balanceCents] was read from, straight off [LedgerTransactionDao.latestBalanceTxnDate] - the
+    // SAME query [accountBalances] already calls for [provisionalDeltaCents]'s anchor, never a
+    // second one, because that query's own doc comment is explicit the two reads must agree on
+    // which row is the anchor. Null is a REAL, DISTINCT state, not "unknown" and not "today": it
+    // means [accountId] has never printed a balance at all (Bank of America's card layout, the same
+    // case [balanceCents] being null already covers) - never render a missing [asOfMs] as current.
+    val asOfMs: Long? = null,
     val provisionalDeltaCents: Long = 0L,
     val isProvisional: Boolean = false,
     val hasReconciledRows: Boolean = false,

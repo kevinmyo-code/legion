@@ -16,6 +16,7 @@ import com.kevin.legion.ledger.operatingExpenses
 import com.kevin.legion.plan.TrustTier
 import com.kevin.legion.plan.combinedTier
 import com.kevin.legion.util.compactDate
+import com.kevin.legion.util.documentDateCompact
 import java.time.YearMonth
 import java.time.ZoneOffset
 
@@ -120,14 +121,28 @@ class CredDigestBuilder : DigestBuilder {
         return DigestText.withTier(DigestText.line("PROVISIONAL", "$count row${if (count == 1) "" else "s"}"), tier)
     }
 
-    /** D13: missing coverage stated in words, next to the number - [BudgetVsActual.isComplete] IS that check, this just puts it into words. */
+    /**
+     * D13: missing coverage stated in words, next to the number - [BudgetVsActual.isComplete] IS
+     * that check, this just puts it into words. **2026-08-18 (same rewording as
+     * [com.kevin.legion.ui.buildCredTile]):** which accounts still have a gap AND the date the
+     * month's spend figures are good through, the minimum of every account's own
+     * [com.kevin.legion.ledger.AccountCoverage.coveredThroughMs] - the same "how much so far, as
+     * of when I extracted it" answer, not just a bare list of account ids with no date attached.
+     * Null when any account never even reaches the month's own start (same guard as the tile's).
+     */
     private fun coverageLine(current: BudgetVsActual): String {
         if (current.coverage.isEmpty()) return DigestText.line("COVERAGE", DigestText.notLogged())
         return if (current.isComplete) {
             DigestText.line("COVERAGE", "complete")
         } else {
             val gaps = current.coverage.filter { !it.coversWholeMonth }.map { it.accountId }
-            DigestText.line("COVERAGE", "gaps: ${gaps.joinToString(", ")}")
+            val throughs = current.coverage.map { it.coveredThroughMs }
+            val throughNote = if (throughs.isNotEmpty() && throughs.none { it == null }) {
+                " - good through ${documentDateCompact(throughs.filterNotNull().min())}"
+            } else {
+                " - no full-month date yet"
+            }
+            DigestText.line("COVERAGE", "gaps: ${gaps.joinToString(", ")}$throughNote")
         }
     }
 
