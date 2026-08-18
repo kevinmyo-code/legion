@@ -75,6 +75,7 @@ import com.kevin.legion.ui.ledger.CategorizeDrilldownScreen
 import com.kevin.legion.ui.ledger.CategoryDrilldownScreen
 import com.kevin.legion.ui.ledger.CategorySpendChart
 import com.kevin.legion.ui.ledger.categorySpendBars
+import com.kevin.legion.ui.ledger.categorySpendChartData
 import com.kevin.legion.ui.ledger.dollarsParseErrorMessage
 import com.kevin.legion.ui.ledger.ExcludedOwnAccountMovementsScreen
 import com.kevin.legion.ui.ledger.monthLabel
@@ -553,6 +554,13 @@ fun LedgerScreen(
                 }
                 result
             },
+            // A bar tapped on the uncategorised bucket's own category chart (2026-08-18) - swap
+            // this drilldown for that category's, rather than stacking a second screen, so BACK
+            // still returns to Money in one press.
+            onOpenCategory = { category ->
+                drilldownCategory = CategoryDrilldownSelection(category)
+                setTargetErrorText = null
+            },
             // ticket 09: clears a lingering SET TARGET rejection so leaving this category and
             // opening a different one never shows category B underneath category A's stale parse
             // error - `setTargetSuccessNonce` is deliberately NOT bumped here (that signal means "a
@@ -791,6 +799,10 @@ fun LedgerScreen(
         // uncategorised row already opens (see that wrapper class's own doc comment for why `null`
         // here is a real request, not "nothing requested").
         onOpenUncategorized = { drilldownCategory = CategoryDrilldownSelection(null) },
+        // A tap on a SPEND-chart bar (2026-08-18) - same CategoryDrilldownSelection the BUDGET
+        // drilldown's own rows open, so the chart and the list reach one destination rather than
+        // two that can drift.
+        onOpenCategory = { category -> drilldownCategory = CategoryDrilldownSelection(category) },
     )
 }
 
@@ -855,6 +867,9 @@ fun LedgerContent(
     // The SPEND pane's uncategorised-excluded disclosure (2026-08-15) - opens the uncategorised
     // bucket's own drilldown, so the exclusion is inspectable, never merely asserted.
     onOpenUncategorized: () -> Unit = {},
+    // 2026-08-18: the SPEND pane's category chart is tappable now, and a bar opens that category's
+    // own drilldown - the same destination BudgetSection's rows already reach.
+    onOpenCategory: (String?) -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     // 2026-08-18 regression fix: this used to be a plain `Column(fillMaxSize())` holding the title
@@ -969,7 +984,7 @@ fun LedgerContent(
                     item(key = "money-empty") { LedgerEmptySection(state, onOpenImport, onScanNow) }
                 else -> ledgerListingItems(
                     state, onPrevPnlMonth, onNextPnlMonth, onOpenCategorize, onOpenQuarantine,
-                    onOpenBudget, onOpenBalances, onOpenTrend, onOpenUncategorized,
+                    onOpenBudget, onOpenBalances, onOpenTrend, onOpenUncategorized, onOpenCategory,
                 )
             }
         }
@@ -1039,6 +1054,7 @@ private fun LazyListScope.ledgerListingItems(
     onOpenBalances: () -> Unit,
     onOpenTrend: () -> Unit,
     onOpenUncategorized: () -> Unit,
+    onOpenCategory: (String?) -> Unit,
 ) {
     // Ticket 19's GOALS panel - CRED aspect (personal-finance advisor's own key, see
     // com.kevin.legion.advisor.playbooks.CredPlaybook's doc comment). Sits above every other
@@ -1067,6 +1083,8 @@ private fun LazyListScope.ledgerListingItems(
                 onOpenTrend = onOpenTrend,
                 onOpenQuarantine = onOpenQuarantine,
                 onOpenUncategorized = onOpenUncategorized,
+                onOpenCategory = onOpenCategory,
+                onOpenBudget = onOpenBudget,
             )
         }
 
@@ -1148,6 +1166,8 @@ private fun SpendPane(
     onOpenTrend: () -> Unit,
     onOpenQuarantine: () -> Unit,
     onOpenUncategorized: () -> Unit,
+    onOpenCategory: (String?) -> Unit,
+    onOpenBudget: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     val month = state.pnlMonth
@@ -1180,7 +1200,8 @@ private fun SpendPane(
         Text(credTile.caption, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp))
         val budget = state.budgetVsActual
         if (budget != null) {
-            val bars = categorySpendBars(budget)
+            val chartData = categorySpendChartData(budget)
+            val bars = chartData.bars
             if (bars.isEmpty()) {
                 Text(
                     "no categorised spend this month",
@@ -1189,7 +1210,24 @@ private fun SpendPane(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                 )
             } else {
-                CategorySpendChart(bars, modifier = Modifier.padding(vertical = 4.dp))
+                // Tapping a bar opens that category's own transactions (Kevin, 2026-08-18) - the
+                // same destination BudgetLineRow's tap already reaches, now one tap from the chart
+                // he is already looking at instead of two taps in behind the BUDGET tile. An inner
+                // click wins over this pane's own onOpenTrend, the same nesting the quarantine
+                // notice below already relies on.
+                //
+                // The folded `OTHER n` bar carries a null category - it is several categories
+                // added together and names none of them - so it opens the full BUDGET breakdown,
+                // which is exactly what that bar is a summary of. Drilling on its LABEL would
+                // query for a category called "OTHER 3" and honestly find nothing.
+                CategorySpendChart(
+                    bars,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    onBarTap = { index ->
+                        val category = chartData.categories.getOrNull(index)
+                        if (category != null) onOpenCategory(category) else onOpenBudget()
+                    },
+                )
             }
             // The exclusion, in words, directly under the figure and the chart it describes
             // (CLAUDE.md §4 rule 7's disclosure posture, and the condition that makes excluding the

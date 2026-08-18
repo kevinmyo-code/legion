@@ -2,9 +2,11 @@ package com.kevin.legion.ui.ledger
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -397,9 +399,29 @@ internal fun spendTrendSparklinePoints(spendTrend: List<MonthSpend>): List<Float
  *
  * `internal`, not `private`, so a plain JUnit test can pin the sum invariant without Compose.
  */
-internal fun categorySpendBars(budget: BudgetVsActual, maxBars: Int = 6): List<DeckBar> {
+internal fun categorySpendBars(budget: BudgetVsActual, maxBars: Int = 6): List<DeckBar> =
+    categorySpendChartData(budget, maxBars).bars
+
+/**
+ * [categorySpendBars]'s output plus, index-aligned with it, WHICH category each bar stands for -
+ * so a tap on the chart can open that category's own drilldown (Kevin, 2026-08-18: "yes make the
+ * bars tappable").
+ *
+ * [categories] is `null` at exactly one index: the folded `OTHER n` bar, which is several
+ * categories added together and therefore names none of them. A caller must not invent a category
+ * from that bar's LABEL - "OTHER 3" is not a category and drilling into it would query for a
+ * category that does not exist and honestly return nothing. Send that tap to the full BUDGET
+ * breakdown instead, which is what the folded bar is a summary OF.
+ *
+ * Built in one pass with the bars rather than as a second function deriving the same ordering
+ * independently: the two lists have to agree index-for-index, and two separate `sortedByDescending`
+ * calls with a later tie-break change are exactly how they would silently stop agreeing.
+ */
+internal data class CategorySpendChartData(val bars: List<DeckBar>, val categories: List<String?>)
+
+internal fun categorySpendChartData(budget: BudgetVsActual, maxBars: Int = 6): CategorySpendChartData {
     val spent = budget.lines.filter { it.gap.actual > 0L }.sortedByDescending { it.gap.actual }
-    if (spent.isEmpty()) return emptyList()
+    if (spent.isEmpty()) return CategorySpendChartData(emptyList(), emptyList())
 
     fun bar(line: BudgetLine) = DeckBar(
         label = line.category,
@@ -409,16 +431,21 @@ internal fun categorySpendBars(budget: BudgetVsActual, maxBars: Int = 6): List<D
         mark = null,
     )
 
-    if (spent.size <= maxBars) return spent.map { bar(it) }
+    if (spent.size <= maxBars) {
+        return CategorySpendChartData(spent.map { bar(it) }, spent.map { it.category })
+    }
 
     val named = spent.take(maxBars - 1)
     val folded = spent.drop(maxBars - 1)
     val foldedTotal = folded.sumOf { it.gap.actual }
-    return named.map { bar(it) } + DeckBar(
-        label = "OTHER ${folded.size}",
-        value = foldedTotal.toFloat(),
-        valueLabel = deckWholeDollarLabel(foldedTotal),
-        mark = null,
+    return CategorySpendChartData(
+        bars = named.map { bar(it) } + DeckBar(
+            label = "OTHER ${folded.size}",
+            value = foldedTotal.toFloat(),
+            valueLabel = deckWholeDollarLabel(foldedTotal),
+            mark = null,
+        ),
+        categories = named.map { it.category } + null,
     )
 }
 
@@ -433,14 +460,45 @@ internal fun categorySpendBars(budget: BudgetVsActual, maxBars: Int = 6): List<D
  * draw, and the pane's own words say so instead.
  */
 @Composable
-internal fun CategorySpendChart(bars: List<DeckBar>, modifier: Modifier = Modifier) {
+internal fun CategorySpendChart(
+    bars: List<DeckBar>,
+    modifier: Modifier = Modifier,
+    onBarTap: ((Int) -> Unit)? = null,
+) {
     if (bars.isEmpty()) return
-    Column(modifier.fillMaxWidth()) {
-        // 140dp, not the kit's 180dp drilldown default: measured on device (360x806dp, 2026-08-15),
-        // the taller chart pushed the category labels and the uncategorised sentence under the
-        // mic bar, so the figure and what it is made of could not be read in one glance.
-        DeckBarChart(bars = bars, height = 140.dp)
-        DeckBarLabelRow(bars)
+    Box(modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth()) {
+            // 140dp, not the kit's 180dp drilldown default: measured on device (360x806dp, 2026-08-15),
+            // the taller chart pushed the category labels and the uncategorised sentence under the
+            // mic bar, so the figure and what it is made of could not be read in one glance.
+            DeckBarChart(bars = bars, height = 140.dp)
+            DeckBarLabelRow(bars)
+        }
+        // Tap targets, when the caller wants them (Kevin, 2026-08-18: the chart shows categories,
+        // so tapping one should open it - previously only the text rows one screen in were
+        // tappable, which is two taps from where he was already looking).
+        //
+        // An OVERLAY of equal-weight columns rather than hit-testing inside the Canvas: the canvas
+        // draws equal-width bars inside the same 12dp horizontal padding that [DeckBarLabelRow]
+        // already lays its own weight(1f) labels out in, and those labels have lined up with their
+        // bars since the chart shipped. Reusing that same alignment rule is what keeps the tap
+        // target over the bar it belongs to; recomputing bar geometry here would be a second copy
+        // of the Canvas's own layout math, free to drift from it.
+        //
+        // Spans the labels too, not just the bars - a 140dp-tall column plus its label is a far
+        // easier target in a moving car than the bar alone.
+        if (onBarTap != null) {
+            Row(Modifier.matchParentSize().padding(horizontal = 12.dp)) {
+                bars.indices.forEach { index ->
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable { onBarTap(index) }
+                    )
+                }
+            }
+        }
     }
 }
 

@@ -173,4 +173,55 @@ class BudgetSectionTest {
     fun `a month with no categorised spend has no chart at all`() {
         assertTrue(categorySpendBars(budget(emptyList(), uncategorizedCents = 3_412L)).isEmpty())
     }
+
+    // ---- categorySpendChartData: which category a tapped bar means (Kevin, 2026-08-18) ---------
+
+    @Test
+    fun `every bar names the category it was built from, index for index`() {
+        val b = budget(lines = listOf(line("Groceries", 41_200L), line("Dining Out", 24_500L), line("Fees", 900L)))
+
+        val data = categorySpendChartData(b)
+
+        assertEquals(data.bars.size, data.categories.size)
+        assertEquals(listOf("Groceries", "Dining Out", "Fees"), data.categories)
+        // Biggest-first ordering is shared, not re-derived - the pairing is what a tap depends on.
+        assertEquals(data.bars.map { it.label }, data.categories)
+    }
+
+    @Test
+    fun `the folded OTHER bar names no category, because it is several`() {
+        // Seven spending categories against a six-bar budget: five named, then one fold.
+        val b = budget(
+            lines = listOf(
+                line("Groceries", 70_000L), line("Dining Out", 60_000L), line("Transport", 50_000L),
+                line("Utilities", 40_000L), line("Health", 30_000L), line("Fees", 20_000L),
+                line("Shopping", 10_000L),
+            )
+        )
+
+        val data = categorySpendChartData(b)
+
+        assertEquals(6, data.bars.size)
+        assertEquals(6, data.categories.size)
+        assertTrue(data.bars.last().label.startsWith("OTHER"))
+        // The one index a caller must NOT turn into a category name. "OTHER 2" is not a category
+        // and drilling into it would query for one that does not exist.
+        assertNull(data.categories.last())
+        assertEquals(listOf("Groceries", "Dining Out", "Transport", "Utilities", "Health"), data.categories.dropLast(1))
+    }
+
+    @Test
+    fun `categorySpendBars stays exactly the bars half, so existing callers are unchanged`() {
+        val b = budget(lines = listOf(line("Groceries", 41_200L), line("Dining Out", 24_500L)))
+
+        assertEquals(categorySpendChartData(b).bars, categorySpendBars(b))
+    }
+
+    @Test
+    fun `no spend at all yields no bars and no categories, never a ragged pair`() {
+        val data = categorySpendChartData(budget(lines = emptyList(), uncategorizedCents = 5_000L))
+
+        assertTrue(data.bars.isEmpty())
+        assertTrue(data.categories.isEmpty())
+    }
 }

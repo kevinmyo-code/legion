@@ -139,6 +139,11 @@ fun CategoryDrilldownScreen(
     onSetTarget: (String) -> Unit,
     onPreviewRecategorizeCount: suspend (String) -> Int,
     onSetCategory: suspend (merchantKey: String, category: String) -> CategorySetResult,
+    // 2026-08-18: only the `category == null` branch's chart uses this - a bar on the
+    // uncategorised bucket's breakdown opens that real category. Defaulted so the real-category
+    // path, which draws its own per-day chart and has nothing to drill into, needs no call-site
+    // change.
+    onOpenCategory: (String) -> Unit = {},
     onBack: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
@@ -191,7 +196,19 @@ fun CategoryDrilldownScreen(
                 // nothing" behaviour, not a special case added here.
                 val chartBudget = budget
                 if (chartBudget != null) {
-                    CategorySpendChart(categorySpendBars(chartBudget), modifier = Modifier.padding(top = 4.dp))
+                    // Tappable here too (2026-08-18): this branch draws the real per-category
+                    // breakdown, so a bar means the same thing it means on the SPEND pane. Landing
+                    // on the uncategorised bucket and tapping "Groceries" should open Groceries.
+                    // The folded OTHER bar carries no single category and is inert here rather
+                    // than opening a screen this one cannot reach - see categorySpendChartData.
+                    val chartData = categorySpendChartData(chartBudget)
+                    CategorySpendChart(
+                        chartData.bars,
+                        modifier = Modifier.padding(top = 4.dp),
+                        onBarTap = { index ->
+                            chartData.categories.getOrNull(index)?.let(onOpenCategory)
+                        },
+                    )
                     Text(
                         uncategorizedExcludedSentence(chartBudget.uncategorized, entity.currency),
                         style = LegionType.stamp,
