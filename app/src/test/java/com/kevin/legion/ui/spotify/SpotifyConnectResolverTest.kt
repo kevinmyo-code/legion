@@ -45,6 +45,27 @@ class SpotifyConnectResolverTest {
         )
     }
 
+    @Test
+    fun `a stale grant reads as needing reauthorization, not the same stage as never-authorized`() {
+        // The whole point of ticket 05's addition: a driver who connected BEFORE the scopes
+        // widened must not see the same copy as a driver who never connected at all.
+        assertEquals(
+            SpotifyConnectResolver.Stage.NEEDS_REAUTHORIZATION,
+            SpotifyConnectResolver.stage(hasClientId = true, isAuthorized = false, hasStaleGrant = true),
+        )
+    }
+
+    @Test
+    fun `ready wins over a stale-grant flag that should never be true alongside it`() {
+        // isAuthorized already implies the grant is CURRENT, so hasStaleGrant=true here is a
+        // contradiction that should never happen in practice - but the resolver must still
+        // resolve deterministically to READY rather than accidentally downgrading a good grant.
+        assertEquals(
+            SpotifyConnectResolver.Stage.READY,
+            SpotifyConnectResolver.stage(hasClientId = true, isAuthorized = true, hasStaleGrant = true),
+        )
+    }
+
     // -------------------------------------------------------------- client id
 
     @Test
@@ -111,10 +132,20 @@ class SpotifyConnectResolverTest {
     }
 
     @Test
-    fun `only the authorization stage offers a row action`() {
+    fun `only the two authorization stages offer a row action, with distinct labels`() {
         assertNull(SpotifyConnectResolver.actionLabel(SpotifyConnectResolver.Stage.NEEDS_CLIENT_ID))
         assertEquals("AUTHORIZE", SpotifyConnectResolver.actionLabel(SpotifyConnectResolver.Stage.NEEDS_AUTHORIZATION))
+        // Distinct label on purpose - "RE-AUTHORIZE" reads as a renewal, "AUTHORIZE" would read
+        // as first-time setup to a driver who has already done this once.
+        assertEquals("RE-AUTHORIZE", SpotifyConnectResolver.actionLabel(SpotifyConnectResolver.Stage.NEEDS_REAUTHORIZATION))
         assertNull(SpotifyConnectResolver.actionLabel(SpotifyConnectResolver.Stage.READY))
+    }
+
+    @Test
+    fun `the reauthorization detail explains why in words - new permissions, not a failure`() {
+        val detail = SpotifyConnectResolver.detail(SpotifyConnectResolver.Stage.NEEDS_REAUTHORIZATION).lowercase()
+        assertTrue(detail.contains("already connected") || detail.contains("connected spotify"))
+        assertTrue(detail.contains("permission"))
     }
 
     @Test

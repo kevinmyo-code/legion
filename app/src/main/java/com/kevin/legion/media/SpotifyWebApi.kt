@@ -39,6 +39,28 @@ import java.util.concurrent.TimeUnit
  * compliance is GRAY and under review (`.scratch/spotify-byo/policy-read.md`); risk
  * accepted by Kevin 2026-07-21.
  */
+/**
+ * One saved (liked) album - [SpotifyWebApi.getSavedAlbums]. [artist] is the first credited
+ * artist only (Spotify's own `album.artists[0]`) - good enough for a spoken list, not a claim
+ * that an album has exactly one artist.
+ */
+data class SavedAlbum(val name: String, val artist: String, val uri: String)
+
+/**
+ * One row of Spotify's OWN recently-played history - [SpotifyWebApi.getRecentlyPlayed]. This is
+ * Spotify's account-wide play history (everywhere the driver plays, not just through LEGION) -
+ * see `browse_my_music`'s `legion_history` source in `service/LiveToolbox.kt` for the DIFFERENT,
+ * LEGION-observed table this is not to be confused with. [playedAt] is Spotify's own ISO-8601
+ * UTC timestamp string, passed through unparsed - nothing here needs to do arithmetic on it.
+ */
+data class RecentlyPlayedTrack(val name: String, val artist: String, val playedAt: String)
+
+/** One entry from Spotify's own top-artists ranking - [SpotifyWebApi.getTopArtists]. */
+data class TopArtist(val name: String)
+
+/** One entry from Spotify's own top-tracks ranking - [SpotifyWebApi.getTopTracks]. */
+data class TopTrack(val name: String, val artist: String)
+
 object SpotifyWebApi {
     private const val TAG = "SpotifyWebApi"
     private const val AUTH_HOST = "https://accounts.spotify.com/authorize"
@@ -76,8 +98,26 @@ object SpotifyWebApi {
      * under this scope. It grants no access to playlists, listening history,
      * playback control, or anything else - the original instinct to ask for as
      * little as possible is right, this is just the actual floor rather than zero.
+     *
+     * **Widened 2026-08-18** (`.scratch/drive-test-2026-08-18/issues/05-reading-kevins-spotify-library.md`,
+     * Kevin: "can we look up our favorite or recent albums?") to add `user-library-read`
+     * (saved albums), `user-read-recently-played`, and `user-top-read` (top artists/tracks) -
+     * the reads [browse_my_music][com.kevin.legion.service.LiveToolbox] needs.
+     *
+     * **This change is destructive to every existing grant, on purpose.** [isAuthorized]'s scope
+     * equality check below compares the GRANTED scope string against this constant verbatim, so
+     * changing it - even by strictly adding scopes a prior grant obviously didn't have - makes
+     * every driver's stored refresh token read as unauthorized starting the next time this runs.
+     * That is the documented, intended behavior of that check (see its own doc comment), not a
+     * regression: a refresh token only ever mints access tokens scoped to what it was ISSUED
+     * with, so a stale grant silently continuing to "work" while quietly lacking the new scopes
+     * is the actual bug this equality check exists to prevent (found the hard way 2026-08-12).
+     * The cost is that every driver must re-approve once in the browser after this ships - see
+     * [hasStaleGrant] and `ui/SpotifyScreen.kt`'s re-authorization copy, which exists specifically
+     * so that re-approval reads as "you're due for a refresh" rather than "connect for the first
+     * time" or, worse, a silent `play_music` failure discovered mid-drive.
      */
-    const val SCOPES = "user-read-private"
+    const val SCOPES = "user-read-private user-library-read user-read-recently-played user-top-read"
 
     private fun authPrefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -112,6 +152,21 @@ object SpotifyWebApi {
     fun isAuthorized(context: Context): Boolean =
         CompanionProfile.spotifyRefreshToken(context).isNotBlank() &&
             authPrefs(context).getString(KEY_GRANTED_SCOPE, null) == SCOPES
+
+    /**
+     * True when a refresh token IS on file but was minted under a DIFFERENT scope string than
+     * the current [SCOPES] - i.e. [isAuthorized] is false not because the driver never connected
+     * at all, but because [SCOPES] grew out from under a grant that used to be valid. Lets the
+     * setup screen say "your Spotify connection needs re-approving" instead of the misleading
+     * "not set up" it would otherwise show for a driver who has, in fact, connected before.
+     * Never true for a driver who has genuinely never authorized (no refresh token exists yet,
+     * so there is nothing to call stale).
+     */
+    fun hasStaleGrant(context: Context): Boolean {
+        if (CompanionProfile.spotifyRefreshToken(context).isBlank()) return false
+        val granted = authPrefs(context).getString(KEY_GRANTED_SCOPE, null) ?: return false
+        return granted != SCOPES
+    }
 
     /**
      * Opens the Spotify consent page in a browser. The redirect comes back to
@@ -348,10 +403,10 @@ object SpotifyWebApi {
      * device app logs never reach logcat, so the only way to see the request as
      * actually sent is to put it on screen.
      */
-    fun searchUrlFor(query: String, limit: Int? = SEARCH_LIMIT): String =
+    fun searchUrlFor(query: String, type: String = "track", limit: Int? = SEARCH_LIMIT): String =
         Uri.parse(SEARCH_URL).buildUpon()
             .appendQueryParameter("q", query)
-            .appendQueryParameter("type", "track")
+            .appendQueryParameter("type", type)
             .apply { if (limit != null) appendQueryParameter("limit", limit.toString()) }
             .build()
             .toString()
@@ -380,8 +435,13 @@ object SpotifyWebApi {
      */
     private const val SEARCH_LIMIT = 10
 
-    /** One GET with the bearer token, returning (status, body) so the caller can branch and retry. */
-    private fun getSearch(url: String, token: String): Pair<Int, String> {
+    /**
+     * One GET with the bearer token, returning (status, body) so the caller can branch and
+     * retry. Named for what it does, not just for search: [search] AND every `/v1/me/...`
+     * library read below ([getSavedAlbums], [getRecentlyPlayed], [getTopArtists],
+     * [getTopTracks]) share this one call site.
+     */
+    private fun getWithToken(url: String, token: String): Pair<Int, String> {
         val request = Request.Builder()
             .url(url)
             .addHeader("Authorization", "Bearer $token")
@@ -392,7 +452,32 @@ object SpotifyWebApi {
         }
     }
 
-    suspend fun searchTrack(context: Context, query: String): SearchOutcome = withContext(Dispatchers.IO) {
+    /**
+     * Spotify's `?type=` values [search] accepts. Deliberately narrow to the four
+     * `play_music` actually promises ("a song, artist, album, or playlist" - the honesty bug
+     * closed 2026-08-18, `.scratch/drive-test-2026-08-18/issues/05-reading-kevins-spotify-library.md`):
+     * the description used to advertise all four while the search underneath was hardcoded
+     * `track`, so an album request silently returned one song off it.
+     */
+    val SEARCHABLE_TYPES = setOf("track", "artist", "album", "playlist")
+
+    /** Convenience wrapper for the common case - unchanged call shape for existing callers. */
+    suspend fun searchTrack(context: Context, query: String): SearchOutcome = search(context, query, "track")
+
+    /**
+     * Finds the best-matching Spotify URI for [query] of the given [type]
+     * ("track"/"artist"/"album"/"playlist" - see [SEARCHABLE_TYPES]). Null covers "no token",
+     * "no network", and "nothing matched" alike - every one of them means the same thing to the
+     * caller: fall back to the intent path.
+     *
+     * The popularity-based disambiguation and [looksLikeImposter] filtering below are a TRACK
+     * problem specifically - karaoke/tribute covers exist because a loose spoken phrase gives
+     * them exactly as much to match on as the real recording. Albums, artists and playlists
+     * don't have an equivalent impostor-flooding problem in practice, so for those types this
+     * just takes Spotify's own top relevance hit rather than re-deriving a ranking Spotify
+     * already computed.
+     */
+    suspend fun search(context: Context, query: String, type: String = "track"): SearchOutcome = withContext(Dispatchers.IO) {
         val token = when (val outcome = accessToken(context)) {
             is TokenOutcome.Token -> outcome.value
             TokenOutcome.NeverAuthorized -> return@withContext SearchOutcome.NeedsAuthorization
@@ -402,7 +487,7 @@ object SpotifyWebApi {
             TokenOutcome.Unreachable -> return@withContext SearchOutcome.Unreachable
         }
         try {
-            var (code, body) = getSearch(searchUrlFor(query), token)
+            var (code, body) = getWithToken(searchUrlFor(query, type), token)
             // Self-heal a tightened limit ceiling. SEARCH_LIMIT is a measured value, not a
             // documented one (see its doc), so Spotify lowering it again would silently
             // break every search exactly as limit=20 did. Retrying once with the parameter
@@ -411,7 +496,7 @@ object SpotifyWebApi {
             // the limit retries, so this cannot mask an unrelated bad request.
             if (code == 400 && errorDetail(body)?.contains("limit", ignoreCase = true) == true) {
                 Log.w(TAG, "limit=$SEARCH_LIMIT rejected; retrying without it")
-                val retry = getSearch(searchUrlFor(query, limit = null), token)
+                val retry = getWithToken(searchUrlFor(query, type, limit = null), token)
                 code = retry.first
                 body = retry.second
             }
@@ -424,19 +509,32 @@ object SpotifyWebApi {
                 }
             }
             run {
-                val items = JSONObject(body).optJSONObject("tracks")?.optJSONArray("items")
+                // Spotify's search response nests results under "<type>s" - "tracks", "albums",
+                // "artists", "playlists" - keyed by the SAME type string the request used.
+                val items = JSONObject(body).optJSONObject("${type}s")?.optJSONArray("items")
                     ?: return@withContext SearchOutcome.NoMatch
-                val candidates = (0 until items.length()).mapNotNull { items.optJSONObject(it) }
+                val candidates = (0 until items.length())
+                    // A playlist search can hand back a null slot in "items" for a
+                    // deleted/private playlist Spotify still indexes - optJSONObject already
+                    // returns null for that case, which mapNotNull drops, but the array can
+                    // also contain the literal JSON null token rather than an absent slot, so
+                    // this filters both shapes rather than assuming one.
+                    .mapNotNull { items.optJSONObject(it) }
                     .filter { it.optString("uri").isNotBlank() }
                 if (candidates.isEmpty()) return@withContext SearchOutcome.NoMatch
 
-                val clean = candidates.filterNot { looksLikeImposter(it) }
-                // If filtering leaves nothing, the query genuinely WAS for a
-                // karaoke/tribute cut - honour it rather than returning nothing.
-                val uri = (clean.ifEmpty { candidates })
-                    .maxByOrNull { it.optInt("popularity", 0) }
-                    ?.optString("uri")
-                    ?.takeIf { it.isNotBlank() }
+                val uri = if (type == "track") {
+                    val clean = candidates.filterNot { looksLikeImposter(it) }
+                    // If filtering leaves nothing, the query genuinely WAS for a
+                    // karaoke/tribute cut - honour it rather than returning nothing.
+                    (clean.ifEmpty { candidates })
+                        .maxByOrNull { it.optInt("popularity", 0) }
+                        ?.optString("uri")
+                        ?.takeIf { it.isNotBlank() }
+                } else {
+                    // Non-track types: trust Spotify's own relevance ranking (first result).
+                    candidates.first().optString("uri").takeIf { it.isNotBlank() }
+                }
                 if (uri != null) SearchOutcome.Found(uri) else SearchOutcome.NoMatch
             }
         } catch (e: Exception) {
@@ -500,4 +598,171 @@ object SpotifyWebApi {
     }
 
     private const val BASE64_URL = Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
+
+    // --- Library reads (`browse_my_music`, ticket 05, 2026-08-18) -----------------------------
+
+    private const val ALBUMS_URL = "https://api.spotify.com/v1/me/albums"
+    private const val RECENTLY_PLAYED_URL = "https://api.spotify.com/v1/me/player/recently-played"
+    private const val TOP_URL = "https://api.spotify.com/v1/me/top"
+
+    /**
+     * Page size for the four `/v1/me/...` reads below. **Unlike [SEARCH_LIMIT], this is NOT a
+     * measured ceiling** - nobody has run the same one-request-per-value probe against these
+     * endpoints that found search's real 10-item cap on 2026-08-12. Kept at the same
+     * conservative value on the reasoning that a Development-mode app (this one, by design -
+     * CLAUDE.md §2) is the more likely explanation for that cap than something search-specific,
+     * but that is inference, not measurement - if any of these four also 400 on this value, that
+     * is new information and this comment (and the value) should be corrected the same way
+     * [SEARCH_LIMIT]'s was, not just patched around.
+     */
+    private const val LIBRARY_LIMIT = 10
+
+    /**
+     * Outcome of a `/v1/me/...` library read. Deliberately generic over [T] rather than one
+     * sealed type per endpoint - the failure shape (no token / rejected / offline / Spotify
+     * error) is identical across all four reads, only the payload differs. [Found] with an EMPTY
+     * list is a real, distinct outcome from every failure case below it - "Spotify answered and
+     * you have zero saved albums" must never collapse into the same shape as "the request
+     * failed", which is exactly the tool-description trap CLAUDE.md's `browse_my_music` honesty
+     * requirement (ticket 05, part C.9) exists to avoid at the tool layer.
+     */
+    sealed interface LibraryOutcome<out T> {
+        data class Found<T>(val items: List<T>) : LibraryOutcome<T>
+
+        /** The browser grant was never completed, or the stored credentials are gone. */
+        object NeedsAuthorization : LibraryOutcome<Nothing>
+
+        /** Spotify rejected the credentials outright, OR the grant on file predates these scopes - see [hasStaleGrant]. */
+        data class Unauthorized(val detail: String?) : LibraryOutcome<Nothing>
+
+        /** Could not reach Spotify at all. */
+        object Unreachable : LibraryOutcome<Nothing>
+
+        /** Spotify answered with an error, or answered with a body this code could not parse. */
+        data class Failed(val code: Int, val detail: String?, val raw: String? = null) : LibraryOutcome<Nothing>
+    }
+
+    /** `items[].album` -> [SavedAlbum]. Pure and Android-free so it is a plain JVM unit test, no Robolectric. */
+    internal fun parseSavedAlbums(json: JSONObject): List<SavedAlbum> {
+        val items = json.optJSONArray("items") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { i ->
+            val album = items.optJSONObject(i)?.optJSONObject("album") ?: return@mapNotNull null
+            val name = album.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val artist = album.optJSONArray("artists")?.optJSONObject(0)?.optString("name").orEmpty()
+            val uri = album.optString("uri")
+            SavedAlbum(name = name, artist = artist, uri = uri)
+        }
+    }
+
+    /** `items[].track` + `items[].played_at` -> [RecentlyPlayedTrack]. Pure, unit-testable. */
+    internal fun parseRecentlyPlayed(json: JSONObject): List<RecentlyPlayedTrack> {
+        val items = json.optJSONArray("items") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { i ->
+            val item = items.optJSONObject(i) ?: return@mapNotNull null
+            val track = item.optJSONObject("track") ?: return@mapNotNull null
+            val name = track.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val artist = track.optJSONArray("artists")?.optJSONObject(0)?.optString("name").orEmpty()
+            RecentlyPlayedTrack(name = name, artist = artist, playedAt = item.optString("played_at"))
+        }
+    }
+
+    /** `items[]` (artist objects) -> [TopArtist]. Pure, unit-testable. */
+    internal fun parseTopArtists(json: JSONObject): List<TopArtist> {
+        val items = json.optJSONArray("items") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { i ->
+            items.optJSONObject(i)?.optString("name")?.takeIf { it.isNotBlank() }?.let { TopArtist(it) }
+        }
+    }
+
+    /** `items[]` (track objects) -> [TopTrack]. Pure, unit-testable. */
+    internal fun parseTopTracks(json: JSONObject): List<TopTrack> {
+        val items = json.optJSONArray("items") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { i ->
+            val track = items.optJSONObject(i) ?: return@mapNotNull null
+            val name = track.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val artist = track.optJSONArray("artists")?.optJSONObject(0)?.optString("name").orEmpty()
+            TopTrack(name = name, artist = artist)
+        }
+    }
+
+    /**
+     * Shared token-gate-then-GET-then-parse shape for the four reads below. [parse] runs only on
+     * a 2xx body; a parse failure (Spotify changing its response shape under us) becomes
+     * [LibraryOutcome.Failed] rather than a silently empty [LibraryOutcome.Found] - an empty list
+     * must only ever mean "Spotify said zero", never "something went wrong reading the answer".
+     */
+    private suspend fun <T> libraryGet(
+        context: Context,
+        url: String,
+        parse: (JSONObject) -> List<T>,
+    ): LibraryOutcome<T> = withContext(Dispatchers.IO) {
+        val token = when (val outcome = accessToken(context)) {
+            is TokenOutcome.Token -> outcome.value
+            TokenOutcome.NeverAuthorized -> return@withContext LibraryOutcome.NeedsAuthorization
+            TokenOutcome.Rejected -> return@withContext LibraryOutcome.Unauthorized(
+                "Spotify refused the stored refresh token. It has been cleared.",
+            )
+            TokenOutcome.Unreachable -> return@withContext LibraryOutcome.Unreachable
+        }
+        try {
+            val (code, body) = getWithToken(url, token)
+            if (code !in 200..299) {
+                val detail = errorDetail(body)
+                Log.w(TAG, "Library read failed $code: $detail")
+                return@withContext when (code) {
+                    // A 401/403 here is ambiguous between "token genuinely rejected" and "token
+                    // is valid but was minted before these scopes existed" - callers that care
+                    // about the distinction (browse_my_music) check hasStaleGrant separately
+                    // rather than this function trying to infer it from an HTTP status alone.
+                    401, 403 -> LibraryOutcome.Unauthorized(detail)
+                    else -> LibraryOutcome.Failed(code, detail, body.trim().take(300))
+                }
+            }
+            val items = try {
+                parse(JSONObject(body))
+            } catch (e: Exception) {
+                Log.w(TAG, "Library parse error: ${e.message}")
+                return@withContext LibraryOutcome.Failed(code, "Could not read Spotify's response", body.trim().take(300))
+            }
+            LibraryOutcome.Found(items)
+        } catch (e: Exception) {
+            Log.w(TAG, "Library read error: ${e.message}")
+            LibraryOutcome.Unreachable
+        }
+    }
+
+    /** The driver's saved (liked) albums, newest-saved first (Spotify's own default order). */
+    suspend fun getSavedAlbums(context: Context, limit: Int = LIBRARY_LIMIT): LibraryOutcome<SavedAlbum> {
+        val url = Uri.parse(ALBUMS_URL).buildUpon()
+            .appendQueryParameter("limit", limit.toString())
+            .build().toString()
+        return libraryGet(context, url, ::parseSavedAlbums)
+    }
+
+    /**
+     * Spotify's own play history, most recent first, across every device the driver has played
+     * on - NOT scoped to LEGION. Requires `user-read-recently-played`.
+     */
+    suspend fun getRecentlyPlayed(context: Context, limit: Int = LIBRARY_LIMIT): LibraryOutcome<RecentlyPlayedTrack> {
+        val url = Uri.parse(RECENTLY_PLAYED_URL).buildUpon()
+            .appendQueryParameter("limit", limit.toString())
+            .build().toString()
+        return libraryGet(context, url, ::parseRecentlyPlayed)
+    }
+
+    /** Spotify's own top-artists ranking for this account. Requires `user-top-read`. */
+    suspend fun getTopArtists(context: Context, limit: Int = LIBRARY_LIMIT): LibraryOutcome<TopArtist> {
+        val url = Uri.parse("$TOP_URL/artists").buildUpon()
+            .appendQueryParameter("limit", limit.toString())
+            .build().toString()
+        return libraryGet(context, url, ::parseTopArtists)
+    }
+
+    /** Spotify's own top-tracks ranking for this account. Requires `user-top-read`. */
+    suspend fun getTopTracks(context: Context, limit: Int = LIBRARY_LIMIT): LibraryOutcome<TopTrack> {
+        val url = Uri.parse("$TOP_URL/tracks").buildUpon()
+            .appendQueryParameter("limit", limit.toString())
+            .build().toString()
+        return libraryGet(context, url, ::parseTopTracks)
+    }
 }

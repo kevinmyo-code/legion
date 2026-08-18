@@ -41,10 +41,21 @@ object SpotifyConnectResolver {
         /** No client ID saved. Nothing can happen until the driver registers their own Spotify dev app. */
         NEEDS_CLIENT_ID,
 
-        /** Client ID saved, but no Web API refresh token on file - play-by-name cannot resolve a URI yet. */
+        /** Client ID saved, but no Web API refresh token on file at all - play-by-name has never worked yet. */
         NEEDS_AUTHORIZATION,
 
-        /** Client ID saved and Web API authorized. Play-by-name can work; App Remote link state is reported separately. */
+        /**
+         * Client ID saved, a refresh token IS on file, but it was minted under an OLDER set of
+         * scopes than [com.kevin.legion.media.SpotifyWebApi.SCOPES] currently asks for - see
+         * [com.kevin.legion.media.SpotifyWebApi.hasStaleGrant]. Added 2026-08-18 (ticket 05) when
+         * SCOPES grew to cover `browse_my_music`'s reads: without this stage, a driver who had
+         * ALREADY connected Spotify would land on the exact same [NEEDS_AUTHORIZATION] copy as a
+         * driver who never had, which reads as "start over" rather than "one more approval" - the
+         * distinction CLAUDE.md's ticket calls the actual risk of shipping a SCOPES widening at all.
+         */
+        NEEDS_REAUTHORIZATION,
+
+        /** Client ID saved and Web API authorized, under the CURRENT scope set. Play-by-name can work; App Remote link state is reported separately. */
         READY,
     }
 
@@ -57,10 +68,14 @@ object SpotifyConnectResolver {
      * tokens when the ID *changes*, but saving a blank ID clears the ID while
      * leaving a refresh token that was minted for the old one.
      */
-    fun stage(hasClientId: Boolean, isAuthorized: Boolean): Stage = when {
+    fun stage(hasClientId: Boolean, isAuthorized: Boolean, hasStaleGrant: Boolean = false): Stage = when {
         !hasClientId -> Stage.NEEDS_CLIENT_ID
-        !isAuthorized -> Stage.NEEDS_AUTHORIZATION
-        else -> Stage.READY
+        isAuthorized -> Stage.READY
+        // hasStaleGrant is meaningless (and never true) when isAuthorized is already true, so
+        // this only fires for the genuine "connected once, scopes grew" case - see
+        // [Stage.NEEDS_REAUTHORIZATION]'s own doc.
+        hasStaleGrant -> Stage.NEEDS_REAUTHORIZATION
+        else -> Stage.NEEDS_AUTHORIZATION
     }
 
     /** Verdict on a pasted client ID. Only [BLANK] blocks the save - see [checkClientId]. */
@@ -101,6 +116,10 @@ object SpotifyConnectResolver {
     fun headline(stage: Stage): String = when (stage) {
         Stage.NEEDS_CLIENT_ID -> "Not set up"
         Stage.NEEDS_AUTHORIZATION -> "Half set up"
+        // Deliberately NOT "Not set up" or "Half set up" - this driver has done this before.
+        // "Needs re-approving" is the words CLAUDE.md's ticket asked for: it must read as a
+        // refresh, never as starting over from a screen that looks unchanged.
+        Stage.NEEDS_REAUTHORIZATION -> "Needs re-approving"
         Stage.READY -> "Set up"
     }
 
@@ -112,6 +131,7 @@ object SpotifyConnectResolver {
         Stage.NEEDS_AUTHORIZATION ->
             "Client ID saved. One step left: approve access in the browser so a song name can be " +
                 "turned into something playable."
+        Stage.NEEDS_REAUTHORIZATION -> REAUTHORIZATION_DETAIL_MESSAGE
         Stage.READY ->
             "Asking for a song by name works, as long as Spotify is installed and logged in with Premium."
     }
@@ -120,8 +140,24 @@ object SpotifyConnectResolver {
     fun actionLabel(stage: Stage): String? = when (stage) {
         Stage.NEEDS_CLIENT_ID -> null // the SAVE button on the client-ID field is the action here
         Stage.NEEDS_AUTHORIZATION -> "AUTHORIZE"
+        Stage.NEEDS_REAUTHORIZATION -> "RE-AUTHORIZE"
         Stage.READY -> null
     }
+
+    /**
+     * Exactly what the driver will read on the Setup screen the first time this build runs
+     * against an existing grant (2026-08-18's SCOPES widening for `browse_my_music` - see
+     * [Stage.NEEDS_REAUTHORIZATION]'s own doc). Kept as its own named constant, not inlined,
+     * because [com.kevin.legion.service.LiveToolbox]'s `play_music`/`browse_my_music` failure
+     * messages deliberately echo this same "needs re-approving" language rather than a
+     * different phrase for the same event - one story, told the same way on the screen and in
+     * the assistant's own voice.
+     */
+    const val REAUTHORIZATION_DETAIL_MESSAGE: String =
+        "You'd already connected Spotify, but this update asks for a couple of extra permissions " +
+            "(your saved albums, recently played, and top artists/tracks) that your existing " +
+            "approval doesn't cover. Nothing else changed and nothing was lost - tap RE-AUTHORIZE " +
+            "and approve it again in the browser, same as before."
 
     /** Shown when the Spotify app itself is missing - App Remote is app-to-app, so nothing here can work without it. */
     const val APP_MISSING_MESSAGE: String =

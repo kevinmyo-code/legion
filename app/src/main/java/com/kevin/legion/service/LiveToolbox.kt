@@ -430,12 +430,48 @@ object LiveToolbox {
             description = "Play something specific by name - a song, artist, album, or playlist - " +
                 "directly in-app via Spotify (requires the driver to have connected their own Spotify " +
                 "account in Setup). Use when the driver names what they want to hear, e.g. 'play " +
-                "Plastic Love' or 'play some city pop'. If Spotify isn't connected, this fails with a " +
-                "message telling the driver to connect it in Setup or pick something on their phone " +
-                "themselves. Once something's playing, control_music handles play/pause/skip.",
-            params = obj("query" to schema("string",
-                "What to play, in the driver's own words, e.g. 'Plastic Love by Mariya Takeuchi'.")),
+                "Plastic Love' or 'play some city pop' (song, the default), 'play the album Discovery' " +
+                "(album), or 'play my Roadtrip playlist' (playlist). Set 'type' to match what the " +
+                "driver actually asked for - defaults to song if they didn't say. If Spotify isn't " +
+                "connected, this fails with a message telling the driver to connect it in Setup or " +
+                "pick something on their phone themselves. Once something's playing, control_music " +
+                "handles play/pause/skip.",
+            params = obj(
+                "query" to schema("string",
+                    "What to play, in the driver's own words, e.g. 'Plastic Love by Mariya Takeuchi' " +
+                        "or 'Discovery by Daft Punk'."),
+                "type" to schema("string",
+                    "What kind of thing 'query' names. Defaults to 'song' if omitted.",
+                    enum = listOf("song", "artist", "album", "playlist")),
+            ),
             required = listOf("query"),
+        ))
+
+        fns.put(fn(
+            name = "browse_my_music",
+            description = "Look up the driver's Spotify listening. 'saved_albums' - albums " +
+                "they've liked on Spotify. 'recently_played' - Spotify's OWN play history, " +
+                "across every device they use Spotify on, not just here - say so if you mention " +
+                "it. 'top_artists'/'top_tracks' - Spotify's own top rankings for this account. " +
+                "'legion_history' - what LEGION ITSELF has observed playing on THIS device only; " +
+                "always say plainly this is LEGION's own count, never Spotify's, and that any " +
+                "'favourite' you mention from it is LEGION's own inference from what it happened " +
+                "to see - never present it as a number Spotify published. Every source needs " +
+                "Spotify connected and approved in Setup (same as play_music); if that's missing " +
+                "or stale, this fails and tells the driver exactly what to do about it - never " +
+                "read a failure as 'you have nothing'. Keep the spoken answer short - name a " +
+                "handful of results, don't read out the whole list.",
+            params = obj(
+                "source" to schema("string", "Which listening data to look up.",
+                    enum = listOf(
+                        "saved_albums", "recently_played", "top_artists", "top_tracks",
+                        "legion_history",
+                    )),
+                "limit" to schema("integer",
+                    "How many results to return. Defaults to 5 - a live voice turn shouldn't " +
+                        "read out fifty rows."),
+            ),
+            required = listOf("source"),
         ))
 
         fns.put(fn(
@@ -1853,7 +1889,8 @@ object LiveToolbox {
             "control_music" -> controlMusic(context, args)
             "control_volume" -> controlVolume(context, args)
             "get_current_location" -> getCurrentLocation(context)
-            "play_music" -> playMusic(context, args.optString("query"))
+            "play_music" -> playMusic(context, args.optString("query"), args.optString("type", "song"))
+            "browse_my_music" -> browseMyMusic(context, args)
             "show_app" -> showApp(context)
             "set_reminder" -> result(
                 success = true,
@@ -5050,8 +5087,12 @@ object LiveToolbox {
      * If Spotify isn't connected, this fails with an actionable message rather
      * than falling back to launching another app.
      */
-    private suspend fun playMusic(context: Context, query: String): JSONObject {
+    private suspend fun playMusic(context: Context, query: String, type: String = "song"): JSONObject {
         if (query.isBlank()) return result(success = false, message = "What should I play?")
+        // Tool-facing vocabulary is "song" (matches how a driver actually talks); Spotify's own
+        // API calls that "track" - translated at the boundary so nothing upstream of this line
+        // needs to know Spotify's word for it.
+        val spotifyType = if (type == "song") "track" else type
 
         // ensureConnected, not isConnected: App Remote drops on its own (Spotify
         // killed/backgrounded), so this always tries a silent reconnect first.
@@ -5067,12 +5108,25 @@ object LiveToolbox {
 
         // Not authorized = no Web API = no way to turn a name into a URI. Say so
         // plainly; this is the one failure the driver can fix themselves.
+        // hasStaleGrant distinguishes "never connected" from "connected once, but a newly
+        // added scope invalidated that grant" (ticket 05, 2026-08-18's SCOPES widening for
+        // browse_my_music) - the two need different words, since the second driver has already
+        // done this once and "isn't finished connecting" would read as if nothing was saved.
         if (!SpotifyWebApi.isAuthorized(context)) {
-            return result(
-                success = false,
-                message = "Spotify isn't finished connecting - open Setup, tap CONNECT under the " +
-                    "Spotify client ID, and approve it in the browser. Then I can play by name.",
-            )
+            return if (SpotifyWebApi.hasStaleGrant(context)) {
+                result(
+                    success = false,
+                    message = "Spotify needs re-approving - I picked up a couple of new permissions " +
+                        "and your old approval doesn't cover them. Open Setup, Spotify, and tap " +
+                        "AUTHORIZE again. Takes a few seconds.",
+                )
+            } else {
+                result(
+                    success = false,
+                    message = "Spotify isn't finished connecting - open Setup, tap CONNECT under the " +
+                        "Spotify client ID, and approve it in the browser. Then I can play by name.",
+                )
+            }
         }
 
         // Each outcome gets its own answer (2026-08-12). These used to be one nullable
@@ -5080,7 +5134,7 @@ object LiveToolbox {
         // connection and a genuinely unknown song were indistinguishable to the driver
         // AND to anyone debugging it - the exact collapse GoogleGrantResolver.diagnose
         // was written to undo on the Drive side.
-        val uri = when (val outcome = SpotifyWebApi.searchTrack(context, query)) {
+        val uri = when (val outcome = SpotifyWebApi.search(context, query, spotifyType)) {
             is SpotifyWebApi.SearchOutcome.Found -> outcome.uri
             SpotifyWebApi.SearchOutcome.NeedsAuthorization -> return result(
                 success = false,
@@ -5116,12 +5170,163 @@ object LiveToolbox {
         // playUri awaits App Remote's real result, so this genuinely means
         // playback started - it is not just "the call didn't throw".
         if (SpotifyController.playUri(uri)) {
+            // Attributes the track NowPlayingController is about to observe to LEGION rather
+            // than the driver having started it themselves - see its own doc comment.
+            NowPlayingController.markLegionInitiatedPlay()
             return result(success = true, message = "Playing \"$query\" on Spotify.")
         }
         return result(
             success = false,
             message = "Spotify wouldn't start that one - it may not be playable on your account here.",
         )
+    }
+
+    /**
+     * `browse_my_music` (ticket 05, 2026-08-18): reads one of Spotify's own library endpoints,
+     * or LEGION's own observed-listening table. Routing only - the actual honesty work (never
+     * silently reading empty as "nothing there", always naming a stale-grant failure for what it
+     * is) lives in [libraryOutcomeToJson] and [browseLegionHistory] below, since both non-Spotify
+     * and Spotify sources have to make the same promise for different reasons.
+     */
+    private suspend fun browseMyMusic(context: Context, args: JSONObject): JSONObject {
+        val limit = args.optInt("limit", 5).coerceIn(1, 10)
+        return when (val source = args.optString("source")) {
+            "saved_albums" -> libraryOutcomeToJson(context, SpotifyWebApi.getSavedAlbums(context, limit), "saved albums") { a ->
+                JSONObject().put("name", a.name).put("artist", a.artist)
+            }
+            "recently_played" -> {
+                val json = libraryOutcomeToJson(context, SpotifyWebApi.getRecentlyPlayed(context, limit), "recently played") { t ->
+                    JSONObject().put("name", t.name).put("artist", t.artist).put("playedAt", t.playedAt)
+                }
+                // Honesty requirement (ticket 05 part C.9): this is Spotify's OWN history,
+                // everywhere the driver uses Spotify - not scoped to LEGION or to this device.
+                // Said on every successful answer, not just when asked, so the model can't
+                // forget to pass it along.
+                if (json.optBoolean("success")) {
+                    json.put(
+                        "note",
+                        "This is Spotify's own play history across every device the driver uses " +
+                            "Spotify on, not just through LEGION.",
+                    )
+                } else json
+            }
+            "top_artists" -> libraryOutcomeToJson(context, SpotifyWebApi.getTopArtists(context, limit), "top artists") { a ->
+                JSONObject().put("name", a.name)
+            }
+            "top_tracks" -> libraryOutcomeToJson(context, SpotifyWebApi.getTopTracks(context, limit), "top tracks") { t ->
+                JSONObject().put("name", t.name).put("artist", t.artist)
+            }
+            "legion_history" -> browseLegionHistory(context, limit)
+            else -> result(success = false, message = "Unknown source: $source")
+        }
+    }
+
+    /**
+     * Turns a [SpotifyWebApi.LibraryOutcome] into the tool-result shape, with every failure
+     * named for what it actually is - never a bare "couldn't get that". [sourceLabel] is plain
+     * English ("saved albums", "top tracks", ...) folded into the message so the driver hears
+     * WHICH request failed, not a generic Spotify error.
+     *
+     * The [SpotifyWebApi.LibraryOutcome.Unauthorized] branch specifically calls out
+     * [SpotifyWebApi.hasStaleGrant] - this is the exact trap ticket 05 was filed to catch: the
+     * SCOPES widening that made `browse_my_music` possible at all invalidates every existing
+     * grant (see [SpotifyWebApi.SCOPES]'s own doc), so the very first time most drivers call
+     * this tool it is expected to fail on a stale grant, and the message has to say that in
+     * words rather than read as a mysterious rejection.
+     */
+    private fun <T> libraryOutcomeToJson(
+        context: Context,
+        outcome: SpotifyWebApi.LibraryOutcome<T>,
+        sourceLabel: String,
+        toJson: (T) -> JSONObject,
+    ): JSONObject = when (outcome) {
+        is SpotifyWebApi.LibraryOutcome.Found -> {
+            val items = JSONArray()
+            outcome.items.forEach { items.put(toJson(it)) }
+            // An empty Found is a REAL, distinct answer ("Spotify said zero") - never let this
+            // collapse into a failure shape, and never phrase it as if nothing was checked.
+            val message = if (outcome.items.isEmpty()) {
+                "Spotify has no $sourceLabel to show right now."
+            } else null
+            result(success = true, message = message).put("items", items).put("count", outcome.items.size)
+        }
+        SpotifyWebApi.LibraryOutcome.NeedsAuthorization -> result(
+            success = false,
+            message = "Spotify hasn't been authorized on this device yet - open Setup, Spotify, " +
+                "and tap AUTHORIZE. Then I can look up $sourceLabel.",
+        )
+        is SpotifyWebApi.LibraryOutcome.Unauthorized -> {
+            // See this function's own doc: distinguishing "never connected" from "connected,
+            // but the grant is now stale" is the whole point of this branch.
+            val stale = SpotifyWebApi.hasStaleGrant(context)
+            result(
+                success = false,
+                message = if (stale) {
+                    "Spotify rejected that - your approval predates $sourceLabel access. Open " +
+                        "Setup, Spotify, and tap AUTHORIZE again to re-approve; it only takes a " +
+                        "few seconds."
+                } else {
+                    "Spotify rejected the request for $sourceLabel" +
+                        (outcome.detail?.let { ": $it" } ?: ".") +
+                        " Run the search test in Setup, Spotify for the details."
+                },
+            )
+        }
+        SpotifyWebApi.LibraryOutcome.Unreachable -> result(
+            success = false,
+            message = "I couldn't reach Spotify just now for $sourceLabel. Worth trying again " +
+                "when you have a better connection.",
+        )
+        is SpotifyWebApi.LibraryOutcome.Failed -> result(
+            success = false,
+            message = "Spotify's $sourceLabel request returned an error (${outcome.code})" +
+                (outcome.detail?.let { ": $it" } ?: "."),
+        )
+    }
+
+    /**
+     * `legion_history` source of [browseMyMusic] - LEGION's OWN observed-listening log
+     * ([com.kevin.legion.data.local.MusicPlayHistoryEntry]), never Spotify's. Every path out of
+     * this function says so in words, including the empty-table case: "nothing recorded yet" is
+     * a different fact from "you have no music", and collapsing them is exactly the false-empty
+     * failure mode CLAUDE.md §4 rule 5's data-anchoring thesis exists to prevent at the data
+     * layer, carried here to the tool layer.
+     */
+    private suspend fun browseLegionHistory(context: Context, limit: Int): JSONObject {
+        val dao = CarDatabase.getDatabase(context).musicPlayHistoryDao()
+        val recent = dao.getRecent(limit)
+        if (recent.isEmpty()) {
+            return result(
+                success = true,
+                message = "LEGION hasn't observed anything playing yet on this device - this " +
+                    "fills in as music is actually played while LEGION is running, it isn't " +
+                    "Spotify's own history.",
+            ).put("items", JSONArray())
+        }
+
+        val items = JSONArray()
+        recent.forEach { e ->
+            items.put(
+                JSONObject()
+                    .put("title", e.title)
+                    .put("artist", e.artist)
+                    .put("startedByLegion", e.startedByLegion),
+            )
+        }
+
+        // The "favourite" inference, labelled as LEGION's own the moment it's computed, not left
+        // to the model to caveat later - see this function's own doc and MusicPlayHistoryDao's.
+        val top = dao.getMostPlayed(1).firstOrNull()
+        val favouriteNote = top?.let {
+            "By LEGION's own count on this device (not a Spotify figure), the track it's seen " +
+                "played most is \"${it.title}\" by ${it.artist}, ${it.playCount} time(s)."
+        }
+
+        return result(
+            success = true,
+            message = "This is LEGION's OWN observed-listening log on this device, not Spotify's " +
+                "history." + (favouriteNote?.let { " $it" } ?: ""),
+        ).put("items", items)
     }
 
     /** Brings our own app to the foreground on request. */

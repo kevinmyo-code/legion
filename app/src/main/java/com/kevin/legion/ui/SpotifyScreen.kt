@@ -87,6 +87,11 @@ fun SpotifyScreen(
     var clientIdText by remember { mutableStateOf(CompanionProfile.spotifyClientId(context)) }
     var hasClientId by remember { mutableStateOf(CompanionProfile.hasSpotifyClientId(context)) }
     var isAuthorized by remember { mutableStateOf(SpotifyWebApi.isAuthorized(context)) }
+    // See SpotifyConnectResolver.Stage.NEEDS_REAUTHORIZATION's own doc: distinguishes "never
+    // connected" from "connected once, but 2026-08-18's SCOPES widening invalidated the grant" -
+    // this is the flag that makes the Setup screen say "needs re-approving" instead of showing
+    // the same "Not set up" a driver who never connected at all would see.
+    var hasStaleGrant by remember { mutableStateOf(SpotifyWebApi.hasStaleGrant(context)) }
     var appInstalled by remember { mutableStateOf(SpotifyController.isInstalled(context)) }
     var playerLinked by remember { mutableStateOf(SpotifyController.isConnected) }
     var working by remember { mutableStateOf(false) }
@@ -102,6 +107,7 @@ fun SpotifyScreen(
     fun refresh() {
         hasClientId = CompanionProfile.hasSpotifyClientId(context)
         isAuthorized = SpotifyWebApi.isAuthorized(context)
+        hasStaleGrant = SpotifyWebApi.hasStaleGrant(context)
         appInstalled = SpotifyController.isInstalled(context)
         playerLinked = SpotifyController.isConnected
     }
@@ -241,7 +247,11 @@ fun SpotifyScreen(
         messageIsError = false
     }
 
-    val stage = SpotifyConnectResolver.stage(hasClientId = hasClientId, isAuthorized = isAuthorized)
+    val stage = SpotifyConnectResolver.stage(
+        hasClientId = hasClientId,
+        isAuthorized = isAuthorized,
+        hasStaleGrant = hasStaleGrant,
+    )
     val sem = LocalLegionSemantics.current
 
     Surface(modifier = Modifier.fillMaxSize()) {

@@ -255,7 +255,13 @@ fun SpotifyAuthorizeRow(
                 Column(Modifier.weight(1f)) {
                     Text("Search access", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     Text(
-                        if (stage == SpotifyConnectResolver.Stage.READY) "Approved" else "Not approved",
+                        when (stage) {
+                            SpotifyConnectResolver.Stage.READY -> "Approved"
+                            // Deliberately NOT "Not approved" - the driver DID approve this
+                            // before; the copy has to say the approval is stale, not absent.
+                            SpotifyConnectResolver.Stage.NEEDS_REAUTHORIZATION -> "Approval is out of date"
+                            else -> "Not approved"
+                        },
                         style = LegionType.stamp,
                         color = sem.faint,
                     )
@@ -268,6 +274,18 @@ fun SpotifyAuthorizeRow(
                         TextButton(onClick = onAuthorize, enabled = !working) {
                             Text(
                                 if (working) "OPENING" else "AUTHORIZE",
+                                style = LegionType.stamp,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    // Same action as NEEDS_AUTHORIZATION (beginAuthorization asks for the CURRENT
+                    // SCOPES regardless of what the old grant had), different label - RE-AUTHORIZE
+                    // reads as "renew", not "start over", which is the whole point of this stage.
+                    SpotifyConnectResolver.Stage.NEEDS_REAUTHORIZATION -> {
+                        TextButton(onClick = onAuthorize, enabled = !working) {
+                            Text(
+                                if (working) "OPENING" else "RE-AUTHORIZE",
                                 style = LegionType.stamp,
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -392,6 +410,12 @@ private fun PreviewStatusReady() = LegionTheme {
     Surface { SpotifySetupStatusRow(SpotifyConnectResolver.Stage.READY, spotifyAppInstalled = true) }
 }
 
+@Preview(name = "Spotify: needs re-approving (stale grant)", widthDp = 360)
+@Composable
+private fun PreviewStatusNeedsReauthorization() = LegionTheme {
+    Surface { SpotifySetupStatusRow(SpotifyConnectResolver.Stage.NEEDS_REAUTHORIZATION, spotifyAppInstalled = true) }
+}
+
 @Preview(name = "Spotify: client id empty", widthDp = 360)
 @Composable
 private fun PreviewClientIdEmpty() = LegionTheme {
@@ -474,6 +498,18 @@ private fun PreviewAuthorizeReady() = LegionTheme {
     Surface {
         SpotifyAuthorizeRow(
             stage = SpotifyConnectResolver.Stage.READY,
+            playerLinked = true, working = false,
+            onAuthorize = {}, onLinkPlayer = {}, onDisconnect = {},
+        )
+    }
+}
+
+@Preview(name = "Spotify: needs re-approving (was linked before)", widthDp = 360)
+@Composable
+private fun PreviewAuthorizeNeedsReauthorization() = LegionTheme {
+    Surface {
+        SpotifyAuthorizeRow(
+            stage = SpotifyConnectResolver.Stage.NEEDS_REAUTHORIZATION,
             playerLinked = true, working = false,
             onAuthorize = {}, onLinkPlayer = {}, onDisconnect = {},
         )

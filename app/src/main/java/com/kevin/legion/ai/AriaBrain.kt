@@ -616,7 +616,18 @@ class AriaBrain private constructor(context: Context) {
         // (SpotifyController) when connected.
         sb.appendSection("Music transport (control_music) works with whatever's playing — " +
             "play/pause/next/previous only. If Spotify App Remote is connected, you can also play " +
-            "a specific track/artist by name directly; otherwise you can't pick songs by name.")
+            "a specific track/artist/album/playlist by name directly (play_music); otherwise you " +
+            "can't pick songs by name.")
+
+        // browse_my_music (ticket 05, 2026-08-18): saved albums / recently played / top artists /
+        // top tracks come from Spotify's own account data; legion_history is LEGION's OWN
+        // observation on this device and must never be presented as Spotify's.
+        sb.appendSection("If the driver asks about their music library, favourite or recent " +
+            "albums, top artists/tracks, or what LEGION itself has noticed them playing, use " +
+            "browse_my_music - don't guess or answer from memory. Its legion_history source is " +
+            "LEGION's own observation, not Spotify's data, and must be described as such; any " +
+            "'favourite' derived from it is LEGION's own inference, never a figure Spotify " +
+            "reported.")
 
         val vehicle = VehicleController.currentVehicle(appContext)
         if (vehicle.odometerBaseline > 0) {
