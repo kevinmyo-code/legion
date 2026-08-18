@@ -3,6 +3,40 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
+## START HERE - 2026-08-18 night
+
+**Everything below is committed on `feat/mission-control` and installed on the A25, hash-verified.**
+Nothing has been looked at on the phone. That is the whole outstanding risk.
+
+**Look at these first when you pick it up:**
+1. `.scratch/goal-keeping/map.md` - charted tonight, 8 tickets, blocking wired. Start at
+   [What "on track" actually means](../../.scratch/goal-keeping/issues/01-what-on-track-means.md);
+   the research ticket was fired at a subagent and its findings land in
+   `.scratch/goal-keeping/research/08-computable-metrics.md`.
+2. **The alarm pane's contrast, on the phone.** It is the first thing in the app to read
+   `errorContainer`. That colour colliding with `surface` is what once drew every screen's body text
+   in quarantine red, and only an APK install caught it.
+3. **`.scratch/proactive-mode/issues/09-fgs-start-delay.md`** - the only `bug` ticket on any map. A
+   boot-started service taking 123s to call `startForeground` against a 10s window is a crash, not a
+   decision.
+
+**Shipped tonight, all unverified on-device:** driver-editable playbooks + one priming resolver for
+both answer paths; a memory screen (read + delete) and a playbook editor; temperature as a Setup
+choice; the ALARM tier wired end to end; the proactive choke point plus a master switch that is
+reachable by a human for the first time.
+
+**Two live corrections to this repo's own docs.** CLAUDE.md sec 5 says Room v21 - a ticket
+references v23/v24. Sec 10 says `ui/` is a clean slate - it has 23 screens and 13 subpackages.
+
+**Audit, 2026-08-18:** 211 tickets swept. Still unbuilt: the deck control migration (7 files still
+on raw Material), restricted-battery detection so reminders cannot silently die, three doc rules
+decided and never written down (the CLAUDE.md sec 7 read-through guardrail is the important one),
+and quant-viz's two vanished sparklines. 42 tickets unresolved across 10 maps; 34 are takeable.
+
+**Known-failing test, pre-existing:** `BioDigestBuilderTest > bodyweight reports a weekly average`.
+Fails at HEAD with the session's work stashed - verified, not assumed. Everything else is green
+(1546 tests).
+
 ## Status as of 2026-08-15 (session 8)
 
 - **THE PHONE CHANGED. It is a Samsung Galaxy A25 (`SM-A256U`), Android 16 / SDK 36.** Migrated

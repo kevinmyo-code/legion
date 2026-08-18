@@ -4068,3 +4068,81 @@ render Celsius. The fix was right locally and asserted a consistency that did no
 | Nested HTTP is the real timeout ceiling | **`traced`** - connectTimeout 15s/readTimeout 30s per attempt times one retry, all in HttpURLConnection constructor and call, readable from fix commit diff |
 | Fix 3 (sendToolResponse dead-socket detection) unexercised | **`untested`** - it needs a socket death mid-tool-call, which was never produced |
 | Suite (1485 tests, 2 pre-existing failures) | **`built`** - `./gradlew testDebugUnitTest` passed; BioDigestBuilderTest failures pre-date these fixes |
+
+---
+
+## 2026-08-18 - Proactive speech: one gate, and what it silences
+
+Ticket: `.scratch/proactive-mode/issues/01-one-gate-not-three.md` (resolved).
+
+| # | Call | Who | Consequence |
+|---|---|---|---|
+| 1 | The choke point moves INTO `ProactiveBus`: raw emit private, `speakSolicited` (ungated, driver asked) and `speakIfAllowed` (the four checks) as the only doors. | Stark (implementation) | Bypass is impossible rather than merely unused. `ProactiveBus.kt`'s documented reason for NOT being the choke point - the DtcSheet ASK button must survive a mute - is honoured by `speakSolicited` existing, not overridden. `ProactiveGate.speakIfIdle` stays as a shim. |
+| 2 | An incoming-call announcement IS proactive speech and the master switch silences it. | Kevin | First candidate exemption to the "true kill switch" rule, refused. Mute now means you are not told who is calling. `CrisisDetector` is untouched and stays outside. |
+| 3 | The master switch keeps stopping the MICROPHONE, not just speech. | Kevin | `AmbientListener`'s stricter listening gate stays. The switch is a privacy promise; "stop talking" and "stop listening" are deliberately not separable. |
+| 4 | Ambient car chatter is retired; useful alerts are mapped to categories. | Kevin | `speakQuietLine` (both branches) and the first-meeting greeting raise deleted. Both quiet-line branches fired on SILENCE rather than on anything being due, which is the nearest thing in this app to a mechanism engineered to produce engagement (CLAUDE.md sec 7). 11 unprompted paths remain, all gated. |
+
+**Premise correction, traced.** The ticket claimed a master switch would leave two paths speaking.
+Both bypassers DID check mute; they hand-rolled it. The real defect was that nothing enforced it and
+the copies disagreed - neither checked `OnboardingState.isComplete`, so both could speak over
+first-run setup.
+
+**Latent bug found while wiring, `traced` + `built`.** `TelephonyController.handleState` set
+`isInCall = true` BEFORE announcing the ringing call. Harmless while the announcement hand-rolled
+its own checks; the moment it routed through a gate that itself checks `isInCall`, the announcement
+would have blocked itself every time - silently, forever. Reordered to announce-then-flip.
+
+## 2026-08-18 - Tool visibility beats tool description
+
+Two mis-routes in two days, both writes: spoken workout sets reached `ask_goals` (2026-08-17), and
+"add tums to the groceries list" reached `manage_item` (2026-08-18).
+
+| # | Call | Who | Consequence |
+|---|---|---|---|
+| 1 | Sharpening tool descriptions was tried first and FAILED on a real retry. | measured | Two rounds of description tuning did not beat a tool the model could not see. Recorded because the instinct to fix routing with better prose is strong and, here, wrong. |
+| 2 | `manage_grocery` and the eight write tools come back out from behind the dispatchers. | Kevin (measured fork) | Live block 46 -> 54 tools, ~8,440 -> ~9,990 tokens per turn, measured off the real `declarations()` JSON. A full revert would have been ~14,150. Reads stay hidden; the reads were never implicated. |
+| 3 | Every dispatcher is therefore read-only now. | derived | `dispatchBoundaryClause` tells all five sub-agents they can record NOTHING, derived from each domain's own tool set rather than hand-written per domain. A write that still mis-routes is refused in words instead of answered around. |
+
+**The rule this leaves.** A model cannot route to a tool it cannot see. Hiding a WRITE tool behind a
+dispatcher trades a token saving for a class of silent mis-file; hiding a READ tool costs at most a
+worse answer. Weigh those differently.
+
+## 2026-08-18 - Doctrine the driver can edit, and the guard on it
+
+Playbooks were compile-time constants read only by the advisor; the five voice dispatchers got
+behavioural rules and no domain knowledge at all, so the same question answered differently
+depending on which door it came in.
+
+- `advisor/Priming.kt` is now the one resolver both paths call. `PlaybookStore` keeps the driver's
+  own edit as a plain text file per companion profile (`filesDir/playbooks/<profileId>/<topic>.md`).
+  Files, not a Room table: no migration, and doctrine you can read is the entire point.
+- **Only `fleet` and `body` are primed on the voice path.** A playbook rides EVERY model call in a
+  bounded investigate loop, so attaching one to a domain it cannot help is not free. The routing
+  table carries a written reason per omission.
+- `Priming.BASIS_CLAUSE` is the prose equivalent of `AdvisorAnswer`'s `record|estimate|playbook`
+  tagging, for a spoken path that has no schema to hang a tag on.
+- **The editor is guarded**: an edit over the 2,500-token ceiling, or one that deletes a
+  professional-referral boundary, is refused with the reason named. `PlaybookKeywordsTest` guards
+  the shipped constants; nothing guarded the runtime edit until now. Same shape as the quant-viz
+  silent regressions - later work walking past a guard that still passes CI.
+
+## 2026-08-18 - Temperature is a setting, not a constant
+
+`.scratch/drive-ui/issues/07-temperature-units.md` resolved Celsius app-wide; Kevin amended it the
+same day to a Setup choice (Celsius default, Fahrenheit available). `util/Units.kt` owns every
+conversion; storage stays Celsius everywhere because that is what the PID reports. Model-facing JSON
+stopped emitting both units - it now carries one value plus an explicit unit field, because handing
+the model both is what let it contradict the screen.
+
+## 2026-08-18 - Goal keeping charted as its own map
+
+New effort `.scratch/goal-keeping/`, from Kevin: *"we are extending unprompted. the ai keeps me on
+track for my goals."*
+
+| # | Call | Who |
+|---|---|---|
+| 1 | Its own map, not `.scratch/proactive-mode/`'s trigger-engine ticket - proactive speech is one delivery channel of the goal-keeping product, not its home. | Kevin |
+| 2 | A goal the app cannot measure is ASKED about, never judged; Kevin's spoken answer becomes the record. Inferring prose-goal progress from adjacent records is banned as sec 7 unfalsifiable belief. | Kevin |
+| 3 | `AdvisorAgent` is the brain. No second thing reasons about goals. | Kevin |
+| 4 | Goal SETTING is in scope, over a recommendation to exclude it - the map owns the whole loop, stated through retired. Accepted cost: overlaps the advisor and pushes the destination further out. | Kevin |
+
