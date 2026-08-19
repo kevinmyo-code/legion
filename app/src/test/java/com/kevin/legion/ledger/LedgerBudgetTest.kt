@@ -537,6 +537,129 @@ class LedgerBudgetTest {
         assertFalse(monthSpendFrom(MONTH, budgetReconciled)!!.hasProvisionalRows)
     }
 
+    // ---- 2026-08-18: the Money tab's per-account toggle -------------------------------------
+
+    @Test
+    fun `accountFilter narrows spend to one physical account, filtered lines sum to the ALL total`() {
+        val cardFull = txn("4400664229114146", -80_00, description = "TRADER JOES", category = "Groceries")
+        val cardShort = txn("4146", -20_00, description = "AMAZON", category = "Shopping")
+        val debit = txn("debit", -15_00, description = "GAS STATION", category = "Fuel")
+
+        val all = buildBudgetVsActual(
+            entity = LedgerEntity.US,
+            month = MONTH,
+            inPeriod = listOf(cardFull, cardShort, debit),
+            pairingWindow = listOf(cardFull, cardShort, debit),
+            targets = emptyMap(),
+            coverage = completeCoverage("4400664229114146", "4146", "debit"),
+        )
+        // The card's two stored ids (full PDF number, bare CSV last-4) cluster into ONE spend
+        // figure - a plain-equality filter would have shown 80_00 and 20_00 as two separate
+        // accounts instead of one 100_00 card.
+        val cardOnly = buildBudgetVsActual(
+            entity = LedgerEntity.US,
+            month = MONTH,
+            inPeriod = listOf(cardFull, cardShort, debit),
+            pairingWindow = listOf(cardFull, cardShort, debit),
+            targets = emptyMap(),
+            coverage = completeCoverage("4400664229114146", "4146", "debit"),
+            accountFilter = setOf("4400664229114146"),
+        )
+        val debitOnly = buildBudgetVsActual(
+            entity = LedgerEntity.US,
+            month = MONTH,
+            inPeriod = listOf(cardFull, cardShort, debit),
+            pairingWindow = listOf(cardFull, cardShort, debit),
+            targets = emptyMap(),
+            coverage = completeCoverage("4400664229114146", "4146", "debit"),
+            accountFilter = setOf("debit"),
+        )
+
+        assertEquals(115_00L, all.spentCents)
+        assertEquals(100_00L, cardOnly.spentCents)
+        assertEquals(15_00L, debitOnly.spentCents)
+        // The invariant the toggle must never break: the per-account figures sum to ALL, exactly -
+        // no row silently lost or double-counted between the two selections.
+        assertEquals(all.spentCents, cardOnly.spentCents + debitOnly.spentCents)
+
+        // Selecting the SHORT form of the card id reaches the identical cluster as the full PAN -
+        // sameCard is symmetric, and the toggle only ever offers one representative per cluster,
+        // but the underlying filter must not care which member was passed.
+        val cardOnlyViaShortId = buildBudgetVsActual(
+            entity = LedgerEntity.US,
+            month = MONTH,
+            inPeriod = listOf(cardFull, cardShort, debit),
+            pairingWindow = listOf(cardFull, cardShort, debit),
+            targets = emptyMap(),
+            coverage = completeCoverage("4400664229114146", "4146", "debit"),
+            accountFilter = setOf("4146"),
+        )
+        assertEquals(cardOnly.spentCents, cardOnlyViaShortId.spentCents)
+    }
+
+    @Test
+    fun `accountFilter narrows coverage to the selected cluster too, never leaving a stale entity-wide caveat`() {
+        val row = txn("4400664229114146", -50_00, description = "STORE", category = "Shopping")
+        val budget = buildBudgetVsActual(
+            entity = LedgerEntity.US,
+            month = MONTH,
+            inPeriod = listOf(row),
+            pairingWindow = listOf(row),
+            targets = emptyMap(),
+            coverage = completeCoverage("4400664229114146", "4146", "debit"),
+            accountFilter = setOf("4400664229114146"),
+        )
+
+        // Only the card's own coverage rows survive - "debit" never appears in a card-only view's
+        // own coverage list, which is what keeps `coverageSentence` from describing an account this
+        // filtered figure has nothing to do with.
+        assertTrue(budget.coverage.all { sameCard(it.accountId, "4400664229114146") })
+        assertEquals(2, budget.coverage.size) // the full PAN row and the short-CSV row, same cluster
+        assertTrue(budget.coverage.none { it.accountId == "debit" })
+    }
+
+    @Test
+    fun `accountFilter narrows the excluded-own-account disclosure to the selected cluster`() {
+        val cardPaymentFromChecking = txn(
+            "checking", -1300_00, description = "PAYMENT TO CRD 7823", category = "Groceries",
+        )
+        val debitTransferOut = txn(
+            "debit", -400_00, description = "PAYMENT TO CRD 9999", category = "Shopping",
+        )
+
+        val budget = buildBudgetVsActual(
+            entity = LedgerEntity.US,
+            month = MONTH,
+            inPeriod = listOf(cardPaymentFromChecking, debitTransferOut),
+            pairingWindow = listOf(cardPaymentFromChecking, debitTransferOut),
+            targets = mapOf("Groceries" to 100_00, "Shopping" to 100_00),
+            coverage = completeCoverage("checking", "debit"),
+            ownAccountIds = setOf("4111111111117823", "4222222222229999"),
+            accountFilter = setOf("checking"),
+        )
+
+        assertEquals(1, budget.excludedOwnAccountMovements.count)
+        assertEquals(1300_00L, budget.excludedOwnAccountMovements.totalCents)
+    }
+
+    @Test
+    fun `a null accountFilter is unchanged behaviour - the untouched-install default`() {
+        val row = txn("checking", -42_00, description = "STORE", category = "Shopping")
+        val withoutFilter = buildBudgetVsActual(
+            entity = LedgerEntity.US, month = MONTH,
+            inPeriod = listOf(row), pairingWindow = listOf(row),
+            targets = emptyMap(), coverage = completeCoverage("checking"),
+        )
+        val withNullFilter = buildBudgetVsActual(
+            entity = LedgerEntity.US, month = MONTH,
+            inPeriod = listOf(row), pairingWindow = listOf(row),
+            targets = emptyMap(), coverage = completeCoverage("checking"),
+            accountFilter = null,
+        )
+        assertEquals(withoutFilter.spentCents, withNullFilter.spentCents)
+        assertEquals(withoutFilter.coverage, withNullFilter.coverage)
+    }
+
     companion object {
         private val MONTH: YearMonth = YearMonth.of(2026, 7)
         private const val MONTH_START = 1_751_328_000_000L

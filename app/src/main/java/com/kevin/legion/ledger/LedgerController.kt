@@ -403,8 +403,18 @@ object LedgerController {
      * convention once). `monthEndMs` is the LAST millisecond actually inside the month - the moment
      * before the next month's own `atStartOfDay` - not the next month's start itself, so the `BETWEEN`
      * queries this feeds stay inclusive at both ends without a fencepost error.
+     *
+     * [accountFilter] (2026-08-18, the Money tab's SPEND toggle) is passed straight through to
+     * [buildBudgetVsActual] - see its own doc comment for why every field of the returned
+     * [BudgetVsActual] narrows together rather than only the category lines. `null` (the default)
+     * is every existing caller's behaviour, unchanged.
      */
-    suspend fun budgetVsActual(context: Context, entity: LedgerEntity, month: YearMonth): BudgetVsActual {
+    suspend fun budgetVsActual(
+        context: Context,
+        entity: LedgerEntity,
+        month: YearMonth,
+        accountFilter: Set<String>? = null,
+    ): BudgetVsActual {
         val db = CarDatabase.getDatabase(context)
         val txnDao = db.ledgerTransactionDao()
         val fileDao = db.ingestedFileDao()
@@ -452,7 +462,10 @@ object LedgerController {
             }
 
         val ownAccountIds = txnDao.accountIdsForCurrency(entity.currency).toSet()
-        return buildBudgetVsActual(entity, month, inPeriod, pairingWindow, targets, coverage, ownAccountIds = ownAccountIds)
+        return buildBudgetVsActual(
+            entity, month, inPeriod, pairingWindow, targets, coverage,
+            ownAccountIds = ownAccountIds, accountFilter = accountFilter,
+        )
     }
 
     /**
@@ -504,14 +517,19 @@ object LedgerController {
      * exactly the rows that produced that line's total, never a re-derived approximation of it (see
      * [operatingExpenses]'s own doc comment for the bug shape two independent definitions caused
      * once already).
+     *
+     * [accountFilter] (2026-08-18) is the SAME per-account toggle [budgetVsActual] takes - a row
+     * list drilled into from a filtered category total must show exactly the rows that made that
+     * total, never every account's rows for a total that only counted one.
      */
     suspend fun categoryTransactions(
         context: Context, entity: LedgerEntity, month: YearMonth, category: String?,
+        accountFilter: Set<String>? = null,
     ): List<LedgerTransaction> {
         val txnDao = CarDatabase.getDatabase(context).ledgerTransactionDao()
         val (pairingWindow, inPeriod) = monthPairingWindow(txnDao, entity, month)
         val ownAccountIds = txnDao.accountIdsForCurrency(entity.currency).toSet()
-        val expenses = operatingExpenses(entity, inPeriod, pairingWindow, ownAccountIds = ownAccountIds)
+        val expenses = operatingExpenses(entity, inPeriod, pairingWindow, ownAccountIds = ownAccountIds, accountFilter = accountFilter)
         return expenses.filter { it.category == category }.sortedByDescending { it.txnDate }
     }
 
@@ -527,11 +545,14 @@ object LedgerController {
      * function exists rather than the tab reusing `categoryTransactions(..., category = null)`, which
      * would silently narrow the daily bars to only the uncategorised rows).
      */
-    suspend fun monthOperatingExpenses(context: Context, entity: LedgerEntity, month: YearMonth): List<LedgerTransaction> {
+    suspend fun monthOperatingExpenses(
+        context: Context, entity: LedgerEntity, month: YearMonth,
+        accountFilter: Set<String>? = null,
+    ): List<LedgerTransaction> {
         val txnDao = CarDatabase.getDatabase(context).ledgerTransactionDao()
         val (pairingWindow, inPeriod) = monthPairingWindow(txnDao, entity, month)
         val ownAccountIds = txnDao.accountIdsForCurrency(entity.currency).toSet()
-        return operatingExpenses(entity, inPeriod, pairingWindow, ownAccountIds = ownAccountIds)
+        return operatingExpenses(entity, inPeriod, pairingWindow, ownAccountIds = ownAccountIds, accountFilter = accountFilter)
     }
 
     /**

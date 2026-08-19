@@ -33,6 +33,26 @@ fun sameCard(a: String, b: String): Boolean =
     a == b || (a.length >= 4 && b.length >= 4 && a.takeLast(4) == b.takeLast(4))
 
 /**
+ * The account-toggle predicate (Kevin, 2026-08-18: "spending toggleable between the credit card
+ * and the debit card"). `filter == null` means ALL accounts, matching everything - the default
+ * that keeps an untouched selection reading exactly like the pre-toggle behaviour. A non-null
+ * filter is the representative `accountId`(s) of ONE [groupAccountBalances] cluster; membership is
+ * tested with [sameCard], never plain equality, because the whole reason the toggle has to group at
+ * all is that Kevin's one physical card is stored under two different strings (the PDF's full PAN
+ * and the mid-cycle CSV's bare last-4, ticket 12 §0) - a plain-equality filter would show his card
+ * twice and silently split its spend between the two rows, exactly the bug [groupAccountBalances]'s
+ * own doc comment exists to prevent for the BALANCES surface.
+ *
+ * Deliberately NOT threaded into [LedgerDedup.resolveDedup] or anything upstream of
+ * [analyzeTransfers] - see that function's own doc comment for why a suffix match must never
+ * narrow which rows two accounts can pair against each other before the filter is applied. Callers
+ * of this predicate filter transfer-classified rows AFTER [analyzeTransfers] has already run over
+ * every account, never before.
+ */
+fun matchesAccountFilter(accountId: String, filter: Set<String>?): Boolean =
+    filter == null || filter.any { sameCard(it, accountId) }
+
+/**
  * The FOUR bank-printed account-type tokens Kevin's real statements use immediately before an
  * account's digits - `CRD`/`CHK`/`SAV`/`ACCT` - each optionally followed by a `#`, then the digit
  * run itself. Deliberately a closed, hand-picked set rather than "any letters then digits":

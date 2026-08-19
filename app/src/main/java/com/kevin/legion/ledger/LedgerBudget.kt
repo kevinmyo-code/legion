@@ -219,6 +219,12 @@ private fun rowTier(row: LedgerTransaction): TrustTier =
  * [analyzeTransfers] - see [referencesOwnAccount]'s doc comment for why this must be scoped to
  * accounts that have actually had a statement imported, never every account a description merely
  * names.
+ *
+ * [accountFilter] (2026-08-18, the Money tab's per-account toggle) is applied LAST, after
+ * [analyzeTransfers] has already classified every row across every account - see
+ * [matchesAccountFilter]'s own doc comment for why narrowing the rows BEFORE that call would break
+ * transfer pairing for a card payment whose partner leg lives on an account the filter excludes.
+ * `null` (the default) matches everything, so an untouched call site's behaviour is unchanged.
  */
 fun operatingExpenses(
     entity: LedgerEntity,
@@ -226,11 +232,14 @@ fun operatingExpenses(
     pairingWindow: List<LedgerTransaction>,
     maxDaysApart: Int = 5,
     ownAccountIds: Set<String> = emptySet(),
+    accountFilter: Set<String>? = null,
 ): List<LedgerTransaction> {
     val ownCurrencyInPeriod = inPeriod.filter { it.currency == entity.currency }
     val ownCurrencyPairingWindow = pairingWindow.filter { it.currency == entity.currency }
     val analysis = analyzeTransfers(ownCurrencyInPeriod, ownCurrencyPairingWindow, maxDaysApart, ownAccountIds)
-    return analysis.operating.filter { it.amountCents < 0 }
+    return analysis.operating
+        .filter { it.amountCents < 0 }
+        .filter { matchesAccountFilter(it.accountId, accountFilter) }
 }
 
 /**
@@ -248,6 +257,7 @@ private fun excludedOwnAccountMovements(
     pairingWindow: List<LedgerTransaction>,
     maxDaysApart: Int,
     ownAccountIds: Set<String>,
+    accountFilter: Set<String>? = null,
 ): ExcludedOwnAccountMovements {
     val ownCurrencyInPeriod = inPeriod.filter { it.currency == entity.currency }
     val ownCurrencyPairingWindow = pairingWindow.filter { it.currency == entity.currency }
@@ -256,9 +266,16 @@ private fun excludedOwnAccountMovements(
     // OF SPEND", and a positive own-account-movement row (money arriving FROM another of Kevin's
     // own accounts) was never counted as spend to begin with (operatingExpenses itself filters to
     // amountCents < 0), so including it here would inflate the caveat beyond what it excluded.
+    //
+    // [accountFilter] (2026-08-18) is applied the SAME way [operatingExpenses] applies it - last,
+    // over the already-classified rows, never narrowing what analyzeTransfers itself saw - so the
+    // Money tab's per-account toggle keeps this disclosure honest about ONLY the selected account's
+    // own excluded movements, matching CLAUDE.md §4 rule 7's "coverage/uncategorised/excluded all
+    // follow the filter" requirement.
     val rows = analysis.excluded
         .filter { it.reason == ExclusionReason.OWN_ACCOUNT_MOVEMENT && it.txn.amountCents < 0 }
         .map { it.txn }
+        .filter { matchesAccountFilter(it.accountId, accountFilter) }
     // Disclosed as a positive dollar figure, matching UncategorizedSpend.spentCents and every other
     // "how much" caveat this screen states - amountCents is negative on an expense row.
     val totalCents = -rows.sumOf { it.amountCents }
@@ -288,6 +305,19 @@ private fun excludedOwnAccountMovements(
  * [operatingExpenses] and [excludedOwnAccountMovements] so the total this function sums and the
  * disclosure it attaches ([BudgetVsActual.excludedOwnAccountMovements]) come from the identical
  * [analyzeTransfers] classification - never two independently-derived answers to "was this excluded".
+ *
+ * [accountFilter] (2026-08-18, `.scratch` toggle "credit card vs debit card") narrows EVERY figure
+ * this function returns to one physical account - the category lines, the uncategorised bucket, the
+ * excluded-own-account disclosure, AND [coverage] - so a filtered [BudgetVsActual] is never a mix of
+ * "spend for one account" next to "coverage for the whole entity" (CLAUDE.md §4 rule 7's "any figure
+ * that excluded something discloses it" applied to the account scope itself: a disclosure describing
+ * different data than the figure it sits under is worse than no disclosure). [coverage] is filtered
+ * with the SAME [matchesAccountFilter]/[sameCard] predicate the spend rows use, on
+ * [AccountCoverage.accountId] - never plain equality, for the identical reason the toggle exists at
+ * all: one physical card's PDF-derived coverage row and its mid-cycle-CSV-derived one carry two
+ * different `accountId` strings for the SAME account. `null` (the default) matches everything, so an
+ * untouched call site - including every existing unit test and [LedgerController.monthlySpendTrend]'s
+ * per-month loop - sees IDENTICAL behaviour to before this parameter existed.
  */
 fun buildBudgetVsActual(
     entity: LedgerEntity,
@@ -298,10 +328,12 @@ fun buildBudgetVsActual(
     coverage: List<AccountCoverage>,
     maxDaysApart: Int = 5,
     ownAccountIds: Set<String> = emptySet(),
+    accountFilter: Set<String>? = null,
 ): BudgetVsActual {
-    val expenses = operatingExpenses(entity, inPeriod, pairingWindow, maxDaysApart, ownAccountIds)
+    val expenses = operatingExpenses(entity, inPeriod, pairingWindow, maxDaysApart, ownAccountIds, accountFilter)
     val byCategory = expenses.filter { it.category != null }.groupBy { it.category!! }
     val uncategorizedRows = expenses.filter { it.category == null }
+    val filteredCoverage = coverage.filter { matchesAccountFilter(it.accountId, accountFilter) }
 
     fun buildLine(category: String, targetCents: Long): BudgetLine {
         val rows = byCategory[category].orEmpty()
@@ -338,7 +370,7 @@ fun buildBudgetVsActual(
             spentCents = uncategorizedSpentCents,
             hasProvisionalRows = uncategorizedRows.any { it.ingestMethod == IngestMethod.UNRECONCILED },
         ),
-        coverage = coverage,
-        excludedOwnAccountMovements = excludedOwnAccountMovements(entity, inPeriod, pairingWindow, maxDaysApart, ownAccountIds),
+        coverage = filteredCoverage,
+        excludedOwnAccountMovements = excludedOwnAccountMovements(entity, inPeriod, pairingWindow, maxDaysApart, ownAccountIds, accountFilter),
     )
 }

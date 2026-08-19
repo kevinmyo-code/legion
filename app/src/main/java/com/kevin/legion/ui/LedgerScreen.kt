@@ -9,6 +9,7 @@ import android.os.IBinder
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -63,6 +64,7 @@ import com.kevin.legion.service.LedgerIngestService
 import com.kevin.legion.service.ScanState
 import com.kevin.legion.service.SpendEstimate
 import com.kevin.legion.ui.common.DeckPane
+import com.kevin.legion.ui.common.DeckRadio
 import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.HalfTile
 import com.kevin.legion.ui.common.Hairline
@@ -96,6 +98,7 @@ import java.time.YearMonth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import com.kevin.legion.ledger.maskedAccountLabel
+import com.kevin.legion.ledger.sameCard
 
 /**
  * `ledger` tab. Ticket 08 Part 5 built the read surfaces (resolution items
@@ -190,6 +193,12 @@ data class LedgerUiState(
     // apart from "still showing what the driver typed while a refusal sits underneath it".
     val addCategoryError: String? = null,
     val addCategorySuccessNonce: Int = 0,
+    // The SPEND surface's per-account toggle (Kevin, 2026-08-18) - the SELECTED cluster's
+    // representative `accountId`, `null` for ALL. A live signal merged into `fullState` each
+    // recomposition, same split every other selector on this screen (`folder`/`scanState`/
+    // `addCategoryError`) already uses - see `ui.LedgerScreen`'s own `moneyAccountFilterId` `var`
+    // for why it is not part of the async DB load or persisted.
+    val moneyAccountFilterId: String? = null,
 )
 
 @Composable
@@ -300,6 +309,17 @@ fun LedgerScreen(
     // being read back OUT of `state` uses for display.
     var pnlMonth by remember { mutableStateOf<YearMonth?>(null) }
 
+    // The SPEND surface's per-account toggle (Kevin, 2026-08-18: "spending... toggleable between
+    // the credit card and the debit card"). Deliberately plain Compose state, not part of
+    // `LedgerUiState` and not persisted (the task's own item 5: "not persisted... unless an existing
+    // preferences object obviously fits" - nothing here does; every other Money-tab selection this
+    // screen holds outside `state`, `pnlMonth` included, resets on a fresh mount the same way).
+    // `null` means ALL - the untouched-install default that keeps today's behaviour unchanged.
+    // Holds the SELECTED cluster's representative `accountId` (see `groupAccountBalances`'s own doc
+    // comment for what "representative" means) - never a raw typed string, so there is nothing here
+    // for a stale id to drift from what `moneyAccountOptions` below actually offers.
+    var moneyAccountFilterId by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(reloadNonce) {
         val months = LedgerController.monthsWithData(context, LedgerEntity.US)
         // Resolve the default once months become known, and re-resolve if a
@@ -354,15 +374,21 @@ fun LedgerScreen(
     // too (ticket resolution §5: "re-keyed on reloadNonce so purge and import
     // both refresh it") so a purge clears last month's figures rather than
     // leaving a stale P&L on screen next to an emptied transaction list.
-    LaunchedEffect(pnlMonth, reloadNonce) {
+    LaunchedEffect(pnlMonth, reloadNonce, moneyAccountFilterId) {
         val month = pnlMonth
+        // moneyAccountFilterId is the SELECTED cluster's representative accountId; sameCard (via
+        // LedgerController.budgetVsActual -> buildBudgetVsActual -> matchesAccountFilter) is what
+        // actually resolves it against every stored variant of that physical account, so passing
+        // just the one representative id here is enough - see matchesAccountFilter's own doc
+        // comment. `null` means ALL, unchanged from before this toggle existed.
+        val accountFilter = moneyAccountFilterId?.let { setOf(it) }
         // See the reload effect above's comment: await first, copy once, non-suspending.
-        val budget = if (month != null) LedgerController.budgetVsActual(context, LedgerEntity.US, month) else null
+        val budget = if (month != null) LedgerController.budgetVsActual(context, LedgerEntity.US, month, accountFilter) else null
         // quant-viz ticket 10: the daily-bars hero graphic's own load, keyed the SAME as `budget`
         // since both are per-picked-month figures - `monthOperatingExpenses` is the unfiltered
         // sibling of `categoryTransactions` (see that function's own doc comment), never a second
         // aggregate that could drift from `budget`'s own category lines.
-        val monthExpenses = if (month != null) LedgerController.monthOperatingExpenses(context, LedgerEntity.US, month) else emptyList()
+        val monthExpenses = if (month != null) LedgerController.monthOperatingExpenses(context, LedgerEntity.US, month, accountFilter) else emptyList()
         state = state.copy(
             budgetVsActual = budget,
             pnlMonth = month,
@@ -419,7 +445,7 @@ fun LedgerScreen(
         }
     }
 
-    LaunchedEffect(drilldownCategory, pnlMonth, drilldownReloadNonce, setTargetSuccessNonce) {
+    LaunchedEffect(drilldownCategory, pnlMonth, drilldownReloadNonce, setTargetSuccessNonce, moneyAccountFilterId) {
         val selection = drilldownCategory
         val month = pnlMonth
         if (selection == null || month == null) return@LaunchedEffect
@@ -428,7 +454,14 @@ fun LedgerScreen(
         // reload effect above's own rule (a suspend call inside `state.copy(...)`'s argument list
         // suspends AFTER the receiver is already captured, and this pair fires on the same
         // recomposition whenever a hand recategorise bumps `drilldownReloadNonce`).
-        val transactions = LedgerController.categoryTransactions(context, LedgerEntity.US, month, selection.category)
+        //
+        // Same filter the SPEND toggle threads into `budgetVsActual` above - a category tapped from
+        // a filtered chart bar must drill into exactly the rows that made THAT bar's total, never
+        // every account's rows for a total that only counted one (Kevin, 2026-08-18).
+        val transactions = LedgerController.categoryTransactions(
+            context, LedgerEntity.US, month, selection.category,
+            accountFilter = moneyAccountFilterId?.let { setOf(it) },
+        )
         val names = LedgerController.allCategories(context).map { it.name }
         // ticket 09: null for the uncategorised bucket (no target concept there, D11) - never a
         // wasted DAO read for a category that can never show the affordance anyway.
@@ -751,6 +784,7 @@ fun LedgerScreen(
         folder = folderUi, scanState = scanState, hasGeminiKey = hasGeminiKey,
         accountFolders = accountFolders, accountMapping = accountMapping, nominatedAccountId = nominatedAccountId,
         addCategoryError = addCategoryError, addCategorySuccessNonce = addCategorySuccessNonce,
+        moneyAccountFilterId = moneyAccountFilterId,
     )
 
     LedgerContent(
@@ -803,6 +837,9 @@ fun LedgerScreen(
         // drilldown's own rows open, so the chart and the list reach one destination rather than
         // two that can drift.
         onOpenCategory = { category -> drilldownCategory = CategoryDrilldownSelection(category) },
+        // The SPEND toggle itself (Kevin, 2026-08-18) - a plain assignment into the `var` above,
+        // which the reload effects keyed on `moneyAccountFilterId` above pick up.
+        onSelectAccountFilter = { accountId -> moneyAccountFilterId = accountId },
     )
 }
 
@@ -870,6 +907,8 @@ fun LedgerContent(
     // 2026-08-18: the SPEND pane's category chart is tappable now, and a bar opens that category's
     // own drilldown - the same destination BudgetSection's rows already reach.
     onOpenCategory: (String?) -> Unit = {},
+    // The SPEND surface's per-account toggle (Kevin, 2026-08-18) - `null` selects ALL.
+    onSelectAccountFilter: (String?) -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     // 2026-08-18 regression fix: this used to be a plain `Column(fillMaxSize())` holding the title
@@ -985,6 +1024,7 @@ fun LedgerContent(
                 else -> ledgerListingItems(
                     state, onPrevPnlMonth, onNextPnlMonth, onOpenCategorize, onOpenQuarantine,
                     onOpenBudget, onOpenBalances, onOpenTrend, onOpenUncategorized, onOpenCategory,
+                    onSelectAccountFilter,
                 )
             }
         }
@@ -1055,6 +1095,7 @@ private fun LazyListScope.ledgerListingItems(
     onOpenTrend: () -> Unit,
     onOpenUncategorized: () -> Unit,
     onOpenCategory: (String?) -> Unit,
+    onSelectAccountFilter: (String?) -> Unit,
 ) {
     // Ticket 19's GOALS panel - CRED aspect (personal-finance advisor's own key, see
     // com.kevin.legion.advisor.playbooks.CredPlaybook's doc comment). Sits above every other
@@ -1085,6 +1126,7 @@ private fun LazyListScope.ledgerListingItems(
                 onOpenUncategorized = onOpenUncategorized,
                 onOpenCategory = onOpenCategory,
                 onOpenBudget = onOpenBudget,
+                onSelectAccountFilter = onSelectAccountFilter,
             )
         }
 
@@ -1168,6 +1210,8 @@ private fun SpendPane(
     onOpenUncategorized: () -> Unit,
     onOpenCategory: (String?) -> Unit,
     onOpenBudget: () -> Unit,
+    // The account toggle (Kevin, 2026-08-18) - `null` selects ALL, matching `state.moneyAccountFilterId`.
+    onSelectAccountFilter: (String?) -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     val month = state.pnlMonth
@@ -1187,6 +1231,24 @@ private fun SpendPane(
                     Text(">", style = LegionType.stamp, color = if (canGoNextMonth) MaterialTheme.colorScheme.primary else sem.ghost)
                 }
             }
+        }
+        // The per-account toggle (Kevin, 2026-08-18: "spending... toggleable between the credit
+        // card and the debit card") - a segmented DeckRadio row, the SAME horizontal-row-of-
+        // DeckRadio shape `ui.SettingsRows`' temperature-unit picker already uses, in place of
+        // inventing a new control (CLAUDE.md's "look at what ui/common/ already offers" rule).
+        // Only rendered once there is more than one physical account to choose between - a single-
+        // account entity has nothing to toggle, and an ALL-vs-ALL control would be a lie about
+        // there being a choice. Reuses `groupAccountBalances` (never plain-equality on `accountId`)
+        // for the exact reason that function's own doc comment gives: Kevin's one physical card is
+        // stored under two different strings, and a toggle keyed on the raw string would show his
+        // card twice and split its own spend between the two rows.
+        val accountOptions = groupAccountBalances(state.balances.filter { it.currency == LedgerEntity.US.currency })
+        if (accountOptions.size > 1) {
+            AccountFilterRow(
+                options = accountOptions,
+                selectedAccountId = state.moneyAccountFilterId,
+                onSelect = onSelectAccountFilter,
+            )
         }
         Text(
             credTile.hero,
@@ -1253,6 +1315,39 @@ private fun SpendPane(
                 modifier = Modifier
                     .padding(horizontal = 12.dp, vertical = 6.dp)
                     .clickable(onClick = onOpenQuarantine),
+            )
+        }
+    }
+}
+
+/**
+ * The SPEND surface's per-account segmented row (Kevin, 2026-08-18) - `ALL` plus one [DeckRadio]
+ * per grouped account (already [groupAccountBalances]'d by the caller, so a card stored under two
+ * strings shows once), labelled via [maskedAccountLabel] so a raw 16-digit PAN never reaches this
+ * screen (see that function's own doc comment for the on-device incident this rule closes). The
+ * whole row is one `selectableGroup()`, matching [ui.SettingsRows]' temperature-unit picker - the
+ * same horizontal-DeckRadio-row shape, not a new control, per this repo's "look at what ui/common/
+ * already offers" convention.
+ */
+@Composable
+private fun AccountFilterRow(
+    options: List<AccountBalance>,
+    selectedAccountId: String?,
+    onSelect: (String?) -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 2.dp)
+            .selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        DeckRadio(selected = selectedAccountId == null, onClick = { onSelect(null) }, label = "All")
+        options.forEach { balance ->
+            DeckRadio(
+                selected = selectedAccountId != null && sameCard(selectedAccountId, balance.accountId),
+                onClick = { onSelect(balance.accountId) },
+                label = maskedAccountLabel(balance.accountId),
             )
         }
     }
