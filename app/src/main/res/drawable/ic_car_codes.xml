@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <!--
+        Fleet tab, trouble-codes row - the standard warning-triangle glyph. Used for all three
+        honest states (never scanned / clean / active codes) - the icon signals "this row is
+        about trouble codes", the row TITLE (never the icon alone) carries which of the three
+        states applies, per shapeCodesRow's own doc.
+    -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M1,21h22L12,2 1,21zM13,18h-2v-2h2v2zM13,14h-2v-4h2v4z" />
+</vector>

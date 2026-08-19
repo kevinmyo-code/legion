@@ -98,21 +98,21 @@ class CarAspectSummariesTest {
     }
 
     @Test
-    fun `a fresh sample reads live`() {
+    fun `a fresh sample reads live, number first`() {
         val row = CarAspectSummaries.shapeGaugeRow(
             "RPM", connected = true, sampleTimestampMs = NOW - 10_000L, formattedValue = "1800 rpm", nowMs = NOW,
         )
-        assertEquals("RPM 1800 rpm - live", row.title)
+        assertEquals("1800 rpm - RPM · live", row.title)
         assertTrue(row.subtitle.contains("updated"))
     }
 
     @Test
-    fun `a stale sample never reads as current`() {
+    fun `a stale sample never reads as current, number still first`() {
         // Older than the 90 s fresh window (three missed 30 s ticks).
         val row = CarAspectSummaries.shapeGaugeRow(
             "RPM", connected = true, sampleTimestampMs = NOW - 20 * 60_000L, formattedValue = "0 rpm", nowMs = NOW,
         )
-        assertEquals("RPM 0 rpm - 20 minutes ago, not live", row.title)
+        assertEquals("0 rpm - RPM · 20 minutes ago, not live", row.title)
         assertTrue(row.subtitle.contains("last read"))
     }
 
@@ -121,7 +121,7 @@ class CarAspectSummariesTest {
         val row = CarAspectSummaries.shapeGaugeRow(
             "RPM", connected = true, sampleTimestampMs = NOW - 90_000L, formattedValue = "0 rpm", nowMs = NOW,
         )
-        assertTrue(row.title.endsWith("- live"))
+        assertTrue(row.title.endsWith("· live"))
     }
 
     // ------------------------------------------------------------------------------- shapeFleetRows composition
@@ -144,8 +144,11 @@ class CarAspectSummariesTest {
         assertEquals(5, rows.size)
         assertTrue(rows[0].title.startsWith("Fleet · Outlander"))
         assertTrue(rows[1].title.startsWith("No active codes"))
-        assertTrue(rows[2].title.startsWith("RPM"))
-        assertTrue(rows[3].title.startsWith("Coolant temp"))
+        // Gauge rows lead with the NUMBER now, not the label - see shapeGaugeRow's own doc.
+        assertTrue(rows[2].title.startsWith("1800 rpm"))
+        assertTrue(rows[2].title.contains("RPM"))
+        assertTrue(rows[3].title.startsWith("82°C"))
+        assertTrue(rows[3].title.contains("Coolant temp"))
         assertEquals("Speed - waiting for first reading", rows[4].title)
     }
 }

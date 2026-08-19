@@ -26,6 +26,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import android.net.Uri
 import androidx.media3.common.C
+import com.kevin.legion.R
 import com.kevin.legion.media.MusicController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.NowPlayingInfo
@@ -272,15 +273,17 @@ class LegionMediaLibraryService : MediaLibraryService() {
             FLAG_BROWSABLE_DEFAULT,
         )
 
-        val fleet = CarAspectSummaries.fleet(applicationContext)
-
-        // RESCOPED 2026-08-18 (Kevin, live: "the android auto only has to show fleet data...we
-        // just need 2 things. push to talk and codes/telemetry gauges") - Today and Money are gone
-        // from the root; see this class's own doc for the full quote and the grep that confirmed
-        // CarAspectSummaries.today/.money had no other callers before they were deleted outright.
+        // CORRECTED 2026-08-18, third pass (Kevin, live on a real head unit at 800x480: "Talk to
+        // LEGI..." and "Fleet · 2017 ..." both cut off in the tab bar). Root's own children are the
+        // TABS, and the tab bar has almost no width - "Talk" and "Fleet" are now hardcoded here
+        // rather than sourced from CarAspectSummaries.fleet()'s richer "Fleet · $label" string,
+        // which used to feed the tab label directly and is exactly what got truncated. The vehicle
+        // name and the live due-date/mileage figure are not lost - they are the Fleet tab's own
+        // FIRST row (shapeConnectionRow, inside fleetRows), which is where a driver who actually
+        // opened the tab reads them, with real room to not truncate.
         val all = listOf(
-            browsableItem(TALK_MEDIA_ID, "Talk to LEGION", "Tap to start a conversation"),
-            browsableItem(FLEET_MEDIA_ID, fleet.first, fleet.second),
+            browsableItem(TALK_MEDIA_ID, "Talk", "Tap to start a conversation", R.drawable.ic_car_talk_start),
+            browsableItem(FLEET_MEDIA_ID, "Fleet", "Connection, codes, and live gauges", R.drawable.ic_car_fleet),
         )
         val served = all.take(limit)
         CarProbeLog.log(
@@ -310,6 +313,10 @@ class LegionMediaLibraryService : MediaLibraryService() {
                     .setIsBrowsable(false)
                     .setIsPlayable(true)
                     .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                    // Same mic/stop pair the transport-bar CommandButton already uses
+                    // (talkCommandButton) - a driver who has opened the "Talk" tab sees the exact
+                    // icon the toggle will show, not a generic placeholder.
+                    .setArtworkUri(resourceUri(if (live) R.drawable.ic_car_talk_stop else R.drawable.ic_car_talk_start))
                     .build(),
             )
             .build()
@@ -347,7 +354,7 @@ class LegionMediaLibraryService : MediaLibraryService() {
      * the exact thing to look at on the next run, and the fallback if it renders nothing is to go
      * back to playable and make the tap do something honest instead of nothing.
      */
-    private fun infoRowItem(mediaId: String, title: String, subtitle: String): MediaItem =
+    private fun infoRowItem(mediaId: String, title: String, subtitle: String, iconRes: Int?): MediaItem =
         MediaItem.Builder()
             .setMediaId(mediaId)
             .setMediaMetadata(
@@ -357,16 +364,45 @@ class LegionMediaLibraryService : MediaLibraryService() {
                     .setIsBrowsable(false)
                     .setIsPlayable(false)
                     .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                    .apply { if (iconRes != null) setArtworkUri(resourceUri(iconRes)) }
                     .build(),
             )
             .build()
 
-    /** [rows] rendered under [tabPrefix] - e.g. `legion-fleet-row-0`, `legion-fleet-row-1` - so
-     * [isInfoRowMediaId] can recognise any of them by prefix without enumerating every tab. */
-    private fun infoRowItems(tabPrefix: String, rows: List<CarAspectSummaries.CarRow>): List<MediaItem> =
-        rows.mapIndexed { index, row -> infoRowItem("$tabPrefix-row-$index", row.title, row.subtitle) }
+    /**
+     * [rows] rendered under [tabPrefix] - e.g. `legion-fleet-row-0`, `legion-fleet-row-1` - so
+     * [isInfoRowMediaId] can recognise any of them by prefix without enumerating every tab.
+     *
+     * [fleetRowIcon] lives here rather than in [CarAspectSummaries] deliberately - that file stays
+     * a plain-JVM string builder with no Android resource IDs in it, per this class's own doc, so
+     * `CarAspectSummariesTest` keeps running with no Robolectric. [rows] is always [fleetRows]'
+     * fixed five-row shape (connection, codes, then [CarAspectSummaries.GAUGE_PIDS]' own order:
+     * RPM, coolant, speed) - indexing by position is safe only because that order is fixed, not
+     * data-dependent.
+     */
+    private fun infoRowItems(
+        tabPrefix: String,
+        rows: List<CarAspectSummaries.CarRow>,
+        connected: Boolean,
+    ): List<MediaItem> =
+        rows.mapIndexed { index, row ->
+            infoRowItem("$tabPrefix-row-$index", row.title, row.subtitle, fleetRowIcon(index, connected))
+        }
 
-    private fun browsableItem(mediaId: String, title: String, subtitle: String): MediaItem =
+    /** Icon for [infoRowItems]' row [index] - see that function's own doc for why the fixed
+     * connection/codes/RPM/coolant/speed order is safe to index into rather than derive from data.
+     * [connected] only matters for row 0, which has an on/off icon pair mirroring
+     * [CarAspectSummaries.shapeConnectionRow]'s own two title branches. */
+    private fun fleetRowIcon(index: Int, connected: Boolean): Int = when (index) {
+        0 -> if (connected) R.drawable.ic_car_connection_on else R.drawable.ic_car_connection_off
+        1 -> R.drawable.ic_car_codes
+        2 -> R.drawable.ic_car_gauge_rpm
+        3 -> R.drawable.ic_car_gauge_coolant
+        4 -> R.drawable.ic_car_gauge_speed
+        else -> R.drawable.ic_car_fleet
+    }
+
+    private fun browsableItem(mediaId: String, title: String, subtitle: String, iconRes: Int? = null): MediaItem =
         MediaItem.Builder()
             .setMediaId(mediaId)
             .setMediaMetadata(
@@ -376,9 +412,24 @@ class LegionMediaLibraryService : MediaLibraryService() {
                     .setIsBrowsable(true)
                     .setIsPlayable(false)
                     .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                    .apply { if (iconRes != null) setArtworkUri(resourceUri(iconRes)) }
                     .build(),
             )
             .build()
+
+    /**
+     * `android.resource://` URI for a drawable, the documented route for a browse row's icon -
+     * [MediaMetadata.setArtworkUri] becomes [androidx.media3.session.legacy.MediaDescriptionCompat]'s
+     * `iconUri` (confirmed by reading `LegacyConversions.convertToMediaDescriptionCompat` in the
+     * vendored `media3-session-1.4.1-sources.jar`, `.setIconUri(metadata.artworkUri)`), which is
+     * the field Android Auto's own browse-row renderer reads for a leading icon. Whether Android
+     * Auto's loader rasterizes a VECTOR drawable resource behind this scheme, as opposed to only a
+     * raster PNG/WebP, is `reasoned` from ordinary Android image-loading convention, not confirmed
+     * against Android Auto's own (closed-source) code or on a head unit - see this ticket's report
+     * for the exact thing to look at on the next run.
+     */
+    private fun resourceUri(resId: Int): Uri =
+        Uri.parse("android.resource://${applicationContext.packageName}/$resId")
 
     /**
      * Item 3's most important part. Sends the SAME [AriaForegroundService.ACTION_TALK] intent
@@ -491,7 +542,36 @@ class LegionMediaLibraryService : MediaLibraryService() {
                         .build(),
                 )
                 .build()
-            return Futures.immediateFuture(LibraryResult.ofItem(root, params))
+            // Content-style hint for the root's own two tabs (Talk, Fleet) - both BROWSABLE, so
+            // this is the key the constant's own doc says governs them, per MediaConstants. Read
+            // straight from the vendored androidx.media:media 1.7.0 sources jar
+            // (androidx/media/utils/MediaConstants.java) rather than guessed:
+            //   DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_BROWSABLE = "android.media.browse.CONTENT_STYLE_BROWSABLE_HINT"
+            //   DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM = 3
+            // Traced end to end through the media3-session-1.4.1 sources jar, not assumed: this
+            // function returns its own LibraryParams (built below) as LibraryResult.ofItem's second
+            // argument; MediaLibraryServiceLegacyStub.onGetRoot reads that back as `result.params`
+            // and feeds it through LegacyConversions.convertToRootHints, which copies `params.extras`
+            // verbatim into the legacy BrowserRoot's own extras Bundle - exactly the Bundle
+            // MediaConstants' own doc says a BROWSABLE-scoped content-style hint belongs in to apply
+            // tree-wide. **Deliberately NOT the PLAYABLE key, and deliberately NOT applied to Fleet's
+            // five rows**: those rows are flags-0 (neither browsable nor playable, see infoRowItem's
+            // own doc for why), and the constant's own doc scopes the PLAYABLE/BROWSABLE hints
+            // strictly to items carrying that flag - a flags-0 item is outside what either hint is
+            // documented to affect. Making Fleet's rows playable to bring them into a grid's scope
+            // would reopen the on-device "getting your selection" hang this file's own class doc
+            // already recorded and fixed by going flags-0 - not worth it for a grid. CATEGORY_LIST_ITEM
+            // (not plain LIST_ITEM) asks for the tintable, non-fill icon treatment research 02
+            // section 6a already documents for custom-action icons, matching the single-colour vector
+            // icons this pass adds ([browsableItem]'s [Uri] artwork).
+            val rootExtras = Bundle().apply {
+                putInt(
+                    MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
+                    MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
+                )
+            }
+            val rootParams = LibraryParams.Builder().setExtras(rootExtras).build()
+            return Futures.immediateFuture(LibraryResult.ofItem(root, rootParams))
         }
 
         override fun onGetChildren(
@@ -550,8 +630,17 @@ class LegionMediaLibraryService : MediaLibraryService() {
                             // already loaded once this connection) - this branch alone would only ever
                             // serve one snapshot per connection without it.
                             val rows = CarAspectSummaries.fleetRows(applicationContext)
+                            // Same StateFlow snapshot CarAspectSummaries.fleetRows itself reads
+                            // (see that function's doc) - read again here rather than plumbed back
+                            // out of fleetRows, purely to pick row 0's icon (fleetRowIcon); it is a
+                            // free, non-blocking StateFlow read, not a second OBD query.
+                            val connected = com.kevin.legion.vehicle.ObdBluetoothManager.connectionState.value ==
+                                com.kevin.legion.vehicle.ObdBluetoothManager.ConnectionState.CONNECTED
                             future.set(
-                                LibraryResult.ofItemList(ImmutableList.copyOf(infoRowItems(FLEET_MEDIA_ID, rows)), params),
+                                LibraryResult.ofItemList(
+                                    ImmutableList.copyOf(infoRowItems(FLEET_MEDIA_ID, rows, connected)),
+                                    params,
+                                ),
                             )
                         }
                         else -> {

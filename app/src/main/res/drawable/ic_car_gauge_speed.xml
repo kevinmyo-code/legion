@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <!--
+        Fleet tab, road-speed gauge row - a trending-up arrow (Material "trending_up" glyph).
+        Deliberately distinct from ic_car_gauge_rpm.xml's tachometer dial so the two gauge rows
+        do not look identical before a driver reads the title text.
+    -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M16,6l2.29,2.29 -4.88,4.88 -4,-4L2,16.59 3.41,18l6,-6 4,4 6.3,-6.29L22,12L22,6z" />
+</vector>

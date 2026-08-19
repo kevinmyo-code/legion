@@ -44,6 +44,17 @@ import kotlin.math.roundToInt
  * tables - never [ObdBluetoothManager.getDtcCodes] or any other live port query, which blocks on
  * Bluetooth I/O that may never resolve and must never run inside a browse callback (CLAUDE.md §7's
  * "network calls degrade gracefully offline", applied to a serial port instead of a socket).
+ *
+ * **CORRECTED 2026-08-18, third pass** (Kevin, live on a real head unit at 800x480: "Talk to
+ * LEGI..." and "Fleet · 2017 ..." both truncated in the tab bar, and a plain text list with no
+ * icons underneath). The tab bar is no longer fed by this file's title strings at all -
+ * [LegionMediaLibraryService.libraryRootChildren] now hardcodes "Talk" and "Fleet" directly, short
+ * enough to survive an 800x480 tab bar - [fleet]'s richer "Fleet · $label" return is kept only in
+ * case a future caller wants it, not deleted, but nothing reads it for the tab label anymore.
+ * [shapeGaugeRow] now leads its title with the NUMBER, not the label ("1800 rpm - RPM · live", not
+ * "RPM 1800 rpm - live") - a driver's eye lands on the figure first. Icons are added per row in
+ * [LegionMediaLibraryService] itself (this file stays a plain-JVM string builder with no Android
+ * resource IDs in it, so `shapeFleetRows`' tests keep running with no Robolectric).
  */
 object CarAspectSummaries {
 
@@ -92,6 +103,15 @@ object CarAspectSummaries {
             next.allDue -> "$mileageLabel · everything scheduled is already due"
             else -> "$mileageLabel · nothing due yet"
         }
+        // CORRECTED 2026-08-18, second pass (Kevin, live: two tabs read "Talk to LEGI..." and
+        // "Fleet · 2017 ..." on an 800x480 head unit - both truncated). The tab BAR has almost no
+        // room; a static "Fleet" is what LegionMediaLibraryService.libraryRootChildren now titles
+        // the root row with directly (it no longer reads this Pair's first element for the tab
+        // label). This function's title return is kept only for a caller that still wants the
+        // richer "Fleet · <vehicle>" form - none exists today - so it is returned as-is rather than
+        // deleted outright; the vehicle name and the live due-date/mileage figure live in the tab's
+        // OWN rows now ([fleetRows]' shapeConnectionRow), which is where a driver who opened the tab
+        // actually reads them, not in a label they see for a fraction of a second before tapping in.
         return "Fleet · $label" to subtitle
     }
 
@@ -241,12 +261,19 @@ object CarAspectSummaries {
 
     /**
      * One telemetry gauge row. Four honest states, all in the TITLE (same rule 1 as
-     * [shapeConnectionRow]):
+     * [shapeConnectionRow]).
+     *
+     * **CORRECTED 2026-08-18, second pass** (Kevin, on a real head unit's browse list, rule 3 of
+     * this ticket's brief: "row titles ... keep them tight and put the number first, since that is
+     * what a driver's eye lands on"). The two states with an actual number now lead with it -
+     * "$formattedValue - $label · live" - rather than burying it after the label the way the first
+     * pass did ("RPM 1800 rpm - live"). The two states with nothing to read yet still lead with the
+     * label, because there is no number to promote:
      *  - **not connected, nothing cached** - "$label - not connected".
      *  - **connected, nothing cached yet** - "$label - waiting for first reading" (the adapter just
      *    linked and [TelemetryRecorder] has not ticked yet).
-     *  - **fresh cached sample** ([GAUGE_FRESH_WINDOW_MS]) - "$label $value - live".
-     *  - **stale cached sample** - "$label $value - $age, not live". A driver reading a 20-minute-
+     *  - **fresh cached sample** ([GAUGE_FRESH_WINDOW_MS]) - "$value - $label · live".
+     *  - **stale cached sample** - "$value - $label · $age, not live". A driver reading a 20-minute-
      *    old RPM figure while the car is stopped at a light must never mistake it for a live gauge.
      * `internal` for direct unit testing.
      */
@@ -267,9 +294,9 @@ object CarAspectSummaries {
         val ageMs = (nowMs - sampleTimestampMs).coerceAtLeast(0L)
         val age = relativeAge(sampleTimestampMs, nowMs)
         return if (ageMs <= GAUGE_FRESH_WINDOW_MS) {
-            CarRow("$label $formattedValue - live", "updated $age")
+            CarRow("$formattedValue - $label · live", "updated $age")
         } else {
-            CarRow("$label $formattedValue - $age, not live", "last read $age")
+            CarRow("$formattedValue - $label · $age, not live", "last read $age")
         }
     }
 
