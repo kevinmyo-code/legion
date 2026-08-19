@@ -427,7 +427,14 @@ object LiveToolbox {
                 "- pass 'seconds' if the driver named a duration, otherwise it defaults to 30. " +
                 "Seeking forward past the end of the track moves on to the next song (Spotify's " +
                 "own behaviour) - say so plainly if it happens, don't just report a jump. " +
-                "'restart' jumps back to the start of the current track.",
+                "'restart' jumps back to the start of the current track. " +
+                "'add_to_playlist' adds the CURRENTLY PLAYING track (same subject as 'like') to a " +
+                "playlist the driver names, e.g. 'add this to my Roadtrip playlist' - pass " +
+                "'playlistName'. Only matches playlists the driver owns or a friend made them a " +
+                "collaborator on - it does NOT search the public catalogue for a playlist to add " +
+                "to, and if the name matches a playlist that's followed but not owned or " +
+                "collaborative (an editorial playlist like Discover Weekly), this fails and says " +
+                "so - never report it as done and never claim there's no such playlist.",
             params = obj(
                 "action" to schema("string", "The playback action.",
                     enum = listOf(
@@ -436,12 +443,16 @@ object LiveToolbox {
                         "shuffle", "shuffle_on", "shuffle_off",
                         "repeat_off", "repeat_track", "repeat_context",
                         "seek_forward", "seek_back", "restart",
+                        "add_to_playlist",
                     )),
                 "query" to schema("string",
                     "Required for 'queue': what to add, in the driver's own words, e.g. " +
                         "'Plastic Love by Mariya Takeuchi'."),
                 "seconds" to schema("integer",
                     "For 'seek_forward'/'seek_back' only: how many seconds to jump. Defaults to 30."),
+                "playlistName" to schema("string",
+                    "Required for 'add_to_playlist': which playlist to add the current track to, " +
+                        "in the driver's own words, e.g. 'Roadtrip' or 'my summer playlist'."),
             ),
             required = listOf("action"),
         ))
@@ -486,7 +497,11 @@ object LiveToolbox {
                 "account in Setup). Use when the driver names what they want to hear, e.g. 'play " +
                 "Plastic Love' or 'play some city pop' (song, the default), 'play the album Discovery' " +
                 "(album), or 'play my Roadtrip playlist' (playlist). Set 'type' to match what the " +
-                "driver actually asked for - defaults to song if they didn't say. If Spotify isn't " +
+                "driver actually asked for - defaults to song if they didn't say. For type 'playlist', " +
+                "this checks the driver's OWN playlists (including ones friends made him a " +
+                "collaborator on) FIRST, and only falls back to Spotify's public catalogue if " +
+                "nothing there matches - when it falls back, say so and name what actually played, " +
+                "since it may not be what the driver meant. If Spotify isn't " +
                 "connected, this fails with a message telling the driver to connect it in Setup or " +
                 "pick something on their phone themselves. Once something's playing, control_music " +
                 "handles play/pause/skip. To replay something the driver names from LEGION's own " +
@@ -5054,6 +5069,8 @@ object LiveToolbox {
         SEEK_FORWARD("seek_forward"),
         SEEK_BACK("seek_back"),
         RESTART("restart"),
+        /** Ticket 08 scope item 3: adds the CURRENTLY PLAYING track to a named playlist. */
+        ADD_TO_PLAYLIST("add_to_playlist"),
         ;
 
         companion object {
@@ -5114,6 +5131,7 @@ object LiveToolbox {
             MusicAction.SEEK_FORWARD -> controlMusicSeek(context, forward = true, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))
             MusicAction.SEEK_BACK -> controlMusicSeek(context, forward = false, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))
             MusicAction.RESTART -> controlMusicRestart(context)
+            MusicAction.ADD_TO_PLAYLIST -> controlMusicAddToPlaylist(context, args.optString("playlistName"))
         }
     }
 
@@ -5156,6 +5174,84 @@ object LiveToolbox {
         val state = SpotifyController.restart(context)
         return if (state != null) result(success = true, message = "Restarted the track.")
         else result(success = false, message = SpotifyController.transportWriteFailureMessage())
+    }
+
+    /**
+     * `add_to_playlist` (ticket 08 scope item 3): adds the CURRENTLY PLAYING track - same subject
+     * as `like` - to a playlist named by the driver. Deliberately **library-only**: resolves the
+     * target through [SpotifyWebApi.findMyPlaylist], never [SpotifyWebApi.resolvePlaylist]'s
+     * public-search fallback, because adding to a playlist the driver doesn't own or collaborate
+     * on would almost always 403 anyway and was never what "add this to Roadtrip" meant (see
+     * [SpotifyWebApi.findMyPlaylist]'s own doc). A playlist that DOES match but isn't
+     * [SpotifyWebApi.SpotifyPlaylist.readable] - the research's ownership/collaborator boundary,
+     * hit hardest by a followed EDITORIAL playlist like Discover Weekly - is named as unreadable
+     * in words before any write is attempted (ticket 08 scope item 4), never silently skipped and
+     * never reported as "no such playlist".
+     */
+    private suspend fun controlMusicAddToPlaylist(context: Context, playlistName: String): JSONObject {
+        if (playlistName.isBlank()) return result(success = false, message = "Which playlist should I add this to?")
+
+        val track = when (val t = SpotifyController.currentTrack(context)) {
+            is SpotifyController.CurrentTrackOutcome.Found -> t
+            SpotifyController.CurrentTrackOutcome.NothingPlaying -> return result(
+                success = false,
+                message = "Nothing's playing right now, so there's nothing to add.",
+            )
+            SpotifyController.CurrentTrackOutcome.NotConnected -> return result(
+                success = false,
+                message = "Spotify isn't connected - connect your Spotify account in Setup, or pick " +
+                    "something on your phone yourself and I'll control play/pause/skip from here.",
+            )
+        }
+
+        val playlist = when (val lookup = SpotifyWebApi.findMyPlaylist(context, playlistName)) {
+            is SpotifyWebApi.PlaylistLookup.Found -> lookup.playlist
+            SpotifyWebApi.PlaylistLookup.NeedsAuthorization -> return spotifyNeedsAuthorizationResult()
+            is SpotifyWebApi.PlaylistLookup.Unauthorized -> return spotifyUnauthorizedResult(lookup.detail)
+            SpotifyWebApi.PlaylistLookup.Unreachable -> return spotifyUnreachableResult()
+            SpotifyWebApi.PlaylistLookup.NoMatch -> return result(
+                success = false,
+                message = "\"$playlistName\" doesn't match any playlist you own or a friend has " +
+                    "shared with you - I can only add to playlists in your own library.",
+            )
+            is SpotifyWebApi.PlaylistLookup.Failed -> return result(
+                success = false,
+                message = "Spotify's playlist lookup returned an error (${lookup.code})" +
+                    (lookup.detail?.let { ": $it" } ?: "."),
+            )
+        }
+
+        // The honesty boundary this ticket exists for: said in words BEFORE attempting the
+        // write, never left to surface as a bare 403.
+        if (!playlist.readable) {
+            return result(
+                success = false,
+                message = "I can't add to \"${playlist.name}\" - you don't own it or collaborate on " +
+                    "it, so Spotify won't allow changes to it. This is Spotify's own rule, the same " +
+                    "reason a playlist like Discover Weekly can't be edited by anyone but Spotify.",
+            )
+        }
+
+        return when (val outcome = SpotifyWebApi.addTrackToPlaylist(context, playlist.id, track.uri)) {
+            SpotifyWebApi.PlaylistWriteOutcome.Added -> result(
+                success = true,
+                message = "Added \"${track.name}\" to \"${playlist.name}\".",
+            )
+            // Belt-and-braces: the cache said readable, Spotify disagreed. Same honest wording as
+            // the proactive check above rather than a generic error.
+            SpotifyWebApi.PlaylistWriteOutcome.NotYours -> result(
+                success = false,
+                message = "Spotify wouldn't let me add to \"${playlist.name}\" - you don't own or " +
+                    "collaborate on it.",
+            )
+            SpotifyWebApi.PlaylistWriteOutcome.NeedsAuthorization -> spotifyNeedsAuthorizationResult()
+            is SpotifyWebApi.PlaylistWriteOutcome.Unauthorized -> spotifyUnauthorizedResult(outcome.detail)
+            SpotifyWebApi.PlaylistWriteOutcome.Unreachable -> spotifyUnreachableResult()
+            is SpotifyWebApi.PlaylistWriteOutcome.Failed -> result(
+                success = false,
+                message = "Spotify wouldn't add that (${outcome.code})" + (outcome.detail?.let { ": $it" } ?: "."),
+            )
+        }
     }
 
     /**
@@ -5323,7 +5419,12 @@ object LiveToolbox {
      * String so a caller cannot forget to check which one it got.
      */
     private sealed interface SpotifyUriResolution {
-        data class Found(val uri: String) : SpotifyUriResolution
+        /**
+         * [note] is null for every song/artist/album resolution (unchanged). Only the ticket 08
+         * playlist path ([resolvePlaylistForPlay]) ever sets it, when the URI came from the public
+         * search fallback rather than the driver's own library - see that function's own doc.
+         */
+        data class Found(val uri: String, val note: String? = null) : SpotifyUriResolution
         data class Failed(val toolResult: JSONObject) : SpotifyUriResolution
     }
 
@@ -5418,6 +5519,65 @@ object LiveToolbox {
         }
     }
 
+    // --- Shared Spotify failure wording (ticket 08) --------------------------------------------
+    // Extracted so the playlist paths below ([resolvePlaylistForPlay], [controlMusicAddToPlaylist])
+    // say the IDENTICAL words for the IDENTICAL Spotify-account-level failures as
+    // [resolveSpotifyUri] above does for song/artist/album - a driver hearing two different
+    // sentences for "you haven't authorized Spotify yet" depending on WHICH thing they asked for
+    // would read as two different problems.
+
+    private fun spotifyNeedsAuthorizationResult(): JSONObject = result(
+        success = false,
+        message = "Spotify hasn't been authorized on this device yet - open Setup, Spotify, and tap AUTHORIZE.",
+    )
+
+    private fun spotifyUnauthorizedResult(detail: String?): JSONObject = result(
+        success = false,
+        message = "Spotify rejected the request" +
+            (detail?.let { ": $it" } ?: ".") +
+            " Run the search test in Setup, Spotify for the details.",
+    )
+
+    private fun spotifyUnreachableResult(): JSONObject = result(
+        success = false,
+        message = "I couldn't reach Spotify just now. Worth trying again when you have a better connection.",
+    )
+
+    /**
+     * `play_music`'s playlist path (ticket 08 scope items 1-2): [SpotifyWebApi.resolvePlaylist]
+     * first tries the driver's OWN cached library, and only falls through to public
+     * `/v1/search` when nothing there matched. When it fell through, [playlistFallbackNote]
+     * carries the honesty line - "say which one it used when the answer might surprise him" -
+     * for [playMusic] to fold into its spoken confirmation; null on every other outcome.
+     */
+    private suspend fun resolvePlaylistForPlay(context: Context, query: String): SpotifyUriResolution {
+        return when (val resolution = SpotifyWebApi.resolvePlaylist(context, query)) {
+            is SpotifyWebApi.PlaylistResolution.FromLibrary -> SpotifyUriResolution.Found(resolution.playlist.uri)
+            is SpotifyWebApi.PlaylistResolution.FromSearch -> SpotifyUriResolution.Found(
+                uri = resolution.uri,
+                // A distinct URI from the public catalogue, not the driver's own library -
+                // this note is [playMusic]'s honesty line for scope item 2 ("say which one it
+                // used when the answer might surprise him"), carried on the resolution itself
+                // rather than through shared state (tool dispatch is concurrent across sessions).
+                note = "Couldn't find \"$query\" among your own playlists, so I played the " +
+                    "closest match in Spotify's public catalogue" +
+                    (resolution.name?.let { " - \"$it\"" } ?: "") + ".",
+            )
+            SpotifyWebApi.PlaylistResolution.NeedsAuthorization -> SpotifyUriResolution.Failed(spotifyNeedsAuthorizationResult())
+            is SpotifyWebApi.PlaylistResolution.Unauthorized -> SpotifyUriResolution.Failed(spotifyUnauthorizedResult(resolution.detail))
+            SpotifyWebApi.PlaylistResolution.Unreachable -> SpotifyUriResolution.Failed(spotifyUnreachableResult())
+            SpotifyWebApi.PlaylistResolution.NoMatch -> SpotifyUriResolution.Failed(result(
+                success = false,
+                message = "Spotify has nothing matching \"$query\".",
+            ))
+            is SpotifyWebApi.PlaylistResolution.Failed -> SpotifyUriResolution.Failed(result(
+                success = false,
+                message = "Spotify's playlist search returned an error (${resolution.code})" +
+                    (resolution.detail?.let { ": $it" } ?: "."),
+            ))
+        }
+    }
+
     /**
      * Plays a specific track/artist by name, in-app, via Spotify App Remote +
      * Web API search. This is the only "play something specific" path left -
@@ -5440,8 +5600,18 @@ object LiveToolbox {
         // true - skips name-to-URI resolution entirely. Searching anyway would risk landing on a
         // DIFFERENT track than the one the driver actually pointed at. [query] is still carried
         // for the spoken confirmation, so the message names what was asked for either way.
+        var fallbackNote: String? = null
         val uri = if (!knownUri.isNullOrBlank()) {
             knownUri
+        } else if (type == "playlist") {
+            // Ticket 08: playlists route through the driver's OWN library cache first, falling
+            // through to public search only when nothing there matched - see
+            // [resolvePlaylistForPlay]'s own doc for why this can't share [resolveSpotifyUri],
+            // which only ever calls Spotify's public search.
+            when (val resolved = resolvePlaylistForPlay(context, query)) {
+                is SpotifyUriResolution.Found -> { fallbackNote = resolved.note; resolved.uri }
+                is SpotifyUriResolution.Failed -> return resolved.toolResult
+            }
         } else {
             when (val resolved = resolveSpotifyUri(context, query, type)) {
                 is SpotifyUriResolution.Found -> resolved.uri
@@ -5461,7 +5631,12 @@ object LiveToolbox {
             // than the driver having started it themselves - see its own doc comment.
             NowPlayingController.markLegionInitiatedPlay()
         }
-        return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, query))
+        val succeeded = SpotifyController.succeeded(outcome)
+        // fallbackNote only ever exists on a successful playlist resolution - append it so the
+        // driver hears WHICH playlist actually played when it wasn't one of his own (ticket 08
+        // scope item 2). Never appended on failure: a failed play has nothing to caveat further.
+        val message = SpotifyController.message(outcome, query) + (fallbackNote?.takeIf { succeeded }?.let { " $it" } ?: "")
+        return result(success = succeeded, message = message)
     }
 
     /**

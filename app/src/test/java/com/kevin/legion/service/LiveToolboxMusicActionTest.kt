@@ -39,15 +39,18 @@ class LiveToolboxMusicActionTest {
         assertEquals(LiveToolbox.MusicAction.SEEK_FORWARD, LiveToolbox.MusicAction.fromWire("seek_forward"))
         assertEquals(LiveToolbox.MusicAction.SEEK_BACK, LiveToolbox.MusicAction.fromWire("seek_back"))
         assertEquals(LiveToolbox.MusicAction.RESTART, LiveToolbox.MusicAction.fromWire("restart"))
+        // Landed ticket 08: add the currently playing track to a named playlist.
+        assertEquals(LiveToolbox.MusicAction.ADD_TO_PLAYLIST, LiveToolbox.MusicAction.fromWire("add_to_playlist"))
     }
 
     @Test
     fun `every MusicAction entry that exists today has landed - no future placeholder entries`() {
         // Ticket 03's discipline (the schema `enum` and this parser never claim more than is
         // actually wired) means there is no longer a "not landed yet" set to assert against -
-        // tickets 03-06 are all in on this map. Asserting the exact count instead pins the map's
-        // full surface as a single number that must be touched deliberately if it ever grows again.
-        assertEquals(18, LiveToolbox.MusicAction.entries.size)
+        // tickets 03-06 (and now 08) are all in on this map. Asserting the exact count instead
+        // pins the map's full surface as a single number that must be touched deliberately if it
+        // ever grows again.
+        assertEquals(19, LiveToolbox.MusicAction.entries.size)
     }
 
     @Test

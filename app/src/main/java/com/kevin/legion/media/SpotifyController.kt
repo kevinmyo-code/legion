@@ -729,6 +729,32 @@ object SpotifyController {
     suspend fun unfollowArtist(context: Context): LibraryWriteOutcome =
         libraryWrite(context, playerState.value?.track?.artist?.uri, add = false)
 
+    // --- Currently-playing track lookup (ticket 08, .scratch/spotify-voice/issues/08-playlists-by-name.md) --
+
+    /**
+     * Every way [currentTrack] can end. Same two-outcome-plus-found shape as [LibraryWriteOutcome]
+     * for the same reason: "nothing playing" and "not connected" are different facts and need
+     * different sentences, not one collapsed null.
+     */
+    sealed interface CurrentTrackOutcome {
+        data class Found(val uri: String, val name: String) : CurrentTrackOutcome
+        data object NothingPlaying : CurrentTrackOutcome
+        data object NotConnected : CurrentTrackOutcome
+    }
+
+    /**
+     * The track currently playing on this account, per App Remote's own push subscription (same
+     * source [like]/[unlike] read from, not a fresh Web API read) - used by `control_music`'s
+     * `add_to_playlist` action (ticket 08 scope item 3) to know WHAT to add when the driver says
+     * "add this to my Roadtrip playlist" without naming a track.
+     */
+    suspend fun currentTrack(context: Context): CurrentTrackOutcome = withContext(Dispatchers.IO) {
+        if (!ensureConnected(context)) return@withContext CurrentTrackOutcome.NotConnected
+        val track = playerState.value?.track ?: return@withContext CurrentTrackOutcome.NothingPlaying
+        val uri = track.uri?.takeIf { it.isNotBlank() } ?: return@withContext CurrentTrackOutcome.NothingPlaying
+        CurrentTrackOutcome.Found(uri = uri, name = track.name?.takeIf { it.isNotBlank() } ?: "this track")
+    }
+
     // --- Shuffle, repeat, seek (ticket 06, .scratch/spotify-voice/issues/06-shuffle-repeat-seek.md) --
 
     /**
