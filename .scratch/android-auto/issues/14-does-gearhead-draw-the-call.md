@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["06"]
 blocked-by: ["[[06-get-a-sideloaded-build-visible-in-android-auto]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # Does gearhead actually draw the call?

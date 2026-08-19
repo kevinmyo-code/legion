@@ -13,7 +13,6 @@ Open tickets whose blockers are all resolved.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
-| [[.scratch/android-auto/map\|android-auto]] | [[06-get-a-sideloaded-build-visible-in-android-auto\|06]] | task | Get a sideloaded build visible in Android Auto |
 | [[.scratch/android-auto/map\|android-auto]] | [[07-fallback-if-the-call-does-not-render\|07]] | grilling | What if Android Auto will not render the call? |
 | [[.scratch/android-auto/map\|android-auto]] | [[08-what-the-browse-tree-holds\|08]] | grilling | What is in the browse tree, and who writes the briefings? |
 | [[.scratch/android-auto/map\|android-auto]] | [[09-what-the-car-aware-prompt-changes\|09]] | grilling | What does the car-aware prompt actually change? |
@@ -21,6 +20,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/android-auto/map\|android-auto]] | [[11-duck-or-pause-the-music\|11]] | grilling | Duck the music, or pause it? |
 | [[.scratch/android-auto/map\|android-auto]] | [[12-clone-and-run-with-two-manual-toggles\|12]] | grilling | Does clone-and-run survive two manual toggles? |
 | [[.scratch/android-auto/map\|android-auto]] | [[13-prove-the-obd-silent-stall\|13]] | task | Prove or kill the OBD silent-stall claim |
+| [[.scratch/android-auto/map\|android-auto]] | [[14-does-gearhead-draw-the-call\|14]] | task | Does gearhead actually draw the call? |
 | [[.scratch/android-auto/map\|android-auto]] | [[15-the-live-session-can-be-silenced\|15]] | task | The live session can be silenced with no error |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | [[20-ship-pass\|20]] | task | Ship pass: advisors answering on the phone |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | [[02-context-dies-with-the-socket\|02]] | task | The context dies with the socket, and nothing says so |
@@ -51,7 +51,6 @@ Open tickets whose blockers are all resolved.
 
 | Map | Ticket | Type | What | Waiting on |
 |---|---|---|---|---|
-| [[.scratch/android-auto/map\|android-auto]] | [[14-does-gearhead-draw-the-call\|14]] | task | Does gearhead actually draw the call?  waiting on [[06-get-a-sideloaded-build-visible-in-android-auto\|06]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | [[04-what-the-assistant-says-when-it-cannot\|04]] | grilling | What the assistant must say when it cannot do something  waiting on [[03-no-navigation-capability\|03]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[02-what-makes-a-goal-trackable\|02]] | grilling | What makes a goal trackable, and how set_goal captures it  waiting on [[01-what-on-track-means\|01]] |
@@ -66,7 +65,7 @@ Open tickets whose blockers are all resolved.
 
 | Map | Tickets | Open | Canvas |
 |---|---|---|---|
-| [[.scratch/android-auto/map\|android-auto]] | 16 | 10 | [[.scratch/android-auto/android-auto.canvas\|open]] |
+| [[.scratch/android-auto/map\|android-auto]] | 16 | 9 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 1 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 3 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
