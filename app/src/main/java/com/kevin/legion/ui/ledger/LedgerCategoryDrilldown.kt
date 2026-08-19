@@ -408,7 +408,9 @@ private fun monthEndMs(month: YearMonth): Long =
  * quiet day as the interesting one.
  */
 /**
- * The day-of-month scale under [categoryDailySpendBars]'s chart.
+ * The day-of-month scale under [categoryDailySpendBars]'s chart. `internal`, not `private` -
+ * [BudgetSection]'s own daily strip draws the identical scale over the identical bars, and two
+ * copies of an axis are two chances for one of them to disagree with its own chart.
  *
  * **Sparse on purpose.** [com.kevin.legion.ui.common.DeckBarLabelRow] gives every bar an equal
  * share and prints all of them, which is right for six category bars and unreadable for
@@ -421,7 +423,7 @@ private fun monthEndMs(month: YearMonth): Long =
  * rather than near it. Blank cells hold their place so the anchors cannot slide.
  */
 @Composable
-private fun DayOfMonthAxis(bars: List<DeckBar?>, modifier: Modifier = Modifier) {
+internal fun DayOfMonthAxis(bars: List<DeckBar?>, modifier: Modifier = Modifier) {
     if (bars.isEmpty()) return
     val sem = LocalLegionSemantics.current
     // Index i is day i+1 - categoryDailySpendBars emits one slot per day from the 1st, including

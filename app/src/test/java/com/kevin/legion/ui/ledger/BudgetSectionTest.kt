@@ -20,41 +20,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * quant-viz ticket 10's two pure mappings - [spendTrendSparklinePoints] (the Money tab's hero
+ * quant-viz ticket 10's pure mapping - the Money tab's hero
  * sparkline) and the "daily all-category sums = sum of per-category [categoryDailySpendBars]
  * series" invariant the ticket's own verification section calls for. Neither touches Compose or
  * Room, so plain JUnit.
  */
 class BudgetSectionTest {
-
-    // ---- spendTrendSparklinePoints: reuses monthlySpendBars' own month-hole mapping -----------
-
-    @Test
-    fun `a gap month reaches the sparkline as null, exactly like the bar chart it's derived from`() {
-        val trend = listOf(
-            MonthSpend(YearMonth.of(2026, 5), totalCents = 412_00L, isComplete = true, hasProvisionalRows = false),
-            // June deliberately absent - the gap monthlySpendTrend itself would have left.
-            MonthSpend(YearMonth.of(2026, 7), totalCents = 388_50L, isComplete = true, hasProvisionalRows = false),
-        )
-
-        val points = spendTrendSparklinePoints(trend)
-
-        assertEquals(3, points.size) // May, June, July
-        assertNull(points[1]) // June: the hole
-        assertEquals(412_00f, points[0])
-        assertEquals(388_50f, points[2])
-    }
-
-    @Test
-    fun `points are the exact Long totalCents carried as Float, matching monthlySpendBars' own value`() {
-        val trend = listOf(MonthSpend(YearMonth.of(2026, 7), totalCents = 184_212L, isComplete = true, hasProvisionalRows = false))
-        assertEquals(184_212f, spendTrendSparklinePoints(trend).single())
-    }
-
-    @Test
-    fun `an empty trend produces an empty point list`() {
-        assertTrue(spendTrendSparklinePoints(emptyList()).isEmpty())
-    }
 
     // ---- daily all-category bars: same categoryDailySpendBars, unfiltered, one definition ------
 

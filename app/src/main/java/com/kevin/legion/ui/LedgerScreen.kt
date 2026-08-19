@@ -730,7 +730,6 @@ fun LedgerScreen(
             BudgetDrilldownScreen(
                 month = month,
                 budget = state.budgetVsActual,
-                spendTrend = state.spendTrend,
                 dailyTransactions = state.monthDailyExpenses,
                 canGoPrevMonth = index > 0,
                 canGoNextMonth = index in 0 until state.pnlMonthsWithData.lastIndex,

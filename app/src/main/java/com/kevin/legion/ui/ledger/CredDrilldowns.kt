@@ -415,7 +415,6 @@ fun QuarantineDrilldownScreen(
 fun BudgetDrilldownScreen(
     month: YearMonth,
     budget: BudgetVsActual?,
-    spendTrend: List<MonthSpend>?,
     dailyTransactions: List<LedgerTransaction>,
     canGoPrevMonth: Boolean,
     canGoNextMonth: Boolean,
@@ -441,7 +440,6 @@ fun BudgetDrilldownScreen(
                 BudgetSection(
                     month = month,
                     budget = budget,
-                    spendTrend = spendTrend,
                     dailyTransactions = dailyTransactions,
                     canGoPrevMonth = canGoPrevMonth,
                     canGoNextMonth = canGoNextMonth,

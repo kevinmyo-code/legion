@@ -37,7 +37,6 @@ import com.kevin.legion.ledger.BudgetLine
 import com.kevin.legion.ledger.BudgetVsActual
 import com.kevin.legion.ledger.ExcludedOwnAccountMovements
 import com.kevin.legion.ledger.LedgerEntity
-import com.kevin.legion.ledger.MonthSpend
 import com.kevin.legion.ledger.UncategorizedSpend
 import com.kevin.legion.ledger.displayDescription
 import com.kevin.legion.ledger.formatMoney
@@ -45,7 +44,6 @@ import com.kevin.legion.ui.common.DeckBar
 import com.kevin.legion.ui.common.DeckBarChart
 import com.kevin.legion.ui.common.DeckBarLabelRow
 import com.kevin.legion.ui.common.DeckMeter
-import com.kevin.legion.ui.common.DeckSparkline
 import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.deckWholeDollarLabel
 import com.kevin.legion.util.documentDateCompact
@@ -90,25 +88,24 @@ import com.kevin.legion.ledger.maskedAccountLabel
  * tapping the `< AUGUST 2026 >` month label itself, the same "no nav-graph argument routes"
  * internal-Compose-state pattern every other drilldown here already uses.
  *
- * **The Money tab's hero graphics (quant-viz ticket 10, Kevin 2026-08-13 map taste call 1:
- * "inline viz across all tabs... it has to be glanceable. i'm not gonna read numbers.").** Two
- * always-on pieces, both gated on [budget] being non-null (item 3 of the ticket - nothing new
- * renders while the section still says "Loading...", same gate the existing `when` block below
- * already uses):
- * - **The spend-trend sparkline** ([spendTrend], up to the last 12 months from
- *   [com.kevin.legion.ledger.LedgerController.monthlySpendTrend]) sits directly under the
- *   `< MONTH >` row. [spendTrendSparklinePoints] reuses [monthlySpendBars]'s own month-hole
- *   mapping rather than inventing a second one - a month [spendTrend] itself omitted (no
- *   coverage, ticket 04's own gap rule) reaches [DeckSparkline] as `null`, never folded into a
- *   zero. Tapping the sparkline OR its caption opens the same [SpendTrendDrilldown] the month
- *   label already does.
- * - **The daily-spend bar strip** ([dailyTransactions], every operating-expense row for [month]
- *   across every category - [com.kevin.legion.ledger.LedgerController.monthOperatingExpenses],
- *   the caller's own load) sits between the sparkline and the budget lines, reusing
- *   [categoryDailySpendBars] (ticket 03) unfiltered rather than a third daily-bucketing function -
- *   "one definition of spend" (map taste call 6) means the SAME [bucketDailySumCents]-backed
- *   gap-vs-zero rule the category drill-down's own chart already draws with. `valueLabel` lands on
- *   the single highest-spend day only, exactly as [categoryDailySpendBars] already does.
+ * **The daily-spend strip (quant-viz ticket 10, Kevin 2026-08-13: "inline viz across all tabs...
+ * it has to be glanceable. i'm not gonna read numbers.")**, gated on [budget] being non-null so
+ * nothing new renders while the section still says "Loading...". One bar per day of [month] from
+ * [dailyTransactions], through [categoryDailySpendBars]'s [bucketDailySumCents]-backed
+ * gap-vs-zero rule - the SAME rule the category drill-down's own chart draws with, never a third
+ * daily-bucketing function. [DayOfMonthAxis] labels it.
+ *
+ * **CATEGORISED rows only, since 2026-08-18.** It drew every operating expense until Kevin found
+ * a $3,920.21 bar that "makes the entire visual useless": $420.21 of categorised spend on 3 August
+ * plus one uncategorised $3,500 Zelle, standing under a hero figure that excludes uncategorised
+ * money entirely. The chart and the number above it were counting different things. The
+ * uncategorised total is still disclosed by [UncategorizedRow] below - excluded from the picture,
+ * never from the words.
+ *
+ * **The spend-trend sparkline is GONE, same date, same message: "the 3 month spend line chart is
+ * also useless. take it out."** Three points is not a trend. [SpendTrendDrilldown] still exists and
+ * is still reached by tapping the `< MONTH >` label, so nothing was orphaned - only the always-on
+ * strip went, along with `spendTrendSparklinePoints`, which had no other caller.
  *
  * Both pieces are ADDED next to the existing words below, never replacing them (map taste call 4).
  */
@@ -116,7 +113,6 @@ import com.kevin.legion.ledger.maskedAccountLabel
 fun BudgetSection(
     month: YearMonth,
     budget: BudgetVsActual?,
-    spendTrend: List<MonthSpend>?,
     dailyTransactions: List<LedgerTransaction>,
     canGoPrevMonth: Boolean,
     canGoNextMonth: Boolean,
@@ -149,22 +145,32 @@ fun BudgetSection(
         // ticket 10: the two hero graphics, gated on `budget != null` exactly as this doc comment
         // states - see item 3's "while budget == null render nothing new".
         if (budget != null) {
-            val trend = spendTrend ?: emptyList()
-            Spacer(Modifier.height(4.dp))
-            DeckSparkline(
-                points = spendTrendSparklinePoints(trend),
-                modifier = Modifier.clickable(onClick = onOpenTrend),
-            )
-            Text(
-                "spend, last ${trend.size} months - tap month for detail",
-                style = LegionType.stamp,
-                color = sem.faint,
-                modifier = Modifier.clickable(onClick = onOpenTrend),
-            )
             Spacer(Modifier.height(6.dp))
-            DeckBarChart(bars = categoryDailySpendBars(dailyTransactions, month, budget.coverage))
+            // **Categorised rows only** (Kevin, 2026-08-18: "a huge bar with 3920.21 that makes the
+            // entire visual useless. its probably uncategorized. take it out").
+            //
+            // He was right, and the bar was a symptom of something worse than clutter: this chart
+            // and the figure above it were counting DIFFERENT money. `spentCents` is categorised
+            // lines only (Kevin, 2026-08-15), while this strip drew every operating expense,
+            // categorised or not. On his real data 3 August read $3,920.21 here - $420.21 of
+            // categorised spend plus one uncategorised `Zelle payment to Wifey` of $3,500 - under a
+            // hero figure that did not include that $3,500 at all.
+            //
+            // That Zelle row is deliberately NOT treated as a transfer (see LedgerTransfers'
+            // SUSPECTED_TRANSFER doc: money leaving to a person is real spend, and dropping it on
+            // wording alone was rejected in 2026-08-07), so it is genuinely uncategorised money,
+            // not noise. It is excluded from the picture and still disclosed in words by
+            // UncategorizedRow below - the same "excluded, never hidden" split
+            // UncategorizedSpend's own doc comment describes.
+            val categorisedDaily = dailyTransactions.filter { it.category != null }
+            val dailyBars = categoryDailySpendBars(categorisedDaily, month, budget.coverage)
+            DeckBarChart(bars = dailyBars)
+            // Kevin, same message: "x axis is also un labelled". Same sparse day scale the category
+            // drilldown's own chart uses - see DayOfMonthAxis for why it is anchors, not all 31.
+            DayOfMonthAxis(dailyBars)
             Text(
-                "daily spend - days no statement covers are marked, not zero",
+                "one bar per day of ${monthLabel(month)}, categorised spend only - " +
+                    "days no statement covers are marked, not zero",
                 style = LegionType.stamp,
                 color = sem.faint,
             )
@@ -348,17 +354,6 @@ fun AddCategoryRow(errorText: String?, successNonce: Int, onAdd: (String) -> Uni
         }
     }
 }
-
-/**
- * quant-viz ticket 10: the Money tab's always-on hero sparkline - [spendTrend]'s own month-hole
- * mapping REUSED wholesale from [monthlySpendBars] (never a second gap-vs-present rule invented
- * here), just projected down to the bare `Float?` a [DeckSparkline] wants instead of the full
- * [com.kevin.legion.ui.common.DeckBar] the bar-chart drilldown needs. `internal`, not `private`, so
- * a plain JUnit test can pin "a gap month reaches the sparkline as null, exactly like the bar chart
- * it's derived from" without Compose.
- */
-internal fun spendTrendSparklinePoints(spendTrend: List<MonthSpend>): List<Float?> =
-    monthlySpendBars(spendTrend).map { it?.value }
 
 /**
  * **The SPEND hero's own chart (Kevin, 2026-08-15: "spend hero visual should be bar chart of
@@ -666,10 +661,6 @@ private fun previewCoverage() = listOf(AccountCoverage("BOFA ****4471", true, mo
 // ticket 10 (quant-viz): shared fixtures for the two new hero graphics, reused across every
 // "budget loaded" preview below - a gap month (June) plus a real July figure so the sparkline
 // preview exercises both branches of monthlySpendBars' own hole-mapping.
-private val previewSpendTrend = listOf(
-    MonthSpend(YearMonth.of(2026, 5), totalCents = 412_00L, isComplete = true, hasProvisionalRows = false),
-    MonthSpend(previewMonth, totalCents = 388_50L, isComplete = true, hasProvisionalRows = false),
-)
 private fun previewDailyTransactions() = listOf(
     LedgerTransaction(
         id = 901, sourceFile = "eStmt.pdf", accountId = "BOFA ****4471", currency = LedgerCurrency.USD,
@@ -689,7 +680,6 @@ private fun PreviewBudgetBasic() = LegionTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
-            spendTrend = previewSpendTrend,
             dailyTransactions = previewDailyTransactions(),
             budget = BudgetVsActual(
                 entity = LedgerEntity.US,
@@ -732,7 +722,6 @@ private fun PreviewBudgetExcludedOwnAccountMovements() = LegionTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
-            spendTrend = previewSpendTrend,
             dailyTransactions = previewDailyTransactions(),
             budget = BudgetVsActual(
                 entity = LedgerEntity.US,
@@ -772,7 +761,6 @@ private fun PreviewBudgetUncategorized() = LegionTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
-            spendTrend = previewSpendTrend,
             dailyTransactions = previewDailyTransactions(),
             budget = BudgetVsActual(
                 entity = LedgerEntity.US,
@@ -801,7 +789,6 @@ private fun PreviewBudgetReported() = LegionTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
-            spendTrend = previewSpendTrend,
             dailyTransactions = previewDailyTransactions(),
             budget = BudgetVsActual(
                 entity = LedgerEntity.US,
@@ -830,7 +817,6 @@ private fun PreviewBudgetIncompleteCoverage() = LegionTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
-            spendTrend = previewSpendTrend,
             dailyTransactions = previewDailyTransactions(),
             budget = BudgetVsActual(
                 entity = LedgerEntity.US,
@@ -854,7 +840,6 @@ private fun PreviewBudgetNoCoverage() = LegionTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
-            spendTrend = previewSpendTrend,
             dailyTransactions = previewDailyTransactions(),
             budget = BudgetVsActual(
                 entity = LedgerEntity.US,
@@ -876,7 +861,6 @@ private fun PreviewBudgetEmptyMonth() = LegionTheme {
     Surface {
         BudgetSection(
             month = previewMonth,
-            spendTrend = previewSpendTrend,
             dailyTransactions = previewDailyTransactions(),
             budget = BudgetVsActual(
                 entity = LedgerEntity.US,
@@ -898,7 +882,7 @@ private fun PreviewBudgetLoading() = LegionTheme {
     Surface {
         BudgetSection(
             month = previewMonth, budget = null,
-            spendTrend = null, dailyTransactions = emptyList(),
+            dailyTransactions = emptyList(),
             canGoPrevMonth = false, canGoNextMonth = false,
             onPrevMonth = {}, onNextMonth = {}, onOpenCategory = {}, onOpenExcludedOwnAccountMovements = {}, onOpenTrend = {},
         )
