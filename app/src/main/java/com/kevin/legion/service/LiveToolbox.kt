@@ -4953,7 +4953,44 @@ object LiveToolbox {
     }
 
     /**
-     * Transport only (play/pause/next/previous), over TWO independent backends.
+     * The action-dispatch shape `control_music` grows into (ticket 03,
+     * `.scratch/spotify-voice/issues/03-tool-surface.md`). The map's ten-plus new music
+     * capabilities (queue, like/unlike, follow/unfollow, shuffle, repeat, seek) fold into this
+     * ONE enum as additional entries rather than spawning sibling tool declarations - map
+     * decision "fold not spawn" (settled with Kevin 2026-08-19): a bloated tool surface makes
+     * the live model choose worse (the `log_workout_set` routing bug this repo already paid
+     * for), and music is the one domain where a second `ask_music` dispatcher round trip IS
+     * the complaint.
+     *
+     * **This enum is always allowed to run AHEAD of the JSON schema `enum` in
+     * [declarations]'s `control_music` entry - the schema only widens the moment the case
+     * below it is actually wired to real Spotify/MediaSession behaviour, in the SAME commit.**
+     * ADR 0031 and this ticket name the same failure from two directions: a declared action
+     * that does nothing is a lying tool description. So every entry lands implement-then-declare,
+     * never the reverse, and the compiler enforces the ordering incidentally - [controlMusic]'s
+     * `when` below is exhaustive over exactly the entries that exist, so adding one without
+     * also adding its branch fails the build rather than shipping a silent no-op action.
+     */
+    internal enum class MusicAction(val wireValue: String) {
+        PLAY("play"),
+        PAUSE("pause"),
+        NEXT("next"),
+        PREVIOUS("previous"),
+        ;
+        // Landing commits add one entry, one schema string, and one `when` branch together:
+        // QUEUE (ticket 04), LIKE/UNLIKE/FOLLOW_ARTIST/UNFOLLOW_ARTIST (ticket 05),
+        // SHUFFLE_ON/SHUFFLE_OFF/REPEAT_OFF/REPEAT_TRACK/REPEAT_CONTEXT/SEEK_FORWARD/
+        // SEEK_BACK/RESTART (ticket 06).
+
+        companion object {
+            /** Parses the wire string the live model sent. Unrecognized text is null, never a throw. */
+            internal fun fromWire(value: String): MusicAction? = entries.firstOrNull { it.wireValue == value }
+        }
+    }
+
+    /**
+     * Routes a parsed [MusicAction] to its implementation. Transport (play/pause/next/previous)
+     * over TWO independent backends.
      *
      * [MusicController] (Android's media-session framework) is preferred because it
      * drives whatever is actually playing - the phone-BT relay, Spotify, anything
@@ -4983,18 +5020,24 @@ object LiveToolbox {
      * crashing the app on next/play). App Remote has no such requirement.
      */
     private suspend fun controlMusic(context: Context, args: JSONObject): JSONObject {
-        val action = args.optString("action")
-        if (action != "play" && action != "pause" && action != "next" && action != "previous") {
-            return result(success = false, message = "Unknown music action: $action")
-        }
+        val raw = args.optString("action")
+        val action = MusicAction.fromWire(raw)
+            ?: return result(success = false, message = "Unknown music action: $raw")
 
+        return when (action) {
+            MusicAction.PLAY, MusicAction.PAUSE, MusicAction.NEXT, MusicAction.PREVIOUS ->
+                controlMusicTransport(context, action)
+        }
+    }
+
+    private suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject {
         if (NowPlayingController.hasAccess(context)) {
             val ok = withContext(Dispatchers.Main) {
                 when (action) {
-                    "play"     -> MusicController.play(context)
-                    "pause"    -> MusicController.pause(context)
-                    "next"     -> MusicController.next(context)
-                    else       -> MusicController.previous(context)
+                    MusicAction.PLAY     -> MusicController.play(context)
+                    MusicAction.PAUSE    -> MusicController.pause(context)
+                    MusicAction.NEXT     -> MusicController.next(context)
+                    MusicAction.PREVIOUS -> MusicController.previous(context)
                 }
             }
             if (ok) return result(success = true, message = null)
@@ -5007,10 +5050,10 @@ object LiveToolbox {
         // cannot support.
         if (SpotifyController.isConnected) {
             val ok = when (action) {
-                "play"     -> SpotifyController.play()
-                "pause"    -> SpotifyController.pause()
-                "next"     -> SpotifyController.next()
-                else       -> SpotifyController.previous()
+                MusicAction.PLAY     -> SpotifyController.play()
+                MusicAction.PAUSE    -> SpotifyController.pause()
+                MusicAction.NEXT     -> SpotifyController.next()
+                MusicAction.PREVIOUS -> SpotifyController.previous()
             }
             if (ok) return result(success = true, message = null)
         }
