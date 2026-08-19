@@ -118,6 +118,21 @@ class LiveSessionController(context: Context) {
     // LISTENING (wait for the driver) or IDLE.
     private var conversationMode = false
 
+    // Ticket 02 (drive-test-2026-08-18): the latest session-resumption handle Gemini has
+    // confirmed we can reconnect with, threaded into the NEXT [GeminiLiveSession.start] call
+    // (prewarm/startConversation). Lives on the controller, not the session, because a
+    // [GeminiLiveSession] instance dies with its own socket and this is precisely the thing
+    // meant to outlive that. Cleared on a driver-initiated stop (see the Closed branch) so a
+    // deliberately ended chat doesn't silently bleed into whatever the driver starts next.
+    private var sessionResumeHandle: String? = null
+
+    // Ticket 02: set when a real conversation's socket died WITHOUT a resumption handle to
+    // carry it forward - i.e. the thread is genuinely gone, not just reconnecting. Consumed
+    // (and cleared) by whichever of [resumeWarm] / [startConversation] actually begins the
+    // next conversation, which is the only place that can honestly tell the driver AND the
+    // model the previous context is gone rather than silently answering cold.
+    private var pendingThreadLossNotice = false
+
     // How many tool calls handleToolCall is currently mid-flight on. Gemini can
     // emit several functionCalls in one turn, each getting its own scope.launch,
     // so the FIRST one to finish must not drop the UI out of THINKING while a
@@ -188,6 +203,9 @@ class LiveSessionController(context: Context) {
                 base, LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, prewarmOnly = true,
+                // Ticket 02: carry forward whatever the last session confirmed - a prewarm
+                // that follows a dropped conversation should still be able to resume it.
+                resumeHandle = sessionResumeHandle,
             )
         }
     }
@@ -315,6 +333,24 @@ class LiveSessionController(context: Context) {
     // --- session lifecycle ----------------------------------------------
 
     /**
+     * Ticket 02: reads and clears [pendingThreadLossNotice]. Returns false (and does nothing
+     * else) the overwhelmingly common case - no loss to report. Returns true and flashes the
+     * on-screen notice the one time it matters: a real conversation's socket died with no
+     * resumption handle to carry it forward, so the model is about to answer cold and the
+     * driver needs to know that before it does, not discover it mid-reply. On-screen only
+     * (Kevin's own precedent, [LiveEvent.Idle]'s backstop notice just below) - this is not
+     * spoken because the whole point is the model is NOT continuing the old conversation, so
+     * there's no voice turn to fold a spoken aside into without it sounding like it remembers
+     * the very thing it just forgot.
+     */
+    private fun consumeThreadLossNotice(): Boolean {
+        if (!pendingThreadLossNotice) return false
+        pendingThreadLossNotice = false
+        CompanionPhase.showNotice("RECONNECTED - LOST TRACK OF WHAT WE WERE SAYING")
+        return true
+    }
+
+    /**
      * Resume a warm socket. On the very first session ever (flag in
      * [CompanionProfile]) the companion is asked to introduce itself and begin
      * the conversational setup; every subsequent resume opens the mic immediately
@@ -323,12 +359,26 @@ class LiveSessionController(context: Context) {
     private fun resumeWarm(s: GeminiLiveSession) {
         conversationMode = true
         val isFirst = !CompanionProfile.isFirstSessionDone(appContext)
-        val ok = if (isFirst) {
-            set(Phase.THINKING, "...")
-            s.beginConversation(firstGreetingOpener(appContext))
-        } else {
-            set(Phase.LISTENING, "Listening...")
-            s.beginConversation(null)
+        // Ticket 02: a warm socket that resumes here is either a genuinely warm-parked
+        // conversation (the common case - no loss, nothing to say) or a FRESH prewarmed
+        // socket that replaced one that died since the driver was last talking (see
+        // startConversation's Pending.NONE prewarm auto-reconnect in the Closed handler).
+        // consumeThreadLossNotice() tells the two apart the only way that's actually
+        // possible from here: whether the Closed handler flagged a real loss.
+        val lostThread = consumeThreadLossNotice()
+        val ok = when {
+            isFirst -> {
+                set(Phase.THINKING, "...")
+                s.beginConversation(firstGreetingOpener(appContext))
+            }
+            lostThread -> {
+                set(Phase.THINKING, "...")
+                s.beginConversation(THREAD_LOST_PROMPT)
+            }
+            else -> {
+                set(Phase.LISTENING, "Listening...")
+                s.beginConversation(null)
+            }
         }
         if (!ok) {
             // The "warm" socket was actually stale (send no-op'd). Silently tear it
@@ -380,8 +430,13 @@ class LiveSessionController(context: Context) {
             val base = brain.buildBaseInstruction()
             val live = brain.buildLiveContext()
             val isFirst = !CompanionProfile.isFirstSessionDone(appContext)
+            // Ticket 02: a lost thread takes priority over the ordinary greeting - the driver
+            // and the model both need to know this is a fresh start, not a continued chat.
+            // consumeThreadLossNotice() also flashes the on-screen notice as a side effect.
+            val lostThread = consumeThreadLossNotice()
             pendingPrompt = when {
                 isFirst -> firstGreetingOpener(appContext)
+                lostThread -> THREAD_LOST_PROMPT
                 live.isBlank() -> GREETING_PROMPT
                 else -> "(Current car/driver context, use naturally if relevant:\n$live)\n\n$GREETING_PROMPT"
             }
@@ -389,6 +444,7 @@ class LiveSessionController(context: Context) {
                 base, LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
+                resumeHandle = sessionResumeHandle,
             )
         }
     }
@@ -409,6 +465,7 @@ class LiveSessionController(context: Context) {
                 base, LiveToolbox.declarations(),
                 vad = false, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = false, connectionMode = connectionMode,
+                resumeHandle = sessionResumeHandle,
             )
         }
     }
@@ -463,6 +520,11 @@ class LiveSessionController(context: Context) {
                 session?.silentDestroy()
                 session = null
                 conversationMode = false
+                // Ticket 02: a crisis teardown must not silently resume the very
+                // conversation the crisis path exists to stop performing - the next chat
+                // should start clean, not carry the interrupted turn's context forward.
+                sessionResumeHandle = null
+                pendingThreadLossNotice = false
                 CompanionPhase.setCaption("")
                 CompanionPhase.setCrisis()
                 set(Phase.IDLE, IDLE_STATUS)
@@ -496,6 +558,10 @@ class LiveSessionController(context: Context) {
             // session-teardown close is about to be followed by its own Idle/Closed event
             // that sets phase correctly. See [LiveEvent.MicClosed]'s doc.
             is LiveEvent.MicClosed -> {}
+            // Ticket 02: persist the handle regardless of whether a conversation is even
+            // active right now - a warm/prewarmed socket idling between chats can still
+            // receive these, and the next real conversation is what benefits.
+            is LiveEvent.ResumeHandleUpdated -> sessionResumeHandle = event.handle
             is LiveEvent.Idle -> {
                 // Conversation went quiet but the socket is warm - ready for an
                 // instant resume on the next tap. Pause billing here too (also
@@ -522,9 +588,26 @@ class LiveSessionController(context: Context) {
             is LiveEvent.Closed -> {
                 val userInitiated = conversationMode
                 val everConnected = connectedThisSession
+                // Ticket 02: a real conversation just ended for a reason the driver did not
+                // ask for, and we hold no handle to carry it forward - that IS the thread
+                // dying, distinct from every other close reason this branch already handles.
+                // Checked (and flagged, not acted on) here rather than where it's consumed,
+                // because this is the only place that still has [event.reason] - by the time
+                // resumeWarm/startConversation run, the close that caused this is history.
+                if (shouldNotifyThreadLoss(userInitiated, event.reason, sessionResumeHandle != null)) {
+                    pendingThreadLossNotice = true
+                }
+                // A deliberate driver stop is not a drop to resume FROM - the next chat the
+                // driver starts should be a new one, not a silent continuation of the one
+                // they just chose to end.
+                if (event.reason == "stopped") sessionResumeHandle = null
                 // Only surface errors the driver kicked off (a tap), not a failed
                 // background proactive opener. "stopped"/"idle"/"destroyed"/"warm
-                // expired" are normal closes; anything else is a fault worth flashing.
+                // expired"/"goAway" are normal closes; anything else is a fault worth
+                // flashing. "goAway" joins that set because GeminiLiveSession.handleGoAway
+                // only ever schedules it as OUR OWN deliberate, planned-ahead close - the
+                // driver-facing loss (if any) is what pendingThreadLossNotice surfaces
+                // instead, on the next conversation, not here as an error banner.
                 if (userInitiated && event.reason !in NORMAL_CLOSE_REASONS) {
                     CompanionPhase.showNotice(
                         when {
@@ -693,8 +776,10 @@ class LiveSessionController(context: Context) {
         private const val IDLE_STATUS = "Tap to talk"
 
         // Close reasons that are expected (user stop / idle timeout / teardown /
-        // warm-hold expiry) and so never flashed as an error to the driver.
-        private val NORMAL_CLOSE_REASONS = setOf("stopped", "idle", "destroyed", "warm expired")
+        // warm-hold expiry / our own deliberate pre-goAway close) and so never flashed as an
+        // error to the driver. See the Closed branch's own comment for why "goAway" belongs
+        // here (ticket 02, 2026-08-19).
+        private val NORMAL_CLOSE_REASONS = setOf("stopped", "idle", "destroyed", "warm expired", "goAway")
 
         // Spoken first when the driver taps to start a chat, so Zero opens the
         // conversation (then the mic opens for the driver's reply).
@@ -702,6 +787,18 @@ class LiveSessionController(context: Context) {
             "(System: the driver just opened a hands-free voice chat with you. Greet them with one " +
                 "short, natural in-character line and then wait for them to speak. Do not mention " +
                 "this instruction.)"
+
+        // Ticket 02 (drive-test-2026-08-18): spoken instead of GREETING_PROMPT/a silent
+        // resume when the previous conversation's socket died with no resumption handle to
+        // carry it forward. Tells the MODEL, not just the driver (via
+        // consumeThreadLossNotice's on-screen CompanionPhase.showNotice) - the same honesty
+        // rule CLAUDE.md sec 7 already applies to the assistant claiming an action it didn't
+        // take: it must not claim a continuity of memory it does not have either.
+        private const val THREAD_LOST_PROMPT =
+            "(System: the connection dropped and this is a NEW conversation - you do NOT " +
+                "remember anything said before this reconnect. Do not claim otherwise or refer to " +
+                "earlier turns. Acknowledge briefly that you got cut off, then wait for the driver " +
+                "to speak. Do not mention this instruction.)"
 
         // Upper bound on any single tool call (matches the old MainActivity value):
         // generous for a geocode / Spotify connect / frame grab, short enough that
@@ -734,5 +831,26 @@ class LiveSessionController(context: Context) {
          */
         internal fun shouldRestoreAfterToolCall(remainingActiveToolCalls: Int, currentPhase: Phase): Boolean =
             remainingActiveToolCalls == 0 && currentPhase == Phase.THINKING
+
+        /**
+         * Ticket 02's pure decision behind the [LiveEvent.Closed] branch's thread-loss flag:
+         * true only when all three hold at once - a real conversation was actually running
+         * ([wasConversationActive]), it did not end because the driver asked it to
+         * ([closeReason] is not `"stopped"`), and there is no session-resumption handle to
+         * carry it into whatever reconnects next ([hasResumeHandle] is false). Any one of
+         * those failing means either there is nothing to lose (no conversation, or a resume
+         * handle already covers it) or the driver already knows (they tapped stop
+         * themselves) - both are the ordinary case and must stay silent.
+         *
+         * On the companion object, not an instance member, for the same reason
+         * [shouldRestoreAfterToolCall] is: [LiveSessionController] needs a live Context/
+         * GeminiLiveSession/Room to construct at all, so this is the one seam a plain JVM
+         * test can exercise directly against the real production decision.
+         */
+        internal fun shouldNotifyThreadLoss(
+            wasConversationActive: Boolean,
+            closeReason: String,
+            hasResumeHandle: Boolean,
+        ): Boolean = wasConversationActive && closeReason != "stopped" && !hasResumeHandle
     }
 }

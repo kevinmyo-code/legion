@@ -111,6 +111,15 @@ sealed interface LiveEvent {
     data class Idle(val backstop: Boolean) : LiveEvent
     /** The session ended (closed, timed out, or errored). */
     data class Closed(val reason: String) : LiveEvent
+    /**
+     * Ticket 02 (drive-test-2026-08-18, "the context dies with the socket"): the server sent a
+     * resumable [SessionResumptionUpdate] - `handle` is the token a REPLACEMENT socket can pass
+     * back in `sessionResumption.handle` to continue this same conversation server-side. Gemini
+     * Live keeps conversation history in the socket, not the client, so this handle is the only
+     * thing that survives a socket death; [LiveSessionController] persists it (a [GeminiLiveSession]
+     * instance does not outlive its own socket) and threads it into the next [start] call.
+     */
+    data class ResumeHandleUpdated(val handle: String) : LiveEvent
 }
 
 /**
@@ -411,6 +420,20 @@ class GeminiLiveSession(
     // start() call, which captureTurn() below treats as "don't capture yet."
     @Volatile private var episodicSessionId: String = ""
 
+    // Ticket 02 (drive-test-2026-08-18): the resumption handle THIS connection was opened
+    // with, set once in [start] and read by [buildSetup]. Separate from the handle we may
+    // later RECEIVE (below) because those are different moments - one is "what we asked to
+    // resume with", the other is "what the server told us we can resume with next".
+    @Volatile private var requestedResumeHandle: String? = null
+
+    // The latest resumable handle the server has actually confirmed via
+    // SessionResumptionUpdate (resumable=true). Only overwritten on resumable=true - see
+    // [handleSessionResumptionUpdate]'s doc for why a resumable=false update must not
+    // clobber a good earlier handle. Read nowhere in this class beyond that guard; the
+    // owner (LiveSessionController) is what actually persists it across a socket death,
+    // via the [LiveEvent.ResumeHandleUpdated] emitted alongside it.
+    @Volatile private var lastResumableHandle: String? = null
+
     // Emulators have no real acoustic path: the hardware echo-canceller/noise-
     // suppressor do nothing useful and can interfere, and the virtual mic can
     // replay the same host audio every turn. Detected so we can skip the audio
@@ -439,9 +462,17 @@ class GeminiLiveSession(
         prewarmOnly: Boolean = false,
         idleTimeoutMs: Long = IDLE_TIMEOUT_MS,
         connectionMode: ConnectionMode = ConnectionMode.Direct(apiKey),
+        // Ticket 02: a handle from a PRIOR connection's ResumeHandleUpdated, so this new
+        // socket continues that same conversation instead of starting cold. Null is a
+        // perfectly normal value (first-ever session, or the owner has none to offer) -
+        // buildSetup still opts into resumption either way, just without a handle to resume
+        // FROM, so this connection itself becomes resumable going forward.
+        resumeHandle: String? = null,
     ) {
         if (!running.compareAndSet(false, true)) return
         closed.set(false)
+        requestedResumeHandle = resumeHandle
+        lastResumableHandle = resumeHandle
         // Companion-memory ticket 01 (2026-07-22): one id per real connection,
         // groups this session's EpisodicTurn rows for ticket 02's consolidation
         // pass. Minted here (not per-conversation) so a warm-idle resume within
@@ -730,6 +761,26 @@ class GeminiLiveSession(
                 "parts", JSONArray().put(JSONObject().put("text", systemInstruction))
             ))
             put("tools", tools)
+            // Ticket 02 (drive-test-2026-08-18): opt into session resumption on every
+            // connection, not just the ones asking to resume something. Gemini Live keeps
+            // conversation history in the SOCKET - without this the server never sends
+            // SessionResumptionUpdate at all, and a dropped socket has nothing to hand a
+            // replacement socket to continue from. Field names verified against
+            // ai.google.dev/api/live (fetched 2026-08-19): `sessionResumption.handle` on
+            // the request, `sessionResumptionUpdate.{newHandle,resumable}` on the response.
+            // An absent/blank `handle` is documented as "then a new session is created" -
+            // exactly what a first-ever connection wants.
+            put("sessionResumption", JSONObject().apply {
+                requestedResumeHandle?.let { if (it.isNotBlank()) put("handle", it) }
+            })
+            // Ticket 02, candidate 3 (contextWindowCompression): a DIFFERENT ender than the
+            // network drop this ticket is chiefly about - this addresses the context window
+            // filling up over a long conversation, not a dropped socket. slidingWindow with
+            // no explicit triggerTokens uses the server's own default threshold. Included
+            // because it costs nothing and closes a second known way a conversation's memory
+            // can end, but it does NOT make session resumption unnecessary - a network drop
+            // has nothing to do with window size.
+            put("contextWindowCompression", JSONObject().put("slidingWindow", JSONObject()))
             // Opt into the driver's input transcript: lets us detect that the
             // driver has started replying (cancels the idle-timeout) and feeds
             // the mic-capture diagnostic log (see userTurnText).
@@ -784,7 +835,59 @@ class GeminiLiveSession(
 
         root.optJSONObject("serverContent")?.let { handleServerContent(it) }
         root.optJSONObject("toolCall")?.let { handleToolCall(it) }
-        // goAway / sessionResumptionUpdate are ignored in this version.
+        // Ticket 02 (drive-test-2026-08-18): both used to be ignored outright, which is
+        // half of why a dropped socket silently dropped the conversation's memory with it.
+        root.optJSONObject("goAway")?.let { handleGoAway(it) }
+        root.optJSONObject("sessionResumptionUpdate")?.let { handleSessionResumptionUpdate(it) }
+    }
+
+    /**
+     * Ticket 02: the server just confirmed a checkpoint we can resume from. `resumable=false`
+     * means resumption is not possible AT THIS EXACT POINT (mid function-call, mid-generation -
+     * per ai.google.dev/api/live) and `newHandle` is documented empty in that case - it does
+     * NOT mean the conversation itself is lost, just that this particular message isn't a
+     * usable checkpoint. Only overwriting [lastResumableHandle] on resumable=true means a
+     * resumable=false blip never throws away a good earlier handle still sitting in
+     * [LiveSessionController]'s own copy.
+     */
+    private fun handleSessionResumptionUpdate(update: JSONObject) {
+        if (!update.optBoolean("resumable", false)) return
+        val handle = update.optString("newHandle")
+        if (handle.isBlank()) return
+        lastResumableHandle = handle
+        emit(LiveEvent.ResumeHandleUpdated(handle))
+    }
+
+    /**
+     * Ticket 02, candidate 1 (goAway): the server's own advance warning that it is about to
+     * disconnect us with `timeLeft` (a protobuf Duration) left. Turns a surprise ABORTED close
+     * into a deliberate one - closeSession() here runs our own clean teardown (release the
+     * track, restore ducked audio, etc.) BEFORE the server cuts the socket mid-write, and gives
+     * [LiveSessionController] a distinct "goAway" reason it can treat as expected rather than a
+     * fault, since by the time it fires we already hold whatever [lastResumableHandle] the
+     * server has given us to reconnect with.
+     *
+     * **UNMEASURED as of 2026-08-19.** No live session has run against this code yet, so the
+     * actual `timeLeft` value Google sends is unknown - [GOAWAY_RECONNECT_MARGIN_MS] is a
+     * guessed safety margin, not a calibrated one. If a real drive shows `timeLeft` is too
+     * short to act on (e.g. under a couple of seconds), this whole early-close branch is
+     * pointless and should be deleted in favor of just letting the server's own cutoff run
+     * through the ordinary onFailure/onClosed path, which already handles it correctly (just
+     * without warning). Log the raw value on every occurrence specifically so that
+     * measurement can happen from a real logcat pull.
+     */
+    private fun handleGoAway(goAway: JSONObject) {
+        val raw = goAway.opt("timeLeft")
+        val ms = parseGoAwayDurationMs(raw)
+        Log.w(TAG, "goAway received, timeLeft=$raw (parsed ${ms}ms)")
+        CarProbeLog.log("LIVE_GOAWAY", "timeLeft=$raw parsedMs=$ms")
+        if (ms == null) return
+        val delayMs = ms - GOAWAY_RECONNECT_MARGIN_MS
+        if (delayMs <= 0) return
+        io.launch {
+            delay(delayMs)
+            if (running.get() && !closed.get()) closeSession("goAway")
+        }
     }
 
     /**
@@ -1929,6 +2032,27 @@ class GeminiLiveSession(
             excludedTools: Set<String> = LiveToolbox.EPISODIC_EXCLUDED_TOOLS,
         ): Boolean = toolName in excludedTools
 
+        /**
+         * Ticket 02: parses a protobuf `Duration` (the type of [GoAway.timeLeft]) into
+         * milliseconds. Proto3's well-known JSON mapping for `Duration` is a string like
+         * `"9.5s"`; the `{seconds, nanos}` object form is handled defensively only - it is
+         * `Duration`'s wire/struct shape, not its documented JSON shape, and has not been
+         * observed from a real response (no live session has run against this code yet).
+         * Pulled out to a pure top-level-testable function for the same reason
+         * [isEpisodicExcludedTool] is: [GeminiLiveSession] cannot be constructed from a plain
+         * JVM test, so this is the seam that can be, and it is the exact function
+         * [handleGoAway] calls, not a re-implementation that could drift from it.
+         */
+        internal fun parseGoAwayDurationMs(raw: Any?): Long? = when (raw) {
+            is String -> raw.trim().removeSuffix("s").toDoubleOrNull()?.let { (it * 1000).toLong() }
+            is JSONObject -> {
+                val seconds = raw.optLong("seconds", 0L)
+                val nanos = raw.optLong("nanos", 0L)
+                seconds * 1000 + nanos / 1_000_000
+            }
+            else -> null
+        }
+
         // Live caption tail length (see captionTail). Sized for the caption
         // boxes' ~2-3 line, ~13-15sp, ~460dp-max-width rendering - long enough
         // to read as a couple of sentences, short enough to fit without a
@@ -1983,6 +2107,11 @@ class GeminiLiveSession(
          */
         private const val CONVERSATION_BACKSTOP_MS = 30 * 60 * 1000L
         private const val WARM_HOLD_MS = 3 * 60 * 1000L
+        // Ticket 02 (drive-test-2026-08-18): safety margin subtracted from a goAway's
+        // reported timeLeft before scheduling our own deliberate close - see
+        // [handleGoAway]'s doc for why this is a GUESS, unmeasured against a real
+        // response as of 2026-08-19.
+        private const val GOAWAY_RECONNECT_MARGIN_MS = 3_000L
         private const val NORMAL_CLOSE = 1000
         // Below this, a real (vadMode) conversational turn forwarded suspiciously little mic
         // audio - a healthy turn forwards tens of KB (see MidnightEvents.silentMicTurn's doc).
