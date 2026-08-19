@@ -86,6 +86,29 @@ says so in its own message; it explicitly did not touch the second.
   the commit: a forgotten conversation holds a live mic and a billed session until the service is
   torn down.
 
+## What is left: one drive
+
+**Every ticket on this map is decided and built. Nothing on it is verified in a car.** All five
+came from one drive and four of the five can only be closed by another one. This is the whole
+remaining list, in the order it is quickest to walk:
+
+- **03, navigation.** Ask for a named place. Google Maps must actually open on it, launched from the
+  foreground service, not from an Activity. Then ask for somewhere absurd and confirm that when the
+  tool comes back unsuccessful the assistant says nothing opened rather than claiming it did.
+- **04, the honesty clause.** Ask for something LEGION genuinely cannot do (booking a table, sending
+  a text). It must say it cannot, offer only something it really has, and never use an outcome verb.
+  **This is the one item no test on any machine can close** - presence is guarded, obedience is not.
+- **01, the conversation timer.** Hold a conversation across a long silence and confirm the mic is
+  still live. Fixed in `1e3ee04`, never re-driven.
+- **02, context across a socket death.** Talk long enough to cross a `goAway`, then confirm the
+  thread survives the handover. Built in `0e3319b`; neither the margin nor a real resume has ever
+  been observed.
+- **05, Spotify.** Complete the re-approval on Setup FIRST, at a desk. Then ask for saved albums,
+  recently played and top artists, and play a named album and confirm the whole album plays rather
+  than one track off it. **Nothing here has touched a real Spotify account.**
+
+The map closes when that drive has happened, not when the tickets read resolved.
+
 ## Not yet specified
 
 In scope, but not sharp enough to ticket. Graduates as the frontier advances.
