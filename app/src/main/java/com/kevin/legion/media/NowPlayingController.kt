@@ -13,6 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MusicPlayHistoryEntry
 import com.kevin.legion.service.MediaNotificationListener
+import com.spotify.protocol.types.Track
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -87,6 +88,13 @@ object NowPlayingController {
     internal const val PLAY_HISTORY_DEDUP_WINDOW_MS = 120_000L
 
     /**
+     * Spotify's own package, duplicated here rather than imported from [com.kevin.legion.media.SpotifyController]
+     * (which keeps its own copy private) - matches [MusicController]'s same duplication, both
+     * places small enough that a shared constant isn't worth a new coupling.
+     */
+    private const val SPOTIFY_PACKAGE = "com.spotify.music"
+
+    /**
      * How long after [markLegionInitiatedPlay] a newly observed track is attributed to LEGION
      * itself rather than to the driver starting something unprompted. Generous enough to cover
      * App Remote's own round trip plus the MediaSession callback landing after it, tight enough
@@ -127,6 +135,37 @@ object NowPlayingController {
     }
 
     /**
+     * Resolves the Spotify URI to store for [candidate], if App Remote's own player-state
+     * [track] genuinely matches the MediaSession observation that produced it - ticket 09
+     * (`.scratch/spotify-voice/issues/09-history-uri.md`) spending ticket 02's
+     * [SpotifyController.playerState] wiring. Pure and internal for the same reason
+     * [shouldLogHistoryEntry] is: a plain JVM unit test, no Android or App Remote connection
+     * needed (both [Track] and its nested [com.spotify.protocol.types.Artist] are plain POJOs
+     * with no Android dependency - confirmed by decompiling the bundled `classes.jar`).
+     *
+     * Two checks, both load-bearing:
+     * - [sourcePackage] must be Spotify's own package. MediaSession metadata from a NON-Spotify
+     *   player (phone AVRCP, another app) must never pick up whatever URI App Remote happens to
+     *   be holding, even if title and artist happen to coincide.
+     * - [track]'s own name/artist must equal [candidate]'s. MediaSession's callback and App
+     *   Remote's push are two independent event streams that can observe a track change
+     *   microseconds apart, so [track] can legitimately be one step stale relative to
+     *   [candidate] at the instant this runs - the equality check is what stops a stale [track]
+     *   from being attached to the wrong row.
+     *
+     * Ticket 09 is explicit that a wrong URI is worse than no URI (the same reasoning as its
+     * ban on backfilling old null rows by searching titles) - on ANY mismatch this returns
+     * null, same as "unknown", never a best guess.
+     */
+    internal fun resolveSpotifyUri(sourcePackage: String?, candidate: LoggedTrack, track: Track?): String? {
+        if (sourcePackage != SPOTIFY_PACKAGE) return null
+        if (track == null) return null
+        if (track.name != candidate.title) return null
+        if (track.artist?.name != candidate.artist) return null
+        return track.uri
+    }
+
+    /**
      * Writes a [MusicPlayHistoryEntry] for [info] if [shouldLogHistoryEntry] says this is a new
      * observation, not a re-fire on the same track. Best-effort and fire-and-forget on
      * [ioScope]: a history-write failure must never take down playback observation, which is why
@@ -135,8 +174,13 @@ object NowPlayingController {
      * [info] can be null (session gone) or carry the metadata sentinel `"Unknown title"`
      * [NowPlayingInfo.title] falls back to when the MediaSession reported no title at all -
      * neither is a real track, so neither is logged.
+     *
+     * [sourcePackage] is the package of the [android.media.session.MediaController] that
+     * produced [info] ([pickController]'s selection) - the sole input [resolveSpotifyUri] needs
+     * to tell a Spotify-sourced observation from any other player's. Non-Spotify audio always
+     * writes [MusicPlayHistoryEntry.spotifyUri] null here, correctly - there is no URI to have.
      */
-    private fun maybeLogHistory(info: NowPlayingInfo?) {
+    private fun maybeLogHistory(info: NowPlayingInfo?, sourcePackage: String?) {
         if (info == null) return
         val title = info.title
         if (title.isBlank() || title == "Unknown title") return
@@ -150,6 +194,11 @@ object NowPlayingController {
         // See markLegionInitiatedPlay's own doc: within the attribution window, this observed
         // change is attributed to a LEGION-initiated play rather than the driver's own.
         val startedByLegion = now - legionInitiatedAt <= LEGION_INITIATED_ATTRIBUTION_WINDOW_MS
+        // Read HERE, not inside the launched coroutine below: App Remote's playerState can move
+        // on between now and when that coroutine actually runs, and resolveSpotifyUri's equality
+        // check is what this instant's candidate was compared against - reading it again later
+        // would compare against a DIFFERENT moment than the one that produced startedByLegion.
+        val spotifyUri = resolveSpotifyUri(sourcePackage, candidate, SpotifyController.playerState.value?.track)
         ioScope.launch {
             try {
                 CarDatabase.getDatabase(ctx).musicPlayHistoryDao().insert(
@@ -157,10 +206,7 @@ object NowPlayingController {
                         title = title,
                         artist = info.artist,
                         album = info.album,
-                        // NowPlayingController has no URI source today - MediaSession metadata
-                        // doesn't carry one, and App Remote's own playerApi state wasn't wired
-                        // in here. Always null for now; see MusicPlayHistoryEntry's own doc.
-                        spotifyUri = null,
+                        spotifyUri = spotifyUri,
                         startedAt = now,
                         startedByLegion = startedByLegion,
                     ),
@@ -307,7 +353,7 @@ object NowPlayingController {
                 playbackStateRaw = rawState,
                 artSource = artSource,
             )
-            maybeLogHistory(_state.value)
+            maybeLogHistory(_state.value, controller.packageName)
 
             // Most apps (Spotify, YT Music) embed art as a Bitmap in METADATA_KEY_ALBUM_ART
             // rather than a content URI. If there's no URI, write the bitmap to the cache
