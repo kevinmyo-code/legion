@@ -88,4 +88,37 @@ class SpotifyWebApiParsingTest {
         )
         assertEquals(listOf(TopTrack("The Less I Know The Better", "Tame Impala")), SpotifyWebApi.parseTopTracks(json))
     }
+
+    // ------------------------------------------------------------ queue (ticket 04)
+
+    @Test
+    fun `parseQueue reads bare track objects from the top-level queue array, not nested under track`() {
+        // Unlike recently-played, GET /v1/me/player/queue's "queue" entries ARE the track
+        // objects - there is no wrapping "track" key, which is exactly the shape difference
+        // this test guards against a copy-paste of parseRecentlyPlayed's nesting.
+        val json = JSONObject(
+            """
+            {"currently_playing": {"name": "Not This One"},
+             "queue": [
+                {"name": "Plastic Love", "artists": [{"name": "Mariya Takeuchi"}]},
+                {"name": "Midnight City", "artists": [{"name": "M83"}]}
+             ]}
+            """.trimIndent(),
+        )
+        val queue = SpotifyWebApi.parseQueue(json)
+        assertEquals(2, queue.size)
+        assertEquals(QueuedTrack("Plastic Love", "Mariya Takeuchi"), queue[0])
+        assertEquals(QueuedTrack("Midnight City", "M83"), queue[1])
+    }
+
+    @Test
+    fun `parseQueue skips an entry with no name rather than throwing`() {
+        val json = JSONObject("""{"queue": [{"artists": [{"name": "Nobody"}]}]}""")
+        assertTrue(SpotifyWebApi.parseQueue(json).isEmpty())
+    }
+
+    @Test
+    fun `parseQueue on a missing queue array returns empty, not a throw`() {
+        assertTrue(SpotifyWebApi.parseQueue(JSONObject("""{"currently_playing": {"name": "X"}}""")).isEmpty())
+    }
 }

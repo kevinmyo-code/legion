@@ -61,6 +61,14 @@ data class TopArtist(val name: String)
 /** One entry from Spotify's own top-tracks ranking - [SpotifyWebApi.getTopTracks]. */
 data class TopTrack(val name: String, val artist: String)
 
+/**
+ * One track sitting in Spotify's own up-next queue - [SpotifyWebApi.getQueue] (ticket 04,
+ * `.scratch/spotify-voice/issues/04-queue.md`). This is a READ of `GET /v1/me/player/queue`, the
+ * Web API's own queue, not an App Remote type - App Remote's [com.spotify.android.appremote.api.PlayerApi]
+ * has no queue-read method at all, only `queue(uri)` to add one.
+ */
+data class QueuedTrack(val name: String, val artist: String)
+
 object SpotifyWebApi {
     private const val TAG = "SpotifyWebApi"
     private const val AUTH_HOST = "https://accounts.spotify.com/authorize"
@@ -783,4 +791,35 @@ object SpotifyWebApi {
             .build().toString()
         return libraryGet(context, url, ::parseTopTracks)
     }
+
+    // --- Queue read (ticket 04, 2026-08-19) ---------------------------------------------------
+
+    private const val QUEUE_URL = "https://api.spotify.com/v1/me/player/queue"
+
+    /**
+     * `{"queue": [...]}` -> [QueuedTrack] list, most-imminent first (Spotify's own order). Pure,
+     * unit-testable, same shape as [parseRecentlyPlayed] - unlike that endpoint's `items[].track`
+     * nesting, `queue`'s own entries are bare track objects.
+     */
+    internal fun parseQueue(json: JSONObject): List<QueuedTrack> {
+        val items = json.optJSONArray("queue") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { i ->
+            val track = items.optJSONObject(i) ?: return@mapNotNull null
+            val name = track.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val artist = track.optJSONArray("artists")?.optJSONObject(0)?.optString("name").orEmpty()
+            QueuedTrack(name = name, artist = artist)
+        }
+    }
+
+    /**
+     * "What's coming up" (ticket 04 scope item 3) - `GET /v1/me/player/queue`, needing BOTH
+     * `user-read-currently-playing` and `user-read-playback-state` (both already in [SCOPES]).
+     * Truncated to [limit] client-side: Spotify's own endpoint takes no `limit` parameter and
+     * can return its entire queue.
+     */
+    suspend fun getQueue(context: Context, limit: Int = LIBRARY_LIMIT): LibraryOutcome<QueuedTrack> =
+        when (val outcome = libraryGet(context, QUEUE_URL, ::parseQueue)) {
+            is LibraryOutcome.Found -> LibraryOutcome.Found(outcome.items.take(limit))
+            else -> outcome
+        }
 }

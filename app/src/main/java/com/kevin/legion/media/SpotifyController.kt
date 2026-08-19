@@ -10,8 +10,11 @@ import com.spotify.android.appremote.api.error.CouldNotFindSpotifyApp
 import com.spotify.android.appremote.api.error.NotLoggedInException
 import com.spotify.android.appremote.api.error.OfflineModeException
 import com.spotify.android.appremote.api.error.UserNotAuthorizedException
+import com.spotify.protocol.client.CallResult
 import com.spotify.protocol.client.Subscription
+import com.spotify.protocol.types.Empty
 import com.spotify.protocol.types.PlayerState
+import com.spotify.protocol.types.Repeat
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -501,6 +504,373 @@ object SpotifyController {
 
     /** Bound on the best-effort Premium-capability check - short, since a timeout here must not delay reporting a play as started. */
     private const val CAPABILITIES_TIMEOUT_SEC = 3L
+
+    // --- Queue (ticket 04, .scratch/spotify-voice/issues/04-queue.md) ------------------------
+
+    /**
+     * Every distinct way [queueUri] can end - same shape as [PlayOutcome] and for the same
+     * reason (map decision, honesty per outcome, never one generic string), but kept as its OWN
+     * sealed type rather than reusing [PlayOutcome]: "queued" and "playing" are different verbs
+     * to the driver even though [queueUri] and [playUri] share every connect-failure mode, and a
+     * shared type would tempt [message] into blurring that distinction.
+     */
+    sealed interface QueueOutcome {
+        /** `PlayerApi.queue(uri)` was awaited and came back successful. */
+        data object Queued : QueueOutcome
+
+        /** [isInstalled] said no, or App Remote's own connect attempt threw [CouldNotFindSpotifyApp]. */
+        data object NotInstalled : QueueOutcome
+
+        /** App Remote connected to Spotify, but nobody is signed into it. */
+        data object NotLoggedIn : QueueOutcome
+
+        /** Spotify is up and signed in, but refused this app/account ([UserNotAuthorizedException]). */
+        data object NotAuthorized : QueueOutcome
+
+        /** Spotify is in offline mode. */
+        data object Offline : QueueOutcome
+
+        /** Connect failed for a reason the SDK didn't give one of the four names above. */
+        data class ConnectFailed(val detail: String?) : QueueOutcome
+
+        /** Connected fine; the `queue()` call itself came back unsuccessful or timed out. */
+        data object QueueRejected : QueueOutcome
+    }
+
+    /** Only [QueueOutcome.Queued] represents the track actually landing in Spotify's queue. */
+    internal fun succeeded(outcome: QueueOutcome): Boolean = outcome is QueueOutcome.Queued
+
+    /**
+     * The pure outcome -> spoken-line mapping for [QueueOutcome], same shape as [message] for
+     * [PlayOutcome]. **"Play X next" and "add X to the queue" are the same operation to
+     * Spotify - there is no insert-at-position** (ticket 04 scope item 2), so [Queued]'s line
+     * says exactly that rather than implying an ordering the API does not offer.
+     */
+    internal fun message(outcome: QueueOutcome, description: String): String = when (outcome) {
+        QueueOutcome.Queued -> "Queued \"$description\" to play next - Spotify only offers " +
+            "next-up, not a specific position in the queue."
+        QueueOutcome.NotInstalled ->
+            "Spotify isn't installed on this phone, so there's nothing to queue \"$description\" on."
+        QueueOutcome.NotLoggedIn ->
+            "Spotify's installed but nobody's signed in there - log into Spotify and ask again."
+        QueueOutcome.NotAuthorized ->
+            "Spotify won't authorize this account for App Remote - check the allowlist for it in " +
+                "the Spotify developer dashboard."
+        QueueOutcome.Offline ->
+            "Spotify's in offline mode right now, so it can't queue \"$description\" - check the " +
+                "connection and try again."
+        is QueueOutcome.ConnectFailed ->
+            "Spotify wouldn't connect" + (outcome.detail?.let { " ($it)" } ?: "") +
+                " - I couldn't queue \"$description\"."
+        QueueOutcome.QueueRejected ->
+            "Spotify wouldn't queue \"$description\" - it may not be playable on this account here."
+    }
+
+    /** Same mapping as [outcomeForConnectFailure], into [QueueOutcome] instead of [PlayOutcome]. */
+    internal fun queueOutcomeForConnectFailure(error: Throwable?): QueueOutcome = when (error) {
+        is CouldNotFindSpotifyApp -> QueueOutcome.NotInstalled
+        is NotLoggedInException -> QueueOutcome.NotLoggedIn
+        is UserNotAuthorizedException -> QueueOutcome.NotAuthorized
+        is OfflineModeException -> QueueOutcome.Offline
+        else -> QueueOutcome.ConnectFailed(error?.javaClass?.simpleName)
+    }
+
+    /**
+     * Adds [uri] to Spotify's own up-next queue via `PlayerApi.queue(uri)`, awaited so the
+     * outcome reflects what actually landed (same discipline as [playUri]). Unlike [playUri],
+     * this does NOT call `connectSwitchToLocalDevice()` first: queuing does not need to force
+     * playback onto this phone, only App Remote's own connected session, which [ensureConnected]
+     * already guarantees.
+     */
+    suspend fun queueUri(context: Context, uri: String): QueueOutcome = withContext(Dispatchers.IO) {
+        if (!isInstalled(context)) return@withContext QueueOutcome.NotInstalled
+
+        if (!ensureConnected(context)) {
+            return@withContext queueOutcomeForConnectFailure(lastConnectFailure)
+        }
+
+        val r = remote ?: return@withContext QueueOutcome.ConnectFailed("lost connection")
+
+        val queued = try {
+            val result = r.playerApi.queue(uri).await(PLAY_TIMEOUT_SEC, TimeUnit.SECONDS)
+            if (!result.isSuccessful) Log.w(TAG, "queue($uri) failed: ${result.errorMessage}")
+            result.isSuccessful
+        } catch (e: Exception) {
+            Log.w(TAG, "queue($uri) threw: ${e.message}")
+            false
+        }
+        if (!queued) return@withContext QueueOutcome.QueueRejected
+
+        QueueOutcome.Queued
+    }
+
+    // --- Library writes: like/unlike, follow/unfollow (ticket 05, .scratch/spotify-voice/issues/05-library-writes.md) --
+
+    /**
+     * Which library write `control_music` asked for. Kept as its own enum (rather than reusing
+     * [LiveToolbox.MusicAction][com.kevin.legion.service.LiveToolbox.MusicAction] here, which
+     * would be a service-layer type leaking into media) so [message] below can hold all four
+     * verbs' wording in one place.
+     */
+    enum class LibraryAction { LIKE, UNLIKE, FOLLOW_ARTIST, UNFOLLOW_ARTIST }
+
+    /**
+     * Every distinct way a library write can end. **[AlreadyInThatState] is its own outcome,
+     * never folded into [Applied]** - ticket 05 rule 3, "getLibraryState before speaking":
+     * `getLibraryState` is read BEFORE the write so "already liked" and "liked it" come back as
+     * the two different sentences the driver can actually tell apart, rather than one of them
+     * being a guess.
+     */
+    sealed interface LibraryWriteOutcome {
+        /** The add/remove call was awaited and came back successful, and the state genuinely changed. */
+        data object Applied : LibraryWriteOutcome
+
+        /** [getLibraryState] said the target was already in the requested state; nothing was written. */
+        data object AlreadyInThatState : LibraryWriteOutcome
+
+        /** Nothing is currently playing (or App Remote holds no track), so there is nothing to act on. */
+        data object NothingPlaying : LibraryWriteOutcome
+
+        /** Could not reach/connect to Spotify at all. */
+        data object NotConnected : LibraryWriteOutcome
+
+        /** Connected fine; the add/remove call itself came back unsuccessful or timed out. */
+        data object WriteRejected : LibraryWriteOutcome
+    }
+
+    /** [Applied] and [AlreadyInThatState] both mean the driver's requested state now holds. */
+    internal fun succeeded(outcome: LibraryWriteOutcome): Boolean =
+        outcome is LibraryWriteOutcome.Applied || outcome is LibraryWriteOutcome.AlreadyInThatState
+
+    /**
+     * The pure outcome -> spoken-line mapping for a [LibraryAction] + [LibraryWriteOutcome] pair,
+     * same shape as [message] for [PlayOutcome]/[QueueOutcome]. Every branch of [action] gets its
+     * own wording for every outcome - "liked" and "followed" are not interchangeable words, and
+     * neither are "already liked" and "liked it".
+     */
+    internal fun message(outcome: LibraryWriteOutcome, action: LibraryAction): String {
+        val (subject, verb, alreadyVerb, notVerb) = when (action) {
+            LibraryAction.LIKE -> Quad("this track", "Liked it.", "Already liked - it's already in your Liked Songs.", "It wasn't liked, so nothing changed.")
+            LibraryAction.UNLIKE -> Quad("this track", "Unliked it.", "It wasn't liked in the first place, so nothing changed.", "Removed it from your Liked Songs.")
+            LibraryAction.FOLLOW_ARTIST -> Quad("this artist", "Following them now.", "Already following them.", "Wasn't following them, so nothing changed.")
+            LibraryAction.UNFOLLOW_ARTIST -> Quad("this artist", "Unfollowed them.", "Wasn't following them in the first place, so nothing changed.", "Stopped following them.")
+        }
+        return when (outcome) {
+            LibraryWriteOutcome.Applied -> verb
+            LibraryWriteOutcome.AlreadyInThatState -> alreadyVerb
+            LibraryWriteOutcome.NothingPlaying ->
+                "Nothing's playing right now, so there's no $subject to act on."
+            LibraryWriteOutcome.NotConnected ->
+                "Spotify isn't connected - connect your Spotify account in Setup, or pick " +
+                    "something on your phone yourself and I'll control play/pause/skip from here."
+            LibraryWriteOutcome.WriteRejected ->
+                "Spotify wouldn't apply that - $notVerb"
+        }
+    }
+
+    /** Tiny local 4-tuple so [message] above doesn't need a data class per field it destructures. */
+    private data class Quad(val subject: String, val verb: String, val alreadyVerb: String, val notVerb: String)
+
+    /**
+     * The actual add/remove sequence shared by [like]/[unlike]/[followArtist]/[unfollowArtist]:
+     * connect, read [UserApi.getLibraryState] on [uri] first (ticket 05 rule 3), skip the write
+     * entirely when the state already matches (so "like this" twice never double-writes), then
+     * `addToLibrary`/`removeFromLibrary`.
+     */
+    private suspend fun libraryWrite(context: Context, uri: String?, add: Boolean): LibraryWriteOutcome =
+        withContext(Dispatchers.IO) {
+            if (uri.isNullOrBlank()) return@withContext LibraryWriteOutcome.NothingPlaying
+            if (!ensureConnected(context)) return@withContext LibraryWriteOutcome.NotConnected
+            val r = remote ?: return@withContext LibraryWriteOutcome.NotConnected
+
+            // Best-effort: a failed/timed-out read does not block the write below, it just means
+            // this call cannot short-circuit an already-correct state and instead attempts the
+            // write anyway (still correct, just an extra no-op round trip to Spotify).
+            val currentlyAdded = try {
+                r.userApi.getLibraryState(uri).await(CAPABILITIES_TIMEOUT_SEC, TimeUnit.SECONDS)
+                    .takeIf { it.isSuccessful }?.data?.isAdded
+            } catch (e: Exception) {
+                Log.w(TAG, "getLibraryState($uri) threw: ${e.message}")
+                null
+            }
+            if (currentlyAdded == add) return@withContext LibraryWriteOutcome.AlreadyInThatState
+
+            val ok = try {
+                val call = if (add) r.userApi.addToLibrary(uri) else r.userApi.removeFromLibrary(uri)
+                val result = call.await(PLAY_TIMEOUT_SEC, TimeUnit.SECONDS)
+                if (!result.isSuccessful) Log.w(TAG, "library write($uri, add=$add) failed: ${result.errorMessage}")
+                result.isSuccessful
+            } catch (e: Exception) {
+                Log.w(TAG, "library write($uri, add=$add) threw: ${e.message}")
+                false
+            }
+            if (ok) LibraryWriteOutcome.Applied else LibraryWriteOutcome.WriteRejected
+        }
+
+    /**
+     * Likes the CURRENTLY PLAYING track only - never an album, never the whole queue (ticket 05
+     * scope item 4). Reads the track uri from [playerState] (ticket 02's push subscription), not
+     * a fresh explicit read, per the ticket's own wording ("read from subscribeToPlayerState").
+     */
+    suspend fun like(context: Context): LibraryWriteOutcome = libraryWrite(context, playerState.value?.track?.uri, add = true)
+
+    /** Unlikes the currently playing track. See [like]. */
+    suspend fun unlike(context: Context): LibraryWriteOutcome = libraryWrite(context, playerState.value?.track?.uri, add = false)
+
+    /**
+     * Follows the CURRENT track's artist, expressed as saving `spotify:artist:...` to the
+     * library - the old `PUT /me/following` endpoint is deprecated (research finding, 2026-08-19),
+     * and [UserApi] never exposed a follow method of its own, only the generic library calls.
+     */
+    suspend fun followArtist(context: Context): LibraryWriteOutcome =
+        libraryWrite(context, playerState.value?.track?.artist?.uri, add = true)
+
+    /** Unfollows the current track's artist. See [followArtist]. */
+    suspend fun unfollowArtist(context: Context): LibraryWriteOutcome =
+        libraryWrite(context, playerState.value?.track?.artist?.uri, add = false)
+
+    // --- Shuffle, repeat, seek (ticket 06, .scratch/spotify-voice/issues/06-shuffle-repeat-seek.md) --
+
+    /**
+     * The state a shuffle/repeat/restart write ACTUALLY resulted in, read from a fresh
+     * `getPlayerState()` call taken AFTER the write - never the state that was requested (ticket
+     * 06 rule 4). App Remote is deliberately used for all three rather than the Web API: it
+     * offers `toggleShuffle`/`toggleRepeat` (the Web API only has set, which needs its own read
+     * first to compute the new state), and the Web API's own docs warn "the order of execution
+     * is not guaranteed when you use this API with other Player API endpoints" - exactly the
+     * compound-command race a live voice turn risks.
+     */
+    data class TransportWriteResult(val isShuffling: Boolean, val repeatMode: Int)
+
+    /**
+     * Shared connect -> write -> re-read sequence for every shuffle/repeat/restart action below.
+     * [write] is the one SDK call a specific action makes; null means the write itself could not
+     * be confirmed (not connected, the write failed, or the re-read failed) - callers fall back
+     * to [transportWriteFailureMessage].
+     */
+    private suspend fun applyTransportWrite(
+        context: Context,
+        write: (SpotifyAppRemote) -> CallResult<Empty>,
+    ): TransportWriteResult? = withContext(Dispatchers.IO) {
+        if (!ensureConnected(context)) return@withContext null
+        val r = remote ?: return@withContext null
+
+        val ok = try {
+            val result = write(r).await(PLAY_TIMEOUT_SEC, TimeUnit.SECONDS)
+            if (!result.isSuccessful) Log.w(TAG, "transport write failed: ${result.errorMessage}")
+            result.isSuccessful
+        } catch (e: Exception) {
+            Log.w(TAG, "transport write threw: ${e.message}")
+            false
+        }
+        if (!ok) return@withContext null
+
+        val state = try {
+            r.playerApi.getPlayerState().await(CAPABILITIES_TIMEOUT_SEC, TimeUnit.SECONDS)
+                .takeIf { it.isSuccessful }?.data
+        } catch (e: Exception) {
+            Log.w(TAG, "post-write getPlayerState threw: ${e.message}")
+            null
+        } ?: return@withContext null
+
+        TransportWriteResult(isShuffling = state.playbackOptions.isShuffling, repeatMode = state.playbackOptions.repeatMode)
+    }
+
+    /** Sets shuffle explicitly. See [toggleShuffle] for the bare "shuffle" wire value. */
+    suspend fun setShuffle(context: Context, on: Boolean): TransportWriteResult? =
+        applyTransportWrite(context) { it.playerApi.setShuffle(on) }
+
+    /** Bare "shuffle" (ticket 06 scope item 1) - flips whatever it currently is. */
+    suspend fun toggleShuffle(context: Context): TransportWriteResult? =
+        applyTransportWrite(context) { it.playerApi.toggleShuffle() }
+
+    /** "Repeat off" - the whole session stops repeating. */
+    suspend fun setRepeatOff(context: Context): TransportWriteResult? =
+        applyTransportWrite(context) { it.playerApi.setRepeat(Repeat.OFF) }
+
+    /** "Repeat this" - the CURRENT TRACK repeats. Not the same request as [setRepeatContext]. */
+    suspend fun setRepeatTrack(context: Context): TransportWriteResult? =
+        applyTransportWrite(context) { it.playerApi.setRepeat(Repeat.ONE) }
+
+    /** "Repeat the album/playlist" - the whole context repeats, not just the current track. */
+    suspend fun setRepeatContext(context: Context): TransportWriteResult? =
+        applyTransportWrite(context) { it.playerApi.setRepeat(Repeat.ALL) }
+
+    /** Jumps back to the start of the current track. */
+    suspend fun restart(context: Context): TransportWriteResult? =
+        applyTransportWrite(context) { it.playerApi.seekTo(0) }
+
+    /** The pure `state -> spoken line` mapping for shuffle. Reads the RESULT, never the request. */
+    internal fun shuffleMessage(state: TransportWriteResult): String =
+        if (state.isShuffling) "Shuffle's on." else "Shuffle's off."
+
+    /** The pure `state -> spoken line` mapping for repeat. Reads the RESULT, never the request. */
+    internal fun repeatMessage(state: TransportWriteResult): String = when (state.repeatMode) {
+        Repeat.OFF -> "Repeat's off."
+        Repeat.ONE -> "Repeating this track."
+        Repeat.ALL -> "Repeating the whole thing."
+        else -> "Repeat's set."
+    }
+
+    /** Shared "couldn't do it at all" line for any of the shuffle/repeat/seek/restart writes above. */
+    internal fun transportWriteFailureMessage(): String =
+        "Spotify isn't connected - connect your Spotify account in Setup, or pick something on " +
+            "your phone yourself and I'll control play/pause/skip from here."
+
+    /**
+     * Every distinct way a seek can end. **[TrackChanged] is its own outcome, never folded into
+     * [Landed]** - seeking forward past the end of a track hands off to the NEXT song (Spotify's
+     * own documented behaviour), and the driver must be told that happened rather than hearing
+     * "jumped forward 30 seconds" when the track actually changed underneath them (ticket 06
+     * scope item 3).
+     */
+    sealed interface SeekOutcome {
+        /** The seek landed inside the SAME track. [positionMs] is read from state after the seek, null if the confirm-read itself failed even though the seek call succeeded. */
+        data class Landed(val positionMs: Long?) : SeekOutcome
+
+        /** The seek crossed the end of the track and Spotify moved on to the next one. */
+        data object TrackChanged : SeekOutcome
+
+        /** Could not reach/connect to Spotify at all. */
+        data object NotConnected : SeekOutcome
+
+        /** Connected fine; the seek call itself came back unsuccessful or timed out. */
+        data object SeekRejected : SeekOutcome
+    }
+
+    /**
+     * Relative seek via `seekToRelativePosition` (positive [deltaMs] forward, negative back) -
+     * chosen over an absolute `seekTo` so no position read is needed FIRST (ticket 06 scope item
+     * 3). Detects [SeekOutcome.TrackChanged] by comparing the track uri before and after the
+     * call: if the seek call itself succeeded but the track underneath changed, the seek crossed
+     * the end.
+     */
+    suspend fun seekRelative(context: Context, deltaMs: Long): SeekOutcome = withContext(Dispatchers.IO) {
+        if (!ensureConnected(context)) return@withContext SeekOutcome.NotConnected
+        val r = remote ?: return@withContext SeekOutcome.NotConnected
+        val beforeUri = playerState.value?.track?.uri
+
+        val ok = try {
+            val result = r.playerApi.seekToRelativePosition(deltaMs).await(PLAY_TIMEOUT_SEC, TimeUnit.SECONDS)
+            if (!result.isSuccessful) Log.w(TAG, "seekToRelativePosition($deltaMs) failed: ${result.errorMessage}")
+            result.isSuccessful
+        } catch (e: Exception) {
+            Log.w(TAG, "seekToRelativePosition($deltaMs) threw: ${e.message}")
+            false
+        }
+        if (!ok) return@withContext SeekOutcome.SeekRejected
+
+        val after = try {
+            r.playerApi.getPlayerState().await(CAPABILITIES_TIMEOUT_SEC, TimeUnit.SECONDS)
+                .takeIf { it.isSuccessful }?.data
+        } catch (e: Exception) {
+            Log.w(TAG, "post-seek getPlayerState threw: ${e.message}")
+            null
+        } ?: return@withContext SeekOutcome.Landed(null)
+
+        if (beforeUri != null && after.track?.uri != beforeUri) return@withContext SeekOutcome.TrackChanged
+        SeekOutcome.Landed(after.playbackPosition)
+    }
 
     private inline fun withPlayer(action: (SpotifyAppRemote) -> Unit): Boolean {
         val r = remote ?: return false
