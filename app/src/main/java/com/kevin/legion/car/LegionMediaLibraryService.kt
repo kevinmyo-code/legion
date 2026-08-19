@@ -156,6 +156,30 @@ class LegionMediaLibraryService : MediaLibraryService() {
         return served
     }
 
+    /**
+     * The one PLAYABLE item inside the "Talk to LEGION" tab - the actual push-to-talk button, and
+     * the only one of the two doors that survived contact with a head unit.
+     *
+     * Titled for what a TAP does, not for what LEGION is, because the driver reads this while
+     * moving. [CompanionPhase] decides start-vs-stop wording the same way the transport action's
+     * icon already does, so the row never says "Start" while a session is live.
+     */
+    private fun talkActionItem(): MediaItem {
+        val live = CompanionPhase.phase.value != Phase.IDLE
+        return MediaItem.Builder()
+            .setMediaId(TALK_ACTION_MEDIA_ID)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(if (live) "Stop talking" else "Start talking")
+                    .setSubtitle(if (live) "LEGION is listening" else "Tap to open a conversation")
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                    .build(),
+            )
+            .build()
+    }
+
     private fun browsableItem(mediaId: String, title: String, subtitle: String): MediaItem =
         MediaItem.Builder()
             .setMediaId(mediaId)
@@ -305,10 +329,32 @@ class LegionMediaLibraryService : MediaLibraryService() {
                             future.set(LibraryResult.ofItemList(ImmutableList.copyOf(children), params))
                         }
                         TALK_MEDIA_ID -> {
-                            // The tap IS the action (see the class doc) - there is nowhere to browse
-                            // TO, so this folder's own children are always empty.
-                            toggleTalk("row tap")
-                            future.set(LibraryResult.ofItemList(ImmutableList.of(), params))
+                            // **Browsing into this row is NOT the button, and cannot be.** It used
+                            // to call toggleTalk here, and that failed on-device 2026-08-18 for two
+                            // reasons neither the docs nor research 02 predicted, both visible in
+                            // the Desktop Head Unit:
+                            //
+                            // 1. Android Auto renders the four root browsable items as TABS and
+                            //    AUTO-SELECTS the first one when the app opens. "Talk to LEGION" is
+                            //    first, so this fired unbidden at open, before the driver touched
+                            //    anything - a live session starting because an app was launched.
+                            // 2. Gearhead CACHES a subscription's children. Switching to Fleet and
+                            //    back to Talk produced NO onGetChildren call at all - logcat was
+                            //    silent where the first load had logged
+                            //    `Browse subscription for id:{legion-fleet} LOADED`. So the trigger
+                            //    can fire at most ONCE per media id per connection, at a moment
+                            //    nobody chose, and never again. Kevin: "i tapped it, nothing
+                            //    happens."
+                            //
+                            // The tab now holds ONE PLAYABLE item instead. Playing an item is a
+                            // real, repeatable command that arrives through onSetMediaItems every
+                            // single time, is not cached, and is the shape Android Auto actually
+                            // documents for "tapping this does something". Root stays
+                            // browsable-only, so research 02 section 5's constraint is untouched -
+                            // this item lives one level down, where playable is ordinary.
+                            future.set(
+                                LibraryResult.ofItemList(ImmutableList.of(talkActionItem()), params),
+                            )
                         }
                         else -> {
                             // Aspect rows: informational only, per the brief - log and do nothing.
@@ -376,6 +422,19 @@ class LegionMediaLibraryService : MediaLibraryService() {
             startIndex: Int,
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            // The push-to-talk button firing (2026-08-18). A play request is the ONLY trigger on
+            // this surface that arrives every time it is tapped - see TALK_MEDIA_ID's branch in
+            // onGetChildren for the two ways browse-taps failed. Handled before the search logging
+            // below because this is now the primary door, not an observation.
+            if (mediaItems.any { it.mediaId == TALK_ACTION_MEDIA_ID }) {
+                toggleTalk("play item")
+                // Tell Android Auto the item is not queued for playback. Returning it would leave
+                // the stub player "playing" a thing that produces no audio, and the transport bar
+                // would then lie about what STOP and PAUSE do - ticket 08 point 7's exact concern.
+                return Futures.immediateFuture(
+                    MediaSession.MediaItemsWithStartPosition(mutableListOf(), 0, 0L),
+                )
+            }
             val requestMetadata = mediaItems.firstOrNull()?.requestMetadata
             val query = requestMetadata?.searchQuery
             val extras = requestMetadata?.extras
@@ -397,6 +456,8 @@ class LegionMediaLibraryService : MediaLibraryService() {
     companion object {
         private const val ROOT_MEDIA_ID = "legion-root"
         private const val TALK_MEDIA_ID = "legion-talk"
+        /** The playable child of [TALK_MEDIA_ID] - the button itself. See [talkActionItem]. */
+        private const val TALK_ACTION_MEDIA_ID = "legion-talk-action"
         private const val FLEET_MEDIA_ID = "legion-fleet"
         private const val TODAY_MEDIA_ID = "legion-today"
         private const val MONEY_MEDIA_ID = "legion-money"
@@ -474,9 +535,28 @@ private class StubPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
         return Futures.immediateVoidFuture()
     }
 
+    /**
+     * **Stays IDLE, deliberately.** This used to set `STATE_READY`, and on-device 2026-08-18 that
+     * threw on every single push-to-talk tap:
+     *
+     * ```
+     * java.lang.IllegalArgumentException: Empty playlist only allowed in STATE_IDLE or STATE_ENDED
+     *     at androidx.media3.common.SimpleBasePlayer$State.<init>
+     *     at com.kevin.legion.car.StubPlayer.getState
+     *     at com.kevin.legion.car.StubPlayer.handlePrepare
+     * ```
+     *
+     * media3 asserts that a player with no playlist cannot be READY, and this player never has a
+     * playlist: the talk item is an ACTION, not audio, so onSetMediaItems deliberately returns an
+     * empty queue rather than leaving the transport bar claiming to play something silent. READY
+     * plus an empty queue is a contradiction media3 refuses to build a State from.
+     *
+     * The throw was swallowed by media3's own ImmediateFuture and only surfaced in logcat, so the
+     * button worked while this fired twice a session. A caught exception on the happy path is still
+     * a bug - it means the state machine is being asked for something impossible every time.
+     */
     override fun handlePrepare(): ListenableFuture<*> {
-        CarProbeLog.log("MediaLibraryService", "onPrepare")
-        playbackState = Player.STATE_READY
+        CarProbeLog.log("MediaLibraryService", "onPrepare - staying IDLE, this player never holds a playlist")
         invalidateState()
         return Futures.immediateVoidFuture()
     }
