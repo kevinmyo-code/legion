@@ -46,6 +46,7 @@ import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.media.VolumeController
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.MusicPlayHistoryEntry
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.BuildSheetController
@@ -456,14 +457,24 @@ object LiveToolbox {
                 "driver actually asked for - defaults to song if they didn't say. If Spotify isn't " +
                 "connected, this fails with a message telling the driver to connect it in Setup or " +
                 "pick something on their phone themselves. Once something's playing, control_music " +
-                "handles play/pause/skip.",
+                "handles play/pause/skip. To replay something the driver names from LEGION's own " +
+                "history (browse_my_music's legion_history source, e.g. 'play that thing from " +
+                "Tuesday'), pass its spotifyUri exactly as returned - this skips search and plays " +
+                "that exact track. Only pass a spotifyUri you actually received from a tool " +
+                "result; never invent one, and never pass one for a legion_history row whose " +
+                "replayable field was false - say plainly you can't replay that one instead.",
             params = obj(
                 "query" to schema("string",
                     "What to play, in the driver's own words, e.g. 'Plastic Love by Mariya Takeuchi' " +
-                        "or 'Discovery by Daft Punk'."),
+                        "or 'Discovery by Daft Punk'. Still required even when spotifyUri is set - " +
+                        "used to build the spoken confirmation."),
                 "type" to schema("string",
                     "What kind of thing 'query' names. Defaults to 'song' if omitted.",
                     enum = listOf("song", "artist", "album", "playlist")),
+                "spotifyUri" to schema("string",
+                    "A concrete Spotify URI already known from a prior tool result - only " +
+                        "legion_history rows with replayable true carry one. When set, this is " +
+                        "played directly with no search."),
             ),
             required = listOf("query"),
         ))
@@ -1910,7 +1921,12 @@ object LiveToolbox {
             "control_music" -> controlMusic(context, args)
             "control_volume" -> controlVolume(context, args)
             "get_current_location" -> getCurrentLocation(context)
-            "play_music" -> playMusic(context, args.optString("query"), args.optString("type", "song"))
+            "play_music" -> playMusic(
+                context,
+                args.optString("query"),
+                args.optString("type", "song"),
+                args.optString("spotifyUri", "").ifBlank { null },
+            )
             "browse_my_music" -> browseMyMusic(context, args)
             "open_navigation" -> openNavigation(context, args)
             "show_app" -> showApp(context)
@@ -5108,8 +5124,15 @@ object LiveToolbox {
      * retired with the rest of the car-launcher UI in the 2026-07-31 pivot.
      * If Spotify isn't connected, this fails with an actionable message rather
      * than falling back to launching another app.
+     *
+     * [knownUri] (ticket 09, `.scratch/spotify-voice/issues/09-history-uri.md`, scope item 2)
+     * is the "play that thing from Tuesday" path: a caller that already has a concrete URI - the
+     * only source today is a `legion_history` row with `replayable` true - skips the Web API
+     * search entirely and goes straight to [SpotifyController.playUri]. [query] is still used for
+     * the spoken confirmation either way, so every [SpotifyController.message] line still names
+     * what was asked for.
      */
-    private suspend fun playMusic(context: Context, query: String, type: String = "song"): JSONObject {
+    private suspend fun playMusic(context: Context, query: String, type: String = "song", knownUri: String? = null): JSONObject {
         if (query.isBlank()) return result(success = false, message = "What should I play?")
         // Tool-facing vocabulary is "song" (matches how a driver actually talks); Spotify's own
         // API calls that "track" - translated at the boundary so nothing upstream of this line
@@ -5128,65 +5151,74 @@ object LiveToolbox {
             )
         }
 
-        // Not authorized = no Web API = no way to turn a name into a URI. Say so
-        // plainly; this is the one failure the driver can fix themselves.
-        // hasStaleGrant distinguishes "never connected" from "connected once, but a newly
-        // added scope invalidated that grant" (ticket 05, 2026-08-18's SCOPES widening for
-        // browse_my_music) - the two need different words, since the second driver has already
-        // done this once and "isn't finished connecting" would read as if nothing was saved.
-        if (!SpotifyWebApi.isAuthorized(context)) {
-            return if (SpotifyWebApi.hasStaleGrant(context)) {
-                result(
+        // knownUri (ticket 09 scope item 2) skips the Web API search block below entirely - a
+        // concrete URI already resolved by a prior tool result (legion_history's replayable
+        // rows) needs no name-to-URI lookup, and searching anyway would risk landing on a
+        // DIFFERENT track than the one the driver actually pointed at.
+        val uri = if (!knownUri.isNullOrBlank()) {
+            knownUri
+        } else {
+            // Not authorized = no Web API = no way to turn a name into a URI. Say so
+            // plainly; this is the one failure the driver can fix themselves.
+            // hasStaleGrant distinguishes "never connected" from "connected once, but a newly
+            // added scope invalidated that grant" (ticket 05, 2026-08-18's SCOPES widening for
+            // browse_my_music) - the two need different words, since the second driver has
+            // already done this once and "isn't finished connecting" would read as if nothing
+            // was saved.
+            if (!SpotifyWebApi.isAuthorized(context)) {
+                return if (SpotifyWebApi.hasStaleGrant(context)) {
+                    result(
+                        success = false,
+                        message = "Spotify needs re-approving - I picked up a couple of new permissions " +
+                            "and your old approval doesn't cover them. Open Setup, Spotify, and tap " +
+                            "AUTHORIZE again. Takes a few seconds.",
+                    )
+                } else {
+                    result(
+                        success = false,
+                        message = "Spotify isn't finished connecting - open Setup, tap CONNECT under the " +
+                            "Spotify client ID, and approve it in the browser. Then I can play by name.",
+                    )
+                }
+            }
+
+            // Each outcome gets its own answer (2026-08-12). These used to be one nullable
+            // String reported as "I couldn't find that", so an expired grant, a dead
+            // connection and a genuinely unknown song were indistinguishable to the driver
+            // AND to anyone debugging it - the exact collapse GoogleGrantResolver.diagnose
+            // was written to undo on the Drive side.
+            when (val outcome = SpotifyWebApi.search(context, query, spotifyType)) {
+                is SpotifyWebApi.SearchOutcome.Found -> outcome.uri
+                SpotifyWebApi.SearchOutcome.NeedsAuthorization -> return result(
                     success = false,
-                    message = "Spotify needs re-approving - I picked up a couple of new permissions " +
-                        "and your old approval doesn't cover them. Open Setup, Spotify, and tap " +
-                        "AUTHORIZE again. Takes a few seconds.",
+                    message = "Spotify hasn't been authorized on this device yet - open Setup, " +
+                        "Spotify, and tap AUTHORIZE.",
                 )
-            } else {
-                result(
+                is SpotifyWebApi.SearchOutcome.Unauthorized -> return result(
                     success = false,
-                    message = "Spotify isn't finished connecting - open Setup, tap CONNECT under the " +
-                        "Spotify client ID, and approve it in the browser. Then I can play by name.",
+                    // Spotify's own words are carried through rather than paraphrased: a 403
+                    // saying "the user may not be registered" is a dashboard problem that
+                    // re-authorizing will never fix, and telling the driver to tap AUTHORIZE
+                    // again would send them in circles.
+                    message = "Spotify rejected the request" +
+                        (outcome.detail?.let { ": $it" } ?: ".") +
+                        " Run the search test in Setup, Spotify for the details.",
+                )
+                SpotifyWebApi.SearchOutcome.Unreachable -> return result(
+                    success = false,
+                    message = "I couldn't reach Spotify just now. Worth trying again when you have " +
+                        "a better connection.",
+                )
+                SpotifyWebApi.SearchOutcome.NoMatch -> return result(
+                    success = false,
+                    message = "Spotify has nothing matching \"$query\".",
+                )
+                is SpotifyWebApi.SearchOutcome.Failed -> return result(
+                    success = false,
+                    message = "Spotify's search returned an error (${outcome.code})" +
+                        (outcome.detail?.let { ": $it" } ?: "."),
                 )
             }
-        }
-
-        // Each outcome gets its own answer (2026-08-12). These used to be one nullable
-        // String reported as "I couldn't find that", so an expired grant, a dead
-        // connection and a genuinely unknown song were indistinguishable to the driver
-        // AND to anyone debugging it - the exact collapse GoogleGrantResolver.diagnose
-        // was written to undo on the Drive side.
-        val uri = when (val outcome = SpotifyWebApi.search(context, query, spotifyType)) {
-            is SpotifyWebApi.SearchOutcome.Found -> outcome.uri
-            SpotifyWebApi.SearchOutcome.NeedsAuthorization -> return result(
-                success = false,
-                message = "Spotify hasn't been authorized on this device yet - open Setup, " +
-                    "Spotify, and tap AUTHORIZE.",
-            )
-            is SpotifyWebApi.SearchOutcome.Unauthorized -> return result(
-                success = false,
-                // Spotify's own words are carried through rather than paraphrased: a 403
-                // saying "the user may not be registered" is a dashboard problem that
-                // re-authorizing will never fix, and telling the driver to tap AUTHORIZE
-                // again would send them in circles.
-                message = "Spotify rejected the request" +
-                    (outcome.detail?.let { ": $it" } ?: ".") +
-                    " Run the search test in Setup, Spotify for the details.",
-            )
-            SpotifyWebApi.SearchOutcome.Unreachable -> return result(
-                success = false,
-                message = "I couldn't reach Spotify just now. Worth trying again when you have " +
-                    "a better connection.",
-            )
-            SpotifyWebApi.SearchOutcome.NoMatch -> return result(
-                success = false,
-                message = "Spotify has nothing matching \"$query\".",
-            )
-            is SpotifyWebApi.SearchOutcome.Failed -> return result(
-                success = false,
-                message = "Spotify's search returned an error (${outcome.code})" +
-                    (outcome.detail?.let { ": $it" } ?: "."),
-            )
         }
 
         // playUri (ticket 02, map decision 4) is the one play path: isInstalled ->
@@ -5333,7 +5365,16 @@ object LiveToolbox {
                 JSONObject()
                     .put("title", e.title)
                     .put("artist", e.artist)
-                    .put("startedByLegion", e.startedByLegion),
+                    .put("startedByLegion", e.startedByLegion)
+                    // Ticket 09 (`.scratch/spotify-voice/issues/09-history-uri.md`): a row logged
+                    // before App Remote's player state was wired in (or one observed off a
+                    // non-Spotify session) carries no URI. `replayable` is handed over pre-computed
+                    // rather than left for the model to derive from a JSON null, so there is no
+                    // path where a null spotifyUri quietly reads as "sure, play it" - see
+                    // play_music's spotifyUri param and this tool's own description for how the
+                    // model is told to act on it.
+                    .put("spotifyUri", e.spotifyUri ?: JSONObject.NULL)
+                    .put("replayable", e.spotifyUri != null),
             )
         }
 
@@ -5348,8 +5389,26 @@ object LiveToolbox {
         return result(
             success = true,
             message = "This is LEGION's OWN observed-listening log on this device, not Spotify's " +
-                "history." + (favouriteNote?.let { " $it" } ?: ""),
+                "history." + (favouriteNote?.let { " $it" } ?: "") + (replayabilityNote(recent)?.let { " $it" } ?: ""),
         ).put("items", items)
+    }
+
+    /**
+     * ADR 0031's outcome-asserting-vocabulary clause applied to a READ path (ticket 09, scope
+     * item 4): a null-URI row can be NAMED but never REPLAYED, and that has to be said in words
+     * to the model reading this result, not left for it to infer from a JSON `null`. Returns null
+     * (no note appended) only when every row in [recent] already carries a URI, so the note never
+     * shows up as noise on a history that has nothing to caveat.
+     *
+     * Pure and `internal` so the exact wording is a plain JVM unit test rather than something
+     * only checkable by reading a live tool result off a real turn.
+     */
+    internal fun replayabilityNote(recent: List<MusicPlayHistoryEntry>): String? {
+        if (recent.none { it.spotifyUri == null }) return null
+        return "Rows with spotifyUri null were never observed with a resolvable Spotify URI - " +
+            "you can tell the driver what they were, but say plainly you can't play them again " +
+            "from here. Never search for a title to invent a URI for one; a guess that plays the " +
+            "wrong song is worse than an honest no."
     }
 
     /** Brings our own app to the foreground on request. */

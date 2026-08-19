@@ -1,6 +1,12 @@
 package com.kevin.legion.media
 
+import com.spotify.protocol.types.Album
+import com.spotify.protocol.types.Artist
+import com.spotify.protocol.types.ImageUri
+import com.spotify.protocol.types.Track
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -60,5 +66,67 @@ class NowPlayingControllerHistoryTest {
         val last = track("Song A", loggedAt = 1_000L)
         val candidate = track("Song A", loggedAt = 1_000L + NowPlayingController.PLAY_HISTORY_DEDUP_WINDOW_MS + 60_000L)
         assertTrue(NowPlayingController.shouldLogHistoryEntry(last, candidate))
+    }
+
+    // --- resolveSpotifyUri (ticket 09, .scratch/spotify-voice/issues/09-history-uri.md) -------
+    //
+    // Which source wins, spelled out as tests: only a Spotify-sourced MediaSession observation
+    // whose title AND artist match App Remote's own player-state track gets a URI attached.
+    // Anything else - a non-Spotify package, no player state at all, or a title/artist mismatch
+    // (App Remote's push landing one track behind or ahead of the MediaSession callback) - must
+    // come back null, never a guess.
+
+    private fun spotifyTrack(name: String, artistName: String, uri: String = "spotify:track:abc123") = Track(
+        Artist(artistName, "spotify:artist:xyz"),
+        listOf(Artist(artistName, "spotify:artist:xyz")),
+        Album("Some Album", "spotify:album:def456"),
+        200_000L,
+        name,
+        uri,
+        ImageUri("spotify:image:ghi789"),
+        false,
+        false,
+    )
+
+    @Test
+    fun `a matching Spotify-sourced observation gets the App Remote track's URI`() {
+        val candidate = track("Song A", artist = "Artist One")
+        val uri = NowPlayingController.resolveSpotifyUri(
+            "com.spotify.music", candidate, spotifyTrack("Song A", "Artist One", "spotify:track:matched"),
+        )
+        assertEquals("spotify:track:matched", uri)
+    }
+
+    @Test
+    fun `a non-Spotify source never gets a URI, even if title and artist happen to match`() {
+        val candidate = track("Song A", artist = "Artist One")
+        val uri = NowPlayingController.resolveSpotifyUri(
+            "com.some.other.app", candidate, spotifyTrack("Song A", "Artist One"),
+        )
+        assertNull(uri)
+    }
+
+    @Test
+    fun `no App Remote player state at all means no URI`() {
+        val candidate = track("Song A", artist = "Artist One")
+        assertNull(NowPlayingController.resolveSpotifyUri("com.spotify.music", candidate, null))
+    }
+
+    @Test
+    fun `a title mismatch against a stale App Remote track never attaches its URI`() {
+        val candidate = track("Song A", artist = "Artist One")
+        val uri = NowPlayingController.resolveSpotifyUri(
+            "com.spotify.music", candidate, spotifyTrack("A Completely Different Song", "Artist One"),
+        )
+        assertNull(uri)
+    }
+
+    @Test
+    fun `an artist mismatch against a stale App Remote track never attaches its URI`() {
+        val candidate = track("Song A", artist = "Artist One")
+        val uri = NowPlayingController.resolveSpotifyUri(
+            "com.spotify.music", candidate, spotifyTrack("Song A", "A Different Artist"),
+        )
+        assertNull(uri)
     }
 }
