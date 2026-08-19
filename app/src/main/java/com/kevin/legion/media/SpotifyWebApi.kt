@@ -104,6 +104,21 @@ object SpotifyWebApi {
      * (saved albums), `user-read-recently-played`, and `user-top-read` (top artists/tracks) -
      * the reads [browse_my_music][com.kevin.legion.service.LiveToolbox] needs.
      *
+     * **Widened again 2026-08-19** (`.scratch/spotify-voice/issues/01-scopes-and-one-reapproval.md`),
+     * to every scope the whole spotify-voice map will ever need, taken in this ONE edit rather than
+     * once per ticket - see that ticket's settled decision 2 (re-auth happens at a desk, never
+     * discovered in the car) and its rule that a later ticket discovering a missing scope is a
+     * defect in THIS one. Added: `user-modify-playback-state` (every `/me/player` WRITE - play,
+     * pause, skip, seek, shuffle, repeat), `user-read-playback-state` (device/player reads, and
+     * required alongside `user-read-currently-playing` for `GET /me/player/queue`),
+     * `user-read-currently-playing` (the currently-playing read), `user-library-modify`
+     * (like/unlike and follow-as-save-to-library, since `PUT/DELETE /me/following` is deprecated
+     * in favour of the unified `/me/library` family), `playlist-read-private` and
+     * `playlist-read-collaborative` (reading his own and friend-shared playlists),
+     * `playlist-modify-private` and `playlist-modify-public` (add-to-playlist; playlist CREATION
+     * by voice is deliberately out of scope per the map), and `app-remote-control` (the App Remote
+     * SDK connection itself - see `media/SpotifyController.kt`).
+     *
      * **This change is destructive to every existing grant, on purpose.** [isAuthorized]'s scope
      * equality check below compares the GRANTED scope string against this constant verbatim, so
      * changing it - even by strictly adding scopes a prior grant obviously didn't have - makes
@@ -117,7 +132,10 @@ object SpotifyWebApi {
      * so that re-approval reads as "you're due for a refresh" rather than "connect for the first
      * time" or, worse, a silent `play_music` failure discovered mid-drive.
      */
-    const val SCOPES = "user-read-private user-library-read user-read-recently-played user-top-read"
+    const val SCOPES = "user-read-private user-library-read user-read-recently-played user-top-read " +
+        "user-modify-playback-state user-read-playback-state user-read-currently-playing " +
+        "user-library-modify playlist-read-private playlist-read-collaborative " +
+        "playlist-modify-private playlist-modify-public app-remote-control"
 
     private fun authPrefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
