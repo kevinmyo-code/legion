@@ -6,8 +6,17 @@ import com.kevin.legion.ai.CompanionProfile
 import com.spotify.android.appremote.api.ConnectionParams
 import com.spotify.android.appremote.api.Connector
 import com.spotify.android.appremote.api.SpotifyAppRemote
+import com.spotify.android.appremote.api.error.CouldNotFindSpotifyApp
+import com.spotify.android.appremote.api.error.NotLoggedInException
+import com.spotify.android.appremote.api.error.OfflineModeException
+import com.spotify.android.appremote.api.error.UserNotAuthorizedException
+import com.spotify.protocol.client.Subscription
+import com.spotify.protocol.types.PlayerState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
@@ -101,6 +110,37 @@ object SpotifyController {
     val isConnected: Boolean get() = remote?.isConnected == true
 
     /**
+     * The exception the most recent failed connect attempt actually threw, so a caller building
+     * a spoken failure (ticket 02) can name what it was - installed-but-not-installed-enough,
+     * not-logged-in, not-authorized, offline - instead of one generic line. Cleared on the next
+     * successful connect so a stale reason never survives past the failure that produced it.
+     */
+    @Volatile private var lastConnectFailure: Throwable? = null
+
+    // --- subscribeToPlayerState (ticket 02, map decision 4 target: tickets 07 and 09) --------
+    //
+    // Push, not polled - the SDK delivers a new PlayerState every time Spotify's own player
+    // changes, no quota consumed. This ticket only wires the subscription up and exposes the
+    // state; nothing downstream reads it yet (07/09 do). [NowPlayingController]'s own reporting
+    // is deliberately UNCHANGED here - see this ticket's scope item 4.
+    @Volatile private var playerStateSubscription: Subscription<PlayerState>? = null
+    private val _playerState = MutableStateFlow<PlayerState?>(null)
+    val playerState: StateFlow<PlayerState?> = _playerState.asStateFlow()
+
+    /** (Re)subscribes to App Remote's own player-state stream on a freshly connected [r]. */
+    private fun subscribePlayerState(r: SpotifyAppRemote) {
+        playerStateSubscription?.cancel()
+        // Two statements, not a chain: setEventCallback returns Subscription<T> but
+        // setErrorCallback (declared on the shared PendingResultBase, not overridden on
+        // Subscription) returns the WIDER PendingResult<T> - chaining would silently widen the
+        // type here and this field would no longer be assignable as a Subscription<PlayerState>.
+        val subscription = r.playerApi.subscribeToPlayerState()
+            .setEventCallback { state -> _playerState.value = state }
+        subscription.setErrorCallback { e -> Log.w(TAG, "player state subscription error: ${e.message}") }
+        playerStateSubscription = subscription
+    }
+
+    /**
      * Starts (or joins) the one connect attempt in flight. Every public entry
      * point below funnels through here so there is exactly one
      * `SpotifyAppRemote.connect()` call active at a time, regardless of how many
@@ -168,13 +208,13 @@ object SpotifyController {
 
                     override fun onFailure(error: Throwable) {
                         Log.w(TAG, "App Remote connect failed: ${error.message}")
-                        finishAttempt(deferred, null)
+                        finishAttempt(deferred, null, error)
                     }
                 },
             )
         } catch (e: Throwable) {
             Log.w(TAG, "App Remote connect threw synchronously: ${e.message}")
-            finishAttempt(deferred, null)
+            finishAttempt(deferred, null, e)
         }
         return deferred
     }
@@ -191,10 +231,18 @@ object SpotifyController {
      * which also keeps this safe if the SDK ever invokes both callbacks.
      */
     @Synchronized
-    private fun finishAttempt(deferred: CompletableDeferred<Boolean>, connected: SpotifyAppRemote?) {
+    private fun finishAttempt(
+        deferred: CompletableDeferred<Boolean>,
+        connected: SpotifyAppRemote?,
+        failure: Throwable? = null,
+    ) {
         remote = connected
         if (connected != null) {
             Log.i(TAG, "App Remote connected")
+            lastConnectFailure = null
+            subscribePlayerState(connected)
+        } else {
+            lastConnectFailure = failure
         }
         inFlight = null
         deferred.complete(connected != null)
@@ -260,6 +308,9 @@ object SpotifyController {
 
     /** Tears down the connection. Safe to call repeatedly. */
     fun disconnect() {
+        playerStateSubscription?.cancel()
+        playerStateSubscription = null
+        _playerState.value = null
         remote?.let { runCatching { SpotifyAppRemote.disconnect(it) } }
         remote = null
     }
@@ -272,28 +323,134 @@ object SpotifyController {
 
     fun previous(): Boolean = withPlayer { it.playerApi.skipPrevious() }
 
+    // --- The one play path (ticket 02, map decisions 4 and 7) --------------------------------
+
     /**
-     * Starts playback of a Spotify URI **in place** - the Spotify app stays in the
-     * background and Cruise keeps the screen. This is the half App Remote can do on
-     * its own; finding the URI for a spoken name needs [SpotifyWebApi.searchTrackUri]
-     * first, because App Remote has no search.
-     *
-     * Unlike the transport commands this **waits for the real result** (2026-07-29).
-     * `playerApi.play()` returns a `CallResult<Empty>` (signature confirmed by javap
-     * against the bundled App Remote aar) that the old code discarded, so this
-     * returned true the instant the call was DISPATCHED. Every genuinely async
-     * failure - region-locked track, no active playback device, Premium required,
-     * a stale URI - reported success, and the caller then told the driver
-     * "Playing <song>" over silence. Awaiting turns that into an answer the caller
-     * can actually branch on.
-     *
-     * Blocking await, so it runs off the main thread; bounded because App Remote
-     * can leave a call outstanding indefinitely when the Spotify app is wedged,
-     * and a voice command must not hang the tool dispatch waiting on it.
+     * Every distinct way [playUri] can end, so a caller can both decide success/failure
+     * ([succeeded]) and build the exact spoken line ([message]) without re-deriving either from
+     * a boolean or a raw exception. Named after the four SDK exceptions the research called out
+     * as the four distinct spoken failures a driver needs (never one generic string), plus the
+     * two outcomes that are ours, not the SDK's: never having Spotify at all, and a play() call
+     * that reached Spotify but was refused (region lock, a stale/bad URI, no active device even
+     * after the switch attempt).
      */
-    suspend fun playUri(uri: String): Boolean = withContext(Dispatchers.IO) {
-        val r = remote ?: return@withContext false
-        try {
+    sealed interface PlayOutcome {
+        /** Started for real - [playUri] awaited the actual `CallResult`, this is not optimistic. */
+        data class Started(
+            // Non-null only when [UserApi.getCapabilities] came back and said this account
+            // can't play on demand (map decision 7) - told in words, never silently degraded.
+            val premiumWarning: String? = null,
+        ) : PlayOutcome
+
+        /** [isInstalled] said no, or App Remote's own connect attempt threw [CouldNotFindSpotifyApp]. */
+        data object NotInstalled : PlayOutcome
+
+        /** App Remote connected to Spotify, but nobody is signed into it. */
+        data object NotLoggedIn : PlayOutcome
+
+        /** Spotify is up and signed in, but refused this app/account ([UserNotAuthorizedException]). */
+        data object NotAuthorized : PlayOutcome
+
+        /** Spotify is in offline mode. */
+        data object Offline : PlayOutcome
+
+        /** Connect failed for a reason the SDK didn't give one of the four names above. */
+        data class ConnectFailed(val detail: String?) : PlayOutcome
+
+        /** Connected fine; the `play()` call itself came back unsuccessful or timed out. */
+        data object PlayRejected : PlayOutcome
+    }
+
+    /** Only [PlayOutcome.Started] represents sound actually starting. */
+    internal fun succeeded(outcome: PlayOutcome): Boolean = outcome is PlayOutcome.Started
+
+    /**
+     * The pure outcome -> spoken-line mapping, kept free of [Context] and the SDK's async
+     * plumbing (same shape as [com.kevin.legion.location.NavigationController.message]) so it is
+     * a plain JVM unit test. [description] is whatever the driver asked for in their own words
+     * (a song/artist/playlist name) - every failure names it, so "nothing happened" always comes
+     * with a "to what".
+     */
+    internal fun message(outcome: PlayOutcome, description: String): String = when (outcome) {
+        is PlayOutcome.Started ->
+            "Playing \"$description\" on Spotify." + (outcome.premiumWarning?.let { " $it" } ?: "")
+        PlayOutcome.NotInstalled ->
+            "Spotify isn't installed on this phone, so there's nothing to play \"$description\" through."
+        PlayOutcome.NotLoggedIn ->
+            "Spotify's installed but nobody's signed in there - log into Spotify and ask again."
+        PlayOutcome.NotAuthorized ->
+            "Spotify won't authorize this account for App Remote - check the allowlist for it in " +
+                "the Spotify developer dashboard."
+        PlayOutcome.Offline ->
+            "Spotify's in offline mode right now, so it can't play \"$description\" - check the " +
+                "connection and try again."
+        is PlayOutcome.ConnectFailed ->
+            "Spotify wouldn't connect" + (outcome.detail?.let { " ($it)" } ?: "") +
+                " - I couldn't play \"$description\"."
+        PlayOutcome.PlayRejected ->
+            "Spotify wouldn't start \"$description\" - it may not be playable on this account here."
+    }
+
+    /**
+     * Maps the [Throwable] a failed connect attempt actually threw to a [PlayOutcome]. Pure and
+     * `internal` for the same reason as [message]: the four exception classes matched here
+     * ([CouldNotFindSpotifyApp], [NotLoggedInException], [UserNotAuthorizedException],
+     * [OfflineModeException]) are plain `java.lang.Exception` subclasses bundled in the App
+     * Remote aar with no Android framework dependency of their own (confirmed by javap against
+     * the bundled classes.jar), so this is constructible and testable on a plain JVM.
+     */
+    internal fun outcomeForConnectFailure(error: Throwable?): PlayOutcome = when (error) {
+        is CouldNotFindSpotifyApp -> PlayOutcome.NotInstalled
+        is NotLoggedInException -> PlayOutcome.NotLoggedIn
+        is UserNotAuthorizedException -> PlayOutcome.NotAuthorized
+        is OfflineModeException -> PlayOutcome.Offline
+        else -> PlayOutcome.ConnectFailed(error?.javaClass?.simpleName)
+    }
+
+    /**
+     * THE one play path (ticket 02, map decision 4), used by every tool on this map that starts
+     * a named track: [isInstalled] -> [ensureConnected] -> `ConnectApi.connectSwitchToLocalDevice()`
+     * -> `PlayerApi.play(uri)`. Finding [uri] for a spoken name is [SpotifyWebApi.searchTrackUri]'s
+     * job, not this one - App Remote has no search, so the split is: Web API resolves a name into
+     * a URI, App Remote makes sound come out.
+     *
+     * The switch-to-local-device step is new and is what solves the cold case: asking for music
+     * with Spotify closed. `SpotifyAppRemote.connect()` alone *creates* an active device (it
+     * starts Spotify's own background service even with nothing playing), but that created device
+     * is not necessarily the one this call should target - if a Connect speaker or another phone
+     * was last playing, `connect()` on its own would leave that speaker as the active device.
+     * `connectSwitchToLocalDevice()` explicitly pulls playback onto THIS phone before `play()`
+     * lands, so a voice play command never quietly starts audio somewhere else in the house. It
+     * is attempted best-effort: a failure here is logged but does not fail the whole play, since
+     * `play()` can still succeed if this phone was already the active device.
+     *
+     * Unlike the transport commands ([play], [pause], [next], [previous]) this **waits for the
+     * real result** (2026-07-29, carried forward). `playerApi.play()` returns a
+     * `CallResult<Empty>` that the old code discarded, so it reported success the instant the
+     * call was DISPATCHED - every genuinely async failure (region-locked track, no active
+     * device, Premium required, a stale URI) reported success over silence. Awaiting turns that
+     * into an answer [succeeded]/[message] can actually branch on.
+     *
+     * Blocking awaits throughout, so this runs off the main thread ([Dispatchers.IO]); each is
+     * bounded because App Remote can leave a call outstanding indefinitely when the Spotify app
+     * is wedged, and a voice command must not hang tool dispatch waiting on it.
+     */
+    suspend fun playUri(context: Context, uri: String): PlayOutcome = withContext(Dispatchers.IO) {
+        if (!isInstalled(context)) return@withContext PlayOutcome.NotInstalled
+
+        if (!ensureConnected(context)) {
+            return@withContext outcomeForConnectFailure(lastConnectFailure)
+        }
+
+        // ensureConnected() returning true means finishAttempt already set `remote`, but it is
+        // re-read (not captured) rather than trusted from the boolean, in case a concurrent
+        // disconnect landed between that return and this line - a null here is reported as a
+        // connect failure with no further detail rather than crashing on a null remote.
+        val r = remote ?: return@withContext PlayOutcome.ConnectFailed("lost connection")
+
+        switchToLocalDeviceBestEffort(r)
+
+        val started = try {
             val result = r.playerApi.play(uri).await(PLAY_TIMEOUT_SEC, TimeUnit.SECONDS)
             if (!result.isSuccessful) Log.w(TAG, "play($uri) failed: ${result.errorMessage}")
             result.isSuccessful
@@ -301,10 +458,49 @@ object SpotifyController {
             Log.w(TAG, "play($uri) threw: ${e.message}")
             false
         }
+        if (!started) return@withContext PlayOutcome.PlayRejected
+
+        PlayOutcome.Started(premiumWarning = premiumWarningIfNeeded(r))
     }
+
+    /** Best-effort pull of playback onto this phone. See [playUri]'s doc for why it isn't fatal. */
+    private fun switchToLocalDeviceBestEffort(r: SpotifyAppRemote) {
+        try {
+            val result = r.connectApi.connectSwitchToLocalDevice().await(SWITCH_TIMEOUT_SEC, TimeUnit.SECONDS)
+            if (!result.isSuccessful) Log.w(TAG, "connectSwitchToLocalDevice failed: ${result.errorMessage}")
+        } catch (e: Exception) {
+            Log.w(TAG, "connectSwitchToLocalDevice threw: ${e.message}")
+        }
+    }
+
+    /**
+     * Premium detection (ticket 02, map decision 7) via `UserApi.getCapabilities().canPlayOnDemand`
+     * - the only route left, since `user.product` was removed from the Web API for dev-mode apps
+     * in Feb 2026. **Not a gate** - this UX is deliberately Premium-only (map decision 7) - it
+     * exists purely to tell a non-Premium account so in words instead of silently shuffling its
+     * playback. Best-effort: any failure or timeout here returns null (unknown) rather than
+     * blocking or failing a play that otherwise already succeeded.
+     */
+    private fun premiumWarningIfNeeded(r: SpotifyAppRemote): String? = try {
+        val result = r.userApi.getCapabilities().await(CAPABILITIES_TIMEOUT_SEC, TimeUnit.SECONDS)
+        if (result.isSuccessful && result.data?.canPlayOnDemand == false) PREMIUM_WARNING else null
+    } catch (e: Exception) {
+        Log.w(TAG, "getCapabilities threw: ${e.message}")
+        null
+    }
+
+    /** Told, never gated on (map decision 7) - see [premiumWarningIfNeeded]. */
+    private const val PREMIUM_WARNING =
+        "Heads up - this Spotify account doesn't look like it has Premium, so on-demand play may not work as expected."
 
     /** Bound on the App Remote play round trip - long enough for a slow head unit, short enough not to stall a voice turn. */
     private const val PLAY_TIMEOUT_SEC = 8L
+
+    /** Bound on the best-effort switch-to-local-device call - shorter than [PLAY_TIMEOUT_SEC] since a failure here isn't fatal. */
+    private const val SWITCH_TIMEOUT_SEC = 5L
+
+    /** Bound on the best-effort Premium-capability check - short, since a timeout here must not delay reporting a play as started. */
+    private const val CAPABILITIES_TIMEOUT_SEC = 3L
 
     private inline fun withPlayer(action: (SpotifyAppRemote) -> Unit): Boolean {
         val r = remote ?: return false
