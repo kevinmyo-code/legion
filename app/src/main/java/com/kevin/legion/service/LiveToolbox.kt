@@ -30,6 +30,7 @@ import com.kevin.legion.pantry.PantryController
 import com.kevin.legion.meals.MealController
 import com.kevin.legion.workouts.WorkoutController
 import com.kevin.legion.location.LocationController
+import com.kevin.legion.location.NavigationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.util.Temp
 import com.kevin.legion.util.documentDate
@@ -423,6 +424,26 @@ object LiveToolbox {
                 "level" to schema("integer", "For 'set': target volume 0-100. Required for 'set'."),
             ),
             required = listOf("action"),
+        ))
+
+        fns.put(fn(
+            name = "open_navigation",
+            description = "Open the driver's map app on a destination they name - 'take me to', " +
+                "'navigate to', 'where is', 'show me on the map'. mode 'navigate' starts " +
+                "turn-by-turn guidance in Google Maps; mode 'show' just drops the place on the " +
+                "map without starting directions. Defaults to navigate. LEGION does not draw a " +
+                "map itself; this hands off to the map app on the phone. It reports honestly " +
+                "whether the map actually opened - if it comes back unsuccessful, tell the " +
+                "driver plainly that nothing opened and never say you started navigation.",
+            params = obj(
+                "destination" to schema("string",
+                    "Where the driver wants to go, in their own words - an address, a business " +
+                        "name, or a place, e.g. '2200 Kirby Drive' or 'the nearest Shell station'."),
+                "mode" to schema("string",
+                    "'navigate' for turn-by-turn (the default), 'show' to just display it.",
+                    enum = listOf("navigate", "show")),
+            ),
+            required = listOf("destination"),
         ))
 
         fns.put(fn(
@@ -1891,6 +1912,7 @@ object LiveToolbox {
             "get_current_location" -> getCurrentLocation(context)
             "play_music" -> playMusic(context, args.optString("query"), args.optString("type", "song"))
             "browse_my_music" -> browseMyMusic(context, args)
+            "open_navigation" -> openNavigation(context, args)
             "show_app" -> showApp(context)
             "set_reminder" -> result(
                 success = true,
@@ -5330,6 +5352,33 @@ object LiveToolbox {
     }
 
     /** Brings our own app to the foreground on request. */
+    /**
+     * Hands a destination to the phone's map app via [NavigationController].
+     *
+     * Ticket 03 of `.scratch/drive-test-2026-08-18/` exists because the assistant told Kevin, on
+     * a real drive, that it had opened Maps when the app had no navigation capability at all -
+     * with nothing to call, the model produced a plausible sentence. So the load-bearing rule
+     * here is that success is DERIVED from whether `startActivity` actually ran, exactly like
+     * `set_odometer`/`log_service`'s no-op guard: a tool that returns true unconditionally would
+     * reproduce the original bug behind a tool call instead of in front of one.
+     *
+     * The map-pin fallback returns success WITH a message, because something real but lesser
+     * happened and the driver has to be told which one they got.
+     */
+    private fun openNavigation(context: Context, args: JSONObject): JSONObject {
+        val destination = args.optString("destination").trim()
+        val mode = if (args.optString("mode", "navigate") == "show") {
+            NavigationController.Mode.SHOW
+        } else {
+            NavigationController.Mode.NAVIGATE
+        }
+        val outcome = NavigationController.launch(context, destination, mode)
+        return result(
+            success = NavigationController.succeeded(outcome),
+            message = NavigationController.message(outcome, destination),
+        )
+    }
+
     private fun showApp(context: Context): JSONObject {
         val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT) }

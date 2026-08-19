@@ -106,6 +106,16 @@ object MidnightEvents {
     fun toolDispatched(toolName: String) = safe { Log.d(TAG, "tool_dispatched: $toolName") }
 
     /**
+     * A navigation launch attempt and what actually came of it. [outcome] is the
+     * [com.kevin.legion.location.NavigationController.Outcome] that was returned, so a launch
+     * that never happened is distinguishable in the log from one that did - the whole point of
+     * the ticket this was built for.
+     */
+    fun navigationLaunch(mode: String, outcome: String) = safe {
+        Log.d(TAG, "navigation_launch: mode=$mode outcome=$outcome")
+    }
+
+    /**
      * A completed voice turn: what Gemini heard, and how much mic audio we actually
      * forwarded. `forwardedBytes` near zero on a turn the driver spoke into IS the
      * diagnosis: it means the mic was closed or muted, not that Gemini misheard.
