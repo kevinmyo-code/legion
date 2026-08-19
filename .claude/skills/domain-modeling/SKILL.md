@@ -9,27 +9,36 @@ Actively build and sharpen the project's domain model as you design. This is the
 
 ## File structure (ADAPTED for LEGION)
 
-Upstream keeps the glossary in `CONTEXT.md` and one ADR per file under `docs/adr/`. **This repo has
-neither, and you must not create them.** CLAUDE.md is the declared "single source of truth" and
-MEMORY.md is the state dashboard; a second glossary file would be a competing source of truth, which
-is exactly the failure this project's read order (MEMORY.md, then CLAUDE.md, then the library) exists
-to prevent.
+**CHANGED 2026-08-18.** This section used to say `docs/adr/` must never be created. Kevin reversed
+that. `docs/` now exists. The glossary half of the old rule survives; the ADR half does not.
 
-Map the two upstream artifacts onto what is already here:
+Upstream keeps the glossary in `CONTEXT.md` and one ADR per file under `docs/adr/`. Map them onto
+what is here:
 
 | Upstream | Here | Notes |
 |---|---|---|
-| `CONTEXT.md` (glossary) | **CLAUDE.md** | §1 identity and the aspects, §4 the reconciliation gate, §5 the Room tables, §6 the codebase map. This is the vocabulary. It is a rules file, not a scratch pad. |
-| `docs/adr/NNNN-slug.md` | **`memory/library/decisions.md`** | One append-only decision log, not one file per decision. Dated entries. |
+| `CONTEXT.md` (glossary) | **CLAUDE.md**, surfaced by `docs/glossary.md` | CLAUDE.md still owns the vocabulary: §1 identity and the aspects, §4 the gate, §5 the Room tables, §6 the codebase map. `docs/glossary.md` is an index that POINTS at those sections. It does not restate them. |
+| `docs/adr/NNNN-slug.md` | **`docs/adr/`**, plus `memory/library/decisions.md` | Two stores with one boundary: the ADR says what is binding NOW, the log says what happened WHEN. See `ADR-FORMAT.md` in this skill. |
 | (none) | **CLAUDE.md §2** | The locked pivot decisions. Some decisions are not merely recorded, they are locked. |
+| (none) | **`docs/architecture/`** | C4 levels 1-3. Level 4 is deliberately not written; it goes stale the day it lands. |
 
 Rules that follow from that mapping:
 
-- **Never create `CONTEXT.md`, `CONTEXT-MAP.md`, or `docs/adr/`.** If you catch yourself about to, stop: the target is CLAUDE.md or `decisions.md`.
+- **Never create `CONTEXT.md` or `CONTEXT-MAP.md`.** A second glossary is still a competing source
+  of truth, and that is still the failure the read order exists to prevent. If you want to define a
+  term, define it in CLAUDE.md and link it from `docs/glossary.md`.
+- **`docs/glossary.md` holds pointers and one-line glosses, never the authoritative definition.**
+  The moment it starts explaining a term more fully than CLAUDE.md does, it has become the thing the
+  old rule banned.
+- **Every decision still gets a `decisions.md` entry.** The ADR is additional, and only for
+  decisions that are standing. Most are not.
 - **Do not bulk-read the library.** Per CLAUDE.md, dispatch the `librarian` agent (RETRIEVE) against `memory/library/` instead of reading shelves into context. Card catalog: `memory/library/INDEX.md`.
 - **Most of the library is FROZEN Midnight AI history**, carrying a status banner. Vocabulary from a frozen shelf is not this project's vocabulary. Check the banner before importing a term.
 - **Write decisions via the librarian (FILE mode)**, not by hand-editing shelves, so the index stays correct. Verify what it writes - it has fabricated detail before.
 - **If a decision changes a CLAUDE.md rule, file it to `decisions.md` AND update CLAUDE.md in the same commit.** That is CLAUDE.md's own rule, not this skill's.
+- **If you change a documented code path, run `python tools/docs_check.py`.** It fails on any
+  `path/to/File.kt` named in `docs/` that no longer exists. This is L24 ("repo is ahead of its
+  docs") turned into a check instead of a hope.
 - **Check §2 first.** If the term or decision under discussion touches a locked pivot decision (phone-only, no commercial model, no backend, Drive-BYO, clone-and-run, one global identity, city-pop dead, LLM-behind-a-gate), say so and ask whether Kevin is intentionally reopening it, before recording anything.
 
 ## During the session

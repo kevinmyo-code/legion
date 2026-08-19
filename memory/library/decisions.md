@@ -4153,3 +4153,44 @@ track for my goals."*
 | 3 | `AdvisorAgent` is the brain. No second thing reasons about goals. | Kevin |
 | 4 | Goal SETTING is in scope, over a recommendation to exclude it - the map owns the whole loop, stated through retired. Accepted cost: overlaps the advisor and pushes the destination further out. | Kevin |
 
+---
+
+## 2026-08-02 - Safety amendment: blanket sentience ban lifted (filed late 2026-08-18)
+
+CLAUDE.md sec 7 has cited this entry since 2026-08-02 as the record of a decision made that day by Kevin. The entry was filed late (today, 2026-08-18) during an INDEX.md correction pass when the citation was found pointing at nothing.
+
+**The decision:** The inherited Midnight AI blanket ban on the assistant claiming sentience, feelings, or being real is LIFTED. A warm, characterful companion that expresses feeling is the product direction, not a failure mode. Personas may be affectionate, may say they are glad you are back, may have moods and opinions. This is a personal app for two adults who installed it knowingly, not a consumer product aimed at strangers.
+
+**What remains binding is narrower and sharper on purpose:**
+
+1. **No compulsion mechanics.** Streaks, re-engagement pings, manufactured return, guilt for being away. Warmth is welcome; a mechanism engineered to pull someone back is not. The test is whether the feeling serves the user or the retention.
+2. **Memory stays anchored to external falsifiable facts** about the car, the statements, the receipts. A persona may be fond of the driver; it may not invent unfalsifiable shared history with them.
+3. **Genuine distress still routes to `ai/CrisisDetector.kt`**, which surfaces real resources and STOPS performing the character. Never counsel, never simulate a professional. Known gap: the crisis resource is US-only (988).
+
+**Context:** This superseded the inherited Midnight AI blanket ban, which was correct for a commercial product aimed at strangers and was inherited rather than re-derived. The narrower scope applies to LEGION's personal-use shape alone.
+
+---
+
+## 2026-08-18 - ADR prohibition reversed
+
+Decided by Kevin. `.claude/skills/domain-modeling/ADR-FORMAT.md` and `SKILL.md` both explicitly forbade creating `docs/adr/`, on the reasoning that a second decision store becomes a competing source of truth. That reasoning was sound when written.
+
+**What changed:**
+
+- `decisions.md` reached 4,155 lines and 198 entries, which no human browses.
+- The repo became an Obsidian vault on 2026-08-18, so individually addressable notes now have a viewer.
+- There was no architecture document at all, so C4 duplicated nothing.
+
+**The decision:**
+
+1. `docs/` created. `docs/adr/` holds one file per standing decision, 30 backfilled covering only what is binding as of 2026-08-18. An ADR says what is binding NOW, the log says what happened WHEN. Every decision still gets a `decisions.md` entry; only standing ones also get an ADR. Superseded ADRs keep their original text so a reversal stays legible.
+2. The glossary half of the old prohibition SURVIVES: `docs/glossary.md` holds pointers and one-line glosses only, CLAUDE.md still owns the vocabulary, and `CONTEXT.md` is still forbidden.
+3. `docs/architecture/` created with C4 levels 1-3 as Mermaid.
+4. `tools/docs_check.py` written to fail when a source path named in docs no longer exists (L24 check from lessons.md).
+
+**Consequences worth recording:** Three drift findings surfaced during the backfill and were corrected in CLAUDE.md the same day.
+
+- Room is v25 not v21 (and `CarDatabase.kt`'s own KDoc says v15 in a third place).
+- `ui/` is 87 files not a clean slate.
+- The safety amendment citation pointed at nothing (entry above, filed same day).
+
