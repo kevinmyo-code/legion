@@ -171,6 +171,21 @@ object NowPlayingController {
         }
     }
 
+    /**
+     * The pure decision behind [pickController]'s session selection, kept Android-free so the
+     * anti-loop rule is a plain JVM unit test rather than something only provable on a device.
+     * [candidates] is (packageName, isPlaying) for every session [MediaSessionManager] currently
+     * reports; [ownPackage] is always excluded FIRST, before either the "prefer STATE_PLAYING" or
+     * the "fall back to the first one" rule runs - see [pickController]'s own comment for exactly
+     * why that ordering is load-bearing rather than incidental. Returns null when nothing (other
+     * than possibly LEGION itself) is publishing a session.
+     */
+    internal fun choosePackage(candidates: List<Pair<String, Boolean>>, ownPackage: String?): String? {
+        val eligible = candidates.filter { (pkg, _) -> pkg != ownPackage }
+        return eligible.firstOrNull { (_, isPlaying) -> isPlaying }?.first
+            ?: eligible.firstOrNull()?.first
+    }
+
     fun hasAccess(context: Context): Boolean {
         return NotificationManagerCompat.getEnabledListenerPackages(context)
             .contains(context.packageName)
@@ -199,9 +214,29 @@ object NowPlayingController {
     // (track change, play/pause) and a throw here would otherwise take down the app.
     private fun pickController(controllers: List<MediaController>?) {
         try {
-            val controller = controllers?.firstOrNull {
-                it.playbackState?.state == PlaybackState.STATE_PLAYING
-            } ?: controllers?.firstOrNull()
+            // LOAD-BEARING, not defensive: com.kevin.legion.car.LegionMediaLibraryService now
+            // publishes its OWN active MediaSession (the Android Auto now-playing card), and that
+            // session shows up in getActiveSessions() exactly like Spotify's or the phone's AVRCP
+            // bridge does. Without this filter, the very first NowPlayingController tick after
+            // LEGION's session goes active would read ITS OWN mirrored metadata back as "what's
+            // playing", which is the metadata LEGION just mirrored FROM this same controller one
+            // event earlier - a closed loop with no external anchor. Concretely: the proxy's
+            // isPlaying flips true because NowPlayingController said so, that flip republishes the
+            // proxy's own session state, pickController sees a session reporting STATE_PLAYING and
+            // (wrongly) prefers it as the "real" source, and the row it displays is forever a
+            // reflection of itself - never correcting even when the actual source (Spotify) pauses.
+            // It would also start writing phantom MusicPlayHistoryEntry rows for a "track" that is
+            // really just LEGION quoting LEGION. Excluding it at the SOURCE - before either the
+            // STATE_PLAYING preference or the fallback-to-first pick runs - is the only place this
+            // can be closed for good; filtering later (e.g. in the UI) would still let the loop run
+            // and still log bogus history.
+            val ownPackage = appCtx?.packageName
+            val selectedPackage = choosePackage(
+                controllers?.map { it.packageName to (it.playbackState?.state == PlaybackState.STATE_PLAYING) }
+                    ?: emptyList(),
+                ownPackage,
+            )
+            val controller = controllers?.firstOrNull { it.packageName == selectedPackage }
 
             if (controller?.sessionToken == activeController?.sessionToken) {
                 controller?.let { updateState(it) }

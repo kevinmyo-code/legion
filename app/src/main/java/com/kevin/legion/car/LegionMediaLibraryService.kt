@@ -717,20 +717,89 @@ class LegionMediaLibraryService : MediaLibraryService() {
 }
 
 /**
- * The smallest [Player] that satisfies [MediaLibrarySession.Builder]'s requirement for one -
- * research 02 section 2's "media3 does not give for free" item 2. `SimpleBasePlayer` is the
- * documented base for a `Player` with no real media pipeline: every transport command below is
- * logged and the internal state flipped so Android Auto's UI reflects it, but **nothing is ever
- * actually decoded or played**. Unchanged from wave 1 - the real "play" surface for wave 3 is the
- * browse-tree tap and the custom action, not this stub's own play/pause (there is no playable
- * [MediaItem] anywhere in this tree for AA to hand this player).
+ * Pure output of [describeProxyState] - just the three fields that decide WHICH branch of
+ * [LegionProxyPlayer.getState] to build and what its playback fields say, stripped of every
+ * media3 [androidx.media3.session.MediaLibrarySession]/[SimpleBasePlayer] type so this decision is
+ * a plain JVM value testable without Robolectric or a Looper.
  */
-private class StubPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
+internal data class ProxyPlaybackDescription(
+    /** False when nothing is playing anywhere LEGION can see - [LegionProxyPlayer.getState]
+     * must then build an empty, playlist-less player (media3's own constraint: an empty playlist
+     * is only legal in STATE_IDLE/STATE_ENDED). */
+    val hasItem: Boolean,
+    val playbackState: Int,
+    val playWhenReady: Boolean,
+)
 
-    private var playWhenReady = false
-    private var playbackState = Player.STATE_IDLE
+/**
+ * The entire "what does [info] mean for the proxy card" decision, in one pure function:
+ * - null -> nothing playing anywhere LEGION can see. [ProxyPlaybackDescription.hasItem] false,
+ *   [Player.STATE_IDLE], not playing. The card must not claim to play something that does not
+ *   exist - Kevin's own requirement for the offline/nothing-playing case.
+ * - non-null -> there is a real track LEGION knows about, mirrored honestly whether or not it is
+ *   currently advancing. Always [Player.STATE_READY] (the metadata is already known, nothing is
+ *   "loading") with [ProxyPlaybackDescription.playWhenReady] following [NowPlayingInfo.isPlaying]
+ *   exactly - the STRICT field (an explicit STATE_PLAYING report), not [NowPlayingInfo.isActive]'s
+ *   lenient cosmetic reading, because a transport bar that says PLAYING is a factual claim, not a
+ *   cosmetic animation.
+ */
+internal fun describeProxyState(info: NowPlayingInfo?): ProxyPlaybackDescription =
+    if (info == null) {
+        ProxyPlaybackDescription(hasItem = false, playbackState = Player.STATE_IDLE, playWhenReady = false)
+    } else {
+        ProxyPlaybackDescription(hasItem = true, playbackState = Player.STATE_READY, playWhenReady = info.isPlaying)
+    }
 
+/**
+ * The [Player] behind [LegionMediaLibraryService]'s media card, since wave 5 a genuine PROXY
+ * rather than the wave 1-4 `StubPlayer` it replaces. `SimpleBasePlayer` is still the documented
+ * base for a `Player` with no real decode pipeline underneath - **nothing is ever actually decoded
+ * or played by this class** - but every field [getState] reports now mirrors
+ * [NowPlayingController.state] (see [updateNowPlaying]), and every transport command a driver taps
+ * forwards to [MusicController], which is the object that actually reaches whatever session is
+ * REALLY playing (Spotify, almost always, on this phone). See [LegionMediaLibraryService]'s own
+ * class doc for the loop-prevention guarantee this class relies on but does not itself implement.
+ *
+ * [context] is the application context, needed only to call [MusicController]'s functions, which
+ * take a `Context` rather than closing over one - passed in explicitly rather than reaching for
+ * a static app-context singleton that does not exist in this codebase.
+ */
+private class LegionProxyPlayer(private val context: Context) : SimpleBasePlayer(Looper.getMainLooper()) {
+
+    // The single source of truth for every field getState() reports. Null means "nothing is
+    // playing anywhere LEGION can currently see" - not "unknown", not "loading" - and getState()
+    // renders that as a genuinely empty, IDLE player rather than guessing. Written only from
+    // updateNowPlaying, which the service's NowPlayingController collector calls on the main
+    // thread - the same Looper this player was constructed with, so invalidateState() is always
+    // called from the thread SimpleBasePlayer expects.
+    @Volatile private var nowPlaying: NowPlayingInfo? = null
+
+    /** Called by [LegionMediaLibraryService]'s `nowPlayingWatcherJob` on every
+     * [NowPlayingController.state] emission - the only way this player's reported state ever
+     * changes on its own (as opposed to in direct response to a driver's tap). */
+    fun updateNowPlaying(info: NowPlayingInfo?) {
+        nowPlaying = info
+        invalidateState()
+    }
+
+    /**
+     * Builds this tick's [State] purely from [nowPlaying] - there is no other state to reconcile
+     * against, which is what makes this a faithful mirror rather than an independent player that
+     * could drift from reality.
+     *
+     * **Native skip (`COMMAND_SEEK_TO_NEXT`/`COMMAND_SEEK_TO_PREVIOUS`) is deliberately never
+     * advertised.** This player's playlist is always exactly one item (the current track, when
+     * there is one) - there is no second item to skip TO. `androidx.media3.common.BasePlayer`'s
+     * own `seekToNext()`/`seekToPrevious()` check `hasNextMediaItem()`/`hasPreviousMediaItem()`
+     * before ever calling into a subclass's `handleSeek`, and silently `ignoreSeek()` when false -
+     * confirmed by reading that source, not assumed. A one-item playlist can never satisfy either
+     * check, so advertising those commands would render a skip control that looks live and does
+     * nothing on every tap. See [LegionMediaLibraryService]'s class doc for why leaving that slot
+     * unclaimed is also the reason the skip-slot reservation extras stay unset.
+     */
     override fun getState(): State {
+        val info = nowPlaying
+        val description = describeProxyState(info)
         val availableCommands = Player.Commands.Builder()
             .addAll(
                 Player.COMMAND_PLAY_PAUSE,
@@ -739,54 +808,97 @@ private class StubPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
                 Player.COMMAND_SET_MEDIA_ITEM,
             )
             .build()
+
+        if (!description.hasItem || info == null) {
+            // Nothing playing anywhere LEGION can see. An empty playlist is only legal alongside
+            // STATE_IDLE/STATE_ENDED (see handlePrepare's old doc, corrected below) - IDLE plus no
+            // playlist is the honest shape for "there is nothing to show", not a workaround.
+            return State.Builder()
+                .setAvailableCommands(availableCommands)
+                .setPlaybackState(description.playbackState)
+                .setPlayWhenReady(description.playWhenReady, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+                .build()
+        }
+
+        val mediaItem = MediaItem.Builder()
+            .setMediaId(NOW_PLAYING_MEDIA_ID)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(info.title)
+                    .setArtist(info.artist)
+                    .setAlbumTitle(info.album)
+                    .setArtworkUri(info.albumArtUri?.let(Uri::parse))
+                    .setIsPlayable(true)
+                    .setIsBrowsable(false)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                    .build(),
+            )
+            .build()
+        val itemData = MediaItemData.Builder(NOW_PLAYING_MEDIA_ID)
+            .setMediaItem(mediaItem)
+            .setDurationUs(if (info.duration > 0) info.duration * 1_000L else C.TIME_UNSET)
+            // No real timeline underneath to scrub within - the position shown is whatever the
+            // real session last reported, not something this proxy can seek inside on its own.
+            .setIsSeekable(false)
+            .build()
+
         return State.Builder()
             .setAvailableCommands(availableCommands)
-            .setPlaybackState(playbackState)
-            .setPlayWhenReady(playWhenReady, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+            .setPlaylist(listOf(itemData))
+            .setPlaybackState(description.playbackState)
+            .setPlayWhenReady(description.playWhenReady, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+            .setContentPositionMs(info.position)
             .build()
     }
 
+    /**
+     * Forwards PLAY/PAUSE to [MusicController] rather than flipping a local flag - the wave 1-4
+     * `StubPlayer` had no playable item anywhere in its tree so this was always a no-op; the proxy
+     * has a real target to command. **Deliberately no optimistic local state change here**: the
+     * card only ever reports what [NowPlayingController] has actually observed, on the next
+     * [updateNowPlaying] tick, never what LEGION merely hopes just happened - the same latency a
+     * driver would see using Spotify's own card, since both routes end at the same real session.
+     */
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
         CarProbeLog.log(
             "MediaLibraryService",
-            if (playWhenReady) "onPlay - no playable item in this tree, no-op" else "onPause",
+            if (playWhenReady) "onPlay - forwarding MusicController.play" else "onPause - forwarding MusicController.pause",
         )
-        this.playWhenReady = playWhenReady
+        if (playWhenReady) MusicController.play(context) else MusicController.pause(context)
+        return Futures.immediateVoidFuture()
+    }
+
+    /**
+     * **No longer stays IDLE unconditionally - CORRECTED for wave 5.** The wave 1-4 doc here
+     * explained a real on-device crash: `SimpleBasePlayer.State`'s constructor throws
+     * `IllegalArgumentException: Empty playlist only allowed in STATE_IDLE or STATE_ENDED` if a
+     * player with no playlist reports READY, and the old `StubPlayer` NEVER had a playlist (the
+     * talk item was an action, not audio). That constraint has not gone away - it is still enforced
+     * in [getState]'s null-`nowPlaying` branch above - but this player now DOES have a notional
+     * playlist whenever something is really playing, so `handlePrepare` no longer needs to force
+     * IDLE to satisfy it. It simply recomputes and republishes whatever [getState] would already
+     * say from the current [nowPlaying] snapshot; if that snapshot is null, the same IDLE branch
+     * that avoided the original crash still applies, automatically.
+     */
+    override fun handlePrepare(): ListenableFuture<*> {
+        CarProbeLog.log("MediaLibraryService", "onPrepare - recomputing state from the last known NowPlayingInfo")
         invalidateState()
         return Futures.immediateVoidFuture()
     }
 
     /**
-     * **Stays IDLE, deliberately.** This used to set `STATE_READY`, and on-device 2026-08-18 that
-     * threw on every single push-to-talk tap:
-     *
-     * ```
-     * java.lang.IllegalArgumentException: Empty playlist only allowed in STATE_IDLE or STATE_ENDED
-     *     at androidx.media3.common.SimpleBasePlayer$State.<init>
-     *     at com.kevin.legion.car.StubPlayer.getState
-     *     at com.kevin.legion.car.StubPlayer.handlePrepare
-     * ```
-     *
-     * media3 asserts that a player with no playlist cannot be READY, and this player never has a
-     * playlist: the talk item is an ACTION, not audio, so onSetMediaItems deliberately returns an
-     * empty queue rather than leaving the transport bar claiming to play something silent. READY
-     * plus an empty queue is a contradiction media3 refuses to build a State from.
-     *
-     * The throw was swallowed by media3's own ImmediateFuture and only surfaced in logcat, so the
-     * button worked while this fired twice a session. A caught exception on the happy path is still
-     * a bug - it means the state machine is being asked for something impossible every time.
+     * **What STOP means, decided (ticket 08 point 7).** AVRCP/MediaSession expose only
+     * play/pause/next/previous - there is no distinct "stop the stream" primitive to forward to,
+     * so STOP maps to the same real [MusicController.pause] call PAUSE does. This is the honest
+     * choice available, not an evasion: the real audio genuinely stops, matching what the STOP icon
+     * promises, and the alternative (a STOP that does nothing, or that means something a driver
+     * cannot predict from the icon) would be worse. **Never touches [AriaForegroundService] or the
+     * live conversation** - see [LegionMediaLibraryService]'s class doc for why that boundary is
+     * load-bearing rather than incidental.
      */
-    override fun handlePrepare(): ListenableFuture<*> {
-        CarProbeLog.log("MediaLibraryService", "onPrepare - staying IDLE, this player never holds a playlist")
-        invalidateState()
-        return Futures.immediateVoidFuture()
-    }
-
     override fun handleStop(): ListenableFuture<*> {
-        CarProbeLog.log("MediaLibraryService", "onStop")
-        playWhenReady = false
-        playbackState = Player.STATE_IDLE
-        invalidateState()
+        CarProbeLog.log("MediaLibraryService", "onStop - forwarding MusicController.pause (no distinct stop primitive exists)")
+        MusicController.pause(context)
         return Futures.immediateVoidFuture()
     }
 
@@ -795,9 +907,14 @@ private class StubPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
         startIndex: Int,
         startPositionMs: Long,
     ): ListenableFuture<*> {
+        // No external caller is expected to reach this - the session-level callback below
+        // (ProbeLibraryCallback.onSetMediaItems) already intercepts and no-ops the talk/info rows
+        // before they would ever be handed to the player, and this proxy's own playlist is built
+        // entirely from NowPlayingController rather than from an externally-set queue. Logged in
+        // case some unexpected caller (a future search-to-play path, say) reaches it anyway.
         CarProbeLog.log(
             "MediaLibraryService",
-            "Player.handleSetMediaItems count=${mediaItems.size} startIndex=$startIndex startPositionMs=$startPositionMs",
+            "Player.handleSetMediaItems count=${mediaItems.size} startIndex=$startIndex startPositionMs=$startPositionMs - unexpected caller, no-op",
         )
         return Futures.immediateVoidFuture()
     }
@@ -805,5 +922,12 @@ private class StubPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     override fun handleRelease(): ListenableFuture<*> {
         CarProbeLog.log("MediaLibraryService", "Player.onRelease")
         return Futures.immediateVoidFuture()
+    }
+
+    private companion object {
+        /** The mirrored track's media id - stable across ticks since it identifies "whatever is
+         * currently really playing", not any one song; a new title at the same id is exactly how
+         * a track change is expected to look. */
+        private const val NOW_PLAYING_MEDIA_ID = "legion-now-playing"
     }
 }
