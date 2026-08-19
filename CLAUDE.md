@@ -9,13 +9,17 @@ Created 2026-08-01 from the 2026-07-30/31 pivot off Midnight AI. This file holds
 1. **`memory/MEMORY.md`** first. Thin dashboard: what is happening now, blockers, in-flight,
    notes for next session. Always loaded, under 80 lines.
 2. **This file (CLAUDE.md)**. Locked architecture, frozen decisions, guardrails. Changes rarely.
-3. **`README.md`**. Public-facing build status, per-aspect detail, verification history. It is
+3. **`docs/`**. How it fits together and what is binding. `docs/architecture/` is C4 levels 1-3,
+   `docs/adr/` is the standing decisions with their supersession history, `docs/glossary.md` is the
+   vocabulary index. Docs link into this file and never restate it; if they disagree with CLAUDE.md,
+   CLAUDE.md wins and the doc is a bug.
+4. **`README.md`**. Public-facing build status, per-aspect detail, verification history. It is
    the authority on what compiles and what is tested; do not duplicate it here.
-4. **Anything deeper**: dispatch the `librarian` agent (RETRIEVE mode) against `memory/library/`.
+5. **Anything deeper**: dispatch the `librarian` agent (RETRIEVE mode) against `memory/library/`.
    Card catalog: `memory/library/INDEX.md`. Do not bulk-read shelf files into the main context.
    **Most of that library is FROZEN Midnight AI history** (see §11) - it is reference, not rules.
-5. **`TEAM.md`**. Subagent roster and dispatch cadence.
-6. **`.claude/skills/`**. Vendored skills, ported from Midnight AI 2026-08-01. Chris Banes's
+6. **`TEAM.md`**. Subagent roster and dispatch cadence.
+7. **`.claude/skills/`**. Vendored skills, ported from Midnight AI 2026-08-01. Chris Banes's
    Kotlin/Compose guidance (verbatim), plus repo-specific `wayfinder`, `to-spec`, `grillme`, and
    `issue-tracker.md`. **`wayfinder` has no plugin equivalent and exists only here.** Provenance and
    the list of the eight files adapted for LEGION are in `.claude/skills/ATTRIBUTION.md`.
@@ -106,7 +110,7 @@ repeat. Commit map and ticket changes like any other file.
 | Voice AI | Gemini Live WebSocket STS | `service/GeminiLiveSession.kt`, server VAD, half-duplex |
 | Sub-agents | Gemini Flash REST | `ai/SubAgent.kt`, one-shot + bounded investigate loop; now also takes an optional inline image part (`imageBytes`/`imageMimeType`) for pantry vision |
 | BYO key | Paste + 1-token validation ping | Ping is `ai/GeminiKeyValidator.kt` (`VALID`/`INVALID_KEY`/`NETWORK_ERROR`); storage is `ai/KeyVault.kt` (Keystore AES/GCM) via `CompanionProfile.saveGeminiKey`; resolution is `ai/GeminiKeyProvider.kt`. Direct to Google, no proxy |
-| Local DB | Room **v21** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). v1->v2 ledger, v2->v3 pantry, v3->v4 `ingested_files`, v4->v5 `companion_profiles`; all real verbatim generated-SQL migrations with `exportSchema` |
+| Local DB | Room **v25** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). 46 entities, 46 DAOs, chain complete through `MIGRATION_24_25`; all real verbatim generated-SQL migrations with `exportSchema` |
 | OBD | ELM327 Bluetooth RFCOMM + BLE | Unchanged from Midnight AI |
 | Music | Generic MediaSession transport (`media/MusicController`) + Spotify App Remote direct play | `MusicRouter`/`MusicSource`/mixtapes all retired |
 | Location | Android `Geocoder` | The Mapbox-backed `NavGeocoder`, embedded nav, and the phone-to-head-unit GPS beacon are all gone |
@@ -170,7 +174,7 @@ anchored to external, falsifiable reality.
 
 ---
 
-## 5. Data Layer (Room v21)
+## 5. Data Layer (Room v25)
 
 Additive migrations only, verbatim generated SQL, `exportSchema = true`, schema JSON committed
 under `app/schemas/`, no destructive fallback on upgrade.
@@ -182,6 +186,10 @@ under `app/schemas/`, no destructive fallback on upgrade.
   every row is LLM-extracted by construction, so it would always read the same value.
 - **v4** - `ingested_files` + DAO (the per-file ingestion ledger, ticket 03).
 - **v5** - `companion_profiles` + DAO.
+- **v6 through v25** - not listed here. `data/local/Migrations.kt` is the authority, and the entity
+  roster grouped by aspect is in `docs/architecture/c3-data.md`. **CORRECTED 2026-08-18:** this
+  section said v21 for weeks while the code was at v25, and `CarDatabase.kt`'s own KDoc still says
+  15 in one place. Read the code before quoting a version.
 
 **Widening an enum stored as TEXT is not a migration.** `LedgerTransaction.ingestMethod` and
 friends are `TEXT NOT NULL` with no CHECK constraint, so adding a constant changes no SQL, leaves
@@ -247,7 +255,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 - **No comparative or anonymized fleet data**, ever.
 - **Network calls degrade gracefully offline.**
 - **Assets are bundled** in `assets/` or `res/`, never fetched at runtime.
-- **Safety (AMENDED 2026-08-02, Kevin - see `library/decisions.md`):** the old blanket ban on the
+- **Safety (AMENDED 2026-08-02, Kevin):** the old blanket ban on the
   assistant claiming sentience, feelings, or being real is **LIFTED**. A warm, characterful
   companion that expresses feeling is the product direction now, not a failure mode. Personas may
   be affectionate, may say they are glad you are back, may have moods and opinions. This is a
@@ -376,7 +384,8 @@ read next run (`.claude/agents/*.md`, this file). Ledger: `memory/library/lesson
 
 Stated so nobody treats these as gaps to panic about or as silently-missing work:
 
-- **Almost all of `ui/`.** Deliberate clean slate. No design language chosen to replace city-pop.
+- ~~**Almost all of `ui/`.**~~ **STALE, corrected 2026-08-18.** `ui/` holds 87 Kotlin files and the design language IS chosen: mission control, built and verified on the phone. See
+  `docs/adr/0023-design-language-mission-control.md`.
 - **Onboarding UI.** `ai/OnboardingFlow.kt` ported, but its identity clause is placeholder and the
   conversational onboarding screen that hosts it does not exist.
 - ~~**The assistant's actual voice.**~~ **DONE, corrected 2026-08-16** - see §1. `Personas.kt`
@@ -448,3 +457,42 @@ asking for the next map every session. The repo root IS the vault; nothing moved
 - `memory/library/` shelves carry `shelf` / `status` / `kind` frontmatter and wikilink each other.
   **Do not wikilink source code paths** - the graph is for the knowledge library, and hundreds of
   code nodes would drown it. Code paths stay in backticks.
+
+---
+
+## 13. The docs layer
+
+Added 2026-08-18. `docs/` answers **how it fits together** and **what is binding**. It is the sixth
+documentation surface and the boundaries matter:
+
+| Question | Surface |
+|---|---|
+| What are the rules? | **this file** |
+| What is happening now? | `memory/MEMORY.md` |
+| What happened, and when? | `memory/library/`, chiefly `memory/library/decisions.md` |
+| What is planned? | `.scratch/*/map.md` and tickets, surfaced at `vault/Board.md` |
+| What compiles and is tested? | `README.md` |
+| How does it fit together, what is binding? | `docs/` |
+
+- **ADRs (`docs/adr/`) say what is binding NOW. `decisions.md` says what happened WHEN.** Every
+  decision still gets a `decisions.md` entry; only standing ones also get an ADR. Superseded ADRs
+  keep their original text. Format and the test for whether something earns one:
+  `.claude/skills/domain-modeling/ADR-FORMAT.md`. **The old prohibition on `docs/adr/` in that file
+  was reversed by Kevin on 2026-08-18.**
+- **`docs/glossary.md` holds pointers, never authoritative definitions.** CLAUDE.md still owns the
+  vocabulary. A second competing glossary is the failure the read order exists to prevent, and that
+  half of the old prohibition survives.
+- **Diagrams are Mermaid in Markdown**, not Canvas: they render in Obsidian and on GitHub, and they
+  diff in a pull request. C4 levels 1 to 3 only; level 4 goes stale the day it lands.
+- **Run `python tools/docs_check.py` after moving or renaming documented code.** It fails on a
+  source path named in `docs/` that no longer exists, on ADR frontmatter that is missing or invalid,
+  on a one-sided supersession link, and on a wikilink pointing at nothing. This is L24 turned into a
+  check instead of a hope.
+- `docs/adr/adr-index.md` is generated by `tools/obsidian_sync.py` from ADR frontmatter. Do not
+  hand-edit it.
+- **`docs/pending.html` is the progress wiki** - every OPEN ticket across every map on one page,
+  grouped by map, filterable by ready / blocked / decision / buildable. Generated by
+  `python tools/pending_wiki.py` from the SAME ticket frontmatter `obsidian_sync.py` maintains, so
+  it cannot drift from `vault/Board.md`; re-run it after resolving anything. Do not hand-edit it.
+  A map with no open tickets vanishes from the page entirely. It uses the app's own mission-control
+  palette (`ui/theme/Color.kt`) rather than a second visual language.
