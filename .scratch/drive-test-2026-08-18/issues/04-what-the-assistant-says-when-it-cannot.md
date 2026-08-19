@@ -7,7 +7,7 @@ status: resolved
 status-detail: "Decided and built 2026-08-19: a forbidden-vocabulary clause in sharedInstructions, presence guarded by a test, obedience unguarded by choice."
 blockers: ["03"]
 blocked-by: ["[[03-no-navigation-capability]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---

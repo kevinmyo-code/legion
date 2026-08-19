@@ -3,12 +3,12 @@ map: drive-test-2026-08-18
 ticket: 03
 title: "The assistant said it opened Maps. There is no map feature at all."
 type: task
-status: open
-status-detail: "Built on feat/navigation 2026-08-19; every on-device check still open."
+status: resolved
+status-detail: "Built and verified on the phone 2026-08-19 - Kevin ran the on-device checks and reported them passed."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The assistant said it opened Maps. There is no map feature at all.
@@ -105,5 +105,16 @@ other tool family in that prompt already follows.
 - **9 unit tests** in `NavigationControllerTest` (URI shape, `%20` not `+`, UTF-8 escapes, the
   outcome-to-honesty mapping). Full suite 1641 tests, 0 failures. `tested`.
 
-**Every box under Verification above is still unticked.** No phone was attached to the laptop this
-was built on. Nothing here is `on-device`.
+## Verified on the phone, 2026-08-19 - Kevin
+
+**Kevin ran the on-device checks and reported them passed.** `on-device`, on his report rather than
+on a log pulled here - the laptop this was built on has never had the A25 attached to it.
+
+That closes the ticket. The two checks worth remembering the shape of, because they are the ones
+that would have caught the original bug: Maps opening for real **from the foreground service**
+(`FLAG_ACTIVITY_NEW_TASK`, where the failure mode is a throw rather than a no-op), and a failed
+launch being **spoken as a failure** instead of reported as success.
+
+Still never exercised, and not a condition of this ticket: `GeminiLiveSession.kt:1156`'s speaker
+cancellation against real turn-by-turn audio. It needs guidance actually running while the mic is
+open, which is a drive, not a check.

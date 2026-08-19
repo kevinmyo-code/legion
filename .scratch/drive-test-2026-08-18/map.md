@@ -79,6 +79,13 @@ says so in its own message; it explicitly did not touch the second.
   and cannot prevent) **and an obedience eval.** So presence is guarded by a test and obedience is
   not guarded at all - written down as the position, not left implied.
 
+- [The assistant said it opened Maps. There is no map feature at all.](issues/03-no-navigation-capability.md)
+  — **Built and verified on the phone 2026-08-19.** `open_navigation` fires `google.navigation:`/`geo:`
+  at the driver's own map app through `location/NavigationController`, with success DERIVED from
+  whether `startActivity` ran - the load-bearing requirement, since a tool that always reports
+  success would only move the original bug behind a tool call. Turn-by-turn that cannot be served
+  falls back to a map pin and says so. Kevin ran the on-device checks and reported them passed.
+
 - [A conversation waits for the driver, not a ten-second timer](issues/01-conversation-waits-for-the-driver.md)
   — **Fixed in `1e3ee04`, not re-tested on a drive.** The `vadMode` branch of `turnComplete` no
   longer arms an idle timer; `armIdleTimeout` now governs speak-only sessions only. Kevin's call,
@@ -88,13 +95,10 @@ says so in its own message; it explicitly did not touch the second.
 
 ## What is left: one drive
 
-**Every ticket on this map is decided and built. Nothing on it is verified in a car.** All five
-came from one drive and four of the five can only be closed by another one. This is the whole
-remaining list, in the order it is quickest to walk:
+**Every ticket on this map is decided and built. Ticket 03 is verified on the phone (Kevin,
+2026-08-19); the rest are not verified in a car.** This is the whole remaining list, in the order it
+is quickest to walk:
 
-- **03, navigation.** Ask for a named place. Google Maps must actually open on it, launched from the
-  foreground service, not from an Activity. Then ask for somewhere absurd and confirm that when the
-  tool comes back unsuccessful the assistant says nothing opened rather than claiming it did.
 - **04, the honesty clause.** Ask for something LEGION genuinely cannot do (booking a table, sending
   a text). It must say it cannot, offer only something it really has, and never use an outcome verb.
   **This is the one item no test on any machine can close** - presence is guarded, obedience is not.

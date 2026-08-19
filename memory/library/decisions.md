@@ -4153,6 +4153,31 @@ track for my goals."*
 | 3 | `AdvisorAgent` is the brain. No second thing reasons about goals. | Kevin |
 | 4 | Goal SETTING is in scope, over a recommendation to exclude it - the map owns the whole loop, stated through retired. Accepted cost: overlaps the advisor and pushes the destination further out. | Kevin |
 
+## 2026-08-18 - Reading Kevin's own Spotify library (.scratch/drive-test-2026-08-18, ticket 05, BUILT)
+
+Ticket: `.scratch/drive-test-2026-08-18/issues/05-reading-kevins-spotify-library.md` (resolved).
+
+Asked on 2026-08-18: the obstacle was not the code but the re-auth trap. Adding scopes for `user-library-read`, `user-read-recently-played`, and `user-top-read` invalidates an existing grant by design, because `isAuthorized` compares the granted scope string against the current `SCOPES` constant as an equality check. Kevin's three calls:
+
+| # | Question | Answer | Consequence |
+|---|---|---|---|
+| 1 | When does the re-auth land? | **Now.** He is at a desk, not driving, which is the only condition that mattered. | The Setup screen now reads "Needs re-approving" with copy saying nothing was lost. Both music tools fail in words naming the same cause. Re-auth trap was handled, not just noted. |
+| 2 | Spotify's history, or LEGION's own? | **Both.** `recently_played` and the top rankings are Spotify's; `legion_history` is LEGION's own. | New table `MusicPlayHistoryEntry` added (v26 migration). `MusicPlayHistoryEntry.spotifyUri` is always null—MediaSession metadata carries no URI and App Remote's player state is not wired in. Documented on the entity. |
+| 3 | Does `play_music` gain album/playlist? | **Yes** - widen the search, not narrow the description. | Tracks-only search widened to include albums and playlists. A honesty bug was fixed in passing: `play_music`'s description advertised "song, artist, album, or playlist" but the implementation searched tracks only. |
+
+Built in a19ab4d (the history table) and 18e881c (the library reads and the tool).
+
+**One tool, not five.** `browse_my_music(source, limit)` with `source` in `saved_albums`, `recently_played`, `top_artists`, `top_tracks`, `legion_history`. There are already 89 tools and a bloated surface makes the live model worse at choosing; five near-identical declarations would have worsened that for no gain.
+
+**Whose numbers they are is written into the tool description.** Spotify's rankings are named as Spotify's and as covering every device Kevin uses Spotify on. `legion_history` is named as LEGION's own observation of this device only, and any "favourite" drawn from it as LEGION's inference from what it happened to see. A failure states its cause and is never allowed to read as "you have nothing".
+
+### Verification state (still owed)
+
+- **On-device QA.** Nothing here has touched a real Spotify account. The four endpoints, album and playlist search against real results, and the re-auth flow are all `reasoned`, never `tested`.
+- `MusicPlayHistoryEntry.spotifyUri` is always null. Documented on the entity.
+- `LIBRARY_LIMIT = 10` is inherited by inference. `SEARCH_LIMIT` was probed value-by-value on 2026-08-12; this ceiling was not, and says so.
+- The v25 to v26 migration test compiles but has never run. `connectedAndroidTest` would uninstall the app and consume Kevin's real data.
+
 ---
 
 ## 2026-08-02 - Safety amendment: blanket sentience ban lifted (filed late 2026-08-18)
