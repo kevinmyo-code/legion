@@ -143,6 +143,30 @@ object SpotifyController {
         playerStateSubscription = subscription
     }
 
+    /** The (uri, name) of the artist behind whatever's currently playing (ticket 13). */
+    data class CurrentArtist(val uri: String, val name: String)
+
+    /**
+     * Pure `PlayerState? -> CurrentArtist?` decision behind [currentArtist] - kept Android-free
+     * and internal so it is a plain JVM unit test. Null whenever there is nothing genuinely to
+     * answer with (no state, or a state with a blank uri/name) - "more from this artist" and "what
+     * else does he have" (ticket 13, `.scratch/spotify-voice/issues/13-more-from-this-artist.md`)
+     * must both fail honestly on null rather than ever inventing an artist from a stale guess.
+     */
+    internal fun currentArtistFrom(state: PlayerState?): CurrentArtist? {
+        val artist = state?.track?.artist ?: return null
+        if (artist.uri.isBlank() || artist.name.isBlank()) return null
+        return CurrentArtist(uri = artist.uri, name = artist.name)
+    }
+
+    /**
+     * The artist behind whatever App Remote's own pushed [playerState] currently holds - ticket
+     * 13's "more from this artist" / "what else does he have" both read this rather than the
+     * driver's own words, since there is nothing to search: the artist is exactly whoever is
+     * playing right now, from Spotify's own truth (same source ticket 07 uses for now-playing).
+     */
+    fun currentArtist(): CurrentArtist? = currentArtistFrom(playerState.value)
+
     /**
      * Starts (or joins) the one connect attempt in flight. Every public entry
      * point below funnels through here so there is exactly one
