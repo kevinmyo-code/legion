@@ -1,4 +1,4 @@
-"""Regenerates docs/pending.html - the progress wiki.
+"""Regenerates docs/index.html - the progress wiki, and the GitHub Pages home page.
 
 One page showing every OPEN ticket across every map, grouped by map, filterable by
 ready / blocked / decision / buildable. Built from the same ticket frontmatter
@@ -247,5 +247,5 @@ doc = (
     '<script>' + JS + '</script>' + NL
 )
 
-open(os.path.join('docs', 'pending.html'), 'w', encoding='utf-8').write(doc)
+open(os.path.join('docs', 'index.html'), 'w', encoding='utf-8').write(doc)
 print('docs/pending.html:', len(panels), 'maps,', tot, 'open tickets,', ready, 'ready')
