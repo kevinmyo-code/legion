@@ -5189,18 +5189,19 @@ object LiveToolbox {
             )
         }
 
-        // playUri awaits App Remote's real result, so this genuinely means
-        // playback started - it is not just "the call didn't throw".
-        if (SpotifyController.playUri(uri)) {
+        // playUri (ticket 02, map decision 4) is the one play path: isInstalled ->
+        // ensureConnected -> connectSwitchToLocalDevice -> play(uri), and it awaits App Remote's
+        // real result, so a Started outcome genuinely means playback started - not just that the
+        // call didn't throw. SpotifyController.message/succeeded are the pure outcome -> spoken
+        // mapping (same shape as NavigationController's), so every one of the four distinct
+        // connect failures the research called for gets its own line here, never one generic one.
+        val outcome = SpotifyController.playUri(context, uri)
+        if (SpotifyController.succeeded(outcome)) {
             // Attributes the track NowPlayingController is about to observe to LEGION rather
             // than the driver having started it themselves - see its own doc comment.
             NowPlayingController.markLegionInitiatedPlay()
-            return result(success = true, message = "Playing \"$query\" on Spotify.")
         }
-        return result(
-            success = false,
-            message = "Spotify wouldn't start that one - it may not be playable on your account here.",
-        )
+        return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, query))
     }
 
     /**

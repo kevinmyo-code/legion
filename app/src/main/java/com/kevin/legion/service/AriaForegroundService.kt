@@ -27,6 +27,7 @@ import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.location.ReminderController
 import com.kevin.legion.media.NowPlayingController
+import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.ai.OnboardingState
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.RecallCheckResult
@@ -153,6 +154,22 @@ class AriaForegroundService : Service() {
         // are safe to call repeatedly and quietly wait until their grant is given.
         NowPlayingController.init(this)
         LocationController.init(this)
+        // Hold the App Remote connection here, in the foreground service, rather than only
+        // ever connecting per command (ticket 02, map decision 5, Kevin 2026-08-19).
+        //
+        // THIS DELIBERATELY VIOLATES Spotify's own documented lifecycle guidance: "connect in
+        // onStart, disconnect in onStop... otherwise Spotify will not be able to shutdown."
+        // Do not "fix" this by moving the connect to an Activity lifecycle callback and adding
+        // a matching disconnect() somewhere. The violation is intentional: a per-command connect
+        // costs a real round trip of latency on every single utterance, and this is a car
+        // assistant where that latency is the whole cold-start experience the ticket exists to
+        // fix ("kill Spotify, then ask for music - it plays"). This service never calls
+        // SpotifyController.disconnect() anywhere in its own lifecycle for the same reason -
+        // see onDestroy below. connectSilently no-ops instantly when no client ID is saved, so a
+        // driver who never set Spotify up pays nothing here; it also joins whatever connect
+        // attempt MainActivity.onResume may already have started rather than racing a second one
+        // (see SpotifyController.startConnect's own doc).
+        SpotifyController.connectSilently(this)
         // Watch phone-call state (phone paired over BT HFP) so the assistant can
         // announce incoming calls and stay quiet during one. No-op without
         // READ_PHONE_STATE.
@@ -800,6 +817,13 @@ class AriaForegroundService : Service() {
         TelephonyController.destroy()
         if (this::sessionController.isInitialized) sessionController.destroy()
         serviceScope.cancel()
+        // Deliberately NO SpotifyController.disconnect() here. See the comment on
+        // SpotifyController.connectSilently's call in onCreate above: the held connection is a
+        // conscious violation of Spotify's own "disconnect in onStop" guidance, made for
+        // latency, and this is the other half of that same choice - if this service is destroyed
+        // and recreated (process death, a restart), the next onCreate reconnects on its own; we
+        // do not spend the drive tearing the connection down first only to rebuild it seconds
+        // later.
     }
 
     private fun granted(permission: String): Boolean =
