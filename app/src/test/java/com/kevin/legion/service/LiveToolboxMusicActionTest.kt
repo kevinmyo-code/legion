@@ -24,18 +24,21 @@ class LiveToolboxMusicActionTest {
         assertEquals(LiveToolbox.MusicAction.PREVIOUS, LiveToolbox.MusicAction.fromWire("previous"))
         // Landed ticket 04: queue shares one action with add-to-queue semantics only.
         assertEquals(LiveToolbox.MusicAction.QUEUE, LiveToolbox.MusicAction.fromWire("queue"))
+        // Landed ticket 05: library writes on whatever's currently playing.
+        assertEquals(LiveToolbox.MusicAction.LIKE, LiveToolbox.MusicAction.fromWire("like"))
+        assertEquals(LiveToolbox.MusicAction.UNLIKE, LiveToolbox.MusicAction.fromWire("unlike"))
+        assertEquals(LiveToolbox.MusicAction.FOLLOW_ARTIST, LiveToolbox.MusicAction.fromWire("follow_artist"))
+        assertEquals(LiveToolbox.MusicAction.UNFOLLOW_ARTIST, LiveToolbox.MusicAction.fromWire("unfollow_artist"))
     }
 
     @Test
-    fun `an action commit 05-06 have not landed yet is unrecognized, not a guess`() {
-        // These are the map's remaining future entries (like, unlike, follow_artist,
-        // unfollow_artist, shuffle_on, shuffle_off, repeat_off, repeat_track, repeat_context,
-        // seek_forward, seek_back, restart). Ticket 03's whole point is that the JSON schema
-        // `enum` and this parser never claim more than is actually wired - so every one of these
-        // must currently fail closed (null) rather than silently succeed against a case that
-        // doesn't exist yet.
+    fun `an action ticket 06 has not landed yet is unrecognized, not a guess`() {
+        // These are the map's remaining future entries (shuffle_on, shuffle_off, repeat_off,
+        // repeat_track, repeat_context, seek_forward, seek_back, restart). Ticket 03's whole
+        // point is that the JSON schema `enum` and this parser never claim more than is actually
+        // wired - so every one of these must currently fail closed (null) rather than silently
+        // succeed against a case that doesn't exist yet.
         for (future in listOf(
-            "like", "unlike", "follow_artist", "unfollow_artist",
             "shuffle_on", "shuffle_off", "repeat_off", "repeat_track", "repeat_context",
             "seek_forward", "seek_back", "restart",
         )) {

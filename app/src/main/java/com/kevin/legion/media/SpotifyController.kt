@@ -601,6 +601,132 @@ object SpotifyController {
         QueueOutcome.Queued
     }
 
+    // --- Library writes: like/unlike, follow/unfollow (ticket 05, .scratch/spotify-voice/issues/05-library-writes.md) --
+
+    /**
+     * Which library write `control_music` asked for. Kept as its own enum (rather than reusing
+     * [LiveToolbox.MusicAction][com.kevin.legion.service.LiveToolbox.MusicAction] here, which
+     * would be a service-layer type leaking into media) so [message] below can hold all four
+     * verbs' wording in one place.
+     */
+    enum class LibraryAction { LIKE, UNLIKE, FOLLOW_ARTIST, UNFOLLOW_ARTIST }
+
+    /**
+     * Every distinct way a library write can end. **[AlreadyInThatState] is its own outcome,
+     * never folded into [Applied]** - ticket 05 rule 3, "getLibraryState before speaking":
+     * `getLibraryState` is read BEFORE the write so "already liked" and "liked it" come back as
+     * the two different sentences the driver can actually tell apart, rather than one of them
+     * being a guess.
+     */
+    sealed interface LibraryWriteOutcome {
+        /** The add/remove call was awaited and came back successful, and the state genuinely changed. */
+        data object Applied : LibraryWriteOutcome
+
+        /** [getLibraryState] said the target was already in the requested state; nothing was written. */
+        data object AlreadyInThatState : LibraryWriteOutcome
+
+        /** Nothing is currently playing (or App Remote holds no track), so there is nothing to act on. */
+        data object NothingPlaying : LibraryWriteOutcome
+
+        /** Could not reach/connect to Spotify at all. */
+        data object NotConnected : LibraryWriteOutcome
+
+        /** Connected fine; the add/remove call itself came back unsuccessful or timed out. */
+        data object WriteRejected : LibraryWriteOutcome
+    }
+
+    /** [Applied] and [AlreadyInThatState] both mean the driver's requested state now holds. */
+    internal fun succeeded(outcome: LibraryWriteOutcome): Boolean =
+        outcome is LibraryWriteOutcome.Applied || outcome is LibraryWriteOutcome.AlreadyInThatState
+
+    /**
+     * The pure outcome -> spoken-line mapping for a [LibraryAction] + [LibraryWriteOutcome] pair,
+     * same shape as [message] for [PlayOutcome]/[QueueOutcome]. Every branch of [action] gets its
+     * own wording for every outcome - "liked" and "followed" are not interchangeable words, and
+     * neither are "already liked" and "liked it".
+     */
+    internal fun message(outcome: LibraryWriteOutcome, action: LibraryAction): String {
+        val (subject, verb, alreadyVerb, notVerb) = when (action) {
+            LibraryAction.LIKE -> Quad("this track", "Liked it.", "Already liked - it's already in your Liked Songs.", "It wasn't liked, so nothing changed.")
+            LibraryAction.UNLIKE -> Quad("this track", "Unliked it.", "It wasn't liked in the first place, so nothing changed.", "Removed it from your Liked Songs.")
+            LibraryAction.FOLLOW_ARTIST -> Quad("this artist", "Following them now.", "Already following them.", "Wasn't following them, so nothing changed.")
+            LibraryAction.UNFOLLOW_ARTIST -> Quad("this artist", "Unfollowed them.", "Wasn't following them in the first place, so nothing changed.", "Stopped following them.")
+        }
+        return when (outcome) {
+            LibraryWriteOutcome.Applied -> verb
+            LibraryWriteOutcome.AlreadyInThatState -> alreadyVerb
+            LibraryWriteOutcome.NothingPlaying ->
+                "Nothing's playing right now, so there's no $subject to act on."
+            LibraryWriteOutcome.NotConnected ->
+                "Spotify isn't connected - connect your Spotify account in Setup, or pick " +
+                    "something on your phone yourself and I'll control play/pause/skip from here."
+            LibraryWriteOutcome.WriteRejected ->
+                "Spotify wouldn't apply that - $notVerb"
+        }
+    }
+
+    /** Tiny local 4-tuple so [message] above doesn't need a data class per field it destructures. */
+    private data class Quad(val subject: String, val verb: String, val alreadyVerb: String, val notVerb: String)
+
+    /**
+     * The actual add/remove sequence shared by [like]/[unlike]/[followArtist]/[unfollowArtist]:
+     * connect, read [UserApi.getLibraryState] on [uri] first (ticket 05 rule 3), skip the write
+     * entirely when the state already matches (so "like this" twice never double-writes), then
+     * `addToLibrary`/`removeFromLibrary`.
+     */
+    private suspend fun libraryWrite(context: Context, uri: String?, add: Boolean): LibraryWriteOutcome =
+        withContext(Dispatchers.IO) {
+            if (uri.isNullOrBlank()) return@withContext LibraryWriteOutcome.NothingPlaying
+            if (!ensureConnected(context)) return@withContext LibraryWriteOutcome.NotConnected
+            val r = remote ?: return@withContext LibraryWriteOutcome.NotConnected
+
+            // Best-effort: a failed/timed-out read does not block the write below, it just means
+            // this call cannot short-circuit an already-correct state and instead attempts the
+            // write anyway (still correct, just an extra no-op round trip to Spotify).
+            val currentlyAdded = try {
+                r.userApi.getLibraryState(uri).await(CAPABILITIES_TIMEOUT_SEC, TimeUnit.SECONDS)
+                    .takeIf { it.isSuccessful }?.data?.isAdded
+            } catch (e: Exception) {
+                Log.w(TAG, "getLibraryState($uri) threw: ${e.message}")
+                null
+            }
+            if (currentlyAdded == add) return@withContext LibraryWriteOutcome.AlreadyInThatState
+
+            val ok = try {
+                val call = if (add) r.userApi.addToLibrary(uri) else r.userApi.removeFromLibrary(uri)
+                val result = call.await(PLAY_TIMEOUT_SEC, TimeUnit.SECONDS)
+                if (!result.isSuccessful) Log.w(TAG, "library write($uri, add=$add) failed: ${result.errorMessage}")
+                result.isSuccessful
+            } catch (e: Exception) {
+                Log.w(TAG, "library write($uri, add=$add) threw: ${e.message}")
+                false
+            }
+            if (ok) LibraryWriteOutcome.Applied else LibraryWriteOutcome.WriteRejected
+        }
+
+    /**
+     * Likes the CURRENTLY PLAYING track only - never an album, never the whole queue (ticket 05
+     * scope item 4). Reads the track uri from [playerState] (ticket 02's push subscription), not
+     * a fresh explicit read, per the ticket's own wording ("read from subscribeToPlayerState").
+     */
+    suspend fun like(context: Context): LibraryWriteOutcome = libraryWrite(context, playerState.value?.track?.uri, add = true)
+
+    /** Unlikes the currently playing track. See [like]. */
+    suspend fun unlike(context: Context): LibraryWriteOutcome = libraryWrite(context, playerState.value?.track?.uri, add = false)
+
+    /**
+     * Follows the CURRENT track's artist, expressed as saving `spotify:artist:...` to the
+     * library - the old `PUT /me/following` endpoint is deprecated (research finding, 2026-08-19),
+     * and [UserApi] never exposed a follow method of its own, only the generic library calls.
+     */
+    suspend fun followArtist(context: Context): LibraryWriteOutcome =
+        libraryWrite(context, playerState.value?.track?.artist?.uri, add = true)
+
+    /** Unfollows the current track's artist. See [followArtist]. */
+    suspend fun unfollowArtist(context: Context): LibraryWriteOutcome =
+        libraryWrite(context, playerState.value?.track?.artist?.uri, add = false)
+
+
     private inline fun withPlayer(action: (SpotifyAppRemote) -> Unit): Boolean {
         val r = remote ?: return false
         return try {

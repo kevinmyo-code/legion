@@ -410,10 +410,18 @@ object LiveToolbox {
                 "in Setup, same as play_music. 'Play X next' and 'add X to the queue' are the " +
                 "SAME thing here: Spotify has no way to insert at a specific position, only " +
                 "next-up, so don't imply otherwise. To hear what's already queued, use " +
-                "get_music_queue instead - this tool only adds, it doesn't read.",
+                "get_music_queue instead - this tool only adds, it doesn't read. " +
+                "'like'/'unlike' act on the CURRENTLY PLAYING track only, never an album or the " +
+                "whole queue. 'follow_artist'/'unfollow_artist' act on the current track's " +
+                "artist. All four require Spotify connected in Setup and something actually " +
+                "playing - if you say 'like this' twice, the second call comes back telling you " +
+                "it was already liked, which is a real distinct answer, not a failure.",
             params = obj(
                 "action" to schema("string", "The playback action.",
-                    enum = listOf("play", "pause", "next", "previous", "queue")),
+                    enum = listOf(
+                        "play", "pause", "next", "previous", "queue",
+                        "like", "unlike", "follow_artist", "unfollow_artist",
+                    )),
                 "query" to schema("string",
                     "Required for 'queue': what to add, in the driver's own words, e.g. " +
                         "'Plastic Love by Mariya Takeuchi'."),
@@ -5001,10 +5009,14 @@ object LiveToolbox {
         NEXT("next"),
         PREVIOUS("previous"),
         QUEUE("queue"),
+        LIKE("like"),
+        UNLIKE("unlike"),
+        FOLLOW_ARTIST("follow_artist"),
+        UNFOLLOW_ARTIST("unfollow_artist"),
         ;
         // Landing commits add one entry, one schema string, and one `when` branch together:
-        // LIKE/UNLIKE/FOLLOW_ARTIST/UNFOLLOW_ARTIST (ticket 05), SHUFFLE_ON/SHUFFLE_OFF/
-        // REPEAT_OFF/REPEAT_TRACK/REPEAT_CONTEXT/SEEK_FORWARD/SEEK_BACK/RESTART (ticket 06).
+        // SHUFFLE_ON/SHUFFLE_OFF/REPEAT_OFF/REPEAT_TRACK/REPEAT_CONTEXT/SEEK_FORWARD/SEEK_BACK/
+        // RESTART (ticket 06).
 
         companion object {
             /** Parses the wire string the live model sent. Unrecognized text is null, never a throw. */
@@ -5052,7 +5064,27 @@ object LiveToolbox {
             MusicAction.PLAY, MusicAction.PAUSE, MusicAction.NEXT, MusicAction.PREVIOUS ->
                 controlMusicTransport(context, action)
             MusicAction.QUEUE -> controlMusicQueue(context, args.optString("query"))
+            MusicAction.LIKE -> controlMusicLibrary(context, SpotifyController.LibraryAction.LIKE)
+            MusicAction.UNLIKE -> controlMusicLibrary(context, SpotifyController.LibraryAction.UNLIKE)
+            MusicAction.FOLLOW_ARTIST -> controlMusicLibrary(context, SpotifyController.LibraryAction.FOLLOW_ARTIST)
+            MusicAction.UNFOLLOW_ARTIST -> controlMusicLibrary(context, SpotifyController.LibraryAction.UNFOLLOW_ARTIST)
         }
+    }
+
+    /**
+     * `like`/`unlike`/`follow_artist`/`unfollow_artist` (ticket 05,
+     * `.scratch/spotify-voice/issues/05-library-writes.md`): all four route through
+     * [SpotifyController]'s shared `libraryWrite` sequence, which reads `getLibraryState` BEFORE
+     * writing so "already liked" and "liked it" are told apart rather than guessed.
+     */
+    private suspend fun controlMusicLibrary(context: Context, action: SpotifyController.LibraryAction): JSONObject {
+        val outcome = when (action) {
+            SpotifyController.LibraryAction.LIKE -> SpotifyController.like(context)
+            SpotifyController.LibraryAction.UNLIKE -> SpotifyController.unlike(context)
+            SpotifyController.LibraryAction.FOLLOW_ARTIST -> SpotifyController.followArtist(context)
+            SpotifyController.LibraryAction.UNFOLLOW_ARTIST -> SpotifyController.unfollowArtist(context)
+        }
+        return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, action))
     }
 
     /**
