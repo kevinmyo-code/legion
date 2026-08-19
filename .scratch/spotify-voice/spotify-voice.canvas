@@ -1,0 +1,280 @@
+{
+  "nodes": [
+    {
+      "id": "6f068773215306ea",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/01-scopes-and-one-reapproval.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "4d506b1a1d87f1c5",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/02-app-remote-spine.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "43e93a2007f508a3",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/03-tool-surface.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "543712f18657e907",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/10-what-like-this-means.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "133bf1bfa7d4fa91",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/04-queue.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "8419a4fa41f3e067",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/05-library-writes.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "90e7f075e6d6bd60",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/06-shuffle-repeat-seek.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0b4728655a9c7ad7",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/07-now-playing-truth.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "8fdc730424b9b8e1",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/08-playlists-by-name.md",
+      "x": 520,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d7e9f0830d83a29c",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/09-history-uri.md",
+      "x": 520,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "913e568c305e17d5",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/11-rec-engine.md",
+      "x": 520,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f63ee8e58fe4d26a",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/12-ship-pass.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "33777467aeaf217d",
+      "fromNode": "4d506b1a1d87f1c5",
+      "fromSide": "right",
+      "toNode": "133bf1bfa7d4fa91",
+      "toSide": "left"
+    },
+    {
+      "id": "cbdd17e562a7221a",
+      "fromNode": "43e93a2007f508a3",
+      "fromSide": "right",
+      "toNode": "133bf1bfa7d4fa91",
+      "toSide": "left"
+    },
+    {
+      "id": "0b155f0cd55c8855",
+      "fromNode": "4d506b1a1d87f1c5",
+      "fromSide": "right",
+      "toNode": "8419a4fa41f3e067",
+      "toSide": "left"
+    },
+    {
+      "id": "a98d22a28527842c",
+      "fromNode": "43e93a2007f508a3",
+      "fromSide": "right",
+      "toNode": "8419a4fa41f3e067",
+      "toSide": "left"
+    },
+    {
+      "id": "54a6c2d2469a1cec",
+      "fromNode": "4d506b1a1d87f1c5",
+      "fromSide": "right",
+      "toNode": "90e7f075e6d6bd60",
+      "toSide": "left"
+    },
+    {
+      "id": "5003779267e7ac5d",
+      "fromNode": "43e93a2007f508a3",
+      "fromSide": "right",
+      "toNode": "90e7f075e6d6bd60",
+      "toSide": "left"
+    },
+    {
+      "id": "389fe8d6be89b309",
+      "fromNode": "4d506b1a1d87f1c5",
+      "fromSide": "right",
+      "toNode": "0b4728655a9c7ad7",
+      "toSide": "left"
+    },
+    {
+      "id": "70cbb27c17b29d1d",
+      "fromNode": "43e93a2007f508a3",
+      "fromSide": "right",
+      "toNode": "0b4728655a9c7ad7",
+      "toSide": "left"
+    },
+    {
+      "id": "fb339f97aa57ad99",
+      "fromNode": "6f068773215306ea",
+      "fromSide": "right",
+      "toNode": "8fdc730424b9b8e1",
+      "toSide": "left"
+    },
+    {
+      "id": "4c0fe7a6fdf37eed",
+      "fromNode": "43e93a2007f508a3",
+      "fromSide": "right",
+      "toNode": "8fdc730424b9b8e1",
+      "toSide": "left"
+    },
+    {
+      "id": "ad11f16609ce3e23",
+      "fromNode": "4d506b1a1d87f1c5",
+      "fromSide": "right",
+      "toNode": "d7e9f0830d83a29c",
+      "toSide": "left"
+    },
+    {
+      "id": "badae3561c799a92",
+      "fromNode": "543712f18657e907",
+      "fromSide": "right",
+      "toNode": "913e568c305e17d5",
+      "toSide": "left"
+    },
+    {
+      "id": "5f5f298ec70439e0",
+      "fromNode": "6f068773215306ea",
+      "fromSide": "right",
+      "toNode": "f63ee8e58fe4d26a",
+      "toSide": "left"
+    },
+    {
+      "id": "9c9be8d6fc72656c",
+      "fromNode": "4d506b1a1d87f1c5",
+      "fromSide": "right",
+      "toNode": "f63ee8e58fe4d26a",
+      "toSide": "left"
+    },
+    {
+      "id": "4fde0eff93837a75",
+      "fromNode": "43e93a2007f508a3",
+      "fromSide": "right",
+      "toNode": "f63ee8e58fe4d26a",
+      "toSide": "left"
+    },
+    {
+      "id": "d1e7efad6bdb81bb",
+      "fromNode": "133bf1bfa7d4fa91",
+      "fromSide": "right",
+      "toNode": "f63ee8e58fe4d26a",
+      "toSide": "left"
+    },
+    {
+      "id": "71016be90f42733d",
+      "fromNode": "8419a4fa41f3e067",
+      "fromSide": "right",
+      "toNode": "f63ee8e58fe4d26a",
+      "toSide": "left"
+    },
+    {
+      "id": "43f0ef46e1dd574f",
+      "fromNode": "90e7f075e6d6bd60",
+      "fromSide": "right",
+      "toNode": "f63ee8e58fe4d26a",
+      "toSide": "left"
+    },
+    {
+      "id": "dc0836cfff20e24c",
+      "fromNode": "0b4728655a9c7ad7",
+      "fromSide": "right",
+      "toNode": "f63ee8e58fe4d26a",
+      "toSide": "left"
+    },
+    {
+      "id": "2d1b9053fb7b63cb",
+      "fromNode": "8fdc730424b9b8e1",
+      "fromSide": "right",
+      "toNode": "f63ee8e58fe4d26a",
+      "toSide": "left"
+    },
+    {
+      "id": "05bceec10d9a249a",
+      "fromNode": "d7e9f0830d83a29c",
+      "fromSide": "right",
+      "toNode": "f63ee8e58fe4d26a",
+      "toSide": "left"
+    },
+    {
+      "id": "4f4298502ad75d27",
+      "fromNode": "913e568c305e17d5",
+      "fromSide": "right",
+      "toNode": "f63ee8e58fe4d26a",
+      "toSide": "left"
+    }
+  ]
+}
