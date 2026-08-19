@@ -3,6 +3,7 @@ package com.kevin.legion.ai
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
@@ -34,6 +35,30 @@ import java.net.URL
  * REST endpoint as the maintenance-schedule lookup that used to live in
  * [AriaBrain.structuredQuery], which now delegates here).
  */
+/**
+ * [SubAgent.askWithUsage]'s result: [ask]'s text plus the measured token
+ * counts Gemini billed for that call, when the response reports them. See
+ * [SubAgent.askWithUsage]'s doc comment.
+ */
+data class AskOutcome(val text: String?, val promptTokens: Int?, val candidatesTokens: Int?)
+
+/**
+ * Requests Gemini's structured-output mode on one [SubAgent.askTyped] call: `generationConfig`
+ * carries `responseMimeType = "application/json"` paired with [responseSchema], the OpenAPI-3.0-
+ * SUBSET schema object the Generative Language API actually accepts (NOT full JSON Schema - no
+ * `$ref`, no `oneOf`; the supported field set is `type`/`format`/`description`/`nullable`/`enum`/
+ * `items`/`properties`/`required`/`propertyOrdering`, and `type` values are the proto `Type`
+ * enum's names - `"STRING"`/`"OBJECT"`/`"ARRAY"`, uppercase, not JSON Schema's lowercase).
+ *
+ * Optional and off by default (ticket 21): [SubAgent.askTyped]'s `structuredOutput` parameter of
+ * this type defaults to null, so [SubAgent]'s three other production callers
+ * ([com.kevin.legion.ai.MemoryConsolidator], [com.kevin.legion.ai.ReflectionEngine],
+ * [com.kevin.legion.service.AmbientListener]) - none of which pass one - see byte-identical
+ * request bodies to before this ticket. Only [com.kevin.legion.advisor.AdvisorAgent] supplies one,
+ * from [com.kevin.legion.advisor.AdvisorAnswer.responseSchema].
+ */
+data class StructuredOutputRequest(val responseSchema: JSONObject)
+
 class SubAgent(
     private val systemInstruction: String = "",
     private val useSearch: Boolean = true,
@@ -56,12 +81,62 @@ class SubAgent(
         imageBytes: ByteArray? = null,
         imageMimeType: String = "image/jpeg",
     ): String? = withContext(Dispatchers.IO) {
+        val body = buildAskBody(context, question, imageBytes, imageMimeType)
+        when (val o = postRaw(body)) {
+            is HttpOutcome.Ok -> extractText(o.json)
+            else -> null
+        }
+    }
+
+    /**
+     * [ask]'s result plus the token counts Gemini reports on every
+     * `generateContent` call via `usageMetadata` - previously parsed by
+     * nothing at all (`.scratch/ledger-drive-ingestion/issues/06-llm-spend-gate.md`
+     * §6: "FACT: SubAgent does not parse usageMetadata"). Added for the
+     * ledger LLM-spend gate, which needs a MEASURED count instead of a
+     * reasoned one once at least one real call has run. Purely additive:
+     * [ask]/[askTyped]/[investigate] are untouched, so pantry and the vehicle
+     * agents that already call them see no behavior change.
+     * [promptTokens]/[candidatesTokens] are null when the call never reached
+     * a response (offline, HTTP error) or the field is absent from it.
+     */
+    suspend fun askWithUsage(
+        context: String,
+        question: String,
+        imageBytes: ByteArray? = null,
+        imageMimeType: String = "image/jpeg",
+    ): AskOutcome = withContext(Dispatchers.IO) {
+        val body = buildAskBody(context, question, imageBytes, imageMimeType)
+        when (val o = postRaw(body)) {
+            is HttpOutcome.Ok -> {
+                val (promptTokens, candidatesTokens) = parseUsageMetadata(o.json)
+                AskOutcome(extractText(o.json), promptTokens, candidatesTokens)
+            }
+            else -> AskOutcome(text = null, promptTokens = null, candidatesTokens = null)
+        }
+    }
+
+    /**
+     * Shared request body for [ask], [askWithUsage], and [askTyped] - same shape, different
+     * response handling. [structuredOutput], when non-null, adds a `generationConfig` carrying
+     * `responseMimeType = "application/json"` plus the caller's `responseSchema` (ticket 21).
+     * Defaulted to null so [ask]/[askWithUsage] - neither of which passes one - are byte-identical
+     * to before this parameter existed. `internal` (not private) so [SubAgentStructuredOutputTest]
+     * can assert the built body's shape directly, the same pattern [userParts] and
+     * [parseUsageMetadata] already use for network-free coverage.
+     */
+    internal fun buildAskBody(
+        context: String,
+        question: String,
+        imageBytes: ByteArray?,
+        imageMimeType: String,
+        structuredOutput: StructuredOutputRequest? = null,
+    ): JSONObject {
         val userText = buildString {
             if (context.isNotBlank()) append(context).append("\n\n")
             append(question)
         }
-
-        val body = JSONObject().apply {
+        return JSONObject().apply {
             if (systemInstruction.isNotBlank()) {
                 put("systemInstruction", JSONObject().put(
                     "parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
@@ -73,11 +148,12 @@ class SubAgent(
             if (useSearch) {
                 put("tools", JSONArray().put(JSONObject().put("google_search", JSONObject())))
             }
-        }
-
-        when (val o = postRaw(body)) {
-            is HttpOutcome.Ok -> extractText(o.json)
-            else -> null
+            if (structuredOutput != null) {
+                put("generationConfig", JSONObject().apply {
+                    put("responseMimeType", "application/json")
+                    put("responseSchema", structuredOutput.responseSchema)
+                })
+            }
         }
     }
 
@@ -91,30 +167,22 @@ class SubAgent(
      * [useSearch] is set, google_search grounds the answer in this same POST
      * (allowed here because there are no function declarations to conflict with,
      * unlike in [investigate]).
+     *
+     * [structuredOutput], when supplied, asks Gemini's own structured-output mode to enforce the
+     * caller's `responseSchema` (ticket 21 - see [StructuredOutputRequest]'s doc comment for the
+     * accepted schema shape). Defaults to null: a caller that doesn't pass one gets the exact same
+     * request body this method sent before this parameter existed - shared with [buildAskBody],
+     * which is what actually assembles the body now (removes what used to be a second, drifting
+     * copy of the same JSON-shape logic).
      */
     suspend fun askTyped(
         context: String,
         question: String,
         imageBytes: ByteArray? = null,
         imageMimeType: String = "image/jpeg",
+        structuredOutput: StructuredOutputRequest? = null,
     ): AgentResult = withContext(Dispatchers.IO) {
-        val userText = buildString {
-            if (context.isNotBlank()) append(context).append("\n\n")
-            append(question)
-        }
-        val body = JSONObject().apply {
-            if (systemInstruction.isNotBlank()) {
-                put("systemInstruction", JSONObject().put(
-                    "parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
-            }
-            put("contents", JSONArray().put(JSONObject().apply {
-                put("role", "user")
-                put("parts", userParts(userText, imageBytes, imageMimeType))
-            }))
-            if (useSearch) {
-                put("tools", JSONArray().put(JSONObject().put("google_search", JSONObject())))
-            }
-        }
+        val body = buildAskBody(context, question, imageBytes, imageMimeType, structuredOutput)
         when (val o = postRaw(body)) {
             is HttpOutcome.Ok -> extractText(o.json)?.let { AgentResult.Success(it) } ?: AgentResult.Failed
             is HttpOutcome.HttpError -> classify(o)
@@ -139,11 +207,27 @@ class SubAgent(
     }
 
     /**
-     * Tool-using investigation loop. Runs up to [maxModelCalls] model POSTs
-     * (the last is a forced answer-only round with function calling disabled),
-     * within a whole-loop [budgetMs] deadline. Between rounds it executes the
-     * [AgentTool]s the model requested and feeds the results back. Returns a
-     * typed [AgentResult].
+     * Tool-using investigation loop. Runs up to [maxModelCalls] model POSTs, within a whole-loop
+     * [budgetMs] deadline. Between rounds it executes the [AgentTool]s the model requested and
+     * feeds the results back. Returns a typed [AgentResult].
+     *
+     * [mutatingToolNames] (2026-08-17) names, among [tools], the ones that WRITE - the caller's own
+     * knowledge, since [AgentTool] itself carries no such flag (see [AgentTool]'s doc comment: it
+     * was written for the read-only case and never grew one). Defaulted to `emptySet()` so every
+     * caller that predates this parameter (every one as of this fix) is byte-identical: nothing is
+     * tracked, [AgentResult.Success.mutatingToolsCalled] comes back empty either way. The loop
+     * itself never decides whether a write was REQUIRED - see [AgentResult.Success]'s doc comment
+     * for why that decision stays with the caller.
+     *
+     * Round budgeting (2026-08-17 fix, "the forced-answer trap"): the OLD shape forced
+     * `functionCallingConfig.mode = "NONE"` on round [maxModelCalls] itself, so a loop that had
+     * spent its whole budget on read tools physically could not call a write tool on its last
+     * round - it could only ever answer in prose, and prose claiming "logged it" is exactly what
+     * reached the driver with nothing written. Tools now stay enabled through round
+     * [maxModelCalls] (nudged, same as before, to wrap up); ONLY if the model still isn't done by
+     * then does round `maxModelCalls + 1` force a tool-free answer as the true backstop. This
+     * spends at most one extra POST, only when the model is still mid-call at the old cutoff -
+     * a normal answer at or before round [maxModelCalls] costs exactly what it always did.
      */
     suspend fun investigate(
         context: String,
@@ -151,9 +235,11 @@ class SubAgent(
         tools: List<AgentTool>,
         maxModelCalls: Int = 4,
         budgetMs: Long = 30_000,
+        mutatingToolNames: Set<String> = emptySet(),
     ): AgentResult = withContext(Dispatchers.IO) {
-        withTimeoutOrNull(budgetMs) { runInvestigation(context, question, tools, maxModelCalls) }
-            ?: AgentResult.Failed
+        withTimeoutOrNull(budgetMs) {
+            runInvestigation(context, question, tools, maxModelCalls, mutatingToolNames)
+        } ?: AgentResult.Failed
     }
 
     private suspend fun runInvestigation(
@@ -161,9 +247,15 @@ class SubAgent(
         question: String,
         tools: List<AgentTool>,
         maxModelCalls: Int,
+        mutatingToolNames: Set<String>,
     ): AgentResult {
         val toolsByName = tools.associateBy { it.name }
         val declarations = AgentProtocol.declarations(tools)
+        // The loop's own record of which mutating tools it actually dispatched, in call order -
+        // never read from MidnightEvents or any other side channel (this file's own state, per
+        // the brief: the loop is the one place that KNOWS a call was really made, not merely
+        // requested by the model or claimed in its prose).
+        val mutatingToolsCalled = mutableListOf<String>()
 
         val contents = JSONArray().put(
             JSONObject()
@@ -177,7 +269,10 @@ class SubAgent(
         var postNumber = 0
         while (true) {
             postNumber++
-            val forceAnswer = postNumber >= maxModelCalls
+            // See this fun's doc comment: the hard tool-free cutoff is now maxModelCalls + 1, not
+            // maxModelCalls, so a write that was still outstanding at the old cutoff gets one more
+            // real chance to run instead of being forced straight to prose.
+            val forceAnswer = postNumber > maxModelCalls
 
             val body = JSONObject().apply {
                 if (systemInstruction.isNotBlank()) {
@@ -205,7 +300,11 @@ class SubAgent(
             val calls = AgentProtocol.functionCalls(json)
             if (calls.isEmpty() || forceAnswer) {
                 val text = AgentProtocol.answerText(json)
-                return if (text != null) AgentResult.Success(text) else AgentResult.Failed
+                return if (text != null) {
+                    AgentResult.Success(text, mutatingToolsCalled = mutatingToolsCalled.toList())
+                } else {
+                    AgentResult.Failed
+                }
             }
 
             // Echo the model turn verbatim (parts may carry thoughtSignature).
@@ -221,16 +320,34 @@ class SubAgent(
                 } else {
                     try {
                         val out = withTimeoutOrNull(tool.timeoutMs) { tool.run(call.args) }
-                        if (out != null) JSONObject().put("result", out)
-                        else JSONObject().put("error", "timed out")
+                        if (out != null) {
+                            // Only recorded on a completed, non-throwing run - a timeout below
+                            // falls into the "timed out" branch, never marked as called.
+                            if (call.name in mutatingToolNames) mutatingToolsCalled.add(call.name)
+                            JSONObject().put("result", out)
+                        } else {
+                            Log.w(TAG, "investigate round $postNumber: ${call.name} timed out")
+                            JSONObject().put("error", "timed out")
+                        }
                     } catch (e: Exception) {
+                        // A thrown tool used to vanish into the {"error": ...} fed back to the
+                        // model with no trace on-device (CLAUDE.md §4 rule 6's shape one layer up:
+                        // "called and failed" must not be invisible). Logged, not swallowed - this
+                        // is what would have shown ask_goals actually attempting (and losing) a
+                        // write during the defect this whole change traces back to, had one been
+                        // attempted and thrown instead of never being called at all.
+                        Log.w(TAG, "investigate round $postNumber: ${call.name} failed: ${e.message}")
                         JSONObject().put("error", e.message ?: "tool failed")
                     }
                 }
                 results.add(AgentProtocol.ToolResult(call.name, call.id, response))
             }
 
-            // If the NEXT post is the forced-answer round, nudge now.
+            // Unchanged timing from before this fix: the nudge starts feeding into round
+            // maxModelCalls - what used to BE the forced, tool-free round and is now instead the
+            // last tool-enabled round (see this fun's doc comment). The model still hears "wrap
+            // up" at the same point it always did; it just isn't physically barred from using
+            // that round to actually finish an outstanding write.
             val nudge = if ((postNumber + 1) >= maxModelCalls) "Answer now with what you have." else null
             contents.put(AgentProtocol.functionResponseContent(results, nudge))
         }
@@ -242,7 +359,14 @@ class SubAgent(
         object Network : HttpOutcome()
     }
 
-    /** POST the body, retrying once after a 1s pause on a transport failure. */
+    /**
+     * POST the body, retrying once after a 1s pause on a transport failure.
+     * NEVER retries a cancelled call: [postOnce] rethrows [kotlinx.coroutines.CancellationException]
+     * (it does not fall into the generic catch below, since it isn't an `Exception` subtype path we
+     * swallow inside [postOnce] - see that fun's own comment), so this loop unwinds via the
+     * suspend-cancellation machinery before `attempt == 0` can ever re-enter with a fresh, doomed
+     * connection opened on a job that's already dead.
+     */
     private suspend fun postRaw(body: JSONObject): HttpOutcome {
         var attempt = 0
         while (true) {
@@ -256,7 +380,32 @@ class SubAgent(
         }
     }
 
-    private fun postOnce(body: JSONObject): HttpOutcome {
+    /**
+     * The actual HTTP round-trip. `HttpURLConnection` I/O is blocking Java, not a suspend fun, so a
+     * coroutine parked in `connection.outputStream`/`.responseCode`/`.inputStream` is deaf to
+     * cancellation - the thread only notices once the socket itself returns, which without this fix
+     * meant every timeout wrapping this call ([AgentTool.timeoutMs], [investigate]'s [budgetMs],
+     * and [com.kevin.legion.service.LiveSessionController.handleToolCall]'s 45s tool-call ceiling)
+     * was inert down to the raw connect/read timeouts below. Two fixes make cancellation real:
+     *
+     * 1. `withContext(Dispatchers.IO)` moves the blocking calls onto the IO dispatcher and, more
+     *    importantly, makes this suspend point cancellable - `withContext` checks for cancellation
+     *    on entry/exit and rethrows [kotlinx.coroutines.CancellationException] at ITS OWN boundary,
+     *    never swallowed by the `catch (e: Exception)` inside the block below (`CancellationException`
+     *    thrown BY withContext itself, after the block returns, is outside that catch's scope).
+     * 2. `invokeOnCompletion` on this call's own [kotlinx.coroutines.Job] forces the blocked socket
+     *    read to unblock the moment the coroutine is cancelled, by calling `connection.disconnect()`
+     *    from whatever thread cancels it. That makes the parked `responseCode`/`inputStream` call
+     *    throw immediately instead of waiting out the full 30s read timeout. The disconnect races
+     *    ordinary completion, so the handle is always disposed in `finally` regardless of which side
+     *    won - a completed call disposing a no-op handle is harmless, a cancelled call disposing an
+     *    already-fired one is also harmless.
+     *
+     * Socket-level `connectTimeout`/`readTimeout` stay as the backstop for a network stall that
+     * happens with NO caller timeout at all (there is none such today, but it's cheap insurance);
+     * they are no longer the thing actually bounding a stuck call in practice.
+     */
+    private suspend fun postOnce(body: JSONObject): HttpOutcome = withContext(Dispatchers.IO) {
         val url = URL("$API_URL/$model:generateContent?key=${GeminiKeyProvider.key()}")
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -265,7 +414,12 @@ class SubAgent(
             connectTimeout = 15000
             readTimeout = 30000
         }
-        return try {
+        // Cancellation fires disconnect() on whatever thread cancels this coroutine, so the
+        // blocked write/read below throws instead of sitting out the full socket timeout.
+        val cancelHandle = coroutineContext.job.invokeOnCompletion { cause ->
+            if (cause != null) runCatching { connection.disconnect() }
+        }
+        try {
             connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
             val code = connection.responseCode
             if (code >= 400) {
@@ -279,6 +433,7 @@ class SubAgent(
             Log.e(TAG, "SubAgent request failed: ${e.message}", e)
             HttpOutcome.Network
         } finally {
+            cancelHandle.dispose()
             connection.disconnect()
         }
     }
@@ -290,6 +445,24 @@ class SubAgent(
         e.code == 400 && e.body.contains("API_KEY_INVALID") -> AgentResult.KeyInvalid
         e.code == 500 || e.code == 503 -> AgentResult.Overloaded
         else -> AgentResult.Failed
+    }
+
+    /**
+     * Pulls `usageMetadata.promptTokenCount`/`candidatesTokenCount` out of a
+     * `generateContent` response. Internal (not private), same pattern as
+     * [userParts], so a unit test can verify the parse against a fabricated
+     * response body without a network call. Returns nulls (not zeros) when
+     * the field is absent, so a caller can distinguish "measured zero" from
+     * "not reported" - Gemini omits `usageMetadata` entirely on some error
+     * shapes even inside an otherwise-200 response.
+     */
+    internal fun parseUsageMetadata(json: String): Pair<Int?, Int?> = try {
+        val usage = JSONObject(json).optJSONObject("usageMetadata")
+        val prompt = usage?.takeIf { it.has("promptTokenCount") }?.optInt("promptTokenCount")
+        val candidates = usage?.takeIf { it.has("candidatesTokenCount") }?.optInt("candidatesTokenCount")
+        prompt to candidates
+    } catch (e: Exception) {
+        null to null
     }
 
     /**

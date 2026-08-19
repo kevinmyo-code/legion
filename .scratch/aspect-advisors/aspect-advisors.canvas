@@ -1,0 +1,377 @@
+{
+  "nodes": [
+    {
+      "id": "a9a1c9f3071ecf44",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/01-advisor-contract.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "54a4f848dcca48c9",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/02-goal-store.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "0a8b1ea53447893e",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/04-bio-playbook.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "685f81ab3b113497",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/05-log-playbook.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "586e7427fd5794b9",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/06-fleet-playbook.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "f82992d632209418",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/07-cred-playbook.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "0d5f629d3504a9e2",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/12-lean-toolbox.md",
+      "x": 0,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "ac0fa46a28c756b3",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/13-build-goal-store.md",
+      "x": 0,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "e5d1b486bd13ae4b",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/21-harden-structured-output.md",
+      "x": 0,
+      "y": 1200,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "cbe5856559fe49f4",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/03-propose-accept-write.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "e820255c42c45ccf",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/08-aspect-digests.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "4630960b6ac11ed8",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/10-safety-and-labelling.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "57273e33aab465c4",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/19-build-goal-tools-and-panel.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "986051885fcb331f",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/09-home-advisor.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "71dd743012787e32",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/11-token-latency-budget.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "dd1a86fc9d201b52",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/14-build-advisor-harness.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "8db4427456f6d4da",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/15-build-playbook-briefs.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "634342758f4d31f7",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/16-build-digests-bio-cred.md",
+      "x": 1560,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "8191260b10506453",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/17-build-digests-fleet-log-home.md",
+      "x": 1560,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "cc76915304fff7bb",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/18-build-ask-advisor-and-accept.md",
+      "x": 2080,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "3a5b74e17348fed5",
+      "type": "file",
+      "file": ".scratch/aspect-advisors/issues/20-ship-pass.md",
+      "x": 2600,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "13935da4d5e3be90",
+      "fromNode": "a9a1c9f3071ecf44",
+      "fromSide": "right",
+      "toNode": "cbe5856559fe49f4",
+      "toSide": "left"
+    },
+    {
+      "id": "07cdaea461ff120e",
+      "fromNode": "54a4f848dcca48c9",
+      "fromSide": "right",
+      "toNode": "cbe5856559fe49f4",
+      "toSide": "left"
+    },
+    {
+      "id": "32679dbe5325e1af",
+      "fromNode": "a9a1c9f3071ecf44",
+      "fromSide": "right",
+      "toNode": "e820255c42c45ccf",
+      "toSide": "left"
+    },
+    {
+      "id": "b9114ee22e6d290e",
+      "fromNode": "a9a1c9f3071ecf44",
+      "fromSide": "right",
+      "toNode": "986051885fcb331f",
+      "toSide": "left"
+    },
+    {
+      "id": "08b97d27a004e2f3",
+      "fromNode": "e820255c42c45ccf",
+      "fromSide": "right",
+      "toNode": "986051885fcb331f",
+      "toSide": "left"
+    },
+    {
+      "id": "5edd5ad6854f2281",
+      "fromNode": "a9a1c9f3071ecf44",
+      "fromSide": "right",
+      "toNode": "4630960b6ac11ed8",
+      "toSide": "left"
+    },
+    {
+      "id": "b6b32c6c52a42224",
+      "fromNode": "a9a1c9f3071ecf44",
+      "fromSide": "right",
+      "toNode": "71dd743012787e32",
+      "toSide": "left"
+    },
+    {
+      "id": "f457c811c8fa610a",
+      "fromNode": "e820255c42c45ccf",
+      "fromSide": "right",
+      "toNode": "71dd743012787e32",
+      "toSide": "left"
+    },
+    {
+      "id": "92ae12dd46cefc63",
+      "fromNode": "0d5f629d3504a9e2",
+      "fromSide": "right",
+      "toNode": "71dd743012787e32",
+      "toSide": "left"
+    },
+    {
+      "id": "8713395044b5fb7b",
+      "fromNode": "71dd743012787e32",
+      "fromSide": "right",
+      "toNode": "dd1a86fc9d201b52",
+      "toSide": "left"
+    },
+    {
+      "id": "27d4dd1e44b1bd64",
+      "fromNode": "ac0fa46a28c756b3",
+      "fromSide": "right",
+      "toNode": "dd1a86fc9d201b52",
+      "toSide": "left"
+    },
+    {
+      "id": "2b6cae2c42c8dab6",
+      "fromNode": "71dd743012787e32",
+      "fromSide": "right",
+      "toNode": "8db4427456f6d4da",
+      "toSide": "left"
+    },
+    {
+      "id": "a8c1e2b6a97a77c0",
+      "fromNode": "71dd743012787e32",
+      "fromSide": "right",
+      "toNode": "634342758f4d31f7",
+      "toSide": "left"
+    },
+    {
+      "id": "e4ade11d0757264a",
+      "fromNode": "ac0fa46a28c756b3",
+      "fromSide": "right",
+      "toNode": "634342758f4d31f7",
+      "toSide": "left"
+    },
+    {
+      "id": "87b0d1eda0a69e76",
+      "fromNode": "71dd743012787e32",
+      "fromSide": "right",
+      "toNode": "8191260b10506453",
+      "toSide": "left"
+    },
+    {
+      "id": "111489913191d980",
+      "fromNode": "ac0fa46a28c756b3",
+      "fromSide": "right",
+      "toNode": "8191260b10506453",
+      "toSide": "left"
+    },
+    {
+      "id": "168a7089ae28603d",
+      "fromNode": "dd1a86fc9d201b52",
+      "fromSide": "right",
+      "toNode": "cc76915304fff7bb",
+      "toSide": "left"
+    },
+    {
+      "id": "a2735cbaa25cc79d",
+      "fromNode": "634342758f4d31f7",
+      "fromSide": "right",
+      "toNode": "cc76915304fff7bb",
+      "toSide": "left"
+    },
+    {
+      "id": "0e818eea754b924c",
+      "fromNode": "8191260b10506453",
+      "fromSide": "right",
+      "toNode": "cc76915304fff7bb",
+      "toSide": "left"
+    },
+    {
+      "id": "048cb4de6838dbe5",
+      "fromNode": "ac0fa46a28c756b3",
+      "fromSide": "right",
+      "toNode": "57273e33aab465c4",
+      "toSide": "left"
+    },
+    {
+      "id": "1bff6e5f49b348b8",
+      "fromNode": "8db4427456f6d4da",
+      "fromSide": "right",
+      "toNode": "3a5b74e17348fed5",
+      "toSide": "left"
+    },
+    {
+      "id": "8ac934410baf0be5",
+      "fromNode": "cc76915304fff7bb",
+      "fromSide": "right",
+      "toNode": "3a5b74e17348fed5",
+      "toSide": "left"
+    },
+    {
+      "id": "82cf115f97c20aa4",
+      "fromNode": "57273e33aab465c4",
+      "fromSide": "right",
+      "toNode": "3a5b74e17348fed5",
+      "toSide": "left"
+    }
+  ]
+}

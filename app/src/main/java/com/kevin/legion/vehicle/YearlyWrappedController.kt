@@ -57,7 +57,13 @@ object YearlyWrappedController {
      * request alongside the monthly fake-recap generator). Saves the result
      * like [aggregate] does, so it shows up on the shelf.
      */
-    suspend fun generateFake(context: Context, year: Int): YearlyWrapped {
+    /**
+     * [vehicleIdOverride] is the fleet-wide-voice override (ticket 01 §2's
+     * literal controller-threading instruction) - null means the active car,
+     * unchanged. Not currently exercised: this is a debug-only fake-data
+     * generator with no Live tool call site.
+     */
+    suspend fun generateFake(context: Context, year: Int, vehicleIdOverride: String? = null): YearlyWrapped {
         val notableMonths = (0..4).random()
         val milesDriven = (4000..14000).random().toDouble()
         val driveCount = (80..300).random()
@@ -66,7 +72,7 @@ object YearlyWrappedController {
         val codeCount = (0..10).random()
         val serviceCount = (2..8).random()
 
-        val vehicleId = vehicleId(context)
+        val vehicleId = vehicleIdOverride ?: vehicleId(context)
         val vehicle = VehicleController.currentVehicle(context)
         val narrative = generateNarrative(context, year, milesDriven, driveCount, avgMpg, longestDrive, notableMonths, codeCount, serviceCount)
         val coverPath = runCatching { generateCover(context, vehicleId, vehicle, year) }.getOrNull()
@@ -98,7 +104,11 @@ object YearlyWrappedController {
             append("Year: $year. ")
             append("Total miles driven: ${milesDriven.toInt()}. ")
             append("Total drives: $driveCount. ")
-            avgMpg?.let { append("Average MPG across the year: ${"%.1f".format(it)}. ") }
+            // Withheld from the PROMPT, not just the UI - see DailyDriveLogController.generateNarrative's
+            // doc (ticket 09, `.scratch/drive-ui/issues/09-mpg-scale-bug.md`): a stat handed to Gemini
+            // can resurface paraphrased into the narrative it writes, which every UI-layer suppression
+            // elsewhere in this app would miss once it's baked into stored, freeform narrative text.
+            if (MpgTrust.SHOW_MPG) avgMpg?.let { append("Average MPG across the year: ${"%.1f".format(it)}. ") }
             longestDrive?.let { append("Longest single drive: ${it.toInt()} miles. ") }
             append("Notable/unusual months: $notableMonths. ")
             append("Trouble codes seen across the year: $codeCount. ")

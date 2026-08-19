@@ -2,6 +2,17 @@ package com.kevin.legion
 
 import android.app.Application
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.ai.CompanionProfileStore
+import com.kevin.legion.ai.GeminiKeyProvider
+import com.kevin.legion.data.MidnightImport
+import com.kevin.legion.ledger.LedgerAccountMappingPreferences
+import com.kevin.legion.ledger.LedgerFolderPreferences
+import com.kevin.legion.ledger.LedgerNominatedAccountPreferences
+import com.kevin.legion.service.ProactivePreferences
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Application subclass registered in the manifest via android:name=".MidnightApplication".
@@ -12,8 +23,159 @@ import com.kevin.legion.ai.CompanionProfile
  * quota tracking) was retired with the rest of billing/ in the 2026-07-31 pivot.
  */
 class MidnightApplication : Application() {
+    /**
+     * Process-lifetime scope for start-up work that touches disk or Room and so
+     * must not block `onCreate`. Owned by the Application because that is what
+     * the work's lifetime actually is; nothing cancels it because nothing should.
+     */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
+
+        // Process-wide caches that are seeded from disk exactly once.
+        //
+        // These used to be seeded in AriaForegroundService.onCreate, which was
+        // fine while that service started on its own. Ticket 07 made the
+        // assistant an explicit user toggle that is OFF by default, so on a
+        // normal launch that service never runs - and every one of these
+        // silently stayed empty while its backing value sat on disk. Verified
+        // on the A17K 2026-08-02: the ledger spend gate reported "no Gemini
+        // key" for a key that was saved and present, and the connected
+        // statements folder was forgotten on every process start.
+        //
+        // Application.onCreate is the correct home precisely because it does
+        // not depend on any feature being switched on. Each init is a cheap
+        // SharedPreferences read. AriaForegroundService still calls the first
+        // two, which is harmless - they are idempotent - and is left alone so
+        // the assistant path does not depend on this ordering.
+        GeminiKeyProvider.init(this)
+        ProactivePreferences.init(this)
+        LedgerFolderPreferences.init(this)
+        // Per-account subfolder mapping (checking/, credit/, ...) - same L12
+        // reasoning as the three above, added for the per-account-subfolder
+        // + CSV ingestion ticket.
+        LedgerAccountMappingPreferences.init(this)
+        // HOME's CRED tile balance line (2026-08-18) - same L12 reasoning as the three caches
+        // above: must be live before the first Today-tab composition, not just after AriaForegroundService starts.
+        LedgerNominatedAccountPreferences.init(this)
+
+        // Named companion profiles (multi-companion, 2026-08-02): seed one
+        // profile from a pre-existing single identity if this install predates
+        // the feature, then materialise whichever profile is active on THIS
+        // device into CompanionProfile's flat keys so every reader of it
+        // (AriaBrain, LiveSessionController, GeminiLiveSession, ...) sees the
+        // right identity from the very first Live session, not just after the
+        // next sync pass or profile switch. Same L12 reasoning as the three
+        // caches above: this must run unconditionally on process start, not
+        // from a service that might not be running. Both steps touch Room, so
+        // they run on a process-scoped IO coroutine rather than blocking
+        // onCreate; a session that starts before this completes still reads
+        // CompanionProfile's PREVIOUS on-disk values (unchanged from last run),
+        // never a blank or half-written state.
+        // appScope, not a scope built inline here: constructing a CoroutineScope
+        // inside a function body is the anti-pattern the repo's vendored
+        // kotlin-coroutines-structured-concurrency skill names, and we removed
+        // exactly that from SyncEngine's foreground trigger two commits ago.
+        // Application IS the process-lifetime owner, so the scope belongs to it.
+        //
+        // GATED OFF UNDER ROBOLECTRIC (see isRunningUnderRobolectric's doc comment) - all three
+        // blocks below touch Room, appScope has no lifecycle hook a JUnit @Before/@After can
+        // cancel, and MidnightApplication is this app's declared manifest Application, so every
+        // Robolectric test in this module runs onCreate() and would otherwise race real writes
+        // (Kevin's own imported fleet, via MidnightImport) into whatever CarDatabase instance a
+        // concurrently-running test happens to be asserting against. Found 2026-08-07: adding the
+        // third block (AlarmScheduler.rescheduleAll) shifted IO-dispatcher timing enough to flip a
+        // previously-losing race into a winning one, leaking extra vehicle rows into
+        // VehicleResolverTest/LiveToolboxVehicleScopingTest - see MEMORY.md/lessons.md for the
+        // full incident. Gating the whole block, not just the new call, because all three are
+        // equally exposed to the identical race and a narrower gate would leave the landmine live
+        // for the next addition here.
+        if (!isRunningUnderRobolectric()) {
+            // Every block below is wrapped (audit fix, 2026-08-07). appScope is a
+            // SupervisorJob with NO CoroutineExceptionHandler, so an uncaught throw
+            // from a root coroutine here reaches the thread's default handler and
+            // kills the process - at cold start, before any UI, on every launch,
+            // for as long as the underlying condition persists. With no Crashlytics
+            // (MidnightEvents is Log.d only) the driver sees "app won't open" and
+            // nothing anywhere records why.
+            //
+            // SyncEngine already reached this conclusion independently and wraps
+            // CompanionProfileStore.materializeActive in runCatching for exactly
+            // this reason, so the risk was known - it just had not been applied
+            // here. MidnightImport was already hardened internally; the other two
+            // were not. The Robolectric gate above means no test can catch a
+            // regression in any of this, which makes belt-and-braces the right
+            // posture rather than an over-reaction.
+            appScope.launch {
+                runCatching {
+                    CompanionProfileStore.ensureSeeded(this@MidnightApplication)
+                    CompanionProfileStore.materializeActive(this@MidnightApplication)
+                }.onFailure { MidnightEvents.appStartWorkFailed("companion_seed", it) }
+            }
+
+            // One-time Midnight AI fleet-history import (see MidnightImport's class
+            // doc). Process-start work, same L12 reasoning as the caches above: it
+            // must run unconditionally, not from a service that might not be
+            // running. It is its own launch{}, not folded into the one above,
+            // because it is unrelated work with its own independent failure mode -
+            // a companion-profile hiccup must not skip the fleet import or vice
+            // versa. No-ops in one SharedPreferences read on every launch after
+            // the bundle either was never present (every clone but Kevin's own
+            // machine) or has already imported once.
+            appScope.launch {
+                // Already hardened internally ("never throws" per its own class doc),
+                // wrapped anyway so the guarantee is enforced here rather than trusted.
+                runCatching { MidnightImport.run(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("midnight_import", it) }
+
+            }
+
+            // One of the notes/lists/calendar domain's three callers of the one idempotent
+            // rescheduleAll() (`.scratch/notes-lists-calendar/issues/03-android-alarm-mechanism.md`) -
+            // the other two are BootReceiver and ExactAlarmPermissionReceiver. Must run unconditionally
+            // on every process start, same L12 reasoning as the caches above: a reminder scheduled last
+            // session needs its alarm confirmed live (or, for a one-off whose time already passed while
+            // the process was dead, reported MISSED - ticket 12) before the driver ever opens a screen
+            // or taps the assistant.
+            appScope.launch {
+                runCatching { com.kevin.legion.notes.AlarmScheduler.rescheduleAll(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("reschedule_alarms", it) }
+            }
+
+            // Ticket 04's label rule (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`):
+            // the retired "this car" sentinel is a magic value masquerading as user data, and the
+            // two rows carrying it are both archived and invisible today - which is exactly why
+            // they would otherwise survive forever to trap the next label surface that forgets to
+            // filter it. Idempotent (a no-op UPDATE once no row matches), so this runs
+            // unconditionally on every process start rather than tracking a run-once flag, same L12
+            // reasoning as the caches above.
+            appScope.launch {
+                runCatching {
+                    com.kevin.legion.vehicle.VehicleController.clearThisCarSentinel(this@MidnightApplication)
+                }.onFailure { MidnightEvents.appStartWorkFailed("clear_this_car_sentinel", it) }
+            }
+
+            // Reconcile the assistant's on/off flag to reality (measured defect, 2026-08-17):
+            // AssistantIgnition's persisted flag can read true - and every UI surface built on it
+            // agree - while AriaForegroundService is not actually running, because the ONLY
+            // callers of AssistantIgnition.start() were the Settings toggle's own handler and
+            // nothing else ever restarted the service after a reboot or any other process death.
+            // resumeIfEnabled() is NOT a consent action (it never calls setEnabled - see its own
+            // doc) - it is a no-op the instant the flag is false, so a driver who never opted in
+            // gets nothing started here. Safe to call from a foreground app launch specifically
+            // because the app is starting because the user opened it, so none of the
+            // background-foreground-service-start restrictions (see BootReceiver's narrower call
+            // of the same function) apply - the full permission-gated type set in
+            // AriaForegroundService.startForegroundCompat, microphone included, is fine here.
+            //
+            // Not gated on isRunningUnderRobolectric alone by coincidence - it sits inside the same
+            // gated block as the three calls above for the identical L12 race reasoning (a
+            // Robolectric test starting a real foreground service intent would be its own hazard,
+            // never mind the DB race those three already document).
+            runCatching { com.kevin.legion.service.AssistantIgnition.resumeIfEnabled(this@MidnightApplication) }
+                .onFailure { MidnightEvents.appStartWorkFailed("resume_assistant_ignition", it) }
+        }
 
         MidnightEvents.setBuildContext(
             buildType = if (BuildConfig.DEBUG) "debug" else "release",
@@ -44,4 +206,14 @@ class MidnightApplication : Application() {
             model.contains("Emulator") || model.contains("Android SDK built for") ||
             product.contains("sdk_gphone") || product == "google_sdk"
     }
+
+    /**
+     * True only inside a Robolectric JVM unit test, never on a real device or emulator.
+     * Robolectric's shadow layer sets `Build.FINGERPRINT` to the literal string `"robolectric"` -
+     * **confirmed by running a throwaway `RobolectricTestRunner` test and printing it**, not
+     * assumed, since main source cannot depend on the `org.robolectric` classes themselves
+     * (Robolectric is `testImplementation`-only - see `app/build.gradle.kts`) to check some other
+     * way. See [onCreate]'s doc comment at the call site for why this gate exists at all.
+     */
+    private fun isRunningUnderRobolectric(): Boolean = android.os.Build.FINGERPRINT == "robolectric"
 }

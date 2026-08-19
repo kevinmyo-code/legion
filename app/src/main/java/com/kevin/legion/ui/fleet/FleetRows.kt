@@ -1,0 +1,1112 @@
+package com.kevin.legion.ui.fleet
+
+import android.content.Context
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import com.kevin.legion.data.local.CodeClearEvent
+import com.kevin.legion.data.local.CodeEvent
+import com.kevin.legion.data.local.DailyDriveLog
+import com.kevin.legion.data.local.MaintenanceItem
+import com.kevin.legion.data.local.MonthlyRecap
+import com.kevin.legion.data.local.OdbSample
+import com.kevin.legion.data.local.intervalIsUnconfirmed
+import com.kevin.legion.data.local.provenanceWords as entityProvenanceWords
+import com.kevin.legion.data.local.provenanceWordsForSource as entityProvenanceWordsForSource
+import com.kevin.legion.ui.theme.LegionType
+import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.vehicle.MpgTrust
+import com.kevin.legion.util.Temp
+import com.kevin.legion.util.relativeAge
+import com.kevin.legion.util.shortDate
+import com.kevin.legion.vehicle.DtcClearController
+import com.kevin.legion.vehicle.VehicleController
+import org.json.JSONArray
+import org.json.JSONObject
+import java.time.LocalDate
+import java.time.ZoneId
+import kotlin.math.roundToInt
+
+/**
+ * FLEET-specific pure logic and rows for ticket 09 (resolution §1: LIVE / DUE
+ * / FAULTS / NOT BUILT YET). The shared, aspect-agnostic furniture
+ * (`SectionHeader`, `Hairline`, `ReadingRow`, `NotBuiltRow`) lives in
+ * `ui/common/CommonRows.kt` - see that file's doc comment. Everything here is
+ * either a pure function (unit-tested in `FleetRowsTest`, no Android/Room
+ * dependency) or a thin display-only Composable; nothing here writes to the
+ * database, matching this ticket's read-only scope.
+ */
+
+// --------------------------------------------------------------- LIVE (pure)
+
+/**
+ * One row of the LIVE block: a label, its last-seen value, and how stale that value is.
+ *
+ * [pid] (mission-control ticket 16 follow-up, "get FLEET's tile row above the fold") is the raw
+ * OBD PID this reading came from - "0105", "ATRV", "0107" - carried through so [UplinkPane] can
+ * render these as [com.kevin.legion.ui.common.DeckFeedRow]'s `code` column, same PID-as-code shape
+ * [ThemePreview.kt]'s own "Live PIDs" section already demonstrates. Defaults to `""` so every
+ * pre-existing 3-arg `LiveRowView(label, value, sub)` construction site (previews, tests) keeps
+ * compiling unchanged.
+ */
+data class LiveRowView(val label: String, val value: String, val sub: String, val pid: String = "")
+
+/**
+ * The fixed, small set of slow-changing PIDs [com.kevin.legion.vehicle.TelemetryRecorder]
+ * writes to `obd_samples` that are worth a driver glancing at (coolant temp,
+ * battery voltage, long-term fuel trim). Deliberately not the full PID set
+ * TelemetryRecorder samples (RPM, MAF, speed, short-term trim) - those move
+ * every tick and belong to a trend chart this ticket does not build, not a
+ * static "last seen" readout. Raw PID codes match [OdbSample.pid] exactly as
+ * TelemetryRecorder writes them - "0105", "ATRV", "0107" - see that object's
+ * `run` loop.
+ */
+private data class LiveGauge(val pid: String, val label: String, val format: (Context, Double) -> String)
+
+// Coolant's formatter routes through [Temp] rather than hardcoding "C" (ticket 07, amended
+// 2026-08-18) - this is the UPLINK live gauge the freeze-frame drilldown and DRIVE MODE pod both
+// have to match, so a hardcoded unit here would silently reopen the same drift the ticket closed.
+private val LIVE_GAUGES = listOf(
+    LiveGauge("0105", "Coolant") { context, v -> Temp.text(context, v) },
+    LiveGauge("ATRV", "Battery") { _, v -> "%.1f V".format(v) },
+    LiveGauge("0107", "Fuel trim, long") { _, v -> "%+.1f %%".format(v) },
+)
+
+/** PIDs [buildLiveRows] wants a latest sample for - drives the DAO reads in the state holder. */
+internal val LIVE_GAUGE_PIDS: List<String> = LIVE_GAUGES.map { it.pid }
+
+/**
+ * Formats each gauge's latest sample (or omits the row entirely if this
+ * install has never recorded that PID - never a fabricated "no data" value
+ * standing in for a number). `internal` for direct unit testing.
+ */
+internal fun buildLiveRows(context: Context, samplesByPid: Map<String, OdbSample?>, now: Long): List<LiveRowView> =
+    LIVE_GAUGES.mapNotNull { gauge ->
+        val sample = samplesByPid[gauge.pid] ?: return@mapNotNull null
+        LiveRowView(gauge.label, gauge.format(context, sample.value), relativeAge(sample.timestamp, now), pid = gauge.pid)
+    }
+
+// ------------------------------------------------------------- DUE (pure)
+
+/** One row of the DUE block, already resolved to display strings. */
+data class DueRowView(
+    val label: String,
+    val value: String,
+    val sub: String,
+    val overdue: Boolean,
+    /**
+     * elapsed/interval on the row's own axis (miles when [toDueRow] chose the
+     * miles axis, else time), for [com.kevin.legion.ui.common.DeckMeter] drawn
+     * under the row's text on `FleetScreen`'s MAINTENANCE panel (quant-viz
+     * ticket 05 part C). `null` when the item has no interval on file to
+     * divide by - no meter is drawn, never a meter frozen at zero, matching
+     * [toDueRow]'s own "-" for a value with the same cause. See [dueFraction]
+     * for the math. Defaults to `null` so the many `DueRowView(...)` preview/
+     * test construction sites that predate this field keep compiling.
+     */
+    val fraction: Float? = null,
+    /**
+     * True whenever the driver did not state this interval themselves ([MaintenanceItem.intervalSource]
+     * is anything but `CONFIRMED`, so `SEEDED` or `LOOKUP` - widened by ticket 18, this doc said
+     * `SEEDED` only until then) AND the item carries an interval on at least one axis (ticket 06
+     * refinement c, `.scratch/fleet-maintenance/issues/06-a-seeded-interval-is-a-guess.md`:
+     * "the tag renders only when there is an interval to qualify" - a null interval already reads
+     * "no interval on file", and tagging that `[GUESS]` would be a claim about a number that does
+     * not exist). See [isGuessTag]. The tag itself is deliberately coarse; where WHICH kind of
+     * unconfirmed matters, callers read [provenanceWords] alongside it. Defaults to `false` for the
+     * same preview/test-compat reason [fraction] defaults to `null`.
+     */
+    val isGuess: Boolean = false,
+)
+
+/**
+ * Builds the DUE block's rows from a vehicle's [MaintenanceItem]s. Items with
+ * no anchor at all ([VehicleController.isUnknown]) are excluded - they are
+ * not "due", they are "we don't know yet", a different state this block does
+ * not speak to (see [VehicleController.unknownItems]'s doc, and ticket 09's
+ * FULL SCHEDULE / [buildScheduleRows], which is where they are counted on
+ * MAINTENANCE's triage screen and then actually listed, rather than silently
+ * dropped the way this function's own output always has been).
+ *
+ * **Ordering.** Overdue items first (stable order, not re-sorted among
+ * themselves), then not-yet-due items in their original order. Deliberately
+ * NOT sorted by "soonest remaining" across items that mix a miles-remaining
+ * candidate against a days-remaining one - [VehicleController.computeNextService]'s
+ * doc comment explains at length why any such cross-axis comparison is really
+ * a smuggled-in rate estimate ("miles per day"), which Kevin explicitly
+ * rejected. This block reports each item's own remaining value on its own
+ * axis and lets the reader compare, rather than picking a winner for them.
+ *
+ * `internal` rather than `private` so [FleetRowsTest] can drive it directly.
+ *
+ * [odometerUnset] is the caller's own `vehicle.odometerBaseline == 0` (see [chooseDueAxis]'s doc for
+ * why this, and never `currentMileage > 0`, is the real "driver has never confirmed an odometer"
+ * signal) - threaded through explicitly rather than re-derived from [currentMileage] here, since
+ * [currentMileage] alone can read positive (accumulated trip miles against a still-zero baseline)
+ * while the odometer itself is still unconfirmed.
+ */
+internal fun buildDueRows(items: List<MaintenanceItem>, currentMileage: Int, odometerUnset: Boolean, now: Long): List<DueRowView> {
+    val anchored = items.filterNot { VehicleController.isUnknown(it) }
+    val (overdue, upcoming) = anchored.partition { VehicleController.isDue(it, currentMileage, odometerUnset, now) }
+    return overdue.map { toDueRow(it, currentMileage, odometerUnset, now, overdue = true) } +
+        upcoming.map { toDueRow(it, currentMileage, odometerUnset, now, overdue = false) }
+}
+
+/**
+ * True whenever the driver did NOT state this interval themselves AND the item carries an interval
+ * on at least one axis - ticket 06 refinement c, WIDENED by ticket 18
+ * (`.scratch/fleet-maintenance/issues/18-the-factory-lookup-is-not-stable-enough-to-diff-against.md`).
+ *
+ * **Moved onto [MaintenanceItem] itself as [com.kevin.legion.data.local.intervalIsUnconfirmed]**
+ * (mission-control ticket 16,
+ * `.scratch/fleet-maintenance/issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md`):
+ * `vehicle/` and `advisor/` both need this rule now, and `vehicle/` must never import `ui.fleet`
+ * (this file already imports [VehicleController], so the reverse import would be a dependency
+ * cycle). This function is now a thin delegate kept under its original name/signature so no UI call
+ * site here or in `FleetDigestBuilder`/`PopulateDrilldown.kt` had to change - see the entity
+ * property's own doc for the full "why three-way, never `== SEEDED`" reasoning. `internal` for
+ * direct unit testing, same posture as every other pure builder in this file.
+ */
+internal fun isGuessTag(item: MaintenanceItem): Boolean = item.intervalIsUnconfirmed
+
+/**
+ * Words a screen can put beside a guess-tagged item's value - now a thin delegate onto
+ * [com.kevin.legion.data.local.provenanceWords] (mission-control ticket 16, same move as
+ * [isGuessTag]). Kept under its original name/signature so no call site changed. See the entity
+ * property's own doc for the SEEDED-vs-LOOKUP wording rationale. `internal` for direct unit
+ * testing, same posture as [isGuessTag].
+ */
+internal fun provenanceWords(item: MaintenanceItem): String? = item.entityProvenanceWords
+
+/**
+ * [provenanceWords]'s actual logic, keyed on the raw `intervalSource` string rather than a full
+ * [MaintenanceItem] - [PopulateChangeRow][com.kevin.legion.vehicle.PopulateChangeRow] and
+ * [PopulatePossibleMatchRow][com.kevin.legion.vehicle.PopulatePossibleMatchRow] (`PopulateDrilldown.kt`'s
+ * `WouldChangeRow`/`PossibleMatchRow`) only ever carry the ON-FILE row's `currentSource`/
+ * `existingSource` as a bare string, not the row itself, so [provenanceWords] delegates here rather
+ * than forcing either of those call sites to fabricate a throwaway [MaintenanceItem] just to read one
+ * field back off it. Now a thin delegate onto
+ * [com.kevin.legion.data.local.provenanceWordsForSource] (mission-control ticket 16), kept under its
+ * original name/signature. `internal`, not `private` - Kotlin's top-level `private` is file-scoped,
+ * and `PopulateDrilldown.kt` (a different file in this same package) is exactly the caller that
+ * needs it.
+ */
+internal fun provenanceWordsForSource(intervalSource: String): String? = entityProvenanceWordsForSource(intervalSource)
+
+/**
+ * [fromEpochMs] plus [months] calendar months, via [java.time.ZonedDateTime.plusMonths] in the
+ * device zone - ticket 09's mandated fix for the old `months * 30 days` approximation, which "stops
+ * being cosmetic once months can drive due-ness": a 6-month interval computed as 180 days drifts
+ * almost 6 days a year against a real calendar, and every month length (28/29/30/31 days) and DST
+ * transition is handled correctly by [java.time] rather than approximated. [fromEpochMs] is read as
+ * a LOCAL-midnight instant, matching [MaintenanceItem.lastDoneDate]'s own convention
+ * (`playbook-coding.md`'s "Date handling and zone conversions" already names this exact field as
+ * local-midnight), so the same device zone interprets it on both ends of this round trip.
+ */
+internal fun addCalendarMonths(fromEpochMs: Long, months: Int): Long =
+    java.time.Instant.ofEpochMilli(fromEpochMs)
+        .atZone(ZoneId.systemDefault())
+        .plusMonths(months.toLong())
+        .toInstant()
+        .toEpochMilli()
+
+/** Which of [MaintenanceItem]'s two clocks a row's headline value/meter is drawn from. */
+internal enum class DueAxis { MILES, TIME }
+
+/**
+ * The axis CLOSER to being due, not whichever axis merely happens to be non-null (ticket 09: "a row
+ * shows the axis that is closer to due... the sub-line names it"). "Closer" is measured on the SAME
+ * 0..1 elapsed/interval scale [dueFraction] itself computes for a single axis - a mileage clock 90%
+ * through its own interval is closer than a time clock 40% through its own, even though the raw
+ * units are incomparable. This is NOT the cross-ITEM "miles per day" rate estimate
+ * [VehicleController.NextService]'s doc rejects - both fractions here are already normalized to the
+ * SAME item's own two intervals, so no rate conversion happens anywhere in this comparison.
+ *
+ * Falls back to whichever single axis actually exists when only one does; `null` when neither does
+ * (mirrors [dueFraction]'s own three-way split - [dueFraction] calls this function directly so the
+ * two can never silently disagree about which axis a row is reporting).
+ *
+ * **The miles axis requires `!odometerUnset`** - [odometerUnset] is the caller's own
+ * `vehicle.odometerBaseline == 0`, the SAME signal [VehicleController.computeNextService] already
+ * gates its own `odometerUnset` on, threaded in here rather than re-derived from [currentMileage].
+ * **`currentMileage > 0` is NOT the same signal and must never stand in for it**: `currentMileage` is
+ * `odometerBaseline + tripMilesSinceBaseline.roundToInt()`
+ * ([VehicleController.currentMileage]), and [com.kevin.legion.vehicle.TelemetryRecorder]'s trip-mile
+ * accumulation loop runs unconditionally on `odometerBaseline` (gated only on connected + rpm>0 +
+ * not-in-conversation) - so a car can accumulate real trip miles against a still-zero, never-confirmed
+ * baseline, reading `currentMileage > 0` while the odometer itself remains unset. On a car in exactly
+ * that state, `item.intervalMiles - (currentMileage - item.lastDoneMileage)` still computes a remaining
+ * figure against an odometer nobody ever confirmed - a smaller-magnitude instance of the same "due in
+ * 121,450 miles" absurdity named in ticket 09's own constraints section, this fix's whole reason for
+ * being (senior-dev review, mission-control ticket 09 follow-up: the two signals coincide only by
+ * accident of a device's current snapshot having both fields at zero, not as a property of the code).
+ * A time-only item, or an item that also carries a time axis, is unaffected - only the miles figure
+ * itself is untrustworthy while the odometer is unset, not the whole row.
+ */
+internal fun chooseDueAxis(item: MaintenanceItem, currentMileage: Int, odometerUnset: Boolean, now: Long): DueAxis? {
+    val milesAxis = item.intervalMiles != null && item.lastDoneMileage != null && !odometerUnset
+    val timeAxis = item.intervalMonths != null && item.lastDoneDate != null
+    return when {
+        milesAxis && timeAxis -> {
+            val milesFraction = (currentMileage - item.lastDoneMileage!!).toFloat() / item.intervalMiles!!.toFloat()
+            val dueAt = addCalendarMonths(item.lastDoneDate!!, item.intervalMonths!!)
+            val timeFraction = (now - item.lastDoneDate!!).toFloat() / (dueAt - item.lastDoneDate!!).toFloat()
+            if (milesFraction >= timeFraction) DueAxis.MILES else DueAxis.TIME
+        }
+        milesAxis -> DueAxis.MILES
+        timeAxis -> DueAxis.TIME
+        else -> null
+    }
+}
+
+/**
+ * One item's DUE row. The headline [DueRowView.value] and the axis named in [DueRowView.sub] both
+ * come from [chooseDueAxis] - the axis closer to due, never a hardcoded miles-first preference
+ * (ticket 09's rewrite of this function's old, admittedly-cosmetic bias). The sub-line states BOTH
+ * intervals when the item carries both - `"every 7,500 mi or 6 mo - due in 1,100 mi"`, ticket 09's
+ * own example, reproduced here verbatim - because Kevin ruled due = whichever comes first and a row
+ * now has to express two clocks without hiding either one. Falls back to naming just the one
+ * interval the item has, then to "never logged"/"no interval on file" when there is nothing to name
+ * at all - the exact wording ticket 06 refinement c relies on to mean "no number to doubt".
+ *
+ * **A mileage-only item with no odometer reading says so, in words** (ticket 09's constraints
+ * section): [chooseDueAxis] already refuses the miles axis when [odometerUnset], but a bare
+ * `"no interval on file"` in that state would be a LIE - there IS an interval, the app just cannot
+ * currently compute a due figure against it. [milesBlockedByOdometer] catches exactly that case (an
+ * item that carries a real miles interval+anchor, has no time axis to fall back to, and would
+ * otherwise read as if it had no schedule at all) and names the real reason.
+ */
+private fun toDueRow(item: MaintenanceItem, currentMileage: Int, odometerUnset: Boolean, now: Long, overdue: Boolean): DueRowView {
+    val axis = chooseDueAxis(item, currentMileage, odometerUnset, now)
+    val intervalPhrase = intervalWords(item)
+    val milesBlockedByOdometer = axis == null && odometerUnset &&
+        item.intervalMiles != null && item.lastDoneMileage != null
+
+    val value = when {
+        overdue -> "OVERDUE"
+        axis == DueAxis.MILES -> {
+            val remaining = (item.intervalMiles!! - (currentMileage - item.lastDoneMileage!!)).toLong()
+            "in " + VehicleController.formatRemaining(remaining, VehicleController.ScheduleUnit.MILES)
+        }
+        axis == DueAxis.TIME -> {
+            val dueAt = addCalendarMonths(item.lastDoneDate!!, item.intervalMonths!!)
+            val remainingDays = (dueAt - now) / (24 * 60 * 60 * 1000)
+            "in " + VehicleController.formatRemaining(remainingDays, VehicleController.ScheduleUnit.DAYS)
+        }
+        else -> "-"
+    }
+
+    val sub = when {
+        intervalPhrase != null && axis != null -> "$intervalPhrase - " + if (overdue) "overdue" else "due $value"
+        intervalPhrase != null && milesBlockedByOdometer -> "$intervalPhrase - odometer not set"
+        intervalPhrase != null -> intervalPhrase
+        item.neverDone -> "never logged"
+        else -> "no interval on file"
+    }
+
+    return DueRowView(item.serviceName, value, sub, overdue, dueFraction(item, currentMileage, odometerUnset, now, overdue), isGuessTag(item))
+}
+
+/**
+ * The schedule's own words for an item's interval(s), independent of whether either axis has an
+ * anchor to compute a due figure from - `"every 7,500 mi or 6 mo"` / `"every 7,500 mi"` /
+ * `"every 6 mo"` / `null` when neither [MaintenanceItem.intervalMiles] nor
+ * [MaintenanceItem.intervalMonths] is set. Shared by [toDueRow] (anchored rows) and
+ * [toScheduleRow] (FULL SCHEDULE's unknown-anchor rows, which have an interval to name but nothing
+ * to compute a due figure from at all).
+ */
+internal fun intervalWords(item: MaintenanceItem): String? {
+    val parts = listOfNotNull(
+        item.intervalMiles?.let { "${groupThousands(it)} mi" },
+        item.intervalMonths?.let { "$it mo" },
+    )
+    return if (parts.isEmpty()) null else "every " + parts.joinToString(" or ")
+}
+
+/**
+ * [DueRowView.fraction]'s pure math (quant-viz ticket 05 part C, corrected by ticket 09): elapsed
+ * over interval, on [chooseDueAxis]'s chosen axis - never a hardcoded miles-first preference, so the
+ * meter drawn under a row always matches the axis its own value/sub line names. Delegates its axis
+ * choice to [chooseDueAxis] directly so the two can never independently drift out of sync, and its
+ * time-axis math to [addCalendarMonths] rather than the old `months * 30 days` approximation.
+ *
+ * [overdue] short-circuits to `1f` rather than letting the ratio run past 1.0 for a badly-overdue
+ * item - a meter drawing past its own right edge would read as a bug, not as "very overdue";
+ * [DueRowView.overdue]'s existing flag and wording already carry that signal, so the meter only
+ * needs to stop where its track ends. `internal` for direct unit testing, same posture as
+ * [buildDueRows].
+ */
+internal fun dueFraction(item: MaintenanceItem, currentMileage: Int, odometerUnset: Boolean, now: Long, overdue: Boolean): Float? {
+    if (overdue) return 1f
+    return when (chooseDueAxis(item, currentMileage, odometerUnset, now)) {
+        DueAxis.MILES -> {
+            val elapsed = (currentMileage - item.lastDoneMileage!!).toFloat()
+            (elapsed / item.intervalMiles!!.toFloat()).coerceIn(0f, 1f)
+        }
+        DueAxis.TIME -> {
+            val dueAt = addCalendarMonths(item.lastDoneDate!!, item.intervalMonths!!)
+            val elapsedMs = (now - item.lastDoneDate!!).toFloat()
+            (elapsedMs / (dueAt - item.lastDoneDate!!).toFloat()).coerceIn(0f, 1f)
+        }
+        null -> null
+    }
+}
+
+/** "132400" -> "132,400". No currency, no decimals - a mileage/interval figure, not money. */
+internal fun groupThousands(n: Int): String =
+    n.toString().reversed().chunked(3).joinToString(",").reversed()
+
+// ----------------------------------------------------- FULL SCHEDULE (pure, ticket 09)
+
+/** Which of the FULL SCHEDULE inventory's three sections a row belongs to. */
+enum class ScheduleGroup { OVERDUE, UPCOMING, UNKNOWN }
+
+/**
+ * One row of the FULL SCHEDULE inventory - every non-deleted item, unlike [DueRowView] which only
+ * ever covers the anchored subset [buildDueRows] keeps.
+ */
+data class ScheduleRowView(
+    val serviceName: String,
+    val group: ScheduleGroup,
+    val value: String,
+    val sub: String,
+    val isGuess: Boolean,
+    val fraction: Float?,
+)
+
+/**
+ * Every non-deleted [MaintenanceItem] for a vehicle (ticket 09's FULL SCHEDULE), grouped OVERDUE /
+ * UPCOMING / UNKNOWN - the third group [buildDueRows] deliberately excludes and MAINTENANCE (triage)
+ * only ever counts, never lists. [items] is expected already filtered to `deleted = 0`
+ * ([com.kevin.legion.data.local.MaintenanceItemDao.getForVehicle] does this at the query, not here -
+ * this function has no opinion about tombstones). `internal` for direct unit testing, same posture
+ * as every other pure builder in this file.
+ */
+internal fun buildScheduleRows(items: List<MaintenanceItem>, currentMileage: Int, odometerUnset: Boolean, now: Long): List<ScheduleRowView> {
+    val unknown = items.filter { VehicleController.isUnknown(it) }
+    val known = items.filterNot { VehicleController.isUnknown(it) }
+    val (overdue, upcoming) = known.partition { VehicleController.isDue(it, currentMileage, odometerUnset, now) }
+    return overdue.map { toScheduleRow(it, currentMileage, odometerUnset, now, ScheduleGroup.OVERDUE) } +
+        upcoming.map { toScheduleRow(it, currentMileage, odometerUnset, now, ScheduleGroup.UPCOMING) } +
+        unknown.map { toScheduleRow(it, currentMileage, odometerUnset, now, ScheduleGroup.UNKNOWN) }
+}
+
+/**
+ * An UNKNOWN-group row has an interval to name (usually - most seeded items keep their interval
+ * even with no anchor logged yet) but nothing to compute a due figure from, so [ScheduleRowView.value]
+ * is always "-" and [ScheduleRowView.fraction] is always `null` - there is nothing to meter. OVERDUE/
+ * UPCOMING rows reuse [toDueRow] wholesale rather than re-deriving the same due-figure math a second
+ * time.
+ */
+private fun toScheduleRow(item: MaintenanceItem, currentMileage: Int, odometerUnset: Boolean, now: Long, group: ScheduleGroup): ScheduleRowView {
+    if (group == ScheduleGroup.UNKNOWN) {
+        return ScheduleRowView(
+            serviceName = item.serviceName,
+            group = group,
+            value = "-",
+            sub = intervalWords(item) ?: "no interval on file",
+            isGuess = isGuessTag(item),
+            fraction = null,
+        )
+    }
+    val row = toDueRow(item, currentMileage, odometerUnset, now, overdue = group == ScheduleGroup.OVERDUE)
+    return ScheduleRowView(item.serviceName, group, row.value, row.sub, row.isGuess, row.fraction)
+}
+
+/**
+ * Every item CONFIRM-ALL is allowed to bless in one pass - ticket 06 decision 2: "a list of what is
+ * about to be blessed, read before agreeing... a plain accept-all was declined, correctly."
+ * [isGuessTag]'s own "an interval must exist" rule applies here too: there is nothing to confirm on
+ * an unconfirmed row with no interval, so it never appears in the review list.
+ *
+ * **Renamed from `confirmableSeededItems` when ticket 18 widened [isGuessTag] past `SEEDED`.** It
+ * now returns `LOOKUP` rows too, which is deliberate - confirming is how a factory-lookup value
+ * becomes one the driver actually vouches for, and that path must exist. But the old name asserted a
+ * provenance this no longer filters on, and a name that says `SEEDED` while returning `LOOKUP` is
+ * the same species of lie the rest of this ticket is about. The dialog that renders this list is
+ * what carries the per-row distinction, via [provenanceWords].
+ */
+internal fun confirmableItems(items: List<MaintenanceItem>): List<MaintenanceItem> =
+    items.filter { isGuessTag(it) }
+
+// -------------------------------------------------------- ITEM DETAIL (pure, ticket 09/07)
+
+/**
+ * The three-way anchor picker (ticket 07, `.scratch/fleet-maintenance/issues/07-hand-added-items-and-what-delete-means.md`):
+ * `never done on this car` / `don't know` / `done at mileage/date`. Maps directly onto
+ * [MaintenanceItem]'s existing three logical states - see that entity's own doc comment -
+ * [NEVER_DONE] sets `neverDone = true` and clears both anchors, [DONT_KNOW] clears both anchors and
+ * leaves `neverDone = false` (a legitimate "I don't know" state,
+ * [com.kevin.legion.data.local.MaintenanceItemDao.setAnchor]'s own doc names this explicitly), and
+ * [DONE_AT] sets one or both anchors. `neverDone` is `true` on 0 of 54 rows on Kevin's real phone as
+ * of ticket 01's audit **because no control has ever been able to set it** - this enum, and the
+ * picker built on it, is that control.
+ */
+enum class AnchorMode { NEVER_DONE, DONT_KNOW, DONE_AT }
+
+// ---------------------------------------------------------- FAULTS (pure)
+
+/** One distinct stored code, first seen at [firstSeenMs]. */
+data class FaultRow(val code: String, val firstSeenMs: Long)
+
+/**
+ * Flattens [CodeEvent]'s `codesJson` (several codes can trip in one event)
+ * into one row per DISTINCT code, keeping the EARLIEST timestamp any event
+ * carried it - "first seen" means first, not most recent. `internal` for
+ * direct unit testing, same reasoning as [buildDueRows].
+ */
+internal fun distinctFaultsByFirstSeen(events: List<CodeEvent>): List<FaultRow> {
+    val firstSeen = mutableMapOf<String, Long>()
+    for (event in events) {
+        val codes = runCatching { JSONArray(event.codesJson) }.getOrNull() ?: continue
+        for (i in 0 until codes.length()) {
+            val code = codes.optString(i).takeIf { it.isNotBlank() } ?: continue
+            val existing = firstSeen[code]
+            if (existing == null || event.timestamp < existing) firstSeen[code] = event.timestamp
+        }
+    }
+    // Newest-first: a code first seen yesterday is more likely to still be
+    // relevant to the driver than one first seen a year ago.
+    return firstSeen.entries.sortedByDescending { it.value }.map { FaultRow(it.key, it.value) }
+}
+
+/** The visible slice of the UPLINK STORED CODES list plus a worded overflow count - same shape
+ * [com.kevin.legion.ui.AlertsSummary]/`capAlertRows` uses for HOME's ALERTS pane. */
+data class FaultRowsSummary(val visible: List<Pair<FaultRow, String?>>, val overflowCount: Int)
+
+/**
+ * Caps STORED CODES at [max] (two, mission-control ticket 16 - Kevin's call). UPLINK's list was
+ * unbounded and on his real car (6 DTCs) overran the whole FLEET root, pushing MAINTENANCE,
+ * DRIVES and CARS below the fold - breaking ticket 05's "a root shows its hero plus one full row
+ * of tiles without scrolling". Never a silent truncation: [FaultRowsSummary.overflowCount] is
+ * rendered as a worded "AND N MORE" row (CLAUDE.md §4's "said in words" rule - never a bare count
+ * badge), same "reported, never silent" posture `capAlertRows` already set for HOME. `internal`
+ * for direct unit testing, same reasoning as [distinctFaultsByFirstSeen].
+ */
+internal fun capFaultRows(faults: List<Pair<FaultRow, String?>>, max: Int = 2): FaultRowsSummary =
+    if (faults.size <= max) FaultRowsSummary(faults, 0) else FaultRowsSummary(faults.take(max), faults.size - max)
+
+/**
+ * D7's union rule (`.scratch/hands-and-senses/issues/01-clear-dtc.md`, resolved 2026-08-16): which
+ * codes STORED CODES shows, and the `CLEARED <date>` line's timestamp if any.
+ *
+ * ```
+ * (code_events newer than the latest CLEARED clear-event) union (the latest clear-event's own codesAfterJson)
+ * ```
+ *
+ * **Only a CLEARED clear-event ever moves the anchor or earns the date line** - D7's own text:
+ * "RETURNED and UNVERIFIED clears do NOT filter anything." When no CLEARED event exists for this
+ * vehicle yet, every code ever seen stays visible and [Pair.second] is `null`.
+ *
+ * **The union half exists because of a gap in a DIFFERENT poll loop, not this one.**
+ * `AriaForegroundService.startHealthMonitor` keeps its own in-memory "known codes" baseline that
+ * is never told a clear happened. A code that returns after a CLEARED erase and is already present
+ * the NEXT time that poll runs reads as "not new" against its stale baseline, so no fresh
+ * [CodeEvent] row is ever written for the return - the plain timestamp filter alone would hide it
+ * forever. The freshest clear-event ON FILE (any outcome - a later RETURNED or UNVERIFIED attempt
+ * still counts, even though it never moves the anchor itself) carries its OWN `codesAfterJson`:
+ * RETURNED's real survivors, or CLEARED's/UNVERIFIED's empty set either way. Unioning that in means
+ * a code a later clear attempt proved still live can never be silently hidden behind an older
+ * successful clear.
+ *
+ * [clearEvents] is expected newest-first ([com.kevin.legion.data.local.CodeClearEventDao.getAll]'s
+ * own ordering) but this function does not rely on that - both the anchor and the union supplement
+ * are found by `maxByOrNull`, never `firstOrNull`. `internal` for direct unit testing, same posture
+ * as every other pure builder in this file.
+ */
+internal fun visibleFaultCodes(events: List<CodeEvent>, clearEvents: List<CodeClearEvent>): Pair<Set<String>, Long?> {
+    // FIX (senior review 2026-08-16): this used to early-return `distinctFaultsByFirstSeen(events)
+    // to null` the instant no CLEARED anchor existed, skipping the union half below entirely. That
+    // silently dropped every RETURNED/UNVERIFIED survivor whenever this vehicle had never had a
+    // CLEARED clear - the anchor and the union are independent questions (D7's own text: "Only a
+    // CLEARED clear-event ever moves the anchor or earns the date line" says nothing about the
+    // union), so a missing anchor must fall through to the same union logic every other path uses,
+    // not bypass it.
+    val latestCleared = clearEvents.filter { it.outcome == "CLEARED" }.maxByOrNull { it.timestamp }
+
+    val newCodes = distinctFaultsByFirstSeen(
+        if (latestCleared == null) events else events.filter { it.timestamp > latestCleared.timestamp },
+    ).map { it.code }.toSet()
+    val latestOverall = clearEvents.maxByOrNull { it.timestamp }
+    val survivorCodes = latestOverall?.codesAfterJson
+        ?.let { json -> runCatching { JSONArray(json) }.getOrNull() }
+        ?.let { arr -> (0 until arr.length()).mapNotNull { i -> arr.optString(i).takeIf(String::isNotBlank) } }
+        ?.toSet()
+        ?: emptySet()
+
+    return (newCodes + survivorCodes) to latestCleared?.timestamp
+}
+
+/**
+ * FIX (senior review 2026-08-16, `.scratch/hands-and-senses/issues/01-clear-dtc.md`): D7's union
+ * rule can name a survivor code straight off a clear-event's own `codesAfterJson` that
+ * [com.kevin.legion.service.AriaForegroundService.startHealthMonitor]'s 5-minute poll has not
+ * re-observed yet, so [distinctFaultsByFirstSeen] - keyed purely off `code_events` - has no row for
+ * it at all. The old call site fed [visibleFaultCodes]'s output straight into
+ * `mapNotNull { allFirstSeen[code] }`, which silently dropped that code from STORED CODES while
+ * D9's spoken line correctly still called it active - two surfaces contradicting each other over
+ * the exact same fact.
+ *
+ * Synthesises a [FaultRow] for any code in [visibleCodes] missing from [allFirstSeen], backdating
+ * [FaultRow.firstSeenMs] to [clearEvents]' own latest timestamp - the same clear-event
+ * [visibleFaultCodes] itself draws `codesAfterJson` from, and the earliest moment LEGION can
+ * honestly claim to have known the code was live. Writes nothing to the database; this is
+ * display-only, so D3's "no double-write" rule is untouched. `internal` for direct unit testing,
+ * same reasoning as every other pure builder in this file.
+ */
+internal fun withSynthesizedSurvivors(
+    visibleCodes: Set<String>,
+    allFirstSeen: Map<String, FaultRow>,
+    clearEvents: List<CodeClearEvent>,
+): List<FaultRow> {
+    val fallbackTimestamp = clearEvents.maxByOrNull { it.timestamp }?.timestamp ?: 0L
+    return visibleCodes.map { code -> allFirstSeen[code] ?: FaultRow(code, fallbackTimestamp) }
+}
+
+// ---------------------------------------------------- FAULTS drilldown (pure)
+
+/**
+ * [CodeEvent.codesJson] parsed into a plain code list, IN ORDER, keeping duplicates - unlike
+ * [distinctFaultsByFirstSeen] this does not flatten or dedupe across events, because the FAULTS
+ * drilldown's per-event row needs to show exactly what one Mode 03 read returned, not a
+ * vehicle-wide summary. Empty list on blank/unparseable JSON, never a thrown exception. `internal`
+ * for direct unit testing, same posture as every other pure builder in this file.
+ */
+internal fun codesInEvent(event: CodeEvent): List<String> {
+    val codes = runCatching { JSONArray(event.codesJson) }.getOrNull() ?: return emptyList()
+    return (0 until codes.length()).mapNotNull { i -> codes.optString(i).takeIf { it.isNotBlank() } }
+}
+
+/**
+ * [CodeEvent.mileage]'s display line for the FAULTS drilldown - ALWAYS worded as an estimate,
+ * unconditionally, carrying forward [com.kevin.legion.vehicle.CarToolbelt.codeHistory]'s own
+ * reasoning verbatim rather than re-deriving it: the figure is a frozen `Int` snapshot taken from
+ * the same rolling mileage estimator every OTHER mileage surface in this app labels conditionally
+ * (confirmed vs. estimated), but nothing was captured ALONGSIDE this one to say how stale the
+ * estimate was at the moment the code actually tripped - so unlike every other mileage reading
+ * here, there is no confirmed/estimated branch to even ask. `null` when no mileage was captured at
+ * all (an older row, or a car whose estimator had nothing to snapshot yet); the caller renders that
+ * as an absence, never a fabricated zero. `internal` for direct unit testing.
+ */
+internal fun faultEventMileageText(mileage: Int?): String? =
+    mileage?.let { "about ${groupThousands(it)} mi (estimated)" }
+
+/**
+ * D7's union rule (`.scratch/hands-and-senses/issues/01-clear-dtc.md`) applied PER EVENT rather
+ * than to the vehicle's latest state: the earliest `CLEARED` [CodeClearEvent] that postdates
+ * [event]'s own timestamp - a stored code this old reads as cleared the moment ANY later
+ * successful clear ran (a Mode 04 clear is whole-ECU, never per-code, see [CodeClearEvent]'s own
+ * doc), even one that also erased other, unrelated codes. `minByOrNull` rather than the vehicle-wide
+ * [visibleFaultCodes]' `maxByOrNull` on purpose: a LATER `CLEARED` event than the one that actually
+ * cleared this row would still be true ("still cleared") but would date-stamp the wrong clear.
+ * Returns `null` when no `CLEARED` event postdates [event] - the honest "still open, or fate
+ * unknown" case. `internal` for direct unit testing, same posture as [visibleFaultCodes].
+ */
+internal fun clearedMarkerFor(event: CodeEvent, clearEvents: List<CodeClearEvent>): CodeClearEvent? =
+    clearEvents.filter { it.outcome == "CLEARED" && it.timestamp > event.timestamp }
+        .minByOrNull { it.timestamp }
+
+/** One freeze-frame PID reading, formatted for display - [label] a short caps tag, [value] the number plus its own unit. */
+data class FreezeFrameReading(val label: String, val value: String)
+
+/**
+ * All eight PIDs [com.kevin.legion.vehicle.ObdBluetoothManager.getFreezeFrame] can capture,
+ * formatted for the FAULTS drilldown's per-event detail. [com.kevin.legion.vehicle.CarToolbelt]'s
+ * own `freezeHighlights` (private to that file) renders only three of these eight, for the
+ * spoken/voice surface - a deliberate "keep it brief for the ear" cut, not a claim the other five
+ * don't exist. This builder shows every key the freeze frame actually carries; a key ABSENT from
+ * [json] is simply OMITTED from the result, never rendered as a zero (CLAUDE.md §4: a value the
+ * source did not record must never masquerade as a recorded one).
+ *
+ * Coolant and intake-air temperature render in the driver's chosen unit via [Temp] (ticket 07,
+ * amended 2026-08-18 to make the unit a setting rather than fixed Celsius), and speed converts
+ * km/h->mph, matching every OTHER human-facing (as opposed to raw-PID-feed) surface already in
+ * this app - [com.kevin.legion.ui.DrivingModeScreen]'s gauges and `CarToolbelt.freezeHighlights`'s
+ * own spoken summary all go through the same [Temp] formatter now, so this drilldown can no longer
+ * disagree with the pane it opened from or with what the assistant says out loud. RPM, load %,
+ * MAF, and both fuel-trim percentages are reported in the ECU's own native unit - there is no
+ * "human" unit to convert them into. Returns an EMPTY list for blank or unparseable [json]; the
+ * caller states "no freeze frame recorded" in words rather than rendering nothing silently.
+ * `internal` for direct unit testing, same posture as every other pure builder in this file.
+ */
+internal fun formatFreezeFrame(context: Context, json: String): List<FreezeFrameReading> {
+    if (json.isBlank()) return emptyList()
+    val o = runCatching { JSONObject(json) }.getOrNull() ?: return emptyList()
+    fun value(key: String): Double? = if (o.has(key)) o.optDouble(key, Double.NaN).takeUnless { it.isNaN() } else null
+    return listOfNotNull(
+        value("rpm")?.let { FreezeFrameReading("RPM", it.toInt().toString()) },
+        value("coolant_c")?.let { FreezeFrameReading("COOLANT", Temp.text(context, it)) },
+        value("speed_kmh")?.let { FreezeFrameReading("SPEED", "${(it * 0.621371).roundToInt()} mph") },
+        value("load_pct")?.let { FreezeFrameReading("LOAD", "${it.toInt()}%") },
+        value("maf_gs")?.let { FreezeFrameReading("MAF", "%.1f g/s".format(it)) },
+        value("stft_pct")?.let { FreezeFrameReading("STFT", "%+.1f%%".format(it)) },
+        value("ltft_pct")?.let { FreezeFrameReading("LTFT", "%+.1f%%".format(it)) },
+        value("iat_c")?.let { FreezeFrameReading("IAT", Temp.text(context, it)) },
+    )
+}
+
+/**
+ * Half-width of the surrounding-telemetry window the FAULTS drilldown draws its speed/rpm
+ * sparklines from around a stored code's own timestamp - the "what point in the drive" answer.
+ * 5 minutes each side, 10 minutes total. [com.kevin.legion.vehicle.TelemetryRecorder.TICK_MS]
+ * samples every 30 seconds while the engine runs, so this window typically holds on the order of
+ * 10-20 points per PID: enough for a sparkline's silhouette (a code tripping mid-acceleration
+ * looks different from one tripping at idle) without pulling an unbounded query over a car that
+ * kept driving for hours before or after the code tripped.
+ */
+internal const val FAULT_TELEMETRY_WINDOW_MS = 5 * 60 * 1000L
+
+/** [FAULT_TELEMETRY_WINDOW_MS]'s bounds around [eventTimestamp], for [com.kevin.legion.data.local.OdbSampleDao.getRange]'s `fromMs`/`toMs`. `internal` for direct unit testing. */
+internal fun telemetryWindow(eventTimestamp: Long): LongRange =
+    (eventTimestamp - FAULT_TELEMETRY_WINDOW_MS)..(eventTimestamp + FAULT_TELEMETRY_WINDOW_MS)
+
+/**
+ * [com.kevin.legion.ui.common.DeckSparkline]'s index-ordered input, straight off a window of
+ * [OdbSample] ([samplesOldestFirst], as [com.kevin.legion.data.local.OdbSampleDao.getRange] already
+ * returns oldest-first). No bucketing, unlike [buildMpgSparkline]'s daily rollup:
+ * [FAULT_TELEMETRY_WINDOW_MS] is short enough that TelemetryRecorder's own 30-second tick never
+ * produces more points than a sparkline can plot directly. `internal` for direct unit testing.
+ */
+internal fun eventTelemetrySparkline(samplesOldestFirst: List<OdbSample>): List<Float?> =
+    samplesOldestFirst.map { it.value.toFloat() }
+
+/**
+ * How close the NEAREST surrounding-telemetry sample must sit to a fault's own EVENT timestamp
+ * before its value is trusted as "the value when LEGION logged the code" - [sparklineCaption]'s
+ * "when logged" clause. **This is deliberately NOT "the value when the fault set".**
+ * `CodeEvent.timestamp` is stamped in `AriaForegroundService.recordCodeEvent`, called from
+ * `startHealthMonitor`'s poll loop (`AriaForegroundService.kt:519`, `:926`,
+ * `HEALTH_SCAN_INTERVAL_MS = 5 * 60 * 1000L`) - that loop runs every five minutes and a stored DTC
+ * persists until cleared, so `CodeEvent.timestamp` is only ever "the poll that noticed the code was
+ * set", which can trail the ECU actually setting it by up to a scan interval, or by hours/days if
+ * the code was already stored before LEGION started watching. The freeze frame is a different
+ * moment entirely - the ECU's OWN snapshot from when the fault set - which is exactly why this
+ * caption and the freeze frame block above it can legitimately disagree; [FaultEventRow]'s on-screen
+ * note says so in words rather than leaving the two numbers to speak for themselves.
+ * [com.kevin.legion.vehicle.TelemetryRecorder] ticks every 30s while driving (see
+ * [FAULT_TELEMETRY_WINDOW_MS]'s own doc for the same fact), so three ticks (90s) absorbs ordinary
+ * tick jitter without letting the clause pass off a sample that is really a gap - a dropped tick, a
+ * poll landing right at the window's edge, or the engine only just starting to sample - as if it
+ * were the moment LEGION actually logged the event. CLAUDE.md §4's "never a fabricated precision":
+ * omitting the clause when the nearest sample is this far off is the honest call, not a lesser one.
+ */
+internal const val FAULT_SPARKLINE_NEAREST_SAMPLE_MAX_MS = 90_000L
+
+/**
+ * The magnitude caption drawn beneath a FAULTS-drilldown sparkline (mission-control follow-up, "the
+ * sparklines have no magnitude" - the shape alone answers "did the car accelerate", never "was that
+ * 5 mph or 60"). Two clauses: the RANGE across [samples] (min-max, or a single bare figure when every
+ * sample reads the same - see below), and, when trustworthy, the value at the sample NEAREST
+ * [eventTimestamp] - the number that actually matters, "when logged" rather than at the window's
+ * first or last tick. **"When logged" names [eventTimestamp] correctly and deliberately does NOT say
+ * "at the code"** - see [FAULT_SPARKLINE_NEAREST_SAMPLE_MAX_MS]'s own doc for why [eventTimestamp]
+ * (`CodeEvent.timestamp`, when LEGION's poll loop noticed the code) is not the moment the fault
+ * actually set, which is what the freeze frame captures instead. [displayValue] converts a sample's
+ * raw stored unit into the figure actually shown (e.g. km/h -> mph for speed; bare `Int` for rpm, no
+ * conversion) - kept as a caller-supplied function so this stays pure arithmetic/formatting with no
+ * PID-specific unit knowledge baked in. [unitSuffix] is appended to the RANGE clause only (`" mph"`
+ * for speed, `""` for rpm) - the "when logged" clause is always a bare number, matching the worked
+ * example (`"0-42 mph  ·  38 when logged"`, not `"...38 mph when logged"`): the unit is stated once
+ * per caption, not per number.
+ *
+ * **A flat window (every sample reads the same [displayValue]) renders as one bare figure**, never
+ * `"42-42 mph"` - the same "render it sensibly, not a degenerate range" instruction [DeckSparkline]'s
+ * own flat-series handling already applies to the line itself, restated here for the caption.
+ *
+ * **The "when logged" clause is omitted, not fabricated, when the nearest sample is farther than
+ * [FAULT_SPARKLINE_NEAREST_SAMPLE_MAX_MS] from [eventTimestamp]** - see that constant's own doc for
+ * why. `null` when [samples] is empty (the caller's own "no telemetry recorded" wording already
+ * covers that case one level up; this function has nothing to add to it). `internal` for direct unit
+ * testing, same posture as every other pure builder in this file.
+ */
+internal fun sparklineCaption(
+    samples: List<OdbSample>,
+    eventTimestamp: Long,
+    displayValue: (Double) -> Int,
+    unitSuffix: String,
+): String? {
+    if (samples.isEmpty()) return null
+    val displayed = samples.map { displayValue(it.value) }
+    val min = displayed.min()
+    val max = displayed.max()
+    val rangeText = if (min == max) "$min$unitSuffix" else "$min-$max$unitSuffix"
+
+    val nearest = samples.minByOrNull { kotlin.math.abs(it.timestamp - eventTimestamp) }!!
+    val gapMs = kotlin.math.abs(nearest.timestamp - eventTimestamp)
+    return if (gapMs <= FAULT_SPARKLINE_NEAREST_SAMPLE_MAX_MS) {
+        "$rangeText  ·  ${displayValue(nearest.value)} when logged"
+    } else {
+        rangeText
+    }
+}
+
+/**
+ * The first sample in [samples] carrying a location fix, or `null` if none do - the FAULTS
+ * drilldown's per-event "where was the car" line only ever renders when at least one surrounding
+ * sample recorded one. [com.kevin.legion.vehicle.TelemetryRecorder] only stamps `lat`/`lng` when a
+ * location fix was available at write time, so a fix-less stretch of driving is a real absence,
+ * not a bug to work around. `internal` for direct unit testing.
+ */
+internal fun locationFromSamples(samples: List<OdbSample>): Pair<Double, Double>? =
+    samples.firstOrNull { it.lat != null && it.lng != null }?.let { it.lat!! to it.lng!! }
+
+/**
+ * True when [code] has no description in EITHER the bundled seed dictionary or this install's
+ * learned one (i.e. it is not present in [descriptions], which callers pass as
+ * `loadSeed() + loadLearned()` - see [distinctFaultsByFirstSeen]'s own call site in `FleetScreen.kt`)
+ * - the FAULTS drilldown's per-code IDENTIFY affordance only ever offers itself where this is true.
+ * Kevin's own call, stated in the ticket: spend one Gemini call per code, once, ever - never a
+ * batch-identify loop. `internal` for direct unit testing.
+ */
+internal fun codeNeedsIdentification(code: String, descriptions: Map<String, Pair<String, String>>): Boolean =
+    code !in descriptions
+
+/** [splitIdentifyResult]'s cap on the derived title's length - long enough for a real short label, short enough that a run-on first sentence still reads as a title rather than a wrapped paragraph. */
+internal const val IDENTIFY_TITLE_MAX_CHARS = 80
+
+/**
+ * [com.kevin.legion.vehicle.DiagnosticAgent.diagnose]'s per-code IDENTIFY call returns ONE spoken
+ * paragraph, not the `(title, detail)` pair [com.kevin.legion.vehicle.DtcDescriptions.save] stores
+ * (the same shape [com.kevin.legion.vehicle.DiagnosticAgent.describeCodes] already produces for the
+ * DTC sheet, by asking the model for it in that exact format - `diagnose` asks for none, so this
+ * splits its prose after the fact instead). [Pair.first] (the title) is [text]'s own first
+ * sentence, capped at [IDENTIFY_TITLE_MAX_CHARS] - the same short-label slot
+ * `descriptions[code]?.first` already fills everywhere else this map is read.
+ * [Pair.second] (the detail) is [text] verbatim, unabridged. Blank input returns a literal
+ * "Identified" title over the (empty) blank detail rather than an empty title string, so a
+ * degenerate response never writes a blank-looking row into [DtcDescriptions]. `internal` for
+ * direct unit testing.
+ */
+internal fun splitIdentifyResult(text: String): Pair<String, String> {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return "Identified" to trimmed
+    val sentenceEnd = trimmed.indexOfFirst { it == '.' || it == '!' || it == '?' }
+    val titleRaw = if (sentenceEnd in trimmed.indices) trimmed.substring(0, sentenceEnd) else trimmed
+    return titleRaw.trim().take(IDENTIFY_TITLE_MAX_CHARS) to trimmed
+}
+
+/**
+ * The expanded-detail text actually worth rendering for one code, with a leading duplicate of
+ * [title] stripped off (mission-control follow-up: on screen, P1282's title read "Code P1282 on
+ * your Jeep indicates a fuel pump relay control circuit malfunction" and the expanded detail BEGAN
+ * with that exact sentence again, so it read twice - [splitIdentifyResult] only guarantees the title
+ * is the detail's own first sentence, never that the model didn't ALSO restate that sentence as the
+ * detail's opening words, and it evidently sometimes does).
+ *
+ * Matching is case- and whitespace-insensitive: [title] and [detail] are both trimmed before the
+ * comparison. If the trimmed detail starts with the trimmed title, that prefix is removed, and a
+ * single trailing `.` or `:` right after it - the separator a model tends to leave between an echoed
+ * title and the sentence that follows - is removed too, before the remaining whitespace run is
+ * trimmed off. Only ONE leading occurrence is ever stripped; a title that happens to recur again
+ * later in the detail's own prose is left alone, since that is not the duplication this exists to
+ * fix. A detail that does not start with the title at all is returned trimmed and otherwise
+ * untouched - see the no-prefix case in this function's own tests.
+ *
+ * `internal` for direct unit testing, same posture as every other pure builder in this file.
+ */
+internal fun detailWithoutTitlePrefix(title: String, detail: String): String {
+    val trimmedTitle = title.trim()
+    val trimmedDetail = detail.trim()
+    if (trimmedTitle.isEmpty() || !trimmedDetail.startsWith(trimmedTitle, ignoreCase = true)) {
+        return trimmedDetail
+    }
+    var remainder = trimmedDetail.substring(trimmedTitle.length)
+    if (remainder.isNotEmpty() && (remainder[0] == '.' || remainder[0] == ':')) {
+        remainder = remainder.substring(1)
+    }
+    return remainder.trim()
+}
+
+/**
+ * True when an identified code's DETAIL half is actually worth surfacing (mission-control follow-up,
+ * "IDENTIFY saves far more than it shows" - [com.kevin.legion.vehicle.DtcDescriptions] stores a
+ * `(title, detail)` pair per code and the FAULTS drilldown used to render only the title, leaving the
+ * detail - likely causes, urgency, the typical fix - sitting on disk unread). `description` is the
+ * SAME `descriptions[code]` lookup every row already reads for its title; `null` (code not yet
+ * identified) is never reachable, matching [codeNeedsIdentification]'s own "IDENTIFY offers itself
+ * only where nothing is known yet" split - the two functions are never true for the same code at
+ * once.
+ *
+ * **Reachability is judged on the text AFTER [detailWithoutTitlePrefix] strips a leading duplicate
+ * of the title, not on the raw detail** - a blank detail, a detail that IS the title (exactly, or
+ * with only case/whitespace/trailing-punctuation differences), or a detail that is the title plus a
+ * separator and nothing else, all reduce to an empty remainder and are NOT reachable: the ticket's
+ * own instruction that a row with nothing MORE to show than its own title line should not look
+ * tappable. A detail that starts with the title and then genuinely continues IS reachable, and the
+ * affordance renders only that remainder - see [detailWithoutTitlePrefix]'s own doc for the stripping
+ * rule. `internal` for direct unit testing, same posture as [codeNeedsIdentification].
+ */
+internal fun codeDetailIsReachable(description: Pair<String, String>?): Boolean {
+    if (description == null) return false
+    val (title, detail) = description
+    return detailWithoutTitlePrefix(title, detail).isNotEmpty()
+}
+
+/**
+ * The expand/collapse state key for one code's detail on one [CodeEvent] row - `"$eventId:$code"`.
+ * **Keyed by [CodeEvent.id] (a stable database primary key), never by the row's position in the
+ * list** - the ticket's own instruction ("must survive scroll, not a bare index"): a
+ * [com.kevin.legion.data.local.CodeEvent.id] does not shift when the list scrolls or a new event
+ * arrives above it the way a `LazyColumn` index would. The SAME code can appear in more than one
+ * [CodeEvent] (a recurring fault), and this key deliberately lets each event's own row remember its
+ * own open/closed state independently, matching the ticket's "per code per event row" wording exactly
+ * - unlike [FaultsDrilldownScreen]'s IDENTIFY state, which is intentionally shared across every row
+ * showing the same code (see that screen's own doc for why those two are different problems).
+ * `internal` for direct unit testing, same posture as every other pure builder in this file.
+ */
+internal fun faultDetailKey(eventId: Long, code: String): String = "$eventId:$code"
+
+// ------------------------------------------------------------- DRIVES (pure)
+
+/**
+ * The DRIVES panel's fixed reading, built from [com.kevin.legion.data.local.DailyDriveLogDao.getRecent]
+ * (ticket 18: "reuse existing data loading" - [com.kevin.legion.vehicle.DailyDriveLogController]
+ * already aggregates TRIP_MILES/MPG_TRIP into this table every hour, so this
+ * panel adds no new query, only a display shape over rows that already exist).
+ */
+data class DriveSummaryView(val headline: String, val sub: String, val hasData: Boolean)
+
+/**
+ * The inline " · %.1f mpg" suffix shared by [buildLastDriveSummary]'s headline and
+ * [com.kevin.legion.ui.fleet.DriveLogRow]'s per-day line - a bare empty string while
+ * [MpgTrust.SHOW_MPG] is false (ticket 09, `.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see
+ * that object's own doc), never a placeholder word: an inline suffix simply omitting itself needs
+ * no explanatory text the way a whole vanished CHART would (this file's other mpg surface,
+ * [buildMpgSparkline], is judged the same way at its own call site in `FleetScreen.kt`). `internal`
+ * for direct unit testing, same posture as every other pure builder in this file.
+ */
+internal fun mpgSuffix(avgMpg: Double?): String =
+    if (MpgTrust.SHOW_MPG) avgMpg?.let { " · %.1f mpg".format(it) }.orEmpty() else ""
+
+/**
+ * The most recent day with at least one finished drive - a day with a
+ * [DailyDriveLog] row but `driveCount == 0` (the hourly refresh writes one for
+ * every day, driven or not, see that controller's own doc) is not a "last
+ * drive" and is skipped rather than reported as one.
+ *
+ * [now] anchors [relativeAge] against the day's own local midnight, not
+ * [DailyDriveLog.generatedAt] - the driver cares how long ago they drove, not
+ * how long ago the rollup last recomputed itself.
+ */
+internal fun buildLastDriveSummary(logsNewestFirst: List<DailyDriveLog>, now: Long): DriveSummaryView {
+    val last = logsNewestFirst.firstOrNull { it.driveCount > 0 }
+        ?: return DriveSummaryView("NO DRIVES LOGGED", "nothing recorded yet", hasData = false)
+    val dayMs = LocalDate.of(last.year, last.month, last.day)
+        .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val mpgPart = mpgSuffix(last.avgMpg)
+    val driveWord = if (last.driveCount == 1) "drive" else "drives"
+    return DriveSummaryView(
+        headline = "${last.milesDriven.toInt()} mi$mpgPart",
+        sub = "${last.driveCount} $driveWord · ${relativeAge(dayMs, now)}",
+        hasData = true,
+    )
+}
+
+/**
+ * The DRIVES panel's MPG trend, oldest-first (matches [com.kevin.legion.ui.common.DeckSparkline]'s
+ * index-ordered contract - see that composable's doc for why a sparkline
+ * never carries timestamps). [logsNewestFirst] comes straight off
+ * `getRecent`'s own ordering, so this only reverses it, no new query and no
+ * new aggregation (ticket 18 scope: MPG history reuses what
+ * [com.kevin.legion.vehicle.TelemetryRecorder]'s per-drive `MPG_TRIP` write
+ * already rolled into the daily log, not a fresh average).
+ *
+ * A day that logged driving but never finished a fuel-integrated trip (too
+ * short - see [DailyDriveLog.avgMpg]'s own nullability) is a GAP, not a zero,
+ * same rule [DeckSparkline]'s file doc states for every deck chart.
+ */
+internal fun buildMpgSparkline(logsNewestFirst: List<DailyDriveLog>): List<Float?> =
+    logsNewestFirst.asReversed().map { it.avgMpg?.toFloat() }
+
+/**
+ * The DRIVES panel's second, sibling sparkline (quant-viz ticket 12): daily
+ * [DailyDriveLog.milesDriven], oldest-first, off the exact same [logsNewestFirst]
+ * rows [buildMpgSparkline] already receives - no second query, matching that
+ * function's own doc.
+ *
+ * Unlike [buildMpgSparkline]'s `avgMpg` (nullable - a day can log driving with
+ * no fuel-integrated trip finished), [DailyDriveLog.milesDriven] is a
+ * non-null `Double` that the hourly rollup writes for every day whether or
+ * not it was driven (see [buildLastDriveSummary]'s doc), so a day inside this
+ * window is never a genuine gap here - `0.0` on an undriven day is a real
+ * zero, the same "gap-vs-zero" distinction CLAUDE.md §4 rule 6 states for
+ * money, read onto miles: nothing in [logsNewestFirst] is missing, so nothing
+ * here is `null`. The `Float?` return type still matches [DeckSparkline]'s
+ * general contract rather than narrowing to `Float`, so a future caller that
+ * feeds a genuinely sparse window (e.g. a car with days it did not exist yet)
+ * is not silently miscompiled into treating an absent day as zero.
+ */
+// NO CURRENT RENDERER, deliberately kept (2026-08-16). Its `FleetUiState.milesSparkline` field was
+// computed every load and read by no composable after the mission-control rebuild dropped the second
+// DRIVES chart - that dead wiring is deleted. This pure builder stays because
+// [com.kevin.legion.ui.TodayGapResolvers]'s own doc cites it to explain an on-device bug (a tile
+// reading "0 MI" above a caption naming a drive from two weeks back, because this series carries a
+// real 0.0 for an undriven calendar day rather than a gap). Deleting it would orphan that lesson.
+// If DRIVES ever regains a second series, this is what feeds it - see quant-viz ticket 17.
+internal fun buildMilesSparkline(logsNewestFirst: List<DailyDriveLog>): List<Float?> =
+    logsNewestFirst.asReversed().map { it.milesDriven.toFloat() }
+
+// ------------------------------------------------------------- RECAPS (pure)
+
+/**
+ * One calendar month's slot in the RECAPS trend charts (quant-viz ticket 05
+ * part A). [milesDriven]/[avgMpg] are `null` when no [MonthlyRecap] exists
+ * for that month - a GAP, never a `0f`, matching [DeckChartData.kt]'s file
+ * doc invariant applied here without going through `dailyBuckets` (recaps are
+ * monthly, not daily, so this module builds its own month axis rather than
+ * reusing that day-grained helper).
+ */
+internal data class RecapMonthSlot(val year: Int, val month: Int, val milesDriven: Float?, val avgMpg: Float?)
+
+/**
+ * Every calendar month from the EARLIEST recap on file through the LATEST,
+ * inclusive, one [RecapMonthSlot] per month - a month with no [MonthlyRecap]
+ * row (the generator skipped a month, or the car did not exist yet) is a
+ * `null`-valued gap slot rather than being omitted from the axis, so the
+ * chart's x-spacing stays evenly monthly. `internal` for direct unit testing
+ * (ticket 05's "month-slot builder (missing month -> null)").
+ */
+internal fun buildRecapMonthSlots(recaps: List<MonthlyRecap>): List<RecapMonthSlot> {
+    if (recaps.isEmpty()) return emptyList()
+    val byKey = recaps.associateBy { it.year * 12 + (it.month - 1) }
+    val minKey = byKey.keys.min()
+    val maxKey = byKey.keys.max()
+    return (minKey..maxKey).map { key ->
+        val year = key / 12
+        val month = key % 12 + 1
+        val recap = byKey[key]
+        RecapMonthSlot(year, month, recap?.milesDriven?.toFloat(), recap?.avgMpg?.toFloat())
+    }
+}
+
+/**
+ * Maps [slots] into [com.kevin.legion.ui.common.DeckPoint]`?` for
+ * [com.kevin.legion.ui.common.DeckLineChart], picking [value] per slot ([RecapMonthSlot.milesDriven]
+ * or [RecapMonthSlot.avgMpg]) - a `null` field stays a `null` point, the same
+ * gap the slot itself already carries. `xMs` is each month's local
+ * calendar-day-1 start; [DeckLineChart] plots by index, not by this
+ * timestamp, but every other [com.kevin.legion.ui.common.DeckPoint] producer
+ * in the kit carries a real one and this keeps the type honest rather than
+ * stuffing in a sentinel.
+ */
+internal fun recapMonthPoints(slots: List<RecapMonthSlot>, value: (RecapMonthSlot) -> Float?): List<com.kevin.legion.ui.common.DeckPoint?> =
+    slots.map { slot ->
+        val y = value(slot) ?: return@map null
+        val xMs = LocalDate.of(slot.year, slot.month, 1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        com.kevin.legion.ui.common.DeckPoint(xMs = xMs, y = y)
+    }
+
+/** "JAN" style short month name for [recapMonthXLabels] - `java.time.Month` avoids a manual 12-entry table. */
+private fun monthAbbrev(month: Int): String =
+    java.time.Month.of(month).getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.US).uppercase()
+
+/**
+ * [slots]' x-axis labels, thinned to January and July (ticket 05 part A) -
+ * every other index is blank, per [com.kevin.legion.ui.common.DeckLineChart]'s
+ * own "callers thin their own labels" contract.
+ */
+internal fun recapMonthXLabels(slots: List<RecapMonthSlot>): List<String> =
+    slots.map { slot -> if (slot.month == 1 || slot.month == 7) "${monthAbbrev(slot.month)} ${slot.year}" else "" }
+
+// ------------------------------------------------------------------ rows
+
+/**
+ * One stored fault: code, description, first-seen. **Mandated fix from the
+ * prototype render (ticket 09 resolution §1):** the description sits in
+ * plain ink, never [com.kevin.legion.ui.theme.LegionSemantics.quarantined] -
+ * red is reserved for the code itself, which is the actual alarm token. A
+ * description is prose explaining the code, not a second alarm.
+ *
+ * [description] is null when neither [com.kevin.legion.vehicle.DtcDescriptions.loadSeed]
+ * nor `loadLearned` has an entry for [row]'s code - rendered honestly as
+ * "not identified locally" in faint ink rather than a blank line, so the row
+ * never reads as broken.
+ */
+@Composable
+fun FaultRowView(row: FaultRow, description: String?) {
+    val sem = LocalLegionSemantics.current
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(row.code, style = LegionType.reading, color = sem.quarantined)
+            Text(
+                description ?: "not identified locally",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (description != null) MaterialTheme.colorScheme.onSurface else sem.faint,
+            )
+            Text("first seen ${shortDate(row.firstSeenMs)}", style = LegionType.stamp, color = sem.faint)
+        }
+    }
+}
+
+/**
+ * STORED CODES' CLEAR action (D5, `.scratch/hands-and-senses/issues/01-clear-dtc.md`) - `AlertDialog`
+ * in [com.kevin.legion.ui.companions.CompanionRows.DeleteCompanionDialog]'s shape, per the ticket's
+ * explicit instruction. **Never copy the garage UI precedent** - `ui.GarageSheet` is referenced in
+ * three KDocs but the file does not exist (ticket's own note).
+ *
+ * FIX (senior review 2026-08-16): this composable used to own BOTH the mutable
+ * `result`/`loading` state AND the `rememberCoroutineScope()` that launched
+ * [com.kevin.legion.vehicle.DtcClearController.dispatchAndRecord] - the real OBD write. That scope
+ * dies the instant this dialog leaves composition, and with no [DialogProperties] override the
+ * `AlertDialog` defaulted to dismissable by back-press/outside-tap, including WHILE the confirmed
+ * send was in flight - a real Mode 04 write is not abortable once it reaches the ECU, so a
+ * cancellation landing after the send but before `recordOutcome()` erased the car's codes with
+ * none of D8's three channels ever firing. This is now a **pure observer**: [loading]/[result] are
+ * owned by [FleetScreen] on a coroutine scope that outlives the dialog (`fleetScope` there,
+ * `rememberCoroutineScope()` at the screen's own composition root, not this composable's), and
+ * [onConfirm] triggers that scope's launch rather than launching one here. Dismissal now only ever
+ * hides the dialog UI; it can no longer cancel a write already under way. The [DialogProperties]
+ * override below narrows the window further (no dismiss AT ALL while [loading]) but is explicitly
+ * NOT sufficient alone - the scope move is what actually closes it. **Process death mid-send is
+ * still unrecoverable and this does not attempt to solve that** - only a live coroutine scope
+ * surviving the dialog is in scope here, not the process.
+ *
+ * [loading]/[result] are the SAME two pieces of state the old internal `LaunchedEffect`/CONFIRM
+ * click used to produce locally; passing them in as params keeps every downstream line below
+ * (title/text/button logic) unchanged from the original. [onConfirm] is a plain callback, not a
+ * suspend fun, because the launch itself now happens on [FleetScreen]'s scope, not this
+ * composable's - see that call site's own comment for the shared gate function
+ * ([com.kevin.legion.vehicle.DtcClearController.dispatchAndRecord], D5's "one gate function") both
+ * it and the voice tool call, so this dialog's body text is never a second, independently-worded
+ * copy of the confirm prompt.
+ */
+@Composable
+fun DtcClearDialog(
+    loading: Boolean,
+    result: DtcClearController.ClearResult?,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    // Only the confirm-prompt turn (outcome == null) ever offers CONFIRM/CANCEL - once a real
+    // outcome comes back (D2's five states), the only thing left to do is read it and dismiss.
+    val awaitingConfirm = !loading && result?.outcome == null
+    AlertDialog(
+        // FIX half 1: no dismiss of any kind while a real op is in flight. This alone does not
+        // close the cancellation window (see the KDoc above) - it only narrows it, since a
+        // dismissal that races the exact instant loading flips true/false is still theoretically
+        // reachable. The scope move above is what actually closes it.
+        properties = DialogProperties(dismissOnBackPress = !loading, dismissOnClickOutside = !loading),
+        onDismissRequest = { if (!loading) onDismiss() },
+        title = { Text(if (loading) "Reading codes..." else if (awaitingConfirm) "Clear stored codes?" else "Clear codes") },
+        text = { Text(if (loading) "Checking what's stored before asking." else result?.message.orEmpty()) },
+        confirmButton = {
+            if (awaitingConfirm) {
+                TextButton(onClick = onConfirm) { Text("Clear") }
+            } else {
+                TextButton(onClick = onDismiss) { Text("OK") }
+            }
+        },
+        dismissButton = { if (awaitingConfirm) TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}

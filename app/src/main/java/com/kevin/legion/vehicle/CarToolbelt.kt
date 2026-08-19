@@ -4,6 +4,7 @@ import android.content.Context
 import com.kevin.legion.ai.AgentTool
 import com.kevin.legion.ai.SubAgent
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.util.Temp
 import com.kevin.legion.util.shortDate
 import org.json.JSONArray
 import org.json.JSONObject
@@ -32,26 +33,48 @@ object CarToolbelt {
 
     /**
      * Trend over recorded obd_samples: count, min/max/avg, and a first-half vs
-     * second-half comparison. Temperatures are converted to Fahrenheit. This is
-     * the aggregation the Live `get_trend` tool delegates to.
+     * second-half comparison. Temperatures are converted to the driver's chosen
+     * unit ([com.kevin.legion.util.Temp]). This is the aggregation the Live
+     * `get_trend` tool delegates to. [vehicleId] is
+     * the fleet-wide-voice override (ticket 01, "category B" stored-data
+     * tool) - null means the active car, unchanged; this is the ONE formatter
+     * below actually wired to a tool's `vehicle` argument today
+     * (`LiveToolbox.getTrend`). The rest of this object's formatters/belt
+     * builders also gained the same override per ticket 01 §2's literal
+     * instruction, but nothing currently PASSES anything but null into them -
+     * see this file's class doc for why (the investigating sub-agents that
+     * call them read the active car only; threading a named car through
+     * `MaintenanceAgent`/`DiagnosticAgent`/`SymptomAgent`/`ColdStartAgent`
+     * themselves was out of ticket 01's explicit §2 controller list).
      */
-    suspend fun trendSummary(context: Context, metric: String, days: Int): String {
+    suspend fun trendSummary(context: Context, metric: String, days: Int, vehicleId: String? = null): String {
         val d = days.coerceIn(1, 365)
+        // "mpg" is refused HERE, ahead of the metric-to-pid map, rather than simply left out of it
+        // (ticket 09, `.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see MpgTrust's own doc): this
+        // formatter is the single point both LiveToolbox.getTrend AND every investigating sub-agent's
+        // get_trend belt tool (below, [trendTool]) funnel through, so gating it here is defense in
+        // depth against either caller's own enum ever offering "mpg" again - the caller-side enums
+        // are ALSO stripped of "mpg" (belt-and-suspenders, not redundant: a stale client-side cache
+        // of the old declaration should still get a refusal, not a wrong number). Re-enable by
+        // flipping [MpgTrust.SHOW_MPG] alone; the `"mpg" -> "MPG_TRIP"` mapping is restored below so
+        // that flip needs no second change here.
+        if (metric == "mpg" && !MpgTrust.SHOW_MPG) return MpgTrust.VOICE_REFUSAL
         val pid = when (metric) {
             "coolant" -> "0105"; "rpm" -> "010C"; "voltage" -> "ATRV"
             "load" -> "0104"; "fuel_trim" -> "0107"; "mpg" -> "MPG_TRIP"
             else -> return "Unknown metric '$metric'."
         }
-        val vehicle = VehicleController.currentVehicle(context)
+        val vehicle = VehicleController.vehicleFor(context, vehicleId)
         val now = System.currentTimeMillis()
         val samples = CarDatabase.getDatabase(context).odbSampleDao()
             .getRange(vehicle.obdMac, pid, now - d * 86_400_000L, now)
         if (samples.size < 5) return "Not enough history yet for $metric - keep driving and it builds up."
 
         val isTemp = pid == "0105"
-        fun conv(v: Double) = if (isTemp) v * 9 / 5 + 32 else v
+        val tempUnit = Temp.unit(context)
+        fun conv(v: Double) = if (isTemp) Temp.convert(v, tempUnit) else v
         val values = samples.map { conv(it.value) }
-        val unit = if (isTemp) "F" else samples.first().unit
+        val unit = if (isTemp) tempUnit.symbol else samples.first().unit
         val half = values.size / 2
         val earlier = values.take(half).average()
         val recent = values.drop(half).average()
@@ -62,24 +85,49 @@ object CarToolbelt {
             "Recent average ${f(recent)}$unit vs ${f(earlier)}$unit earlier."
     }
 
-    /** Recent DTC events with the freeze-frame highlights latched at trip time. */
-    suspend fun codeHistory(context: Context, limit: Int = 5): String {
-        val vehicle = VehicleController.currentVehicle(context)
+    /**
+     * Recent DTC events with the freeze-frame highlights latched at trip time.
+     * [vehicleId] override (ticket 01) - see [trendSummary]'s doc for why
+     * this is currently unwired to any tool's `vehicle` argument.
+     */
+    suspend fun codeHistory(context: Context, limit: Int = 5, vehicleId: String? = null): String {
+        val vehicle = VehicleController.vehicleFor(context, vehicleId)
         val events = CarDatabase.getDatabase(context).codeEventDao().getAll(vehicle.obdMac)
         if (events.isEmpty()) return "No trouble-code events recorded."
         return events.sortedByDescending { it.timestamp }.take(limit).joinToString("\n") { e ->
             buildString {
                 append(shortDate(e.timestamp)).append(": ").append(codesOf(e.codesJson))
-                e.mileage?.let { append(" at ${"%,d".format(it)} mi") }
-                val ff = freezeHighlights(e.freezeFrameJson)
+                // ALWAYS caveated, unconditionally - unlike every other mileage surface, which asks
+                // VehicleController.mileageLabel whether the figure is confirmed.
+                //
+                // It cannot ask. CodeEvent.mileage is a frozen Int snapshot taken at
+                // AriaForegroundService.recordCodeEvent from the same estimator everything else now
+                // labels, and nothing was captured alongside it - no odometerBaselineAt, no way to
+                // know how stale the estimate was at the moment the code tripped. A figure that can
+                // never be PROVEN confirmed must never be presented as if it were, so this one is
+                // labelled every time rather than conditionally.
+                //
+                // This is a live voice tool (get_code_history), so the unlabelled version was
+                // speaking a 5-15%-low estimate to the driver as bare fact. Found on review
+                // 2026-08-15, after the write site (AriaForegroundService:556) was correctly ruled
+                // storage-not-presentation and the reader one file over was missed.
+                //
+                // Capturing confirmed-ness at write time would be the stronger fix and needs a new
+                // column - out of ticket 10's scope, deliberately not built here.
+                e.mileage?.let { append(" at about ${"%,d".format(it)} mi (estimated)") }
+                val ff = freezeHighlights(context, e.freezeFrameJson)
                 if (ff.isNotBlank()) append(" [").append(ff).append("]")
             }
         }
     }
 
-    /** Recent service records (newest first). */
-    suspend fun serviceHistory(context: Context, limit: Int = 10): String {
-        val vehicle = VehicleController.currentVehicle(context)
+    /**
+     * Recent service records (newest first). [vehicleId] override (ticket 01) -
+     * see [trendSummary]'s doc for why this is currently unwired to any tool's
+     * `vehicle` argument.
+     */
+    suspend fun serviceHistory(context: Context, limit: Int = 10, vehicleId: String? = null): String {
+        val vehicle = VehicleController.vehicleFor(context, vehicleId)
         val recs = CarDatabase.getDatabase(context).serviceRecordDao()
             .getRecentForVehicle(vehicle.obdMac, limit)
         if (recs.isEmpty()) return "No service history logged yet."
@@ -87,44 +135,36 @@ object CarToolbelt {
             buildString {
                 append(shortDate(r.date)).append(": ").append(r.serviceName)
                 append(" at ${"%,d".format(r.mileage)} mi")
-                r.cost?.let { append(" ($").append("%.0f".format(it)).append(")") }
+                // costCents is cents (ticket 11, CLAUDE.md §4 rule 3) - divide by 100
+                // here at the formatting edge, never carry a raw cents figure further.
+                // Two decimals, not "%.0f". Rounding to the nearest dollar here turned a $45.99
+                // record into "$46" in a spoken reply - a figure the driver could not reconcile
+                // against a receipt, from an app whose whole money discipline exists so exact
+                // amounts survive. Storage was always exact Long cents; only this formatter was
+                // throwing them away. Caught on review, 2026-08-15.
+                r.costCents?.let { append(" ($").append("%.2f".format(it / 100.0)).append(")") }
             }
         }
     }
 
-    /** Maintenance schedule with current mileage and which items read as due. */
-    suspend fun maintenanceSchedule(context: Context): String {
-        val vehicle = VehicleController.currentVehicle(context)
-        val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)
-        val mileage = VehicleController.currentMileage(vehicle)
-        if (items.isEmpty()) {
-            return "No maintenance schedule on file yet. Odometer about ${"%,d".format(mileage)} mi (estimated)."
-        }
-        val due = VehicleController.dueItems(context, vehicle).map { it.serviceName }.toSet()
-        return buildString {
-            append("Odometer about ${"%,d".format(mileage)} mi (estimated).\n")
-            append(items.joinToString("\n") { item ->
-                val interval = listOfNotNull(
-                    item.intervalMiles?.let { "every ${"%,d".format(it)} mi" },
-                    item.intervalMonths?.let { "every $it mo" },
-                ).joinToString(" / ").ifBlank { "no interval" }
-                val last = listOfNotNull(
-                    item.lastDoneMileage?.let { "at ${"%,d".format(it)} mi" },
-                    item.lastDoneDate?.let { "on ${shortDate(it)}" },
-                ).joinToString(" ").ifBlank { "never logged" }
-                val flag = if (item.serviceName in due) " - DUE" else ""
-                "- ${item.serviceName}: $interval; last $last$flag"
-            })
-        }
-    }
+    // maintenanceSchedule was DELETED (mission-control ticket 16, 2026-08-15,
+    // `.scratch/fleet-maintenance/issues/16-ticket-06-audited-a-dead-surface-and-missed-a-live-one.md`).
+    // It had ZERO callers anywhere in app/src (main and test both), confirmed by grep before
+    // deletion - forMaintenance's own comment already said why: "MaintenanceAgent pre-seeds the
+    // schedule into its context, so the belt omits get_maintenance_schedule". Dead code that greps
+    // identically to a live surface (same `intervalMiles`/`intervalMonths` formatting shape) is
+    // exactly what misled ticket 06's own audit into counting this function and missing
+    // MaintenanceAgent.describeItem, the formatter that actually pre-seeds the maintenance agent's
+    // prompt - same disease ticket 05 deleted refreshServiceIntervals for. See describeItem's own
+    // doc for the live surface this pointed at all along.
 
     /**
      * The recorded cold-start bursts: the newest sample-by-sample, plus a one-line
      * summary per earlier start. Read by the Live `check_cold_start` tool and
      * pre-seeded into ColdStartAgent's one-shot prompt.
      */
-    suspend fun coldStartReport(context: Context, limit: Int = 5): String {
-        val vehicle = VehicleController.currentVehicle(context)
+    suspend fun coldStartReport(context: Context, limit: Int = 5, vehicleId: String? = null): String {
+        val vehicle = VehicleController.vehicleFor(context, vehicleId)
         val dao = CarDatabase.getDatabase(context).odbSampleDao()
         val markers = dao.getLatest(vehicle.obdMac, "COLD_START", limit)
         if (markers.isEmpty()) {
@@ -166,19 +206,19 @@ object CarToolbelt {
     }
 
     /** Live sensor read for the requested items (comma vocabulary in the tool desc). */
-    suspend fun liveSnapshot(items: List<String>): String {
+    suspend fun liveSnapshot(context: Context, items: List<String>): String {
         if (!ObdBluetoothManager.isConnected) return "OBD not connected."
         val wanted = if (items.isEmpty()) listOf("rpm", "coolant", "voltage") else items
         val out = mutableListOf<String>()
         for (item in wanted) {
             when (item.lowercase()) {
                 "rpm" -> ObdBluetoothManager.getRpm()?.let { out.add("rpm $it") }
-                "coolant" -> ObdBluetoothManager.getCoolantTemp()?.let { out.add("coolant ${it * 9 / 5 + 32}F") }
+                "coolant" -> ObdBluetoothManager.getCoolantTemp()?.let { out.add("coolant ${Temp.text(context, it.toDouble())}") }
                 "voltage" -> ObdBluetoothManager.getBatteryVoltage()?.let { out.add("battery ${"%.1f".format(it)}V") }
                 "load" -> ObdBluetoothManager.getEngineLoad()?.let { out.add("load ${"%.0f".format(it)}%") }
                 "stft" -> ObdBluetoothManager.getShortFuelTrim()?.let { out.add("stft ${"%+.1f".format(it)}%") }
                 "ltft" -> ObdBluetoothManager.getLongFuelTrim()?.let { out.add("ltft ${"%+.1f".format(it)}%") }
-                "iat" -> ObdBluetoothManager.getIntakeAirTemp()?.let { out.add("iat ${it * 9 / 5 + 32}F") }
+                "iat" -> ObdBluetoothManager.getIntakeAirTemp()?.let { out.add("iat ${Temp.text(context, it.toDouble())}") }
                 "maf" -> ObdBluetoothManager.getMaf()?.let { out.add("maf ${"%.1f".format(it)}g/s") }
                 "speed" -> ObdBluetoothManager.getSpeedKmh()?.let { out.add("speed ${(it * 0.621371).roundToInt()}mph") }
                 "fuel_level" -> ObdBluetoothManager.getFuelLevel()?.let { out.add("fuel ${"%.0f".format(it)}%") }
@@ -204,9 +244,9 @@ object CarToolbelt {
         }
     }
 
-    /** Decoded factory specs plus any driver-entered build notes. */
-    suspend fun specsSummary(context: Context): String {
-        val spec = VehicleSpecController.current(context) ?: return "No decoded specs on file (VIN not read yet)."
+    /** Decoded factory specs plus any driver-entered build notes. [vehicleId] override (ticket 01), see [trendSummary]'s doc. */
+    suspend fun specsSummary(context: Context, vehicleId: String? = null): String {
+        val spec = VehicleSpecController.current(context, vehicleId) ?: return "No decoded specs on file (VIN not read yet)."
         val parts = listOfNotNull(
             spec.displacementL?.let { "${it}L" },
             spec.engineConfig.ifBlank { null },
@@ -222,10 +262,10 @@ object CarToolbelt {
     }
 
     /** Known chassis quirks for this car (empty until the quirk index is bundled). */
-    suspend fun quirksList(context: Context): String {
+    suspend fun quirksList(context: Context, vehicleId: String? = null): String {
         val dao = CarDatabase.getDatabase(context).chassisQuirkDao()
         if (dao.count() == 0) return "No quirk index loaded yet."
-        val vehicle = VehicleController.currentVehicle(context)
+        val vehicle = VehicleController.vehicleFor(context, vehicleId)
         val candidates = listOf(vehicle.model, vehicle.trim)
             .flatMap { it.split(" ") }.map { it.uppercase() }.filter { it.isNotBlank() }.distinct()
         val quirks = candidates.flatMap { dao.getForChassis(it) }.distinctBy { it.quirkId }
@@ -244,8 +284,8 @@ object CarToolbelt {
     }
 
     /** Recent used-oil analyses with the wear metals that matter. */
-    suspend fun oilAnalyses(context: Context, limit: Int = 3): String {
-        val vehicle = VehicleController.currentVehicle(context)
+    suspend fun oilAnalyses(context: Context, limit: Int = 3, vehicleId: String? = null): String {
+        val vehicle = VehicleController.vehicleFor(context, vehicleId)
         val all = CarDatabase.getDatabase(context).oilAnalysisDao().getAll(vehicle.obdMac)
         if (all.isEmpty()) return "No oil analyses recorded yet."
         return all.sortedByDescending { it.date }.take(limit).joinToString("\n") { a ->
@@ -271,19 +311,29 @@ object CarToolbelt {
     }
 
     // --- Belt builders ------------------------------------------------------
+    //
+    // [vehicleId] on each builder below (ticket 01 §2's literal instruction)
+    // is threaded all the way to the formatter each tool factory calls, but
+    // NOTHING passes anything but null into it today: DiagnosticAgent,
+    // SymptomAgent, MaintenanceAgent, and ColdStartAgent (the only callers of
+    // these builders) each call `forX(context)` with no vehicle of their own
+    // to pass - threading a named car through those four agents themselves
+    // was outside ticket 01's explicit §2 controller list. See
+    // [trendSummary]'s doc.
 
-    fun forDiagnostics(context: Context): List<AgentTool> = listOf(
-        codeHistoryTool(context), liveDataTool(), trendTool(context),
-        readinessTool(), specsTool(context), quirksTool(context), webLookupTool(),
+    fun forDiagnostics(context: Context, vehicleId: String? = null): List<AgentTool> = listOf(
+        codeHistoryTool(context, vehicleId), liveDataTool(context), trendTool(context, vehicleId),
+        readinessTool(), specsTool(context, vehicleId), quirksTool(context, vehicleId), webLookupTool(),
     )
 
-    fun forSymptoms(context: Context): List<AgentTool> = forDiagnostics(context) + serviceHistoryTool(context)
+    fun forSymptoms(context: Context, vehicleId: String? = null): List<AgentTool> =
+        forDiagnostics(context, vehicleId) + serviceHistoryTool(context, vehicleId)
 
     // MaintenanceAgent pre-seeds the schedule into its context, so the belt omits
     // get_maintenance_schedule - the worker would only burn a round re-pulling it.
-    fun forMaintenance(context: Context): List<AgentTool> = listOf(
-        serviceHistoryTool(context), trendTool(context),
-        codeHistoryTool(context), oilAnalysesTool(context), webLookupTool(),
+    fun forMaintenance(context: Context, vehicleId: String? = null): List<AgentTool> = listOf(
+        serviceHistoryTool(context, vehicleId), trendTool(context, vehicleId),
+        codeHistoryTool(context, vehicleId), oilAnalysesTool(context, vehicleId), webLookupTool(),
     )
 
     // ColdStartAgent is one-shot (askTyped), not an investigate loop, so it no
@@ -294,45 +344,50 @@ object CarToolbelt {
 
     // --- Tool factories -----------------------------------------------------
 
-    private fun trendTool(context: Context) = AgentTool(
+    // "mpg" deliberately absent from this belt tool's metric enum (ticket 09,
+    // `.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see MpgTrust's own doc): mpg display is
+    // suppressed app-wide pending a fill-up calibration, and [trendSummary] itself refuses "mpg"
+    // even if a caller passes it anyway, so this is belt-and-suspenders, not the only guard.
+    private fun trendTool(context: Context, vehicleId: String? = null) = AgentTool(
         name = "get_trend",
         description = "How a recorded metric has trended over recent weeks (coolant, rpm, voltage, " +
-            "load, fuel_trim, mpg): count, min/max/average, and recent-vs-earlier comparison. Use to " +
+            "load, fuel_trim): count, min/max/average, and recent-vs-earlier comparison. Use to " +
             "judge whether something is drifting.",
         params = props(
-            "metric" to prop("string", "Which metric.", listOf("coolant", "rpm", "voltage", "load", "fuel_trim", "mpg")),
+            "metric" to prop("string", "Which metric.", listOf("coolant", "rpm", "voltage", "load", "fuel_trim")),
             "days" to prop("integer", "How many days back to look. Default 30."),
         ),
         required = listOf("metric"),
         timeoutMs = 5_000,
-    ) { args -> trendSummary(context, args.optString("metric"), args.optInt("days", 30)) }
+    ) { args -> trendSummary(context, args.optString("metric"), args.optInt("days", 30), vehicleId) }
 
-    private fun codeHistoryTool(context: Context) = AgentTool(
+    private fun codeHistoryTool(context: Context, vehicleId: String? = null) = AgentTool(
         name = "get_code_history",
         description = "Past trouble-code events with the sensor snapshot latched when each code set " +
             "(rpm, coolant, load at trip time). Use to spot patterns like a code that only sets cold.",
         params = props("limit" to prop("integer", "How many recent events. Default 5.")),
         timeoutMs = 5_000,
-    ) { args -> codeHistory(context, args.optInt("limit", 5)) }
+    ) { args -> codeHistory(context, args.optInt("limit", 5), vehicleId) }
 
-    private fun serviceHistoryTool(context: Context) = AgentTool(
+    private fun serviceHistoryTool(context: Context, vehicleId: String? = null) = AgentTool(
         name = "get_service_history",
         description = "Logged maintenance history for this car (dates, service, mileage, cost). Use to " +
             "see what has actually been done and when.",
         params = props("limit" to prop("integer", "How many recent records. Default 10.")),
         timeoutMs = 5_000,
-    ) { args -> serviceHistory(context, args.optInt("limit", 10)) }
+    ) { args -> serviceHistory(context, args.optInt("limit", 10), vehicleId) }
 
-    private fun liveDataTool() = AgentTool(
+    private fun liveDataTool(context: Context) = AgentTool(
         name = "read_live_data",
         description = "Read live sensor values off the OBD port right now. items is a comma list from: " +
             "rpm, coolant, voltage, load, stft, ltft, iat, maf, speed, fuel_level. Returns 'OBD not " +
-            "connected' if the adapter is unplugged.",
+            "connected' if the adapter is unplugged. coolant and iat are already in the driver's " +
+            "chosen temperature unit - do not convert them.",
         params = props("items" to prop("string", "Comma-separated sensor names to read.")),
         required = listOf("items"),
         timeoutMs = 12_000,
     ) { args ->
-        liveSnapshot(args.optString("items").split(",").map { it.trim() }.filter { it.isNotBlank() })
+        liveSnapshot(context, args.optString("items").split(",").map { it.trim() }.filter { it.isNotBlank() })
     }
 
     private fun readinessTool() = AgentTool(
@@ -342,27 +397,27 @@ object CarToolbelt {
         timeoutMs = 8_000,
     ) { readinessReport() }
 
-    private fun specsTool(context: Context) = AgentTool(
+    private fun specsTool(context: Context, vehicleId: String? = null) = AgentTool(
         name = "get_specs",
         description = "Decoded factory specs for this car (engine, drivetrain, fuel) plus any driver " +
             "build notes. Use when the answer depends on the exact powertrain.",
         timeoutMs = 5_000,
-    ) { specsSummary(context) }
+    ) { specsSummary(context, vehicleId) }
 
-    private fun quirksTool(context: Context) = AgentTool(
+    private fun quirksTool(context: Context, vehicleId: String? = null) = AgentTool(
         name = "get_quirks",
         description = "Known chassis quirks and common failure points for this platform, with typical " +
             "onset mileage and severity. Use to weight a diagnosis toward model-specific weak spots.",
         timeoutMs = 5_000,
-    ) { quirksList(context) }
+    ) { quirksList(context, vehicleId) }
 
-    private fun oilAnalysesTool(context: Context) = AgentTool(
+    private fun oilAnalysesTool(context: Context, vehicleId: String? = null) = AgentTool(
         name = "get_oil_analyses",
         description = "Recent used-oil analysis results (wear metals in ppm, fuel dilution, TBN, " +
             "viscosity). Use to reason about internal engine wear trends.",
         params = props("limit" to prop("integer", "How many recent analyses. Default 3.")),
         timeoutMs = 5_000,
-    ) { args -> oilAnalyses(context, args.optInt("limit", 3)) }
+    ) { args -> oilAnalyses(context, args.optInt("limit", 3), vehicleId) }
 
     private fun webLookupTool() = AgentTool(
         name = "web_lookup",
@@ -400,13 +455,13 @@ object CarToolbelt {
         codesJson
     }
 
-    private fun freezeHighlights(json: String): String {
+    private fun freezeHighlights(context: Context, json: String): String {
         if (json.isBlank()) return ""
         return try {
             val o = JSONObject(json)
             listOfNotNull(
                 if (o.has("rpm")) "rpm ${o.getDouble("rpm").toInt()}" else null,
-                if (o.has("coolant_c")) "coolant ${(o.getDouble("coolant_c") * 9 / 5 + 32).toInt()}F" else null,
+                if (o.has("coolant_c")) "coolant ${Temp.text(context, o.getDouble("coolant_c"))}" else null,
                 if (o.has("load_pct")) "load ${o.getDouble("load_pct").toInt()}%" else null,
             ).joinToString(" ")
         } catch (e: Exception) {

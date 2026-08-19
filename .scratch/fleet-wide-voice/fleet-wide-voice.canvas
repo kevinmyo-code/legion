@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    {
+      "id": "c18a89f9143f0b63",
+      "type": "file",
+      "file": ".scratch/fleet-wide-voice/issues/01-fleet-wide-voice-knowledge.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    }
+  ],
+  "edges": []
+}

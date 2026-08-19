@@ -35,6 +35,15 @@ android {
     defaultConfig {
         applicationId = "com.kevin.legion"
         minSdk = 24
+        // DO NOT bump this to 35 without reading AriaForegroundService.startForegroundCompat and
+        // BootReceiver first (2026-08-17). At 35, `dataSync` joins `microphone` on the
+        // BOOT_COMPLETED-prohibited foreground-service-type list, which breaks the boot-time
+        // reconciliation AssistantIgnition.resumeIfEnabled relies on outright - there would be no
+        // type left that BootReceiver is allowed to start with. 35 also activates the `dataSync`
+        // 6h/24h foreground-service time cap and Service.onTimeout(), which neither
+        // AriaForegroundService nor LedgerIngestService implements today - an unimplemented
+        // onTimeout on a capped dataSync service is a fatal RemoteServiceException, not a soft
+        // stop. Both are real work items, not a toggle to flip.
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -66,6 +75,34 @@ android {
             )
         }
     }
+
+    // A shareable APK must not carry the owner's own life in it.
+    //
+    // `assets/midnight_import/` is the one-shot seeding bundle described in
+    // data/MidnightImport.kt: gzipped NDJSON exported off the private Midnight AI
+    // archive. It is correctly gitignored and has never been committed - verified
+    // 2026-08-17 with `git ls-files` and a `git rev-list --all --objects` scan, both
+    // zero - so a stranger's CLONE never has it and MidnightImport.run() no-ops there
+    // exactly as its doc claims.
+    //
+    // What gitignore cannot do is keep it out of an APK BUILT ON THIS MACHINE, since
+    // assets/ is packaged from the working tree rather than from git. Those files
+    // carry a real VIN, the ELM327's Bluetooth MAC, real lat/long in `places`, and
+    // written drive narratives. Handing anyone a build - a reviewer, an employer, a
+    // sideload - would disclose all of it.
+    //
+    // The bundle therefore lives in `src/debug/assets/`, NOT `src/main/assets/`, so a
+    // release build has no such directory to package. This is deliberately structural
+    // rather than a packaging filter: the filter was tried first
+    // (`variant.packaging.resources.excludes`, scoped by build type) and PROVEN NOT TO
+    // WORK - a debug APK built with it still contained all 14 files, because
+    // `packaging.resources` governs Java resources and never touches Android assets.
+    // A guard that looks right and excludes nothing is worse than no guard, so it was
+    // replaced with a source set that cannot silently fail.
+    //
+    // Debug keeps the bundle on purpose: the import has still never run against its
+    // own unset-flag condition (memory/MEMORY.md), and moving it out of debug too
+    // would delete the only remaining way to exercise that path.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -124,6 +161,14 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
+    // Single-activity shell (ticket 07): bottom-nav tabs + absorbed sub-routes.
+    implementation(libs.navigation.compose)
+    // Not used directly by app code. Declared to raise navigation-compose's
+    // transitive kotlinx-serialization 1.6.3 to the 1.8.1 Room 2.8.4's
+    // MigrationTestHelper needs: AGP's consistent resolution pins the
+    // androidTest classpath to whatever the app runtime resolves, so the
+    // migration test cannot be fixed from the test configuration alone.
+    implementation(libs.kotlinx.serialization.core)
 
     // Room
     implementation(libs.room.runtime)
@@ -148,6 +193,16 @@ dependencies {
 
     // Custom wake word ("hey <name>"), ported from Midnight AI.
     implementation(libs.vosk.android)
+
+    // Media3 session (`.scratch/android-auto/map.md`). CLAUDE.md §3 lists Media3 as deliberately
+    // dropped at the pivot - it is back for the Android Auto media surface only
+    // (LegionMediaLibraryService), NOT the ExoPlayer stack. Kevin approved re-adding it 2026-08-13.
+    implementation(libs.media3.session)
+    // androidx.media (legacy media-compat) - see libs.versions.toml's media-compat entry for why an
+    // explicit dependency is needed even though media3-session already pulls this in transitively:
+    // MediaConstants (root-hints and custom-action key constants) isn't exposed on the compile
+    // classpath from a transitive-only, implementation-scoped dependency.
+    implementation(libs.media.compat)
 
     // Spotify App Remote SDK (BYO client ID): the driver registers their own
     // Spotify dev app; nothing ships a shared Kevin client ID. The .aar is

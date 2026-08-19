@@ -10,6 +10,8 @@ import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
 import androidx.core.app.NotificationManagerCompat
+import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.MusicPlayHistoryEntry
 import com.kevin.legion.service.MediaNotificationListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -68,6 +70,122 @@ object NowPlayingController {
     // "Can't create handler inside thread that has not called Looper.prepare()".
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // --- LEGION's own listening history (ticket 05, 2026-08-18) ------------------------------
+
+    /** The last (title, artist, album) actually written to [MusicPlayHistoryEntry], and when. */
+    internal data class LoggedTrack(val title: String, val artist: String, val album: String, val loggedAt: Long)
+    @Volatile private var lastLogged: LoggedTrack? = null
+
+    /**
+     * How long a repeat observation of the SAME (title, artist, album) is suppressed for.
+     * [updateState] re-fires on every `onPlaybackStateChanged` callback - play, pause, seek -
+     * not only on a genuine track change, so without this window, pausing and resuming the same
+     * song a few seconds apart would write two rows for one listen. Two minutes comfortably
+     * covers a stoplight-length pause without covering a genuine repeat-listen of a short song,
+     * which is still allowed to log again once the window has passed - see [shouldLogHistoryEntry].
+     */
+    internal const val PLAY_HISTORY_DEDUP_WINDOW_MS = 120_000L
+
+    /**
+     * How long after [markLegionInitiatedPlay] a newly observed track is attributed to LEGION
+     * itself rather than to the driver starting something unprompted. Generous enough to cover
+     * App Remote's own round trip plus the MediaSession callback landing after it, tight enough
+     * that an unrelated track change minutes later is never mis-attributed.
+     */
+    private const val LEGION_INITIATED_ATTRIBUTION_WINDOW_MS = 10_000L
+    @Volatile private var legionInitiatedAt: Long = 0L
+
+    /**
+     * Marks that LEGION ITSELF just started playback (a successful `play_music` search-and-play).
+     * The next track [updateState] observes within [LEGION_INITIATED_ATTRIBUTION_WINDOW_MS] is
+     * logged with [MusicPlayHistoryEntry.startedByLegion] true instead of false. Called from
+     * [com.kevin.legion.service.LiveToolbox]'s `play_music` handler, nowhere else - `control_music`
+     * transport commands (play/pause/next/previous) resume or skip within whatever is ALREADY
+     * playing rather than starting a specific new track, so they do not mark this.
+     */
+    fun markLegionInitiatedPlay() {
+        legionInitiatedAt = System.currentTimeMillis()
+    }
+
+    /**
+     * Pure decision of whether [candidate] is worth writing as a new history row, given the
+     * [last] row actually logged. Kept Android-free and internal so it is a plain JVM unit test:
+     * a DIFFERENT (title, artist, album) always logs; the SAME one only logs again once
+     * [dedupWindowMs] has passed since it was last logged - see [PLAY_HISTORY_DEDUP_WINDOW_MS]'s
+     * own doc for why the window exists at all.
+     */
+    internal fun shouldLogHistoryEntry(
+        last: LoggedTrack?,
+        candidate: LoggedTrack,
+        dedupWindowMs: Long = PLAY_HISTORY_DEDUP_WINDOW_MS,
+    ): Boolean {
+        if (last == null) return true
+        if (last.title != candidate.title || last.artist != candidate.artist || last.album != candidate.album) {
+            return true
+        }
+        return candidate.loggedAt - last.loggedAt >= dedupWindowMs
+    }
+
+    /**
+     * Writes a [MusicPlayHistoryEntry] for [info] if [shouldLogHistoryEntry] says this is a new
+     * observation, not a re-fire on the same track. Best-effort and fire-and-forget on
+     * [ioScope]: a history-write failure must never take down playback observation, which is why
+     * this is wrapped the same defensive way every other branch in [updateState] is.
+     *
+     * [info] can be null (session gone) or carry the metadata sentinel `"Unknown title"`
+     * [NowPlayingInfo.title] falls back to when the MediaSession reported no title at all -
+     * neither is a real track, so neither is logged.
+     */
+    private fun maybeLogHistory(info: NowPlayingInfo?) {
+        if (info == null) return
+        val title = info.title
+        if (title.isBlank() || title == "Unknown title") return
+
+        val now = System.currentTimeMillis()
+        val candidate = LoggedTrack(title = title, artist = info.artist, album = info.album, loggedAt = now)
+        if (!shouldLogHistoryEntry(lastLogged, candidate)) return
+        lastLogged = candidate
+
+        val ctx = appCtx ?: return
+        // See markLegionInitiatedPlay's own doc: within the attribution window, this observed
+        // change is attributed to a LEGION-initiated play rather than the driver's own.
+        val startedByLegion = now - legionInitiatedAt <= LEGION_INITIATED_ATTRIBUTION_WINDOW_MS
+        ioScope.launch {
+            try {
+                CarDatabase.getDatabase(ctx).musicPlayHistoryDao().insert(
+                    MusicPlayHistoryEntry(
+                        title = title,
+                        artist = info.artist,
+                        album = info.album,
+                        // NowPlayingController has no URI source today - MediaSession metadata
+                        // doesn't carry one, and App Remote's own playerApi state wasn't wired
+                        // in here. Always null for now; see MusicPlayHistoryEntry's own doc.
+                        spotifyUri = null,
+                        startedAt = now,
+                        startedByLegion = startedByLegion,
+                    ),
+                )
+            } catch (e: Exception) {
+                // Never let a history write take down playback observation.
+            }
+        }
+    }
+
+    /**
+     * The pure decision behind [pickController]'s session selection, kept Android-free so the
+     * anti-loop rule is a plain JVM unit test rather than something only provable on a device.
+     * [candidates] is (packageName, isPlaying) for every session [MediaSessionManager] currently
+     * reports; [ownPackage] is always excluded FIRST, before either the "prefer STATE_PLAYING" or
+     * the "fall back to the first one" rule runs - see [pickController]'s own comment for exactly
+     * why that ordering is load-bearing rather than incidental. Returns null when nothing (other
+     * than possibly LEGION itself) is publishing a session.
+     */
+    internal fun choosePackage(candidates: List<Pair<String, Boolean>>, ownPackage: String?): String? {
+        val eligible = candidates.filter { (pkg, _) -> pkg != ownPackage }
+        return eligible.firstOrNull { (_, isPlaying) -> isPlaying }?.first
+            ?: eligible.firstOrNull()?.first
+    }
+
     fun hasAccess(context: Context): Boolean {
         return NotificationManagerCompat.getEnabledListenerPackages(context)
             .contains(context.packageName)
@@ -96,9 +214,29 @@ object NowPlayingController {
     // (track change, play/pause) and a throw here would otherwise take down the app.
     private fun pickController(controllers: List<MediaController>?) {
         try {
-            val controller = controllers?.firstOrNull {
-                it.playbackState?.state == PlaybackState.STATE_PLAYING
-            } ?: controllers?.firstOrNull()
+            // LOAD-BEARING, not defensive: com.kevin.legion.car.LegionMediaLibraryService now
+            // publishes its OWN active MediaSession (the Android Auto now-playing card), and that
+            // session shows up in getActiveSessions() exactly like Spotify's or the phone's AVRCP
+            // bridge does. Without this filter, the very first NowPlayingController tick after
+            // LEGION's session goes active would read ITS OWN mirrored metadata back as "what's
+            // playing", which is the metadata LEGION just mirrored FROM this same controller one
+            // event earlier - a closed loop with no external anchor. Concretely: the proxy's
+            // isPlaying flips true because NowPlayingController said so, that flip republishes the
+            // proxy's own session state, pickController sees a session reporting STATE_PLAYING and
+            // (wrongly) prefers it as the "real" source, and the row it displays is forever a
+            // reflection of itself - never correcting even when the actual source (Spotify) pauses.
+            // It would also start writing phantom MusicPlayHistoryEntry rows for a "track" that is
+            // really just LEGION quoting LEGION. Excluding it at the SOURCE - before either the
+            // STATE_PLAYING preference or the fallback-to-first pick runs - is the only place this
+            // can be closed for good; filtering later (e.g. in the UI) would still let the loop run
+            // and still log bogus history.
+            val ownPackage = appCtx?.packageName
+            val selectedPackage = choosePackage(
+                controllers?.map { it.packageName to (it.playbackState?.state == PlaybackState.STATE_PLAYING) }
+                    ?: emptyList(),
+                ownPackage,
+            )
+            val controller = controllers?.firstOrNull { it.packageName == selectedPackage }
 
             if (controller?.sessionToken == activeController?.sessionToken) {
                 controller?.let { updateState(it) }
@@ -169,6 +307,7 @@ object NowPlayingController {
                 playbackStateRaw = rawState,
                 artSource = artSource,
             )
+            maybeLogHistory(_state.value)
 
             // Most apps (Spotify, YT Music) embed art as a Bitmap in METADATA_KEY_ALBUM_ART
             // rather than a content URI. If there's no URI, write the bitmap to the cache

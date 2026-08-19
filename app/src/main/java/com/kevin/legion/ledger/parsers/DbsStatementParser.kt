@@ -3,6 +3,7 @@ package com.kevin.legion.ledger.parsers
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
+import com.kevin.legion.ledger.formatCents
 import java.io.InputStream
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -80,13 +81,37 @@ object DbsStatementParser {
                         throw BalanceContinuityException(
                             "account $accountId: statement totals withdrawal=$totalWithdrawal " +
                                 "deposit=$totalDeposit do not match transactions " +
-                                "withdrawal=$actualWithdrawal deposit=$actualDeposit"
+                                "withdrawal=$actualWithdrawal deposit=$actualDeposit",
+                            // Reports EVERY side that mismatched, not the first
+                            // one - both can be wrong at once, and naming only
+                            // half of it understates the problem.
+                            userMessage = buildString {
+                                append("This statement's own totals don't match its transactions. ")
+                                if (actualWithdrawal != totalWithdrawal) {
+                                    append("It states ${formatCents(totalWithdrawal)} withdrawn, ")
+                                    append("but the lines add up to ${formatCents(actualWithdrawal)}. ")
+                                }
+                                if (actualDeposit != totalDeposit) {
+                                    append("It states ${formatCents(totalDeposit)} deposited, ")
+                                    append("but the lines add up to ${formatCents(actualDeposit)}. ")
+                                }
+                                append("Nothing was imported.")
+                            },
                         )
                     }
                     if (runningBalanceCents != finalBalance) {
                         throw BalanceContinuityException(
                             "account $accountId: closing balance $finalBalance does not match " +
-                                "running balance $runningBalanceCents"
+                                "running balance $runningBalanceCents",
+                            // NOT `runningBalanceCents ?: 0L` - null here means
+                            // no running balance was ever recorded for this
+                            // section, and printing 0.00 would state a figure
+                            // the statement never gives. CLAUDE.md §4 rule 5.
+                            userMessage = "This statement's closing balance doesn't match its own " +
+                                "transactions. It ends at ${formatCents(finalBalance)}, but " +
+                                (runningBalanceCents?.let { "the lines run to ${formatCents(it)}. " }
+                                    ?: "no running balance was ever recorded for this section. ") +
+                                "Nothing was imported.",
                         )
                     }
                     sectionOpen = false
@@ -99,7 +124,12 @@ object DbsStatementParser {
                     if (runningBalanceCents != null && stated != runningBalanceCents) {
                         throw BalanceContinuityException(
                             "account $accountId: brought-forward balance $stated does not " +
-                                "match the prior carried-forward balance $runningBalanceCents"
+                                "match the prior carried-forward balance $runningBalanceCents",
+                            // The guard above already established this branch
+                            // is only reached when runningBalanceCents != null.
+                            userMessage = "This statement's sections don't join up. One opens at " +
+                                "${formatCents(stated)}, but the previous one closed at " +
+                                "${formatCents(runningBalanceCents!!)}. Nothing was imported.",
                         )
                     }
                     runningBalanceCents = stated
@@ -112,7 +142,13 @@ object DbsStatementParser {
                     if (runningBalanceCents == null || stated != runningBalanceCents) {
                         throw BalanceContinuityException(
                             "account $accountId: page-break balance $stated does not match " +
-                                "running balance $runningBalanceCents"
+                                "running balance $runningBalanceCents",
+                            // Same null rule as the closing-balance site above.
+                            userMessage = "This statement's balance doesn't carry over correctly " +
+                                "across a page break. A page opens at ${formatCents(stated)}, but " +
+                                (runningBalanceCents?.let { "the previous page ran to ${formatCents(it)}. " }
+                                    ?: "no running balance was ever recorded for the previous page. ") +
+                                "Nothing was imported.",
                         )
                     }
                     currentTxnIndex = -1
@@ -139,7 +175,14 @@ object DbsStatementParser {
                     val expectedBalance = runningBalanceCents + amount
                     if (expectedBalance != balance) {
                         throw BalanceContinuityException(
-                            "$txnDate: expected $expectedBalance, statement shows $balance"
+                            "$txnDate: expected $expectedBalance, statement shows $balance",
+                            // The highest-traffic gate site: one bad line item
+                            // is a likelier real failure than a whole section
+                            // mistotalling, so this is the message a user is
+                            // most likely to actually see.
+                            userMessage = "A line on $txnDate doesn't add up. After it, the " +
+                                "balance should be ${formatCents(expectedBalance)}, but the " +
+                                "statement shows ${formatCents(balance)}. Nothing was imported.",
                         )
                     }
                     val description = descWords.joinToString(" ") { it.text }
@@ -164,7 +207,18 @@ object DbsStatementParser {
                     continue
                 }
 
+                // The terminator checks above (`Total Balance Carried
+                // Forward:`, `Balance Carried Forward`, `Balance Brought
+                // Forward`) all `continue` BEFORE this point and reset
+                // `currentTxnIndex = -1` - that is the structural guard: a
+                // real section/page boundary can never fall through to the
+                // continuation accumulator below it. What it does NOT catch
+                // is a stray line that sits INSIDE a transaction's
+                // continuation range without matching any of those markers -
+                // see [isArtifactLine]'s doc for the real case that slipped
+                // through.
                 if (currentTxnIndex >= 0) {
+                    if (isArtifactLine(text)) continue
                     val current = transactions[currentTxnIndex]
                     val updated = current.copy(description = "${current.description} $text".trim())
                     transactions[currentTxnIndex] = updated
@@ -182,6 +236,30 @@ object DbsStatementParser {
         }
 
         return transactions
+    }
+
+    /**
+     * True for a PDF-artifact line: every whitespace-separated token on it is
+     * exactly one character (`"4 4 4 4 4"`, `"S"`, `"1 4 8 A"`). Found on
+     * Kevin's real consolidated DBS/POSB statement - PdfBox-Android emits
+     * rotated/sidebar watermark text as its own line, and when one of those
+     * lines happens to land between a transaction row and the next section
+     * marker, the description-continuation accumulator has no other way to
+     * tell it apart from a real multi-line description. A legitimate DBS
+     * description continuation (reference numbers, approval codes, payee
+     * names) is never all one-character tokens, so this is a safe
+     * discriminator without touching the reconciliation arithmetic at all.
+     *
+     * Deliberately narrow: it skips ONLY the offending line, not the rest of
+     * the accumulation range, so a genuine continuation line sandwiched on
+     * the far side of an artifact line is still captured (the real
+     * statement's watermark could in principle land mid-description on a
+     * future page, not just right before the totals line where this one
+     * happened to fall - "luck, not safety" per the bug report).
+     */
+    private fun isArtifactLine(text: String): Boolean {
+        val tokens = text.trim().split(Regex("\\s+"))
+        return tokens.isNotEmpty() && tokens.all { it.length == 1 }
     }
 
     /** Groups words into lines by near-equal `top` (y), sorted top-to-bottom then left-to-right. */

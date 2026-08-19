@@ -74,31 +74,52 @@ object VinDecoder {
         return decode(vin)
     }
 
-    /** Decodes a 17-char [vin] via vPIC into the lean year/make/model/trim. Null on failure. */
-    suspend fun decode(vin: String): DecodedVin? = withContext(Dispatchers.IO) {
+    /**
+     * Both [decode]'s lean identity AND [decodeSpecs]'s fuller factory-spec set, parsed from
+     * ONE vPIC response. Ticket 04
+     * (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`): [decode] and [decodeSpecs]
+     * used to each fire their own `httpGet` against the identical URL for the identical JSON -
+     * this is the shared fetch, and both of those functions now just narrow this result down to
+     * the one field their existing callers already expect, rather than doing the fetch again.
+     *
+     * Null only when the HTTP call itself failed or [vin] isn't 17 characters - a call that
+     * SUCCEEDS but whose response vPIC can't make sense of still returns a [DecodedAll] here
+     * (with [DecodedAll.decoded] and/or [DecodedAll.specs] individually null), because "no
+     * network" and "network worked, vPIC had nothing" are different failures a caller may want
+     * to report differently.
+     */
+    suspend fun decodeAll(vin: String): DecodedAll? = withContext(Dispatchers.IO) {
         val clean = vin.trim().uppercase()
         if (clean.length != 17) return@withContext null
         val raw = httpGet("$VPIC_URL/$clean?format=json") ?: return@withContext null
-        parse(clean, raw)
+        DecodedAll(decoded = parse(clean, raw), specs = parseSpecs(clean, raw))
     }
 
+    /** The result of [decodeAll] - see its doc. */
+    data class DecodedAll(val decoded: DecodedVin?, val specs: VinSpecs?)
+
+    /** Decodes a 17-char [vin] via vPIC into the lean year/make/model/trim. Null on failure. */
+    suspend fun decode(vin: String): DecodedVin? = decodeAll(vin)?.decoded
+
     /** Decodes a 17-char [vin] via vPIC into the fuller factory-spec set. Null on failure. */
-    suspend fun decodeSpecs(vin: String): VinSpecs? = withContext(Dispatchers.IO) {
-        val clean = vin.trim().uppercase()
-        if (clean.length != 17) return@withContext null
-        val raw = httpGet("$VPIC_URL/$clean?format=json") ?: return@withContext null
-        parseSpecs(clean, raw)
-    }
+    suspend fun decodeSpecs(vin: String): VinSpecs? = decodeAll(vin)?.specs
 
     /**
      * Fetches active NHTSA recalls for a year/make/model (not by VIN - the free
-     * recalls endpoint is keyed by year/make/model). Returns an empty list if
-     * none / on failure.
+     * recalls endpoint is keyed by year/make/model). Null means the HTTP call itself failed
+     * (offline, NHTSA unreachable, timeout) or its response was unparseable - deliberately
+     * distinct from a successful call that simply found zero recalls, which returns
+     * [emptyList] (ticket 12, `.scratch/fleet-maintenance/issues/12-a-recall-button.md`:
+     * "no open recalls" must read as a completed check, never as a failure, so the two
+     * cannot share one falsy return). Callers are expected to gate identity themselves
+     * (year/make/model all present) before calling - this still refuses at its own front
+     * door as a second line of defense, returning [emptyList] rather than null, because an
+     * identity-less call was never attempted at all, not one that ran and failed.
      */
-    suspend fun fetchRecalls(year: Int, make: String, model: String): List<Recall> = withContext(Dispatchers.IO) {
+    suspend fun fetchRecalls(year: Int, make: String, model: String): List<Recall>? = withContext(Dispatchers.IO) {
         if (year <= 0 || make.isBlank() || model.isBlank()) return@withContext emptyList()
         val url = "$RECALLS_URL?make=${enc(make)}&model=${enc(model)}&modelYear=$year"
-        val raw = httpGet(url) ?: return@withContext emptyList()
+        val raw = httpGet(url) ?: return@withContext null
         parseRecalls(raw)
     }
 
@@ -171,9 +192,10 @@ object VinDecoder {
         }
     }
 
-    private fun parseRecalls(json: String): List<Recall> {
+    /** Null (not [emptyList]) when the shape isn't what NHTSA normally sends - see [fetchRecalls]'s doc for why the two are kept distinct. */
+    private fun parseRecalls(json: String): List<Recall>? {
         return try {
-            val results = JSONObject(json).optJSONArray("results") ?: return emptyList()
+            val results = JSONObject(json).optJSONArray("results") ?: return null
             (0 until results.length()).mapNotNull { i ->
                 val o = results.optJSONObject(i) ?: return@mapNotNull null
                 Recall(
@@ -185,7 +207,7 @@ object VinDecoder {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse recalls: ${e.message}")
-            emptyList()
+            null
         }
     }
 

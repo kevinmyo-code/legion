@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android Auto's media-capability declaration - research 02 section 1b,
+    verbatim (developer.android.com/training/cars/media/auto). This exact
+    file, plus the com.google.android.gms.car.application meta-data pointing
+    at it and the LegionMediaLibraryService declaration in AndroidManifest.xml,
+    is what puts LEGION in Android Auto's media source list
+    (`.scratch/android-auto/issues/06-get-a-sideloaded-build-visible-in-android-auto.md`).
+-->
+<automotiveApp>
+    <uses name="media"/>
+</automotiveApp>

@@ -8,6 +8,7 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.BroadcastReceiver
 import android.content.Context
+import com.kevin.legion.data.local.CarDatabase
 import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
@@ -31,12 +32,27 @@ import java.io.IOException
 /**
  * A device seen during [ObdBluetoothManager.startDiscovery], tagged with which
  * scanner found it - classic inquiry ([BluetoothDevice.ACTION_FOUND]) or a BLE
- * advertisement scan. BLE serial ELM327 clones never bond and never answer a
- * classic inquiry (they advertise, they don't do SDP/inquiry), so without this
- * tag the picker has no way to route the selection to [BleTransport] instead
- * of [RfcommTransport].
+ * advertisement scan. BLE serial ELM327 clones never bond, so without this tag
+ * the picker has no way to route the selection to [BleTransport] instead of
+ * [RfcommTransport].
+ *
+ * A sighting tags one scanner, NOT the device: the same dongle can and does
+ * arrive twice, once per scanner (the V020 does exactly this - it answers
+ * classic inquiry with an audio device class it cannot honour, and it
+ * advertises over BLE). Merging the two sightings is [foldDiscovered]'s job.
+ *
+ * [advertisedName] carries the name the scanner itself reported - the BLE scan
+ * record's local name, or `EXTRA_NAME` from the classic inquiry. Both are
+ * needed because [BluetoothDevice.getName] reads the bond cache and is null
+ * for a device that has never bonded, which is every BLE dongle by definition:
+ * the V020 broadcasts "V020" in its scan response and still reads back as an
+ * unnamed device.
  */
-data class DiscoveredDevice(val device: BluetoothDevice, val isBle: Boolean)
+data class DiscoveredDevice(
+    val device: BluetoothDevice,
+    val isBle: Boolean,
+    val advertisedName: String? = null,
+)
 
 /**
  * Manages a persistent connection to an OBD-II ELM327 adapter (real hardware
@@ -173,9 +189,17 @@ object ObdBluetoothManager {
 
     /** Heuristic: does this device's name look like an ELM327 OBD dongle? Ordering only. */
     @SuppressLint("MissingPermission")
-    fun looksLikeObd(device: BluetoothDevice): Boolean {
-        val name = try { device.name } catch (e: SecurityException) { null } ?: return false
-        val normalized = name.uppercase().filter { it.isLetterOrDigit() }
+    fun looksLikeObd(device: BluetoothDevice): Boolean =
+        looksLikeObd(try { device.name } catch (e: SecurityException) { null })
+
+    /**
+     * Name-only form of the heuristic, for a name that came off a scan record
+     * rather than off a [BluetoothDevice] - a never-bonded BLE dongle has no
+     * cached `device.name` at all, so the device overload above always says
+     * false for exactly the adapters this screen exists to find.
+     */
+    fun looksLikeObd(name: String?): Boolean {
+        val normalized = (name ?: return false).uppercase().filter { it.isLetterOrDigit() }
         return DEVICE_NAME_PATTERNS.any { normalized.contains(it) }
     }
 
@@ -198,7 +222,15 @@ object ObdBluetoothManager {
                         // the very dongle the driver is trying to pair. The UI sorts
                         // likely-OBD devices first via looksLikeObd instead.
                         val device = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
-                        if (device != null) trySend(DiscoveredDevice(device, isBle = false))
+                        if (device != null) {
+                            trySend(
+                                DiscoveredDevice(
+                                    device = device,
+                                    isBle = false,
+                                    advertisedName = intent.getStringExtra(BluetoothDevice.EXTRA_NAME),
+                                ),
+                            )
+                        }
                     }
                     BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
                         // Classic inquiry stopped on its own (~12s cycle). The
@@ -230,7 +262,18 @@ object ObdBluetoothManager {
         val scanner = bluetoothAdapter?.bluetoothLeScanner
         val scanCallback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                trySend(DiscoveredDevice(result.device, isBle = true))
+                // scanRecord.deviceName, not device.name: an unbonded BLE
+                // device has no cached name, so device.name is null and the
+                // row renders as UNNAMED DEVICE forever. The name is in the
+                // advertisement (often the scan response, which is why it can
+                // take a couple of sightings to arrive).
+                trySend(
+                    DiscoveredDevice(
+                        device = result.device,
+                        isBle = true,
+                        advertisedName = result.scanRecord?.deviceName,
+                    ),
+                )
             }
 
             override fun onScanFailed(errorCode: Int) {
@@ -427,6 +470,29 @@ object ObdBluetoothManager {
     suspend fun getDtcCodes(): List<String> = ObdResponseParser.dtcCodes(sendCommand("03"))
 
     /**
+     * The RAW Mode 03 response, undigested - [com.kevin.legion.vehicle.DtcClearController] needs
+     * the raw text, not [getDtcCodes]'s already-parsed list, to tell "the car reports zero stored
+     * codes" (a real `43 00` answer) apart from "the link didn't answer at all"
+     * ([ObdResponseParser.isFailureResponse] true) - two states [getDtcCodes] deliberately
+     * collapses into the identical empty list, exactly the ambiguity D2's REFUSED-vs-
+     * NOTHING_TO_CLEAR split (`.scratch/hands-and-senses/issues/01-clear-dtc.md`) exists to catch.
+     * Counts toward [consecutivePidSilence] like any other PID read - only the Mode 04 send itself
+     * ([clearDtcCodes]) is excluded from that counter.
+     */
+    suspend fun getDtcCodesRaw(): String = sendCommand("03")
+
+    /**
+     * Sends Mode 04 - erases stored codes, freeze frame, and readiness monitors. The caller
+     * ([com.kevin.legion.vehicle.DtcClearController]) NEVER treats this raw ack as proof of a
+     * clean erase (D1: `sendCommand` returns `""` on failure and a quiet link answers exactly like
+     * a successful ack at this layer) - only a post-send re-read of [getDtcCodesRaw] may. Excluded
+     * from [consecutivePidSilence] via [sendCommand]'s `countsTowardPidSilence` opt-out (D2):
+     * renegotiating the bus mid-write-transaction on a command that legitimately answers quiet on
+     * some ECUs would be wrong, and the surrounding re-reads already carry that counter normally.
+     */
+    suspend fun clearDtcCodes(): String = sendCommand("04", countsTowardPidSilence = false)
+
+    /**
      * Battery/system voltage in volts via the ELM327 "ATRV" command, or null if
      * unavailable. Engine off this is the resting battery voltage (~12.4-12.7 =
      * healthy); engine running it reflects the alternator (~13.7-14.7).
@@ -443,7 +509,11 @@ object ObdBluetoothManager {
     // Common ELM327 dongle name patterns ("OBDII", "OBD-II", "Vlinker MC",
     // "Veepeak", "Vgate iCar", "OBDLink"...). Most contain "OBD" or "ELM"
     // already; these cover the popular brands that don't.
-    private val DEVICE_NAME_PATTERNS = listOf("OBD", "ELM", "VLINK", "VGATE", "VEEPEAK", "ICAR")
+    // Ordering only, never visibility (see listBondedObd's KDoc). "V020" is the
+    // HM-10-style BLE clone Kevin actually owns - it matched none of the
+    // generic patterns, so it sorted below every random beacon in the room.
+    private val DEVICE_NAME_PATTERNS =
+        listOf("OBD", "ELM", "VLINK", "VGATE", "VEEPEAK", "ICAR", "V020")
 
     @SuppressLint("MissingPermission")
     private fun findPairedObdiiDevice(): BluetoothDevice? = try {
@@ -578,32 +648,93 @@ object ObdBluetoothManager {
      */
     private suspend fun announceActiveCar(context: Context) {
         runCatching {
-            val label = VehicleController.displayLabel(VehicleController.currentVehicle(context))
-                .ifBlank { "this car" }
-            CompanionPhase.showNotice("RECORDING AS ${label.uppercase()}")
+            // Ticket 04's label rule: the one rule, every surface - see VehicleController.label's
+            // doc. Only the fixed "RECORDING AS " chrome is uppercase; the label itself is data
+            // (a driver-typed nickname) and must never be transformed - the old
+            // `.uppercase()` over the WHOLE string is how this notice used to shout a renamed car's
+            // own name back at the driver.
+            val label = VehicleController.label(VehicleController.currentVehicle(context))
+            CompanionPhase.showNotice("RECORDING AS $label")
         }
     }
 
     /**
      * Builds the supported-PID set from the Mode-01 support bitmasks: the
      * [firstWindow] response ("0100", already sent during the handshake), plus
-     * the 0x20 and 0x40 windows if the car advertises them (each window's
-     * bitmask sets the marker bit for the next one - PID 0x20 means "0120 has
-     * data", 0x40 means "0140 has data"). Best-effort: a missing/garbled window
-     * just leaves those PIDs out rather than failing the connect.
+     * each further window the car advertises (a window's bitmask sets the
+     * marker bit for the next one - PID 0x20 means "0120 has data", 0x40 means
+     * "0140 has data", 0x60 means "0160 has data"). Best-effort: a missing or
+     * garbled window just leaves those PIDs out rather than failing the connect.
+     *
+     * **The 0x60 window was missing until 2026-08-12.** The loop stopped at 0x40,
+     * so every PID from 0x61 to 0x80 was invisible - the whole turbo and torque
+     * range (boost control, wastegate, turbo RPM, charge-air-cooler temp, EGT).
+     * The app could not even report whether a vehicle answered them, because it
+     * never asked. Driven off [SUPPORT_PROBES] now rather than an unrolled
+     * if-chain, so adding the next window is a row in that list.
      */
     private suspend fun detectSupportedPids(firstWindow: String) {
         val supported = sortedSetOf<Int>()
         ObdResponseParser.supportedPids(firstWindow, 0x00)?.let { supported += it }
-        if (0x20 in supported && transport != null) {
-            ObdResponseParser.supportedPids(sendCommand("0120"), 0x20)?.let { supported += it }
-        }
-        if (0x40 in supported && transport != null) {
-            ObdResponseParser.supportedPids(sendCommand("0140"), 0x40)?.let { supported += it }
+        // Skip the first probe: its response is already in hand as [firstWindow].
+        for ((command, base) in SUPPORT_PROBES.drop(1)) {
+            if (base !in supported || transport == null) break
+            ObdResponseParser.supportedPids(sendCommand(command), base)?.let { supported += it }
         }
         _supportedPids.value = supported
         Log.d(TAG, "Supported Mode-01 PIDs: ${supported.joinToString { "%02X".format(it) }}")
+        persistCapabilities(supported)
     }
+
+    /**
+     * Writes the freshly-scanned profile against the connected car so it can be answered while
+     * parked and unplugged (see [com.kevin.legion.data.local.VehicleCapability]).
+     *
+     * Best-effort and deliberately swallowing: a failed capability write must never break an
+     * otherwise good OBD connection. The DAO itself refuses to clear a stored profile on an empty
+     * scan, so a bad handshake cannot erase what we already knew about the car.
+     */
+    private suspend fun persistCapabilities(supported: Set<Int>) {
+        val context = appContext ?: return
+        // ActiveVehicle.current, NOT connectedDeviceAddress (bug found on-device 2026-08-12).
+        //
+        // `Vehicle.obdMac` is the primary key but it is only a String: a car added by hand gets a
+        // SYNTHETIC id (`car:<uuid>`, see ActiveVehicle.mintId) and never a MAC. Kevin's F-150 is
+        // exactly that. Keying capabilities off the dongle's Bluetooth address would have filed
+        // them under an id no Vehicle row has, and `read_vehicle_sensor` - which looks up
+        // vehicle.obdMac - would never have found them. Silent, and invisible until someone asked
+        // the assistant a question it should have been able to answer.
+        //
+        // Every other per-vehicle writer (TelemetryRecorder, code events) already resolves this way.
+        val vehicleId = ActiveVehicle.current(context)
+        runCatching {
+            CarDatabase.getDatabase(context).vehicleCapabilityDao()
+                .replaceForVehicle(vehicleId, supported, System.currentTimeMillis())
+        }.onFailure { Log.w(TAG, "capability persist failed", it) }
+    }
+
+    /**
+     * Reads any PID in [PID_REGISTRY] generically - the one call that replaces writing a new
+     * `getWhatever()` for every reading (see [PidSpec]'s doc comment).
+     *
+     * Returns null when the adapter or the car did not answer usefully, when the response was
+     * short, or when [spec] has no decoder yet. Never throws and never guesses: a PID the car
+     * declines to answer reads as absent, not as zero.
+     */
+    suspend fun readPid(spec: PidSpec): Double? {
+        val decode = spec.decode ?: return null
+        val response = sendCommand(spec.command)
+        if (ObdResponseParser.isFailureResponse(response)) return null
+        val bytes = ObdResponseParser.dataBytes(response, spec.responsePrefix) ?: return null
+        if (bytes.size < spec.bytes) return null
+        return runCatching { decode(bytes) }.getOrNull()
+    }
+
+    /**
+     * What the currently connected car can do - [capabilitiesFor] applied to the live bitmask.
+     * Empty-but-valid when nothing is connected, so callers never need a null check.
+     */
+    fun capabilities(): VehicleCapabilities = capabilitiesFor(_supportedPids.value)
 
     /**
      * Maps an ATDPN response to a human-readable protocol name. ATDPN prefixes
@@ -667,11 +798,21 @@ object ObdBluetoothManager {
      * "NO DATA" - non-blank text - so the counter never incremented and
      * [reinitProtocolLocked] never fired in practice; the drive that exposed
      * this still dropped to voltage-only for the rest of the drive).
+     *
+     * [countsTowardPidSilence] (D2, `.scratch/hands-and-senses/issues/01-clear-dtc.md`) is an
+     * explicit per-call opt-out, not a widening of the `AT`-prefix test below - [clearDtcCodes]'s
+     * Mode 04 send is the one command that legitimately answers quiet on some ECUs while a write
+     * is genuinely in flight, and renegotiating the bus via [reinitProtocolLocked] mid-write-
+     * transaction would be wrong. Defaults `true` so every existing PID read is unaffected.
      */
-    private suspend fun sendCommand(cmd: String, timeoutMs: Long = 5000): String = withContext(Dispatchers.IO) {
+    private suspend fun sendCommand(
+        cmd: String,
+        timeoutMs: Long = 5000,
+        countsTowardPidSilence: Boolean = true,
+    ): String = withContext(Dispatchers.IO) {
         commandMutex.withLock {
             val response = exchangeLocked(cmd, timeoutMs)
-            if (!cmd.startsWith("AT", ignoreCase = true)) {
+            if (!cmd.startsWith("AT", ignoreCase = true) && countsTowardPidSilence) {
                 if (ObdResponseParser.isFailureResponse(response) && transport != null) {
                     consecutivePidSilence++
                     // Breadcrumb the EXACT failing response (ADB logcat is blocked on

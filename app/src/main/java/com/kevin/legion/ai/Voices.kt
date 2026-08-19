@@ -6,12 +6,13 @@
  * the actual `prebuiltVoiceConfig.voiceName` sent to the Live API; [descriptor]
  * is Google's published style word (docs: "Voice options" table,
  * ai.google.dev/gemini-api/docs/speech-generation, confirmed 2026-07-22).
- * Audition clips are bundled at res/raw/[sampleRawName] - NOTE: only the
- * former 8-voice shortlist has a generated sample today
- * (tools/generate_voice_samples.ps1); the newly-added 22 have no bundled clip
- * yet, so [sampleRawName] may point at a missing raw resource for those until
- * the generator script is re-run. Callers that play the sample must handle a
- * missing resource gracefully (e.g. resource-not-found) rather than crash.
+ * Audition clips are bundled at res/raw/[sampleRawName] - as of 2026-08-02 all
+ * 30 [CURATED_VOICES] have a generated clip there
+ * (tools/generate_voice_samples.ps1). Still, callers that play the sample
+ * (`ui/companions/VoiceAudition.kt`) resolve it by name via
+ * `Resources.getIdentifier` and must handle a 0 (missing) result gracefully
+ * rather than crash - a voice added to this list later without re-running the
+ * generator script must degrade, not throw.
  */
 data class GeminiVoice(val name: String, val descriptor: String) {
     val sampleRawName: String get() = "voice_sample_${name.lowercase()}"

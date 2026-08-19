@@ -10,7 +10,6 @@
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -19,10 +18,61 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <!-- Android Auto probe harness (`.scratch/android-auto/map.md`, research 04). Required by BOTH
+         microphone routing paths ticket 04 found (Telecom's MODE_IN_COMMUNICATION wrapper and the
+         plain-foreground-service MODE_IN_COMMUNICATION + setCommunicationDevice route), so it is
+         added now rather than per-wave even though wave 1 does not yet touch audio routing. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- Wave 2's self-managed call probe (ticket 14). Required by TelecomManager.registerPhoneAccount
+         for a PhoneAccount with CAPABILITY_SELF_MANAGED - see CarCallProbe.registerAccount and
+         .car.LegionConnectionService below. -->
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- Local alarms for the notes/lists/calendar domain
+         (`.scratch/notes-lists-calendar/issues/03-android-alarm-mechanism.md`). SCHEDULE_EXACT_ALARM
+         only (revocable, requested at runtime) - NOT USE_EXACT_ALARM, rejected on proportionality
+         in that ticket's Answer. RECEIVE_BOOT_COMPLETED re-arms reminders after a reboot, since
+         AlarmManager does not persist alarms across one. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Google Calendar (ticket 13 read, ticket 14 write -
+         `.scratch/google-account-integration/issues/13-*` and `14-*`). `CalendarContract`, not the
+         Calendar REST API - ticket 02's answer: no OAuth scope, no console, no consent screen,
+         offline for free, and the `Instances` time-range URI already expands recurrence for us.
+         Both requested together at runtime, in context, from the deck's AGENDA pane
+         (`ui/TodayScreen.kt`/`ui/notes/InboxScreen.kt`) - never at startup. They are requested
+         together rather than WRITE_CALENDAR being deferred to Alfred's first voice-created event
+         because that moment has no Activity to raise a permission dialog from (LiveToolbox runs off
+         a foreground service) - asking for both at the one UI surface that already asks for
+         READ_CALENDAR means a voice write later in the same session has a real chance of already
+         being granted, rather than deterministically failing the first time every time. A refused
+         WRITE_CALENDAR still degrades safely - see CalendarProvider.insertEvent and
+         LiveToolbox's calendar-write dispatch, both of which fall back to a local reminder and say
+         so, never a silent failure. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+
+    <!-- Package visibility (API 30+). Without this the Spotify app is invisible to us:
+         SpotifyController.isInstalled always reports false, and App Remote's own bind to
+         com.spotify.music fails, regardless of what client ID is saved or authorized.
+         The SDK requires it; this app had never declared it (fixed 2026-08-12 with the
+         Setup screen). Browsers are queried for SpotifyWebApi.beginAuthorization's
+         ACTION_VIEW hop to Spotify's approval page. -->
+    <queries>
+        <package android:name="com.spotify.music" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
 
     <application
         android:name=".MidnightApplication"
@@ -34,6 +84,15 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Legion">
+
+        <!-- Android Auto's media-capability declaration (research 02 section 1a,
+             `.scratch/android-auto/map.md`). Points at res/xml/automotive_app_desc.xml, whose
+             single <uses name="media"/> line is what puts LEGION in Android Auto's media source
+             list. Deliberately NOT com.android.automotive - that is the Android Automotive OS
+             declaration and is out of scope (map's "Out of scope" section). -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
 
         <!-- Normal phone app entry point - not a launcher/home-screen replacement
              (LauncherSettings retired with the car-launcher product). singleTask
@@ -61,37 +120,73 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="com.kevin.legion" android:host="spotify-callback" />
             </intent-filter>
+            <!-- "Hey Google, ask LEGION X" (research 02 section 1d,
+                 developer.android.com/training/cars/media/voice-actions). Landing this on
+                 MainActivity rather than a dedicated activity keeps wave 1 to scaffolding only -
+                 what LEGION actually DOES with a play-from-search intent is later-wave/ticket 08
+                 work; nothing here reads this intent's extras yet. -->
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
 
-        <!-- On-demand list of voice-tagged places, launched by the
-             show_saved_places tool. Placeholder UI, see README. -->
-        <activity
-            android:name=".ui.SavedPlacesActivity"
-            android:exported="false"
-            android:screenOrientation="unspecified"
-            android:theme="@style/Theme.Legion" />
-
-        <!-- Bank-statement PDF import, launched by the import_statement tool
-             (.claude/plans/wiggly-beaming-quasar.md). Placeholder UI. -->
-        <activity
-            android:name=".ui.LedgerImportActivity"
-            android:exported="false"
-            android:screenOrientation="unspecified"
-            android:theme="@style/Theme.Legion" />
-
-        <!-- Grocery receipt photo import, launched by the import_receipt tool
-             (.claude/plans/wiggly-beaming-quasar.md). Placeholder UI. -->
-        <activity
-            android:name=".ui.PantryImportActivity"
-            android:exported="false"
-            android:screenOrientation="unspecified"
-            android:theme="@style/Theme.Legion" />
+        <!-- SavedPlacesActivity, LedgerImportActivity, PantryImportActivity all
+             DELETED (ticket 07 resolution §5). Their content is absorbed into
+             MainActivity's single NavHost as fleet/places, ledger/import, and
+             pantry/import - only the hosting changed, so there is no longer a
+             second <activity> for any of them. -->
 
         <service
             android:name=".service.AriaForegroundService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|dataSync|microphone" />
+
+        <!-- Ledger's folder-scan pipeline (ticket 08 Part 6). Deliberately its
+             own service rather than folded into AriaForegroundService above -
+             see LedgerIngestService's doc comment: that service's onCreate()
+             unconditionally boots the whole voice assistant, which opening
+             the Ledger tab must never do. dataSync only - no BLUETOOTH_CONNECT
+             or RECORD_AUDIO gate needed, and no new permission: the app
+             already holds FOREGROUND_SERVICE_DATA_SYNC. -->
+        <service
+            android:name=".service.LedgerIngestService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- Android Auto probe harness wave 1 (`.scratch/android-auto/map.md`, research 02
+             section 1c) - a STUB media3 MediaLibraryService, VISIBILITY PROBE ONLY, see
+             LegionMediaLibraryService's own doc comment for exactly what it does and does not do.
+             exported=true so an external client (Android Auto) can bind. Both actions declared so
+             legacy MediaBrowserCompat clients (Android Auto is one) can bind alongside media3
+             clients - see research 02's own citation for why both are needed. -->
+        <service
+            android:name=".car.LegionMediaLibraryService"
+            android:enabled="true"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+
+        <!-- Wave 2's self-managed call probe (ticket 14). BIND_TELECOM_CONNECTION_SERVICE is what
+             stops any app other than the system Telecom process from binding this - required by
+             the platform for a ConnectionService, per the same shape as any other bound-service
+             permission gate in this file. exported implied true by the intent-filter + permission
+             pair (Telecom binds cross-process), same reasoning as MediaNotificationListener below. -->
+        <service
+            android:name=".car.LegionConnectionService"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.ConnectionService" />
+            </intent-filter>
+        </service>
 
         <!-- Grants MediaSessionManager access to active media sessions (now-playing
              state, e.g. Spotify) once the driver enables notification access in
@@ -105,15 +200,42 @@
             </intent-filter>
         </service>
 
+        <!-- BootReceiver came BACK for phase 2a (ticket 03), but deliberately without the old
+             startActivity(MainActivity) behaviour the ticket-07-deleted predecessor had - see
+             BootReceiver's own doc comment. Its only job is re-arming scheduled reminders, since
+             AlarmManager forgets everything across a reboot. exported=true: BOOT_COMPLETED is sent
+             by the system, not by this app. -->
         <receiver
             android:name=".service.BootReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>
+
+        <!-- Fires on either direction of SCHEDULE_EXACT_ALARM's grant state changing - ticket 03's
+             finding that revoking it kills the process and cancels every pending exact alarm, and
+             this broadcast is the only recovery path. exported=true: sent by the system. -->
+        <receiver
+            android:name=".service.ExactAlarmPermissionReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Fired only by this app's own PendingIntents (AlarmScheduler's alarm, and the
+             notification's SNOOZE/DONE actions) - never by the system, so exported=false. -->
+        <receiver
+            android:name=".service.ReminderAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+        <receiver
+            android:name=".service.ReminderActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
 
         <!-- FileProvider for CameraCapture's camera-app handoff URI (pantry
              receipt photos). Authority = packageName + ".provider". Not

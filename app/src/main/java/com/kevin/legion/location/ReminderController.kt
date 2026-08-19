@@ -1,8 +1,10 @@
-﻿package com.kevin.legion.location
+package com.kevin.legion.location
 
 import android.content.Context
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.PlaceReminder
+import com.kevin.legion.data.local.ItemList
+import com.kevin.legion.data.local.ListItem
+import com.kevin.legion.notes.NotesController
 
 /**
  * Location-triggered reminders: the driver binds a reminder to a saved place
@@ -12,6 +14,15 @@ import com.kevin.legion.data.local.PlaceReminder
  * Place labels are folded onto the same canonical forms [PlaceController] uses
  * (home/work synonyms), so a reminder for "the office" matches arrival at the
  * place saved as "work".
+ *
+ * **Rewired onto the notes/lists/calendar model** (`.scratch/notes-lists-calendar/issues/01-*`,
+ * finishing the absorption phase 1 left split-brained): a reminder is now a
+ * [com.kevin.legion.data.local.ListItem] with [com.kevin.legion.data.local.ListItem.triggerPlaceLabel]
+ * set, living in the "Reminders" list the v9->v10 migration created, NOT a row in the legacy
+ * `place_reminders` table - phase 1's `MIGRATION_9_10` copied existing rows OUT of that table into
+ * the new model, but until now this controller kept writing new ones back INTO the old table,
+ * where the notes model would never see them again. The `set_reminder` tool's name, parameters,
+ * and spoken behaviour are all unchanged - only where the write lands.
  */
 object ReminderController {
 
@@ -22,23 +33,26 @@ object ReminderController {
         if (label.isBlank() || body.isBlank()) {
             return "I need both a place and what to remind you about."
         }
-        CarDatabase.getDatabase(context).placeReminderDao().insert(
-            PlaceReminder(placeLabel = label, text = body, createdAt = System.currentTimeMillis())
-        )
+        val list = NotesController.theList(context)
+        val item = NotesController.addItem(context, list.id, body)
+        NotesController.setPlaceTrigger(context, item, label)
         return "Got it. I'll remind you to $body when you reach ${displayLabel(label)}."
     }
 
-    /** Active (not-yet-done) reminders bound to [label]. */
-    suspend fun activeFor(context: Context, label: String): List<PlaceReminder> =
-        CarDatabase.getDatabase(context).placeReminderDao().activeForPlace(normalizeLabel(label))
+    /** Active (not-yet-done) reminders bound to [label], across every list - a reminder isn't
+     * required to live on "Reminders" specifically (a driver can mark any item place-triggered). */
+    suspend fun activeFor(context: Context, label: String): List<ListItem> =
+        CarDatabase.getDatabase(context).listItemDao().openWithPlaceTrigger(normalizeLabel(label))
 
     /** All active reminders across every place. */
-    suspend fun allActive(context: Context): List<PlaceReminder> =
-        CarDatabase.getDatabase(context).placeReminderDao().allActive()
+    suspend fun allActive(context: Context): List<ListItem> =
+        CarDatabase.getDatabase(context).listItemDao().openWithAnyPlaceTrigger()
 
-    /** Marks a reminder acknowledged so it stops surfacing. */
+    /** Marks a reminder acknowledged so it stops surfacing - [NotesController.tick], the same
+     * verb any other item's completion goes through. */
     suspend fun markDone(context: Context, id: Long) {
-        CarDatabase.getDatabase(context).placeReminderDao().markDone(id)
+        val item = CarDatabase.getDatabase(context).listItemDao().getById(id) ?: return
+        NotesController.tick(context, item)
     }
 
     private fun displayLabel(label: String): String =
@@ -58,4 +72,5 @@ object ReminderController {
             else -> s
         }
     }
+
 }

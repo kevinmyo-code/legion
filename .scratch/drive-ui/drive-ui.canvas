@@ -1,0 +1,131 @@
+{
+  "nodes": [
+    {
+      "id": "445faba476d8e820",
+      "type": "file",
+      "file": ".scratch/drive-ui/issues/01-bus-reality-research.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "67a086f12fa7d903",
+      "type": "file",
+      "file": ".scratch/drive-ui/issues/04-gauge-design.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "ce5d554939f0a295",
+      "type": "file",
+      "file": ".scratch/drive-ui/issues/05-trip-content.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "97f84d294196b9f4",
+      "type": "file",
+      "file": ".scratch/drive-ui/issues/06-motion-policy.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "a029ca7cfc36c2f7",
+      "type": "file",
+      "file": ".scratch/drive-ui/issues/07-temperature-units.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "3a15ff9c9672feb8",
+      "type": "file",
+      "file": ".scratch/drive-ui/issues/09-mpg-scale-bug.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "dd9e96179e7ec07c",
+      "type": "file",
+      "file": ".scratch/drive-ui/issues/02-measure-the-bus.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e8226655abb1f9eb",
+      "type": "file",
+      "file": ".scratch/drive-ui/issues/08-layout.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b20a0939f9d54f16",
+      "type": "file",
+      "file": ".scratch/drive-ui/issues/03-live-cadence.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    }
+  ],
+  "edges": [
+    {
+      "id": "a91a1d109a5c55c8",
+      "fromNode": "445faba476d8e820",
+      "fromSide": "right",
+      "toNode": "dd9e96179e7ec07c",
+      "toSide": "left"
+    },
+    {
+      "id": "d520110e34bd59e9",
+      "fromNode": "445faba476d8e820",
+      "fromSide": "right",
+      "toNode": "b20a0939f9d54f16",
+      "toSide": "left"
+    },
+    {
+      "id": "95bcc664fa443d3f",
+      "fromNode": "dd9e96179e7ec07c",
+      "fromSide": "right",
+      "toNode": "b20a0939f9d54f16",
+      "toSide": "left"
+    },
+    {
+      "id": "307fed16d2c65412",
+      "fromNode": "67a086f12fa7d903",
+      "fromSide": "right",
+      "toNode": "e8226655abb1f9eb",
+      "toSide": "left"
+    },
+    {
+      "id": "0815c02b2b7d6b83",
+      "fromNode": "ce5d554939f0a295",
+      "fromSide": "right",
+      "toNode": "e8226655abb1f9eb",
+      "toSide": "left"
+    }
+  ]
+}

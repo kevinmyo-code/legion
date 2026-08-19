@@ -1,0 +1,117 @@
+{
+  "nodes": [
+    {
+      "id": "77f7bfe982dd4705",
+      "type": "file",
+      "file": ".scratch/proactive-mode/issues/01-one-gate-not-three.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "03b2f4fbbb84d911",
+      "type": "file",
+      "file": ".scratch/proactive-mode/issues/02-trigger-engine.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "75118cface6f16fd",
+      "type": "file",
+      "file": ".scratch/proactive-mode/issues/03-compulsion-test.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "60cbc65469d7ed10",
+      "type": "file",
+      "file": ".scratch/proactive-mode/issues/07-scheduling-research.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "e184869d769210da",
+      "type": "file",
+      "file": ".scratch/proactive-mode/issues/08-proactive-register.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "5d5d64e87c7b24a0",
+      "type": "file",
+      "file": ".scratch/proactive-mode/issues/09-fgs-start-delay.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "9515a3e93476125b",
+      "type": "file",
+      "file": ".scratch/proactive-mode/issues/04-categories-storage-and-surface.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "03308b5f3ddbf188",
+      "type": "file",
+      "file": ".scratch/proactive-mode/issues/05-quiet-hours-and-budget.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "a78d3c1e2069e605",
+      "type": "file",
+      "file": ".scratch/proactive-mode/issues/06-delivery.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    }
+  ],
+  "edges": [
+    {
+      "id": "4713552d4a2eddad",
+      "fromNode": "77f7bfe982dd4705",
+      "fromSide": "right",
+      "toNode": "9515a3e93476125b",
+      "toSide": "left"
+    },
+    {
+      "id": "876ee11c54159738",
+      "fromNode": "75118cface6f16fd",
+      "fromSide": "right",
+      "toNode": "03308b5f3ddbf188",
+      "toSide": "left"
+    },
+    {
+      "id": "46e22772bfe5f462",
+      "fromNode": "60cbc65469d7ed10",
+      "fromSide": "right",
+      "toNode": "a78d3c1e2069e605",
+      "toSide": "left"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+filters:
+  and:
+    - file.hasTag("adr")
+    - '!file.hasTag("index")'
+
+formulas:
+  reversal: 'if(supersedes, "reverses " + supersedes, "")'
+
+properties:
+  decided-by:
+    displayName: "By"
+  formula.reversal:
+    displayName: "Reverses"
+
+views:
+  - type: table
+    name: "Standing"
+    filters:
+      not:
+        - 'status == "superseded"'
+    order:
+      - file.name
+      - status
+      - decided
+      - amended
+      - formula.reversal
+    groupBy:
+      property: status
+      direction: ASC
+
+  - type: table
+    name: "Locked"
+    filters:
+      and:
+        - 'status == "locked"'
+    order:
+      - file.name
+      - decided
+      - source
+
+  - type: table
+    name: "Superseded"
+    filters:
+      and:
+        - 'status == "superseded"'
+    order:
+      - file.name
+      - decided
+      - superseded-by
+
+  - type: table
+    name: "Everything"
+    order:
+      - file.name
+      - status
+      - decided
+      - decided-by
+      - supersedes
+      - superseded-by

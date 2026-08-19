@@ -151,7 +151,7 @@ fun buildOnboardingInstruction(progress: OnboardingProgress = OnboardingProgress
         "If they'd rather skip it, that's fine.\n\n")
 
     append("DEMO AS YOU GO: in one or two natural asides, mention something you can do once you're set up " +
-        "- read your own live sensors and trouble codes, control the music, start navigation, keep a " +
+        "- read your own live sensors and trouble codes, control the music, keep a " +
         "logbook of your build, remember things for them. Keep it brief and woven into the chat, not a list.\n\n")
 
     append("FINISHING: once you have at least a name and a personality, wrap up with one short line letting " +

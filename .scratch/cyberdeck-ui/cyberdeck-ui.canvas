@@ -1,0 +1,412 @@
+{
+  "nodes": [
+    {
+      "id": "384856b9d5c30c78",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/01-deck-design-language.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "76a43b1b00f83cf9",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/02-chart-rendering.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "34681f8f75d68ea8",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/11-driving-mode.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "70db655ce633bc1a",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/12-build-theme.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "bca5fb1debe7b416",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/03-semantic-color.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "c8856dfbe0d4541e",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/04-motion-vocabulary.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "2facca9946e798b1",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/05-navigation-shell.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "aac6afb90696c88e",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/06-today-deck-home.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "be39b5e0521ccd55",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/07-body-surface.md",
+      "x": 520,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "1132a8d2892b5288",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/08-ledger-surface.md",
+      "x": 520,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "1debd7d8aa19d389",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/09-fleet-telemetry-surface.md",
+      "x": 520,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "8fdce4896f2efb49",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/10-pantry-notes-surfaces.md",
+      "x": 520,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "d3f73b56ea17d1eb",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/13-build-shell.md",
+      "x": 520,
+      "y": 1200,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "bfdcd4b117e60fc5",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/14-build-chart-kit.md",
+      "x": 520,
+      "y": 1350,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "9767bbfb581a7e95",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/15-build-home.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "3dee634ee46c0037",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/16-build-bio.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "ffd0c09d302ce419",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/17-build-cred.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "97e23fd3db7c7335",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/18-build-fleet.md",
+      "x": 1040,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "d6750579206c8ea6",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/19-build-log-pantry.md",
+      "x": 1040,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "05f68076f3729460",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/20-build-driving-mode.md",
+      "x": 1040,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "ad11d48f8acfe0bb",
+      "type": "file",
+      "file": ".scratch/cyberdeck-ui/issues/21-ship-pass.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    }
+  ],
+  "edges": [
+    {
+      "id": "508aaf119b7692dc",
+      "fromNode": "384856b9d5c30c78",
+      "fromSide": "right",
+      "toNode": "bca5fb1debe7b416",
+      "toSide": "left"
+    },
+    {
+      "id": "3bba80b098efc226",
+      "fromNode": "384856b9d5c30c78",
+      "fromSide": "right",
+      "toNode": "c8856dfbe0d4541e",
+      "toSide": "left"
+    },
+    {
+      "id": "b0a2d0fd7af3cb52",
+      "fromNode": "384856b9d5c30c78",
+      "fromSide": "right",
+      "toNode": "2facca9946e798b1",
+      "toSide": "left"
+    },
+    {
+      "id": "2b6c4e5b3bc8d27b",
+      "fromNode": "384856b9d5c30c78",
+      "fromSide": "right",
+      "toNode": "aac6afb90696c88e",
+      "toSide": "left"
+    },
+    {
+      "id": "ebce2736ae50542b",
+      "fromNode": "384856b9d5c30c78",
+      "fromSide": "right",
+      "toNode": "be39b5e0521ccd55",
+      "toSide": "left"
+    },
+    {
+      "id": "016bc5a401d29fb7",
+      "fromNode": "76a43b1b00f83cf9",
+      "fromSide": "right",
+      "toNode": "be39b5e0521ccd55",
+      "toSide": "left"
+    },
+    {
+      "id": "2ce58d043418aeef",
+      "fromNode": "384856b9d5c30c78",
+      "fromSide": "right",
+      "toNode": "1132a8d2892b5288",
+      "toSide": "left"
+    },
+    {
+      "id": "ac6b4db0dcd6b4cf",
+      "fromNode": "76a43b1b00f83cf9",
+      "fromSide": "right",
+      "toNode": "1132a8d2892b5288",
+      "toSide": "left"
+    },
+    {
+      "id": "629e3d66daeb8ed0",
+      "fromNode": "384856b9d5c30c78",
+      "fromSide": "right",
+      "toNode": "1debd7d8aa19d389",
+      "toSide": "left"
+    },
+    {
+      "id": "3e0b069a115bcf1b",
+      "fromNode": "76a43b1b00f83cf9",
+      "fromSide": "right",
+      "toNode": "1debd7d8aa19d389",
+      "toSide": "left"
+    },
+    {
+      "id": "fb760e45f831f98f",
+      "fromNode": "384856b9d5c30c78",
+      "fromSide": "right",
+      "toNode": "8fdce4896f2efb49",
+      "toSide": "left"
+    },
+    {
+      "id": "d857414c558359e5",
+      "fromNode": "70db655ce633bc1a",
+      "fromSide": "right",
+      "toNode": "d3f73b56ea17d1eb",
+      "toSide": "left"
+    },
+    {
+      "id": "369b524533bbedce",
+      "fromNode": "70db655ce633bc1a",
+      "fromSide": "right",
+      "toNode": "bfdcd4b117e60fc5",
+      "toSide": "left"
+    },
+    {
+      "id": "a02049e0aa6a10a0",
+      "fromNode": "d3f73b56ea17d1eb",
+      "fromSide": "right",
+      "toNode": "9767bbfb581a7e95",
+      "toSide": "left"
+    },
+    {
+      "id": "6bfef803a0070b53",
+      "fromNode": "d3f73b56ea17d1eb",
+      "fromSide": "right",
+      "toNode": "3dee634ee46c0037",
+      "toSide": "left"
+    },
+    {
+      "id": "2750816044d84103",
+      "fromNode": "bfdcd4b117e60fc5",
+      "fromSide": "right",
+      "toNode": "3dee634ee46c0037",
+      "toSide": "left"
+    },
+    {
+      "id": "9671fcc9a2fd36af",
+      "fromNode": "d3f73b56ea17d1eb",
+      "fromSide": "right",
+      "toNode": "ffd0c09d302ce419",
+      "toSide": "left"
+    },
+    {
+      "id": "d4f41c5c88762c50",
+      "fromNode": "bfdcd4b117e60fc5",
+      "fromSide": "right",
+      "toNode": "ffd0c09d302ce419",
+      "toSide": "left"
+    },
+    {
+      "id": "430241002d142b01",
+      "fromNode": "d3f73b56ea17d1eb",
+      "fromSide": "right",
+      "toNode": "97e23fd3db7c7335",
+      "toSide": "left"
+    },
+    {
+      "id": "45eabfb2cd487242",
+      "fromNode": "bfdcd4b117e60fc5",
+      "fromSide": "right",
+      "toNode": "97e23fd3db7c7335",
+      "toSide": "left"
+    },
+    {
+      "id": "7ffb510a952c5585",
+      "fromNode": "d3f73b56ea17d1eb",
+      "fromSide": "right",
+      "toNode": "d6750579206c8ea6",
+      "toSide": "left"
+    },
+    {
+      "id": "1001f5297c5a49d6",
+      "fromNode": "d3f73b56ea17d1eb",
+      "fromSide": "right",
+      "toNode": "05f68076f3729460",
+      "toSide": "left"
+    },
+    {
+      "id": "8fa5981fdf89b9bc",
+      "fromNode": "9767bbfb581a7e95",
+      "fromSide": "right",
+      "toNode": "ad11d48f8acfe0bb",
+      "toSide": "left"
+    },
+    {
+      "id": "6cee92e036861f00",
+      "fromNode": "3dee634ee46c0037",
+      "fromSide": "right",
+      "toNode": "ad11d48f8acfe0bb",
+      "toSide": "left"
+    },
+    {
+      "id": "87730130c92dbf7b",
+      "fromNode": "ffd0c09d302ce419",
+      "fromSide": "right",
+      "toNode": "ad11d48f8acfe0bb",
+      "toSide": "left"
+    },
+    {
+      "id": "18b003818cb6a26e",
+      "fromNode": "97e23fd3db7c7335",
+      "fromSide": "right",
+      "toNode": "ad11d48f8acfe0bb",
+      "toSide": "left"
+    },
+    {
+      "id": "476879ee0ac70025",
+      "fromNode": "d6750579206c8ea6",
+      "fromSide": "right",
+      "toNode": "ad11d48f8acfe0bb",
+      "toSide": "left"
+    },
+    {
+      "id": "c6777a3fc02d0f23",
+      "fromNode": "05f68076f3729460",
+      "fromSide": "right",
+      "toNode": "ad11d48f8acfe0bb",
+      "toSide": "left"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    {
+      "id": "3b81bf8f69c76647",
+      "type": "file",
+      "file": ".scratch/import-sync-duplication/issues/01-the-import-rekey-and-union-sync-duplicate-a-car-every-launch.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    }
+  ],
+  "edges": []
+}

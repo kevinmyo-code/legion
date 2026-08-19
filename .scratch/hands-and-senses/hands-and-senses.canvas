@@ -1,0 +1,258 @@
+{
+  "nodes": [
+    {
+      "id": "dddb791956a50d45",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/01-clear-dtc.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "376c097e2860afc3",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/02-ha-api-research.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "4ac1131f702ded32",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/04-notification-listener.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "b8b0d2cb73459c9a",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/05-comms.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "87da96d3706589e2",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/06-wrench-vision-research.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "f0c0f061b206e930",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/08-morning-brief.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "40d3ee0c9778c0c4",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/09-ledger-gmail-autopull.md",
+      "x": 0,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "b873996476bba66f",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/10-health-connect-research.md",
+      "x": 0,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "c785c55923f33eb7",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/12-assistant-identity.md",
+      "x": 0,
+      "y": 1200,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "bb4a61d59dd2d453",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/14-location-intel-research.md",
+      "x": 0,
+      "y": 1350,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "9664d7f07e231620",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/16-vault-retrieval-research.md",
+      "x": 0,
+      "y": 1500,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "73348ad476a50d7c",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/18-inbox-intelligence.md",
+      "x": 0,
+      "y": 1650,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "69e8ead8212942d6",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/19-people-dates.md",
+      "x": 0,
+      "y": 1800,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "ef35cdc66451bc3b",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/20-memory-decay.md",
+      "x": 0,
+      "y": 1950,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "96424c9b3aeb066d",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/21-proactive-mode.md",
+      "x": 0,
+      "y": 2100,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "5e3558b6fd0ef25d",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/03-home-control-scope.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "ac00be53950007cc",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/07-wrench-mode-shape.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "3ecfd207fba9887d",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/11-health-connect-scope.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "8526a44a4fa58445",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/13-voice-persona-surface.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "49651831a533e0c8",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/15-location-intelligence.md",
+      "x": 520,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "2fc2e13c0f7d29d7",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/17-document-vault.md",
+      "x": 520,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    }
+  ],
+  "edges": [
+    {
+      "id": "f2be2221f4844152",
+      "fromNode": "376c097e2860afc3",
+      "fromSide": "right",
+      "toNode": "5e3558b6fd0ef25d",
+      "toSide": "left"
+    },
+    {
+      "id": "a5cbffe9aa92d92a",
+      "fromNode": "87da96d3706589e2",
+      "fromSide": "right",
+      "toNode": "ac00be53950007cc",
+      "toSide": "left"
+    },
+    {
+      "id": "61e5bb9865ce6336",
+      "fromNode": "b873996476bba66f",
+      "fromSide": "right",
+      "toNode": "3ecfd207fba9887d",
+      "toSide": "left"
+    },
+    {
+      "id": "599a3b68ef6853cc",
+      "fromNode": "c785c55923f33eb7",
+      "fromSide": "right",
+      "toNode": "8526a44a4fa58445",
+      "toSide": "left"
+    },
+    {
+      "id": "2112ec0d7609ed86",
+      "fromNode": "bb4a61d59dd2d453",
+      "fromSide": "right",
+      "toNode": "49651831a533e0c8",
+      "toSide": "left"
+    },
+    {
+      "id": "98a598a13cef8b98",
+      "fromNode": "9664d7f07e231620",
+      "fromSide": "right",
+      "toNode": "2fc2e13c0f7d29d7",
+      "toSide": "left"
+    }
+  ]
+}

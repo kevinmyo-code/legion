@@ -1,0 +1,16 @@
+{
+  "alwaysUpdateLinks": true,
+  "newLinkFormat": "shortest",
+  "useMarkdownLinks": false,
+  "attachmentFolderPath": "./",
+  "showUnsupportedFiles": false,
+  "userIgnoreFilters": [
+    "app/build/",
+    "build/",
+    ".gradle/",
+    ".idea/",
+    "node_modules/",
+    ".claude/",
+    "app/schemas/"
+  ]
+}

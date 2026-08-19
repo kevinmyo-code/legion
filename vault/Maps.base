@@ -1,0 +1,40 @@
+filters:
+  and:
+    - file.hasTag("map")
+
+formulas:
+  progress: 'if(tickets > 0, ((tickets - open) * 100 / tickets).round(0) + "%", "-")'
+
+properties:
+  formula.progress:
+    displayName: "Done"
+  charted-by:
+    displayName: "Charted by"
+
+views:
+  - type: table
+    name: "All maps"
+    order:
+      - title
+      - map
+      - status
+      - tickets
+      - open
+      - formula.progress
+      - charted
+      - charted-by
+    summaries:
+      tickets: Sum
+      open: Sum
+
+  - type: table
+    name: "Open maps"
+    filters:
+      and:
+        - 'open > 0'
+    order:
+      - title
+      - open
+      - tickets
+      - formula.progress
+      - charted

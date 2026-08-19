@@ -1,0 +1,237 @@
+<title>Pending Work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#000000; --panel:#05070C;
+  --ink:#E4E9EF; --faint:#8E97A3; --ghost:#58606C;
+  --rule:#1E2530; --rule-faint:#141A22;
+  --mint:#57EFC6; --amber:#FFBA1F; --chrome:#FF5330;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:40px 20px 96px}
+.stamp{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ghost);margin:0}
+h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;margin:8px 0 0;text-wrap:balance}
+.lede{color:var(--faint);max-width:62ch;margin:14px 0 0}
+.lede b{color:var(--ink);font-weight:600}
+.tot{display:flex;flex-wrap:wrap;gap:10px;margin:28px 0 0}
+.stat{flex:1 1 150px;background:var(--panel);border:1px solid var(--rule);padding:14px 16px}
+.stat .n{font-family:var(--mono);font-size:30px;font-weight:600;line-height:1;
+  font-variant-numeric:tabular-nums;display:block}
+.stat .l{display:block;margin-top:7px}
+.n.mint{color:var(--mint)} .n.amber{color:var(--amber)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin:34px 0 20px;position:sticky;top:0;
+  background:var(--ground);padding:12px 0;z-index:5;border-bottom:1px solid var(--rule-faint)}
+.f{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  background:transparent;color:var(--faint);border:1px solid var(--rule);padding:7px 13px;cursor:pointer}
+.f:hover{color:var(--ink);border-color:var(--ghost)}
+.f:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.f[aria-pressed="true"]{color:var(--ground);background:var(--ink);border-color:var(--ink)}
+.map{margin:0 0 10px;background:var(--panel);border:1px solid var(--rule)}
+.mh{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:13px 16px;
+  border-bottom:1px solid var(--rule-faint)}
+.mh h2{font-family:var(--mono);font-size:14px;font-weight:600;margin:0;letter-spacing:.02em}
+.counts{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.04em}
+.counts .k{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.counts .k.mint{color:var(--mint)} .counts .k.amber{color:var(--amber)}
+.counts .sep{margin:0 7px;color:var(--ghost)}
+.counts .dim{color:var(--ghost)}
+.bar{display:flex;flex:1 1 110px;min-width:80px;height:3px;background:var(--rule-faint);overflow:hidden}
+.bar i{background:var(--mint)} .bar b{background:var(--amber)}
+.tl{list-style:none;margin:0;padding:0}
+.t{display:grid;grid-template-columns:34px 1fr auto auto;align-items:baseline;gap:12px;
+  padding:11px 16px 11px 13px;border-top:1px solid var(--rule-faint);border-left:3px solid transparent}
+.t:first-child{border-top:0}
+.t.is-decide{border-left-color:var(--amber)}
+.t.is-build{border-left-color:var(--mint)}
+.t.is-bug{border-left-color:var(--chrome)}
+.t.is-blocked{border-left-color:var(--rule)}
+.num{font-family:var(--mono);font-size:12px;color:var(--ghost);font-variant-numeric:tabular-nums}
+.tt{display:block}
+.det{display:block;font-family:var(--mono);font-size:11px;color:var(--ghost);margin-top:4px;line-height:1.45}
+.chip{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  padding:2px 8px;border:1px solid var(--rule);color:var(--faint);white-space:nowrap}
+.c-grilling{color:var(--amber);border-color:#4A3A12}
+.c-task,.c-prototype{color:var(--mint);border-color:#17453A}
+.c-bug{color:var(--chrome);border-color:#5A2317}
+.state{font-family:var(--mono);font-size:11px;color:var(--ghost);white-space:nowrap}
+.t:not(.is-blocked) .state{color:var(--mint)}
+.foot{margin-top:40px;color:var(--ghost);font-size:13px;max-width:64ch}
+.foot code{font-family:var(--mono);color:var(--faint)}
+@media (max-width:640px){
+  .t{grid-template-columns:28px 1fr;row-gap:6px}
+  .chip,.state{grid-column:2;justify-self:start}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+<div class="wrap">
+<p class="stamp">LEGION &middot; pending work &middot; 19 Aug 2026</p>
+<h1>41 tickets open</h1>
+<p class="lede">Across 10 maps. <b>31 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 9 are waiting on another ticket first.</p>
+<div class="tot">
+<div class="stat"><span class="n">41</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n mint">32</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n amber">9</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n amber">31</span><span class="stamp l">your call</span></div>
+<div class="stat"><span class="n mint">10</span><span class="stamp l">buildable</span></div>
+</div>
+<div class="filters" role="group" aria-label="Filter tickets">
+<button class="f" data-f="all" aria-pressed="true">everything</button>
+<button class="f" data-f="ready" aria-pressed="false">ready now</button>
+<button class="f" data-f="blocked" aria-pressed="false">blocked</button>
+<button class="f" data-f="decide" aria-pressed="false">your call</button>
+<button class="f" data-f="build" aria-pressed="false">buildable</button>
+</div>
+<section class="map">
+<header class="mh">
+<h2>android-auto</h2>
+<span class="counts"><span class="k">9</span> open<span class="sep">&middot;</span><span class="k mint">9</span> ready<span class="sep">&middot;</span><span class="dim">16 total</span></span>
+<span class="bar"><i style="flex:9"></i><b style="flex:0"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">07</span><span class="body"><span class="tt">What if Android Auto will not render the call?</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">What is in the browse tree, and who writes the briefings?</span><span class="det">points 1-5, 7 and 8 answered on the head unit 2026-08-18; only point 6 (onPlayFromSearch) is still open</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">09</span><span class="body"><span class="tt">What does the car-aware prompt actually change?</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">10</span><span class="body"><span class="tt">How long does the call stay open, and what does that cost?</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">11</span><span class="body"><span class="tt">Duck the music, or pause it?</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">12</span><span class="body"><span class="tt">Does clone-and-run survive two manual toggles?</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">13</span><span class="body"><span class="tt">Prove or kill the OBD silent-stall claim</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">14</span><span class="body"><span class="tt">Does gearhead actually draw the call?</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">15</span><span class="body"><span class="tt">The live session can be silenced with no error</span><span class="det">driver-facing surface built 2026-08-18; item 1 (device experiment) and item 5 (dataSync cap) still unmet</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<h2>hands-and-senses</h2>
+<span class="counts"><span class="k">9</span> open<span class="sep">&middot;</span><span class="k mint">9</span> ready<span class="sep">&middot;</span><span class="dim">21 total</span></span>
+<span class="bar"><i style="flex:9"></i><b style="flex:0"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">Home control: what does LEGION actually get to touch?</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">05</span><span class="body"><span class="tt">Comms: place a call, send a text</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">07</span><span class="body"><span class="tt">Wrench mode: live stream or snap-and-ask, and how the car&#x27;s history gets in the room</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">Morning brief: a configurable skill, not a feed</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">15</span><span class="body"><span class="tt">Location intelligence: what LEGION knows about where you are, and when it speaks first</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">17</span><span class="body"><span class="tt">The document vault: LEGION reads the papers that run your life</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">18</span><span class="body"><span class="tt">Inbox intelligence: packages and travel, from mail LEGION can already read</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">19</span><span class="body"><span class="tt">The people in Kevin&#x27;s life: dates and facts he tells it</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">20</span><span class="body"><span class="tt">Memory that forgets like a person does</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<h2>goal-keeping</h2>
+<span class="counts"><span class="k">7</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="k amber">6</span> blocked<span class="sep">&middot;</span><span class="dim">8 total</span></span>
+<span class="bar"><i style="flex:1"></i><b style="flex:6"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">01</span><span class="body"><span class="tt">What \&quot;on track\&quot; actually means, per shape of goal</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">02</span><span class="body"><span class="tt">What makes a goal trackable, and how set_goal captures it</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #01</span></li>
+<li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">03</span><span class="body"><span class="tt">The check-in record: how a spoken answer becomes a falsifiable fact</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #01</span></li>
+<li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">What makes a moment worth interrupting</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #01, #03</span></li>
+<li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">What prompts a revision, and what an abandoned goal costs</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #01, #03</span></li>
+<li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Where the advisor learns to hold an opinion about time</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #04</span></li>
+<li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">Which surface says it, and how it coordinates with the five categories</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #04</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<h2>proactive-mode</h2>
+<span class="counts"><span class="k">7</span> open<span class="sep">&middot;</span><span class="k mint">6</span> ready<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">9 total</span></span>
+<span class="bar"><i style="flex:6"></i><b style="flex:1"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">02</span><span class="body"><span class="tt">What decides there is something worth saying</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">The compulsion line, written as a test rather than a vibe</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">04</span><span class="body"><span class="tt">Five switches that actually switch something</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">06</span><span class="body"><span class="tt">Speak, notify, or wait</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">How Alfred sounds when nobody asked him anything</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-bug" data-type="build" data-state="ready"><span class="num">09</span><span class="body"><span class="tt">The boot-started service takes 123s to call startForeground, against a 10s window</span></span><span class="chip c-bug">bug</span><span class="state">ready</span></li>
+<li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">05</span><span class="body"><span class="tt">Quiet hours, and how often Alfred may speak at all</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #03</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<h2>drive-ui</h2>
+<span class="counts"><span class="k">3</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">9 total</span></span>
+<span class="bar"><i style="flex:2"></i><b style="flex:1"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">02</span><span class="body"><span class="tt">Measure the real round trip on Kevin&#x27;s car</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">Layout for a phone that is 384 x 832, not a head unit</span><span class="det">Q26/Q27/Q28 built (8123f4e, 8386ec5); Q29 portrait lock and ticket 05&#x27;s post-drive summary still open</span></span><span class="chip c-prototype">prototype</span><span class="state">ready</span></li>
+<li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">03</span><span class="body"><span class="tt">Live cadence: how fast, and who owns the poll?</span><span class="det">answers settled, BLOCKED on ticket 02 for the numbers</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #01, #02</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<h2>drive-test-2026-08-18</h2>
+<span class="counts"><span class="k">2</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">5 total</span></span>
+<span class="bar"><i style="flex:1"></i><b style="flex:1"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">The assistant said it opened Maps. There is no map feature at all.</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
+<li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">What the assistant must say when it cannot do something</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #03</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<h2>aspect-advisors</h2>
+<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="dim">21 total</span></span>
+<span class="bar"><i style="flex:1"></i><b style="flex:0"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">20</span><span class="body"><span class="tt">Ship pass: advisors answering on the phone</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<h2>google-account-integration</h2>
+<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="dim">23 total</span></span>
+<span class="bar"><i style="flex:1"></i><b style="flex:0"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">16</span><span class="body"><span class="tt">BUILD: ship pass - the destination gate</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<h2>ledger-drive-ingestion</h2>
+<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="dim">13 total</span></span>
+<span class="bar"><i style="flex:1"></i><b style="flex:0"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">11</span><span class="body"><span class="tt">Run the 15-minute SAF probe on a real device</span><span class="det">mostly done - steps 1-6 run and passed, steps 7-9 blocked on transport</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<h2>quant-viz</h2>
+<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="dim">17 total</span></span>
+<span class="bar"><i style="flex:1"></i><b style="flex:0"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">17</span><span class="body"><span class="tt">Two shipped visualisations vanished in a later rebuild, and nothing noticed</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+</ul>
+</section>
+<p class="foot">Built from the ticket frontmatter in <code>.scratch/*/issues/</code>. A map leaves this page when its last ticket resolves &mdash; <code>cyberdeck-ui</code>, <code>fleet-maintenance</code>, <code>mission-control</code>, <code>legion-shape</code>, <code>notes-lists-calendar</code> and <code>import-sync-duplication</code> already have.</p>
+</div>
+<script>
+const btns=[...document.querySelectorAll('.f')];
+btns.forEach(b=>b.addEventListener('click',()=>{
+  btns.forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  const f=b.dataset.f;
+  document.querySelectorAll('.t').forEach(t=>{
+    const ok = f==='all' || t.dataset.state===f || t.dataset.type===f;
+    t.style.display = ok ? '' : 'none';
+  });
+  document.querySelectorAll('.map').forEach(m=>{
+    const any=[...m.querySelectorAll('.t')].some(t=>t.style.display!=='none');
+    m.style.display = any ? '' : 'none';
+  });
+}));
+</script>

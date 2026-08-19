@@ -19,6 +19,36 @@ interface OdbSampleDao {
     )
     suspend fun getRange(vehicleId: String, pid: String, fromMs: Long, toMs: Long): List<OdbSample>
 
+    /**
+     * Newest-first samples for a PID in a time range, capped at [limit].
+     *
+     * [getRange] is unbounded, which is correct for an agent summarising a
+     * drive and wrong for a chart over "all time": `obd_samples` grows at
+     * roughly a million rows a year per car (see [OdbSample]'s storage note),
+     * and materialising that many entities to then throw all but 200 buckets
+     * away would stall or OOM before it ever drew. The cap is on the QUERY, so
+     * the rows never leave SQLite. Newest-first because a truncated window
+     * should keep the RECENT end, not an arbitrary old prefix - the caller
+     * re-sorts for display.
+     *
+     * The chart's own summary comes from [summarize], which aggregates in SQL
+     * over the whole window, so min/max/avg stay exact even when this
+     * truncates.
+     */
+    @Query(
+        "SELECT * FROM obd_samples " +
+            "WHERE vehicleId = :vehicleId AND pid = :pid " +
+            "AND timestamp >= :fromMs AND timestamp <= :toMs " +
+            "ORDER BY timestamp DESC LIMIT :limit"
+    )
+    suspend fun getRangeNewestFirst(
+        vehicleId: String,
+        pid: String,
+        fromMs: Long,
+        toMs: Long,
+        limit: Int,
+    ): List<OdbSample>
+
     /** Latest N samples for a PID — used for quick recent-trend reads. */
     @Query(
         "SELECT * FROM obd_samples " +

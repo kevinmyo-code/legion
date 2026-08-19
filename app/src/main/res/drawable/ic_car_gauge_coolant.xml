@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <!--
+        Fleet tab, coolant-temp gauge row - a plain thermometer silhouette (stem + bulb), two
+        simple filled shapes rather than a reconstructed Material glyph, kept deliberately low-risk
+        to draw correctly at a small tab-row size.
+    -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M11,3h2v11h-2z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M9,17a3,3 0,1 0,6 0a3,3 0,1 0,-6 0z" />
+</vector>

@@ -1,0 +1,320 @@
+{
+  "nodes": [
+    {
+      "id": "1728db25c57a3763",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/01-testing-status-token-lifetime.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "57d42f4caf39fa9e",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/02-calendar-api-choice.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "176d246fd42b5313",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/03-gmail-scope-floor.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "0e9fc7c72730b90d",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/04-what-happens-to-local-timed-items.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "7bde897059427c73",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/05-what-counts-as-worth-reading.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "c622e55eaa76fda3",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/07-what-reaches-the-model.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "d8d4749b348eb947",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/10-offline-and-failure.md",
+      "x": 0,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "d4106165ad29803d",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/11-publish-the-consent-screen-now.md",
+      "x": 0,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "681e5f3084a08755",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/12-google-grant-plumbing.md",
+      "x": 0,
+      "y": 1200,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "5cf4b1f6b2caba04",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/17-read-all-calendars.md",
+      "x": 0,
+      "y": 1350,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "e9298d6173782a9b",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/18-calendar-row-is-stale.md",
+      "x": 0,
+      "y": 1500,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "0001a12d72a5e21d",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/19-calendar-read-tool.md",
+      "x": 0,
+      "y": 1650,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "da9176397bb08d03",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/20-gmail-says-granted-but-cannot-read.md",
+      "x": 0,
+      "y": 1800,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "acbfbfd53f13f4ad",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/21-cal-tag-lost-on-wrapped-titles.md",
+      "x": 0,
+      "y": 1950,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "1c5ffab94325774c",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/21-remember-leak.md",
+      "x": 0,
+      "y": 2100,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "8c7a6a947ec8ee86",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/22-edit-calendar-entries-from-log.md",
+      "x": 0,
+      "y": 2250,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "23836ce4c9d6b64e",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/06-consent-surface-and-lapse.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "7e24f6b1cb3c925b",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/08-deck-surface.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "abe8d4d55fc00f0a",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/09-add-scopes-to-the-client.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "466580c2815e2146",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/13-calendar-read.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "3b2fcdff8b94ba25",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/14-calendar-write.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "078cf10f4e07d8bc",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/15-gmail-tools.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "07f4ec44e7e912b6",
+      "type": "file",
+      "file": ".scratch/google-account-integration/issues/16-ship-pass.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "1b55cc4ae70e7080",
+      "fromNode": "176d246fd42b5313",
+      "fromSide": "right",
+      "toNode": "23836ce4c9d6b64e",
+      "toSide": "left"
+    },
+    {
+      "id": "2ec03cacc1253671",
+      "fromNode": "d4106165ad29803d",
+      "fromSide": "right",
+      "toNode": "23836ce4c9d6b64e",
+      "toSide": "left"
+    },
+    {
+      "id": "eadaca8e088bf063",
+      "fromNode": "0e9fc7c72730b90d",
+      "fromSide": "right",
+      "toNode": "7e24f6b1cb3c925b",
+      "toSide": "left"
+    },
+    {
+      "id": "ec825f0029dd9eee",
+      "fromNode": "57d42f4caf39fa9e",
+      "fromSide": "right",
+      "toNode": "abe8d4d55fc00f0a",
+      "toSide": "left"
+    },
+    {
+      "id": "19b0af1eb040dc1b",
+      "fromNode": "d4106165ad29803d",
+      "fromSide": "right",
+      "toNode": "abe8d4d55fc00f0a",
+      "toSide": "left"
+    },
+    {
+      "id": "f7d061421ae3e82d",
+      "fromNode": "681e5f3084a08755",
+      "fromSide": "right",
+      "toNode": "466580c2815e2146",
+      "toSide": "left"
+    },
+    {
+      "id": "16aec1cc82ce6098",
+      "fromNode": "466580c2815e2146",
+      "fromSide": "right",
+      "toNode": "3b2fcdff8b94ba25",
+      "toSide": "left"
+    },
+    {
+      "id": "aae0396898e0464b",
+      "fromNode": "abe8d4d55fc00f0a",
+      "fromSide": "right",
+      "toNode": "078cf10f4e07d8bc",
+      "toSide": "left"
+    },
+    {
+      "id": "05cd3d254c8eb1d8",
+      "fromNode": "681e5f3084a08755",
+      "fromSide": "right",
+      "toNode": "078cf10f4e07d8bc",
+      "toSide": "left"
+    },
+    {
+      "id": "330502b6e2dbb68c",
+      "fromNode": "466580c2815e2146",
+      "fromSide": "right",
+      "toNode": "07f4ec44e7e912b6",
+      "toSide": "left"
+    },
+    {
+      "id": "26b9e8ec1470e3aa",
+      "fromNode": "3b2fcdff8b94ba25",
+      "fromSide": "right",
+      "toNode": "07f4ec44e7e912b6",
+      "toSide": "left"
+    },
+    {
+      "id": "2c13af16a1875269",
+      "fromNode": "078cf10f4e07d8bc",
+      "fromSide": "right",
+      "toNode": "07f4ec44e7e912b6",
+      "toSide": "left"
+    }
+  ]
+}

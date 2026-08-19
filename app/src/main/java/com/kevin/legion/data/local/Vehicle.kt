@@ -25,8 +25,17 @@ data class Vehicle(
     // Last time Aria asked the driver to confirm the odometer, so the
     // monthly check-in doesn't nag more than once per interval.
     val lastOdometerPromptAt: Long = 0L,
-    // False until the one-time online lookup has populated default
-    // maintenance intervals for this make/model/year.
+    // VESTIGIAL (ticket 14, `.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`,
+    // 2026-08-15). Used to mean "the one-time online lookup has populated default maintenance
+    // intervals for this make/model/year" - that lookup (`VehicleController.onboardPendingVehicles`,
+    // and the automatic calls inside `registerDirect`/`addVehicle`/`correctVehicle`) is DELETED.
+    // Nothing writes this column anymore; the left-in-place `VehicleDao.markOnboarded` query has no
+    // caller either. A car's schedule now starts empty and stays empty until a driver-triggered
+    // populate diff is run and accepted (`vehicle/PopulateSchedule.kt`) - there is no more "one-time"
+    // event for this flag to record. Left in the schema rather than dropped for no gain (removing a
+    // column buys nothing here), but do NOT read it as live state or wire a new caller to it - that
+    // is exactly the `refreshServiceIntervals` mistake (ticket 05: dead code that looks like a
+    // working feature) one column over.
     val onboarded: Boolean = false,
     // Per-car companion presentation, set during onboarding. voiceName is the
     // chosen prebuilt Gemini voice (blank = app default); personaTraits is the
@@ -40,11 +49,21 @@ data class Vehicle(
     // guess from OBD. Added v8->v9. Sharpens diagnostics/maintenance grounding.
     @ColumnInfo(defaultValue = "''") val trim: String = "",
     // True once the driver has actually stated/confirmed this car's identity
-    // (voice register, onboarding, or the AI Profile facts form). The no-OBD
-    // default seed is a placeholder 1998 Jeep Cherokee; without this flag,
-    // year/make/model-keyed lookups (e.g. NHTSA recalls) would report on the
-    // mascot car the driver never claimed. Added v11->v12; DEFAULT '0' mirrors
-    // the migration so a migrated row validates identically to a fresh one.
+    // (voice register, onboarding, or the AI Profile facts form). Originally the
+    // gate on year/make/model-keyed lookups (e.g. NHTSA recalls), so those never
+    // reported on the no-OBD placeholder seed (a mascot 1998 Jeep Cherokee) the
+    // driver never claimed. That premise expired when seeding went blank for
+    // every id (a09aa68, 2026-08-15) - a blank row cannot pass an
+    // identity-present test either, so the recall gate is now
+    // com.kevin.legion.vehicle.identityPresent(vehicle) instead (ticket 12,
+    // `.scratch/fleet-maintenance/issues/12-a-recall-button.md`), applied the
+    // same way whether the identity arrived from the driver or from a VIN
+    // decode. This flag is NOT retired: it still records that the driver
+    // themself stated the identity, which a VIN write-back (ticket 04)
+    // deliberately does not claim on their behalf, and other callers may still
+    // want that distinction even though recalls no longer do. Added v11->v12;
+    // DEFAULT '0' mirrors the migration so a migrated row validates identically
+    // to a fresh one.
     @ColumnInfo(defaultValue = "0") val confirmed: Boolean = false,
     // Last-modified epoch ms for cross-device sync last-write-wins (S1, BYO-cloud
     // Google Drive sync). The Kotlin default stamps new rows; an EDIT must re-stamp
@@ -60,4 +79,13 @@ data class Vehicle(
     // "Manage apps -> Delete hidden app data". Rides the LWW path on `updatedAt`
     // like any other edit, so archiving propagates across devices for free.
     @ColumnInfo(defaultValue = "0") val archived: Boolean = false,
+    // Driver-entered engine (e.g. "4.0L I6", "2.5L I4") - ticket 14
+    // (`.scratch/fleet-maintenance/issues/14-*`): a factory maintenance schedule
+    // can differ by engine on the same year/make/model/trim (a 4.0L XJ and a 2.5L
+    // XJ differ on plugs and capacities), so the populate-from-factory-schedule
+    // flow's manual-input path asks for it alongside year/make/model/trim/mileage.
+    // Added v19->v20 alongside MaintenanceItem's intervalSource/deleted columns -
+    // a different table, riding the same version bump per the ticket's own
+    // instruction not to hold 06/07 for it. DEFAULT '' mirrors the migration.
+    @ColumnInfo(defaultValue = "''") val engine: String = "",
 )

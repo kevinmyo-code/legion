@@ -9,9 +9,9 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.ai.firstGreetingOpener
-import com.kevin.legion.ui.LedgerImportActivity
-import com.kevin.legion.ui.PantryImportActivity
-import com.kevin.legion.ui.SavedPlacesActivity
+import com.kevin.legion.car.CarProbeLog
+import com.kevin.legion.ui.LegionRoute
+import com.kevin.legion.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -69,6 +69,16 @@ class LiveSessionController(context: Context) {
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
 
     private var session: GeminiLiveSession? = null
+        set(value) {
+            field = value
+            // A session that is gone cannot still be silenced, and there are ten
+            // assignment sites that drop one. Clearing HERE rather than at each of
+            // them is what stops a stale `true` outliving the socket that raised it
+            // and leaving the strip permanently claiming LEGION is deaf. Whatever
+            // session replaces it publishes its own state through [newSession]'s
+            // collector.
+            if (value == null) CompanionPhase.setSilenced(false)
+        }
 
     // Set once destroy() runs so a final Closed event doesn't re-prewarm a socket
     // on a torn-down controller.
@@ -108,6 +118,53 @@ class LiveSessionController(context: Context) {
     // LISTENING (wait for the driver) or IDLE.
     private var conversationMode = false
 
+    // Ticket 02 (drive-test-2026-08-18): the latest session-resumption handle Gemini has
+    // confirmed we can reconnect with, threaded into the NEXT [GeminiLiveSession.start] call
+    // (prewarm/startConversation). Lives on the controller, not the session, because a
+    // [GeminiLiveSession] instance dies with its own socket and this is precisely the thing
+    // meant to outlive that. Cleared on a driver-initiated stop (see the Closed branch) so a
+    // deliberately ended chat doesn't silently bleed into whatever the driver starts next.
+    private var sessionResumeHandle: String? = null
+
+    // Ticket 02: set when a real conversation's socket died WITHOUT a resumption handle to
+    // carry it forward - i.e. the thread is genuinely gone, not just reconnecting. Consumed
+    // (and cleared) by whichever of [resumeWarm] / [startConversation] actually begins the
+    // next conversation, which is the only place that can honestly tell the driver AND the
+    // model the previous context is gone rather than silently answering cold.
+    private var pendingThreadLossNotice = false
+
+    // How many tool calls handleToolCall is currently mid-flight on. Gemini can
+    // emit several functionCalls in one turn, each getting its own scope.launch,
+    // so the FIRST one to finish must not drop the UI out of THINKING while a
+    // sibling is still running - only the transition back to zero restores.
+    // scope is confined to Dispatchers.Main.immediate (a single thread), so a
+    // plain Int is correct here; no AtomicInteger needed.
+    private var activeToolCalls = 0
+
+    /**
+     * Constructs a fresh [GeminiLiveSession] and, alongside the caller's own wiring, starts
+     * mirroring its [GeminiLiveSession.isSilenced] transitions to [CarProbeLog] (ticket 15 wave 2's
+     * signal, ticket 08's wave 3 consumer - `.scratch/android-auto/issues/15-the-live-session-can-be-silenced.md`).
+     * The three construction sites below ([prewarm], [startConversation], [startProactive]) all
+     * route through here so the car probe session can see silencing regardless of which door opened
+     * the socket, without each call site remembering to wire it separately.
+     */
+    private fun newSession(): GeminiLiveSession {
+        val s = GeminiLiveSession(appContext) { handleEvent(it) }
+        scope.launch {
+            s.isSilenced.collect { silenced ->
+                CarProbeLog.log("CarProbeMicSilenced", "GeminiLiveSession.isSilenced=$silenced")
+                // Identity guard: this collector is never cancelled, so a session that
+                // was torn down and replaced can still emit (its own teardown sets the
+                // flag back to false at GeminiLiveSession's `finally`). Only the CURRENT
+                // session may speak for the driver-facing flag; a dead one's late emit
+                // must not stomp the live one's state in either direction.
+                if (session === s) CompanionPhase.setSilenced(silenced)
+            }
+        }
+        return s
+    }
+
     // Status first, then phase: the service renders the overlay on phase changes
     // and reads status.value, so status must already be current when phase emits.
     private fun set(phase: Phase, status: String) {
@@ -135,7 +192,7 @@ class LiveSessionController(context: Context) {
         // instead (see resolveConnectionMode + onTap/startConversation) - a small
         // latency cost, not a correctness one.
         if (!GeminiKeyProvider.hasKey()) return
-        val s = GeminiLiveSession(appContext) { handleEvent(it) }
+        val s = newSession()
         session = s
         pendingAction = Pending.NONE
         conversationMode = false
@@ -146,6 +203,9 @@ class LiveSessionController(context: Context) {
                 base, LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, prewarmOnly = true,
+                // Ticket 02: carry forward whatever the last session confirmed - a prewarm
+                // that follows a dropped conversation should still be able to resume it.
+                resumeHandle = sessionResumeHandle,
             )
         }
     }
@@ -273,6 +333,24 @@ class LiveSessionController(context: Context) {
     // --- session lifecycle ----------------------------------------------
 
     /**
+     * Ticket 02: reads and clears [pendingThreadLossNotice]. Returns false (and does nothing
+     * else) the overwhelmingly common case - no loss to report. Returns true and flashes the
+     * on-screen notice the one time it matters: a real conversation's socket died with no
+     * resumption handle to carry it forward, so the model is about to answer cold and the
+     * driver needs to know that before it does, not discover it mid-reply. On-screen only
+     * (Kevin's own precedent, [LiveEvent.Idle]'s backstop notice just below) - this is not
+     * spoken because the whole point is the model is NOT continuing the old conversation, so
+     * there's no voice turn to fold a spoken aside into without it sounding like it remembers
+     * the very thing it just forgot.
+     */
+    private fun consumeThreadLossNotice(): Boolean {
+        if (!pendingThreadLossNotice) return false
+        pendingThreadLossNotice = false
+        CompanionPhase.showNotice("RECONNECTED - LOST TRACK OF WHAT WE WERE SAYING")
+        return true
+    }
+
+    /**
      * Resume a warm socket. On the very first session ever (flag in
      * [CompanionProfile]) the companion is asked to introduce itself and begin
      * the conversational setup; every subsequent resume opens the mic immediately
@@ -281,12 +359,26 @@ class LiveSessionController(context: Context) {
     private fun resumeWarm(s: GeminiLiveSession) {
         conversationMode = true
         val isFirst = !CompanionProfile.isFirstSessionDone(appContext)
-        val ok = if (isFirst) {
-            set(Phase.THINKING, "...")
-            s.beginConversation(firstGreetingOpener())
-        } else {
-            set(Phase.LISTENING, "Listening...")
-            s.beginConversation(null)
+        // Ticket 02: a warm socket that resumes here is either a genuinely warm-parked
+        // conversation (the common case - no loss, nothing to say) or a FRESH prewarmed
+        // socket that replaced one that died since the driver was last talking (see
+        // startConversation's Pending.NONE prewarm auto-reconnect in the Closed handler).
+        // consumeThreadLossNotice() tells the two apart the only way that's actually
+        // possible from here: whether the Closed handler flagged a real loss.
+        val lostThread = consumeThreadLossNotice()
+        val ok = when {
+            isFirst -> {
+                set(Phase.THINKING, "...")
+                s.beginConversation(firstGreetingOpener(appContext))
+            }
+            lostThread -> {
+                set(Phase.THINKING, "...")
+                s.beginConversation(THREAD_LOST_PROMPT)
+            }
+            else -> {
+                set(Phase.LISTENING, "Listening...")
+                s.beginConversation(null)
+            }
         }
         if (!ok) {
             // The "warm" socket was actually stale (send no-op'd). Silently tear it
@@ -321,7 +413,7 @@ class LiveSessionController(context: Context) {
      * failed connection doesn't burn the one-time introduction.
      */
     private fun startConversation() {
-        val s = GeminiLiveSession(appContext) { handleEvent(it) }
+        val s = newSession()
         session = s
         pendingAction = Pending.CONVERSATION
         conversationMode = true
@@ -338,8 +430,13 @@ class LiveSessionController(context: Context) {
             val base = brain.buildBaseInstruction()
             val live = brain.buildLiveContext()
             val isFirst = !CompanionProfile.isFirstSessionDone(appContext)
+            // Ticket 02: a lost thread takes priority over the ordinary greeting - the driver
+            // and the model both need to know this is a fresh start, not a continued chat.
+            // consumeThreadLossNotice() also flashes the on-screen notice as a side effect.
+            val lostThread = consumeThreadLossNotice()
             pendingPrompt = when {
-                isFirst -> firstGreetingOpener()
+                isFirst -> firstGreetingOpener(appContext)
+                lostThread -> THREAD_LOST_PROMPT
                 live.isBlank() -> GREETING_PROMPT
                 else -> "(Current car/driver context, use naturally if relevant:\n$live)\n\n$GREETING_PROMPT"
             }
@@ -347,13 +444,14 @@ class LiveSessionController(context: Context) {
                 base, LiveToolbox.declarations(),
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
+                resumeHandle = sessionResumeHandle,
             )
         }
     }
 
     /** Cold start a speak-only proactive session (no warm socket existed). */
     private fun startProactive(prompt: String) {
-        val s = GeminiLiveSession(appContext) { handleEvent(it) }
+        val s = newSession()
         session = s
         pendingAction = Pending.PROACTIVE_COLD
         pendingPrompt = prompt
@@ -367,6 +465,7 @@ class LiveSessionController(context: Context) {
                 base, LiveToolbox.declarations(),
                 vad = false, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = false, connectionMode = connectionMode,
+                resumeHandle = sessionResumeHandle,
             )
         }
     }
@@ -421,22 +520,48 @@ class LiveSessionController(context: Context) {
                 session?.silentDestroy()
                 session = null
                 conversationMode = false
+                // Ticket 02: a crisis teardown must not silently resume the very
+                // conversation the crisis path exists to stop performing - the next chat
+                // should start clean, not carry the interrupted turn's context forward.
+                sessionResumeHandle = null
+                pendingThreadLossNotice = false
                 CompanionPhase.setCaption("")
                 CompanionPhase.setCrisis()
                 set(Phase.IDLE, IDLE_STATUS)
             }
             is LiveEvent.TurnComplete -> {
-                // Conversation: the session reopened the mic, so wait for the
-                // driver - still active talk time, segment stays open. Speak-only:
-                // the proactive line just finished, nothing more to do - pause the
-                // segment here (the socket may not fire a separate Idle for this
-                // path, e.g. the cold speak-only session in startProactive).
-                if (conversationMode) {
-                    set(Phase.LISTENING, "Listening...")
-                } else {
+                // Conversation: the session is ABOUT to reopen the mic, so this is
+                // still active talk time and the segment stays open - but it does
+                // NOT claim Listening here anymore (2026-08-17, same defect class as
+                // 57ed400's Phase.THINKING fix: a phase claiming one thing while the
+                // code does another). openMicForUser() has not even run yet at this
+                // point, let alone the real AudioRecord.startRecording() behind
+                // awaitPlaybackDrained() - up to ~1.56s later. LiveEvent.MicOpened
+                // below is the actual signal; leaving the phase alone here means the
+                // UI honestly keeps showing "Speaking..."/whatever it last was until
+                // the mic is truly live, rather than lying "Listening..." early.
+                // Speak-only: the proactive line just finished, nothing more to do -
+                // pause the segment here (the socket may not fire a separate Idle for
+                // this path, e.g. the cold speak-only session in startProactive).
+                if (!conversationMode) {
                     set(Phase.IDLE, IDLE_STATUS)
                 }
             }
+            // The mic has ACTUALLY started capturing - see [LiveEvent.MicOpened]'s doc for
+            // why this, not TurnComplete, is what "Listening..." must be driven off. Not
+            // gated on conversationMode: a bare tap-to-listen (beginConversation with no
+            // opener) also lands here directly from the Connected branch's THINKING state,
+            // and this is the only event that would otherwise ever move it off THINKING.
+            is LiveEvent.MicOpened -> set(Phase.LISTENING, "Listening...")
+            // No phase change: SpeakingStarted already covers the ordinary half-duplex-mute
+            // close (fires effectively simultaneously, off the same server message), and a
+            // session-teardown close is about to be followed by its own Idle/Closed event
+            // that sets phase correctly. See [LiveEvent.MicClosed]'s doc.
+            is LiveEvent.MicClosed -> {}
+            // Ticket 02: persist the handle regardless of whether a conversation is even
+            // active right now - a warm/prewarmed socket idling between chats can still
+            // receive these, and the next real conversation is what benefits.
+            is LiveEvent.ResumeHandleUpdated -> sessionResumeHandle = event.handle
             is LiveEvent.Idle -> {
                 // Conversation went quiet but the socket is warm - ready for an
                 // instant resume on the next tap. Pause billing here too (also
@@ -445,6 +570,14 @@ class LiveSessionController(context: Context) {
                 // segment is already closed).
                 conversationMode = false
                 set(Phase.IDLE, IDLE_STATUS)
+                // The thirty-minute forgotten-conversation cap is the ONE way a chat
+                // ends that the driver did not ask for, so it is the one that has to
+                // say so. Everything else reaching here he did himself (tapped to stop)
+                // or never started (a proactive line parking its own socket), and
+                // narrating those would be noise. On screen only, per Kevin 2026-08-18 -
+                // this fires after half an hour of nothing, which is precisely when
+                // nobody is listening for a spoken line.
+                if (event.backstop) CompanionPhase.showNotice("STOPPED LISTENING - TAP TO TALK")
             }
             is LiveEvent.Subtitle -> {
                 _subtitle.tryEmit(event.text)
@@ -455,9 +588,26 @@ class LiveSessionController(context: Context) {
             is LiveEvent.Closed -> {
                 val userInitiated = conversationMode
                 val everConnected = connectedThisSession
+                // Ticket 02: a real conversation just ended for a reason the driver did not
+                // ask for, and we hold no handle to carry it forward - that IS the thread
+                // dying, distinct from every other close reason this branch already handles.
+                // Checked (and flagged, not acted on) here rather than where it's consumed,
+                // because this is the only place that still has [event.reason] - by the time
+                // resumeWarm/startConversation run, the close that caused this is history.
+                if (shouldNotifyThreadLoss(userInitiated, event.reason, sessionResumeHandle != null)) {
+                    pendingThreadLossNotice = true
+                }
+                // A deliberate driver stop is not a drop to resume FROM - the next chat the
+                // driver starts should be a new one, not a silent continuation of the one
+                // they just chose to end.
+                if (event.reason == "stopped") sessionResumeHandle = null
                 // Only surface errors the driver kicked off (a tap), not a failed
                 // background proactive opener. "stopped"/"idle"/"destroyed"/"warm
-                // expired" are normal closes; anything else is a fault worth flashing.
+                // expired"/"goAway" are normal closes; anything else is a fault worth
+                // flashing. "goAway" joins that set because GeminiLiveSession.handleGoAway
+                // only ever schedules it as OUR OWN deliberate, planned-ahead close - the
+                // driver-facing loss (if any) is what pendingThreadLossNotice surfaces
+                // instead, on the next conversation, not here as an error banner.
                 if (userInitiated && event.reason !in NORMAL_CLOSE_REASONS) {
                     CompanionPhase.showNotice(
                         when {
@@ -504,62 +654,120 @@ class LiveSessionController(context: Context) {
     private fun handleToolCall(call: LiveEvent.ToolCall) {
         scope.launch {
             val s = session ?: return@launch
-            // A tool MUST always hand a response back, even on error/timeout, or
-            // Gemini stays mid-turn and the UI wedges. Bound every tool.
-            // The investigating specialists run a multi-round agent loop (up to a
-            // 30s budget plus a one-shot fallback), so they get a longer leash than
-            // the snappy data/action tools.
-            val timeout = if (call.name in SUB_AGENT_TOOLS) SUB_AGENT_TOOL_TIMEOUT_MS else TOOL_TIMEOUT_MS
-            val response: JSONObject = try {
-                withTimeoutOrNull(timeout) {
-                    when (call.name) {
-                        // Session/UI-scoped tools the toolbox returns null for - we
-                        // own the session, the capture controller, and the activity.
-                        "show_saved_places" -> {
-                            if (call.args.optBoolean("visible", true)) openSavedPlaces()
-                            JSONObject().put("success", true)
-                        }
-                        "import_statement" -> {
-                            openLedgerImport()
-                            JSONObject().put("success", true)
-                        }
-                        "import_receipt" -> {
-                            openPantryImport()
-                            JSONObject().put("success", true)
-                        }
-                        else -> LiveToolbox.dispatch(appContext, call.name, call.args)
-                            ?: JSONObject().put("success", true)
-                    }
-                } ?: JSONObject()
-                    .put("success", false)
-                    .put("message", "That took too long and timed out.")
-            } catch (e: Exception) {
-                JSONObject().put("success", false).put("message", "Something went wrong running that.")
-            }
-            // Sending can throw if the socket died mid-tool; the close path handles
-            // recovery, so don't let it crash this scope.
+            // The socket goes quiet the instant the model calls a tool - no
+            // SpeakingStarted, no Subtitle, nothing - so without this the phase
+            // just sat wherever TurnComplete left it (LISTENING/"Listening...")
+            // for however long the tool took, INCLUDING an investigate()-backed
+            // sub-agent's up-to-30s loop. The driver watched "Listening..." while
+            // the app was actually busy. Move to THINKING for the duration.
+            activeToolCalls++
+            set(Phase.THINKING, "Working...")
             try {
-                s.sendToolResponse(call.id, call.name, response)
-            } catch (e: Exception) {
-                android.util.Log.w("LiveSessionController", "sendToolResponse failed: ${e.message}")
+                // A tool MUST always hand a response back, even on error/timeout, or
+                // Gemini stays mid-turn and the UI wedges. Bound every tool.
+                // The investigating specialists run a multi-round agent loop (up to a
+                // 30s budget plus a one-shot fallback), so they get a longer leash than
+                // the snappy data/action tools.
+                val timeout = if (call.name in SUB_AGENT_TOOLS) SUB_AGENT_TOOL_TIMEOUT_MS else TOOL_TIMEOUT_MS
+                val response: JSONObject = try {
+                    withTimeoutOrNull(timeout) {
+                        when (call.name) {
+                            // Session/UI-scoped tools the toolbox returns null for - we
+                            // own the session, the capture controller, and the activity.
+                            "show_saved_places" -> {
+                                if (call.args.optBoolean("visible", true)) openSavedPlaces()
+                                JSONObject().put("success", true)
+                            }
+                            "import_statement" -> {
+                                openLedgerImport()
+                                JSONObject().put("success", true)
+                            }
+                            "import_receipt" -> {
+                                openPantryImport()
+                                JSONObject().put("success", true)
+                            }
+                            // Ticket 21 (google-account-integration): s.readThroughToolTouchedThisTurn()
+                            // is what `remember`'s dispatch branch gates on - see that accessor's doc
+                            // for why the flag is read here, off the live session, rather than dispatch
+                            // reaching back into GeminiLiveSession itself.
+                            else -> LiveToolbox.dispatch(
+                                appContext, call.name, call.args, s.readThroughToolTouchedThisTurn(),
+                            ) ?: JSONObject().put("success", true)
+                        }
+                    } ?: JSONObject()
+                        .put("success", false)
+                        .put("message", "That took too long and timed out.")
+                } catch (e: Exception) {
+                    JSONObject().put("success", false).put("message", "Something went wrong running that.")
+                }
+                // Sending can throw if the socket died mid-tool; the close path handles
+                // recovery, so don't let it crash this scope. A THROWN exception isn't the
+                // only failure shape though: OkHttp's WebSocket.send returns false (never
+                // throws) when the socket is already closing/closed, so a stalled tool call
+                // that finally resolves into a dead socket used to vanish in total silence -
+                // no exception, no log, nothing for the driver to see or retry. Treat that
+                // false the same as a real failure.
+                try {
+                    val sent = s.sendToolResponse(call.id, call.name, response)
+                    if (!sent) {
+                        android.util.Log.w(
+                            "LiveSessionController", "sendToolResponse dropped (socket closed): ${call.name}",
+                        )
+                        // Only a driver-initiated conversation gets a visible notice - a
+                        // background proactive turn has no tool calls to begin with, but stay
+                        // consistent with the same userInitiated rule the Closed branch uses.
+                        if (conversationMode) {
+                            CompanionPhase.showNotice("CONNECTION LOST - TAP TO RETRY")
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("LiveSessionController", "sendToolResponse failed: ${e.message}")
+                }
+            } finally {
+                // Gemini can emit several functionCalls in one turn, each running
+                // through its own scope.launch of this function, so only the LAST
+                // one finishing (the count reaching zero) may restore the phase -
+                // otherwise the first tool to finish would drop the UI out of
+                // THINKING while a sibling call is still mid-flight. And restore
+                // only if nothing ELSE has moved the phase since (the model may
+                // already be speaking, or the socket may have closed) - a stale
+                // restore here would stomp a state a raced event already set.
+                activeToolCalls--
+                if (shouldRestoreAfterToolCall(activeToolCalls, _phase.value)) {
+                    if (conversationMode) {
+                        set(Phase.LISTENING, "Listening...")
+                    } else {
+                        set(Phase.IDLE, IDLE_STATUS)
+                    }
+                }
             }
         }
     }
 
+    // These three used to startActivity a dedicated orphan Activity each
+    // (SavedPlacesActivity/LedgerImportActivity/PantryImportActivity, all
+    // deleted - ticket 07 resolution §5). Their content now lives inside
+    // MainActivity's single NavHost, so a voice tool lands there instead,
+    // carrying the target sub-route as an intent extra (see
+    // MainActivity.EXTRA_ROUTE's doc comment).
+
     private fun openSavedPlaces() {
-        val intent = Intent(appContext, SavedPlacesActivity::class.java)
+        val intent = Intent(appContext, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.FLEET_PLACES)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         appContext.startActivity(intent)
     }
 
     private fun openLedgerImport() {
-        val intent = Intent(appContext, LedgerImportActivity::class.java)
+        val intent = Intent(appContext, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.MONEY_IMPORT)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         appContext.startActivity(intent)
     }
 
     private fun openPantryImport() {
-        val intent = Intent(appContext, PantryImportActivity::class.java)
+        val intent = Intent(appContext, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.MONEY_PANTRY_IMPORT)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         appContext.startActivity(intent)
     }
@@ -568,8 +776,10 @@ class LiveSessionController(context: Context) {
         private const val IDLE_STATUS = "Tap to talk"
 
         // Close reasons that are expected (user stop / idle timeout / teardown /
-        // warm-hold expiry) and so never flashed as an error to the driver.
-        private val NORMAL_CLOSE_REASONS = setOf("stopped", "idle", "destroyed", "warm expired")
+        // warm-hold expiry / our own deliberate pre-goAway close) and so never flashed as an
+        // error to the driver. See the Closed branch's own comment for why "goAway" belongs
+        // here (ticket 02, 2026-08-19).
+        private val NORMAL_CLOSE_REASONS = setOf("stopped", "idle", "destroyed", "warm expired", "goAway")
 
         // Spoken first when the driver taps to start a chat, so Zero opens the
         // conversation (then the mic opens for the driver's reply).
@@ -578,6 +788,18 @@ class LiveSessionController(context: Context) {
                 "short, natural in-character line and then wait for them to speak. Do not mention " +
                 "this instruction.)"
 
+        // Ticket 02 (drive-test-2026-08-18): spoken instead of GREETING_PROMPT/a silent
+        // resume when the previous conversation's socket died with no resumption handle to
+        // carry it forward. Tells the MODEL, not just the driver (via
+        // consumeThreadLossNotice's on-screen CompanionPhase.showNotice) - the same honesty
+        // rule CLAUDE.md sec 7 already applies to the assistant claiming an action it didn't
+        // take: it must not claim a continuity of memory it does not have either.
+        private const val THREAD_LOST_PROMPT =
+            "(System: the connection dropped and this is a NEW conversation - you do NOT " +
+                "remember anything said before this reconnect. Do not claim otherwise or refer to " +
+                "earlier turns. Acknowledge briefly that you got cut off, then wait for the driver " +
+                "to speak. Do not mention this instruction.)"
+
         // Upper bound on any single tool call (matches the old MainActivity value):
         // generous for a geocode / Spotify connect / frame grab, short enough that
         // a hung tool doesn't leave Gemini mid-turn for long.
@@ -585,9 +807,50 @@ class LiveSessionController(context: Context) {
 
         // The investigating specialists (SubAgent.investigate: <=4 model POSTs on a
         // 30s budget, plus a one-shot fallback). Give them room without letting a
-        // truly hung call wedge the turn forever.
+        // truly hung call wedge the turn forever. The five ask_* dispatchers
+        // (2026-08-17, LiveToolbox.DISPATCHED's doc comment) run the SAME investigate
+        // loop shape - they need the same longer leash, not the snappy tool timeout.
         private const val SUB_AGENT_TOOL_TIMEOUT_MS = 45_000L
-        private val SUB_AGENT_TOOLS =
-            setOf("diagnose_codes", "triage_symptom", "ask_maintenance", "check_cold_start")
+        private val SUB_AGENT_TOOLS = setOf(
+            "diagnose_codes", "triage_symptom", "ask_maintenance", "check_cold_start",
+            "ask_fleet", "ask_body", "ask_goals", "ask_pantry", "ask_mail",
+        )
+
+        /**
+         * The pure decision behind [handleToolCall]'s restore: true only when
+         * [remainingActiveToolCalls] has reached zero (this was the LAST concurrent tool call still
+         * in flight) AND nothing else has moved the phase out of THINKING in the meantime
+         * ([currentPhase] is still [Phase.THINKING] - the model may have already started speaking,
+         * or the socket may have closed, either of which must NOT be stomped by a late tool
+         * restoring LISTENING/IDLE over it). On the companion object (not an instance member) and
+         * internal, not private, precisely so it needs no [LiveSessionController] instance to call -
+         * that class needs a live Context/GeminiLiveSession/Room to construct at all (same
+         * constraint [GeminiLiveSessionEpisodicExclusionTest] already documents for a sibling class)
+         * - so [LiveSessionControllerToolCallRestoreTest] can assert the refcount/guard logic
+         * directly from a plain JVM test instead of only ever exercising it on-device.
+         */
+        internal fun shouldRestoreAfterToolCall(remainingActiveToolCalls: Int, currentPhase: Phase): Boolean =
+            remainingActiveToolCalls == 0 && currentPhase == Phase.THINKING
+
+        /**
+         * Ticket 02's pure decision behind the [LiveEvent.Closed] branch's thread-loss flag:
+         * true only when all three hold at once - a real conversation was actually running
+         * ([wasConversationActive]), it did not end because the driver asked it to
+         * ([closeReason] is not `"stopped"`), and there is no session-resumption handle to
+         * carry it into whatever reconnects next ([hasResumeHandle] is false). Any one of
+         * those failing means either there is nothing to lose (no conversation, or a resume
+         * handle already covers it) or the driver already knows (they tapped stop
+         * themselves) - both are the ordinary case and must stay silent.
+         *
+         * On the companion object, not an instance member, for the same reason
+         * [shouldRestoreAfterToolCall] is: [LiveSessionController] needs a live Context/
+         * GeminiLiveSession/Room to construct at all, so this is the one seam a plain JVM
+         * test can exercise directly against the real production decision.
+         */
+        internal fun shouldNotifyThreadLoss(
+            wasConversationActive: Boolean,
+            closeReason: String,
+            hasResumeHandle: Boolean,
+        ): Boolean = wasConversationActive && closeReason != "stopped" && !hasResumeHandle
     }
 }

@@ -1,0 +1,408 @@
+---
+shelf: playbook-coding
+status: partly-live
+kind: playbook
+tags: [library]
+---
+
+# Coding Playbook
+
+Accumulated architecture notes and conventions for the coding agent. Maintained by the librarian:
+the orchestrator relays SKILL: lines from coding agent reports via a librarian FILE dispatch,
+which appends them here.
+
+Midnight AI (historical names in older notes: Moose, Aria, Nightrunner; same app). Package
+`com.kevin.midnightai`. **LEGION's package is `com.kevin.legion`; mentally substitute it.**
+
+> **STATUS: PARTLY LIVE (banner added 2026-08-01).** Section by section:
+>
+> | Section | Status for LEGION |
+> |---|---|
+> | Sub-agents: investigate loop vs one-shot | LIVE. `ai/SubAgent.kt` also takes an inline image part now |
+> | Live session and tools (service/) | LIVE |
+> | Gemini Live session lifecycle | LIVE, minus the active-talk billing accounting (no commercial model) |
+> | Google Drive v3 concurrency and versioning | LIVE and load-bearing. See MEMORY.md's no-compare-and-swap blocker |
+> | Soft-delete tombstone pattern for Room LWW sync | LIVE |
+> | Testing, singletons, composables | LIVE |
+> | Build / platform | PARTLY. Gradle and Room mechanics hold; AOSP 8-10 and head-unit constraints do not |
+> | Music control (media/) | PARTLY. `MusicRouter`/`MusicSource`/mixtapes are retired; MediaSession and Spotify App Remote notes hold |
+> | UI (ui/), Settings hub structure, Settings and preferences | FROZEN. City-pop, frame-clock motion, and the head-unit size classes are all dead. `ui/` is a clean slate |
+> | Credential backup security | LIVE |
+> | Gradle product flavor split for policy compliance | FROZEN. No commercial model, single build |
+> | Image generation and media sync | FROZEN. Generated art died with city-pop |
+> | Mapbox SDK API surface and Location bridge | FROZEN. Mapbox is removed entirely |
+> | Maintenance features and three-state data model | LIVE, part of the fleet aspect |
+>
+> See CLAUDE.md §11.
+
+## Music control (media/)
+
+- `MusicController` (object) controls Spotify via MediaSession: `play/pause/next/previous` send
+  transport to Spotify's active session; `playFromSearch(query)` uses
+  `TransportControls.playFromSearch` (Assistant path); if no session, `playViaBrowser` cold-starts
+  Spotify's MediaBrowserService on the main thread.
+- GOTCHA: `playViaBrowser` posts to the main Looper and runs `MediaBrowser.connect()` + callbacks
+  with no try/catch, an exception there crashes the whole app. Transport calls need guarding too.
+- `NowPlayingController` mirrors the active session into a `StateFlow<NowPlayingInfo?>`; requires
+  one-time notification-access grant (`hasAccess`). This is the signal to confirm a play actually
+  started.
+- FIXED 2026-06-28: the next/play crashes were the media framework needing a Looper thread, Live
+  tool dispatch runs on a worker, so `controlMusic` now wraps every MusicController call in
+  `withContext(Dispatchers.Main)`. ALWAYS call MediaSession/MediaController/MediaBrowser on Main.
+- FIXED 2026-06-28: `controlMusic` search now confirms via `NowPlayingController.state.first { ... }`
+  (4s window) before reporting success, was the "says playing but nothing happened" false-success
+  bug.
+- DECISION 2026-06-28 (from Business memo): MediaSession is permanent, Spotify Web API & App
+  Remote are both blocked for solo devs (5-user dev cap, Extended Quota needs a 250k-MAU
+  business). Invest only in MediaSession reliability; do not add a Spotify OAuth backend. See
+  [[playbook-business]].
+- Tools are dispatched in `service/LiveToolbox.kt`: `controlMusic` (search returns optimistic
+  success, a known false-success bug).
+
+## Sub-agents: investigate loop vs. one-shot (2026-07-09)
+
+- **SKILL: SubAgent.investigate() for adaptive tool-pulling**, SubAgent.askTyped() for
+  grounding-only. The investigate loop (`SubAgent.kt`, ≤4 model POSTs, 30s budget) re-sends system
+  prompt + function declarations on each POST, allowing the model to dynamically call tools based
+  on prior results (DiagnosticAgent, SymptomAgent, MaintenanceAgent use this). `askTyped` is a
+  single POST returning a typed `AgentResult`; it supports `google_search` grounding (pre-computed
+  one-shot search results injected into the prompt) but NOT function-calling, since search + fns
+  can't coexist in one Gemini call. Use `askTyped` when the agent's domain is well-scoped (pure
+  reasoning over pre-seeded data or web search only, no tool-chaining needed): ColdStartAgent
+  (numeric reasoning) and MusicAgent (taste + library + search) both moved from investigate loop to
+  `askTyped` (commit bcdc870), saving latency + tokens on the driver's key. This is an internal
+  optimization; no behavior changes from the user's perspective.
+
+## Live session & tools (service/)
+
+- `LiveToolbox.declarations()` advertises function tools; `dispatch()` runs them. Session/UI-scoped
+  tools (e.g. `show_saved_places`) return null and are handled in `LiveSessionController.handleToolCall`
+  (which wraps every tool in a timeout + try/catch and ALWAYS sends a tool response).
+- Subtitles: `LiveSessionController.subtitle` is a SharedFlow consumed by the overlay in
+  `AriaForegroundService`. FIXED 2026-06-28: output transcription is now ALWAYS on (`subtitles =
+  true` in GeminiLiveSession, no longer debug-gated) and captions are mirrored to
+  `CompanionPhase.caption` (StateFlow) which CruiseScreen collects + renders under the avatar with
+  a 6s auto-hide. `CompanionPhase` is the process-global UI mirror (phase + caption).
+- Foreground/background intents exist: `AriaForegroundService.ACTION_APP_FOREGROUND` / `_BACKGROUND`.
+- `CompanionBadgeController` (floating companion badge, `TYPE_APPLICATION_OVERLAY`) replaced the
+  earlier floating talk button entirely, see library/decisions.md R1.
+
+## UI (ui/)
+
+- `CruiseScreen` is the home HUD; observes `CompanionPhase.phase`, `NowPlayingController.state`,
+  `AppBackground.version`. Design tokens in `ui/theme/` (`AriaColors`, `AriaType`), reuse them.
+- `AvatarStudio.carImage()` returns the user's car photo, else a generated city-pop portrait.
+- GOTCHA: SPEAK buttons (`AvatarGenerator`, `PersonaPicker`) use `RecognizerIntent` which most
+  head units don't provide, they no-op to a toast. Being removed in favor of Gboard voice.
+- Photo upload uses `PickVisualMedia` (`ControlPanelScreen`), head-unit photo picker is empty /
+  can't see Drive downloads; needs an `ACTION_OPEN_DOCUMENT` (SAF) fallback.
+
+## Build / platform
+
+- [STALE 2026-07: app is Midnight AI, `app_name` string updated from the literal "AiApp"]
+- [STALE 2026-07: launcher takeover via CATEGORY_HOME shipped, see CLAUDE.md sec 13; the earlier
+  "no HOME launcher category" note no longer applies]
+- Room migrations are manual & versioned in `data/local/CarDatabase.kt`. Bump `version` on every
+  entity/column change, no exceptions (see the B14 lesson in library/blocking.md, a same-version
+  entity-set mismatch throws instead of migrating).
+
+## Settings & preferences (ui/)
+
+- SKILL: The app-wide night-palette picker (`AriaPalette.current`, set via Settings -> Color palette)
+  already propagates live into `LightsOutScreen` because that screen reads `AriaColors.Amber` /
+  `NeonMagenta` directly inside the composable rather than caching them. Any future Lights-Out-specific
+  feature that touches color should check whether the global palette system already covers it before
+  adding a parallel color control.
+- SKILL: `CruiseSettings` (in `CruiseScreen.kt`, package `com.kevin.midnightai.ui`) is the
+  established SharedPreferences home for Cruise/Lights-Out driver-configurable display settings,
+  prefs file `"cruise"`. Reuse its `flag`/`setFlag` or `variant`/`setVariant` helper patterns for
+  new boolean/enum toggles instead of creating a new prefs object.
+
+## Credential backup security (2026-07-09)
+
+- GOTCHA: `allowBackup=true` in the manifest means any SharedPrefs file is eligible for cloud
+  backup / `adb backup` / device-to-device transfer by default, unless explicitly excluded. The
+  `companion_profile` prefs file holds the Gemini API key + Mapbox token, plus their plaintext
+  Keystore-failure fallbacks and the spend-passphrase hash. This must be excluded. Use
+  `SharedPreferences.getDefaultSharedPreferences()` (never backed up by default) or exclude the
+  file by name in `AndroidManifest.xml` via `<include>` whitelist (backup whitelist, not
+  blacklist, is the recommended modern pattern under API 31+). Commit 660208a added the exclusion
+  for `companion_profile` in the backup/device-transfer rules. SKILL: when storing any credential,
+  check whether the storage mechanism is eligible for backup and exclude it if it is.
+
+## Gradle product flavor split for policy-compliant multi-product distribution (2026-07-09)
+
+**CONTEXT:** Spotify SDK (App Remote, limiting 5-user Dev Mode) cannot be legally distributed in
+a commercial public app. Splitting into two separate flavors/builds with different package names
++ signing fingerprints + distribution channels (public `play` on Play Store = zero SDK, personal
+`personal` sideload = full SDK + personal registration) solves this. This is NOT Kotlin Multiplatform
+expect/actual; it's raw Gradle flavor source-set resolution (simpler, already built into AGP).
+
+**ARCHITECTURE (MEDIA/SPOTIFYBRIDGE.KT + MEDIA/SPOTIFYBRIDGEFACTORY.KT):**
+
+The interface (`SpotifyBridge.kt`) is pure Kotlin, lives in src/main/java, and has zero Spotify
+SDK imports:
+```kotlin
+interface SpotifyBridge {
+    fun isAvailable(): Boolean
+    suspend fun connect(context: Context): Boolean
+    fun disconnect()
+    suspend fun playUri(uri: String)
+    suspend fun transport(action: TransportAction)
+    val state: StateFlow<SpotifyPlaybackState?>
+}
+```
+
+The factory exists TWICE, one file per flavor source-set:
+- `app/src/play/java/.../SpotifyBridgeFactory.kt`: Returns `NoopSpotifyBridge` (every method is
+  no-op, isAvailable always false), zero Spotify imports, zero SDK dependency.
+- `app/src/personal/java/.../SpotifyBridgeFactory.kt`: Returns `PersonalSpotifyBridge` (Phase B
+  implementation will use the real SDK). Currently a no-op stub.
+
+**BUILDCONFIG FIELD PATTERN (APP/BUILD.GRADLE.KTS):**
+```kotlin
+flavorDimensions.add("distribution")
+productFlavors {
+    create("play") {
+        dimension = "distribution"
+        // Zero Spotify buildConfigField
+    }
+    create("personal") {
+        dimension = "distribution"
+        applicationIdSuffix = ".personal"
+        buildConfigField("String", "SPOTIFY_CLIENT_ID", "\"${System.getenv("SPOTIFY_CLIENT_ID") ?: ""}\"")
+    }
+}
+```
+
+Result: `BuildConfig.SPOTIFY_CLIENT_ID` exists ONLY in personal-flavor compile unit. Code in play
+flavor that tries to reference it is a compile error, not a silent no-op or dead code. This is the
+guarantee.
+
+**GOTCHA: GRADLE FLAVOR SOURCE-SET RESOLUTION IS NOT TRANSITIVE.**
+- `app/src/main/` code can import only from other `src/main/` code and from dependencies
+  (buildscript-resolved at top level).
+- A file in `app/src/play/` CANNOT import anything from `app/src/personal/` and vice versa.
+- The interface pattern works because the interface is in `src/main/`, both factories are in
+  flavor-specific directories, and `src/main/` code references only the interface, not the
+  implementations directly.
+- `app/src/main/java/media/MusicRouter.kt` calls `SpotifyBridgeHolder.bridge.transport(...)` —
+  this is safe in all flavors because `SpotifyBridgeHolder` is in `src/main/` and the bridge is a
+  no-op in the play flavor (via the factory's flavor-specific source-set return value).
+
+**POLICY-CRITICAL VERIFICATION (MUST DO BEFORE MERGING TO MAIN):**
+After building, unzip the compiled APKs:
+1. Play-flavor APK: dex dump, grep for `com/spotify` (must be completely ABSENT). Grep for the
+   literal `SPOTIFY_CLIENT_ID` value (must be ABSENT or empty string placeholder). This is proof
+   the SDK and credentials are not in the public distribution.
+2. Personal-flavor APK: reverse check (Spotify imports should be present once Phase B SDK is wired;
+   client ID should be the real value from local.properties).
+
+**COMMON ERROR: referencing buildConfigField in src/main/ code.**
+If you write:
+```kotlin
+// src/main/...
+if (BuildConfig.SPOTIFY_CLIENT_ID.isNotEmpty()) { ... }
+```
+This will NOT compile in the play flavor (field doesn't exist), and WILL compile in personal.
+This is CORRECT — you've caught the architecture error. Move this code into `PersonalSpotifyBridge`
+(in src/personal/) or into the tool dispatch layer, NOT into shared src/main/ code.
+
+**FUTURE PHASE B WIRING:**
+Once Kevin registers a Spotify developer app against `com.kevin.midnightai.personal` + his signing
+fingerprint, and adds himself as an authorized Dev Mode user:
+1. Add `SPOTIFY_CLIENT_ID` to `local.properties` (currently orphaned).
+2. Add `com.spotify.android:spotify-app-remote` dependency to play/personal split only (via
+   `configurations` + flavor-specific `implementation`).
+3. Implement `PersonalSpotifyBridge` in `app/src/personal/...` (real SDK calls).
+4. Test: `gradlew assemblePersonalDebug` should compile. `gradlew assemblePlayDebug` should still
+   work with zero Spotify SDK present.
+5. Unzip play APK, verify absence. Run Spotify tests on personal APK.
+
+## Gemini Live session lifecycle and active-talk accounting (2026-07-15)
+
+- SKILL: `LiveSessionController` active-talk begins without a fresh `LiveEvent.Connected` in three
+  places: (1) resumeWarm (idle session reused), (2) requestSpeak's speakOnWarm branch (direct
+  audio on existing idle session), (3) sendText fold-in (text without reconnect). Any per-session
+  accounting (VoiceUsageMeter.startSegment, active-time billing, telemetry) must hook ALL three
+  sites, not just the Connected event. The controller's connected state machine doesn't re-emit
+  Connected on every active-talk start if the socket already exists.
+- SKILL: `GeminiLiveSession.silentDestroy()` skips emitting `LiveEvent.Closed`, so any controller
+  state normally finalized on Closed (meter cleanup, session-scoped counters, graceful shutdown
+  hooks) must ALSO be closed out at every `silentDestroy()` call site (warm-idle timeout, user
+  interrupt mid-call, resource cleanup on app pause). Do not rely on Closed alone; both exit paths
+  must clean up.
+
+## Google Drive v3 concurrency and versioning (2026-07-15)
+
+- SKILL: Drive API v3 dropped v2's etag File field and replaced it with a `version` counter
+  (incremented on every PATCH). The API provides NO server-side If-Match/412 precondition (documented
+  omission as of 2026-07). Optimistic concurrency must be client-side: fetch live version immediately
+  before PATCH, compare to last-seen, re-check on divergence. This is a TOCTOU race (fetch and write
+  are not atomic); true atomic conditional-write is unavailable. Mitigate with conflict re-download/
+  re-merge/retry loops (up to N attempts before failing) and fork guards (findByName-before-create
+  to prevent duplicate-file races on parallel first syncs).
+
+## Soft-delete tombstone pattern for Room LWW sync tables (2026-07-15)
+
+- SKILL: To add soft-delete to a Room LWW sync table (e.g., car_tasks, tagged_places): (1) Add
+  `deleted` @ColumnInfo(defaultValue="0") column to the entity (TINYINT/BOOLEAN in SQL). (2) Add
+  real additive migration in Migrations.kt (Room v6 onward, verbatim generated SQL). (3) DAO delete
+  becomes `UPDATE table SET deleted=1, updatedAt=NOW WHERE id=?` so LWW sees the tombstone (clock
+  bump propagates it). (4) Reads filter `deleted=0` throughout (WHERE clause in DAOs, LiveData
+  filters, voice-tool result sets). (5) Garbage collection deletes truly-old tombstones (e.g.,
+  `WHERE deleted=1 AND updatedAt < CUTOFF`) in an existing retention-purge loop (no new job needed).
+  SyncMerge/SyncEngine need no changes: deleted rows sync SELECT *, LWW merge handles them, and
+  tombstones naturally expire by age. One caveat: sync SELECT must ship tombstones (deleted=1) so
+  remote devices can apply them; retention cleanup only runs locally.
+
+## Image generation and media sync (2026-07-24)
+
+- SKILL: `AvatarStudio.carImage(context)` is @Preview-safe (reads two static filesDir paths only:
+  car/photo.png + car/portrait.png). But `loadBackground()` AND `loadGarageBackdrop()` route through
+  `ActiveVehicle.current` -> `ObdBluetoothManager`, whose static init THROWS in the preview JVM. Any
+  @Preview composable that touches those must guard behind `LocalInspectionMode { ... }` with a
+  procedural/empty fallback. This is the L1 root-cause class in lessons.md.
+- SKILL: `AvatarStudio.requestImage`'s `generationConfig` has NO aspect-ratio or imageConfig field.
+  One image per HTTP call; aspect is prompt-text-only ("Landscape 16:9" is a request, not a guarantee).
+  Use `Bitmap.cropToLandscape()` post-hoc to enforce fixed 16:9 (1.778:1); the head-unit surface
+  1024x600 is 1.707:1 (~4.2% off), absorbed by ContentScale.Crop.
+- SKILL: `companion_media-<vehicleId>.zip` pack/unpack (`AvatarStudio.packCompanionMedia()`/
+  `unpackCompanionMedia()`, `SyncEngine.uploadCompanionMedia()`/`ensureCompanionMedia()`) now uses a
+  list-based `packZip()`/`unpackZip()` overload (N loose files by fixed entry name, wire-compatible
+  with the old single-file format via delegation). To add a new synced media type: add it to the list
+  on both pack + unpack; key it per-active-vehicle for active-vehicle paths, by explicit vehicleId
+  for `ensureCompanionMedia` lazy-fetch (never cross the two).
+- SKILL: `saveGarageBackdrop()` (like `saveBackground()`) MUST call `CompanionProfile.touchCompanion
+  (context)` - companion_media upload only fires on `CompanionSync.decideCompanion`'s UPLOAD_LOCAL
+  branch, driven by the companion clock, NOT by zip content diff. Save a synced media file without
+  bumping the clock and it never uploads.
+
+## Settings hub structure (ui/) (2026-07-24)
+
+- SKILL: The settings hub is a grouped tile structure - a `GROUP_INFO` list drives 6 group tiles
+  (Companion / Your car / Appearance / Connections / System / Reset), each launching a sub-menu
+  (one of N leaf screens) with a BackHandler in `ControlPanelScreen.kt` managing the nav stack. The
+  hub render slot is now `ui/GarageHub.kt` (diegetic workbench design with the car-on-hoist as the
+  "Your car" tap target and bench objects as the other five groups).
+
+## Testing, singletons, and composables (2026-07-28)
+
+- SKILL: `gradlew testDebugUnitTest` runs on a plain JVM with unmocked `android.jar` — no Robolectric,
+  no `unitTests.isReturnDefaultValues`. ANY `android.*` call throws `RuntimeException("Method ...
+  not mocked")` at TEST RUNTIME, not compile time. To unit-test a helper, keep platform calls OUT of
+  it. Example: `NavGeocoder.buildForwardUrl(...)` was made pure by moving `Uri.encode` up to its
+  caller, which finally let URL param composition get regression tests. `tested` - Derek confirmed
+  with a throwaway probe.
+- SKILL: `com.mapbox.geojson.Point` has real structural `equals()`/`hashCode()` implementation
+  (type + bbox + `Objects.deepEquals` on the coordinates array). Kotlin `==` is safe for dedup/
+  identity without decomposing to `latitude()`/`longitude()`. `traced` - Derek decompiled
+  `mapbox-sdk-geojson-7.10.0` with javap.
+- SKILL: Context-holding singletons must `init()` from `MidnightApplication.onCreate()`, not
+  `MainActivity.onCreate()`. `AriaForegroundService` can run in a process that never created
+  `MainActivity` (e.g., voice-triggered `restyle_avatar`/`restyle_background` via `LiveToolbox` on
+  the service side). A `MainActivity`-only init silently no-ops forever in that process shape, which
+  silently broke `GenerationMeter`'s honest spend reporting. `traced` by Kevin.
+- SKILL: A `@Composable` helper that calls `collectAsState()` internally forces its CALLER to
+  recompose at that flow's rate. In `GarageHub.kt`, a `liveStatus()` helper collected
+  `LocationController.state`, which drove GPS-fix-rate recompositions (dozens/min); two expensive
+  IPC calls (`NavCapability` → ActivityManager, `SyncCapability` → GoogleApiAvailability binder)
+  ran every fix. Non-reactive work inside a collecting helper needs its own `remember` block to
+  cache results. `traced` by Derek.
+- SKILL: Do not pass positionally-indexed lists across a composable boundary. `GarageHub` read
+  `bench.getOrNull(1)` as "Appearance" and `getOrNull(2)` as "Connections", while `ControlPanelScreen`
+  built that list via `GROUP_INFO.filter(...)`, which declared Connections first. Result: the
+  tile labelled "LOOK" opened Connections and "EXTERNAL SYNC" opened Appearance. Fixed with a
+  `GarageRole` enum on each item and lookup by role. `traced` by Derek.
+- SKILL: A weighted child inside a vertically scrollable parent throws — measured against infinite
+  max height. Restoring `verticalScroll(rememberScrollState())` to Cruise's COMPACT branch (which
+  also had `Modifier.weight(1f)` + `Arrangement.SpaceEvenly`) caused a layout crash on preview.
+  Both weight/spacing had to go; fixed spacing replaced them. `tested` on COMPACT layout.
+
+## Mapbox SDK API surface and Location bridge (2026-07-25)
+
+- SKILL: Read Mapbox SDK bytecode to verify semantics. Javap (`/c/Program Files/Android/Android
+  Studio/jbr/bin/javap`) can show method signatures but not parameter units (nanoseconds vs millis).
+  Decompile actual implementation: extract the AAR from `~/.gradle/caches/modules-2/files-2.1/com.mapbox
+  .*/`, unzip it (`classes.jar`), unzip the jar (`com/mapbox/...`), then `javap -c` the real converter
+  logic. This is how to confirm API semantics rather than trusting memory or docs. Example: `Location
+  .Builder.monotonicTimestamp(Long)` takes nanoseconds (verified by reading `LocationServiceUtils
+  .toCommonLocation` and `toAndroidLocation` bytecode), not milliseconds (which the field name suggested).
+- SKILL: Wire a custom app-owned location source into Mapbox Nav SDK v3 via `LocationOptions.Builder()
+  .locationProviderFactory(DeviceLocationProviderFactory, LocationOptions.LocationProviderType.REAL)` ->
+  `NavigationOptions.Builder(context).locationOptions(...)`. The SDK never reads app StateFlows on its
+  own. `DeviceLocationProviderFactory.build(request: LocationProviderRequest?)` takes a NULLABLE param
+  and may invoke its callback only when a real location exists (if no fix exists, the callback may never
+  fire, but that is the device's problem, not the SDK's contract violation).
+- SKILL: On Android 14, typed-foreground-service permission enforcement keys off the manifest-declared
+  `foregroundServiceType`, not the `startForeground()` overload used at runtime. So the "fall back to
+  untyped startForeground" pattern only rescues a service that declares OTHER types too. A service
+  declaring only one `foregroundServiceType` (e.g. `location`) has no permission-free variant and must
+  refuse to start instead (no graceful degradation possible).
+
+## Maintenance & LiveSession features (2026-07-29)
+
+- SKILL: Room's `exportSchema=true` JSON generation runs during `compileDebugKotlin` (Gradle's kapt phase), not only at `assembleDebug`. The generated schema file in `app/schemas/<version>/` is available immediately after compilation, useful for a fast migration-SQL verification loop without a full build/assemble cycle.
+- SKILL: `LiveToolbox` zero-cost data-read tools (get_codes, get_health, get_vehicle_data, etc.) live inline as `private suspend fun` returning `result()`; these are fast path tools that read Room / OBD state directly. Sub-agent hand-off tools wrap `SubAgent.investigate()` via `agentResult {}` (expensive, hit the model). New zero-cost reads should follow the first pattern.
+- SKILL: `AriaBrain.sharedInstructions` (called from `assembleBase()`, cached ~2min) is the right home for tool-usage guidance, behavioral guardrails, persona defaults, and companion safety rules. The fresh-per-turn `buildLiveContext()` (called on every conversation start) is for live DB state only (current vehicle facts, now-playing track, weather, drive stats). Keep the split: cached rules + fresh facts.
+- SKILL: `AriaDimens` now carries a spacing scale: `s1`=4dp, `s2`=8dp, `s3`=16dp, `s4`=24dp, `s5`=32dp. New spacing in `ui/` should map onto these five stops instead of inline dp values. It was previously referenced ZERO times across all of `ui/`, which made the original "use AriaDimens tokens" rule (CLAUDE.md sec 12) literally unfollowable until the scale was added.
+- SKILL: `screenEdge(sizeClass)` and `sectionGap(sizeClass)` helper functions live in `ui/WindowSize.kt`, not in `ui/theme/`. The reason: `SizeClass` is a ui/-layer concept (Material3 WindowSizeClass, used only in composables), and the established import direction is `ui/ -> ui/theme/`, never reversed. Keep platform/theme-level code in theme, screen-layout code in WindowSize.
+- SKILL: `AvatarVibe` composable is called with a SQUARE box on BOTH size classes: COMPACT uses 100x100dp, EXPANDED uses `avatarSize²` (a square). Avatar cropping/framing must account for both dimensions being equal (no assumption of portrait/landscape asymmetry).
+- SKILL: `AvatarStudio.carImage()` is the driver's VEHICLE PHOTO (a wide dashboard-facing banner for the Cruise screen; intended as a "this is your car" intro). It is distinct from companion portrait avatars (the androgynous Zero figure). Do not conflate the two when deciding image-cropping alignment or frame-safety.
+- SKILL: CruiseScreen's EXPANDED/MEDIUM layouts still call the pre-dock components (`CompactCruise` is a dock-layout idiom, scoped to COMPACT only); EXPANDED/MEDIUM Cruise is built from the earlier control pattern and untouched. Two idioms coexist deliberately; when reviewing responsive layout changes, trace which idiom is active per size class.
+- SKILL: `VehicleController.NextService` data class has exactly one construction site (where the next-due service is computed for a voice response). It is safe to add new fields to this class, but always grep `NextService\(` before adding fields; make sure you're wiring all call sites.
+
+## Maintenance three-state data model (2026-07-29)
+
+- SKILL: `maintenance_item` rows have three distinct logical states (see decisions.md for the full feature): ANCHORED (lastDoneMileage/lastDoneDate both set), UNKNOWN (both null, neverDone=false), NEVER-DONE (neverDone=true). Do NOT coerce UNKNOWN to "0 days since" or "0 miles since" — that silently injects phantom overdue items. Code that reads lastDone* must explicitly check for null and treat it as UNKNOWN (no due-date inference). The DUE tab and prompt both filter: DUE only injects ANCHORED + NEVER-DONE, hides UNKNOWN.
+- SKILL: `get_next_service` returns TWO SEPARATE lists: by mileage and by time. There is deliberately NO single merged ranking. A service due in 500 miles AND 1 month appears on both lists independently. Ranking miles against time requires estimating miles-per-day, which Kevin explicitly ruled out (confuses the driver's recent pace with the interval's design pace). The companion highlights what's immediate; the driver chooses which axis matters. Tools that consume NextService MUST handle the two lists separately; do not try to rank them.
+- SKILL: `log_past_service(service_name, mileage?, time?)` backfill writes ONLY to maintenance_item, never to service_record. Remembered approximations must not pollute the precise ledger. A driver who says "I don't know the exact mileage" stays UNKNOWN (item stays guesswork-free) and the next service conversation asks for the missing axis.
+
+## Date handling and zone conversions (2026-08-02)
+
+- GOTCHA: A date-only value stored as epoch-millis at UTC midnight and a real instant stored as epoch-millis are the same TYPE in Java but DIFFERENT SEMANTICALLY. Rendering both through `ZoneId.systemDefault()` is wrong for date-only values. Example: all ingestion paths normalize parsed calendar dates to UTC midnight (`LocalDate.parse(...).atStartOfDay(ZoneOffset.UTC)`). If rendered through `ZoneId.systemDefault()` at UTC-5, the result is the previous calendar day. The bug survived compile, 71 unit tests, and two senior-dev reviews — it is only visible at device level with a known ground-truth date to compare.
+- SKILL: Date-only values (from `LocalDate.parse` or normalized to UTC midnight) must render through UTC formatters. Real instants (from `System.currentTimeMillis()`) must render through system-timezone formatters. Local-midnight values (from `LocalDate` normalized to local time via `atStartOfDay()` or `LocalTime.MIDNIGHT`) must render through system-timezone formatters. Assign different formatters per intent, or wrap them to know their input zone.
+- SKILL: In LEGION, **three call sites render UTC-midnight document dates** and must use the UTC formatters: (1) `LedgerController` ledger stream row display, (2) `PantryController` pantry receipt header display, (3) `LiveToolbox.get_transactions` voice tool result. Eight other sites use the same formatters on real instants (CodeEvent, ServiceRecord, BuildEntry) or local-midnight values (MaintenanceItem.lastDoneDate); those were already correct and would break under a blanket formatter change.
+- SKILL: When reading code that renders a timestamp, verify its source: System.currentTimeMillis() (use system timezone), LocalDate.parse output (use UTC), or local-midnight (use system timezone). If you cannot determine the source, search back to where the value entered the type system. A one-timezone-fits-all render call is a code smell.
+
+## Palette validation (2026-08-14)
+
+- SKILL: Any palette or semantic-colour decision runs `node scripts/validate_palette.js "<hex,hex,...>" --mode dark` from the `dataviz` skill's base directory before it is recorded as resolved. Floors: dE >= 15 normal-vision, dE >= 8 CVD; the validator also flags surface contrast (subsumes WCAG pass for chart and mark colours). On 2026-08-14, an eye-revised palette failed dE 10.4 against floor 15, and the same run caught a shipped bug in `DeckCharts.kt` (green/amber at dE 5.5 deutan).
+
+- FACT: Mission-control palette (2026-08-14) WCAG relative luminance against `#000000` ground:
+
+| Token | Hex | Contrast |
+|---|---|---|
+| `ink` | `#E4E9EF` | 17.20:1 |
+| `data` (mint) | `#57EFC6` | 14.57:1 |
+| `amber` | `#FFBA1F` | 12.30:1 |
+| `chromeText` | `#FF8A6B` | 9.10:1 |
+| `faint` | `#8E97A3` | 7.11:1 |
+| `chrome` | `#FF5330` | 6.53:1 |
+| `ghost` | `#58606C` | 3.30:1 |
+| `chromeDim` | `#5A2317` | **1.69:1** |
+
+  WCAG floor is 3:1 for non-text UI. `chromeDim` (bezel lines, pane outlines) fails by 49%; the app's entire structural language may vanish in direct sun. Tested 2026-08-14 for mission-control ticket 08 (driving-mode legibility grilling). `ghost` clears non-text only (3.30:1) and must never carry body text.
+
+- FACT: Questions falsified by measurement, mission-control ticket 08. Sunlit legibility test asked whether amber or mint performs better; measured contrast shows **mint is higher-contrast** (14.57:1 vs 12.30:1). No palette split for the car; driving mode keeps mint. Same pattern as mission-control ticket 06: a question that looked like taste or tradeoff turns out to be arithmetic.
+
+## Material 3 theme and ColorScheme (2026-08-02)
+
+- GOTCHA: `contentColorFor(color)` resolves content colour (text, icons) for a container of a given colour via a by-value `when` chain. When two ColorScheme roles are assigned the same colour value, `contentColorFor` returns the ink for the role that appears FIRST in its internal when-chain, not the role you intended. Example: assigning `InstrumentSurface` to both `surface` and `errorContainer`, where `errorContainer` comes first in the chain, makes every `Surface {}` composable's default text red (`onErrorContainer`) instead of `onSurface` (`InstrumentInk`, a near-white). The collision is silent and visible only at runtime. **Fix: ColorScheme roles must have unique colour values.** When a theme has overlapping semantic roles (e.g., both a surface and an error container need the same visual treatment), assign unique values to the roles and drive the assignment logic in colour usage (set `contentColor` explicitly where needed) rather than hoping a shared value will resolve predictably.
+
+## Application initialization and process-global state (2026-08-02)
+
+- SKILL: Process-wide cache initialization must live in `Application.onCreate()`, never in a foreground service or domain-specific service that might start conditionally. Example: `GeminiKeyProvider`, `ProactivePreferences`, and `LedgerFolderPreferences` were seeded in `AriaForegroundService.onCreate()` when that service started unconditionally. Once ticket 07 made the voice service opt-in (`AssistantIgnition` toggle), the caches silently stopped initializing on normal launch, leaving saved values on disk but the in-memory cache uninitialized — causing the spend gate to report "no key" for a key that existed, and the folder connection to be forgotten on every app start. The code was correct; the initialization pathway simply did not run. **Fix: `Application.onCreate()` runs once per process, independent of any toggle or service state.**
+- SKILL: Verify application-global cache initialization by grepping `init()` method call sites. Ensure at least one call site runs unconditionally on every app launch (either in `Application.onCreate` or in an Activity that cannot be bypassed). If `init()` is only called from conditional paths (inside a toggleable service, or behind a feature gate), the cache will silently fail to initialize and present as a missing feature.
+- RULE: When a previously-unconditional service becomes conditional (e.g., adding a toggle), audit every `init()` call, static block, and lazy singleton in that service's `onCreate()`. Each one is now at risk of becoming orphaned. Migrate initialization to `Application.onCreate()` or to the first UI path that uses it.
+
+## Extraction and reconciliation gate verification (2026-08-03)
+
+- SKILL: For any data-extraction path with a reconciliation gate (parsers, LLM ingestion, vision extraction), verify the real extracted document independently of the parser before believing the test suite. The gate verification loop: (1) Run the user's real file/image through the extraction path. (2) Count the extracted items INDEPENDENTLY of the parser (manually, regex probe, external tool). (3) Compare the independent count to the parser's count. (4) If they differ, examine the gap and fix the parser. (5) Update the fixture to match reality. (6) Re-run on the real file to confirm the fix. Test suites written from the same spec as the parser test that the parser matches the spec, not that the spec matches reality. Four real-statement bugs in LEGION's ledger were found this way in two days; none surfaced in green test suites or code review because the fixtures were generated from the same assumptions the parser coded.
+
+## Layout and measurement claims (2026-08-14)
+
+- SKILL: A device measurement (pixel sample, node bounds dump via `uiautomator dump`, frame capture, scroll position) is only valid for the state the device was actually in at measurement time. A node measured while scrolled off-screen describes its clipped rectangle, not its full bounds. A pixel sample taken from a downscaled screenshot describes the downscaled value, not the rendered one. **Put the target in the state you are claiming to measure: scroll it into view, open the state that renders it, and state the device condition in your finding.** Ticket 16's false-positive TalkBack defect (purge row measuring 29dp / 3dp / 1dp) was an `uiautomator dump` of an unscrolled list; scrolled into view the same node is 48dp, and the node was correct. An earlier measurement (19dp unscrolled vs 54dp scrolled) caught the same pattern and was correctly dismissed as ordinary list behaviour; the false positive happened because that earlier finding was not consulted.
+
+- RULE (L22, lessons.md): Always name your assumptions about device state in a measurement-based finding. Does the list need to scroll to show the target? Is the state expanded or collapsed? Is the feature connected or disconnected? If a finding cites a past measurement, confirm the device is still in the same state before acting on it.
+- GOTCHA: Two exports of the same account from the same bank do not word a transaction identically, so any dedup key containing the description will miss real duplicates. Measured on Kevin's real files 2026-08-03: the July BofA checking PDF covers 06/05-07/06 (16 rows), the mid-cycle CSV covers 07/01-07/31 (12 rows), three transactions overlap, and `resolveDedup` caught 2 of 3. The miss was `PURCHASE   0706 VPN24.ME EDINBURGH    00` (PDF) versus `VPN24.ME 07/06 PURCHASE EDINBURGH 00` (CSV) - same account, same date, same -8.99, different word order. `dedupKey` normalizes whitespace and case but keeps the description, which is deliberate (it errs toward keeping rows rather than dropping real ones), so this is an assumption mismatch rather than a dedup bug. OPEN as of 2026-08-03, recurs every month a CSV overlaps a statement. Candidate fixes: drop the description from the key (risks collapsing genuinely distinct same-day same-amount rows); match on account+date+amount for CSV-vs-existing only; or record each statement's covered period and treat a CSV row inside a reconciled statement's period as already accounted for. Only the third is a stated fact rather than a guess, per CLAUDE.md section 4.

@@ -1,5 +1,14 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Placeholder theme only - the design language is a clean-slate rebuild,
-         not ported from Midnight AI's retired city-pop AriaTheme. -->
-    <style name="Theme.Legion" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Launch theme only. The real design language is Compose-side in
+         ui/theme/ (Instrument, decided 2026-08-01, wayfinder ticket 02).
+
+         This exists so the window background matches the Compose ground before
+         the first frame draws. It was Theme.Material.Light.NoActionBar, which
+         flashed white on every cold start against a near-black app. -->
+    <style name="Theme.Legion" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/instrument_ground</item>
+        <item name="android:statusBarColor">@color/instrument_ground</item>
+        <item name="android:navigationBarColor">@color/instrument_ground</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+    </style>
 </resources>

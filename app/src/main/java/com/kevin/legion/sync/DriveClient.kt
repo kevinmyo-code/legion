@@ -18,9 +18,12 @@ import java.util.concurrent.TimeUnit
  * (returns null/false/[UpdateResult.Failure], logs) rather than throwing, so a
  * flaky connection just skips a sync round instead of crashing.
  *
- * Five operations: list the folder, download a file, look up one file by name,
- * create a file, and write (create-or-overwrite) a file's contents. Files are
- * the gzipped-NDJSON table snapshots [SyncEngine] produces.
+ * Six operations: list the folder, download a file, look up one file by name,
+ * create a file, write (create-or-overwrite) a file's contents, and delete a
+ * file by id. Files are the gzipped-NDJSON table snapshots [SyncEngine]
+ * produces, or (added 2026-08-12) the gzipped whole-database backups
+ * [DatabaseSnapshot] produces - this client is deliberately format-agnostic,
+ * it just moves bytes.
  *
  * B20 (optimistic concurrency): Drive API v3 dropped v2's `etag` File-resource
  * field in favor of a monotonically increasing `version` counter + revision
@@ -209,6 +212,25 @@ class DriveClient(private val accessToken: String) {
         else if (create(name, bytes) != null) UpdateResult.Ok
         else UpdateResult.Failure
     }
+
+    /**
+     * Deletes a file from appDataFolder by id. True on success, including when the file was
+     * already gone (404 - treated as "the end state we wanted" rather than a failure, so a
+     * caller pruning old backup generations doesn't retry-loop on a file it already removed).
+     * [DatabaseSnapshot]'s generation-pruning is the one caller: it deletes the oldest
+     * generation only AFTER a new one has uploaded successfully, never before - see that
+     * class's doc comment for why the ordering is load-bearing.
+     */
+    fun delete(fileId: String): Boolean =
+        try {
+            client.newCall(authed(Request.Builder().url("$FILES/$fileId")).delete().build())
+                .execute().use { resp ->
+                    if (resp.isSuccessful || resp.code == 404) true
+                    else { Log.w(TAG, "delete $fileId failed: ${resp.code}"); false }
+                }
+        } catch (t: Throwable) {
+            Log.w(TAG, "delete error", t); false
+        }
 
     private companion object {
         const val TAG = "DriveClient"

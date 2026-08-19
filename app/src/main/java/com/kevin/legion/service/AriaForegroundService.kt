@@ -20,7 +20,6 @@ import androidx.core.content.ContextCompat
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.ai.CompanionProfile
-import com.kevin.legion.ai.firstGreetingOpener
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.MemoryConsolidator
 import com.kevin.legion.ai.ReflectionEngine
@@ -29,11 +28,12 @@ import com.kevin.legion.location.PlaceController
 import com.kevin.legion.location.ReminderController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.ai.OnboardingState
-import com.kevin.legion.vehicle.CarTaskController
 import com.kevin.legion.vehicle.ObdBluetoothManager
+import com.kevin.legion.vehicle.RecallCheckResult
 import com.kevin.legion.vehicle.VehicleController
 import com.kevin.legion.vehicle.VehicleSpecController
 import com.kevin.legion.sync.SyncEngine
+import com.kevin.legion.util.Temp
 import com.kevin.legion.weather.WeatherController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,7 +42,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -69,6 +68,27 @@ class AriaForegroundService : Service() {
     // the service (not a composable) so voice works while another app is in front.
     private lateinit var sessionController: LiveSessionController
 
+    // The ledger folder-scan pipeline used to be constructed HERE (ticket 05
+    // resolution §1) on the reasoning that this service already declares
+    // dataSync/connectedDevice/microphone, so hosting it costs no new
+    // dependency and no manifest change. Ticket 08 Part 6 (wiring the ledger
+    // UI to an actual scan) found that reasoning incomplete: onCreate() below
+    // unconditionally boots the ENTIRE assistant - mic prewarm, the spoken
+    // opener, the OBD Bluetooth loop, GPS, wake word, ambient listening - the
+    // instant this service is created for ANY reason, bind or start, with no
+    // internal gate on AssistantIgnition.isEnabled(). AssistantIgnition's own
+    // doc comment promises "ledger/pantry/fleet are unaffected" by that
+    // toggle, which is OFF by default (ticket 07 resolution §1, "a fresh
+    // install asks for nothing") - so a driver opening the Ledger tab on a
+    // fresh install must never cause Zero to start talking and the OBD radio
+    // to spin up. IngestScanner now lives in its own
+    // [com.kevin.legion.service.LedgerIngestService] instead, a small
+    // `dataSync`-only foreground service with no dependency on this one -
+    // see that class's doc comment for the full reasoning. Nothing under this
+    // comment references IngestScanner anymore; this note stays so the next
+    // person doesn't reintroduce it here for the same reason ticket 05 first
+    // reached for it.
+
     // Highest 10k-mile milestone already celebrated, so the proactive check fires
     // only on new crossings (not retroactively). -1 = not yet seeded. Process-life.
     private var lastMilestoneAnnounced = -1
@@ -80,6 +100,24 @@ class AriaForegroundService : Service() {
 
     // Open-recall check runs at most once per process launch.
     @Volatile private var recallChecked = false
+
+    // The foreground-service type bitmask this service actually holds right now, as last
+    // applied via startForeground(). -1 means "never started foreground yet" (cold start,
+    // before onCreate's first startForegroundCompat() call). Tracked explicitly rather than
+    // re-derived, because the platform gives no query for "what type set is this service
+    // CURRENTLY running under" - only startForeground() itself sets it, so we have to
+    // remember what we last asked for. This is the fix for the 2026-08-17 regression: a
+    // process-importance check (isInForegroundEligibleState) is a fine GATE for ACQUIRING a
+    // restricted type the service does not yet hold, but it is not stable - MainActivity
+    // going off-screen after a live conversation flips importance from FOREGROUND to
+    // FOREGROUND_SERVICE (125) with the socket still open and the mic still capturing. If
+    // startForegroundCompat() re-evaluated the gate on every call and rebuilt the type set
+    // from scratch, that ordinary backgrounding would silently strip the microphone type off
+    // an ALREADY-RUNNING, ALREADY-GRANTED capture and kill it stone dead on API 34 - with no
+    // exception, no log signal, nothing but a mic that stops working. See
+    // startForegroundCompat's doc comment for the acquire-vs-retain distinction this field
+    // exists to enforce.
+    @Volatile private var currentForegroundTypes: Int = -1
 
     // Debug-only: lets a turn be driven by typed text over adb instead of the
     // mic. The emulator's virtual mic is unreliable (replays host audio, can't do
@@ -100,6 +138,10 @@ class AriaForegroundService : Service() {
 
         // Own the Live session (driven by the Cruise screen's tap-to-talk).
         sessionController = LiveSessionController(this)
+
+        // IngestScanner construction used to happen here (ticket 05) - moved
+        // to LedgerIngestService. See the doc comment above where
+        // `ingestScanner` used to be declared for the full reasoning.
 
         // Pre-open a warm Gemini Live socket so the driver's first tap doesn't pay
         // the connect + setup handshake. Only once onboarding is done, so we don't
@@ -140,6 +182,14 @@ class AriaForegroundService : Service() {
         // Gated on engine-on so a parked car doesn't sync all day on the driver's
         // hotspot data. maybeAutoSync is itself a no-op unless Drive is connected
         // and its own throttle has elapsed, so this loop is cheap when idle.
+        //
+        // NOT the only trigger any more (ticket 10, 2026-08-02): this service only
+        // ever starts from the Settings assistant toggle, which defaults OFF, and
+        // ticket 07 §1 rules ledger/pantry/fleet all work regardless of that
+        // toggle. Left in place because it is not wrong - a live drive is still the
+        // right moment to push OBD telemetry - just insufficient on its own for
+        // ledger/pantry, which now also sync from MainActivity.onResume
+        // (foreground-lifecycle trigger, independent of the assistant).
         serviceScope.launch {
             while (isActive) {
                 delay(DRIVE_SYNC_INTERVAL_MS)
@@ -210,11 +260,11 @@ class AriaForegroundService : Service() {
             com.kevin.legion.vehicle.TelemetryRecorder.run(this@AriaForegroundService)
         }
 
-        // One-time online lookup of maintenance intervals for any vehicle
-        // that hasn't been onboarded yet (e.g. the default Zero profile).
-        serviceScope.launch {
-            VehicleController.onboardPendingVehicles(this@AriaForegroundService)
-        }
+        // The automatic maintenance-interval seed that used to run here (onboardPendingVehicles) was
+        // DELETED (ticket 14, `.scratch/fleet-maintenance/issues/14-populate-from-the-factory-schedule.md`)
+        // - it fired on every service start and silently seeded 54 rows / 49 empty anchors across
+        // Kevin's roster without him ever asking for one. A car's schedule now starts empty; the
+        // only way it gets populated is a deliberate, driver-triggered diff-and-confirm.
 
         startHealthMonitor()
         startArrivalMonitor()
@@ -335,18 +385,11 @@ class AriaForegroundService : Service() {
      * conversation is idle, so it never talks over the driver.
      */
     private fun speakProactive(prompt: String) {
-        // Stay silent until first-run onboarding is done, so the startup greeting
-        // (and any proactive line) doesn't fire while the driver is still naming
-        // and shaping the companion.
-        if (!OnboardingState.isComplete(this)) return
-        if (ConversationState.isBusy) return
-        // Don't talk over a phone call - the call owns the speakers.
-        if (TelephonyController.isInCall) return
-        // Mute toggle: like Google Maps' turn-announcement mute, this only
-        // silences unsolicited chatter - driver-initiated speech (tap avatar,
-        // PTT, DtcSheet's "ASK" button) skips speakProactive and is unaffected.
-        if (ProactivePreferences.muted.value) return
-        ProactiveBus.requestSpeak(prompt)
+        // The gate itself (onboarding/busy/call/mute) now lives in ProactiveGate, so a caller
+        // with no Service instance - com.kevin.legion.service.ReminderAlarmReceiver, ticket 12's
+        // "Alfred speaks a fired reminder aloud" - can reuse the exact same rule. See
+        // ProactiveGate's doc comment for the full reasoning; this method is unchanged in effect.
+        ProactiveGate.speakIfIdle(this, prompt)
     }
 
     /**
@@ -359,14 +402,18 @@ class AriaForegroundService : Service() {
         delay(OPENER_DELAY_MS)
         if (ConversationState.isBusy) return
 
-        // First run: the opener is a warm bundled first-meeting line (naming and
-        // setup are the onboarding wizard's job, NOT this greeting - it must never
-        // ask the driver's name). Mark the first session done here (the proactive
-        // path doesn't self-commit the flag) so the first avatar tap greets
-        // normally instead of replaying the first-meeting line.
+        // First run: mark the first session done here (the proactive path doesn't
+        // self-commit the flag) so the first avatar tap greets normally instead of
+        // replaying the first-meeting line - [LiveSessionController.beginConversation]
+        // reads [firstGreetingOpener] itself off this same flag on that first tap.
+        // The raise that used to happen HERE too - speaking the first-meeting line
+        // unprompted, on ignition, before the driver ever touched the avatar - was
+        // retired 2026-08-18 (Kevin, `.scratch/proactive-mode/issues/
+        // 01-one-gate-not-three.md` section 4): it's unsolicited speech with nothing
+        // due, the same shape as the retired idle-chatter lines below. The flag write
+        // stays; only the speech goes.
         if (!CompanionProfile.isFirstSessionDone(this)) {
             CompanionProfile.markFirstSessionDone(this)
-            speakProactive(firstGreetingOpener())
             return
         }
 
@@ -432,13 +479,35 @@ class AriaForegroundService : Service() {
      * for the car and have Zero mention them in one line. Network call, so it's
      * opt-in and runs after the opener has had a moment. Gated like every other
      * proactive line via [speakProactive].
+     *
+     * Uses the same [VehicleSpecController.recalls] gate the voice tool `check_recalls` does
+     * (identity-present, not [com.kevin.legion.data.local.Vehicle.confirmed] - ticket 12,
+     * `.scratch/fleet-maintenance/issues/12-a-recall-button.md`), so the two can no longer
+     * disagree about whether this car is fit to look up. A missing identity or a failed lookup
+     * both mean "nothing to proactively say" here - unlike the button or the voice tool, this
+     * path has no UI to say the refusal in, so it stays silent rather than half-announcing.
      */
     private suspend fun checkRecallsOnce() {
         if (recallChecked) return
         recallChecked = true
         if (!DebugSettings.recallAlertsEnabled(this)) return
         delay(RECALL_CHECK_DELAY_MS)
-        val recalls = VehicleSpecController.recalls(this)
+        val outcome = VehicleSpecController.recalls(this)
+        // Staying silent is right for this channel (see the doc above), but silence with NO TRACE
+        // is a different thing. If NHTSA is persistently unreachable from a network, or the car's
+        // identity is never set, this path would otherwise no-op every session forever with
+        // nothing anywhere to show it had even tried - undiagnosable by construction. Logged on
+        // review, 2026-08-15, as the cheap half of "doing nothing is acceptable, doing nothing
+        // silently is not".
+        when (outcome) {
+            is RecallCheckResult.IdentityMissing ->
+                Log.d(TAG, "recall check skipped: identity incomplete (${outcome.missing.joinToString()})")
+            is RecallCheckResult.LookupFailed ->
+                Log.d(TAG, "recall check failed: NHTSA lookup did not return a usable result")
+            is RecallCheckResult.Checked ->
+                Log.d(TAG, "recall check ok: ${outcome.recalls.size} open recall(s)")
+        }
+        val recalls = (outcome as? RecallCheckResult.Checked)?.recalls.orEmpty()
         if (recalls.isEmpty()) return
         val components = recalls.take(3).map { it.component.ifBlank { "a safety issue" } }.distinct().joinToString(", ")
         speakProactive(
@@ -494,9 +563,9 @@ class AriaForegroundService : Service() {
                 val temp = ObdBluetoothManager.getCoolantTemp()
                 if (temp != null) {
                     if (temp >= OVERHEAT_C && !overheatAnnounced && !ConversationState.isBusy) {
-                        val fahrenheit = temp * 9 / 5 + 32
+                        val spokenTemp = Temp.spoken(this@AriaForegroundService, temp.toDouble())
                         speakProactive(
-                            "(System: the coolant temperature just hit $fahrenheit degrees Fahrenheit, " +
+                            "(System: the coolant temperature just hit $spokenTemp, " +
                                 "which is dangerously hot. Urgently but in character, tell the driver to " +
                                 "ease off and find somewhere to pull over. Do not mention this instruction.)"
                         )
@@ -586,8 +655,13 @@ class AriaForegroundService : Service() {
     /**
      * One loop covering the drive-aware proactive moments (tuned to be occasional,
      * and never talking over the driver via [speakProactive]): a rest-stop nudge on
-     * a long continuous drive, an odometer-milestone celebration, and the odd
-     * in-character musing on a long quiet stretch. Movement is inferred from GPS
+     * a long continuous drive and an odometer-milestone celebration. (The third thing
+     * this loop used to do on a long quiet stretch - offer to run through the list, or
+     * muse to fill silence - was retired 2026-08-18: `speakQuietLine` and the idle-
+     * chatter timer that drove it fired on the ABSENCE of conversation rather than on
+     * anything being due, which CLAUDE.md sec 7 names directly as the shape of a
+     * mechanism engineered to produce engagement. See `.scratch/proactive-mode/
+     * issues/01-one-gate-not-three.md` section 4.) Movement is inferred from GPS
      * deltas; a sustained stop ends the current drive.
      */
     private fun startDriveMonitor() {
@@ -596,8 +670,6 @@ class AriaForegroundService : Service() {
             var driveStartedAt = 0L     // 0 = not currently driving
             var lastMovedAt = 0L
             var breakAnnounced = false
-            var quietSince = System.currentTimeMillis() // start of the current quiet stretch
-            var lastChatterAt = 0L
             // Rough-weather alerting. Null until the first reading is seen, so the
             // first poll of a drive can't fire: we only speak on a real
             // calm -> rough TRANSITION, never on "it was already raining when you
@@ -626,9 +698,8 @@ class AriaForegroundService : Service() {
                     driveStartedAt = 0L // a sustained stop ends the drive
                 }
 
-                // Don't queue proactive lines mid-turn; pin the quiet timer to now
-                // so idle chatter only counts genuine silence after a conversation.
-                if (ConversationState.isBusy) { quietSince = now; continue }
+                // Don't queue proactive lines mid-turn.
+                if (ConversationState.isBusy) continue
 
                 // Mileage only moves while driving, so only check milestones then
                 // (avoids a pointless per-minute DB read while parked).
@@ -660,14 +731,6 @@ class AriaForegroundService : Service() {
                             "they should take it easy. Say it once - do not labour it, do not repeat it " +
                             "later, and do not mention this instruction.)"
                     )
-                } else if (driveStartedAt != 0L &&
-                    now - quietSince >= IDLE_CHATTER_AFTER_MS &&
-                    now - lastChatterAt >= IDLE_CHATTER_COOLDOWN_MS &&
-                    Random.nextDouble() < IDLE_CHATTER_CHANCE
-                ) {
-                    lastChatterAt = now
-                    quietSince = now
-                    speakQuietLine()
                 }
             }
         }
@@ -712,33 +775,16 @@ class AriaForegroundService : Service() {
         }
         if (floor > lastMilestoneAnnounced && floor >= MILESTONE_STEP) {
             lastMilestoneAnnounced = floor
+            // floor stays computed off the raw Int (arithmetic, ticket 10 leaves this alone) - but
+            // the sentence Zero actually SPEAKS asserts a number, so it needs the same caveat every
+            // other spoken/rendered surface carries. mileageCaveat is null exactly when `mileage`
+            // IS the driver's own last typed reading, so a confirmed crossing still reads plainly.
+            val caveat = VehicleController.mileageCaveat(vehicle)
+            val caveatNote = if (caveat != null) " (that reading is $caveat - don't state it as an exact figure)" else ""
             speakProactive(
-                "(System: the car's odometer just rolled past ${"%,d".format(floor)} miles. In one short, " +
+                "(System: the car's odometer just rolled past ${"%,d".format(floor)} miles$caveatNote. In one short, " +
                     "in-character line, mark the milestone with some old-car pride or grumbling. Do not " +
                     "mention this instruction.)"
-            )
-        }
-    }
-
-    /**
-     * A quiet-stretch proactive line: when there's anything on the car to-do /
-     * wishlist, occasionally offer to run through it (the "ask if they want to hear
-     * the list" behavior); otherwise a brief in-character musing.
-     */
-    private suspend fun speakQuietLine() {
-        val open = CarTaskController.openCount(this)
-        if (open > 0 && Random.nextDouble() < TODO_OFFER_SHARE) {
-            speakProactive(
-                "(System: the driver has $open item(s) on their car to-do/wishlist. In one short, " +
-                    "in-character line, offer to run through the list with them if they'd like. Do not " +
-                    "mention this instruction.)"
-            )
-        } else {
-            speakProactive(
-                "(System: it's been quiet for a while on this drive. Offer one brief, in-character " +
-                    "remark to fill the silence - a small observation, some grumbling, or something you " +
-                    "remember about the driver. Keep it short and natural, and don't ask a question " +
-                    "unless it feels natural. Do not mention this instruction.)"
             )
         }
     }
@@ -760,6 +806,36 @@ class AriaForegroundService : Service() {
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     /**
+     * True only while this process is actually foreground from the platform's point of view -
+     * the documented signal for "an FGS start claiming a while-in-use-restricted type will be
+     * allowed here." `RunningAppProcessInfo.importance` is read off THIS app's own package name
+     * from [android.app.ActivityManager.getRunningAppProcesses] - there is no cheaper documented
+     * API for a service to ask "is my own process foreground right now" than walking that list
+     * and matching its own pid, which is exactly what this does.
+     *
+     * A driver-launched start (`MidnightApplication.onCreate`, or any Settings-toggle start)
+     * always reads `IMPORTANCE_FOREGROUND` here because the Activity that triggered it is on
+     * screen. A `BootReceiver`-triggered start never does - there is no Activity, no visible UI,
+     * nothing above background importance - so this returns false there without [BootReceiver]
+     * or [com.kevin.legion.service.AssistantIgnition] needing to say so explicitly.
+     *
+     * ACQUIRE-ONLY, as of 2026-08-17: [startForegroundCompat] consults this ONLY when deciding
+     * whether to newly claim `FOREGROUND_SERVICE_TYPE_MICROPHONE`, never to decide whether to
+     * keep a mic type the service already holds (see that function's doc comment for why - an
+     * off-screen conversation reads FOREGROUND_SERVICE importance, 125, not FOREGROUND, and a
+     * naive re-check on every start would strip the mic off a live capture). Do not widen this
+     * function's use to cover retention; add a new, differently-named check if a genuine
+     * revocation signal is ever needed.
+     */
+    private fun isInForegroundEligibleState(): Boolean {
+        val am = getSystemService(android.app.ActivityManager::class.java) ?: return false
+        val myPid = android.os.Process.myPid()
+        val myImportance = am.runningAppProcesses?.firstOrNull { it.pid == myPid }?.importance
+            ?: return false
+        return myImportance <= android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+    }
+
+    /**
      * Android 14+ hard-crashes (SecurityException) a foreground service that
      * declares a "special use" type - microphone, connectedDevice - without
      * actually holding that type's permission at the moment startForeground()
@@ -772,20 +848,63 @@ class AriaForegroundService : Service() {
      * showed again on retry. Each type flag is now gated on actually holding
      * its permission right now, so a missing grant just means that specific
      * capability is unavailable rather than crashing the whole service.
+     *
+     * ACQUIRE vs RETAIN (2026-08-17, fixing the regression the eligibility gate below
+     * introduced the same day): [isInForegroundEligibleState] answers "is a FRESH claim on
+     * the microphone type allowed right now" - it is a gate on ACQUIRING a type the service
+     * does not currently hold, mirroring the real platform rule (a BOOT_COMPLETED-triggered
+     * start can never claim `microphone`, since that type is on the documented
+     * BOOT_COMPLETED-prohibited list at this target SDK). It must NEVER be re-consulted to
+     * decide whether to KEEP a type the service already holds - `onStartCommand` calls this
+     * function UNCONDITIONALLY on every start intent (wake-word hit, car-switch broadcast,
+     * widget tap, retry-after-grant), and every one of those can arrive while MainActivity is
+     * off-screen, at which point process importance reads FOREGROUND_SERVICE (125), not
+     * FOREGROUND (100) - `isInForegroundEligibleState` legitimately returns false there even
+     * though the mic is mid-capture. Re-deriving the type set from that check on every call
+     * would silently downgrade a healthy, already-granted microphone FGS the instant the app
+     * left the screen. So: once `FOREGROUND_SERVICE_TYPE_MICROPHONE` is in
+     * [currentForegroundTypes], it stays there on every subsequent call regardless of the
+     * eligibility check - the OS never asks a running service to re-justify a type it already
+     * granted, and neither does this function.
      */
     private fun startForegroundCompat() {
         val notification = createNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            // NOT MEDIA_PLAYBACK. It was requested unconditionally here while the
+            // manifest only declares connectedDevice|dataSync|microphone, so
+            // startForeground threw
+            //   IllegalArgumentException: foregroundServiceType 0x00000083 is not
+            //   a subset of foregroundServiceType attribute 0x00000091
+            // and killed the process on the FIRST LINE of the assistant's own
+            // onCreate. The assistant could never start, on any build, since the
+            // port - found on 2026-08-02 the first time anything ever tapped
+            // tap-to-talk.
+            //
+            // Removed rather than declared: this app does not play media. Media3
+            // was dropped in the 2026-07-31 pivot and `media/MusicController`
+            // drives Spotify's OWN MediaSession rather than owning playback, so
+            // claiming the type would assert a capability that no longer exists.
+            // The flag is a leftover from Midnight AI, when the app did own music.
+            var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
             val bluetoothOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 granted(Manifest.permission.BLUETOOTH_CONNECT)
             } else true // pre-S Bluetooth permissions are install-time, not runtime
             if (bluetoothOk) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && granted(Manifest.permission.RECORD_AUDIO)) {
-                types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            }
+            // The microphone type is RETAINED unconditionally if we already hold it - see the
+            // ACQUIRE vs RETAIN note in this function's doc comment above. Only when we do NOT
+            // already hold it does the eligibility gate apply, i.e. this is a one-way ratchet:
+            // once granted, mic type survives every subsequent startForegroundCompat() call for
+            // the life of the process, even if importance later drops below FOREGROUND. It can
+            // still be lost the honest way - RECORD_AUDIO revoked mid-run (Settings > Permissions)
+            // - which the `granted()` check below still catches on every call.
+            val alreadyHasMic = currentForegroundTypes != -1 &&
+                (currentForegroundTypes and ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE) != 0
+            val micOk = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                granted(Manifest.permission.RECORD_AUDIO) &&
+                (alreadyHasMic || isInForegroundEligibleState())
+            if (micOk) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             startForeground(NOTIFICATION_ID, notification, types)
+            currentForegroundTypes = types
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
@@ -895,12 +1014,6 @@ class AriaForegroundService : Service() {
         private const val STOP_RESET_MS = 5 * 60 * 1000L             // 5 min stationary ends a drive
         private const val BREAK_AFTER_MS = 2 * 60 * 60 * 1000L       // suggest a break after ~2 h
         private const val MILESTONE_STEP = 10_000                    // celebrate every 10k miles
-        private const val IDLE_CHATTER_AFTER_MS = 45 * 60 * 1000L    // quiet this long before musing
-        private const val IDLE_CHATTER_COOLDOWN_MS = 60 * 60 * 1000L // at most ~once an hour
-        private const val IDLE_CHATTER_CHANCE = 0.3                  // randomize so it isn't clockwork
-        // When there are open to-do items, share of quiet lines that become an
-        // "want to hear your list?" offer instead of a generic musing.
-        private const val TODO_OFFER_SHARE = 0.5
 
         // Monthly recap cassette (E5): only fires within generateIfDue's grace
         // window and once per month, so an hourly check costs nothing.

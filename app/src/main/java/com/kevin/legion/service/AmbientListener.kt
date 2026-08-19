@@ -55,9 +55,10 @@ import java.io.File
  * is handed to a background [SubAgent], told to react ONLY when it's genuinely
  * a good, in-character moment (never for private-sounding conversation between
  * passengers, never just because something was said), and the result (if any)
- * goes through [ProactiveBus.requestSpeak] - the exact mechanism idle chatter
- * and health alerts already use, so it inherits the same busy/in-call/mute
- * gating and speaks in Zero's actual voice/persona, not a hardcoded string.
+ * goes through [ProactiveBus.speakIfAllowed] - the same unsolicited-speech gate
+ * idle chatter and health alerts already use, so it inherits the same busy/
+ * in-call/mute/onboarding gating and speaks in Zero's actual voice/persona,
+ * not a hardcoded string.
  *
  * **Not yet wired into companion-memory:** the ambient transcript is its own
  * stream, separate from [com.kevin.legion.data.local.EpisodicTurn] (which
@@ -234,18 +235,20 @@ object AmbientListener {
         val text = (result as? AgentResult.Success)?.text?.trim() ?: return
         if (text.isBlank() || text.equals("SILENT", ignoreCase = true)) return
 
-        // Re-check every gate at the moment of reacting, not just at listen-time -
-        // a lot can change during a 45s window plus a network round trip.
+        // Re-check the rate-limit floor at the moment of reacting, not just at listen-
+        // time - a lot can change during a 45s window plus a network round trip. The
+        // busy/call/mute/onboarding checks below are the shared unsolicited-speech gate
+        // (`.scratch/proactive-mode/issues/01-one-gate-not-three.md`) - this used to
+        // hand-roll its own copy of three of those four, and the copy never checked
+        // onboarding, so ambient reactions could speak over first-run setup.
         val now = System.currentTimeMillis()
         if (now - lastReactionAtMs < MIN_REACTION_GAP_MS) return
-        if (ConversationState.isBusy) return
-        if (TelephonyController.isInCall) return
-        if (ProactivePreferences.isMuted(context)) return
-        lastReactionAtMs = now
-        ProactiveBus.requestSpeak(
+        val spoke = ProactiveBus.speakIfAllowed(
+            context,
             "(System: you overheard the driver/cabin say something worth a quick, natural reaction - " +
                 "here's what to say, in your own voice, one short line: \"$text\")"
         )
+        if (spoke) lastReactionAtMs = now
     }
 
     private const val REASONING_QUESTION =

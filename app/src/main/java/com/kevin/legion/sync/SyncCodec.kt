@@ -26,6 +26,24 @@ internal object SyncCodec {
             lines.filter { it.isNotBlank() }.map { JSONObject(it) }.toList()
         }
 
+    /** Plain, un-gzipped NDJSON. Same line format, no compression wrapper. */
+    fun rowsFromNdjson(bytes: ByteArray): List<JSONObject> =
+        String(bytes, Charsets.UTF_8).lineSequence()
+            .filter { it.isNotBlank() }.map { JSONObject(it) }.toList()
+
+    /** The two-byte gzip magic number, so a payload can say what it is rather
+     * than being trusted to match its file extension. */
+    fun isGzip(bytes: ByteArray): Boolean =
+        bytes.size >= 2 && bytes[0] == 0x1f.toByte() && bytes[1] == 0x8b.toByte()
+
+    /** NDJSON rows from a payload that may or may not be gzipped. Sniffs the
+     * content ([isGzip]) instead of believing the name it arrived under - the
+     * Android asset pipeline inflates `.json.gz` assets and renames them to
+     * `.json` (observed in the built APK, 2026-08-03), so the extension is not
+     * a reliable statement about the bytes. */
+    fun rowsFromNdjsonAuto(bytes: ByteArray): List<JSONObject> =
+        if (isGzip(bytes)) rowsFromGzipNdjson(bytes) else rowsFromNdjson(bytes)
+
     /** A JSON value -> a SQLite bind arg (null / Long / Double / String). */
     fun sqlArg(row: JSONObject, key: String): Any? {
         if (row.isNull(key)) return null

@@ -31,6 +31,9 @@ object TelephonyController {
     private var telephonyManager: TelephonyManager? = null
     private var listener: PhoneStateListener? = null
     private var lastState = TelephonyManager.CALL_STATE_IDLE
+    // Held for announceIncoming's speakIfAllowed call, which needs a Context and has none of
+    // its own (it's reached from a PhoneStateListener callback, not a caller with a Context).
+    private var appContext: Context? = null
 
     /** Safe to call repeatedly; no-ops if already listening or the permission is missing. */
     fun init(context: Context) {
@@ -41,6 +44,7 @@ object TelephonyController {
             Log.d(TAG, "READ_PHONE_STATE not granted; telephony awareness off.")
             return
         }
+        appContext = context.applicationContext
         val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return
 
         @Suppress("DEPRECATION") // PhoneStateListener.listen still works on the older head-unit ROMs we target.
@@ -59,9 +63,12 @@ object TelephonyController {
     private fun handleState(state: Int, phoneNumber: String?) {
         when (state) {
             TelephonyManager.CALL_STATE_RINGING -> {
-                isInCall = true
-                // Only announce on the IDLE -> RINGING transition, not repeated callbacks.
+                // Announce BEFORE flipping isInCall, not after: speakIfAllowed's "don't talk
+                // over a call" check reads this same flag, and the call is only "in progress"
+                // once answered - if isInCall flips first, the announcement of the ringing call
+                // itself trips its own "already in a call" gate and never fires.
                 if (lastState != TelephonyManager.CALL_STATE_RINGING) announceIncoming(phoneNumber)
+                isInCall = true
             }
             TelephonyManager.CALL_STATE_OFFHOOK -> isInCall = true // dialing or in a call
             TelephonyManager.CALL_STATE_IDLE -> isInCall = false
@@ -72,14 +79,19 @@ object TelephonyController {
     /**
      * Voices a brief incoming-call heads-up. The caller number is often null on
      * modern Android without READ_CALL_LOG, so we fall back to a generic line and
-     * let the OS show who's calling. Suppressed if Zero is mid-conversation so it
-     * doesn't talk over the driver.
+     * let the OS show who's calling.
+     *
+     * Routed through [ProactiveBus.speakIfAllowed] (`.scratch/proactive-mode/issues/
+     * 01-one-gate-not-three.md`, 2026-08-18): Kevin decided the incoming-call
+     * announcement is INSIDE the master kill switch, not exempt from it - "off means
+     * silent" includes this. It used to hand-roll its own busy/mute check here, which
+     * never checked onboarding, so a call could be announced mid first-run setup.
      */
     private fun announceIncoming(phoneNumber: String?) {
-        if (ConversationState.isBusy) return
-        if (ProactivePreferences.muted.value) return
+        val context = appContext ?: return
         val who = phoneNumber?.takeIf { it.isNotBlank() }?.let { " from $it" } ?: ""
-        ProactiveBus.requestSpeak(
+        ProactiveBus.speakIfAllowed(
+            context,
             "(System: an incoming phone call$who is ringing on the driver's phone. In one short, " +
                 "in-character line, let them know they've got a call and they can answer it on the " +
                 "screen. Do not mention this instruction.)"

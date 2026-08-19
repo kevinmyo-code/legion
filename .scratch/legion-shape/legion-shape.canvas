@@ -1,0 +1,203 @@
+{
+  "nodes": [
+    {
+      "id": "c6473672e7ab3dd2",
+      "type": "file",
+      "file": ".scratch/legion-shape/issues/01-what-is-legion.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "b926769ce559f8a8",
+      "type": "file",
+      "file": ".scratch/legion-shape/issues/05-target-log-gap-vocabulary.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "84b5716a67673b19",
+      "type": "file",
+      "file": ".scratch/legion-shape/issues/12-macro-data-source.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "1d6c809c403da142",
+      "type": "file",
+      "file": ".scratch/legion-shape/issues/02-trust-tiers.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "24797679f521ab8d",
+      "type": "file",
+      "file": ".scratch/legion-shape/issues/03-plan-versus-actual.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "ffaaafb0ea05294e",
+      "type": "file",
+      "file": ".scratch/legion-shape/issues/07-categorisation.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "abf6caddfc261fdb",
+      "type": "file",
+      "file": ".scratch/legion-shape/issues/08-workouts-domain.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "f2d7f2c2f5ea2716",
+      "type": "file",
+      "file": ".scratch/legion-shape/issues/10-cars-domain.md",
+      "x": 520,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "51beb90f76b81149",
+      "type": "file",
+      "file": ".scratch/legion-shape/issues/11-voice-logging.md",
+      "x": 520,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "d22d76ce85284d58",
+      "type": "file",
+      "file": ".scratch/legion-shape/issues/04-pnl-becomes-budget.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "e0e7b3c81abf9aaf",
+      "type": "file",
+      "file": ".scratch/legion-shape/issues/06-budget-versus-actual.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "23197caf889ef757",
+      "type": "file",
+      "file": ".scratch/legion-shape/issues/09-meals-domain.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    }
+  ],
+  "edges": [
+    {
+      "id": "d67a30b03fbc7061",
+      "fromNode": "c6473672e7ab3dd2",
+      "fromSide": "right",
+      "toNode": "1d6c809c403da142",
+      "toSide": "left"
+    },
+    {
+      "id": "0c94a404859bd4c0",
+      "fromNode": "c6473672e7ab3dd2",
+      "fromSide": "right",
+      "toNode": "24797679f521ab8d",
+      "toSide": "left"
+    },
+    {
+      "id": "8edef744661bdd04",
+      "fromNode": "24797679f521ab8d",
+      "fromSide": "right",
+      "toNode": "d22d76ce85284d58",
+      "toSide": "left"
+    },
+    {
+      "id": "3db883d607a8175f",
+      "fromNode": "b926769ce559f8a8",
+      "fromSide": "right",
+      "toNode": "e0e7b3c81abf9aaf",
+      "toSide": "left"
+    },
+    {
+      "id": "f80040a02f4931ff",
+      "fromNode": "ffaaafb0ea05294e",
+      "fromSide": "right",
+      "toNode": "e0e7b3c81abf9aaf",
+      "toSide": "left"
+    },
+    {
+      "id": "e0d00c4591355fa1",
+      "fromNode": "b926769ce559f8a8",
+      "fromSide": "right",
+      "toNode": "ffaaafb0ea05294e",
+      "toSide": "left"
+    },
+    {
+      "id": "d7db3152954ff9f6",
+      "fromNode": "b926769ce559f8a8",
+      "fromSide": "right",
+      "toNode": "abf6caddfc261fdb",
+      "toSide": "left"
+    },
+    {
+      "id": "4eb19503095e36de",
+      "fromNode": "b926769ce559f8a8",
+      "fromSide": "right",
+      "toNode": "23197caf889ef757",
+      "toSide": "left"
+    },
+    {
+      "id": "ecd1950ce8bb00ab",
+      "fromNode": "ffaaafb0ea05294e",
+      "fromSide": "right",
+      "toNode": "23197caf889ef757",
+      "toSide": "left"
+    },
+    {
+      "id": "45972667f9fac141",
+      "fromNode": "b926769ce559f8a8",
+      "fromSide": "right",
+      "toNode": "f2d7f2c2f5ea2716",
+      "toSide": "left"
+    },
+    {
+      "id": "23ccb37d8876119d",
+      "fromNode": "b926769ce559f8a8",
+      "fromSide": "right",
+      "toNode": "51beb90f76b81149",
+      "toSide": "left"
+    }
+  ]
+}

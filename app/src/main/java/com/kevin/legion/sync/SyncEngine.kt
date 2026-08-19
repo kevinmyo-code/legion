@@ -5,27 +5,24 @@ import android.database.Cursor
 import android.util.Log
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.kevin.legion.MidnightEvents
-import com.kevin.legion.ai.CompanionProfile
-import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.ai.CompanionProfileStore
 import com.kevin.legion.vehicle.DriveReassigner
 import com.kevin.legion.vehicle.TelemetryRecorder
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.DriveReassignment
+import com.kevin.legion.ui.sync.GoogleGrantResolver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 private typealias Mode = SyncMerge.Mode
-private typealias CompanionIdentity = CompanionSync.CompanionIdentity
-private typealias CompanionClash = CompanionSync.CompanionClash
 
 /**
  * The cross-device BYO-cloud sync engine (S1). Pushes and pulls the car-data
@@ -58,18 +55,27 @@ private typealias CompanionClash = CompanionSync.CompanionClash
  * Recaps (monthly/yearly/daily) joined in build step 5 - light data (DB rows)
  * only, cover-art bytes stay per-device (see [REGISTRY]).
  *
- * Companion identity (name/persona/traits/voice) IS synced, but as a separate
- * pass ([syncCompanion]) after the [REGISTRY] loop: it's a single `companion.json`
- * file in appDataFolder, not a Room table, and unlike the LWW tables above a
- * genuine first-time content mismatch needs a one-time driver choice rather than
- * a silent pick - see [CompanionSync.decideCompanion] and [pendingCompanionClash].
+ * **Companion identity sync (Kevin, 2026-08-02: named, synced companion
+ * profiles).** `companion_profiles` is a normal [REGISTRY] entry now - LWW on
+ * the portable `profileId` UUID, same as any other natural-key table. This
+ * retires the entire bespoke single-identity path that used to live here:
+ * `syncCompanion`, the per-car `companion-<vehicleId>.json` file, and
+ * `CompanionSync.decideCompanion`'s "two companions met" clash prompt
+ * (`pendingCompanionClash`/`resolveCompanionClash`). That machinery existed
+ * to reconcile ONE identity across devices; with named profiles two rows
+ * simply coexist through the ordinary LWW merge, so there is nothing left to
+ * clash over. After every [REGISTRY] table (including `companion_profiles`)
+ * has merged, [syncNow] materialises the ACTIVE profile's fields into
+ * [com.kevin.legion.ai.CompanionProfile]'s legacy flat keys via
+ * [CompanionProfileStore.materializeActive], so a profile edited on the
+ * other device shows up here without every reader of `CompanionProfile`
+ * needing to change. See [com.kevin.legion.data.local.CompanionProfileEntity]'s
+ * doc comment for the full design.
  *
- * Companion media (avatar/wallpaper) sync is currently a NO-OP:
- * [uploadCompanionMedia]/[downloadCompanionMedia] are stubs, kept as named call
- * sites in [syncCompanion] rather than deleted, because `AvatarStudio` (the
- * generator they packed/unpacked media through) was retired with the city-pop
- * design language in the 2026-07-31 pivot. Only identity fields (name/persona/
- * traits/voice) actually sync right now.
+ * Companion MEDIA (avatar/wallpaper) sync was already a no-op before this
+ * change - `AvatarStudio` (the generator media synced through) was retired
+ * with the city-pop design language in the 2026-07-31 pivot - so it is not
+ * reintroduced here either.
  */
 object SyncEngine {
     private const val TAG = "SyncEngine"
@@ -91,35 +97,6 @@ object SyncEngine {
     // device that could still resurrect old-keyed rows from Drive and need re-keying.
     private const val REASSIGNMENT_HORIZON_MS = 90L * 24 * 60 * 60 * 1000
 
-    // Legacy single-companion filenames, from before car profiles (2026-07-16).
-    // Still read as a fallback so an install that synced under them keeps its
-    // companion; never written any more.
-    private const val LEGACY_COMPANION_FILE = "companion.json"
-    private const val LEGACY_COMPANION_MEDIA_FILE = "companion_media.zip"
-
-    // Per-car companion files. Identity is per-car now (CLAUDE.md §1: the paid
-    // companion IS the car, so two cars means two companions), so each car's
-    // identity and art get their own pair of files in the driver's Drive. Both
-    // devices can sync at once without fighting: the head unit writes the
-    // Cherokee's pair, the phone writes the Outlander's.
-    private fun companionFile(context: Context): String =
-        "companion-${driveSafe(ActiveVehicle.current(context))}.json"
-
-    private fun companionMediaFile(context: Context): String =
-        "companion_media-${driveSafe(ActiveVehicle.current(context))}.zip"
-
-    // Vehicle ids can be OBD MACs (colons) or synthetic "car:<uuid>" ids. Keep
-    // filenames boring - same reason AvatarStudio.sanitize exists.
-    private fun driveSafe(vehicleId: String): String = vehicleId.replace(Regex("[^A-Za-z0-9]"), "_")
-
-    // Set by syncCompanion when two devices' companion identities genuinely
-    // differ and neither has ever been reconciled - a real "two companions met"
-    // moment, not an ordinary edit. Non-blocking: sync itself never waits on
-    // this: it just leaves both copies untouched until the driver resolves it
-    // via [resolveCompanionClash], surfaced by MainActivity as a dialog.
-    private val _pendingCompanionClash = MutableStateFlow<CompanionClash?>(null)
-    val pendingCompanionClash: StateFlow<CompanionClash?> = _pendingCompanionClash.asStateFlow()
-
     /**
      * Fire-and-forget sync when the app comes to the foreground, so a mixtape or
      * note made on the phone is already here when the driver opens the app in the
@@ -134,6 +111,29 @@ object SyncEngine {
         lastAutoSyncAt = now
         scope.launch { syncNow(context) }
     }
+
+    /**
+     * Sync scope owned by the engine itself, for callers that have no sensible
+     * scope of their own.
+     *
+     * The foreground trigger used to be `maybeAutoSync(ctx, CoroutineScope(...))`
+     * built fresh inside `MainActivity.onResume`, which is the exact
+     * instantiate-a-scope-in-a-function-body anti-pattern
+     * `.claude/skills/kotlin-coroutines-structured-concurrency` names: no owner,
+     * no cancellation, a new one every resume, and no handler on the resulting
+     * root Job. Handing an Activity's own scope over instead would be worse in a
+     * different way - rotating the phone mid-pass would cancel a Drive upload.
+     *
+     * A sync pass is process work, not screen work, so the engine holds one
+     * SupervisorJob scope for the process lifetime. Nothing cancels it because
+     * nothing should: a pass that survives the Activity is the desired
+     * behaviour, and [syncNow] is already serialised by [mutex] and bounded by
+     * its own throttle.
+     */
+    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** [maybeAutoSync] on the engine's own [engineScope]. See its doc for why callers should not pass a scope. */
+    fun maybeAutoSync(context: Context) = maybeAutoSync(context, engineScope)
 
     /**
      * @param table SQLite table name.
@@ -165,12 +165,25 @@ object SyncEngine {
         Spec("drive_reassignments", listOf("syncId"), Mode.LWW, naturalPk = false, hasSyncId = true),
         // High-volume append-only, sharded by month, natural composite identity.
         Spec("obd_samples", listOf("vehicleId", "pid", "timestamp"), Mode.UNION, naturalPk = false, shardTs = "timestamp"),
-        Spec("music_plays", listOf("vehicleId", "timestamp", "title"), Mode.UNION, naturalPk = false, shardTs = "timestamp"),
+        // music_plays was registered here until 2026-08-03. The table was dropped in
+        // the v1 port with the rest of the music-taste ledger (CLAUDE.md sec 5), so
+        // every sync pass threw `no such table: music_plays` from monthsToSync and
+        // counted a failure. Nothing caught it because sync/ had never actually run
+        // on a device - it was structurally unreachable until 7ea4725.
         // Append-only logbook, portable syncId identity.
         Spec("memories", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         Spec("service_records", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         Spec("build_entries", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         Spec("code_events", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
+        // code_clear_events (D3, `.scratch/hands-and-senses/issues/01-clear-dtc.md`): append-only
+        // falsifiable facts about the car, same posture as code_events one line up - no
+        // `deleted` tombstone, UNION on the portable syncId.
+        Spec("code_clear_events", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
+        // drives (`.scratch/drive-ui/issues/05-trip-content.md` Q14): the drive-boundary object -
+        // append-only falsifiable facts about the car, same posture as code_events/code_clear_events
+        // two lines up. A finalised drive never changes after the fact, so UNION on the portable
+        // syncId, no `deleted` tombstone.
+        Spec("drives", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         Spec("oil_analyses", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         // Mutable, last-write-wins.
         Spec("car_tasks", listOf("syncId"), Mode.LWW, naturalPk = false, hasSyncId = true),
@@ -203,6 +216,49 @@ object SyncEngine {
             "daily_drive_logs", listOf("vehicleId", "year", "month", "day"),
             Mode.LWW, naturalPk = false, clock = "generatedAt",
         ),
+        // ledger_transactions is DELIBERATELY NOT REGISTERED (Kevin, 2026-08-02).
+        //
+        // Ticket 10 ruled it UNION on syncId, justified entirely on "transactions
+        // are immutable once committed". **That premise is false.** Ticket 03/04's
+        // replace flow hard-deletes a file's rows when the Drive file is replaced
+        // in place - `IngestPipeline.commit` -> `deleteBySourceFileId`. UNION has
+        // no delete action at all (`SyncMerge.Action` is Insert | Update), so the
+        // next pass would re-download the still-present remote rows, find their
+        // syncIds absent locally, re-insert them, and re-upload the resurrected
+        // set. That is silently double-counted money on the one table §4's
+        // reconciliation gate exists to protect, via a path the gate never sees.
+        //
+        // The tombstone pattern car_tasks/places use cannot rescue UNION either:
+        // it works there precisely BECAUSE they are LWW, where a newer
+        // `deleted = 1` wins as an ordinary edit. Under UNION an existing local
+        // row is never updated, so a soft-delete would never propagate.
+        //
+        // So UNION and delete-propagation are mutually exclusive here, and
+        // ticket 10 explicitly rejected LWW. Rather than overturn that ruling
+        // inside a commit whose purpose was registration, this table waits for a
+        // tombstone ticket of its own. ingested_files below still syncs, which is
+        // where most of the value was: device B skips fetch AND hash for a file
+        // the other device already handled.
+        //
+        // Found by senior-dev review of the first code ever written against
+        // sync/, before any of it had run.
+        // ingested_files is LWW on the NATURAL key driveFileId (ticket 03 already
+        // strips the positional `acc=N;` prefix, so the stored id is identical on
+        // both devices for the same file - a genuine cross-device identity with no
+        // syncId column needed; ticket 10 closes that deferred question by
+        // REMOVING it, not answering it). Mode is LWW, not UNION, because the
+        // record is a state machine that legitimately changes (NEW -> INGESTED,
+        // retry after QUARANTINED, reset on replace) - UNION would pin it to
+        // whichever state propagated first. Clock is lastAttemptAt, per
+        // IngestedFile's own doc comment.
+        Spec("ingested_files", listOf("driveFileId"), Mode.LWW, naturalPk = true, clock = "lastAttemptAt"),
+        // Named companion profiles (Kevin, 2026-08-02). LWW on the portable
+        // profileId UUID - a profile is edited over time (renamed, re-
+        // personified, a new voice picked) and the newer edit should win, the
+        // same shape as vehicles/maintenance_items above. Replaces the
+        // bespoke single-identity companion.json sync entirely - see this
+        // object's class doc comment.
+        Spec("companion_profiles", listOf("profileId"), Mode.LWW, naturalPk = true, clock = "updatedAt"),
     )
 
     data class Result(val ok: Boolean, val message: String)
@@ -213,11 +269,48 @@ object SyncEngine {
      * skipped so the rest still sync.
      */
     suspend fun syncNow(context: Context): Result = withContext(Dispatchers.IO) {
-        if (!SyncCapability.syncAvailable(context)) {
-            return@withContext Result(false, "Cross-device sync isn't connected.")
+        // Both of these sit INSIDE the guard now. `accessTokenOrNull` bridges a
+        // Play Services Task via suspendCancellableCoroutine and resumes with an
+        // EXCEPTION on a genuine Task failure - it does not merely return null.
+        // It used to run outside syncNow's try/catch, so that throw escaped
+        // syncNow, escaped the caller's launch{}, and reached a root Job with no
+        // handler: a process crash. Harmless while the only caller was the
+        // assistant service's periodic loop; not harmless now that a foreground
+        // resume calls this unconditionally.
+        val token = try {
+            if (!SyncCapability.syncAvailable(context)) {
+                return@withContext Result(false, "Cross-device sync isn't connected.")
+            }
+            // tokenOrReason, not accessTokenOrNull: a lapsed/revoked grant (TokenResult.NeedsConsent)
+            // used to collapse into the exact same null as a real error, so a driver whose Drive
+            // access had been revoked read the identical "couldn't reach your Google Drive - try
+            // again" as someone briefly offline - ticket 06 point 4's live defect. NeedsConsent now
+            // says so by name; a genuine Failed still routes through GoogleGrantResolver.diagnose so
+            // a DEVELOPER_ERROR reads as a config problem rather than a generic failure either.
+            when (val outcome = DriveAuth.tokenOrReason(context)) {
+                is DriveAuth.TokenResult.Token -> outcome.accessToken
+                DriveAuth.TokenResult.NeedsConsent ->
+                    return@withContext Result(
+                        false,
+                        GoogleGrantResolver.needsReauthorisingMessage(GoogleGrantResolver.Grant.DRIVE),
+                    )
+                is DriveAuth.TokenResult.Failed -> {
+                    val failure = GoogleGrantResolver.diagnose(
+                        grant = GoogleGrantResolver.Grant.DRIVE,
+                        statusCode = DriveAuth.statusCodeOf(outcome.error),
+                        isNetworkException = DriveAuth.looksLikeNetworkFailure(outcome.error),
+                        fallbackMessage = outcome.error.message,
+                    )
+                    Log.w(TAG, "couldn't get a Drive token", outcome.error)
+                    MidnightEvents.recordError("sync_auth", outcome.error)
+                    return@withContext Result(false, failure.message)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "couldn't get a Drive token", e)
+            MidnightEvents.recordError("sync_auth", e)
+            return@withContext Result(false, "Couldn't reach your Google Drive - try again.")
         }
-        val token = DriveAuth.accessTokenOrNull(context)
-            ?: return@withContext Result(false, "Couldn't reach your Google Drive - try again.")
 
         mutex.withLock {
             try {
@@ -226,12 +319,17 @@ object SyncEngine {
                 val db = CarDatabase.getDatabase(context).openHelper.writableDatabase
                 var failures = 0
                 for (spec in REGISTRY) {
-                    runCatching { syncTable(db, drive, existing, spec) }
-                        .onFailure {
-                            failures++
+                    // getOrElse, not onFailure: syncTable now returns false for a
+                    // conflict-exhausted skip, which throws nothing and would
+                    // otherwise leave `failures` at zero and report success for a
+                    // table that never uploaded.
+                    val ok = runCatching { syncTable(db, drive, existing, spec) }
+                        .getOrElse {
                             Log.w(TAG, "sync ${spec.table} failed", it)
                             MidnightEvents.recordError("sync_table_${spec.table}", it)
+                            false
                         }
+                    if (!ok) failures++
                     // Re-key immediately after the rules themselves land, so any
                     // correction another device made is applied to this device's
                     // rows before obd_samples (the very next spec) merges.
@@ -244,22 +342,18 @@ object SyncEngine {
                             }
                     }
                 }
-                runCatching { syncAllCompanionIdentities(context, drive, existing) }
+                // companion_profiles has already merged as an ordinary REGISTRY
+                // table by this point (LWW, same as vehicles/maintenance_items).
+                // What's left is device-local: re-derive CompanionProfile's flat
+                // keys from whichever profile THIS device has active, in case the
+                // active profile's row just changed underneath it (an edit made on
+                // the other phone). See CompanionProfileStore's doc comment for
+                // why this is a materialisation step and not a sync step.
+                runCatching { CompanionProfileStore.materializeActive(context) }
                     .onFailure {
                         failures++
-                        Log.w(TAG, "pull companion identities failed", it)
-                        MidnightEvents.recordError("sync_companion_pull", it)
-                    }
-                // Wired to Crashlytics (not just Log.w) so a silent failure here is
-                // actually retrievable - this is the write path for companion-<id>.json,
-                // and a swallowed exception here was indistinguishable in the field
-                // from "sync never ran" (drive-notes-2: Fleet Hub showed "no cars
-                // synced" with no way to tell whether upload failed or never fired).
-                runCatching { syncCompanion(context, drive, existing) }
-                    .onFailure {
-                        failures++
-                        Log.w(TAG, "sync companion identity failed", it)
-                        MidnightEvents.recordError("sync_companion_push", it)
+                        Log.w(TAG, "materialize active companion profile failed", it)
+                        MidnightEvents.recordError("sync_companion_materialize", it)
                     }
                 if (failures == 0) Result(true, "Synced with your Google Drive.")
                 else Result(false, "Synced with some issues ($failures tables skipped).")
@@ -318,72 +412,25 @@ object SyncEngine {
         )
     }
 
-    /**
-     * Pulls EVERY car's companion identity, not just the active one (car manager,
-     * 2026-07-16).
-     *
-     * The eager half of Kevin's hybrid: identities are tiny JSON, so every device
-     * holds every car's name/persona/voice and the CARS roster renders instantly and
-     * offline. Media (megabytes of avatar faces per car) stays lazy - see
-     * [ensureCompanionMedia] - so a twelve-car roster doesn't drag eleven cars'
-     * portraits onto a head unit to drive one.
-     *
-     * Deliberately does NOT touch the ACTIVE car: [syncCompanion] owns that one,
-     * including its upload and its clash-prompt path. This is a read-only fill of
-     * the others, so it can never overwrite an edit the driver is making right now.
-     */
-    private fun syncAllCompanionIdentities(
-        context: Context,
-        drive: DriveClient,
-        existing: Map<String, DriveClient.DriveFile>,
-    ) {
-        val activeFile = companionFile(context)
-        for ((name, file) in existing) {
-            if (!name.startsWith("companion-") || !name.endsWith(".json")) continue
-            if (name == activeFile) continue // syncCompanion owns the active car
-            val vehicleId = vehicleIdForCompanionFile(context, name) ?: continue
-            val remote = runCatching { drive.download(file.id) }.getOrNull()
-                ?.let { companionFromJson(it) } ?: continue
-            val local = CompanionProfile.companionIdentityFor(context, vehicleId)
-            // Plain LWW, no prompt: the clash path is a first-meeting question about
-            // the car you are IN, and asking it about a car you merely have on the
-            // roster would be noise the driver has no context to answer.
-            if (local.isBlank || remote.updatedAt > local.updatedAt) {
-                CompanionProfile.saveCompanionIdentityFor(context, vehicleId, remote)
-            }
-        }
-    }
-
-    /** Maps `companion-<driveSafe(id)>.json` back to a real vehicleId via the roster. */
-    private fun vehicleIdForCompanionFile(context: Context, fileName: String): String? {
-        val safe = fileName.removePrefix("companion-").removeSuffix(".json")
-        return knownVehicleIds(context).firstOrNull { driveSafe(it) == safe }
-    }
-
-    /** Every vehicleId this device knows, archived included - the roster needs them all. */
-    private fun knownVehicleIds(context: Context): List<String> {
-        val ids = mutableListOf<String>()
-        val db = CarDatabase.getDatabase(context).openHelper.readableDatabase
-        db.query("SELECT obdMac FROM vehicles").use { c ->
-            while (c.moveToNext()) c.getString(0)?.let { ids.add(it) }
-        }
-        return ids
-    }
-
     private fun syncTable(
         db: SupportSQLiteDatabase,
         drive: DriveClient,
         existing: Map<String, DriveClient.DriveFile>,
         spec: Spec,
-    ) {
+    ): Boolean {
         if (spec.hasSyncId) backfillSyncIds(db, spec.table)
+        // A sharded table reports failure if ANY shard was skipped, but still
+        // attempts every other shard first - one month conflicting must not
+        // silently drop the rest.
+        var ok = true
         if (spec.shardTs != null) {
             for (month in monthsToSync(db, spec, existing)) {
-                syncFile(db, drive, existing, spec, "${spec.table}-$month.json.gz", monthFilter(spec.shardTs, month))
+                if (!syncFile(db, drive, existing, spec, "${spec.table}-$month.json.gz", monthFilter(spec.shardTs, month))) ok = false
             }
         } else {
-            syncFile(db, drive, existing, spec, "${spec.table}.json.gz", where = null)
+            ok = syncFile(db, drive, existing, spec, "${spec.table}.json.gz", where = null)
         }
+        return ok
     }
 
     /**
@@ -405,7 +452,7 @@ object SyncEngine {
         spec: Spec,
         fileName: String,
         where: String?,
-    ) {
+    ): Boolean {
         val selectSql = "SELECT * FROM `${spec.table}`${if (where != null) " WHERE $where" else ""}"
         var snapshot = existing
         var attempt = 0
@@ -431,133 +478,27 @@ object SyncEngine {
             val result = drive.upsert(fileName, SyncCodec.gzipNdjson(localAfter), snapshot)
             if (result != DriveClient.UpdateResult.Conflict) {
                 if (result == DriveClient.UpdateResult.Failure) Log.w(TAG, "$fileName: upload failed")
-                return
+                return true
             }
-            check(DriveConflict.shouldRetry(attempt, MAX_CONFLICT_RETRIES)) {
-                "$fileName: still conflicting after $attempt attempts"
+            if (!DriveConflict.shouldRetry(attempt, MAX_CONFLICT_RETRIES)) {
+                // Ticket 10 (2026-08-02): this used to `check(...)`, which THREW an
+                // IllegalStateException inside a sync pass nothing reports (Firebase
+                // isn't wired; MidnightEvents.recordError is a Log.w wrapper). Ledger
+                // is now the worst thing in the app to lose to an unreported crash,
+                // so a sustained conflict logs and skips THIS FILE for this pass
+                // instead - the next sync pass tries again from a fresh snapshot,
+                // same as any other per-table failure syncNow's runCatching handles.
+                Log.w(TAG, "$fileName: still conflicting after $attempt attempts, skipping this pass")
+                MidnightEvents.recordError("sync_conflict_exhausted_$fileName", IllegalStateException("still conflicting after $attempt attempts"))
+                // false, not Unit: syncNow's failure count is what decides the
+                // driver-facing "Synced with your Google Drive." string, and a
+                // table that silently didn't upload must not read as success.
+                return false
             }
             Log.w(TAG, "$fileName: upload conflict (attempt $attempt), re-merging")
             snapshot = drive.listAppData()
         }
     }
-
-    /**
-     * Reconciles the companion identity (name/persona/traits/voice) against
-     * `companion.json` in appDataFolder. Unlike [syncFile] this is plain JSON,
-     * not gzip-NDJSON rows - a single object, not a table snapshot - so it's
-     * downloaded/uploaded directly via [DriveClient]'s create/update/upsert
-     * (its [DriveClient.DriveFile] version handling still applies; a B20
-     * upload conflict here is simply left for the next sync pass to retry,
-     * same as any other skipped table, rather than a second bespoke retry
-     * loop).
-     *
-     * See [CompanionSync.decideCompanion] for the full decision matrix. PROMPT
-     * publishes to [pendingCompanionClash] and returns without touching either
-     * copy - [resolveCompanionClash] finishes the job once the driver picks.
-     */
-    private fun syncCompanion(context: Context, drive: DriveClient, existing: Map<String, DriveClient.DriveFile>) {
-        // Per-car file first; fall back to the legacy single-companion file so an
-        // install that already synced under it adopts its own companion rather than
-        // seeing a blank remote and re-uploading a fresh one.
-        val remoteFile = existing[companionFile(context)] ?: existing[LEGACY_COMPANION_FILE]
-        val remote = remoteFile?.let { drive.download(it.id) }?.let { companionFromJson(it) }
-        val local = CompanionProfile.companionIdentity(context)
-        val reconciled = CompanionProfile.isCompanionReconciled(context)
-
-        when (CompanionSync.decideCompanion(local, remote, reconciled)) {
-            CompanionSync.Decision.UPLOAD_LOCAL -> {
-                drive.upsert(companionFile(context), companionToJson(local), existing)
-                CompanionProfile.markCompanionReconciled(context)
-                uploadCompanionMedia(context, drive, existing)
-            }
-            CompanionSync.Decision.ADOPT_REMOTE -> {
-                // remote is non-null on this branch (decideCompanion only returns
-                // ADOPT_REMOTE when remote != null).
-                CompanionProfile.saveCompanionIdentity(context, remote!!)
-                CompanionProfile.markCompanionReconciled(context)
-                downloadCompanionMedia(context, drive, existing)
-            }
-            CompanionSync.Decision.NOTHING -> CompanionProfile.markCompanionReconciled(context)
-            CompanionSync.Decision.PROMPT -> {
-                _pendingCompanionClash.value = CompanionClash(local, remote!!)
-                // Non-blocking: leave both copies (identity AND media) as-is
-                // until the driver resolves it via resolveCompanionClash.
-            }
-        }
-    }
-
-    /**
-     * No-op for now: avatar/wallpaper generation ([AvatarStudio]) was retired with
-     * the city-pop design language in the 2026-07-31 pivot, so there is no media to
-     * pack and upload alongside an identity win. Kept as a named call site (rather
-     * than deleted from [syncCompanion]) so a future image-gen feature has an
-     * obvious place to plug back in.
-     */
-    private fun uploadCompanionMedia(context: Context, drive: DriveClient, existing: Map<String, DriveClient.DriveFile>) {
-    }
-
-    /**
-     * No-op for now - see [uploadCompanionMedia]. Kept as a named call site for
-     * the same reason.
-     */
-    private fun downloadCompanionMedia(context: Context, drive: DriveClient, existing: Map<String, DriveClient.DriveFile>) {
-    }
-
-    /**
-     * The driver's choice on a [pendingCompanionClash]: keep this device's
-     * companion ([keepLocal] true) or switch to the other device's
-     * ([keepLocal] false). The winner is re-stamped with a FRESH `updatedAt`
-     * (unlike [CompanionProfile.saveCompanionIdentity]'s normal adopt path) so
-     * it wins the comparison on every device from here on, then written to
-     * both this device and Drive, and marked reconciled so future ordinary
-     * edits propagate silently by LWW instead of prompting again. The
-     * matching avatar/wallpaper follow the same choice: [keepLocal] uploads
-     * this device's media as the new canonical copy, `!keepLocal` downloads
-     * and adopts the other device's media (see [uploadCompanionMedia] /
-     * [downloadCompanionMedia] for the best-effort contract).
-     */
-    suspend fun resolveCompanionClash(context: Context, keepLocal: Boolean) = withContext(Dispatchers.IO) {
-        val clash = _pendingCompanionClash.value ?: return@withContext
-        val winner = (if (keepLocal) clash.local else clash.remote).copy(updatedAt = System.currentTimeMillis())
-        CompanionProfile.saveCompanionIdentity(context, winner)
-        CompanionProfile.markCompanionReconciled(context)
-        val token = DriveAuth.accessTokenOrNull(context)
-        if (token != null) {
-            mutex.withLock {
-                val drive = DriveClient(token)
-                val existing = drive.listAppData()
-                drive.upsert(companionFile(context), companionToJson(winner), existing)
-                if (keepLocal) uploadCompanionMedia(context, drive, existing)
-                else downloadCompanionMedia(context, drive, existing)
-            }
-        }
-        _pendingCompanionClash.value = null
-    }
-
-    private fun companionToJson(id: CompanionIdentity): ByteArray {
-        val o = JSONObject()
-            .put("name", id.name)
-            .put("persona", id.persona)
-            .put("traits", id.traits)
-            .put("voice", id.voice)
-            .put("updatedAt", id.updatedAt)
-        return o.toString().toByteArray(Charsets.UTF_8)
-    }
-
-    private fun companionFromJson(bytes: ByteArray): CompanionIdentity? =
-        try {
-            val o = JSONObject(String(bytes, Charsets.UTF_8))
-            CompanionIdentity(
-                name = o.optString("name", ""),
-                persona = o.optString("persona", ""),
-                traits = o.optString("traits", ""),
-                voice = o.optString("voice", ""),
-                updatedAt = o.optLong("updatedAt", 0L),
-            )
-        } catch (t: Throwable) {
-            Log.w(TAG, "companion.json parse failed", t)
-            null
-        }
 
     private fun executeAction(db: SupportSQLiteDatabase, spec: Spec, action: SyncMerge.Action) {
         when (action) {
@@ -580,8 +521,62 @@ object SyncEngine {
         }
     }
 
+    /**
+     * The column names this device's schema actually has for [table], cached for
+     * the process lifetime (the schema cannot change without a migration, which
+     * runs before any sync pass).
+     *
+     * Exists because a payload's columns and the local schema's columns are NOT
+     * the same set and never were. A row can arrive from an older app version, a
+     * newer one, or - as on 2026-08-03 - from the Midnight AI import assets, whose
+     * `build_entries` rows still carry the `photoPath` column that the v1 port
+     * dropped. [insertRow] built its INSERT from the payload's own keys, so every
+     * such row threw `table build_entries has no column named photoPath` and the
+     * whole table imported as zero rows.
+     *
+     * Stripping `photoPath` from the seed assets would have fixed that one case
+     * and left the next dropped column to do it again. Intersecting here makes an
+     * unknown column degrade instead of throw, which is what a sync layer that
+     * spans app versions has to do.
+     */
+    private val columnCache = ConcurrentHashMap<String, Set<String>>()
+
+    /** `table.column` pairs already reported, so an 11k-row import logs once, not 11k times. */
+    private val reportedDrops = ConcurrentHashMap.newKeySet<String>()
+
+    private fun knownColumns(db: SupportSQLiteDatabase, table: String): Set<String> =
+        columnCache.getOrPut(table) {
+            val cols = LinkedHashSet<String>()
+            db.query("PRAGMA table_info(`$table`)").use { c ->
+                val nameIdx = c.getColumnIndex("name")
+                while (c.moveToNext()) c.getString(nameIdx)?.let { cols.add(it) }
+            }
+            cols
+        }
+
+    /**
+     * Payload columns this schema has, in payload order. Anything the local table
+     * does not define is dropped and reported - silently discarding a column we
+     * were sent is the same sin as writing one we can't verify (CLAUDE.md sec 4
+     * rule 6), so it goes through [MidnightEvents.syncColumnsDropped] rather than
+     * vanishing.
+     */
+    private fun writableColumns(
+        db: SupportSQLiteDatabase,
+        table: String,
+        row: JSONObject,
+        omit: Set<String>,
+    ): List<String> {
+        val known = knownColumns(db, table)
+        val candidates = row.keys().asSequence().filter { it !in omit }.toList()
+        val usable = candidates.filter { it in known }
+        val dropped = candidates.filter { it !in known && reportedDrops.add("$table.$it") }
+        if (dropped.isNotEmpty()) MidnightEvents.syncColumnsDropped(table, dropped)
+        return usable
+    }
+
     private fun insertRow(db: SupportSQLiteDatabase, table: String, row: JSONObject, omit: Set<String>) {
-        val cols = row.keys().asSequence().filter { it !in omit }.toList()
+        val cols = writableColumns(db, table, row, omit)
         if (cols.isEmpty()) return
         val sql = "INSERT OR REPLACE INTO `$table` (${cols.joinToString(",") { "`$it`" }}) " +
             "VALUES (${cols.joinToString(",") { "?" }})"
@@ -590,7 +585,7 @@ object SyncEngine {
 
     private fun updateRow(db: SupportSQLiteDatabase, table: String, row: JSONObject, keyCol: String?, keyVal: Long) {
         val col = keyCol ?: "rowid"
-        val cols = row.keys().asSequence().filter { it != "id" }.toList()
+        val cols = writableColumns(db, table, row, omit = setOf("id"))
         if (cols.isEmpty()) return
         val sql = "UPDATE `$table` SET ${cols.joinToString(",") { "`$it`=?" }} WHERE `$col`=?"
         db.execSQL(sql, (cols.map { SyncCodec.sqlArg(row, it) } + keyVal).toTypedArray())

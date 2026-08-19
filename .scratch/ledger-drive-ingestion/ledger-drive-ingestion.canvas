@@ -1,0 +1,206 @@
+{
+  "nodes": [
+    {
+      "id": "6c0db697780a678d",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/01-saf-drive-folder-feasibility.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "0b3e7b93d0de1b0b",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/02-design-language.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "b2a3e8f4b3874e2d",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/04-twin-transactions.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "80ac144b74cb8af4",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/11-saf-device-probe.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d2a3aedfd3ab99d9",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/12-provisional-card-csv.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "4d69379cb38c2d10",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/13-categorypending-default-drift.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "9c7e0956a1065ed3",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/03-ingested-file-ledger.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "23618fbefdea33bb",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/07-app-shell-and-ignition.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "be7ce97ebec4db2d",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/09-fleet-and-pantry-ui.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "49021669f9438aa0",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/05-batch-ingestion-mechanics.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "6f54c43a341a19ca",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/10-does-ledger-data-sync.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "90a805d7ba591245",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/06-llm-spend-gate.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "2cc1de5098ad2c3d",
+      "type": "file",
+      "file": ".scratch/ledger-drive-ingestion/issues/08-ledger-ui.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    }
+  ],
+  "edges": [
+    {
+      "id": "bbc7847183482d43",
+      "fromNode": "6c0db697780a678d",
+      "fromSide": "right",
+      "toNode": "9c7e0956a1065ed3",
+      "toSide": "left"
+    },
+    {
+      "id": "66feedc4c98bb66e",
+      "fromNode": "6c0db697780a678d",
+      "fromSide": "right",
+      "toNode": "49021669f9438aa0",
+      "toSide": "left"
+    },
+    {
+      "id": "4e1da41be6da4b09",
+      "fromNode": "9c7e0956a1065ed3",
+      "fromSide": "right",
+      "toNode": "49021669f9438aa0",
+      "toSide": "left"
+    },
+    {
+      "id": "afcb6e281fcc8f18",
+      "fromNode": "49021669f9438aa0",
+      "fromSide": "right",
+      "toNode": "90a805d7ba591245",
+      "toSide": "left"
+    },
+    {
+      "id": "b362d790089cf07b",
+      "fromNode": "0b3e7b93d0de1b0b",
+      "fromSide": "right",
+      "toNode": "23618fbefdea33bb",
+      "toSide": "left"
+    },
+    {
+      "id": "d5ad9cab6482e8f5",
+      "fromNode": "0b3e7b93d0de1b0b",
+      "fromSide": "right",
+      "toNode": "2cc1de5098ad2c3d",
+      "toSide": "left"
+    },
+    {
+      "id": "8f2aecaa5f890f99",
+      "fromNode": "9c7e0956a1065ed3",
+      "fromSide": "right",
+      "toNode": "2cc1de5098ad2c3d",
+      "toSide": "left"
+    },
+    {
+      "id": "d9cfbcf2498bcdcf",
+      "fromNode": "49021669f9438aa0",
+      "fromSide": "right",
+      "toNode": "2cc1de5098ad2c3d",
+      "toSide": "left"
+    },
+    {
+      "id": "903f7f157b93b434",
+      "fromNode": "0b3e7b93d0de1b0b",
+      "fromSide": "right",
+      "toNode": "be7ce97ebec4db2d",
+      "toSide": "left"
+    },
+    {
+      "id": "39c61a6ea170b431",
+      "fromNode": "9c7e0956a1065ed3",
+      "fromSide": "right",
+      "toNode": "6f54c43a341a19ca",
+      "toSide": "left"
+    }
+  ]
+}

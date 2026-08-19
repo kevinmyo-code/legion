@@ -121,12 +121,23 @@ object MusicController {
             ?: all.firstOrNull()
     }
 
+    /**
+     * Excludes LEGION's own session at the same source [NowPlayingController.choosePackage]
+     * does, for the same reason: `car.LegionMediaLibraryService`'s proxy player now calls
+     * [play]/[pause]/[next]/[previous] to forward Android Auto's transport bar onto whatever is
+     * REALLY playing. If that lookup could ever select LEGION's own published session, a tap on
+     * the card would target itself - at best a silent no-op (the proxy has no real decoder to
+     * command), at worst a command sent to a session mid-teardown during release(). Excluding it
+     * here, not just at [NowPlayingController], closes the loop on the CONTROL side to match the
+     * READ side; the two are independent lookups (this hits [MediaSessionManager] directly rather
+     * than reading [NowPlayingController.state]) and each needed its own guard.
+     */
     private fun activeSessions(context: Context): List<MediaController> {
         val app = context.applicationContext
         val manager = app.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
         val component = ComponentName(app, MediaNotificationListener::class.java)
         return try {
-            manager.getActiveSessions(component)
+            manager.getActiveSessions(component).filter { it.packageName != app.packageName }
         } catch (e: SecurityException) {
             Log.w(TAG, "No notification access for media sessions: ${e.message}")
             emptyList()

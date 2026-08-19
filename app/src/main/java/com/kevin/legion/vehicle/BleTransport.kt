@@ -80,9 +80,18 @@ class BleTransport private constructor(
             closed = true
         }
 
+        // WIRED 2026-08-16. `closed` was written by shutdown() and read by NOTHING, so after an
+        // unexpected GATT disconnect this stream reported "no bytes right now" - indistinguishable
+        // from a car that simply had not answered yet. That is the BLE half of the quiet-link defect
+        // android-auto ticket 13 describes on the RFCOMM side, and the field existing unread was
+        // evidence of an intended check rather than dead code, so it is used rather than removed.
+        //
+        // Draining first is deliberate: bytes already buffered when the link dropped are real and
+        // are still handed over. Only once the buffer is empty does a closed stream report EOF.
         override fun available(): Int = synchronized(lock) { buffer.size }
 
         override fun read(b: ByteArray): Int = synchronized(lock) {
+            if (buffer.isEmpty()) return@synchronized if (closed) -1 else 0
             val n = minOf(b.size, buffer.size)
             for (i in 0 until n) b[i] = buffer.removeFirst()
             n
