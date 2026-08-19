@@ -221,8 +221,9 @@ doc = (
     '<div class="wrap">' + NL +
     '<p class="stamp">LEGION &middot; pending work &middot; 19 Aug 2026</p>' + NL +
     '<h1>' + str(tot) + ' tickets open</h1>' + NL +
-    '<p class="lede">Across ten maps. <b>Thirty-one of them are decisions</b>, not code &mdash; '
-    'they need an answer from you before anyone can build. Nine are waiting on another ticket first.</p>' + NL +
+    '<p class="lede">Across ' + str(len(d)) + ' maps. <b>' + str(dec) + ' of them are decisions</b>, '
+    'not code &mdash; they need an answer from you before anyone can build. '
+    + str(tot - ready) + ' are waiting on another ticket first.</p>' + NL +
     '<div class="tot">' + NL +
     '<div class="stat"><span class="n">' + str(tot) + '</span><span class="stamp l">open</span></div>' + NL +
     '<div class="stat"><span class="n mint">' + str(ready) + '</span><span class="stamp l">ready now</span></div>' + NL +
