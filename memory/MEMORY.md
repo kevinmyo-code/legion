@@ -19,6 +19,11 @@ assistant could not open a map at all and said it had; now `location/NavigationC
 
 ## START HERE - 2026-08-18 night
 
+**SWEPT 2026-08-19: all 39 open tickets across 9 maps were verified against the tree by five
+readers. Exactly ONE was stale** (quant-viz 17, four of its five decisions built; narrowed to the
+fifth). Everything else is genuinely open, waiting on Kevin, or waiting on a device, a car or a USB
+cable. **The repo is NOT ahead of its docs this time** - the tickets' own notes were honest.
+
 **Everything below is committed on `feat/mission-control` and installed on the A25, hash-verified.**
 Nothing has been looked at on the phone. That is the whole outstanding risk.
 
@@ -30,9 +35,11 @@ Nothing has been looked at on the phone. That is the whole outstanding risk.
 2. **The alarm pane's contrast, on the phone.** It is the first thing in the app to read
    `errorContainer`. That colour colliding with `surface` is what once drew every screen's body text
    in quarantine red, and only an APK install caught it.
-3. **`.scratch/proactive-mode/issues/09-fgs-start-delay.md`** - the only `bug` ticket on any map. A
-   boot-started service taking 123s to call `startForeground` against a 10s window is a crash, not a
-   decision.
+3. ~~**`.scratch/proactive-mode/issues/09-fgs-start-delay.md`** - a 123s `startForeground` is a
+   crash~~ **STALE. Downgraded by its own author in `65884a0` (2026-08-17) and still open as a
+   MISREADING CANDIDATE**: a second `dumpsys` read showed `startForegroundDelayMs:554912` on a
+   demonstrably healthy running service, so the field's meaning is unestablished. `startForegroundCompat()`
+   is already first in `onCreate`. Unfixed AND unconfirmed as a bug - do not report it either way.
 
 **Shipped tonight, all unverified on-device:** driver-editable playbooks + one priming resolver for
 both answer paths; a memory screen (read + delete) and a playbook editor; temperature as a Setup

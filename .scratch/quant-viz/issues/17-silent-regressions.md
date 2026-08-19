@@ -4,7 +4,7 @@ ticket: 17
 title: "Two shipped visualisations vanished in a later rebuild, and nothing noticed"
 type: grilling
 status: open
-status-detail: ""
+status-detail: "Decisions 1-4 built and verified in the tree 2026-08-19. Only decision 5 - auditing the rest of the rebuild for other silent losses - is still open."
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -71,3 +71,28 @@ lost** - but ticket 11's own stated requirement no longer holds, and nobody reco
    place**, several days late.
 5. **Is anything else missing?** Two were found by auditing 16 tickets. The same rebuild touched
    HOME, CRED, FLEET and NOTES. Nobody has checked the rest.
+
+## Swept 2026-08-19 - four of the five are done, and the ticket is now only decision 5
+
+Verified against the tree, not against this ticket's own notes:
+
+- **Decision 1 (restore or accept the loss): DONE.** `0194e5f`. The meter is back, relocated to where
+  the rows actually live now - `FleetDrilldowns.kt:216-219` (`MaintenanceDrilldownScreen`) and
+  `:531-532` (`ScheduleRow`), both feeding `row.fraction` into `DeckMeter`. The old
+  `FleetScreen`/`MaintenancePane` the rebuild deleted is not where it went back.
+- **Decision 2 (delete the orphans or keep them): DONE.** `buildMilesSparkline` is kept deliberately
+  with the reason written on it (`FleetRows.kt:948`, "NO CURRENT RENDERER, deliberately kept"),
+  rather than silently orphaned - which is the L27 failure this map already learned once.
+- **Decision 3 (the lying comment): DONE.** `FleetScreen.kt:820` no longer claims a chart the
+  drilldown does not carry.
+- **Decision 4 (stop it recurring): DONE.** `ui/fleet/FleetDrilldownsMeterRenderTest` exists, two
+  tests, scanning `FleetDrilldowns.kt`'s own source for `DeckMeter(row.fraction`. The regex it
+  requires was compared against the current source and matches.
+
+**Decision 5 is the whole of what is left, and it is the biggest one:** whether anything ELSE
+vanished in the same rebuild, across HOME, CRED, FLEET and NOTES. No sweep artifact for that exists
+anywhere. Two features were lost silently with their pure layers still green; nobody has checked
+whether there was a third.
+
+**So this ticket stays open on purpose, narrowed to that audit.** Closing it on the strength of the
+four that are done would retire the question it exists to answer.
