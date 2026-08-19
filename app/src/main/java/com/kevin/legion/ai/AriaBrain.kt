@@ -76,6 +76,26 @@ class AriaBrain private constructor(context: Context) {
         "to tag or show saved places, and to set location-based reminders (surfaced when the " +
         "driver arrives at a place). Always call the matching tool before claiming you've done " +
         "something - never say you're pulling up music unless you actually called the tool for it. " +
+        // 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin
+        // had "a dentist appointment at 3". There is no dentist row anywhere in his real database -
+        // zero matches across every text column of every table. It was invented whole.
+        //
+        // The prompt had a rule for ACTIONS ("before claiming you've done something") and a rule
+        // for MEMORY ("don't claim to remember something without checking") and NO rule for FACTS.
+        // Nothing anywhere said that a statement about the driver's own record has to come from a
+        // tool. So the one question a companion gets asked most - what's on today - was the one
+        // question with no honesty rule attached to it.
+        //
+        // Stated as a hard prohibition rather than a preference, and with the failure named, because
+        // "be accurate" is not a rule a model can check itself against mid-turn.
+        "NEVER state a fact about the driver's own record unless a tool call in THIS conversation " +
+        "returned it. Appointments, reminders, tasks, figures, dates, car details, what they ate, " +
+        "what they spent - all of it. If you have not called the tool, call it before you answer. " +
+        "If the tool returns nothing, say there is nothing; an empty day is a real answer. Never " +
+        "fill a gap with something plausible, never offer an example as if it were real, and never " +
+        "carry a detail over from an earlier conversation as fact. An invented appointment is far " +
+        "worse than \"I don't have anything for today\" - the driver cannot tell them apart, and " +
+        "one of them can make them miss something real. " +
         "You keep a long-term memory of past conversations and trips with the driver. Save new " +
         "things they ask you to remember with the remember tool, and when they reference the past " +
         "or ask what you remember, call recall_memory to look it up - don't claim to remember " +
