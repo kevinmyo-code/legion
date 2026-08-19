@@ -3,12 +3,12 @@ map: drive-test-2026-08-18
 ticket: 02
 title: "The context dies with the socket, and nothing says so"
 type: task
-status: open
-status-detail: ""
+status: resolved
+status-detail: "built 0e3319b - resumption, goAway and compression all landed; neither the goAway margin nor a real resume has been observed"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The context dies with the socket, and nothing says so
@@ -96,3 +96,56 @@ notice is cheap and the codebase already has the mechanism.
 - [ ] After the fix: same reproduction, and the driver is told, in words, that the thread was lost.
 - [ ] Confirm a resumed conversation does not replay stale context into an unrelated later
       conversation.
+
+## RESOLVED 2026-08-19 - all three mechanisms, not a choice between them
+
+Built in `0e3319b`. The ticket framed three candidates to choose between; the right answer was two
+of them plus the honesty half, and the third for a different failure entirely.
+
+| Mechanism | State |
+|---|---|
+| `sessionResumption` | **Built.** Handle captured from `sessionResumptionUpdate` and kept ON THE CONTROLLER, which is the whole point - it has to outlive the session object it came from. Sent back in `buildSetup` on the replacement socket. |
+| `goAway` | **Built.** `timeLeft` parsed, and the session closes DELIBERATELY a margin early so the cutoff is a planned handover rather than a surprise. `"goAway"` joined `NORMAL_CLOSE_REASONS` so our own planned close never flashes CONNECTION LOST. |
+| `contextWindowCompression` | **Built**, with a comment saying plainly it addresses the window filling, NOT a network drop. Kept visible so nobody later mistakes it for the fix. |
+| Transcript replay | **Rejected.** Turn-boundary text is not continuable session state, and replaying it risks the model reading old text as new driver speech. |
+
+Protocol fields were **fetched from `ai.google.dev/api/live` and grepped**, not recalled:
+`sessionResumption.handle`, `sessionResumptionUpdate.newHandle`/`resumable`, `goAway.timeLeft`,
+`contextWindowCompression.slidingWindow`. `traced`.
+
+### The honesty half, which was the actual defect
+
+A resume that works says nothing - continuity is the expected case. A thread that could NOT be
+resumed now flashes **"RECONNECTED - LOST TRACK OF WHAT WE WERE SAYING"** and opens the next turn by
+telling the MODEL it does not remember, rather than `beginConversation(null)` answering cold. A
+crisis teardown clears the handle as well: that conversation must never silently resume.
+
+### A correction worth keeping
+
+The brief for this work justified skipping replay on the grounds that `captureEpisodicTurn` stores
+driver turns only, because `companionTurnText` is gated on `subtitles`. **The executing agent
+checked and corrected that**: `subtitles = true` is hardcoded now (`GeminiLiveSession.kt:492`, "a
+core UX surface, not debug-only"), so companion text IS captured. The stale premise was reported
+rather than used. Replay stays rejected on the better reason.
+
+### Unproven, and neither is small
+
+- **No real `goAway.timeLeft` has ever been observed**, so the 3s reconnect margin is a guess. The
+  code says so.
+- **The protocol gives no ack for a rejected or expired handle.** "A handle exists, therefore the
+  resume worked" is the best available signal, not a confirmation. If a stale handle silently fails,
+  today's code would stay quiet - which is exactly the failure this ticket was about, one level down.
+
+### Verification, not yet run
+
+Reproducible without a car, and deliberately left for Kevin because it drops the adb link the work
+was done over:
+
+```
+adb shell cmd connectivity airplane-mode enable    # wait 5-10s mid-conversation
+adb shell cmd connectivity airplane-mode disable
+```
+
+then tap and confirm either a silent resume with correct recall, or the notice plus a model line
+that acknowledges the drop.
+
