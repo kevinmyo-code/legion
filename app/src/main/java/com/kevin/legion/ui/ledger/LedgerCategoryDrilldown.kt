@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.data.local.IngestMethod
@@ -421,6 +423,16 @@ private fun monthEndMs(month: YearMonth): Long =
  * Alignment comes from the same rule the label row uses - one `weight(1f)` cell per bar inside the
  * same 12dp horizontal padding the chart draws in - so a printed number sits over its own day
  * rather than near it. Blank cells hold their place so the anchors cannot slide.
+ *
+ * **Each label draws UNBOUNDED, overflowing its own cell on purpose.** A 31-day month at 384dp
+ * gives each cell about 11.6dp, and a two-digit stamp numeral needs roughly 14. Constrained to its
+ * cell, "15" clips to "1", "22" to "2" and "31" to "3" - which is exactly what shipped for one
+ * build, and what Kevin saw: "x axis is showing 1 8 1 2 and 3, wtf is that> thats not even dates".
+ * `wrapContentWidth(unbounded = true)` lets the numeral measure at its natural width and centre
+ * itself on its cell, so it stays over its own day while being allowed to spill into the empty
+ * cells either side - which are empty by construction, since anchors are never adjacent.
+ * `softWrap = false` plus `TextOverflow.Visible` is the same pair `HalfTileHero` already relies on
+ * for the same reason: a clipped number is worse than a wide one.
  */
 @Composable
 internal fun DayOfMonthAxis(bars: List<DeckBar?>, modifier: Modifier = Modifier) {
@@ -437,8 +449,12 @@ internal fun DayOfMonthAxis(bars: List<DeckBar?>, modifier: Modifier = Modifier)
                 style = LegionType.stamp,
                 color = sem.faint,
                 maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Visible,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .wrapContentWidth(unbounded = true),
             )
         }
     }
