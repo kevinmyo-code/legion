@@ -6,7 +6,7 @@ type: grilling
 status: open
 status-detail: ""
 blockers: ["03"]
-blocked-by: ["03-no-navigation-capability.md"]
+blocked-by: ["[[03-no-navigation-capability]]"]
 open-blockers: 1
 ready: false
 tags: [ticket]

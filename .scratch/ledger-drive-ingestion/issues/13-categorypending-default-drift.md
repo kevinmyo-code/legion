@@ -8,7 +8,7 @@ status-detail: "built in 703778a at v23->v24; drift audit re-run 2026-08-18, 0 d
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # `categoryPending`'s default has drifted: a fresh install and a migrated one differ

@@ -180,6 +180,47 @@ def existing_frontmatter_state(path: Path) -> tuple[str, list[str]]:
     return state, blockers
 
 
+def refresh_computed_fields(t: "Ticket", by_num: dict, check: bool) -> bool:
+    """Recompute `open-blockers`, `blocked-by` and `ready` in an already-converted ticket.
+
+    A surgical rewrite of three lines, never a re-render: everything else in the file - the body,
+    `status-detail`, any field a human added - is left byte-identical. Returns True if the file
+    changed (or would have, under --check).
+    """
+    text = t.path.read_text(encoding="utf-8-sig")
+    if not text.startswith("---" + chr(10)):
+        return False
+    fm, rest = text.split(chr(10) + "---" + chr(10), 1)
+    open_blockers = sum(1 for n in t.blockers if n in by_num and not by_num[n].done)
+    # EXACTLY render_ticket's own formatting, quotes included - this function must be a no-op on a
+    # file whose computed values have not changed, or every run would rewrite every ticket and the
+    # diff would stop telling anyone anything.
+    links = []
+    for num in t.blockers:
+        dep = by_num.get(num)
+        links.append(f'"[[{dep.slug}]]"' if dep else f'"{num}"')
+    wanted = {
+        "blocked-by": f"[{', '.join(links)}]",
+        "open-blockers": str(open_blockers),
+        "ready": str(not t.done and open_blockers == 0).lower(),
+    }
+    out, changed = [], False
+    for line in fm.split(chr(10)):
+        key = line.split(":", 1)[0]
+        if key in wanted:
+            new_line = f"{key}: {wanted[key]}"
+            if new_line != line:
+                changed = True
+            out.append(new_line)
+        else:
+            out.append(line)
+    if not changed:
+        return False
+    if not check:
+        t.path.write_text(chr(10).join(out) + chr(10) + "---" + chr(10) + rest, encoding="utf-8")
+    return True
+
+
 def collect() -> dict[str, list[Ticket]]:
     maps: dict[str, list[Ticket]] = {}
     dirs = {p.parent for p in SCRATCH.glob("*/map.md")} | {p.parent for p in SCRATCH.glob("*/issues")}
@@ -312,6 +353,13 @@ def render_canvas(slug: str, tickets: list[Ticket]) -> str:
     return json.dumps({"nodes": nodes, "edges": edges}, indent=2) + "\n"
 
 
+def map_link(slug: str) -> str:
+    """Two efforts have tickets but no map.md. Do not link at what is not there."""
+    if (SCRATCH / slug / "map.md").exists():
+        return "[[.scratch/{}/map{}|{}]]".format(slug, chr(92), slug)
+    return slug + " (no map)"
+
+
 def render_board(maps: dict[str, list[Ticket]]) -> str:
     """The one note that answers "what is next" without asking anyone.
 
@@ -342,7 +390,7 @@ def render_board(maps: dict[str, list[Ticket]]) -> str:
             if t.done:
                 continue
             waiting = [n for n in t.blockers if n in by_num and not by_num[n].done]
-            row = f"| [[{slug}\\|{slug}]] | [[{t.slug}\\|{t.num}]] | {t.type} | {t.title} |"
+            row = f"| {map_link(slug)} | [[{t.slug}\\|{t.num}]] | {t.type} | {t.title} |"
             if waiting:
                 names = ", ".join(f"[[{by_num[n].slug}\\|{n}]]" for n in waiting)
                 blocked_rows.append(row[:-1] + f" waiting on {names} |")
@@ -356,7 +404,7 @@ def render_board(maps: dict[str, list[Ticket]]) -> str:
     lines += ["", "## Maps", "", "| Map | Tickets | Open | Canvas |", "|---|---|---|---|"]
     for slug, tickets in sorted(maps.items()):
         open_n = sum(1 for t in tickets if not t.done)
-        lines.append(f"| [[{slug}\\|{slug}]] | {len(tickets)} | {open_n} | [[{slug}.canvas\\|open]] |")
+        lines.append(f"| {map_link(slug)} | {len(tickets)} | {open_n} | [[.scratch/{slug}/{slug}.canvas\\|open]] |")
     return "\n".join(lines) + "\n"
 
 
@@ -483,6 +531,67 @@ views:
       - charted
 """
 
+DECISIONS_BASE = """filters:
+  and:
+    - file.hasTag("adr")
+    - '!file.hasTag("index")'
+
+formulas:
+  reversal: 'if(supersedes, "reverses " + supersedes, "")'
+
+properties:
+  decided-by:
+    displayName: "By"
+  formula.reversal:
+    displayName: "Reverses"
+
+views:
+  - type: table
+    name: "Standing"
+    filters:
+      not:
+        - 'status == "superseded"'
+    order:
+      - file.name
+      - status
+      - decided
+      - amended
+      - formula.reversal
+    groupBy:
+      property: status
+      direction: ASC
+
+  - type: table
+    name: "Locked"
+    filters:
+      and:
+        - 'status == "locked"'
+    order:
+      - file.name
+      - decided
+      - source
+
+  - type: table
+    name: "Superseded"
+    filters:
+      and:
+        - 'status == "superseded"'
+    order:
+      - file.name
+      - decided
+      - superseded-by
+
+  - type: table
+    name: "Everything"
+    order:
+      - file.name
+      - status
+      - decided
+      - decided-by
+      - supersedes
+      - superseded-by
+"""
+
 LIBRARY_BASE = """filters:
   and:
     - file.hasTag("library")
@@ -527,6 +636,9 @@ One Android phone app, three aspects: fleet, ledger, pantry.
 | [[Tickets.base\\|Tickets]] | Every ticket, filterable |
 | [[Maps.base\\|Maps]] | Every wayfinder map and its progress |
 | [[Library.base\\|Library]] | The memory shelves, live and frozen |
+| [[Decisions.base\\|Decisions]] | Every standing decision, and what superseded what |
+| [[adr-index\\|ADR index]] | The same set as a plain table |
+| `docs/README.md` | Architecture, C4 diagrams, glossary |
 
 ## Rules and state
 
@@ -543,6 +655,77 @@ python tools/obsidian_sync.py
 
 That rewrites frontmatter, the per-map canvases, and [[Board]].
 """
+
+
+
+def render_adr_index() -> str | None:
+    """The ADR table, rebuilt from each ADR's own frontmatter.
+
+    Hand-maintaining this drifts the moment someone supersedes something and
+    forgets the index, which is the failure the ADR set exists to prevent.
+    """
+    adr_dir = ROOT / "docs" / "adr"
+    if not adr_dir.is_dir():
+        return None
+
+    rows = []
+    for path in sorted(adr_dir.glob("[0-9]*.md")):
+        text = path.read_text(encoding="utf-8")
+        fm = {}
+        if text.startswith("---" + chr(10)):
+            for line in text.split(chr(10) + "---" + chr(10), 1)[0][4:].split(chr(10)):
+                k, sep, v = line.partition(":")
+                if sep and not k.startswith((" ", "-")):
+                    fm[k.strip()] = v.strip()
+        title = ""
+        for line in text.split(chr(10)):
+            if line.startswith("# "):
+                title = line[2:].split(". ", 1)[-1].strip()
+                break
+        rows.append((path.stem, title, fm))
+
+    live = [r for r in rows if r[2].get("status") != "superseded"]
+    dead = [r for r in rows if r[2].get("status") == "superseded"]
+
+    out = [
+        "---",
+        "title: ADR index",
+        "tags: [adr, index]",
+        "---",
+        "",
+        "# Decisions",
+        "",
+        "Generated by `tools/obsidian_sync.py` from each ADR's frontmatter. Do not hand-edit.",
+        "",
+        "An ADR says what is binding **now**. `memory/library/decisions.md` says what happened **when**.",
+        "Format and the test for whether something deserves an ADR:",
+        "`.claude/skills/domain-modeling/ADR-FORMAT.md`.",
+        "",
+        "`locked` means a CLAUDE.md section 2 pivot decision: not reopenable without Kevin.",
+        "",
+        "## Standing",
+        "",
+        "| # | Decision | Status | Decided | Amended |",
+        "|---|---|---|---|---|",
+    ]
+    for slug, title, fm in live:
+        num = slug.split("-")[0]
+        out.append(
+            "| {} | [[{}\\|{}]] | {} | {} | {} |".format(
+                num, slug, title, fm.get("status", ""), fm.get("decided", ""),
+                fm.get("amended", "") or "-")
+        )
+
+    out += ["", "## Superseded", "",
+            "Kept with their original text. What was believed before, and why it changed.",
+            "", "| # | Decision | Superseded by |", "|---|---|---|"]
+    for slug, title, fm in dead:
+        num = slug.split("-")[0]
+        by = fm.get("superseded-by", "").strip("[]")
+        by_link = "[[{}\\|{}]]".format(by, by) if by else "-"
+        out.append("| {} | [[{}\\|{}]] | {} |".format(num, slug, title, by_link))
+
+    return chr(10).join(out) + chr(10)
 
 
 def main() -> int:
@@ -562,6 +745,15 @@ def main() -> int:
 
         for t in tickets:
             if t.already:
+                # Already converted, so the body and the hand-written fields stay untouched -
+                # re-rendering from `pairs` would destroy them, which is why this used to `continue`
+                # outright. But the three COMPUTED fields have to be recomputed, or they freeze at
+                # whatever they were the day the file was converted: resolve a ticket and its own
+                # frontmatter still claims `ready: true` forever, while the Board (rebuilt from
+                # scratch every run) correctly drops it. CLAUDE.md sec 12 promises a re-run fixes a
+                # stale board; it did not fix the tickets the Bases actually query.
+                if refresh_computed_fields(t, by_num, check=args.check):
+                    wrote += 1
                 continue
             if not t.converted:
                 print(f"  SKIP (no header block): {t.path.relative_to(ROOT)}")
@@ -587,9 +779,14 @@ def main() -> int:
         (vault / "Tickets.base").write_text(TICKETS_BASE, encoding="utf-8")
         (vault / "Maps.base").write_text(MAPS_BASE, encoding="utf-8")
         (vault / "Library.base").write_text(LIBRARY_BASE, encoding="utf-8")
+        (vault / "Decisions.base").write_text(DECISIONS_BASE, encoding="utf-8")
         (vault / "Board.md").write_text(render_board(maps), encoding="utf-8")
         if not (vault / "LEGION.md").exists():
             (vault / "LEGION.md").write_text(HOME, encoding="utf-8")
+
+        adr_index = render_adr_index()
+        if adr_index:
+            (ROOT / "docs" / "adr" / "adr-index.md").write_text(adr_index, encoding="utf-8")
 
     open_n = sum(1 for t in all_tickets if not t.done)
     ready_n = 0

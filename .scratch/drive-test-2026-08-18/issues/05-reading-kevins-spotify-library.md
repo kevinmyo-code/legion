@@ -8,7 +8,7 @@ status-detail: "decided and built 2026-08-18 (a19ab4d, 18e881c); on-device QA an
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Reading Kevin's own Spotify library
