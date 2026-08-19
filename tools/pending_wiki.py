@@ -248,4 +248,4 @@ doc = (
 )
 
 open(os.path.join('docs', 'index.html'), 'w', encoding='utf-8').write(doc)
-print('docs/pending.html:', len(panels), 'maps,', tot, 'open tickets,', ready, 'ready')
+print('docs/index.html:', len(panels), 'maps,', tot, 'open tickets,', ready, 'ready')
