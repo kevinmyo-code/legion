@@ -91,6 +91,14 @@ data class QueuedTrack(val name: String, val artist: String)
  */
 data class SpotifyPlaylist(val name: String, val uri: String, val id: String, val readable: Boolean)
 
+/**
+ * One album/single from `GET /artists/{id}/albums` - [SpotifyWebApi.getArtistAlbums] (ticket 13,
+ * `.scratch/spotify-voice/issues/13-more-from-this-artist.md`). No `artist` field, unlike
+ * [SavedAlbum]/[TopTrack]/etc: every row here is already scoped to ONE artist by the request URL
+ * itself, so repeating that artist's name on every row would be noise, not information.
+ */
+data class ArtistAlbum(val name: String, val uri: String)
+
 object SpotifyWebApi {
     private const val TAG = "SpotifyWebApi"
     private const val AUTH_HOST = "https://accounts.spotify.com/authorize"
@@ -396,6 +404,24 @@ object SpotifyWebApi {
     }
 
     /**
+     * (name, subtitle) for whatever [candidate] actually is, per [type] - ticket 07's "name what
+     * it picked". Track/album: the artist. Playlist: the owner's Spotify display name, when
+     * Spotify includes one (it can be blank for some editorial/algorithmic playlists). Artist:
+     * no subtitle at all - an artist search result has nothing else worth saying.
+     */
+    internal fun pickedDisplayName(candidate: JSONObject, type: String): Pair<String, String?> {
+        val name = candidate.optString("name").ifBlank { "Unknown" }
+        val subtitle = when (type) {
+            "track", "album" -> candidate.optJSONArray("artists")
+                ?.optJSONObject(0)?.optString("name")?.takeIf { it.isNotBlank() }
+            "playlist" -> candidate.optJSONObject("owner")?.optString("display_name")
+                ?.takeIf { it.isNotBlank() }
+            else -> null // "artist" - nothing else to add.
+        }
+        return name to subtitle
+    }
+
+    /**
      * Outcome of a track search. Replaces the nullable String (2026-08-12): that
      * null meant "no token" OR "offline" OR "Spotify said no" OR "nothing
      * matched", and `play_music` reported every one of them to the driver as
@@ -405,13 +431,15 @@ object SpotifyWebApi {
      */
     sealed interface SearchOutcome {
         /**
-         * [name] is Spotify's own title for the matched item, carried through (ticket 08) so a
-         * caller that fell through from a driver's own playlist library to this public-catalogue
-         * search can name what it actually found - the search result is often NOT what the driver
-         * meant by their words, and that has to be said, not silently substituted. Null only for
-         * older call sites that never populated it; [search] always sets it now.
+         * [name]/[subtitle] (ticket 07, `.scratch/spotify-voice/issues/07-now-playing-truth.md`)
+         * are Spotify's OWN name for whatever [uri] actually resolved to - the artist for a
+         * track/album, the owner's display name for a playlist, null for an artist search where
+         * there is nothing else to say. `play_music` uses these to name what it actually picked
+         * ("Discovery, Daft Punk") rather than echoing the driver's own words back, which is the
+         * honesty half of this ticket: a loose spoken query and the top search hit are not
+         * always the same thing, and the driver should hear which one started.
          */
-        data class Found(val uri: String, val name: String? = null) : SearchOutcome
+        data class Found(val uri: String, val name: String, val subtitle: String?) : SearchOutcome
 
         /** The browser grant was never completed, or the stored credentials are gone. */
         object NeedsAuthorization : SearchOutcome
@@ -593,18 +621,20 @@ object SpotifyWebApi {
                     .filter { it.optString("uri").isNotBlank() }
                 if (candidates.isEmpty()) return@withContext SearchOutcome.NoMatch
 
-                val chosen = if (type == "track") {
+                val picked = if (type == "track") {
                     val clean = candidates.filterNot { looksLikeImposter(it) }
                     // If filtering leaves nothing, the query genuinely WAS for a
                     // karaoke/tribute cut - honour it rather than returning nothing.
-                    (clean.ifEmpty { candidates }).maxByOrNull { it.optInt("popularity", 0) }
+                    (clean.ifEmpty { candidates })
+                        .maxByOrNull { it.optInt("popularity", 0) }
                 } else {
                     // Non-track types: trust Spotify's own relevance ranking (first result).
                     candidates.first()
                 }
-                val uri = chosen?.optString("uri")?.takeIf { it.isNotBlank() }
-                if (uri != null) {
-                    SearchOutcome.Found(uri, chosen.optString("name").takeIf { it.isNotBlank() })
+                val uri = picked?.optString("uri")?.takeIf { it.isNotBlank() }
+                if (picked != null && uri != null) {
+                    val (name, subtitle) = pickedDisplayName(picked, type)
+                    SearchOutcome.Found(uri, name, subtitle)
                 } else {
                     SearchOutcome.NoMatch
                 }
@@ -1233,4 +1263,85 @@ object SpotifyWebApi {
                 PlaylistWriteOutcome.Unreachable
             }
         }
+    // --- Artist's own albums (ticket 13, .scratch/spotify-voice/issues/13-more-from-this-artist.md) --
+    //
+    // Catalogue navigation, not a recommendation: "what else does he have" and "play his album X"
+    // are exact questions with exact answers, never a model guess. `GET /artists/{id}/albums` is
+    // a PUBLIC catalogue endpoint (no `user-...` scope, unlike every read above it) - verified live
+    // and undeprecated on developer.spotify.com 2026-08-19 (`traced`, this ticket's own mandatory
+    // check - see this repo's coding-agent report for the exact pages read): its reference page is
+    // fully specified with no restriction banner, and it is absent from the ONE primary-documented
+    // removal wave that DOES exist (the 2024-11-27 blog post - Related Artists, Recommendations,
+    // Audio Features, Audio Analysis, Featured Playlists, Category Playlists, 30-second preview
+    // URLs in multi-get, and algorithmic/editorial playlists - this endpoint is on none of those
+    // lists). What could NOT be verified from the docs: whether a NEW dev-mode Client ID
+    // specifically 403s here regardless of the reference page looking normal - Spotify's docs do
+    // not reflect per-app access tiers at all, proven by the fact that a KNOWN-removed endpoint
+    // (`get-recommendations`) renders an identically "normal" reference page. [libraryGet] already
+    // turns any 401/403 into an honest, spoken [LibraryOutcome.Unauthorized] rather than a crash or
+    // a silent empty list, so that residual unknown fails safely either way - on-device confirmation
+    // against Kevin's own Client ID is what actually settles it.
+
+    private const val ARTIST_ALBUMS_LIMIT = 5
+
+    /**
+     * The Spotify catalogue ID out of a `spotify:artist:...`/`spotify:track:...`/etc URI - the
+     * Web API's `/artists/{id}/...` paths want the bare ID, not the full URI App Remote hands
+     * back. Pure, unit-testable. Returns null on anything that isn't recognizably a Spotify URI
+     * (blank, malformed, or missing the id segment) rather than guessing a partial value.
+     */
+    internal fun spotifyIdFromUri(uri: String): String? {
+        val parts = uri.split(":")
+        if (parts.size != 3 || parts[0] != "spotify" || parts[2].isBlank()) return null
+        return parts[2]
+    }
+
+    /**
+     * `items[]` (album objects) -> [ArtistAlbum], deduped by name (Spotify's own `/artists/{id}/albums`
+     * response commonly repeats the same album once per market/edition - a "short handful" spoken
+     * list must not read the same title twice) while preserving Spotify's own ordering (newest
+     * release first, by default). Pure, unit-testable.
+     */
+    internal fun parseArtistAlbums(json: JSONObject): List<ArtistAlbum> {
+        val items = json.optJSONArray("items") ?: return emptyList()
+        return (0 until items.length())
+            .mapNotNull { i ->
+                val album = items.optJSONObject(i) ?: return@mapNotNull null
+                val name = album.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val uri = album.optString("uri").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                ArtistAlbum(name = name, uri = uri)
+            }
+            .distinctBy { it.name }
+    }
+
+    /**
+     * "What else does he have" (ticket 13 scope item 2): the current artist's own albums and
+     * singles, newest first. [artistUri] comes from App Remote's own pushed player state
+     * ([SpotifyController.currentArtist]) - never a guess. `include_groups=album,single` excludes
+     * "appears_on" (compilations/features) and "compilation" entries, which are not what a driver
+     * asking "what albums does he have" means. No extra scope needed - this is a public catalogue
+     * read, unlike every `/v1/me/...` read above it.
+     */
+    suspend fun getArtistAlbums(
+        context: Context,
+        artistUri: String,
+        limit: Int = ARTIST_ALBUMS_LIMIT,
+    ): LibraryOutcome<ArtistAlbum> {
+        val artistId = spotifyIdFromUri(artistUri)
+            ?: return LibraryOutcome.Failed(0, "Not a recognizable Spotify artist URI: $artistUri")
+        val url = Uri.parse("https://api.spotify.com/v1/artists/$artistId/albums").buildUpon()
+            .appendQueryParameter("include_groups", "album,single")
+            // LIBRARY_LIMIT, not a fresh guess: this endpoint's own real ceiling has never been
+            // measured (same caveat as LIBRARY_LIMIT's own doc), and reusing the one existing
+            // conservative value is safer than inventing a second unmeasured one. Requested BEFORE
+            // the market/edition de-dupe in [parseArtistAlbums] and the driver-facing [limit]
+            // truncation below, so duplicate market editions can't crowd out genuinely different
+            // albums before dedup runs.
+            .appendQueryParameter("limit", LIBRARY_LIMIT.toString())
+            .build().toString()
+        return when (val outcome = libraryGet(context, url, ::parseArtistAlbums)) {
+            is LibraryOutcome.Found -> LibraryOutcome.Found(outcome.items.take(limit))
+            else -> outcome
+        }
+    }
 }

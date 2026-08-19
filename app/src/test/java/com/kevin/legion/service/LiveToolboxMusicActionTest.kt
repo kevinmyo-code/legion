@@ -41,16 +41,22 @@ class LiveToolboxMusicActionTest {
         assertEquals(LiveToolbox.MusicAction.RESTART, LiveToolbox.MusicAction.fromWire("restart"))
         // Landed ticket 08: add the currently playing track to a named playlist.
         assertEquals(LiveToolbox.MusicAction.ADD_TO_PLAYLIST, LiveToolbox.MusicAction.fromWire("add_to_playlist"))
+        // Landed ticket 13: catalogue navigation off the current artist, no search.
+        assertEquals(LiveToolbox.MusicAction.MORE_FROM_ARTIST, LiveToolbox.MusicAction.fromWire("more_from_artist"))
     }
 
     @Test
     fun `every MusicAction entry that exists today has landed - no future placeholder entries`() {
         // Ticket 03's discipline (the schema `enum` and this parser never claim more than is
         // actually wired) means there is no longer a "not landed yet" set to assert against -
-        // tickets 03-06 (and now 08) are all in on this map. Asserting the exact count instead
-        // pins the map's full surface as a single number that must be touched deliberately if it
-        // ever grows again.
-        assertEquals(19, LiveToolbox.MusicAction.entries.size)
+        // tickets 03-06, 08 and 13 are all in on this map. Asserting the exact count instead pins
+        // the map's full surface as a single number that must be touched deliberately if it ever
+        // grows again.
+        //
+        // It earned its keep at the 08/13 merge: both branches independently bumped this from 18
+        // to 19, and the merged enum holds 20. Nothing else in the suite would have noticed that
+        // the two action sets had been added past each other.
+        assertEquals(20, LiveToolbox.MusicAction.entries.size)
     }
 
     @Test

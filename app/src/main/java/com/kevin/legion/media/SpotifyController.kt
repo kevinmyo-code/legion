@@ -143,6 +143,30 @@ object SpotifyController {
         playerStateSubscription = subscription
     }
 
+    /** The (uri, name) of the artist behind whatever's currently playing (ticket 13). */
+    data class CurrentArtist(val uri: String, val name: String)
+
+    /**
+     * Pure `PlayerState? -> CurrentArtist?` decision behind [currentArtist] - kept Android-free
+     * and internal so it is a plain JVM unit test. Null whenever there is nothing genuinely to
+     * answer with (no state, or a state with a blank uri/name) - "more from this artist" and "what
+     * else does he have" (ticket 13, `.scratch/spotify-voice/issues/13-more-from-this-artist.md`)
+     * must both fail honestly on null rather than ever inventing an artist from a stale guess.
+     */
+    internal fun currentArtistFrom(state: PlayerState?): CurrentArtist? {
+        val artist = state?.track?.artist ?: return null
+        if (artist.uri.isBlank() || artist.name.isBlank()) return null
+        return CurrentArtist(uri = artist.uri, name = artist.name)
+    }
+
+    /**
+     * The artist behind whatever App Remote's own pushed [playerState] currently holds - ticket
+     * 13's "more from this artist" / "what else does he have" both read this rather than the
+     * driver's own words, since there is nothing to search: the artist is exactly whoever is
+     * playing right now, from Spotify's own truth (same source ticket 07 uses for now-playing).
+     */
+    fun currentArtist(): CurrentArtist? = currentArtistFrom(playerState.value)
+
     /**
      * Starts (or joins) the one connect attempt in flight. Every public entry
      * point below funnels through here so there is exactly one
@@ -343,6 +367,11 @@ object SpotifyController {
             // Non-null only when [UserApi.getCapabilities] came back and said this account
             // can't play on demand (map decision 7) - told in words, never silently degraded.
             val premiumWarning: String? = null,
+            // What search actually picked (ticket 07, e.g. "Discovery, Daft Punk"), carried
+            // through from [playUri]'s own [pickedLabel] param. Null falls back to [description]
+            // in [message] below - the knownUri replay path where the driver's own words already
+            // name exactly what's about to play.
+            val pickedLabel: String? = null,
         ) : PlayOutcome
 
         /** [isInstalled] said no, or App Remote's own connect attempt threw [CouldNotFindSpotifyApp]. */
@@ -376,7 +405,8 @@ object SpotifyController {
      */
     internal fun message(outcome: PlayOutcome, description: String): String = when (outcome) {
         is PlayOutcome.Started ->
-            "Playing \"$description\" on Spotify." + (outcome.premiumWarning?.let { " $it" } ?: "")
+            "Playing \"${outcome.pickedLabel ?: description}\" on Spotify." +
+                (outcome.premiumWarning?.let { " $it" } ?: "")
         PlayOutcome.NotInstalled ->
             "Spotify isn't installed on this phone, so there's nothing to play \"$description\" through."
         PlayOutcome.NotLoggedIn ->
@@ -438,7 +468,7 @@ object SpotifyController {
      * bounded because App Remote can leave a call outstanding indefinitely when the Spotify app
      * is wedged, and a voice command must not hang tool dispatch waiting on it.
      */
-    suspend fun playUri(context: Context, uri: String): PlayOutcome = withContext(Dispatchers.IO) {
+    suspend fun playUri(context: Context, uri: String, pickedLabel: String? = null): PlayOutcome = withContext(Dispatchers.IO) {
         if (!isInstalled(context)) return@withContext PlayOutcome.NotInstalled
 
         if (!ensureConnected(context)) {
@@ -463,7 +493,7 @@ object SpotifyController {
         }
         if (!started) return@withContext PlayOutcome.PlayRejected
 
-        PlayOutcome.Started(premiumWarning = premiumWarningIfNeeded(r))
+        PlayOutcome.Started(premiumWarning = premiumWarningIfNeeded(r), pickedLabel = pickedLabel)
     }
 
     /** Best-effort pull of playback onto this phone. See [playUri]'s doc for why it isn't fatal. */

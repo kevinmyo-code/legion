@@ -128,6 +128,34 @@ class SpotifyControllerPlayOutcomeTest {
         assertEquals("Playing \"Bad Bunny\" on Spotify. Heads up - no Premium.", message)
     }
 
+    // ------------------------------------------------------- pickedLabel (ticket 07)
+
+    @Test
+    fun `Started with a pickedLabel names what search actually picked, not the driver's own words`() {
+        // Ticket 07: the driver said "some Daft Punk", search picked "Discovery" - the spoken
+        // confirmation must name what actually started, not echo the request back.
+        val message = SpotifyController.message(
+            PlayOutcome.Started(pickedLabel = "Discovery, Daft Punk"),
+            "some Daft Punk",
+        )
+        assertEquals("Playing \"Discovery, Daft Punk\" on Spotify.", message)
+    }
+
+    @Test
+    fun `Started with no pickedLabel falls back to the description - the knownUri replay path`() {
+        val message = SpotifyController.message(PlayOutcome.Started(pickedLabel = null), "that thing from Tuesday")
+        assertEquals("Playing \"that thing from Tuesday\" on Spotify.", message)
+    }
+
+    @Test
+    fun `Started with both a pickedLabel and a premium warning carries both`() {
+        val message = SpotifyController.message(
+            PlayOutcome.Started(premiumWarning = "Heads up - no Premium.", pickedLabel = "Discovery, Daft Punk"),
+            "some Daft Punk",
+        )
+        assertEquals("Playing \"Discovery, Daft Punk\" on Spotify. Heads up - no Premium.", message)
+    }
+
     @Test
     fun `PlayRejected names the track and that it may not be playable here`() {
         val message = SpotifyController.message(PlayOutcome.PlayRejected, "Bad Bunny")

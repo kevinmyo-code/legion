@@ -565,14 +565,20 @@ class AriaBrain private constructor(context: Context) {
                 "Reference it naturally when relevant - e.g. ask how work was, or offer to head home.")
         }
 
-        // Now-playing comes from the media session (a free, exact live data
-        // stream), so the assistant knows the track without capturing the screen.
+        // Now-playing comes from the media session (a free, exact live data stream) - or, when
+        // Spotify is the source, from App Remote's own pushed player state (ticket 07,
+        // .scratch/spotify-voice/issues/07-now-playing-truth.md - see NowPlayingController's own
+        // doc), so the assistant knows the track without capturing the screen. Album is included
+        // (ticket 07 scope item 3): a driver asking "what's this" is usually trying to find it
+        // again later, and the album is the detail most worth repeating back for that.
         val nowPlaying = NowPlayingController.state.value
         if (nowPlaying != null && nowPlaying.title.isNotBlank()) {
             val artist = if (nowPlaying.artist.isNotBlank()) " by ${nowPlaying.artist}" else ""
+            val album = if (nowPlaying.album.isNotBlank()) " (from the album \"${nowPlaying.album}\")" else ""
             val verb = if (nowPlaying.isPlaying) "is currently playing" else "is paused"
-            sb.appendSection("Right now \"${nowPlaying.title}\"$artist $verb. " +
-                "If the driver asks what's playing, answer from this.")
+            sb.appendSection("Right now \"${nowPlaying.title}\"$artist$album $verb. " +
+                "If the driver asks what's playing, or what's this / what album is this, answer " +
+                "from this - name the album too, since they usually want to find it again later.")
         }
 
         // Music: transport-only via MediaSession/AVRCP, plus direct Spotify play-by-name
