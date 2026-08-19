@@ -47,7 +47,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[01-scopes-and-one-reapproval\|01]] | task | Every scope this map needs, taken in one re-approval |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[02-app-remote-spine\|02]] | task | App Remote is the spine, and it creates the device rather than needing one |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[03-tool-surface\|03]] | task | Fold ten capabilities into the tools that already exist |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[10-what-like-this-means\|10]] | grilling | What play something like this can mean when Spotify no longer tells us |
+| [[.scratch/spotify-voice/map\|spotify-voice]] | [[11-rec-engine\|11]] | task | The recommendation engine LEGION has to build itself |
 
 ## Blocked
 
@@ -67,8 +67,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[07-now-playing-truth\|07]] | task | What's this, and naming what it picked  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[08-playlists-by-name\|08]] | task | My playlists, and the ones friends shared with me  waiting on [[01-scopes-and-one-reapproval\|01]], [[03-tool-surface\|03]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[09-history-uri\|09]] | task | legion_history can name a track it can never replay  waiting on [[02-app-remote-spine\|02]] |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[11-rec-engine\|11]] | task | The recommendation engine LEGION has to build itself  waiting on [[10-what-like-this-means\|10]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[12-ship-pass\|12]] | task | Ship pass: installed on the A25 and drivable  waiting on [[01-scopes-and-one-reapproval\|01]], [[02-app-remote-spine\|02]], [[03-tool-surface\|03]], [[04-queue\|04]], [[05-library-writes\|05]], [[06-shuffle-repeat-seek\|06]], [[07-now-playing-truth\|07]], [[08-playlists-by-name\|08]], [[09-history-uri\|09]], [[11-rec-engine\|11]] |
+| [[.scratch/spotify-voice/map\|spotify-voice]] | [[13-more-from-this-artist\|13]] | task | More from this artist, and what else they have  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
 
 ## Maps
 
@@ -92,4 +92,4 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 9 | 7 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | 12 | 12 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
+| [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 12 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |

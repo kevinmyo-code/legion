@@ -3,12 +3,12 @@ map: spotify-voice
 ticket: 10
 title: "What play something like this can mean when Spotify no longer tells us"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Answered by Kevin 2026-08-19. Single-drive only, no stored preference, plays and queues but never saves."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # What "play something like this" can mean when Spotify no longer tells us
@@ -57,3 +57,76 @@ This ticket decides what "like this" is allowed to MEAN, before anything is buil
 
 Nothing. This is the decision that unblocks ticket 11, and it resolves before any recommendation
 code is written.
+
+## Resolution, 2026-08-19 - Kevin, grilled through
+
+**Priority note, in his own words: "recommendation is not as important because i usually know what i
+want."** This is the least valuable thing on the map and should be built LAST. The workhorses are
+queue, like, shuffle and playlists-by-name.
+
+### 1. Surfacing or discovery
+
+**Both, labelled differently.** Every input LEGION holds is a record of what Kevin already played -
+top items, recently played, saved library, his playlists, `legion_history` - and **nothing Spotify
+still gives us says two artists sound alike.** So the "yours" half is a reordering of his own library
+(honest, verifiable, and genuinely useful), and the "new" half can only come from the model's own
+knowledge of music. They are different claims and they are said differently.
+
+### 2. When a suggestion does not resolve
+
+**Resolve-or-die for what it PLAYS; say it plainly when one dies.** A suggested track is searched
+before it is ever spoken, and only survivors reach the queue. When one cannot be found, the
+assistant says so and names the model as the source - never "Spotify doesn't have that", which would
+be LEGION inventing a fact about the catalogue to cover a possible hallucination. Search is capped at
+**10 results**, so misses will be routine.
+
+### 3. What it may say about WHY
+
+**Facts, delivered in character.** The reason must trace to a real row - play counts, dates, what he
+saved - and Alfred may phrase it with personality. A *story* about his taste ("you've been in a
+synthy mood lately") is forbidden: it is CLAUDE.md sec 7's unfalsifiable belief, and its failure mode
+is self-reinforcing - repeat the story often enough and the engine starts picking to fit its own
+theory rather than the record, narrowing the music invisibly.
+
+### 4. The seed
+
+**A (the current track), B (the drive itself), C (a spoken mood). D is dropped** - Kevin does not say
+"play me something": *"i ususally say hey im on a mood for retro synth music."* **C is the primary
+path**, which matters, because a genre request is the one shape none of his first-party data is
+labelled for.
+
+### 5. Where candidates come from for a mood
+
+**A (ask the model for names, then resolve each) and C (filter his own library by model-assigned
+genre), mixed in one response.** **B is dropped** - Spotify search's genre filtering was never
+verified post-cull and comes from the same family of endpoints Spotify has been retiring; not worth
+a spike for this map's least important feature.
+
+**Repetition is handled BOTH ways** (Kevin, pushed back on prompt-only): the model is told, AND the
+discovery lane is mechanically filtered against `legion_history` and recently-played. A prompt rule
+is a request - this repo already lost a motorway to one - and only the filter can actually hold.
+Neither needs a new table.
+
+### 6. Writes
+
+**It plays and it queues. It never saves.** Saving stays a thing Kevin asks for out loud through
+ticket 05's `like`. Anything that quietly accumulates is a mechanism rather than a suggestion, and
+sec 7's no-compulsion rule is directly in the way.
+
+### 7. When it is wrong
+
+**Session only. Nothing is stored.** A skip drops that track for the rest of the drive and is
+forgotten. Storing skips as a fact about the TRACK was offered and declined; storing them as a fact
+about his TASTE was never available - that is sec 7's forbidden case. The reason A wins on merit as
+well as rules: **a skip is ambiguous.** He skips things he loves because they are wrong for the
+moment, and a stored negative would teach the engine the wrong thing in a way nobody could ever
+trace back.
+
+### The version that gets built
+
+Mood in. The "yours" half from `legion_history` plus the saved library, filtered by model-assigned
+genre. The "new" half from model-named artists, each resolved through search before it is spoken.
+Both halves filtered against recent plays, mixed into one queue, each labelled once, aloud.
+
+**No table. No migration. No stored preference. One drive.** Learning across drives is a separate
+effort and is deliberately not on this map.

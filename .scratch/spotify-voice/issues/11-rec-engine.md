@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["10"]
 blocked-by: ["[[10-what-like-this-means]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # The recommendation engine LEGION has to build itself

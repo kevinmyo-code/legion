@@ -4,7 +4,7 @@ title: "Map: Spotify voice control"
 charted: 2026-08-19
 charted-by: "Kevin + Opus"
 effort: "`.scratch/spotify-voice/`"
-tickets: 12
+tickets: 13
 open: 12
 status: open
 tags: [map]
@@ -80,6 +80,30 @@ playing and App Remote will not bind.
 ## Decisions so far
 
 <!-- one line per closed ticket -->
+
+- [What "play something like this" can mean when Spotify no longer tells us](issues/10-what-like-this-means.md)
+  — **Answered 2026-08-19.** Surfacing AND discovery, labelled differently. Suggestions resolve
+  before they are spoken; a dead one is admitted as the model's guess, never as a fact about
+  Spotify's catalogue. Reasons must be facts, phrased in character - a story about his taste is sec 7's
+  unfalsifiable belief and narrows the music invisibly. Seeds are the current track, the drive, or a
+  spoken mood; **mood is the primary path** ("i ususally say hey im on a mood for retro synth
+  music"). Repetition is filtered mechanically as well as prompted, because a prompt rule is a
+  request. **It plays and queues, never saves. A skip lasts one drive and is never stored.**
+  **Kevin's own priority: this is the LEAST important thing on the map** - "i usually know what i
+  want" - so 11 is built last.
+
+## The premise correction that arrived mid-grill
+
+**2026-08-19, Kevin, while ticket 10 was being grilled:** *"its more of like > more music from this
+artist. or any other albums from him etc."*
+
+That is **not** a recommendation engine. It is catalogue navigation, it needs no model guessing, and
+every answer it gives is a real Spotify row rather than a suggestion that has to survive a
+10-result search. It became [ticket 13](issues/13-more-from-this-artist.md), and it is built
+**before** ticket 11.
+
+Tickets 10 and 11 keep their resolution and their place - "play something like this" is still a real
+thing to want - but the map now reflects what he actually says in a car.
 
 ## Not yet specified
 

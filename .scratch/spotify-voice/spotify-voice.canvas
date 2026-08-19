@@ -38,7 +38,7 @@
       "y": 450,
       "width": 320,
       "height": 110,
-      "color": "5"
+      "color": "4"
     },
     {
       "id": "133bf1bfa7d4fa91",
@@ -106,6 +106,16 @@
       "file": ".scratch/spotify-voice/issues/11-rec-engine.md",
       "x": 520,
       "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "934b57827e1475e3",
+      "type": "file",
+      "file": ".scratch/spotify-voice/issues/13-more-from-this-artist.md",
+      "x": 520,
+      "y": 1050,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -274,6 +284,20 @@
       "fromNode": "913e568c305e17d5",
       "fromSide": "right",
       "toNode": "f63ee8e58fe4d26a",
+      "toSide": "left"
+    },
+    {
+      "id": "ab4f8aac019fbd21",
+      "fromNode": "4d506b1a1d87f1c5",
+      "fromSide": "right",
+      "toNode": "934b57827e1475e3",
+      "toSide": "left"
+    },
+    {
+      "id": "d60d5b5803bfd2dc",
+      "fromNode": "43e93a2007f508a3",
+      "fromSide": "right",
+      "toNode": "934b57827e1475e3",
       "toSide": "left"
     }
   ]
