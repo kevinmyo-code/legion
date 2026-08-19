@@ -47,7 +47,7 @@ If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins 
   | fleet | OBD, car, maintenance, drives | Ported from Midnight AI, compiles |
   | ledger | Bank-statement ingestion | Ported from Project Andromeda, done, 11 tests |
   | pantry | Grocery receipt photo ingestion + macro estimates | New design work, done, 8 tests |
-- **Repo:** `C:\Users\Kwin\StudioProjects\legion`, public, `github.com/kevinmyo-code/legion`.
+- **Repo:** `C:\Users\Kwin\StudioProjects\legion` (second machine: `C:\Users\kevin\AndroidStudioProjects\legion`), public, `github.com/kevinmyo-code/legion`.
   Package `com.kevin.legion`. Clean history, seeded 2026-07-31 by copying surviving Midnight AI
   source.
 - **MIDNIGHT_AI (`C:\Users\Kwin\StudioProjects\MIDNIGHT_AI`) is a FROZEN ARCHIVE.** Private, read
@@ -231,15 +231,23 @@ build. Four `RELEASE_STORE_*` values for a release build. Set `JAVA_HOME` in you
 **do not put `org.gradle.java.home` in the committed `gradle.properties`** - Midnight AI's did, and
 it broke on any machine without Android Studio at that exact path, violating clone-and-run.
 
-**On Kevin's machine specifically (2026-08-01): there is no JDK on `PATH` and `JAVA_HOME` is unset,
-so `./gradlew` fails outright from a fresh shell.** Android Studio is at
-`C:\Users\Kwin\Apps\AndroidStudio`, NOT the default `C:\Program Files\Android\Android Studio`. Export
-it per shell rather than committing it:
+**There is more than one of Kevin's machines and their paths differ. Neither has a usable JDK on
+`PATH`**, so `./gradlew` fails from a fresh shell on both. Export per shell, never commit it.
+
+| Machine | Repo | Android Studio JBR |
+|---|---|---|
+| First (2026-08-01) | `C:\Users\Kwin\StudioProjects\legion` | `/c/Users/Kwin/Apps/AndroidStudio/jbr` |
+| Second (2026-08-19) | `C:\Users\kevin\AndroidStudioProjects\legion` | `/c/Program Files/Android/Android Studio/jbr` |
 
 ```
-export JAVA_HOME="/c/Users/Kwin/Apps/AndroidStudio/jbr"
+export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"   # second machine
 export PATH="$JAVA_HOME/bin:$PATH"
 ```
+
+On the second machine an Oracle JRE 24 IS on `PATH` (`Common Files/Oracle/Java/javapath`) - it is
+the wrong JDK and Gradle picks it up if `JAVA_HOME` is unset. `adb` lives at
+`~/AppData/Local/Android/Sdk/platform-tools/` and is not on `PATH`. Git identity was unset there
+(set repo-locally, 2026-08-19). **The A25 has never been attached to it.**
 
 ---
 

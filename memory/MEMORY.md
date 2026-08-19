@@ -3,6 +3,20 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
+## START HERE - 2026-08-19
+
+**Second laptop is live** (`C:\Users\kevin\AndroidStudioProjects\legion`, Studio at the default
+`C:\Program Files\Android\Android Studio`). Builds and the full suite run there; **the A25 has
+never been plugged into it**, so nothing built there can be verified on-device from there.
+
+**`open_navigation` shipped to `dev` (`b210ac3`, merged `6513ec3`)** - drive-test ticket 03. The
+assistant could not open a map at all and said it had; now `location/NavigationController` fires
+`google.navigation:`/`geo:` and its success is derived from whether `startActivity` ran.
+**Every on-device box on that ticket is still unticked.**
+
+**The suite is GREEN: 1641 tests, 0 failures.** `BioDigestBuilderTest` passes now - the
+"known-failing, pre-existing" line below is STALE, do not repeat it.
+
 ## START HERE - 2026-08-18 night
 
 **Everything below is committed on `feat/mission-control` and installed on the A25, hash-verified.**
