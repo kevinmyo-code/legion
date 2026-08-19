@@ -148,16 +148,24 @@ object SpotifyConnectResolver {
      * Exactly what the driver will read on the Setup screen the first time this build runs
      * against an existing grant (2026-08-18's SCOPES widening for `browse_my_music` - see
      * [Stage.NEEDS_REAUTHORIZATION]'s own doc). Kept as its own named constant, not inlined,
-     * because [com.kevin.legion.service.LiveToolbox]'s `play_music`/`browse_my_music` failure
-     * messages deliberately echo this same "needs re-approving" language rather than a
-     * different phrase for the same event - one story, told the same way on the screen and in
-     * the assistant's own voice.
+     * because [com.kevin.legion.service.LiveToolbox]'s `play_music`/`browse_my_music`/
+     * `control_music` failure messages deliberately echo this same "needs re-approving" language
+     * rather than a different phrase for the same event - one story, told the same way on the
+     * screen and in the assistant's own voice.
+     *
+     * **Rewritten 2026-08-19** (`.scratch/spotify-voice/issues/01-scopes-and-one-reapproval.md`)
+     * for the much larger jump [SpotifyWebApi.SCOPES] took that day - playback control, library
+     * likes/follows, and playlist reads/writes on top of the 2026-08-18 reads this used to name
+     * individually. Named generically rather than re-itemized per scope so this message does not
+     * need editing again the next time SCOPES grows before this map's one-reapproval ticket is
+     * reopened.
      */
     const val REAUTHORIZATION_DETAIL_MESSAGE: String =
-        "You'd already connected Spotify, but this update asks for a couple of extra permissions " +
-            "(your saved albums, recently played, and top artists/tracks) that your existing " +
-            "approval doesn't cover. Nothing else changed and nothing was lost - tap RE-AUTHORIZE " +
-            "and approve it again in the browser, same as before."
+        "You'd already connected Spotify, but this update asks for a lot more permissions: " +
+            "playing, pausing and skipping through Spotify itself, liking songs and following " +
+            "artists, and reading and adding to your playlists - none of which your existing " +
+            "approval covers. Nothing else changed and nothing was lost - tap RE-AUTHORIZE and " +
+            "approve it again in the browser, same as before."
 
     /** Shown when the Spotify app itself is missing - App Remote is app-to-app, so nothing here can work without it. */
     const val APP_MISSING_MESSAGE: String =
