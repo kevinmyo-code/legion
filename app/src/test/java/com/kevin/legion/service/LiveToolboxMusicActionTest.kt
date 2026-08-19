@@ -22,17 +22,20 @@ class LiveToolboxMusicActionTest {
         assertEquals(LiveToolbox.MusicAction.PAUSE, LiveToolbox.MusicAction.fromWire("pause"))
         assertEquals(LiveToolbox.MusicAction.NEXT, LiveToolbox.MusicAction.fromWire("next"))
         assertEquals(LiveToolbox.MusicAction.PREVIOUS, LiveToolbox.MusicAction.fromWire("previous"))
+        // Landed ticket 04: queue shares one action with add-to-queue semantics only.
+        assertEquals(LiveToolbox.MusicAction.QUEUE, LiveToolbox.MusicAction.fromWire("queue"))
     }
 
     @Test
-    fun `an action commit 04-06 have not landed yet is unrecognized, not a guess`() {
-        // These are the map's future entries (queue, like, unlike, follow_artist, unfollow_artist,
-        // shuffle_on, shuffle_off, repeat_off, repeat_track, repeat_context, seek_forward,
-        // seek_back, restart). Ticket 03's whole point is that the JSON schema `enum` and this
-        // parser never claim more than is actually wired - so every one of these must currently
-        // fail closed (null) rather than silently succeed against a case that doesn't exist yet.
+    fun `an action commit 05-06 have not landed yet is unrecognized, not a guess`() {
+        // These are the map's remaining future entries (like, unlike, follow_artist,
+        // unfollow_artist, shuffle_on, shuffle_off, repeat_off, repeat_track, repeat_context,
+        // seek_forward, seek_back, restart). Ticket 03's whole point is that the JSON schema
+        // `enum` and this parser never claim more than is actually wired - so every one of these
+        // must currently fail closed (null) rather than silently succeed against a case that
+        // doesn't exist yet.
         for (future in listOf(
-            "queue", "like", "unlike", "follow_artist", "unfollow_artist",
+            "like", "unlike", "follow_artist", "unfollow_artist",
             "shuffle_on", "shuffle_off", "repeat_off", "repeat_track", "repeat_context",
             "seek_forward", "seek_back", "restart",
         )) {

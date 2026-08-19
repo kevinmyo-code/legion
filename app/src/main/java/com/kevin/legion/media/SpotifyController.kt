@@ -502,6 +502,105 @@ object SpotifyController {
     /** Bound on the best-effort Premium-capability check - short, since a timeout here must not delay reporting a play as started. */
     private const val CAPABILITIES_TIMEOUT_SEC = 3L
 
+    // --- Queue (ticket 04, .scratch/spotify-voice/issues/04-queue.md) ------------------------
+
+    /**
+     * Every distinct way [queueUri] can end - same shape as [PlayOutcome] and for the same
+     * reason (map decision, honesty per outcome, never one generic string), but kept as its OWN
+     * sealed type rather than reusing [PlayOutcome]: "queued" and "playing" are different verbs
+     * to the driver even though [queueUri] and [playUri] share every connect-failure mode, and a
+     * shared type would tempt [message] into blurring that distinction.
+     */
+    sealed interface QueueOutcome {
+        /** `PlayerApi.queue(uri)` was awaited and came back successful. */
+        data object Queued : QueueOutcome
+
+        /** [isInstalled] said no, or App Remote's own connect attempt threw [CouldNotFindSpotifyApp]. */
+        data object NotInstalled : QueueOutcome
+
+        /** App Remote connected to Spotify, but nobody is signed into it. */
+        data object NotLoggedIn : QueueOutcome
+
+        /** Spotify is up and signed in, but refused this app/account ([UserNotAuthorizedException]). */
+        data object NotAuthorized : QueueOutcome
+
+        /** Spotify is in offline mode. */
+        data object Offline : QueueOutcome
+
+        /** Connect failed for a reason the SDK didn't give one of the four names above. */
+        data class ConnectFailed(val detail: String?) : QueueOutcome
+
+        /** Connected fine; the `queue()` call itself came back unsuccessful or timed out. */
+        data object QueueRejected : QueueOutcome
+    }
+
+    /** Only [QueueOutcome.Queued] represents the track actually landing in Spotify's queue. */
+    internal fun succeeded(outcome: QueueOutcome): Boolean = outcome is QueueOutcome.Queued
+
+    /**
+     * The pure outcome -> spoken-line mapping for [QueueOutcome], same shape as [message] for
+     * [PlayOutcome]. **"Play X next" and "add X to the queue" are the same operation to
+     * Spotify - there is no insert-at-position** (ticket 04 scope item 2), so [Queued]'s line
+     * says exactly that rather than implying an ordering the API does not offer.
+     */
+    internal fun message(outcome: QueueOutcome, description: String): String = when (outcome) {
+        QueueOutcome.Queued -> "Queued \"$description\" to play next - Spotify only offers " +
+            "next-up, not a specific position in the queue."
+        QueueOutcome.NotInstalled ->
+            "Spotify isn't installed on this phone, so there's nothing to queue \"$description\" on."
+        QueueOutcome.NotLoggedIn ->
+            "Spotify's installed but nobody's signed in there - log into Spotify and ask again."
+        QueueOutcome.NotAuthorized ->
+            "Spotify won't authorize this account for App Remote - check the allowlist for it in " +
+                "the Spotify developer dashboard."
+        QueueOutcome.Offline ->
+            "Spotify's in offline mode right now, so it can't queue \"$description\" - check the " +
+                "connection and try again."
+        is QueueOutcome.ConnectFailed ->
+            "Spotify wouldn't connect" + (outcome.detail?.let { " ($it)" } ?: "") +
+                " - I couldn't queue \"$description\"."
+        QueueOutcome.QueueRejected ->
+            "Spotify wouldn't queue \"$description\" - it may not be playable on this account here."
+    }
+
+    /** Same mapping as [outcomeForConnectFailure], into [QueueOutcome] instead of [PlayOutcome]. */
+    internal fun queueOutcomeForConnectFailure(error: Throwable?): QueueOutcome = when (error) {
+        is CouldNotFindSpotifyApp -> QueueOutcome.NotInstalled
+        is NotLoggedInException -> QueueOutcome.NotLoggedIn
+        is UserNotAuthorizedException -> QueueOutcome.NotAuthorized
+        is OfflineModeException -> QueueOutcome.Offline
+        else -> QueueOutcome.ConnectFailed(error?.javaClass?.simpleName)
+    }
+
+    /**
+     * Adds [uri] to Spotify's own up-next queue via `PlayerApi.queue(uri)`, awaited so the
+     * outcome reflects what actually landed (same discipline as [playUri]). Unlike [playUri],
+     * this does NOT call `connectSwitchToLocalDevice()` first: queuing does not need to force
+     * playback onto this phone, only App Remote's own connected session, which [ensureConnected]
+     * already guarantees.
+     */
+    suspend fun queueUri(context: Context, uri: String): QueueOutcome = withContext(Dispatchers.IO) {
+        if (!isInstalled(context)) return@withContext QueueOutcome.NotInstalled
+
+        if (!ensureConnected(context)) {
+            return@withContext queueOutcomeForConnectFailure(lastConnectFailure)
+        }
+
+        val r = remote ?: return@withContext QueueOutcome.ConnectFailed("lost connection")
+
+        val queued = try {
+            val result = r.playerApi.queue(uri).await(PLAY_TIMEOUT_SEC, TimeUnit.SECONDS)
+            if (!result.isSuccessful) Log.w(TAG, "queue($uri) failed: ${result.errorMessage}")
+            result.isSuccessful
+        } catch (e: Exception) {
+            Log.w(TAG, "queue($uri) threw: ${e.message}")
+            false
+        }
+        if (!queued) return@withContext QueueOutcome.QueueRejected
+
+        QueueOutcome.Queued
+    }
+
     private inline fun withPlayer(action: (SpotifyAppRemote) -> Unit): Boolean {
         val r = remote ?: return false
         return try {

@@ -404,11 +404,19 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "control_music",
-            description = "Control music playback hands-free: 'play', 'pause', 'next', 'previous'. " +
-                "Works with whatever's playing on the phone. Transport only.",
+            description = "Control music playback hands-free: 'play', 'pause', 'next', 'previous' " +
+                "work with whatever's playing on the phone. 'queue' adds a NAMED track (pass " +
+                "'query') to Spotify's own up-next queue via search - requires Spotify connected " +
+                "in Setup, same as play_music. 'Play X next' and 'add X to the queue' are the " +
+                "SAME thing here: Spotify has no way to insert at a specific position, only " +
+                "next-up, so don't imply otherwise. To hear what's already queued, use " +
+                "get_music_queue instead - this tool only adds, it doesn't read.",
             params = obj(
                 "action" to schema("string", "The playback action.",
-                    enum = listOf("play", "pause", "next", "previous")),
+                    enum = listOf("play", "pause", "next", "previous", "queue")),
+                "query" to schema("string",
+                    "Required for 'queue': what to add, in the driver's own words, e.g. " +
+                        "'Plastic Love by Mariya Takeuchi'."),
             ),
             required = listOf("action"),
         ))
@@ -493,6 +501,21 @@ object LiveToolbox {
                         "read out fifty rows."),
             ),
             required = listOf("source"),
+        ))
+
+        fns.put(fn(
+            name = "get_music_queue",
+            description = "What's coming up next in Spotify's own queue - 'what's playing next', " +
+                "'what's coming up'. Read-only; to ADD something to the queue use control_music's " +
+                "'queue' action instead. Requires Spotify connected and approved in Setup (same " +
+                "as play_music); if that's missing or stale, this fails and says exactly what to " +
+                "do about it - never read a failure as 'nothing's queued'. Keep the spoken answer " +
+                "short.",
+            params = obj(
+                "limit" to schema("integer",
+                    "How many upcoming tracks to return. Defaults to 5."),
+            ),
+            required = listOf(),
         ))
 
         fns.put(fn(
@@ -1912,6 +1935,7 @@ object LiveToolbox {
             "get_current_location" -> getCurrentLocation(context)
             "play_music" -> playMusic(context, args.optString("query"), args.optString("type", "song"))
             "browse_my_music" -> browseMyMusic(context, args)
+            "get_music_queue" -> getMusicQueue(context, args)
             "open_navigation" -> openNavigation(context, args)
             "show_app" -> showApp(context)
             "set_reminder" -> result(
@@ -4976,11 +5000,11 @@ object LiveToolbox {
         PAUSE("pause"),
         NEXT("next"),
         PREVIOUS("previous"),
+        QUEUE("queue"),
         ;
         // Landing commits add one entry, one schema string, and one `when` branch together:
-        // QUEUE (ticket 04), LIKE/UNLIKE/FOLLOW_ARTIST/UNFOLLOW_ARTIST (ticket 05),
-        // SHUFFLE_ON/SHUFFLE_OFF/REPEAT_OFF/REPEAT_TRACK/REPEAT_CONTEXT/SEEK_FORWARD/
-        // SEEK_BACK/RESTART (ticket 06).
+        // LIKE/UNLIKE/FOLLOW_ARTIST/UNFOLLOW_ARTIST (ticket 05), SHUFFLE_ON/SHUFFLE_OFF/
+        // REPEAT_OFF/REPEAT_TRACK/REPEAT_CONTEXT/SEEK_FORWARD/SEEK_BACK/RESTART (ticket 06).
 
         companion object {
             /** Parses the wire string the live model sent. Unrecognized text is null, never a throw. */
@@ -5027,9 +5051,17 @@ object LiveToolbox {
         return when (action) {
             MusicAction.PLAY, MusicAction.PAUSE, MusicAction.NEXT, MusicAction.PREVIOUS ->
                 controlMusicTransport(context, action)
+            MusicAction.QUEUE -> controlMusicQueue(context, args.optString("query"))
         }
     }
 
+    /**
+     * Handles ONLY [MusicAction.PLAY]/[PAUSE]/[NEXT]/[PREVIOUS] - [controlMusic]'s own `when` is
+     * what actually restricts callers to those four. The `else` branches below exist purely to
+     * satisfy exhaustiveness against the FULL [MusicAction] enum (which keeps growing as later
+     * tickets land); reaching one would mean [controlMusic]'s routing itself is broken, so they
+     * throw rather than silently doing nothing.
+     */
     private suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject {
         if (NowPlayingController.hasAccess(context)) {
             val ok = withContext(Dispatchers.Main) {
@@ -5038,6 +5070,7 @@ object LiveToolbox {
                     MusicAction.PAUSE    -> MusicController.pause(context)
                     MusicAction.NEXT     -> MusicController.next(context)
                     MusicAction.PREVIOUS -> MusicController.previous(context)
+                    else -> error("controlMusicTransport called with non-transport action: $action")
                 }
             }
             if (ok) return result(success = true, message = null)
@@ -5054,6 +5087,7 @@ object LiveToolbox {
                 MusicAction.PAUSE    -> SpotifyController.pause()
                 MusicAction.NEXT     -> SpotifyController.next()
                 MusicAction.PREVIOUS -> SpotifyController.previous()
+                else -> error("controlMusicTransport called with non-transport action: $action")
             }
             if (ok) return result(success = true, message = null)
         }
@@ -5144,16 +5178,25 @@ object LiveToolbox {
     }
 
     /**
-     * Plays a specific track/artist by name, in-app, via Spotify App Remote +
-     * Web API search. This is the only "play something specific" path left -
-     * the old OS-level play-from-search-intent fallback (opening a separate
-     * music app full-screen, with a floating companion badge over it) was
-     * retired with the rest of the car-launcher UI in the 2026-07-31 pivot.
-     * If Spotify isn't connected, this fails with an actionable message rather
-     * than falling back to launching another app.
+     * The result of turning a spoken name into a Spotify URI - [Found] or a fully-built failure
+     * [JSONObject] ready to return as-is. Kept as its own tiny sealed type rather than a nullable
+     * String so a caller cannot forget to check which one it got.
      */
-    private suspend fun playMusic(context: Context, query: String, type: String = "song"): JSONObject {
-        if (query.isBlank()) return result(success = false, message = "What should I play?")
+    private sealed interface SpotifyUriResolution {
+        data class Found(val uri: String) : SpotifyUriResolution
+        data class Failed(val toolResult: JSONObject) : SpotifyUriResolution
+    }
+
+    /**
+     * The shared "turn what the driver said into a Spotify URI" sequence: `ensureConnected` (a
+     * silent reconnect attempt), confirm the Web API grant is authorized, then
+     * [SpotifyWebApi.search]. Extracted (ticket 04, `.scratch/spotify-voice/issues/04-queue.md`
+     * scope item 1: "`queue`, taking a `query` resolved through the same search path `play_music`
+     * uses") so [playMusic] and `control_music`'s `queue` action fail with the IDENTICAL words
+     * for the IDENTICAL reasons - they are the same resolve step with two different things done
+     * to the result.
+     */
+    private suspend fun resolveSpotifyUri(context: Context, query: String, type: String): SpotifyUriResolution {
         // Tool-facing vocabulary is "song" (matches how a driver actually talks); Spotify's own
         // API calls that "track" - translated at the boundary so nothing upstream of this line
         // needs to know Spotify's word for it.
@@ -5164,11 +5207,11 @@ object LiveToolbox {
         // Only attempts a reconnect when a client ID is actually saved, so a
         // driver who never set Spotify up pays nothing here.
         if (!SpotifyController.ensureConnected(context)) {
-            return result(
+            return SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "Spotify isn't connected - connect your Spotify account in Setup, or pick " +
                     "something on your phone yourself and I'll control play/pause/skip from here.",
-            )
+            ))
         }
 
         // Not authorized = no Web API = no way to turn a name into a URI. Say so
@@ -5178,20 +5221,22 @@ object LiveToolbox {
         // browse_my_music) - the two need different words, since the second driver has already
         // done this once and "isn't finished connecting" would read as if nothing was saved.
         if (!SpotifyWebApi.isAuthorized(context)) {
-            return if (SpotifyWebApi.hasStaleGrant(context)) {
-                result(
-                    success = false,
-                    message = "Spotify needs re-approving - I picked up a couple of new permissions " +
-                        "and your old approval doesn't cover them. Open Setup, Spotify, and tap " +
-                        "AUTHORIZE again. Takes a few seconds.",
-                )
-            } else {
-                result(
-                    success = false,
-                    message = "Spotify isn't finished connecting - open Setup, tap CONNECT under the " +
-                        "Spotify client ID, and approve it in the browser. Then I can play by name.",
-                )
-            }
+            return SpotifyUriResolution.Failed(
+                if (SpotifyWebApi.hasStaleGrant(context)) {
+                    result(
+                        success = false,
+                        message = "Spotify needs re-approving - I picked up a couple of new permissions " +
+                            "and your old approval doesn't cover them. Open Setup, Spotify, and tap " +
+                            "AUTHORIZE again. Takes a few seconds.",
+                    )
+                } else {
+                    result(
+                        success = false,
+                        message = "Spotify isn't finished connecting - open Setup, tap CONNECT under the " +
+                            "Spotify client ID, and approve it in the browser. Then I can play by name.",
+                    )
+                },
+            )
         }
 
         // Each outcome gets its own answer (2026-08-12). These used to be one nullable
@@ -5199,14 +5244,14 @@ object LiveToolbox {
         // connection and a genuinely unknown song were indistinguishable to the driver
         // AND to anyone debugging it - the exact collapse GoogleGrantResolver.diagnose
         // was written to undo on the Drive side.
-        val uri = when (val outcome = SpotifyWebApi.search(context, query, spotifyType)) {
-            is SpotifyWebApi.SearchOutcome.Found -> outcome.uri
-            SpotifyWebApi.SearchOutcome.NeedsAuthorization -> return result(
+        return when (val outcome = SpotifyWebApi.search(context, query, spotifyType)) {
+            is SpotifyWebApi.SearchOutcome.Found -> SpotifyUriResolution.Found(outcome.uri)
+            SpotifyWebApi.SearchOutcome.NeedsAuthorization -> SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "Spotify hasn't been authorized on this device yet - open Setup, " +
                     "Spotify, and tap AUTHORIZE.",
-            )
-            is SpotifyWebApi.SearchOutcome.Unauthorized -> return result(
+            ))
+            is SpotifyWebApi.SearchOutcome.Unauthorized -> SpotifyUriResolution.Failed(result(
                 success = false,
                 // Spotify's own words are carried through rather than paraphrased: a 403
                 // saying "the user may not be registered" is a dashboard problem that
@@ -5215,21 +5260,39 @@ object LiveToolbox {
                 message = "Spotify rejected the request" +
                     (outcome.detail?.let { ": $it" } ?: ".") +
                     " Run the search test in Setup, Spotify for the details.",
-            )
-            SpotifyWebApi.SearchOutcome.Unreachable -> return result(
+            ))
+            SpotifyWebApi.SearchOutcome.Unreachable -> SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "I couldn't reach Spotify just now. Worth trying again when you have " +
                     "a better connection.",
-            )
-            SpotifyWebApi.SearchOutcome.NoMatch -> return result(
+            ))
+            SpotifyWebApi.SearchOutcome.NoMatch -> SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "Spotify has nothing matching \"$query\".",
-            )
-            is SpotifyWebApi.SearchOutcome.Failed -> return result(
+            ))
+            is SpotifyWebApi.SearchOutcome.Failed -> SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "Spotify's search returned an error (${outcome.code})" +
                     (outcome.detail?.let { ": $it" } ?: "."),
-            )
+            ))
+        }
+    }
+
+    /**
+     * Plays a specific track/artist by name, in-app, via Spotify App Remote +
+     * Web API search. This is the only "play something specific" path left -
+     * the old OS-level play-from-search-intent fallback (opening a separate
+     * music app full-screen, with a floating companion badge over it) was
+     * retired with the rest of the car-launcher UI in the 2026-07-31 pivot.
+     * If Spotify isn't connected, this fails with an actionable message rather
+     * than falling back to launching another app.
+     */
+    private suspend fun playMusic(context: Context, query: String, type: String = "song"): JSONObject {
+        if (query.isBlank()) return result(success = false, message = "What should I play?")
+
+        val uri = when (val resolved = resolveSpotifyUri(context, query, type)) {
+            is SpotifyUriResolution.Found -> resolved.uri
+            is SpotifyUriResolution.Failed -> return resolved.toolResult
         }
 
         // playUri (ticket 02, map decision 4) is the one play path: isInstalled ->
@@ -5245,6 +5308,39 @@ object LiveToolbox {
             NowPlayingController.markLegionInitiatedPlay()
         }
         return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, query))
+    }
+
+    /**
+     * `control_music`'s `queue` action (ticket 04, `.scratch/spotify-voice/issues/04-queue.md`):
+     * resolves [query] through [resolveSpotifyUri] - the identical path [playMusic] uses - then
+     * [SpotifyController.queueUri]. "Play X next" and "add X to the queue" are the same operation
+     * to Spotify (there is no insert-at-position), which is why they share one action and one
+     * spoken line ([SpotifyController.message] for [SpotifyController.QueueOutcome] says so).
+     */
+    private suspend fun controlMusicQueue(context: Context, query: String): JSONObject {
+        if (query.isBlank()) return result(success = false, message = "What should I queue?")
+
+        val uri = when (val resolved = resolveSpotifyUri(context, query, "song")) {
+            is SpotifyUriResolution.Found -> resolved.uri
+            is SpotifyUriResolution.Failed -> return resolved.toolResult
+        }
+
+        val outcome = SpotifyController.queueUri(context, uri)
+        return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, query))
+    }
+
+    /**
+     * `get_music_queue` (ticket 04 scope item 3): "what's coming up" - Spotify's OWN up-next
+     * queue via [SpotifyWebApi.getQueue]. This is the map's one net-new tool declaration across
+     * tickets 03-06 (ticket 03 scope item 4): a READ belongs as its own tool rather than folded
+     * into the WRITE-shaped `control_music` action enum, and no existing declaration's shape
+     * fits "list what's coming up" without stretching its own promise.
+     */
+    private suspend fun getMusicQueue(context: Context, args: JSONObject): JSONObject {
+        val limit = args.optInt("limit", 5).coerceIn(1, 10)
+        return libraryOutcomeToJson(context, SpotifyWebApi.getQueue(context, limit), "the upcoming queue") { t ->
+            JSONObject().put("name", t.name).put("artist", t.artist)
+        }
     }
 
     /**
