@@ -343,6 +343,11 @@ object SpotifyController {
             // Non-null only when [UserApi.getCapabilities] came back and said this account
             // can't play on demand (map decision 7) - told in words, never silently degraded.
             val premiumWarning: String? = null,
+            // What search actually picked (ticket 07, e.g. "Discovery, Daft Punk"), carried
+            // through from [playUri]'s own [pickedLabel] param. Null falls back to [description]
+            // in [message] below - the knownUri replay path where the driver's own words already
+            // name exactly what's about to play.
+            val pickedLabel: String? = null,
         ) : PlayOutcome
 
         /** [isInstalled] said no, or App Remote's own connect attempt threw [CouldNotFindSpotifyApp]. */
@@ -376,7 +381,8 @@ object SpotifyController {
      */
     internal fun message(outcome: PlayOutcome, description: String): String = when (outcome) {
         is PlayOutcome.Started ->
-            "Playing \"$description\" on Spotify." + (outcome.premiumWarning?.let { " $it" } ?: "")
+            "Playing \"${outcome.pickedLabel ?: description}\" on Spotify." +
+                (outcome.premiumWarning?.let { " $it" } ?: "")
         PlayOutcome.NotInstalled ->
             "Spotify isn't installed on this phone, so there's nothing to play \"$description\" through."
         PlayOutcome.NotLoggedIn ->
@@ -438,7 +444,7 @@ object SpotifyController {
      * bounded because App Remote can leave a call outstanding indefinitely when the Spotify app
      * is wedged, and a voice command must not hang tool dispatch waiting on it.
      */
-    suspend fun playUri(context: Context, uri: String): PlayOutcome = withContext(Dispatchers.IO) {
+    suspend fun playUri(context: Context, uri: String, pickedLabel: String? = null): PlayOutcome = withContext(Dispatchers.IO) {
         if (!isInstalled(context)) return@withContext PlayOutcome.NotInstalled
 
         if (!ensureConnected(context)) {
@@ -463,7 +469,7 @@ object SpotifyController {
         }
         if (!started) return@withContext PlayOutcome.PlayRejected
 
-        PlayOutcome.Started(premiumWarning = premiumWarningIfNeeded(r))
+        PlayOutcome.Started(premiumWarning = premiumWarningIfNeeded(r), pickedLabel = pickedLabel)
     }
 
     /** Best-effort pull of playback onto this phone. See [playUri]'s doc for why it isn't fatal. */

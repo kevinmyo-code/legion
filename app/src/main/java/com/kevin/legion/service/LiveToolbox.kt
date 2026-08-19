@@ -5323,7 +5323,9 @@ object LiveToolbox {
      * String so a caller cannot forget to check which one it got.
      */
     private sealed interface SpotifyUriResolution {
-        data class Found(val uri: String) : SpotifyUriResolution
+        // name/subtitle (ticket 07) carry through what search actually picked, e.g.
+        // ("Discovery", "Daft Punk") - see [SpotifyWebApi.SearchOutcome.Found]'s own doc.
+        data class Found(val uri: String, val name: String, val subtitle: String?) : SpotifyUriResolution
         data class Failed(val toolResult: JSONObject) : SpotifyUriResolution
     }
 
@@ -5385,7 +5387,7 @@ object LiveToolbox {
         // AND to anyone debugging it - the exact collapse GoogleGrantResolver.diagnose
         // was written to undo on the Drive side.
         return when (val outcome = SpotifyWebApi.search(context, query, spotifyType)) {
-            is SpotifyWebApi.SearchOutcome.Found -> SpotifyUriResolution.Found(outcome.uri)
+            is SpotifyWebApi.SearchOutcome.Found -> SpotifyUriResolution.Found(outcome.uri, outcome.name, outcome.subtitle)
             SpotifyWebApi.SearchOutcome.NeedsAuthorization -> SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "Spotify hasn't been authorized on this device yet - open Setup, " +
@@ -5440,11 +5442,18 @@ object LiveToolbox {
         // true - skips name-to-URI resolution entirely. Searching anyway would risk landing on a
         // DIFFERENT track than the one the driver actually pointed at. [query] is still carried
         // for the spoken confirmation, so the message names what was asked for either way.
-        val uri = if (!knownUri.isNullOrBlank()) {
-            knownUri
+        // pickedLabel (ticket 07, .scratch/spotify-voice/issues/07-now-playing-truth.md) is what
+        // search actually resolved to ("Discovery, Daft Punk"), not the driver's own words -
+        // the honesty half of this ticket: a loose spoken query and the top search hit can genuinely
+        // differ, and the driver should hear which one started, once, briefly. Null for the
+        // knownUri replay path: there [query] already names exactly what's about to play (it came
+        // from a legion_history row's own title), so no separate "picked" label is needed.
+        val (uri, pickedLabel) = if (!knownUri.isNullOrBlank()) {
+            knownUri to null
         } else {
             when (val resolved = resolveSpotifyUri(context, query, type)) {
-                is SpotifyUriResolution.Found -> resolved.uri
+                is SpotifyUriResolution.Found -> resolved.uri to
+                    (resolved.subtitle?.let { "${resolved.name}, $it" } ?: resolved.name)
                 is SpotifyUriResolution.Failed -> return resolved.toolResult
             }
         }
@@ -5455,7 +5464,7 @@ object LiveToolbox {
         // call didn't throw. SpotifyController.message/succeeded are the pure outcome -> spoken
         // mapping (same shape as NavigationController's), so every one of the four distinct
         // connect failures the research called for gets its own line here, never one generic one.
-        val outcome = SpotifyController.playUri(context, uri)
+        val outcome = SpotifyController.playUri(context, uri, pickedLabel = pickedLabel)
         if (SpotifyController.succeeded(outcome)) {
             // Attributes the track NowPlayingController is about to observe to LEGION rather
             // than the driver having started it themselves - see its own doc comment.

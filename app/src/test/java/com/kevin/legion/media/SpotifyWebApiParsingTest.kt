@@ -121,4 +121,42 @@ class SpotifyWebApiParsingTest {
     fun `parseQueue on a missing queue array returns empty, not a throw`() {
         assertTrue(SpotifyWebApi.parseQueue(JSONObject("""{"currently_playing": {"name": "X"}}""")).isEmpty())
     }
+
+    // ------------------------------------------------------------ pickedDisplayName (ticket 07)
+
+    @Test
+    fun `pickedDisplayName for a track names it and its first artist`() {
+        val track = JSONObject("""{"name": "Discovery", "artists": [{"name": "Daft Punk"}, {"name": "Someone Else"}]}""")
+        assertEquals("Discovery" to "Daft Punk", SpotifyWebApi.pickedDisplayName(track, "track"))
+    }
+
+    @Test
+    fun `pickedDisplayName for an album names it and its first artist`() {
+        val album = JSONObject("""{"name": "Discovery", "artists": [{"name": "Daft Punk"}]}""")
+        assertEquals("Discovery" to "Daft Punk", SpotifyWebApi.pickedDisplayName(album, "album"))
+    }
+
+    @Test
+    fun `pickedDisplayName for a playlist names it and the owner's display name`() {
+        val playlist = JSONObject("""{"name": "Roadtrip", "owner": {"display_name": "Kevin"}}""")
+        assertEquals("Roadtrip" to "Kevin", SpotifyWebApi.pickedDisplayName(playlist, "playlist"))
+    }
+
+    @Test
+    fun `pickedDisplayName for a playlist with no owner display name has no subtitle`() {
+        val playlist = JSONObject("""{"name": "Roadtrip", "owner": {}}""")
+        assertEquals("Roadtrip" to null, SpotifyWebApi.pickedDisplayName(playlist, "playlist"))
+    }
+
+    @Test
+    fun `pickedDisplayName for an artist has no subtitle at all`() {
+        val artist = JSONObject("""{"name": "Daft Punk"}""")
+        assertEquals("Daft Punk" to null, SpotifyWebApi.pickedDisplayName(artist, "artist"))
+    }
+
+    @Test
+    fun `pickedDisplayName falls back to Unknown rather than an empty name`() {
+        val blank = JSONObject("""{"name": ""}""")
+        assertEquals("Unknown", SpotifyWebApi.pickedDisplayName(blank, "track").first)
+    }
 }

@@ -374,6 +374,24 @@ object SpotifyWebApi {
     }
 
     /**
+     * (name, subtitle) for whatever [candidate] actually is, per [type] - ticket 07's "name what
+     * it picked". Track/album: the artist. Playlist: the owner's Spotify display name, when
+     * Spotify includes one (it can be blank for some editorial/algorithmic playlists). Artist:
+     * no subtitle at all - an artist search result has nothing else worth saying.
+     */
+    internal fun pickedDisplayName(candidate: JSONObject, type: String): Pair<String, String?> {
+        val name = candidate.optString("name").ifBlank { "Unknown" }
+        val subtitle = when (type) {
+            "track", "album" -> candidate.optJSONArray("artists")
+                ?.optJSONObject(0)?.optString("name")?.takeIf { it.isNotBlank() }
+            "playlist" -> candidate.optJSONObject("owner")?.optString("display_name")
+                ?.takeIf { it.isNotBlank() }
+            else -> null // "artist" - nothing else to add.
+        }
+        return name to subtitle
+    }
+
+    /**
      * Outcome of a track search. Replaces the nullable String (2026-08-12): that
      * null meant "no token" OR "offline" OR "Spotify said no" OR "nothing
      * matched", and `play_music` reported every one of them to the driver as
@@ -382,7 +400,16 @@ object SpotifyWebApi {
      * happened. Found in the field the day the setup screen shipped.
      */
     sealed interface SearchOutcome {
-        data class Found(val uri: String) : SearchOutcome
+        /**
+         * [name]/[subtitle] (ticket 07, `.scratch/spotify-voice/issues/07-now-playing-truth.md`)
+         * are Spotify's OWN name for whatever [uri] actually resolved to - the artist for a
+         * track/album, the owner's display name for a playlist, null for an artist search where
+         * there is nothing else to say. `play_music` uses these to name what it actually picked
+         * ("Discovery, Daft Punk") rather than echoing the driver's own words back, which is the
+         * honesty half of this ticket: a loose spoken query and the top search hit are not
+         * always the same thing, and the driver should hear which one started.
+         */
+        data class Found(val uri: String, val name: String, val subtitle: String?) : SearchOutcome
 
         /** The browser grant was never completed, or the stored credentials are gone. */
         object NeedsAuthorization : SearchOutcome
@@ -549,19 +576,23 @@ object SpotifyWebApi {
                     .filter { it.optString("uri").isNotBlank() }
                 if (candidates.isEmpty()) return@withContext SearchOutcome.NoMatch
 
-                val uri = if (type == "track") {
+                val picked = if (type == "track") {
                     val clean = candidates.filterNot { looksLikeImposter(it) }
                     // If filtering leaves nothing, the query genuinely WAS for a
                     // karaoke/tribute cut - honour it rather than returning nothing.
                     (clean.ifEmpty { candidates })
                         .maxByOrNull { it.optInt("popularity", 0) }
-                        ?.optString("uri")
-                        ?.takeIf { it.isNotBlank() }
                 } else {
                     // Non-track types: trust Spotify's own relevance ranking (first result).
-                    candidates.first().optString("uri").takeIf { it.isNotBlank() }
+                    candidates.first()
                 }
-                if (uri != null) SearchOutcome.Found(uri) else SearchOutcome.NoMatch
+                val uri = picked?.optString("uri")?.takeIf { it.isNotBlank() }
+                if (picked != null && uri != null) {
+                    val (name, subtitle) = pickedDisplayName(picked, type)
+                    SearchOutcome.Found(uri, name, subtitle)
+                } else {
+                    SearchOutcome.NoMatch
+                }
             }
         } catch (e: Exception) {
             // A thrown IOException here is a transport failure, never a verdict on
