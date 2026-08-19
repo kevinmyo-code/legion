@@ -69,6 +69,16 @@ says so in its own message; it explicitly did not touch the second.
 
 <!-- one line per closed ticket -->
 
+- [What the assistant must say when it cannot do something](issues/04-what-the-assistant-says-when-it-cannot.md)
+  — **Decided and built 2026-08-19.** A forbidden-vocabulary clause in `sharedInstructions`, the
+  garage relay's method: outcome verbs may only follow a tool call that came back successful, and an
+  unsuccessful result is the same as no tool at all. No list of what LEGION cannot do - the rule is
+  conditioned on the tool RESULT, so it scales with the toolset. Kevin's register call: say it
+  cannot, then offer the nearest thing it genuinely can, never an invented one. **Kevin declined
+  both a runtime detector** (always-on transcription, token cost every turn, catches after the fact
+  and cannot prevent) **and an obedience eval.** So presence is guarded by a test and obedience is
+  not guarded at all - written down as the position, not left implied.
+
 - [A conversation waits for the driver, not a ten-second timer](issues/01-conversation-waits-for-the-driver.md)
   — **Fixed in `1e3ee04`, not re-tested on a drive.** The `vadMode` branch of `turnComplete` no
   longer arms an idle timer; `armIdleTimeout` now governs speak-only sessions only. Kevin's call,

@@ -260,6 +260,16 @@ the wrong JDK and Gradle picks it up if `JAVA_HOME` is unset. `adb` lives at
 - **No Kevin-hosted anything.** No backend, no Firestore, no broker, no proxy, no hosted key. Data
   lives on-device and in the driver's own Drive `appDataFolder`. This is what makes clone-and-run
   work and it is the same BYO shape as the Gemini key.
+- **The assistant never asserts an outcome it did not observe (2026-08-19, Kevin).** Outcome verbs -
+  done, started, sent, opened, booked, played, set - may follow only a tool call that came back
+  successful **in that turn**; an unsuccessful result is the same as no tool at all. With no tool,
+  it says so plainly and offers the nearest thing it genuinely has a tool for. The clause lives at
+  file scope in `ai/AriaBrain.kt` (`CANNOT_CLAUSE`), never per-persona, and enumerates no
+  capabilities - it is conditioned on the tool RESULT so it survives every new tool. This is §4's
+  posture applied to speech: the gate quarantines a figure it could not verify, this quarantines a
+  verb whose outcome it could not verify. `docs/adr/0031-speech-honesty-clause.md`. **Nothing
+  inspects the spoken audio, so this is a prompt rule and the only lever there is;
+  `AriaBrainHonestyClauseTest` guards its presence, never its obedience.**
 - **No comparative or anonymized fleet data**, ever.
 - **Network calls degrade gracefully offline.**
 - **Assets are bundled** in `assets/` or `res/`, never fetched at runtime.
@@ -296,6 +306,8 @@ the wrong JDK and Gradle picks it up if `JAVA_HOME` is unset. `adb` lives at
 - [ ] Money? `Long` cents.
 - [ ] Does it need a backend? Then it is wrong. Rework it onto Drive `appDataFolder` or on-device.
 - [ ] Does it survive clone-and-run by a stranger with their own signing cert?
+- [ ] New tool? Its failure result says in words what did NOT happen, and nothing claims success
+      unless the underlying action ran. §7's outcome-verb rule needs a real result to stand on.
 - [ ] Safety: no sentience claims, no compulsion mechanic, no unfalsifiable memory about the user.
 - [ ] Built from a resolved ticket? Every verification step in that resolution accounted for as
       done / deferred-with-a-follow-up / impossible-and-why. See §8 (L11).

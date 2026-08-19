@@ -3,8 +3,8 @@ map: drive-test-2026-08-18
 ticket: 04
 title: "What the assistant must say when it cannot do something"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Decided and built 2026-08-19: a forbidden-vocabulary clause in sharedInstructions, presence guarded by a test, obedience unguarded by choice."
 blockers: ["03"]
 blocked-by: ["[[03-no-navigation-capability]]"]
 open-blockers: 1
@@ -79,3 +79,61 @@ the clause for it.
 concrete instance is built means writing the rule against a hypothetical rather than against the
 real tool result that ticket 03's requirement 5 produces. Build the honest tool first, then decide
 what is said when there is no tool.
+
+## Resolution, 2026-08-19 - Kevin
+
+### 1. Does the prompt enumerate what LEGION cannot do, and does that scale?
+
+**No, and it must not.** A negative list is correct only until the next tool lands and burns tokens
+every turn describing absences. The clause is conditioned on the **tool result** instead of on the
+capability, so it stays true as the toolset grows - `open_navigation` landed the same day and the
+clause needed no edit. A test asserts the clause names no capability at all.
+
+### 2. Prompt rule, or structural guard?
+
+**Prompt only. Stated plainly rather than left implied: nothing inspects the spoken audio, so by the
+time a sentence exists it has already been streamed to the driver. A guard cannot prevent, only
+notice.** The detector was costed and put to Kevin: always-on `outputAudioTranscription` (it is off
+by default today, enabled only by the debug-subtitle toggle, because it costs tokens on every turn),
+plus a per-turn flag of the shape `mailToolCalledThisTurn` already uses, flagging a turn that
+asserted an outcome having called nothing. **Kevin declined it** - the cost is per turn on his own
+key and the payoff is a post-mortem, not a prevention.
+
+So the clause is the whole defence, and it is honestly weaker than a gate. That is the recorded
+position, not an oversight.
+
+### 3. What it says instead
+
+The garage relay's method, copied: **a forbidden-vocabulary list, not an instruction to be careful.**
+`done, started, sent, opened, booked, played, set, on its way` - and anything else asserting an
+outcome - may only follow a tool call **in this turn that came back successful**. An unsuccessful
+result is explicitly the same as no tool at all, which is what ties this clause to ticket 03's
+requirement 5.
+
+**Register (Kevin's call): say it cannot, then offer the nearest thing it genuinely can do.** The
+trap is named inside the clause itself - the alternative must itself be a real tool, or the
+invention has simply moved one sentence later.
+
+### 4. How a regression is caught
+
+**A presence test, and nothing more.** `ai/AriaBrainHonestyClauseTest`, 5 tests: the clause is wired
+into `SHARED_INSTRUCTIONS`, it names its forbidden verbs, it enumerates no capabilities, it carries
+the nearest-thing rule, and **the four older honesty rules are still there** - the action rule, the
+invented-appointment rule, the garage verbs, the memory rule. Nothing had ever guarded any of them;
+each was one careless edit from vanishing with a green suite. The guard was **proven to fail before
+being trusted** (unwiring the clause was run; the test failed).
+
+An offline eval that tests **obedience** against Kevin's key was offered and **declined** - cost per
+run, hand-run, never in the suite. **So presence is guarded and obedience is not. A green suite is
+not evidence that the assistant told the driver the truth.**
+
+### 5. Where the clause lives
+
+**`sharedInstructions`, at file scope in `ai/AriaBrain.kt`.** The ticket's premise here was wrong and
+was checked rather than believed: the honesty rules are **already** in `sharedInstructions`, not in
+each persona's clause - `Personas.kt` carries register only. `SHARED_INSTRUCTIONS` and
+`CANNOT_CLAUSE` moved to file scope so a plain JVM test can read them with no Context, no Room and
+no Bluetooth round-trip.
+
+Full suite 1646 tests, 0 failures. `tested`. **Nothing here is `on-device`** - and no test that could
+run on this machine would tell us the model obeys it.

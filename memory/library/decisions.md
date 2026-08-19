@@ -4194,3 +4194,34 @@ Decided by Kevin. `.claude/skills/domain-modeling/ADR-FORMAT.md` and `SKILL.md` 
 - `ui/` is 87 files not a clean slate.
 - The safety amendment citation pointed at nothing (entry above, filed same day).
 
+## 2026-08-19 - Honesty when no tool exists (.scratch/drive-test-2026-08-18, ticket 04, BUILT)
+
+Decided by Kevin. **The problem:** the prompt's existing rule "always call the matching tool before claiming you've done something" cannot bind where NO tool exists. Kevin asked the assistant for navigation on a real drive; no navigation tool existed; the model said "opening it" and nothing opened. Building ticket 03's navigation tool closed the instance, not the class.
+
+**Evidence gathered before deciding, all traced:**
+
+- `sharedInstructions` (the honesty rules) live in `ai/AriaBrain.kt`, NOT in `Personas.kt` - ticket 04's premise that they lived per-persona was wrong. Personas.kt carries register only.
+- Nothing in the repo tested `sharedInstructions` at all.
+- `outputAudioTranscription` (the companion's own speech transcript) is OFF by default and only enabled by the debug-subtitle toggle, because it costs tokens every turn.
+
+**Kevin's three calls:**
+
+1. **GUARD:** prompt clause only. A detector was costed and DECLINED. It would need always-on output transcription (token cost every turn on his own key) and could only catch a false claim after the fact, never prevent one, since the audio is already streamed by the time the sentence exists. Stated honestly: a prompt rule is the only lever that can prevent this, and it is weaker than a gate.
+2. **REGISTER:** say plainly it cannot, then offer the nearest thing it genuinely can do. The trap, written into the clause itself: the alternative must itself be a real tool, or the invention has just moved one sentence later.
+3. **REGRESSION CHECK:** a unit test that the clause is PRESENT. An offline eval against Kevin's key that tests obedience was offered and declined (cost per run, hand-run, would never run in the suite).
+
+**Decided implementation, not asked:**
+
+- No negative list of what LEGION cannot do (correct only until the next tool lands, burns tokens describing absences). The rule is conditioned on the TOOL RESULT instead, so it scales as the toolset grows.
+- The method is copied from the garage relay clause - a forbidden-vocabulary list ("done, started, sent, opened, booked, played, set"), not an appeal to care - which is the one honesty rule in the file that has never failed.
+- An UNSUCCESSFUL tool result is explicitly treated as no tool at all, which is what connects the clause to ticket 03's requirement 5.
+
+**Built:**
+
+- CANNOT_CLAUSE and SHARED_INSTRUCTIONS moved to file scope in `ai/AriaBrain.kt` (so a test can read them with no Context, Room or Bluetooth).
+- 5 tests in AriaBrainHonestyClauseTest covering the wiring, the forbidden verbs, the no-enumeration property, the nearest-thing rule, and the four PRE-EXISTING honesty rules that nothing had ever guarded.
+- The guard was PROVEN to fail before being trusted: unwiring CANNOT_CLAUSE was run and the test failed.
+- Full suite 1646 tests, 0 failures.
+
+**Standing consequence:** presence is guarded, obedience is not, and a green suite is not evidence the assistant told the truth on a drive.
+
