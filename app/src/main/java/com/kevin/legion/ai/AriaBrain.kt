@@ -616,6 +616,16 @@ class AriaBrain private constructor(context: Context) {
                 "get_current_location tool to fetch the latest fix.")
         }
 
+        // Navigation (ticket 03 of .scratch/drive-test-2026-08-18/): before this tool existed the
+        // model had nothing to call, so it answered "opening Maps now" in free text and opened
+        // nothing. The honesty clause is the point, not the capability.
+        sb.appendSection("To take the driver somewhere, call open_navigation with the destination " +
+            "- it hands off to the map app on the phone (turn-by-turn with mode 'navigate', a " +
+            "plain map pin with mode 'show'). You cannot open a map any other way, and LEGION " +
+            "draws no map of its own. NEVER say you have opened a map, started navigation or set " +
+            "a destination unless open_navigation came back successful: if it fails, say plainly " +
+            "that nothing opened and why it said it couldn't.")
+
         val currentPlace = PlaceController.currentLabel(appContext)
         if (currentPlace != null) {
             sb.appendSection("The driver is currently at their saved \"$currentPlace\" location. " +

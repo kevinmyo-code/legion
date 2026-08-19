@@ -4,7 +4,7 @@ ticket: 03
 title: "The assistant said it opened Maps. There is no map feature at all."
 type: task
 status: open
-status-detail: ""
+status-detail: "Built on feat/navigation 2026-08-19; every on-device check still open."
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -81,3 +81,29 @@ other tool family in that prompt already follows.
 - [ ] Confirm `GeminiLiveSession.kt:1156`'s speaker cancellation behaves as intended once navigation
       is genuinely running - it has never been exercised against real turn-by-turn audio.
       `on-device`.
+
+## Built, 2026-08-19 - on `feat/navigation`, nothing verified on a phone
+
+- **`location/NavigationController.kt`** (new). `launch(context, destination, mode)` returns an
+  `Outcome`: `Launched`, `LaunchedAsMapPin`, `NoMapApp`, `BlankDestination`, `Failed(reason)`.
+  `FLAG_ACTIVITY_NEW_TASK` is set unconditionally (requirement 2). `resolveActivity` null - the
+  package-visibility failure as much as a genuinely missing app - returns `NoMapApp` and is spoken,
+  never swallowed (requirement 4).
+- **Requirement 5 holds mechanically.** `Outcome.Launched` is only ever returned from inside the
+  `try` after `startActivity` returns; `succeeded()` is true for nothing else but a real launch and
+  the pin fallback, and `open_navigation`'s `success` is that value. Confirmed by review, `traced`.
+- **The pin fallback is a deliberate addition to the ticket's minimum** (Kevin, 2026-08-19): when
+  turn-by-turn cannot be served, `geo:` is tried, and if it opens, the driver is told in words that
+  directions did NOT start and they must start them. A lesser real thing, honestly labelled, rather
+  than silence.
+- **`AndroidManifest.xml`**: `com.google.android.apps.maps` plus `<intent>` queries for the
+  `google.navigation` and `geo` schemes, so a non-Google map app can serve the pin (requirement 3).
+- **`ai/AriaBrain.kt`**: a navigation section that names the tool and forbids claiming a map opened
+  unless the call came back successful.
+- **`MidnightEvents.navigationLaunch(mode, outcome)`** - mode and outcome only, never the
+  destination.
+- **9 unit tests** in `NavigationControllerTest` (URI shape, `%20` not `+`, UTF-8 escapes, the
+  outcome-to-honesty mapping). Full suite 1641 tests, 0 failures. `tested`.
+
+**Every box under Verification above is still unticked.** No phone was attached to the laptop this
+was built on. Nothing here is `on-device`.
