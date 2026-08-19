@@ -26,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.data.local.IngestMethod
@@ -220,12 +221,19 @@ fun CategoryDrilldownScreen(
                 // Rendered unconditionally, even while `loading`/`transactions` is empty - ticket 03's
                 // "render the chart anyway - the kit handles it; do not conditionally hide" - the kit
                 // draws a baseline of gap underlines for an all-null/all-zero series rather than nothing.
+                val dailyBars = categoryDailySpendBars(transactions, month, coverage)
                 DeckBarChart(
-                    bars = categoryDailySpendBars(transactions, month, coverage),
+                    bars = dailyBars,
                     modifier = Modifier.padding(top = 4.dp),
                 )
+                // Kevin, 2026-08-18: "the x axis has no title i have no idea what that shows. its
+                // probably the days but i cant tell can i". He was right about what it was and
+                // right that nothing on screen said so - the bars have carried a day-of-month
+                // label since they were written, and this screen simply never drew the label row
+                // (the SPEND pane's own chart does, via CategorySpendChart).
+                DayOfMonthAxis(dailyBars)
                 Text(
-                    "daily total - days no statement covers are marked, not zero",
+                    "one bar per day of ${monthLabel(month)} - days no statement covers are marked, not zero",
                     style = LegionType.stamp,
                     color = sem.faint,
                     modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
@@ -399,6 +407,41 @@ private fun monthEndMs(month: YearMonth): Long =
  * (a full refund landing the same day as a purchase) never wins the max, so this never mislabels a
  * quiet day as the interesting one.
  */
+/**
+ * The day-of-month scale under [categoryDailySpendBars]'s chart.
+ *
+ * **Sparse on purpose.** [com.kevin.legion.ui.common.DeckBarLabelRow] gives every bar an equal
+ * share and prints all of them, which is right for six category bars and unreadable for
+ * thirty-one days - at 384dp that is roughly 12dp per label, so a full row would render as a
+ * smear of clipped digits and be no more legible than the nothing it replaced. Anchors only: the
+ * 1st, 8th, 15th, 22nd and the month's own last day, whatever that is.
+ *
+ * Alignment comes from the same rule the label row uses - one `weight(1f)` cell per bar inside the
+ * same 12dp horizontal padding the chart draws in - so a printed number sits over its own day
+ * rather than near it. Blank cells hold their place so the anchors cannot slide.
+ */
+@Composable
+private fun DayOfMonthAxis(bars: List<DeckBar?>, modifier: Modifier = Modifier) {
+    if (bars.isEmpty()) return
+    val sem = LocalLegionSemantics.current
+    // Index i is day i+1 - categoryDailySpendBars emits one slot per day from the 1st, including
+    // the days it has no coverage for (those are null bars, not missing slots), so the position
+    // is trustworthy even where the bar itself is absent.
+    val anchors = setOf(0, 7, 14, 21, bars.lastIndex)
+    Row(modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        bars.indices.forEach { i ->
+            Text(
+                if (i in anchors) (i + 1).toString() else "",
+                style = LegionType.stamp,
+                color = sem.faint,
+                maxLines = 1,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
 internal fun categoryDailySpendBars(
     transactions: List<LedgerTransaction>,
     month: YearMonth,
