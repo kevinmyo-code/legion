@@ -9,8 +9,11 @@ import com.kevin.legion.ai.CompanionProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -68,6 +71,25 @@ data class TopTrack(val name: String, val artist: String)
  * has no queue-read method at all, only `queue(uri)` to add one.
  */
 data class QueuedTrack(val name: String, val artist: String)
+
+/**
+ * One of the driver's own playlists - [SpotifyWebApi.myPlaylists] (ticket 08,
+ * `.scratch/spotify-voice/issues/08-playlists-by-name.md`). [id] is the bare playlist ID (the
+ * last segment of [uri]), kept separately because the playlist-items write endpoint takes an ID
+ * in its path, not a URI.
+ *
+ * [readable] is the research's hard boundary (`.scratch/spotify-voice/research/01-api-capability-surface.md`):
+ * "`GET /playlists/{id}` returns items only for playlists the user owns or collaborates on." A
+ * followed EDITORIAL playlist (Discover Weekly) still shows up in `GET /me/playlists` - it is
+ * something the driver can PLAY, just not something LEGION can read the contents of or modify.
+ * True when the account's own user ID matches the playlist owner, OR the playlist is flagged
+ * `collaborative` (a friend added the driver as a collaborator). False for anything else,
+ * including a followed editorial playlist and a followed friend's playlist the driver was never
+ * made a collaborator on - Spotify's write endpoint would 403 either way, so this is conservative
+ * on purpose: a false negative costs one honest "can't do that" sentence, a false positive would
+ * cost a confusing 403 the driver has no way to explain to himself.
+ */
+data class SpotifyPlaylist(val name: String, val uri: String, val id: String, val readable: Boolean)
 
 object SpotifyWebApi {
     private const val TAG = "SpotifyWebApi"
@@ -382,7 +404,14 @@ object SpotifyWebApi {
      * happened. Found in the field the day the setup screen shipped.
      */
     sealed interface SearchOutcome {
-        data class Found(val uri: String) : SearchOutcome
+        /**
+         * [name] is Spotify's own title for the matched item, carried through (ticket 08) so a
+         * caller that fell through from a driver's own playlist library to this public-catalogue
+         * search can name what it actually found - the search result is often NOT what the driver
+         * meant by their words, and that has to be said, not silently substituted. Null only for
+         * older call sites that never populated it; [search] always sets it now.
+         */
+        data class Found(val uri: String, val name: String? = null) : SearchOutcome
 
         /** The browser grant was never completed, or the stored credentials are gone. */
         object NeedsAuthorization : SearchOutcome
@@ -479,6 +508,21 @@ object SpotifyWebApi {
     }
 
     /**
+     * One POST with the bearer token and a JSON body, same (status, body) shape as
+     * [getWithToken] - the playlist-items write ([addTrackToPlaylist]) is the only caller today.
+     */
+    private fun postWithToken(url: String, token: String, jsonBody: String): Pair<Int, String> {
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $token")
+            .post(jsonBody.toRequestBody("application/json".toMediaType()))
+            .build()
+        return http.newCall(request).execute().use { response ->
+            response.code to response.body?.string().orEmpty()
+        }
+    }
+
+    /**
      * Spotify's `?type=` values [search] accepts. Deliberately narrow to the four
      * `play_music` actually promises ("a song, artist, album, or playlist" - the honesty bug
      * closed 2026-08-18, `.scratch/drive-test-2026-08-18/issues/05-reading-kevins-spotify-library.md`):
@@ -549,19 +593,21 @@ object SpotifyWebApi {
                     .filter { it.optString("uri").isNotBlank() }
                 if (candidates.isEmpty()) return@withContext SearchOutcome.NoMatch
 
-                val uri = if (type == "track") {
+                val chosen = if (type == "track") {
                     val clean = candidates.filterNot { looksLikeImposter(it) }
                     // If filtering leaves nothing, the query genuinely WAS for a
                     // karaoke/tribute cut - honour it rather than returning nothing.
-                    (clean.ifEmpty { candidates })
-                        .maxByOrNull { it.optInt("popularity", 0) }
-                        ?.optString("uri")
-                        ?.takeIf { it.isNotBlank() }
+                    (clean.ifEmpty { candidates }).maxByOrNull { it.optInt("popularity", 0) }
                 } else {
                     // Non-track types: trust Spotify's own relevance ranking (first result).
-                    candidates.first().optString("uri").takeIf { it.isNotBlank() }
+                    candidates.first()
                 }
-                if (uri != null) SearchOutcome.Found(uri) else SearchOutcome.NoMatch
+                val uri = chosen?.optString("uri")?.takeIf { it.isNotBlank() }
+                if (uri != null) {
+                    SearchOutcome.Found(uri, chosen.optString("name").takeIf { it.isNotBlank() })
+                } else {
+                    SearchOutcome.NoMatch
+                }
             }
         } catch (e: Exception) {
             // A thrown IOException here is a transport failure, never a verdict on
@@ -821,5 +867,370 @@ object SpotifyWebApi {
         when (val outcome = libraryGet(context, QUEUE_URL, ::parseQueue)) {
             is LibraryOutcome.Found -> LibraryOutcome.Found(outcome.items.take(limit))
             else -> outcome
+        }
+
+    // --- Playlists by name (ticket 08, .scratch/spotify-voice/issues/08-playlists-by-name.md) --
+
+    private const val PLAYLISTS_URL = "https://api.spotify.com/v1/me/playlists"
+    private const val ME_URL = "https://api.spotify.com/v1/me"
+    private const val PLAYLIST_ITEMS_BASE = "https://api.spotify.com/v1/playlists"
+
+    private const val KEY_USER_ID = "spotify_user_id"
+    private const val KEY_PLAYLIST_CACHE = "playlist_cache"
+    private const val KEY_PLAYLIST_CACHE_AT = "playlist_cache_at"
+
+    /**
+     * How long [myPlaylists] trusts its own cache before hitting `/me/playlists` again. Ticket
+     * 08's scope item 1 asks for "a schedule that does not cost a call per utterance" without
+     * naming one - this is the judgment call, written down rather than left implicit.
+     *
+     * 15 minutes: long enough that a drive full of "play my X playlist" / "add this to Y"
+     * requests costs at most one refresh, short enough that a playlist a friend shares mid-drive
+     * ("shared with me" is explicitly in scope, per the ticket's header) shows up within the same
+     * sitting rather than needing an app restart. A stale cache is never silently wrong in a way
+     * that matters: [bestPlaylistMatch] against a cache missing a brand-new playlist just falls
+     * through to [resolvePlaylist]'s search step, same as it would for a genuinely unknown name.
+     */
+    private const val PLAYLIST_CACHE_TTL_MS = 15 * 60 * 1000L
+
+    /** Same page-size reasoning as [LIBRARY_LIMIT] - unmeasured for this endpoint, kept aligned with the measured [SEARCH_LIMIT] ceiling this dev-mode app is the likeliest explanation for. Paginated below via `next`, so this only bounds the round trips, not the total playlists returned. */
+    private const val PLAYLISTS_PAGE_LIMIT = 10
+
+    /** Bounds pagination so a corrupted or infinite `next` chain cannot spin forever - 20 pages at [PLAYLISTS_PAGE_LIMIT] is 200 playlists, comfortably past any real personal library. */
+    private const val MAX_PLAYLIST_PAGES = 20
+
+    /** `items[]` (playlist objects) -> [SpotifyPlaylist], `readable` computed against [userId]. Pure, unit-testable. */
+    internal fun parsePlaylistsPage(json: JSONObject, userId: String?): List<SpotifyPlaylist> {
+        val items = json.optJSONArray("items") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { i ->
+            val item = items.optJSONObject(i) ?: return@mapNotNull null
+            val name = item.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val uri = item.optString("uri").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val id = item.optString("id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val ownerId = item.optJSONObject("owner")?.optString("id")
+            val collaborative = item.optBoolean("collaborative", false)
+            val readable = collaborative || (userId != null && userId == ownerId)
+            SpotifyPlaylist(name = name, uri = uri, id = id, readable = readable)
+        }
+    }
+
+    /**
+     * Serializes [playlists] to a compact JSON array string for the on-device cache. Kept as
+     * plain JSON (not Room) - this is a disposable, TTL-bound read cache of data Spotify owns,
+     * not a fact LEGION asserts, so it does not belong in [com.kevin.legion.data.local.CarDatabase].
+     */
+    private fun serializePlaylists(playlists: List<SpotifyPlaylist>): String {
+        val arr = JSONArray()
+        playlists.forEach { p ->
+            arr.put(
+                JSONObject()
+                    .put("name", p.name)
+                    .put("uri", p.uri)
+                    .put("id", p.id)
+                    .put("readable", p.readable),
+            )
+        }
+        return arr.toString()
+    }
+
+    /** Inverse of [serializePlaylists]. Returns null (not empty) on anything unparseable, so a corrupt cache is treated as absent rather than as "zero playlists". */
+    private fun deserializePlaylists(raw: String): List<SpotifyPlaylist>? = runCatching {
+        val arr = JSONArray(raw)
+        (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            SpotifyPlaylist(
+                name = o.getString("name"),
+                uri = o.getString("uri"),
+                id = o.getString("id"),
+                readable = o.getBoolean("readable"),
+            )
+        }
+    }.getOrNull()
+
+    /**
+     * The account's own Spotify user ID, used to decide [SpotifyPlaylist.readable]. Cached
+     * indefinitely once known - a Spotify user ID does not change for the life of an account, and
+     * this read is on the hot path of every playlist cache refresh, so re-fetching it on a
+     * schedule would be pure waste. Best-effort: any failure returns null, and [parsePlaylistsPage]
+     * treats a null [userId] as "cannot prove ownership", which only ever makes a playlist read
+     * as LESS permissive (falls back to the `collaborative` flag alone) - never more.
+     */
+    private suspend fun cachedUserId(context: Context, token: String): String? {
+        authPrefs(context).getString(KEY_USER_ID, null)?.let { return it }
+        return try {
+            val (code, body) = getWithToken(ME_URL, token)
+            if (code !in 200..299) return null
+            JSONObject(body).optString("id").takeIf { it.isNotBlank() }
+                ?.also { authPrefs(context).edit().putString(KEY_USER_ID, it).apply() }
+        } catch (e: Exception) {
+            Log.w(TAG, "GET /me threw: ${e.message}")
+            null
+        }
+    }
+
+    /** On-disk cache read, or null when absent, corrupt, or past [PLAYLIST_CACHE_TTL_MS]. */
+    private fun freshCachedPlaylists(context: Context): List<SpotifyPlaylist>? {
+        val at = authPrefs(context).getLong(KEY_PLAYLIST_CACHE_AT, 0L)
+        if (System.currentTimeMillis() - at > PLAYLIST_CACHE_TTL_MS) return null
+        val raw = authPrefs(context).getString(KEY_PLAYLIST_CACHE, null) ?: return null
+        return deserializePlaylists(raw)
+    }
+
+    /**
+     * Fetches every page of `/me/playlists` following Spotify's own `next` links, bounded by
+     * [MAX_PLAYLIST_PAGES]. Failure shape matches [libraryGet]'s - the two live in different
+     * functions only because this one must keep looping across pages rather than making one call.
+     */
+    private suspend fun fetchAllPlaylists(context: Context, token: String, userId: String?): LibraryOutcome<SpotifyPlaylist> {
+        val out = mutableListOf<SpotifyPlaylist>()
+        var url: String? = Uri.parse(PLAYLISTS_URL).buildUpon()
+            .appendQueryParameter("limit", PLAYLISTS_PAGE_LIMIT.toString())
+            .build().toString()
+        var pages = 0
+        while (url != null && pages < MAX_PLAYLIST_PAGES) {
+            val (code, body) = try {
+                getWithToken(url, token)
+            } catch (e: Exception) {
+                Log.w(TAG, "Playlists read error: ${e.message}")
+                return LibraryOutcome.Unreachable
+            }
+            if (code !in 200..299) {
+                val detail = errorDetail(body)
+                Log.w(TAG, "Playlists read failed $code: $detail")
+                return when (code) {
+                    401, 403 -> LibraryOutcome.Unauthorized(detail)
+                    else -> LibraryOutcome.Failed(code, detail, body.trim().take(300))
+                }
+            }
+            val page = try {
+                JSONObject(body)
+            } catch (e: Exception) {
+                Log.w(TAG, "Playlists parse error: ${e.message}")
+                return LibraryOutcome.Failed(code, "Could not read Spotify's response", body.trim().take(300))
+            }
+            out += parsePlaylistsPage(page, userId)
+            url = page.optString("next").takeIf { it.isNotBlank() && it != "null" }
+            pages++
+        }
+        return LibraryOutcome.Found(out)
+    }
+
+    /**
+     * The driver's own playlists, plus ones friends have made him a collaborator on (map ticket 08's
+     * header scope: "his own playlists, plus playlists friends have shared with him"). Backed by a
+     * TTL cache ([PLAYLIST_CACHE_TTL_MS]) so a normal drive full of play/add requests costs at
+     * most one `/me/playlists` round trip, never one per utterance. [forceRefresh] bypasses the
+     * cache - nothing in this map calls it with true yet, kept for a future "refresh my
+     * playlists" tool without needing a signature change.
+     */
+    suspend fun myPlaylists(context: Context, forceRefresh: Boolean = false): LibraryOutcome<SpotifyPlaylist> = withContext(Dispatchers.IO) {
+        if (!forceRefresh) {
+            freshCachedPlaylists(context)?.let { return@withContext LibraryOutcome.Found(it) }
+        }
+        val token = when (val outcome = accessToken(context)) {
+            is TokenOutcome.Token -> outcome.value
+            TokenOutcome.NeverAuthorized -> return@withContext LibraryOutcome.NeedsAuthorization
+            TokenOutcome.Rejected -> return@withContext LibraryOutcome.Unauthorized(
+                "Spotify refused the stored refresh token. It has been cleared.",
+            )
+            TokenOutcome.Unreachable -> return@withContext LibraryOutcome.Unreachable
+        }
+        val userId = cachedUserId(context, token)
+        val result = fetchAllPlaylists(context, token, userId)
+        if (result is LibraryOutcome.Found) {
+            authPrefs(context).edit()
+                .putString(KEY_PLAYLIST_CACHE, serializePlaylists(result.items))
+                .putLong(KEY_PLAYLIST_CACHE_AT, System.currentTimeMillis())
+                .apply()
+        }
+        result
+    }
+
+    /**
+     * Case/whitespace/punctuation-insensitive normalization shared by [playlistMatchScore] - a
+     * driver's spoken name and Spotify's stored title routinely differ only in casing or a
+     * possessive apostrophe ("kev's roadtrip" vs "Kev's Roadtrip"), and neither is a real
+     * mismatch.
+     */
+    internal fun normalizePlaylistName(s: String): String =
+        s.lowercase().trim().replace(Regex("[^a-z0-9]+"), " ").trim().replace(Regex("\\s+"), " ")
+
+    /** Classic edit-distance DP, iterative (no recursion depth risk on a long playlist name). */
+    internal fun levenshtein(a: String, b: String): Int {
+        if (a == b) return 0
+        if (a.isEmpty()) return b.length
+        if (b.isEmpty()) return a.length
+        val prev = IntArray(b.length + 1) { it }
+        val curr = IntArray(b.length + 1)
+        for (i in 1..a.length) {
+            curr[0] = i
+            for (j in 1..b.length) {
+                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                curr[j] = minOf(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
+            }
+            System.arraycopy(curr, 0, prev, 0, curr.size)
+        }
+        return prev[b.length]
+    }
+
+    /**
+     * 0.0 (nothing alike) to 1.0 (identical after normalization). Three tiers, cheapest and most
+     * confident first: exact normalized match, then substring containment (a driver saying just
+     * "roadtrip" for a playlist actually named "Summer Roadtrip 2024"), then a normalized edit
+     * distance ratio for everything else - typos, mis-heard words, near-misses. Pure and
+     * `internal` so this is a plain JVM unit test rather than something only checkable by driving.
+     */
+    internal fun playlistMatchScore(spoken: String, candidate: String): Double {
+        val ns = normalizePlaylistName(spoken)
+        val nc = normalizePlaylistName(candidate)
+        if (ns.isEmpty() || nc.isEmpty()) return 0.0
+        if (ns == nc) return 1.0
+        if (nc.contains(ns) || ns.contains(nc)) return 0.9
+        val distance = levenshtein(ns, nc)
+        val maxLen = maxOf(ns.length, nc.length)
+        return 1.0 - distance.toDouble() / maxLen
+    }
+
+    /**
+     * Threshold [bestPlaylistMatch] requires before trusting a fuzzy hit over falling through to
+     * public search. Set high enough that two genuinely different short playlist names ("Gym" vs
+     * "Chill") don't collide, low enough that a couple of typos or a dropped word still lands.
+     */
+    internal const val PLAYLIST_MATCH_THRESHOLD = 0.6
+
+    /**
+     * The best-scoring playlist in [playlists] for [spoken], or null when nothing clears
+     * [PLAYLIST_MATCH_THRESHOLD] - null means "fall through to search", not "no playlists exist".
+     * Pure, `internal`, no network - the whole reason [myPlaylists] exists as a separate cached
+     * read is so this can run against a plain in-memory list with zero Web API cost per utterance.
+     */
+    internal fun bestPlaylistMatch(playlists: List<SpotifyPlaylist>, spoken: String): SpotifyPlaylist? {
+        if (playlists.isEmpty() || spoken.isBlank()) return null
+        val best = playlists.maxByOrNull { playlistMatchScore(spoken, it.name) } ?: return null
+        return if (playlistMatchScore(spoken, best.name) >= PLAYLIST_MATCH_THRESHOLD) best else null
+    }
+
+    /** A library-only playlist lookup - see [findMyPlaylist]. Never falls through to public search; a caller that wants that is [resolvePlaylist]. */
+    sealed interface PlaylistLookup {
+        data class Found(val playlist: SpotifyPlaylist) : PlaylistLookup
+        object NeedsAuthorization : PlaylistLookup
+        data class Unauthorized(val detail: String?) : PlaylistLookup
+        object Unreachable : PlaylistLookup
+        /** No cached playlist scored above [PLAYLIST_MATCH_THRESHOLD]. Distinct from every failure above - Spotify answered fine, nothing just matched. */
+        object NoMatch : PlaylistLookup
+        data class Failed(val code: Int, val detail: String?) : PlaylistLookup
+    }
+
+    /**
+     * Matches [spoken] against [myPlaylists] ONLY - no public-search fallback. This is what
+     * "add this to <playlist>" (ticket 08 scope item 3) resolves the target playlist through:
+     * adding a track to a public playlist found via search would almost always 403 anyway (the
+     * driver doesn't own or collaborate on it), and even on the rare case where it wouldn't, that
+     * was never what "add this to Roadtrip" meant. [resolvePlaylist] below is the play-time
+     * version that DOES fall through to search.
+     */
+    suspend fun findMyPlaylist(context: Context, spoken: String): PlaylistLookup =
+        when (val lib = myPlaylists(context)) {
+            is LibraryOutcome.Found -> bestPlaylistMatch(lib.items, spoken)?.let { PlaylistLookup.Found(it) }
+                ?: PlaylistLookup.NoMatch
+            LibraryOutcome.NeedsAuthorization -> PlaylistLookup.NeedsAuthorization
+            is LibraryOutcome.Unauthorized -> PlaylistLookup.Unauthorized(lib.detail)
+            LibraryOutcome.Unreachable -> PlaylistLookup.Unreachable
+            is LibraryOutcome.Failed -> PlaylistLookup.Failed(lib.code, lib.detail)
+        }
+
+    /** Every way [resolvePlaylist] can end. [FromSearch] is the fallback case that must be spoken about, per ticket 08 scope item 2 ("say which one it used when the answer might surprise him"). */
+    sealed interface PlaylistResolution {
+        /** Matched the driver's OWN cached library ([myPlaylists]) - the expected, unremarkable case. */
+        data class FromLibrary(val playlist: SpotifyPlaylist) : PlaylistResolution
+        /** Nothing in the driver's own library matched; this came from the public catalogue via `/v1/search`. [name] is Spotify's own title for it, when known. */
+        data class FromSearch(val uri: String, val name: String?) : PlaylistResolution
+        object NeedsAuthorization : PlaylistResolution
+        data class Unauthorized(val detail: String?) : PlaylistResolution
+        object Unreachable : PlaylistResolution
+        object NoMatch : PlaylistResolution
+        data class Failed(val code: Int, val detail: String?) : PlaylistResolution
+    }
+
+    /**
+     * "Play my Roadtrip playlist" (ticket 08 scope items 1-2): [findMyPlaylist] first - the
+     * driver's own cache, matched with no Web API cost - and only when that comes back
+     * [PlaylistLookup.NoMatch] does this fall through to `/v1/search`, which ranks the whole
+     * public catalogue and is exactly what this ticket exists to stop being the primary path. A
+     * library-read FAILURE (not merely "no match") still falls through too - the theory being a
+     * broken `/me/playlists` call should not also break a public playlist the driver asked for by
+     * name, and search is an independent code path that may well still work.
+     */
+    suspend fun resolvePlaylist(context: Context, spoken: String): PlaylistResolution {
+        when (val lookup = findMyPlaylist(context, spoken)) {
+            is PlaylistLookup.Found -> return PlaylistResolution.FromLibrary(lookup.playlist)
+            PlaylistLookup.NeedsAuthorization -> return PlaylistResolution.NeedsAuthorization
+            is PlaylistLookup.Unauthorized -> return PlaylistResolution.Unauthorized(lookup.detail)
+            PlaylistLookup.Unreachable -> return PlaylistResolution.Unreachable
+            PlaylistLookup.NoMatch -> Unit // fall through to search below
+            is PlaylistLookup.Failed -> Unit // fall through to search below - see doc above
+        }
+        return when (val s = search(context, spoken, "playlist")) {
+            is SearchOutcome.Found -> PlaylistResolution.FromSearch(s.uri, s.name)
+            SearchOutcome.NeedsAuthorization -> PlaylistResolution.NeedsAuthorization
+            is SearchOutcome.Unauthorized -> PlaylistResolution.Unauthorized(s.detail)
+            SearchOutcome.Unreachable -> PlaylistResolution.Unreachable
+            SearchOutcome.NoMatch -> PlaylistResolution.NoMatch
+            is SearchOutcome.Failed -> PlaylistResolution.Failed(s.code, s.detail)
+        }
+    }
+
+    /** Every way [addTrackToPlaylist] can end. */
+    sealed interface PlaylistWriteOutcome {
+        /** `POST .../items` was awaited and came back successful (201). */
+        object Added : PlaylistWriteOutcome
+        object NeedsAuthorization : PlaylistWriteOutcome
+        data class Unauthorized(val detail: String?) : PlaylistWriteOutcome
+        object Unreachable : PlaylistWriteOutcome
+        /**
+         * Spotify's own write refusal (403) - the research's ownership/collaborator boundary,
+         * confirmed live rather than only inferred from the cached [SpotifyPlaylist.readable]
+         * flag. A caller should normally never reach this (it should have checked `readable`
+         * first and said so), but a stale cache entry can still surface it, and it must be named
+         * for what it is - never reported as "couldn't find that playlist".
+         */
+        object NotYours : PlaylistWriteOutcome
+        data class Failed(val code: Int, val detail: String?) : PlaylistWriteOutcome
+    }
+
+    /**
+     * `POST /v1/playlists/{id}/items` (ticket 08 scope item 3) - note the migration named in the
+     * research: this used to be `POST /v1/playlists/{id}/tracks` with a `tracks` response field;
+     * both are now `items`. [playlistId] is [SpotifyPlaylist.id] (bare ID), never a full URI.
+     * Creating a NEW playlist by voice is deliberately out of scope (map decision 9) - this only
+     * ever appends to one that already exists.
+     */
+    suspend fun addTrackToPlaylist(context: Context, playlistId: String, trackUri: String): PlaylistWriteOutcome =
+        withContext(Dispatchers.IO) {
+            val token = when (val outcome = accessToken(context)) {
+                is TokenOutcome.Token -> outcome.value
+                TokenOutcome.NeverAuthorized -> return@withContext PlaylistWriteOutcome.NeedsAuthorization
+                TokenOutcome.Rejected -> return@withContext PlaylistWriteOutcome.Unauthorized(
+                    "Spotify refused the stored refresh token. It has been cleared.",
+                )
+                TokenOutcome.Unreachable -> return@withContext PlaylistWriteOutcome.Unreachable
+            }
+            val body = JSONObject().put("uris", JSONArray().put(trackUri)).toString()
+            try {
+                val (code, respBody) = postWithToken("$PLAYLIST_ITEMS_BASE/$playlistId/items", token, body)
+                if (code in 200..299) return@withContext PlaylistWriteOutcome.Added
+                val detail = errorDetail(respBody)
+                Log.w(TAG, "Playlist add failed $code: $detail")
+                when (code) {
+                    401 -> PlaylistWriteOutcome.Unauthorized(detail)
+                    // 403 here is Spotify's own ownership/collaborator refusal, not an auth
+                    // problem - see PlaylistWriteOutcome.NotYours's own doc.
+                    403 -> PlaylistWriteOutcome.NotYours
+                    else -> PlaylistWriteOutcome.Failed(code, detail)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Playlist add error: ${e.message}")
+                PlaylistWriteOutcome.Unreachable
+            }
         }
 }
