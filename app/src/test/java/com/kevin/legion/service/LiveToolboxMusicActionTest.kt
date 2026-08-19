@@ -29,21 +29,25 @@ class LiveToolboxMusicActionTest {
         assertEquals(LiveToolbox.MusicAction.UNLIKE, LiveToolbox.MusicAction.fromWire("unlike"))
         assertEquals(LiveToolbox.MusicAction.FOLLOW_ARTIST, LiveToolbox.MusicAction.fromWire("follow_artist"))
         assertEquals(LiveToolbox.MusicAction.UNFOLLOW_ARTIST, LiveToolbox.MusicAction.fromWire("unfollow_artist"))
+        // Landed ticket 06: shuffle, repeat, seek, restart.
+        assertEquals(LiveToolbox.MusicAction.SHUFFLE, LiveToolbox.MusicAction.fromWire("shuffle"))
+        assertEquals(LiveToolbox.MusicAction.SHUFFLE_ON, LiveToolbox.MusicAction.fromWire("shuffle_on"))
+        assertEquals(LiveToolbox.MusicAction.SHUFFLE_OFF, LiveToolbox.MusicAction.fromWire("shuffle_off"))
+        assertEquals(LiveToolbox.MusicAction.REPEAT_OFF, LiveToolbox.MusicAction.fromWire("repeat_off"))
+        assertEquals(LiveToolbox.MusicAction.REPEAT_TRACK, LiveToolbox.MusicAction.fromWire("repeat_track"))
+        assertEquals(LiveToolbox.MusicAction.REPEAT_CONTEXT, LiveToolbox.MusicAction.fromWire("repeat_context"))
+        assertEquals(LiveToolbox.MusicAction.SEEK_FORWARD, LiveToolbox.MusicAction.fromWire("seek_forward"))
+        assertEquals(LiveToolbox.MusicAction.SEEK_BACK, LiveToolbox.MusicAction.fromWire("seek_back"))
+        assertEquals(LiveToolbox.MusicAction.RESTART, LiveToolbox.MusicAction.fromWire("restart"))
     }
 
     @Test
-    fun `an action ticket 06 has not landed yet is unrecognized, not a guess`() {
-        // These are the map's remaining future entries (shuffle_on, shuffle_off, repeat_off,
-        // repeat_track, repeat_context, seek_forward, seek_back, restart). Ticket 03's whole
-        // point is that the JSON schema `enum` and this parser never claim more than is actually
-        // wired - so every one of these must currently fail closed (null) rather than silently
-        // succeed against a case that doesn't exist yet.
-        for (future in listOf(
-            "shuffle_on", "shuffle_off", "repeat_off", "repeat_track", "repeat_context",
-            "seek_forward", "seek_back", "restart",
-        )) {
-            assertNull("\"$future\" has not landed yet and must not parse to an action", LiveToolbox.MusicAction.fromWire(future))
-        }
+    fun `every MusicAction entry that exists today has landed - no future placeholder entries`() {
+        // Ticket 03's discipline (the schema `enum` and this parser never claim more than is
+        // actually wired) means there is no longer a "not landed yet" set to assert against -
+        // tickets 03-06 are all in on this map. Asserting the exact count instead pins the map's
+        // full surface as a single number that must be touched deliberately if it ever grows again.
+        assertEquals(18, LiveToolbox.MusicAction.entries.size)
     }
 
     @Test

@@ -10,8 +10,11 @@ import com.spotify.android.appremote.api.error.CouldNotFindSpotifyApp
 import com.spotify.android.appremote.api.error.NotLoggedInException
 import com.spotify.android.appremote.api.error.OfflineModeException
 import com.spotify.android.appremote.api.error.UserNotAuthorizedException
+import com.spotify.protocol.client.CallResult
 import com.spotify.protocol.client.Subscription
+import com.spotify.protocol.types.Empty
 import com.spotify.protocol.types.PlayerState
+import com.spotify.protocol.types.Repeat
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -726,6 +729,148 @@ object SpotifyController {
     suspend fun unfollowArtist(context: Context): LibraryWriteOutcome =
         libraryWrite(context, playerState.value?.track?.artist?.uri, add = false)
 
+    // --- Shuffle, repeat, seek (ticket 06, .scratch/spotify-voice/issues/06-shuffle-repeat-seek.md) --
+
+    /**
+     * The state a shuffle/repeat/restart write ACTUALLY resulted in, read from a fresh
+     * `getPlayerState()` call taken AFTER the write - never the state that was requested (ticket
+     * 06 rule 4). App Remote is deliberately used for all three rather than the Web API: it
+     * offers `toggleShuffle`/`toggleRepeat` (the Web API only has set, which needs its own read
+     * first to compute the new state), and the Web API's own docs warn "the order of execution
+     * is not guaranteed when you use this API with other Player API endpoints" - exactly the
+     * compound-command race a live voice turn risks.
+     */
+    data class TransportWriteResult(val isShuffling: Boolean, val repeatMode: Int)
+
+    /**
+     * Shared connect -> write -> re-read sequence for every shuffle/repeat/restart action below.
+     * [write] is the one SDK call a specific action makes; null means the write itself could not
+     * be confirmed (not connected, the write failed, or the re-read failed) - callers fall back
+     * to [transportWriteFailureMessage].
+     */
+    private suspend fun applyTransportWrite(
+        context: Context,
+        write: (SpotifyAppRemote) -> CallResult<Empty>,
+    ): TransportWriteResult? = withContext(Dispatchers.IO) {
+        if (!ensureConnected(context)) return@withContext null
+        val r = remote ?: return@withContext null
+
+        val ok = try {
+            val result = write(r).await(PLAY_TIMEOUT_SEC, TimeUnit.SECONDS)
+            if (!result.isSuccessful) Log.w(TAG, "transport write failed: ${result.errorMessage}")
+            result.isSuccessful
+        } catch (e: Exception) {
+            Log.w(TAG, "transport write threw: ${e.message}")
+            false
+        }
+        if (!ok) return@withContext null
+
+        val state = try {
+            r.playerApi.getPlayerState().await(CAPABILITIES_TIMEOUT_SEC, TimeUnit.SECONDS)
+                .takeIf { it.isSuccessful }?.data
+        } catch (e: Exception) {
+            Log.w(TAG, "post-write getPlayerState threw: ${e.message}")
+            null
+        } ?: return@withContext null
+
+        TransportWriteResult(isShuffling = state.playbackOptions.isShuffling, repeatMode = state.playbackOptions.repeatMode)
+    }
+
+    /** Sets shuffle explicitly. See [toggleShuffle] for the bare "shuffle" wire value. */
+    suspend fun setShuffle(context: Context, on: Boolean): TransportWriteResult? =
+        applyTransportWrite(context) { it.playerApi.setShuffle(on) }
+
+    /** Bare "shuffle" (ticket 06 scope item 1) - flips whatever it currently is. */
+    suspend fun toggleShuffle(context: Context): TransportWriteResult? =
+        applyTransportWrite(context) { it.playerApi.toggleShuffle() }
+
+    /** "Repeat off" - the whole session stops repeating. */
+    suspend fun setRepeatOff(context: Context): TransportWriteResult? =
+        applyTransportWrite(context) { it.playerApi.setRepeat(Repeat.OFF) }
+
+    /** "Repeat this" - the CURRENT TRACK repeats. Not the same request as [setRepeatContext]. */
+    suspend fun setRepeatTrack(context: Context): TransportWriteResult? =
+        applyTransportWrite(context) { it.playerApi.setRepeat(Repeat.ONE) }
+
+    /** "Repeat the album/playlist" - the whole context repeats, not just the current track. */
+    suspend fun setRepeatContext(context: Context): TransportWriteResult? =
+        applyTransportWrite(context) { it.playerApi.setRepeat(Repeat.ALL) }
+
+    /** Jumps back to the start of the current track. */
+    suspend fun restart(context: Context): TransportWriteResult? =
+        applyTransportWrite(context) { it.playerApi.seekTo(0) }
+
+    /** The pure `state -> spoken line` mapping for shuffle. Reads the RESULT, never the request. */
+    internal fun shuffleMessage(state: TransportWriteResult): String =
+        if (state.isShuffling) "Shuffle's on." else "Shuffle's off."
+
+    /** The pure `state -> spoken line` mapping for repeat. Reads the RESULT, never the request. */
+    internal fun repeatMessage(state: TransportWriteResult): String = when (state.repeatMode) {
+        Repeat.OFF -> "Repeat's off."
+        Repeat.ONE -> "Repeating this track."
+        Repeat.ALL -> "Repeating the whole thing."
+        else -> "Repeat's set."
+    }
+
+    /** Shared "couldn't do it at all" line for any of the shuffle/repeat/seek/restart writes above. */
+    internal fun transportWriteFailureMessage(): String =
+        "Spotify isn't connected - connect your Spotify account in Setup, or pick something on " +
+            "your phone yourself and I'll control play/pause/skip from here."
+
+    /**
+     * Every distinct way a seek can end. **[TrackChanged] is its own outcome, never folded into
+     * [Landed]** - seeking forward past the end of a track hands off to the NEXT song (Spotify's
+     * own documented behaviour), and the driver must be told that happened rather than hearing
+     * "jumped forward 30 seconds" when the track actually changed underneath them (ticket 06
+     * scope item 3).
+     */
+    sealed interface SeekOutcome {
+        /** The seek landed inside the SAME track. [positionMs] is read from state after the seek, null if the confirm-read itself failed even though the seek call succeeded. */
+        data class Landed(val positionMs: Long?) : SeekOutcome
+
+        /** The seek crossed the end of the track and Spotify moved on to the next one. */
+        data object TrackChanged : SeekOutcome
+
+        /** Could not reach/connect to Spotify at all. */
+        data object NotConnected : SeekOutcome
+
+        /** Connected fine; the seek call itself came back unsuccessful or timed out. */
+        data object SeekRejected : SeekOutcome
+    }
+
+    /**
+     * Relative seek via `seekToRelativePosition` (positive [deltaMs] forward, negative back) -
+     * chosen over an absolute `seekTo` so no position read is needed FIRST (ticket 06 scope item
+     * 3). Detects [SeekOutcome.TrackChanged] by comparing the track uri before and after the
+     * call: if the seek call itself succeeded but the track underneath changed, the seek crossed
+     * the end.
+     */
+    suspend fun seekRelative(context: Context, deltaMs: Long): SeekOutcome = withContext(Dispatchers.IO) {
+        if (!ensureConnected(context)) return@withContext SeekOutcome.NotConnected
+        val r = remote ?: return@withContext SeekOutcome.NotConnected
+        val beforeUri = playerState.value?.track?.uri
+
+        val ok = try {
+            val result = r.playerApi.seekToRelativePosition(deltaMs).await(PLAY_TIMEOUT_SEC, TimeUnit.SECONDS)
+            if (!result.isSuccessful) Log.w(TAG, "seekToRelativePosition($deltaMs) failed: ${result.errorMessage}")
+            result.isSuccessful
+        } catch (e: Exception) {
+            Log.w(TAG, "seekToRelativePosition($deltaMs) threw: ${e.message}")
+            false
+        }
+        if (!ok) return@withContext SeekOutcome.SeekRejected
+
+        val after = try {
+            r.playerApi.getPlayerState().await(CAPABILITIES_TIMEOUT_SEC, TimeUnit.SECONDS)
+                .takeIf { it.isSuccessful }?.data
+        } catch (e: Exception) {
+            Log.w(TAG, "post-seek getPlayerState threw: ${e.message}")
+            null
+        } ?: return@withContext SeekOutcome.Landed(null)
+
+        if (beforeUri != null && after.track?.uri != beforeUri) return@withContext SeekOutcome.TrackChanged
+        SeekOutcome.Landed(after.playbackPosition)
+    }
 
     private inline fun withPlayer(action: (SpotifyAppRemote) -> Unit): Boolean {
         val r = remote ?: return false

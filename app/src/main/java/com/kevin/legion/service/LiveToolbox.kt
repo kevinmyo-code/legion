@@ -415,16 +415,32 @@ object LiveToolbox {
                 "whole queue. 'follow_artist'/'unfollow_artist' act on the current track's " +
                 "artist. All four require Spotify connected in Setup and something actually " +
                 "playing - if you say 'like this' twice, the second call comes back telling you " +
-                "it was already liked, which is a real distinct answer, not a failure.",
+                "it was already liked, which is a real distinct answer, not a failure. " +
+                "'shuffle' toggles shuffle to whatever it currently isn't; 'shuffle_on'/" +
+                "'shuffle_off' set it explicitly - the spoken confirmation always says the state " +
+                "that RESULTED, read back from Spotify, not just what was asked for. " +
+                "'repeat_track' repeats ONLY the current track ('repeat this'); " +
+                "'repeat_context' repeats the whole album/playlist ('repeat the album') - these " +
+                "are genuinely different requests, don't collapse them. 'repeat_off' turns " +
+                "repeat off entirely. 'seek_forward'/'seek_back' jump within the current track " +
+                "- pass 'seconds' if the driver named a duration, otherwise it defaults to 30. " +
+                "Seeking forward past the end of the track moves on to the next song (Spotify's " +
+                "own behaviour) - say so plainly if it happens, don't just report a jump. " +
+                "'restart' jumps back to the start of the current track.",
             params = obj(
                 "action" to schema("string", "The playback action.",
                     enum = listOf(
                         "play", "pause", "next", "previous", "queue",
                         "like", "unlike", "follow_artist", "unfollow_artist",
+                        "shuffle", "shuffle_on", "shuffle_off",
+                        "repeat_off", "repeat_track", "repeat_context",
+                        "seek_forward", "seek_back", "restart",
                     )),
                 "query" to schema("string",
                     "Required for 'queue': what to add, in the driver's own words, e.g. " +
                         "'Plastic Love by Mariya Takeuchi'."),
+                "seconds" to schema("integer",
+                    "For 'seek_forward'/'seek_back' only: how many seconds to jump. Defaults to 30."),
             ),
             required = listOf("action"),
         ))
@@ -5013,10 +5029,16 @@ object LiveToolbox {
         UNLIKE("unlike"),
         FOLLOW_ARTIST("follow_artist"),
         UNFOLLOW_ARTIST("unfollow_artist"),
+        SHUFFLE("shuffle"),
+        SHUFFLE_ON("shuffle_on"),
+        SHUFFLE_OFF("shuffle_off"),
+        REPEAT_OFF("repeat_off"),
+        REPEAT_TRACK("repeat_track"),
+        REPEAT_CONTEXT("repeat_context"),
+        SEEK_FORWARD("seek_forward"),
+        SEEK_BACK("seek_back"),
+        RESTART("restart"),
         ;
-        // Landing commits add one entry, one schema string, and one `when` branch together:
-        // SHUFFLE_ON/SHUFFLE_OFF/REPEAT_OFF/REPEAT_TRACK/REPEAT_CONTEXT/SEEK_FORWARD/SEEK_BACK/
-        // RESTART (ticket 06).
 
         companion object {
             /** Parses the wire string the live model sent. Unrecognized text is null, never a throw. */
@@ -5068,6 +5090,76 @@ object LiveToolbox {
             MusicAction.UNLIKE -> controlMusicLibrary(context, SpotifyController.LibraryAction.UNLIKE)
             MusicAction.FOLLOW_ARTIST -> controlMusicLibrary(context, SpotifyController.LibraryAction.FOLLOW_ARTIST)
             MusicAction.UNFOLLOW_ARTIST -> controlMusicLibrary(context, SpotifyController.LibraryAction.UNFOLLOW_ARTIST)
+            MusicAction.SHUFFLE -> controlMusicShuffle(context, turnOn = null)
+            MusicAction.SHUFFLE_ON -> controlMusicShuffle(context, turnOn = true)
+            MusicAction.SHUFFLE_OFF -> controlMusicShuffle(context, turnOn = false)
+            MusicAction.REPEAT_OFF, MusicAction.REPEAT_TRACK, MusicAction.REPEAT_CONTEXT ->
+                controlMusicRepeat(context, action)
+            MusicAction.SEEK_FORWARD -> controlMusicSeek(context, forward = true, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))
+            MusicAction.SEEK_BACK -> controlMusicSeek(context, forward = false, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))
+            MusicAction.RESTART -> controlMusicRestart(context)
+        }
+    }
+
+    /** "Back 30 seconds" with nothing said defaults to 30 (ticket 06 scope item 3). */
+    private const val DEFAULT_SEEK_SECONDS = 30
+
+    /**
+     * `shuffle`/`shuffle_on`/`shuffle_off` (ticket 06,
+     * `.scratch/spotify-voice/issues/06-shuffle-repeat-seek.md`). [turnOn] null means the bare
+     * "shuffle" action (toggle); non-null means the explicit on/off request. Either way the
+     * spoken line is built from [SpotifyController.TransportWriteResult] - the state that
+     * RESULTED, read back from Spotify after the write, never the state that was asked for.
+     */
+    private suspend fun controlMusicShuffle(context: Context, turnOn: Boolean?): JSONObject {
+        val state = if (turnOn == null) SpotifyController.toggleShuffle(context) else SpotifyController.setShuffle(context, turnOn)
+        return if (state != null) result(success = true, message = SpotifyController.shuffleMessage(state))
+        else result(success = false, message = SpotifyController.transportWriteFailureMessage())
+    }
+
+    /**
+     * `repeat_off`/`repeat_track`/`repeat_context` - "repeat this" is the track, "repeat the
+     * album" is the context, and the two are genuinely different requests (ticket 06 scope item
+     * 2), never collapsed into one "repeat" action.
+     */
+    private suspend fun controlMusicRepeat(context: Context, action: MusicAction): JSONObject {
+        val state = when (action) {
+            MusicAction.REPEAT_OFF -> SpotifyController.setRepeatOff(context)
+            MusicAction.REPEAT_TRACK -> SpotifyController.setRepeatTrack(context)
+            MusicAction.REPEAT_CONTEXT -> SpotifyController.setRepeatContext(context)
+            else -> error("controlMusicRepeat called with a non-repeat action: $action")
+        }
+        return if (state != null) result(success = true, message = SpotifyController.repeatMessage(state))
+        else result(success = false, message = SpotifyController.transportWriteFailureMessage())
+    }
+
+    /**
+     * `restart` - jumps back to the start of the current track.
+     */
+    private suspend fun controlMusicRestart(context: Context): JSONObject {
+        val state = SpotifyController.restart(context)
+        return if (state != null) result(success = true, message = "Restarted the track.")
+        else result(success = false, message = SpotifyController.transportWriteFailureMessage())
+    }
+
+    /**
+     * `seek_forward`/`seek_back` - relative seek, default [DEFAULT_SEEK_SECONDS]. **Seeking past
+     * the end of a track starts the next one** (Spotify's own documented behaviour, ticket 06
+     * scope item 3) - [SpotifyController.SeekOutcome.TrackChanged] is spoken as exactly that,
+     * never as "jumped forward N seconds" when the track actually changed underneath the driver.
+     */
+    private suspend fun controlMusicSeek(context: Context, forward: Boolean, seconds: Int): JSONObject {
+        val secs = seconds.coerceAtLeast(1)
+        val deltaMs = secs * 1000L * if (forward) 1L else -1L
+        return when (val outcome = SpotifyController.seekRelative(context, deltaMs)) {
+            is SpotifyController.SeekOutcome.Landed ->
+                result(success = true, message = "Jumped ${if (forward) "forward" else "back"} $secs seconds.")
+            SpotifyController.SeekOutcome.TrackChanged ->
+                result(success = true, message = "That went past the end of the track, so Spotify moved on to the next song.")
+            SpotifyController.SeekOutcome.NotConnected ->
+                result(success = false, message = SpotifyController.transportWriteFailureMessage())
+            SpotifyController.SeekOutcome.SeekRejected ->
+                result(success = false, message = "Spotify wouldn't seek there.")
         }
     }
 
