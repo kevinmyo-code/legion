@@ -99,6 +99,24 @@ registers a **new** Client ID and lands on the **restricted** set, needs their o
 allowlist themselves. Design LEGION's Spotify surface against the restricted set, not the
 grandfathered one.
 
+## CORRECTION 2026-08-19, from ticket 13's own endpoint check
+
+**The "2026-02 wave" described below could not be re-verified.** Building ticket 13 required checking
+`GET /artists/{id}/albums` against primary docs. That check found the endpoint fully specified with
+no restriction banner, and absent from the 2024-11-27 removal blog - but it **could not find any
+primary Spotify blog or changelog for the Feb-2026 dev-mode cull this file asserts**. Several
+plausible URLs 404ed, and the `quota-modes` page does not mention per-endpoint restrictions at all.
+
+Worse, the control check kills the method: `get-recommendations`, a **confirmed**-dead endpoint,
+renders an **identically normal** reference page. **So a normal-looking reference page proves
+nothing about availability.**
+
+Treat the 2026-02 list below as UNCONFIRMED. What is solid: the 2024-11-27 wave (its own blog post),
+the Premium split on `/me/player` writes, and the App Remote surface. What is not: which endpoints a
+dev-mode Client ID can actually reach today. **Only a real call against Kevin's own Client ID
+settles any of it** - which is why ticket 13 ships degrading to an honest spoken failure on a 403
+rather than assuming success.
+
 ## Could NOT verify from primary docs
 
 - `404 NO_ACTIVE_DEVICE` and the `"Player command failed"` reason strings - **absent** from all 15

@@ -4,7 +4,7 @@ ticket: 13
 title: "More from this artist, and what else they have"
 type: task
 status: open
-status-detail: ""
+status-detail: "Built (8fc0ee0). /artists/{id}/albums availability is traced but NOT tested - it may 403. NOT installed, NOT verified on the phone."
 blockers: ["02", "03"]
 blocked-by: ["[[02-app-remote-spine]]", "[[03-tool-surface]]"]
 open-blockers: 2

@@ -4,7 +4,7 @@ ticket: 02
 title: "App Remote is the spine, and it creates the device rather than needing one"
 type: task
 status: open
-status-detail: ""
+status-detail: "Built (66d1d4c). PlayOutcome + switch-to-local + held connection. The cold case has never been run. NOT installed, NOT verified on the phone."
 blockers: []
 blocked-by: []
 open-blockers: 0

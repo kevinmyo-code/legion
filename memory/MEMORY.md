@@ -3,6 +3,41 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
+## START HERE - 2026-08-19 (late) - SPOTIFY VOICE, BUILT AND NOT INSTALLED
+
+**Ten of twelve tickets on `.scratch/spotify-voice/` are built, merged to `dev` and pushed. NOT ONE
+of them has run on a phone.** Suite 1747 green. Everything below is `built`+`tested`, nothing is
+`on-device`.
+
+**Two things to do FIRST, in this order:**
+1. **Re-approve Spotify in Setup.** `SCOPES` went 4 -> 13 (ticket 01), so the existing grant is stale
+   BY DESIGN and `play_music` refuses until the browser hop is done. Do it at a desk. If it is
+   discovered in the car, ticket 01 failed at its own purpose.
+2. **Install from the OTHER laptop.** This machine's debug keystore differs from the one that signed
+   the install on the A25, so `adb install -r` from here cannot update it. **NEVER uninstall to get
+   around that** - `sync/` has still never executed, so the phone holds the only copy of 18,645 OBD
+   samples, 148 ledger rows and the Keystore-sealed Gemini key. Kevin chose to pull and install from
+   the laptop that has the key.
+
+**What landed:** the App Remote spine (it CREATES an active device rather than needing one, so
+asking for music with Spotify closed should now work - **the headline claim, never run**), a
+20-action `control_music` (queue, like, unlike, follow, shuffle, repeat, seek, restart, add to
+playlist, more from this artist), playlists matched against his OWN library before the catalogue,
+now-playing read from Spotify's own pushed state, `play_music` naming what it actually picked, and
+`legion_history` rows that can finally be replayed.
+
+**Left:** ticket 11 (the recommender - Kevin's own call: least important thing on the map) and
+ticket 12 (ship pass, which is the on-device test list).
+
+**Two numbers nobody has measured:** the playlist fuzzy-match threshold (0.6) and its cache TTL
+(15 min). Both were tuned against unit tests, never against a spoken transcript.
+
+**A research claim was DOWNGRADED:** the "Feb-2026 dev-mode cull" in
+`.scratch/spotify-voice/research/01-api-capability-surface.md` could not be re-verified from primary
+docs, and a confirmed-dead endpoint renders an identically normal reference page - so page
+appearance proves nothing. `/artists/{id}/albums` may 403 on the real Client ID; ticket 13 degrades
+to an honest spoken failure if it does.
+
 ## START HERE - 2026-08-19
 
 **Second laptop is live** (`C:\Users\kevin\AndroidStudioProjects\legion`, Studio at the default

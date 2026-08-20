@@ -4,7 +4,7 @@ ticket: 03
 title: "Fold ten capabilities into the tools that already exist"
 type: task
 status: open
-status-detail: ""
+status-detail: "Built (0f94dee). MusicAction enum, 20 actions, all implemented, count pinned by a test. NOT installed, NOT verified on the phone."
 blockers: []
 blocked-by: []
 open-blockers: 0

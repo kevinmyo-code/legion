@@ -4,7 +4,7 @@ ticket: 09
 title: "legion_history can name a track it can never replay"
 type: task
 status: open
-status-detail: ""
+status-detail: "Built. spotifyUri filled from player state; old rows stay null and say so. NOT installed, NOT verified on the phone."
 blockers: ["02"]
 blocked-by: ["[[02-app-remote-spine]]"]
 open-blockers: 1
