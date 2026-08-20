@@ -379,14 +379,17 @@ read next run (`.claude/agents/*.md`, this file). Ledger: `memory/library/lesson
 
 | Branch | Role |
 |---|---|
-| `main` | What Kevin has blessed. Moves ONLY via a PR Kevin opens and merges himself on GitHub. |
-| `dev` | The trunk. Everything lands here. **Does not exist yet in this repo** - the port landed directly on `main`. Create it at the next feature, or ask Kevin to. |
+| `main` | Mirrors `dev`. Claude may merge `dev` into `main` and push it (Kevin, 2026-08-19, reversing the PR-only rule below). |
+| `dev` | The trunk. Everything lands here. |
 
 - Feature work branches off `dev`: `feat/<thing>`, `fix/<thing>`. Small commits, merge often,
   delete the branch after.
-- **Claude never pushes `main`, never opens or merges that PR.**
-- The rule exists because on 2026-07-16 Midnight AI had 45 commits of real work sitting unpushed
-  across five local branches. Do not rebuild that pile.
+- ~~**Claude never pushes `main`, never opens or merges that PR.**~~ **REVERSED by Kevin,
+  2026-08-19: "ignore the rule. new rule now. you can merge dev to main."** Claude merges `dev`
+  into `main` directly - no PR needed. Merge only `dev`, never a feature branch, and only when
+  `dev` is green.
+- The anti-pile rule survives: on 2026-07-16 Midnight AI had 45 commits of real work sitting
+  unpushed across five local branches. Push often; do not rebuild that pile.
 
 ---
 

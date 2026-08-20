@@ -4263,3 +4263,9 @@ Decided by Kevin while charting `.scratch/spotify-voice/map.md` ("lets work on i
 Scope calls that are map-local, not standing: podcasts/audiobooks OUT, creating playlists by voice OUT (adding to one IN), re-auth done at a desk never discovered in the car, scopes widened 4 -> 13 in one re-approval.
 
 **State at time of writing:** all of it `built`+`tested` (suite 1747 green), nothing `on-device`. The stale Spotify grant must be re-approved in Setup before any of it can run.
+
+## 2026-08-19 - Claude may merge dev to main (reverses the PR-only rule)
+
+Decided by Kevin, verbatim: "ignore the rule. new rule now. you can merge dev to main." Context: the dev -> main PR flow had just produced a stale merge - PR #3 caught dev one commit early, so main published without the docs commit it was meant to carry, and syncing needed a second round-trip through Kevin.
+
+**New standing rule, applied to CLAUDE.md sec 8 in the same commit:** Claude merges `dev` into `main` directly and pushes it. No PR. Bounds Claude keeps: merge only `dev` (never a feature branch straight to main), and only when dev is green. The 2026-07-16 anti-pile lesson (45 unpushed commits on Midnight AI) survives as the reason to merge often rather than hoard.
