@@ -3,21 +3,29 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
-## START HERE - 2026-08-19 (late) - SPOTIFY VOICE, BUILT AND NOT INSTALLED
+## START HERE - 2026-08-20 - SPOTIFY VOICE, INSTALLED BUT NOT EXERCISED
 
-**Ten of twelve tickets on `.scratch/spotify-voice/` are built, merged to `dev` and pushed. NOT ONE
-of them has run on a phone.** Suite 1747 green. Everything below is `built`+`tested`, nothing is
-`on-device`.
+**Ten of twelve tickets on `.scratch/spotify-voice/` are built, merged to `dev` and pushed.** Suite
+**1747 green** (re-run 2026-08-20 on the Kwin laptop). The APK is now **installed on the A25 and
+hash-verified** - it launches, `AriaService` starts, Room v26 opens with no migration error. That is
+all the install proves: **not one Spotify path has been spoken to.** Everything below is
+`built`+`tested`+`installed`, nothing is `on-device` in the sense of having been USED.
 
-**Two things to do FIRST, in this order:**
+**Do this FIRST:**
 1. **Re-approve Spotify in Setup.** `SCOPES` went 4 -> 13 (ticket 01), so the existing grant is stale
    BY DESIGN and `play_music` refuses until the browser hop is done. Do it at a desk. If it is
    discovered in the car, ticket 01 failed at its own purpose.
-2. **Install from the OTHER laptop.** This machine's debug keystore differs from the one that signed
-   the install on the A25, so `adb install -r` from here cannot update it. **NEVER uninstall to get
-   around that** - `sync/` has still never executed, so the phone holds the only copy of 18,645 OBD
-   samples, 148 ledger rows and the Keystore-sealed Gemini key. Kevin chose to pull and install from
-   the laptop that has the key.
+2. ~~**Install from the OTHER laptop.**~~ **DONE 2026-08-20, and the instruction was written in a
+   frame that inverts when you move.** It said "this machine" / "the OTHER laptop" from the SECOND
+   laptop, so read from anywhere else it points the wrong way, and it cost a failed attempt. Named
+   absolutely: **the A25's install is signed by the FIRST (Kwin) laptop's
+   `C:\Users\Kwin\.android\debug.keystore`**, SHA-256
+   `4419FEDD4965BB5FD4250DD008266D978DF1CD61A02A1E4E88504B64D05F2FF3`. Verified by pulling the
+   running `base.apk` off the phone and reading its signer with `apksigner verify --print-certs`,
+   not by trusting a note. **Only the Kwin laptop can `adb install -r` onto the A25.** **NEVER
+   uninstall to get around a signature mismatch** - `sync/` has still never executed, so the phone
+   holds the only copy of 18,645 OBD samples, 148 ledger rows and the Keystore-sealed Gemini key.
+   Check the signer; do not deduce it from whichever machine you happen to be sitting at.
 
 **What landed:** the App Remote spine (it CREATES an active device rather than needing one, so
 asking for music with Spotify closed should now work - **the headline claim, never run**), a

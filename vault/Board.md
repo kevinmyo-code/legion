@@ -13,15 +13,9 @@ Open tickets whose blockers are all resolved.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
-| [[.scratch/android-auto/map\|android-auto]] | [[07-fallback-if-the-call-does-not-render\|07]] | grilling | What if Android Auto will not render the call? |
-| [[.scratch/android-auto/map\|android-auto]] | [[08-what-the-browse-tree-holds\|08]] | grilling | What is in the browse tree, and who writes the briefings? |
-| [[.scratch/android-auto/map\|android-auto]] | [[09-what-the-car-aware-prompt-changes\|09]] | grilling | What does the car-aware prompt actually change? |
-| [[.scratch/android-auto/map\|android-auto]] | [[10-session-lifecycle-and-cost\|10]] | grilling | How long does the call stay open, and what does that cost? |
-| [[.scratch/android-auto/map\|android-auto]] | [[11-duck-or-pause-the-music\|11]] | grilling | Duck the music, or pause it? |
-| [[.scratch/android-auto/map\|android-auto]] | [[12-clone-and-run-with-two-manual-toggles\|12]] | grilling | Does clone-and-run survive two manual toggles? |
-| [[.scratch/android-auto/map\|android-auto]] | [[13-prove-the-obd-silent-stall\|13]] | task | Prove or kill the OBD silent-stall claim |
-| [[.scratch/android-auto/map\|android-auto]] | [[14-does-gearhead-draw-the-call\|14]] | task | Does gearhead actually draw the call? |
-| [[.scratch/android-auto/map\|android-auto]] | [[15-the-live-session-can-be-silenced\|15]] | task | The live session can be silenced with no error |
+| [[.scratch/ambient-listening/map\|ambient-listening]] | [[01-the-listening-indicator\|01]] | prototype | What the listening indicator looks like, and where it lives |
+| [[.scratch/ambient-listening/map\|ambient-listening]] | [[03-what-is-worth-speaking-into\|03]] | grilling | What counts as a moment worth speaking into? |
+| [[.scratch/ambient-listening/map\|ambient-listening]] | [[04-what-is-retained\|04]] | grilling | What is kept, for how long, and what is never written down |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | [[20-ship-pass\|20]] | task | Ship pass: advisors answering on the phone |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[08-layout\|08]] | prototype | Layout for a phone that is 384 x 832, not a head unit |
@@ -44,15 +38,27 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[08-proactive-register\|08]] | grilling | How Alfred sounds when nobody asked him anything |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[09-fgs-start-delay\|09]] | bug | The boot-started service takes 123s to call startForeground, against a 10s window |
 | [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
+| [[.scratch/wake-word/map\|wake-word]] | [[01-mic-under-doze\|01]] | research | Does a foreground service still get the microphone with the screen off? |
+| [[.scratch/wake-word/map\|wake-word]] | [[02-the-settings-toggle\|02]] | task | The Settings toggle that nothing currently writes |
+
+## Built, owing a run on hardware
+
+Code exists and the suite is green. Nothing here has been used on the phone.
+
+| Map | Ticket | Type | What |
+|---|---|---|---|
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[01-scopes-and-one-reapproval\|01]] | task | Every scope this map needs, taken in one re-approval |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[02-app-remote-spine\|02]] | task | App Remote is the spine, and it creates the device rather than needing one |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[03-tool-surface\|03]] | task | Fold ten capabilities into the tools that already exist |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[11-rec-engine\|11]] | task | The recommendation engine LEGION has to build itself |
 
 ## Blocked
 
 | Map | Ticket | Type | What | Waiting on |
 |---|---|---|---|---|
+| [[.scratch/ambient-listening/map\|ambient-listening]] | [[02-the-toggle-and-its-words\|02]] | task | The toggle, and the words next to it  waiting on [[01-the-listening-indicator\|01]] |
+| [[.scratch/ambient-listening/map\|ambient-listening]] | [[05-what-it-costs-per-drive\|05]] | task | What the reaction pass costs on Kevin's own key  waiting on [[02-the-toggle-and-its-words\|02]] |
+| [[.scratch/ambient-listening/map\|ambient-listening]] | [[06-prove-it-hears-and-stays-quiet\|06]] | task | Prove it hears, it indicates, and it mostly stays quiet  waiting on [[02-the-toggle-and-its-words\|02]], [[03-what-is-worth-speaking-into\|03]] |
+| [[.scratch/ambient-listening/map\|ambient-listening]] | [[07-passengers-who-did-not-consent\|07]] | grilling | What does LEGION owe a passenger who never agreed to any of this?  waiting on [[01-the-listening-indicator\|01]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[02-what-makes-a-goal-trackable\|02]] | grilling | What makes a goal trackable, and how set_goal captures it  waiting on [[01-what-on-track-means\|01]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[03-the-check-in-record\|03]] | grilling | The check-in record: how a spoken answer becomes a falsifiable fact  waiting on [[01-what-on-track-means\|01]] |
@@ -69,11 +75,34 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[09-history-uri\|09]] | task | legion_history can name a track it can never replay  waiting on [[02-app-remote-spine\|02]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[12-ship-pass\|12]] | task | Ship pass: installed on the A25 and drivable  waiting on [[01-scopes-and-one-reapproval\|01]], [[02-app-remote-spine\|02]], [[03-tool-surface\|03]], [[04-queue\|04]], [[05-library-writes\|05]], [[06-shuffle-repeat-seek\|06]], [[07-now-playing-truth\|07]], [[08-playlists-by-name\|08]], [[09-history-uri\|09]], [[11-rec-engine\|11]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[13-more-from-this-artist\|13]] | task | More from this artist, and what else they have  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
+| [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day  waiting on [[02-the-settings-toggle\|02]] |
+| [[.scratch/wake-word/map\|wake-word]] | [[04-what-drain-is-acceptable\|04]] | grilling | What drain is acceptable, and what happens when it is not met?  waiting on [[03-measure-the-battery-cost\|03]] |
+| [[.scratch/wake-word/map\|wake-word]] | [[05-mic-ownership\|05]] | grilling | Who owns the microphone, and what yields to what?  waiting on [[01-mic-under-doze\|01]] |
+| [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery  waiting on [[01-mic-under-doze\|01]], [[02-the-settings-toggle\|02]], [[05-mic-ownership\|05]] |
+| [[.scratch/wake-word/map\|wake-word]] | [[07-false-triggers\|07]] | grilling | How many false triggers is too many, and how would Kevin ever know?  waiting on [[06-prove-it-on-the-phone\|06]] |
+
+## KIV
+
+Parked on purpose. Open, but off the queue until Kevin says otherwise.
+
+| Map | Ticket | Type | What |
+|---|---|---|---|
+| [[.scratch/android-auto/map\|android-auto]] | [[07-fallback-if-the-call-does-not-render\|07]] | grilling | What if Android Auto will not render the call? |
+| [[.scratch/android-auto/map\|android-auto]] | [[08-what-the-browse-tree-holds\|08]] | grilling | What is in the browse tree, and who writes the briefings? |
+| [[.scratch/android-auto/map\|android-auto]] | [[09-what-the-car-aware-prompt-changes\|09]] | grilling | What does the car-aware prompt actually change? |
+| [[.scratch/android-auto/map\|android-auto]] | [[10-session-lifecycle-and-cost\|10]] | grilling | How long does the call stay open, and what does that cost? |
+| [[.scratch/android-auto/map\|android-auto]] | [[11-duck-or-pause-the-music\|11]] | grilling | Duck the music, or pause it? |
+| [[.scratch/android-auto/map\|android-auto]] | [[12-clone-and-run-with-two-manual-toggles\|12]] | grilling | Does clone-and-run survive two manual toggles? |
+| [[.scratch/android-auto/map\|android-auto]] | [[13-prove-the-obd-silent-stall\|13]] | task | Prove or kill the OBD silent-stall claim |
+| [[.scratch/android-auto/map\|android-auto]] | [[14-does-gearhead-draw-the-call\|14]] | task | Does gearhead actually draw the call? |
+| [[.scratch/android-auto/map\|android-auto]] | [[15-the-live-session-can-be-silenced\|15]] | task | The live session can be silenced with no error |
+| [[.scratch/spotify-voice/map\|spotify-voice]] | [[11-rec-engine\|11]] | task | The recommendation engine LEGION has to build itself |
 
 ## Maps
 
 | Map | Tickets | Open | Canvas |
 |---|---|---|---|
+| [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 7 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 9 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 1 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
@@ -93,3 +122,4 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 9 | 7 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 12 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
+| [[.scratch/wake-word/map\|wake-word]] | 7 | 7 | [[.scratch/wake-word/wake-word.canvas\|open]] |
