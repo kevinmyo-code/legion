@@ -3,12 +3,12 @@ map: android-auto
 ticket: 07
 title: "What if Android Auto will not render the call?"
 type: grilling
-status: open
+status: kiv
 status-detail: ""
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # What if Android Auto will not render the call?

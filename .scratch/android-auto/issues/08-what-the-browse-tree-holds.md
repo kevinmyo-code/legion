@@ -3,12 +3,12 @@ map: android-auto
 ticket: 08
 title: "What is in the browse tree, and who writes the briefings?"
 type: grilling
-status: open
+status: kiv
 status-detail: "points 1-5, 7 and 8 answered on the head unit 2026-08-18; only point 6 (onPlayFromSearch) is still open"
 blockers: ["02", "03"]
 blocked-by: ["[[02-what-a-sideloaded-media-app-needs]]", "[[03-does-voice-search-still-deliver-a-raw-query]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # What is in the browse tree, and who writes the briefings?

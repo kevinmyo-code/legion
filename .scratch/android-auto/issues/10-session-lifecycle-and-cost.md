@@ -3,12 +3,12 @@ map: android-auto
 ticket: 10
 title: "How long does the call stay open, and what does that cost?"
 type: grilling
-status: open
+status: kiv
 status-detail: ""
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # How long does the call stay open, and what does that cost?

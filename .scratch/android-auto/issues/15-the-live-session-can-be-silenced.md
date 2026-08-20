@@ -3,12 +3,12 @@ map: android-auto
 ticket: 15
 title: The live session can be silenced with no error
 type: task
-status: open
+status: kiv
 status-detail: "driver-facing surface built 2026-08-18; item 1 (device experiment) and item 5 (dataSync cap) still unmet"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The live session can be silenced with no error

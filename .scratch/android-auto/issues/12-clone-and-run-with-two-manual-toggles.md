@@ -3,12 +3,12 @@ map: android-auto
 ticket: 12
 title: "Does clone-and-run survive two manual toggles?"
 type: grilling
-status: open
+status: kiv
 status-detail: ""
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Does clone-and-run survive two manual toggles?

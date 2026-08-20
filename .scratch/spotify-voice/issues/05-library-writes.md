@@ -3,7 +3,7 @@ map: spotify-voice
 ticket: 05
 title: "Like this, and follow them, without touching the phone"
 type: task
-status: open
+status: built
 status-detail: "Built (b8d5a90). like/unlike/follow/unfollow, getLibraryState read before speaking. NOT installed, NOT verified on the phone."
 blockers: ["02", "03"]
 blocked-by: ["[[02-app-remote-spine]]", "[[03-tool-surface]]"]

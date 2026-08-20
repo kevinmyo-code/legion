@@ -3,12 +3,12 @@ map: android-auto
 ticket: 09
 title: "What does the car-aware prompt actually change?"
 type: grilling
-status: open
+status: kiv
 status-detail: ""
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # What does the car-aware prompt actually change?

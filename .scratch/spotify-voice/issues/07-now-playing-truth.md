@@ -3,7 +3,7 @@ map: spotify-voice
 ticket: 07
 title: "What's this, and naming what it picked"
 type: task
-status: open
+status: built
 status-detail: "Built (5d18ddf). App Remote is the truth for now-playing; play_music names what it picked. NOT installed, NOT verified on the phone."
 blockers: ["02", "03"]
 blocked-by: ["[[02-app-remote-spine]]", "[[03-tool-surface]]"]

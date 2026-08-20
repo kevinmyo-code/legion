@@ -3,7 +3,7 @@ map: spotify-voice
 ticket: 08
 title: "My playlists, and the ones friends shared with me"
 type: task
-status: open
+status: built
 status-detail: "Built (be7e478). Library-first fuzzy match, 0.6 threshold and 15min TTL both UNMEASURED. NOT installed, NOT verified on the phone."
 blockers: ["01", "03"]
 blocked-by: ["[[01-scopes-and-one-reapproval]]", "[[03-tool-surface]]"]

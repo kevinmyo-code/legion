@@ -3,7 +3,7 @@ map: spotify-voice
 ticket: 01
 title: "Every scope this map needs, taken in one re-approval"
 type: task
-status: open
+status: built
 status-detail: "Built (ad353a2). SCOPES 4 -> 13. THE GRANT IS NOW STALE - re-approve in Setup before driving. NOT installed, NOT verified on the phone."
 blockers: []
 blocked-by: []

@@ -31,6 +31,15 @@ MAP_KEYS = ["Label", "Charted", "Effort", "Reached when", "Related", "Graduated 
 HEADER_RE = re.compile(r"^([A-Z][A-Za-z ]{1,20}):[ \t]+(.*)$")
 # A status is "done" for readiness purposes if it starts with one of these.
 DONE_STATES = {"resolved", "closed", "killed", "archived", "graduated", "fixed", "superseded"}
+# Open, but deliberately not on the queue: "kiv" is work Kevin has parked. It is NOT done, so it
+# still counts as open and still shows on the wiki - it just never claims to be ready, and it sorts
+# to the bottom of every list. Added 2026-08-20.
+PARKED_STATES = {"kiv"}
+# Built, and now owing a run on real hardware. Ready in the sense that someone can pick it up today,
+# so readiness is untouched; only the label changes, because "build" is a lie once it is built.
+# Named for what the ticket IS, not what it owes: the page says BUILT and the state line says what
+# is left to do. Kevin, 2026-08-20: "i want it to say built when its already built."
+TEST_STATES = {"built"}
 NO_BLOCKER = {"-", "none", "(none)", "n/a", "", "--"}
 # Free-text first words that are not really their own state.
 STATE_ALIAS = {"mostly": "open", "in": "open", "partially": "open", "superseded": "closed"}
@@ -162,6 +171,10 @@ class Ticket:
     def done(self) -> bool:
         return self.state in DONE_STATES
 
+    @property
+    def parked(self) -> bool:
+        return self.state in PARKED_STATES
+
 
 def existing_frontmatter_state(path: Path) -> tuple[str, list[str]]:
     """Read state and blockers back out of an already-converted file."""
@@ -202,7 +215,7 @@ def refresh_computed_fields(t: "Ticket", by_num: dict, check: bool) -> bool:
     wanted = {
         "blocked-by": f"[{', '.join(links)}]",
         "open-blockers": str(open_blockers),
-        "ready": str(not t.done and open_blockers == 0).lower(),
+        "ready": str(not t.done and not t.parked and open_blockers == 0).lower(),
     }
     out, changed = [], False
     for line in fm.split(chr(10)):
@@ -249,7 +262,7 @@ def render_ticket(t: Ticket, all_by_num: dict[str, Ticket]) -> str:
         f"blockers: [{', '.join(f'{chr(34)}{n}{chr(34)}' for n in t.blockers)}]",
         f"blocked-by: [{', '.join(blocker_links)}]",
         f"open-blockers: {open_blockers}",
-        f"ready: {str(not t.done and open_blockers == 0).lower()}",
+        f"ready: {str(not t.done and not t.parked and open_blockers == 0).lower()}",
         "tags: [ticket]",
         "---",
         "",
@@ -383,7 +396,7 @@ def render_board(maps: dict[str, list[Ticket]]) -> str:
         "| Map | Ticket | Type | What |",
         "|---|---|---|---|",
     ]
-    ready_rows, blocked_rows = [], []
+    ready_rows, blocked_rows, test_rows, kiv_rows = [], [], [], []
     for slug, tickets in sorted(maps.items()):
         by_num = {t.num: t for t in tickets if t.num}
         for t in tickets:
@@ -391,15 +404,28 @@ def render_board(maps: dict[str, list[Ticket]]) -> str:
                 continue
             waiting = [n for n in t.blockers if n in by_num and not by_num[n].done]
             row = f"| {map_link(slug)} | [[{t.slug}\\|{t.num}]] | {t.type} | {t.title} |"
-            if waiting:
+            if t.parked:
+                # Parked is neither ready nor blocked: its own table, at the bottom.
+                kiv_rows.append(row)
+            elif waiting:
                 names = ", ".join(f"[[{by_num[n].slug}\\|{n}]]" for n in waiting)
                 blocked_rows.append(row[:-1] + f" waiting on {names} |")
+            elif t.state in TEST_STATES:
+                test_rows.append(row)
             else:
                 ready_rows.append(row)
 
     lines += ready_rows or ["| - | - | - | nothing ready |"]
+    lines += ["", "## Built, owing a run on hardware", "",
+              "Code exists and the suite is green. Nothing here has been used on the phone.", "",
+              "| Map | Ticket | Type | What |", "|---|---|---|---|"]
+    lines += test_rows or ["| - | - | - | nothing waiting on a device |"]
     lines += ["", "## Blocked", "", "| Map | Ticket | Type | What | Waiting on |", "|---|---|---|---|---|"]
     lines += blocked_rows or ["| - | - | - | nothing blocked | - |"]
+    lines += ["", "## KIV", "",
+              "Parked on purpose. Open, but off the queue until Kevin says otherwise.", "",
+              "| Map | Ticket | Type | What |", "|---|---|---|---|"]
+    lines += kiv_rows or ["| - | - | - | nothing parked |"]
 
     lines += ["", "## Maps", "", "| Map | Tickets | Open | Canvas |", "|---|---|---|---|"]
     for slug, tickets in sorted(maps.items()):
@@ -792,9 +818,13 @@ def main() -> int:
     ready_n = 0
     for slug, tickets in maps.items():
         by_num = {t.num: t for t in tickets if t.num}
+        # Same four disjoint buckets the wiki uses: parked and awaiting-a-device work is open,
+        # but it is not "ready to build", and counting it as such is what made the page tell Kevin
+        # to build ten already-built tickets.
         ready_n += sum(
             1 for t in tickets
-            if not t.done and not any(n in by_num and not by_num[n].done for n in t.blockers)
+            if not t.done and not t.parked and t.state not in TEST_STATES
+            and not any(n in by_num and not by_num[n].done for n in t.blockers)
         )
     verb = "would convert" if args.check else "converted"
     print(f"{len(maps)} maps, {len(all_tickets)} tickets, {open_n} open, {ready_n} ready")

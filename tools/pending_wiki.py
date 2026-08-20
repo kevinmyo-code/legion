@@ -1,7 +1,7 @@
 """Regenerates docs/index.html - the progress wiki, and the GitHub Pages home page.
 
 One page showing every OPEN ticket across every map, grouped by map, filterable by
-ready / blocked / decision / buildable. Built from the same ticket frontmatter
+ready / blocked / decision / buildable / built / KIV. Built from the same ticket frontmatter
 tools/obsidian_sync.py maintains, so it cannot drift from the board: run
 
     python tools/pending_wiki.py
@@ -17,6 +17,14 @@ import json, html, re, glob, os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 DONE = {"resolved", "closed", "killed", "archived", "graduated", "fixed", "superseded"}
+# Two states that are open but are not "go build this", added 2026-08-20 because the page was
+# telling Kevin to build ten Spotify tickets that were already built:
+#   built - the code exists and the suite is green; what it owes is a run on real hardware.
+#           Labelled BUILT, not "test": the chip says what the ticket IS, and the state line
+#           beside it says what is left. "build" on a built ticket is just wrong.
+#   kiv  - parked on purpose. Still open, still listed, but never counted as ready and always last.
+TEST = {"built"}
+KIV = {"kiv"}
 
 
 def _fm(path):
@@ -48,15 +56,22 @@ def collect():
             "num": f.get("ticket", ""), "title": f.get("title", ""),
             "type": f.get("type", "task"), "status": f.get("status", "open"),
             "detail": f.get("status-detail", ""), "ready": f.get("ready") == "true",
+            "test": f.get("status", "") in TEST, "kiv": f.get("status", "") in KIV,
             "blockedBy": re.findall(r"\d+", f.get("blockers", "")),
         })
     out = []
     for slug, m in maps.items():
         op = [t for t in m["tickets"] if t["status"] not in DONE]
         out.append({"slug": slug, "title": m["title"], "total": len(m["tickets"]),
-                    "open": len(op), "ready": len([t for t in op if t["ready"]]),
+                    # "ready" means ready TO BUILD. A built ticket owing a device run and a parked
+                    # one are their own buckets, so the four never overlap and the stats add up.
+                    "open": len(op),
+                    "ready": len([t for t in op if t["ready"] and not t["test"] and not t["kiv"]]),
+                    "test": len([t for t in op if t["test"]]),
+                    "kiv": len([t for t in op if t["kiv"]]),
                     "tickets": op})
-    out.sort(key=lambda x: (-x["open"], x["slug"]))
+    # A map that is nothing but parked work sinks to the bottom of the page, whatever its size.
+    out.sort(key=lambda x: (x["kiv"] == x["open"], -x["open"], x["slug"]))
     return out
 
 
@@ -67,54 +82,87 @@ d = collect()
 d = [m for m in d if m['open']]
 tot = sum(m['open'] for m in d)
 ready = sum(m['ready'] for m in d)
-dec = sum(1 for m in d for t in m['tickets'] if t['type'] == 'grilling')
-build = tot - dec
+kiv_n = sum(m['kiv'] for m in d)
+test_n = sum(m['test'] for m in d)
+live = tot - kiv_n                      # everything not parked
+dec = sum(1 for m in d for t in m['tickets'] if t['type'] == 'grilling' and not t['kiv'])
+build = live - dec - test_n             # genuinely un-built work
+blocked_n = live - ready - test_n
 E = html.escape
 NL = chr(10)
 TYPE_LABEL = {'grilling': 'decide', 'task': 'build', 'bug': 'bug',
               'prototype': 'prototype', 'research': 'research'}
+# Status wins over type for the chip. A built ticket must never still read "build".
+STATUS_LABEL = {'built': 'built', 'kiv': 'KIV'}
 
 
 def ticket(t):
     cls = ['t']
-    if t['type'] == 'bug':
+    if t['kiv']:
+        cls.append('is-kiv')
+    elif t['test']:
+        cls.append('is-built')
+    elif t['type'] == 'bug':
         cls.append('is-bug')
     elif t['type'] == 'grilling':
         cls.append('is-decide')
     else:
         cls.append('is-build')
-    if not t['ready']:
+    if not t['ready'] and not t['kiv'] and not t['test']:
         cls.append('is-blocked')
-    if t['ready']:
-        state = 'ready'
+
+    if t['kiv']:
+        state, st, kind, chip = 'parked', 'kiv', 'kiv', 'kiv'
+    elif t['test']:
+        state, st, kind, chip = 'needs a run on the phone', 'built', 'built', 'built'
+    elif t['ready']:
+        state, st, chip = 'ready', 'ready', t['type']
+        kind = 'decide' if t['type'] == 'grilling' else 'build'
     else:
         state = 'waiting on ' + ', '.join('#' + b for b in t['blockedBy'])
+        st, chip = 'blocked', t['type']
+        kind = 'decide' if t['type'] == 'grilling' else 'build'
+
     det = ''
     if t['detail']:
         det = '<span class="det">' + E(t['detail']) + '</span>'
-    kind = 'decide' if t['type'] == 'grilling' else 'build'
-    st = 'ready' if t['ready'] else 'blocked'
+    label = STATUS_LABEL.get(chip) or TYPE_LABEL.get(chip, E(chip))
     return (
         '<li class="' + ' '.join(cls) + '" data-type="' + kind + '" data-state="' + st + '">'
         '<span class="num">' + E(t['num']) + '</span>'
         '<span class="body"><span class="tt">' + E(t['title']) + '</span>' + det + '</span>'
-        '<span class="chip c-' + E(t['type']) + '">' + TYPE_LABEL.get(t['type'], E(t['type'])) + '</span>'
+        '<span class="chip c-' + E(chip) + '">' + label + '</span>'
         '<span class="state">' + E(state) + '</span>'
         '</li>'
     )
 
 
+def rank(t):
+    """Ready first, then what owes a test run, then blocked, then parked. Parked is always last."""
+    if t['kiv']:
+        return 3
+    if t['test']:
+        return 1
+    return 0 if t['ready'] else 2
+
+
 panels = []
 for m in d:
-    ts = sorted(m['tickets'], key=lambda t: (not t['ready'], t['num']))
+    ts = sorted(m['tickets'], key=lambda t: (rank(t), t['num']))
     rows = NL.join(ticket(t) for t in ts)
-    blocked = m['open'] - m['ready']
-    bar = ('<span class="bar"><i style="flex:' + str(m['ready']) + '"></i>'
-           '<b style="flex:' + str(blocked) + '"></b></span>')
+    blocked = m['open'] - m['ready'] - m['test'] - m['kiv']
+    bar = ('<span class="bar"><i style="flex:' + str(m['ready'] + m['test']) + '"></i>'
+           '<b style="flex:' + str(blocked + m['kiv']) + '"></b></span>')
     blocked_bit = ''
+    if m['test']:
+        blocked_bit += ('<span class="sep">&middot;</span><span class="k mint">'
+                        + str(m['test']) + '</span> to test')
     if blocked:
-        blocked_bit = ('<span class="sep">&middot;</span><span class="k amber">'
-                       + str(blocked) + '</span> blocked')
+        blocked_bit += ('<span class="sep">&middot;</span><span class="k amber">'
+                        + str(blocked) + '</span> blocked')
+    if m['kiv']:
+        blocked_bit += ('<span class="sep">&middot;</span><span class="k dim">'
+                        + str(m['kiv']) + '</span> KIV')
     panels.append(
         '<section class="map">' + NL +
         '<header class="mh">' + NL +
@@ -166,6 +214,7 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 .counts .k.mint{color:var(--mint)} .counts .k.amber{color:var(--amber)}
 .counts .sep{margin:0 7px;color:var(--ghost)}
 .counts .dim{color:var(--ghost)}
+.n.ghost{color:var(--ghost)}
 .bar{display:flex;flex:1 1 110px;min-width:80px;height:3px;background:var(--rule-faint);overflow:hidden}
 .bar i{background:var(--mint)} .bar b{background:var(--amber)}
 .tl{list-style:none;margin:0;padding:0}
@@ -176,6 +225,11 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 .t.is-build{border-left-color:var(--mint)}
 .t.is-bug{border-left-color:var(--chrome)}
 .t.is-blocked{border-left-color:var(--rule)}
+/* Built, owing a run: mint like buildable work, but dashed - it is not the same job. */
+.t.is-built{border-left-color:var(--mint);border-left-style:dashed}
+/* Parked: present, readable, and visibly not asking for anything. */
+.t.is-kiv{border-left-color:var(--rule-faint)}
+.t.is-kiv .tt,.t.is-kiv .num{color:var(--ghost)}
 .num{font-family:var(--mono);font-size:12px;color:var(--ghost);font-variant-numeric:tabular-nums}
 .tt{display:block}
 .det{display:block;font-family:var(--mono);font-size:11px;color:var(--ghost);margin-top:4px;line-height:1.45}
@@ -184,8 +238,11 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 .c-grilling{color:var(--amber);border-color:#4A3A12}
 .c-task,.c-prototype{color:var(--mint);border-color:#17453A}
 .c-bug{color:var(--chrome);border-color:#5A2317}
+.c-built{color:var(--mint);border-color:#17453A;border-style:dashed}
+.c-kiv{color:var(--ghost);border-color:var(--rule-faint)}
 .state{font-family:var(--mono);font-size:11px;color:var(--ghost);white-space:nowrap}
-.t:not(.is-blocked) .state{color:var(--mint)}
+.t:not(.is-blocked):not(.is-kiv) .state{color:var(--mint)}
+.t.is-kiv .state{color:var(--ghost)}
 .foot{margin-top:40px;color:var(--ghost);font-size:13px;max-width:64ch}
 .foot code{font-family:var(--mono);color:var(--faint)}
 @media (max-width:640px){
@@ -219,24 +276,30 @@ doc = (
     'family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">' + NL +
     '<style>' + CSS + '</style>' + NL +
     '<div class="wrap">' + NL +
-    '<p class="stamp">LEGION &middot; pending work &middot; 19 Aug 2026</p>' + NL +
+    '<p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>' + NL +
     '<h1>' + str(tot) + ' tickets open</h1>' + NL +
     '<p class="lede">Across ' + str(len(d)) + ' maps. <b>' + str(dec) + ' of them are decisions</b>, '
     'not code &mdash; they need an answer from you before anyone can build. '
-    + str(tot - ready) + ' are waiting on another ticket first.</p>' + NL +
+    + str(blocked_n) + ' are waiting on another ticket first. <b>' + str(test_n) + ' are already '
+    'built</b> and owe nothing but a run on the phone. ' + str(kiv_n) + ' are parked (KIV) and sit '
+    'at the bottom.</p>' + NL +
     '<div class="tot">' + NL +
     '<div class="stat"><span class="n">' + str(tot) + '</span><span class="stamp l">open</span></div>' + NL +
     '<div class="stat"><span class="n mint">' + str(ready) + '</span><span class="stamp l">ready now</span></div>' + NL +
-    '<div class="stat"><span class="n amber">' + str(tot - ready) + '</span><span class="stamp l">blocked</span></div>' + NL +
+    '<div class="stat"><span class="n mint">' + str(test_n) + '</span><span class="stamp l">built, untested</span></div>' + NL +
+    '<div class="stat"><span class="n amber">' + str(blocked_n) + '</span><span class="stamp l">blocked</span></div>' + NL +
     '<div class="stat"><span class="n amber">' + str(dec) + '</span><span class="stamp l">your call</span></div>' + NL +
-    '<div class="stat"><span class="n mint">' + str(build) + '</span><span class="stamp l">buildable</span></div>' + NL +
+    '<div class="stat"><span class="n mint">' + str(build) + '</span><span class="stamp l">still to build</span></div>' + NL +
+    '<div class="stat"><span class="n ghost">' + str(kiv_n) + '</span><span class="stamp l">KIV</span></div>' + NL +
     '</div>' + NL +
     '<div class="filters" role="group" aria-label="Filter tickets">' + NL +
     '<button class="f" data-f="all" aria-pressed="true">everything</button>' + NL +
     '<button class="f" data-f="ready" aria-pressed="false">ready now</button>' + NL +
     '<button class="f" data-f="blocked" aria-pressed="false">blocked</button>' + NL +
     '<button class="f" data-f="decide" aria-pressed="false">your call</button>' + NL +
-    '<button class="f" data-f="build" aria-pressed="false">buildable</button>' + NL +
+    '<button class="f" data-f="build" aria-pressed="false">still to build</button>' + NL +
+    '<button class="f" data-f="built" aria-pressed="false">built, needs testing</button>' + NL +
+    '<button class="f" data-f="kiv" aria-pressed="false">KIV</button>' + NL +
     '</div>' + NL +
     NL.join(panels) + NL +
     '<p class="foot">Built from the ticket frontmatter in <code>.scratch/*/issues/</code>. '

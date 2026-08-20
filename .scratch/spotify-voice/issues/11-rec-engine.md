@@ -3,12 +3,12 @@ map: spotify-voice
 ticket: 11
 title: "The recommendation engine LEGION has to build itself"
 type: task
-status: open
-status-detail: ""
+status: kiv
+status-detail: "KIV 2026-08-20 (Kevin). Least important thing on the map; parked until the built Spotify surface has actually been driven."
 blockers: ["10"]
 blocked-by: ["[[10-what-like-this-means]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The recommendation engine LEGION has to build itself
