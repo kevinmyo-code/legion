@@ -61,7 +61,7 @@ graph TB
 | **Gemini REST** (`ai/SubAgent.kt`) | Same key, `?key=` | Returns a typed result so callers distinguish offline from rate-limit from bad-key |
 | **Drive appDataFolder** (`sync/DriveClient.kt`) | `drive.appdata` scope via `sync/DriveAuth.kt` | Opportunistic. A failed pass is just a failed pass |
 | **Gmail** (`gmail/GmailClient.kt`) | `gmail.readonly` via `gmail/GmailAuth.kt` | Degrades with distinct spoken causes per failure kind |
-| **Spotify** (`media/SpotifyController.kt`) | Driver's own client ID, redirect `com.kevin.legion://spotify-callback` | Needs the Spotify app installed and connected |
+| **Spotify** (`media/SpotifyController.kt`) | Driver's own client ID, redirect `com.kevin.legion://spotify-callback` | Needs the Spotify app installed and logged in with Premium. App Remote creates the active device, so playback works with Spotify closed - see [[c3-music]] |
 | **Shelly Cloud** (`vehicle/ShellyCloudOpener.kt`) | `auth_key` query parameter | **No offline path.** See the caveat below |
 | **Open-Meteo** (`weather/WeatherController.kt`) | None | Serves the last cached reading rather than failing |
 | **NHTSA** (`vehicle/VinDecoder.kt`) | None | Feature simply unavailable |

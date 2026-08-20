@@ -4250,3 +4250,16 @@ Decided by Kevin. **The problem:** the prompt's existing rule "always call the m
 
 **Standing consequence:** presence is guarded, obedience is not, and a green suite is not evidence the assistant told the truth on a drive.
 
+
+## 2026-08-19 - Spotify voice control: the settled shape (.scratch/spotify-voice, tickets 01-09 + 13 BUILT, none on-device)
+
+Decided by Kevin while charting `.scratch/spotify-voice/map.md` ("lets work on improving the spotify voice control experience"). Ten of the map's settled decisions are recorded in the map itself; the ones that are standing architecture are these four, promoted to ADRs 0032-0034 the same day:
+
+1. **App Remote is the SPINE, not the fast path.** It CREATES an active Spotify device rather than needing one, so "play music" with Spotify closed is solvable only this way. The Web API resolves a name into a URI; App Remote makes sound come out. LEGION holds NO playback scopes by design - it can only drive the Spotify app bound on this phone.
+2. **The App Remote connection is HELD in `AriaForegroundService`**, deliberately violating Spotify's documented "connect in onStart, disconnect in onStop" guidance. A per-command connect costs latency on every utterance in a car. The violation is written into the code as a comment at both the connect and the absent disconnect.
+3. **Clone-and-run is satisfied by BYO client ID** (reaffirms the 2026-07-21/22 reopen): each user registers their own Spotify developer app and pastes the client ID. Dev mode's 5-user cap, the owner-Premium requirement and the permanently closed extended-quota programme (250k+ MAU + registered business since 2025-05-15) stop being LEGION's problem. Premium is assumed ("no point for non premium").
+4. **The recommendation engine is built in-house** ("we build our own rec engine, we take the effort now"). Spotify's discovery surface (recommendations, related-artists, audio-features) is dead for apps registered after 2024-11-27. A suggestion resolves against the real catalogue before it is spoken, is labelled the model's guess when dead, plays and queues but never saves. Kevin's own priority: least important thing on the map; ticket 13's catalogue navigation ("more from this artist") was built instead, first.
+
+Scope calls that are map-local, not standing: podcasts/audiobooks OUT, creating playlists by voice OUT (adding to one IN), re-auth done at a desk never discovered in the car, scopes widened 4 -> 13 in one re-approval.
+
+**State at time of writing:** all of it `built`+`tested` (suite 1747 green), nothing `on-device`. The stale Spotify grant must be re-approved in Setup before any of it can run.

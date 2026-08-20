@@ -16,6 +16,7 @@ stranger. `README.md` at the repo root is the public face; this is the working r
 | [[c2-containers\|Architecture: containers]] | What runs inside the one Android process |
 | [[c3-voice-loop\|Architecture: voice loop]] | One utterance end to end, and which piece sits where |
 | [[c3-ingestion\|Architecture: ingestion]] | The reconciliation gate, drawn |
+| [[c3-music\|Architecture: music]] | How a spoken music request becomes sound, and why App Remote is the spine |
 | [[c3-data\|Architecture: data]] | Room, the entity roster, the 28 controllers, sync |
 | [[adr-index\|Decisions (ADRs)]] | What is binding right now, and what superseded what |
 | [[glossary]] | The vocabulary, with pointers to where each term is actually defined |

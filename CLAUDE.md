@@ -110,9 +110,9 @@ repeat. Commit map and ticket changes like any other file.
 | Voice AI | Gemini Live WebSocket STS | `service/GeminiLiveSession.kt`, server VAD, half-duplex |
 | Sub-agents | Gemini Flash REST | `ai/SubAgent.kt`, one-shot + bounded investigate loop; now also takes an optional inline image part (`imageBytes`/`imageMimeType`) for pantry vision |
 | BYO key | Paste + 1-token validation ping | Ping is `ai/GeminiKeyValidator.kt` (`VALID`/`INVALID_KEY`/`NETWORK_ERROR`); storage is `ai/KeyVault.kt` (Keystore AES/GCM) via `CompanionProfile.saveGeminiKey`; resolution is `ai/GeminiKeyProvider.kt`. Direct to Google, no proxy |
-| Local DB | Room **v25** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). 46 entities, 46 DAOs, chain complete through `MIGRATION_24_25`; all real verbatim generated-SQL migrations with `exportSchema` |
+| Local DB | Room **v26** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). 47 entities, chain complete through `MIGRATION_25_26`; all real verbatim generated-SQL migrations with `exportSchema` |
 | OBD | ELM327 Bluetooth RFCOMM + BLE | Unchanged from Midnight AI |
-| Music | Generic MediaSession transport (`media/MusicController`) + Spotify App Remote direct play | `MusicRouter`/`MusicSource`/mixtapes all retired |
+| Music | Spotify App Remote as the SPINE (`media/SpotifyController`, connection held in the FGS - ADR 0032) + Web API name resolution (`media/SpotifyWebApi`, own library first) + generic MediaSession transport fallback (`media/MusicController`) | BYO Spotify client ID (ADR 0033). `MusicRouter`/`MusicSource`/mixtapes all retired |
 | Location | Android `Geocoder` | The Mapbox-backed `NavGeocoder`, embedded nav, and the phone-to-head-unit GPS beacon are all gone |
 | Sync | Google Drive `appDataFolder`, `drive.appdata` | `sync/`, `play-services-auth` |
 | PDF | PdfBox-Android | Ledger only. Ships fonts/glyphlists as Android **assets**, unreachable from a plain JVM unit test - Robolectric (test-only) is required to shadow `AssetManager` |
@@ -186,7 +186,7 @@ under `app/schemas/`, no destructive fallback on upgrade.
   every row is LLM-extracted by construction, so it would always read the same value.
 - **v4** - `ingested_files` + DAO (the per-file ingestion ledger, ticket 03).
 - **v5** - `companion_profiles` + DAO.
-- **v6 through v25** - not listed here. `data/local/Migrations.kt` is the authority, and the entity
+- **v6 through v26** - not listed here. `data/local/Migrations.kt` is the authority, and the entity
   roster grouped by aspect is in `docs/architecture/c3-data.md`. **CORRECTED 2026-08-18:** this
   section said v21 for weeks while the code was at v25, and `CarDatabase.kt`'s own KDoc still says
   15 in one place. Read the code before quoting a version.

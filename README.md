@@ -20,8 +20,9 @@ portfolio piece, not a product.
 | Body | Meal and workout logging, sleep tracking, macro/calorie estimation surfaced as estimates |
 | Notes / Mail / Calendar | Lists, reminders, Gmail search/read, calendar read, all voice-driven |
 | Goals / Advisors | Budget and habit targets with a structured (schema-constrained) LLM advisor pass |
+| Music | Full Spotify voice control on the driver's own client ID: play by name resolved against their own library before the catalogue, a 20-action control surface (queue, like, follow, shuffle, seek, add-to-playlist, "more from this artist"), now-playing read from Spotify's own pushed player state, replayable history. Spotify App Remote creates the active device, so it is designed to work with the Spotify app closed |
 
-Six domains, one voice loop. Tabs: Today, Money, Body, Fleet, Notes, Setup.
+Six life domains plus music control, one voice loop. Tabs: Today, Money, Body, Fleet, Notes, Setup.
 
 ## The trust architecture
 
@@ -57,10 +58,12 @@ extraction safe to use for money and health data at all, rather than a liability
                 LiveSessionController
                        |
               LiveToolbox (declarations + dispatch)
-              45 top-level declarations (down from 79) --
-              5 high-volume domains collapsed behind
-              ask_<domain> dispatcher tools to cut the
-              per-turn setup re-bill by ~45%
+              ~60 declarations visible to the live model --
+              30 read tools across 5 domains collapsed behind
+              ask_<domain> dispatcher tools (Live re-bills the
+              whole tool block every turn); the 8 write tools
+              were deliberately pulled back out to direct
+              declarations after two real mis-routed writes
                        |
         +--------------+---------------------------+
         |              |                            |
@@ -71,7 +74,7 @@ extraction safe to use for money and health data at all, rather than a liability
                   descriptions the live          sub-agent's hands)
                   model saw)
                        |
-                  Room (SQLite, v25, additive-only migrations)
+                  Room (SQLite, v26, additive-only migrations)
                        |
         Drive appDataFolder sync (BYO account, no server)
 ```
@@ -79,14 +82,17 @@ extraction safe to use for money and health data at all, rather than a liability
 - **Voice loop:** `service/GeminiLiveSession.kt` (the Live socket), `service/LiveSessionController.kt`
   (turn state machine), `service/AriaForegroundService.kt` (keeps it alive as a foreground service).
 - **Tool layer:** `service/LiveToolbox.kt` declares every tool Gemini can call and dispatches
-  each one. Five domains (fleet, body, goals, pantry, mail) sit behind a single `ask_<domain>`
-  tool apiece, which hands the question to a bounded `SubAgent.investigate` loop instead of
-  exposing dozens of narrow tools to the live model directly - Gemini Live re-sends its entire
-  tool block on every turn with no incremental update and no context caching, so tool count is a
-  real, measured cost, not just a code-quality concern.
+  each one. Five domains (fleet, body, goals, pantry, mail) hide their read tools behind a single
+  `ask_<domain>` tool apiece, which hands the question to a bounded `SubAgent.investigate` loop
+  instead of exposing dozens of narrow tools to the live model directly - Gemini Live re-sends its
+  entire tool block on every turn with no incremental update and no context caching, so tool count
+  is a real, measured cost, not just a code-quality concern. The write tools were deliberately
+  pulled back OUT of that split after two real mis-routed writes: a mis-routed read costs a
+  slightly worse answer, a mis-routed write either lands in the wrong store or gets claimed and
+  never happens.
 - **Sub-agents:** `ai/SubAgent.kt` - one-shot or bounded-investigate Gemini Flash calls, optional
   inline image part for vision (pantry receipts).
-- **Storage:** Room, currently schema v25. Every version bump is an additive, verbatim-SQL
+- **Storage:** Room, currently schema v26. Every version bump is an additive, verbatim-SQL
   migration with `exportSchema` on; no destructive fallback is used anywhere.
 - **Sync:** Google Drive `appDataFolder`, the user's own account, no server in between.
 - **Keys:** Gemini API key is pasted by the user, validated with a one-token ping, sealed in the
@@ -135,8 +141,9 @@ extraction safe to use for money and health data at all, rather than a liability
 | DTC clear-codes write path + REFUSED protocol | Built, installed, hash-verified, `REFUSED` produced for real on-device. **Never exercised on an actual car** (no fault present to clear) |
 | Ledger ingestion (DBS/BofA parsers + LLM fallback + reconciliation gate) | Unit-tested against generated fixture PDFs; real device data has surfaced bugs the suite missed (see above), since fixed |
 | Pantry receipt ingestion | Unit-tested against canned model output; DB write path not covered by the test suite (Robolectric content-resolver gap) |
-| Tool-block dispatcher split (79 -> 45 declarations) | Built, on-device; one dispatched write path (meal logging) broke on first real use and was fixed and re-verified same day |
-| Unit test suite | **1485 tests, 2 known failing** (`BioDigestBuilderTest`), confirmed pre-existing on a clean worktree at HEAD. This is stated plainly, not rounded up |
+| Tool-block dispatcher split | Built, on-device; one dispatched write path (meal logging) broke on first real use and was fixed and re-verified same day. Write tools have since been moved back to direct declarations |
+| Spotify voice control (App Remote spine, 20-action surface, own-library-first playlists, replayable history) | Built and unit-tested, ten of twelve tickets merged. **Never run on a phone, and nothing in the Spotify layer has ever run against a real account** - the headline claim (playback with Spotify closed) is unverified |
+| Unit test suite | **1747 tests, green.** An earlier known-failing pair (`BioDigestBuilderTest`) has been fixed |
 | Onboarding UI | Not built. The identity/system-prompt plumbing exists; no screen hosts it |
 | Wake word | Blocked - the Vosk model asset was never actually added to the repo, only documented |
 | Google Drive sync | Built, never executed against real data - both devices have diverged locally with nothing to reconcile them yet |
