@@ -30,6 +30,7 @@ import com.kevin.legion.pantry.PantryController
 import com.kevin.legion.meals.MealController
 import com.kevin.legion.workouts.WorkoutController
 import com.kevin.legion.location.LocationController
+import com.kevin.legion.location.NavigationController
 import com.kevin.legion.location.PlaceController
 import com.kevin.legion.util.Temp
 import com.kevin.legion.util.documentDate
@@ -45,6 +46,7 @@ import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.media.VolumeController
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.MusicPlayHistoryEntry
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.BuildSheetController
@@ -403,11 +405,59 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "control_music",
-            description = "Control music playback hands-free: 'play', 'pause', 'next', 'previous'. " +
-                "Works with whatever's playing on the phone. Transport only.",
+            description = "Control music playback hands-free: 'play', 'pause', 'next', 'previous' " +
+                "work with whatever's playing on the phone. 'queue' adds a NAMED track (pass " +
+                "'query') to Spotify's own up-next queue via search - requires Spotify connected " +
+                "in Setup, same as play_music. 'Play X next' and 'add X to the queue' are the " +
+                "SAME thing here: Spotify has no way to insert at a specific position, only " +
+                "next-up, so don't imply otherwise. To hear what's already queued, use " +
+                "get_music_queue instead - this tool only adds, it doesn't read. " +
+                "'like'/'unlike' act on the CURRENTLY PLAYING track only, never an album or the " +
+                "whole queue. 'follow_artist'/'unfollow_artist' act on the current track's " +
+                "artist. All four require Spotify connected in Setup and something actually " +
+                "playing - if you say 'like this' twice, the second call comes back telling you " +
+                "it was already liked, which is a real distinct answer, not a failure. " +
+                "'shuffle' toggles shuffle to whatever it currently isn't; 'shuffle_on'/" +
+                "'shuffle_off' set it explicitly - the spoken confirmation always says the state " +
+                "that RESULTED, read back from Spotify, not just what was asked for. " +
+                "'repeat_track' repeats ONLY the current track ('repeat this'); " +
+                "'repeat_context' repeats the whole album/playlist ('repeat the album') - these " +
+                "are genuinely different requests, don't collapse them. 'repeat_off' turns " +
+                "repeat off entirely. 'seek_forward'/'seek_back' jump within the current track " +
+                "- pass 'seconds' if the driver named a duration, otherwise it defaults to 30. " +
+                "Seeking forward past the end of the track moves on to the next song (Spotify's " +
+                "own behaviour) - say so plainly if it happens, don't just report a jump. " +
+                "'restart' jumps back to the start of the current track. 'more_from_artist' " +
+                "('more from this artist', 'keep going with this artist') plays the CURRENT " +
+                "track's artist directly - no search, no query needed, it's exact catalogue " +
+                "navigation, not a suggestion. Requires something actually playing on Spotify; " +
+                "if nothing is, or it's a non-Spotify source, say plainly you can't tell who's " +
+                "playing rather than guessing an artist from something heard earlier. " +
+                "'add_to_playlist' adds the CURRENTLY PLAYING track (same subject as 'like') to a " +
+                "playlist the driver names, e.g. 'add this to my Roadtrip playlist' - pass " +
+                "'playlistName'. Only matches playlists the driver owns or a friend made them a " +
+                "collaborator on - it does NOT search the public catalogue for a playlist to add " +
+                "to, and if the name matches a playlist that's followed but not owned or " +
+                "collaborative (an editorial playlist like Discover Weekly), this fails and says " +
+                "so - never report it as done and never claim there's no such playlist.",
             params = obj(
                 "action" to schema("string", "The playback action.",
-                    enum = listOf("play", "pause", "next", "previous")),
+                    enum = listOf(
+                        "play", "pause", "next", "previous", "queue",
+                        "like", "unlike", "follow_artist", "unfollow_artist",
+                        "shuffle", "shuffle_on", "shuffle_off",
+                        "repeat_off", "repeat_track", "repeat_context",
+                        "seek_forward", "seek_back", "restart",
+                        "more_from_artist", "add_to_playlist",
+                    )),
+                "query" to schema("string",
+                    "Required for 'queue': what to add, in the driver's own words, e.g. " +
+                        "'Plastic Love by Mariya Takeuchi'."),
+                "seconds" to schema("integer",
+                    "For 'seek_forward'/'seek_back' only: how many seconds to jump. Defaults to 30."),
+                "playlistName" to schema("string",
+                    "Required for 'add_to_playlist': which playlist to add the current track to, " +
+                        "in the driver's own words, e.g. 'Roadtrip' or 'my summer playlist'."),
             ),
             required = listOf("action"),
         ))
@@ -426,23 +476,61 @@ object LiveToolbox {
         ))
 
         fns.put(fn(
+            name = "open_navigation",
+            description = "Open the driver's map app on a destination they name - 'take me to', " +
+                "'navigate to', 'where is', 'show me on the map'. mode 'navigate' starts " +
+                "turn-by-turn guidance in Google Maps; mode 'show' just drops the place on the " +
+                "map without starting directions. Defaults to navigate. LEGION does not draw a " +
+                "map itself; this hands off to the map app on the phone. It reports honestly " +
+                "whether the map actually opened - if it comes back unsuccessful, tell the " +
+                "driver plainly that nothing opened and never say you started navigation.",
+            params = obj(
+                "destination" to schema("string",
+                    "Where the driver wants to go, in their own words - an address, a business " +
+                        "name, or a place, e.g. '2200 Kirby Drive' or 'the nearest Shell station'."),
+                "mode" to schema("string",
+                    "'navigate' for turn-by-turn (the default), 'show' to just display it.",
+                    enum = listOf("navigate", "show")),
+            ),
+            required = listOf("destination"),
+        ))
+
+        fns.put(fn(
             name = "play_music",
             description = "Play something specific by name - a song, artist, album, or playlist - " +
                 "directly in-app via Spotify (requires the driver to have connected their own Spotify " +
                 "account in Setup). Use when the driver names what they want to hear, e.g. 'play " +
                 "Plastic Love' or 'play some city pop' (song, the default), 'play the album Discovery' " +
                 "(album), or 'play my Roadtrip playlist' (playlist). Set 'type' to match what the " +
-                "driver actually asked for - defaults to song if they didn't say. If Spotify isn't " +
+                "driver actually asked for - defaults to song if they didn't say. For type 'playlist', " +
+                "this checks the driver's OWN playlists (including ones friends made him a " +
+                "collaborator on) FIRST, and only falls back to Spotify's public catalogue if " +
+                "nothing there matches - when it falls back, say so and name what actually played, " +
+                "since it may not be what the driver meant. If Spotify isn't " +
                 "connected, this fails with a message telling the driver to connect it in Setup or " +
                 "pick something on their phone themselves. Once something's playing, control_music " +
-                "handles play/pause/skip.",
+                "handles play/pause/skip. To replay something the driver names from LEGION's own " +
+                "history (browse_my_music's legion_history source, e.g. 'play that thing from " +
+                "Tuesday'), OR to play a NAMED album from the current artist's own catalogue " +
+                "(browse_my_music's artist_albums source, e.g. 'play his album Discovery'), pass " +
+                "its spotifyUri exactly as returned - this skips search entirely and plays that " +
+                "exact track/album, resolved within the artist's own catalogue rather than an open " +
+                "search that could land on someone else's album of the same name. Only pass a " +
+                "spotifyUri you actually received from a tool result; never invent one, and never " +
+                "pass one for a legion_history row whose replayable field was false - say plainly " +
+                "you can't replay that one instead.",
             params = obj(
                 "query" to schema("string",
                     "What to play, in the driver's own words, e.g. 'Plastic Love by Mariya Takeuchi' " +
-                        "or 'Discovery by Daft Punk'."),
+                        "or 'Discovery by Daft Punk'. Still required even when spotifyUri is set - " +
+                        "used to build the spoken confirmation."),
                 "type" to schema("string",
                     "What kind of thing 'query' names. Defaults to 'song' if omitted.",
                     enum = listOf("song", "artist", "album", "playlist")),
+                "spotifyUri" to schema("string",
+                    "A concrete Spotify URI already known from a prior tool result - only " +
+                        "legion_history rows with replayable true, and artist_albums rows, carry " +
+                        "one. When set, this is played directly with no search."),
             ),
             required = listOf("query"),
         ))
@@ -456,22 +544,46 @@ object LiveToolbox {
                 "'legion_history' - what LEGION ITSELF has observed playing on THIS device only; " +
                 "always say plainly this is LEGION's own count, never Spotify's, and that any " +
                 "'favourite' you mention from it is LEGION's own inference from what it happened " +
-                "to see - never present it as a number Spotify published. Every source needs " +
-                "Spotify connected and approved in Setup (same as play_music); if that's missing " +
-                "or stale, this fails and tells the driver exactly what to do about it - never " +
-                "read a failure as 'you have nothing'. Keep the spoken answer short - name a " +
-                "handful of results, don't read out the whole list.",
+                "to see - never present it as a number Spotify published. 'artist_albums' - what " +
+                "the CURRENTLY PLAYING artist has out, for 'what else does he have' / 'what other " +
+                "albums does she have' - taken straight from the current track's artist, no name " +
+                "needed from the driver; requires something actually playing on Spotify, and if " +
+                "nothing is (or it's a non-Spotify source) this fails saying it can't tell who's " +
+                "playing rather than guessing. Every result item here carries its own spotifyUri - " +
+                "to play one of them, pass that spotifyUri straight to play_music (same as a " +
+                "legion_history row), never search for it by name; that resolves within THIS " +
+                "artist's own catalogue rather than an open search that could land on someone " +
+                "else's album of the same name. Every source needs Spotify connected and approved " +
+                "in Setup (same as play_music); if that's missing or stale, this fails and tells " +
+                "the driver exactly what to do about it - never read a failure as 'you have " +
+                "nothing'. Keep the spoken answer short - name a handful of results, don't read " +
+                "out the whole list.",
             params = obj(
                 "source" to schema("string", "Which listening data to look up.",
                     enum = listOf(
                         "saved_albums", "recently_played", "top_artists", "top_tracks",
-                        "legion_history",
+                        "legion_history", "artist_albums",
                     )),
                 "limit" to schema("integer",
                     "How many results to return. Defaults to 5 - a live voice turn shouldn't " +
                         "read out fifty rows."),
             ),
             required = listOf("source"),
+        ))
+
+        fns.put(fn(
+            name = "get_music_queue",
+            description = "What's coming up next in Spotify's own queue - 'what's playing next', " +
+                "'what's coming up'. Read-only; to ADD something to the queue use control_music's " +
+                "'queue' action instead. Requires Spotify connected and approved in Setup (same " +
+                "as play_music); if that's missing or stale, this fails and says exactly what to " +
+                "do about it - never read a failure as 'nothing's queued'. Keep the spoken answer " +
+                "short.",
+            params = obj(
+                "limit" to schema("integer",
+                    "How many upcoming tracks to return. Defaults to 5."),
+            ),
+            required = listOf(),
         ))
 
         fns.put(fn(
@@ -1889,8 +2001,15 @@ object LiveToolbox {
             "control_music" -> controlMusic(context, args)
             "control_volume" -> controlVolume(context, args)
             "get_current_location" -> getCurrentLocation(context)
-            "play_music" -> playMusic(context, args.optString("query"), args.optString("type", "song"))
+            "play_music" -> playMusic(
+                context,
+                args.optString("query"),
+                args.optString("type", "song"),
+                args.optString("spotifyUri", "").ifBlank { null },
+            )
             "browse_my_music" -> browseMyMusic(context, args)
+            "get_music_queue" -> getMusicQueue(context, args)
+            "open_navigation" -> openNavigation(context, args)
             "show_app" -> showApp(context)
             "set_reminder" -> result(
                 success = true,
@@ -4931,7 +5050,59 @@ object LiveToolbox {
     }
 
     /**
-     * Transport only (play/pause/next/previous), over TWO independent backends.
+     * The action-dispatch shape `control_music` grows into (ticket 03,
+     * `.scratch/spotify-voice/issues/03-tool-surface.md`). The map's ten-plus new music
+     * capabilities (queue, like/unlike, follow/unfollow, shuffle, repeat, seek) fold into this
+     * ONE enum as additional entries rather than spawning sibling tool declarations - map
+     * decision "fold not spawn" (settled with Kevin 2026-08-19): a bloated tool surface makes
+     * the live model choose worse (the `log_workout_set` routing bug this repo already paid
+     * for), and music is the one domain where a second `ask_music` dispatcher round trip IS
+     * the complaint.
+     *
+     * **This enum is always allowed to run AHEAD of the JSON schema `enum` in
+     * [declarations]'s `control_music` entry - the schema only widens the moment the case
+     * below it is actually wired to real Spotify/MediaSession behaviour, in the SAME commit.**
+     * ADR 0031 and this ticket name the same failure from two directions: a declared action
+     * that does nothing is a lying tool description. So every entry lands implement-then-declare,
+     * never the reverse, and the compiler enforces the ordering incidentally - [controlMusic]'s
+     * `when` below is exhaustive over exactly the entries that exist, so adding one without
+     * also adding its branch fails the build rather than shipping a silent no-op action.
+     */
+    internal enum class MusicAction(val wireValue: String) {
+        PLAY("play"),
+        PAUSE("pause"),
+        NEXT("next"),
+        PREVIOUS("previous"),
+        QUEUE("queue"),
+        LIKE("like"),
+        UNLIKE("unlike"),
+        FOLLOW_ARTIST("follow_artist"),
+        UNFOLLOW_ARTIST("unfollow_artist"),
+        SHUFFLE("shuffle"),
+        SHUFFLE_ON("shuffle_on"),
+        SHUFFLE_OFF("shuffle_off"),
+        REPEAT_OFF("repeat_off"),
+        REPEAT_TRACK("repeat_track"),
+        REPEAT_CONTEXT("repeat_context"),
+        SEEK_FORWARD("seek_forward"),
+        SEEK_BACK("seek_back"),
+        RESTART("restart"),
+        /** Ticket 08 scope item 3: adds the CURRENTLY PLAYING track to a named playlist. */
+        ADD_TO_PLAYLIST("add_to_playlist"),
+        // ticket 13 (.scratch/spotify-voice/issues/13-more-from-this-artist.md): catalogue
+        // navigation off the CURRENT artist, not a search - see controlMusicMoreFromArtist.
+        MORE_FROM_ARTIST("more_from_artist"),
+        ;
+
+        companion object {
+            /** Parses the wire string the live model sent. Unrecognized text is null, never a throw. */
+            internal fun fromWire(value: String): MusicAction? = entries.firstOrNull { it.wireValue == value }
+        }
+    }
+
+    /**
+     * Routes a parsed [MusicAction] to its implementation. Transport (play/pause/next/previous)
+     * over TWO independent backends.
      *
      * [MusicController] (Android's media-session framework) is preferred because it
      * drives whatever is actually playing - the phone-BT relay, Spotify, anything
@@ -4961,18 +5132,227 @@ object LiveToolbox {
      * crashing the app on next/play). App Remote has no such requirement.
      */
     private suspend fun controlMusic(context: Context, args: JSONObject): JSONObject {
-        val action = args.optString("action")
-        if (action != "play" && action != "pause" && action != "next" && action != "previous") {
-            return result(success = false, message = "Unknown music action: $action")
+        val raw = args.optString("action")
+        val action = MusicAction.fromWire(raw)
+            ?: return result(success = false, message = "Unknown music action: $raw")
+
+        return when (action) {
+            MusicAction.PLAY, MusicAction.PAUSE, MusicAction.NEXT, MusicAction.PREVIOUS ->
+                controlMusicTransport(context, action)
+            MusicAction.QUEUE -> controlMusicQueue(context, args.optString("query"))
+            MusicAction.LIKE -> controlMusicLibrary(context, SpotifyController.LibraryAction.LIKE)
+            MusicAction.UNLIKE -> controlMusicLibrary(context, SpotifyController.LibraryAction.UNLIKE)
+            MusicAction.FOLLOW_ARTIST -> controlMusicLibrary(context, SpotifyController.LibraryAction.FOLLOW_ARTIST)
+            MusicAction.UNFOLLOW_ARTIST -> controlMusicLibrary(context, SpotifyController.LibraryAction.UNFOLLOW_ARTIST)
+            MusicAction.SHUFFLE -> controlMusicShuffle(context, turnOn = null)
+            MusicAction.SHUFFLE_ON -> controlMusicShuffle(context, turnOn = true)
+            MusicAction.SHUFFLE_OFF -> controlMusicShuffle(context, turnOn = false)
+            MusicAction.REPEAT_OFF, MusicAction.REPEAT_TRACK, MusicAction.REPEAT_CONTEXT ->
+                controlMusicRepeat(context, action)
+            MusicAction.SEEK_FORWARD -> controlMusicSeek(context, forward = true, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))
+            MusicAction.SEEK_BACK -> controlMusicSeek(context, forward = false, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))
+            MusicAction.RESTART -> controlMusicRestart(context)
+            MusicAction.ADD_TO_PLAYLIST -> controlMusicAddToPlaylist(context, args.optString("playlistName"))
+            MusicAction.MORE_FROM_ARTIST -> controlMusicMoreFromArtist(context)
+        }
+    }
+
+    /**
+     * "More from this artist" (ticket 13, `.scratch/spotify-voice/issues/13-more-from-this-artist.md`
+     * scope item 1): no search at all - `SpotifyController.currentArtist` reads the artist straight
+     * off App Remote's own pushed player state (the same truth ticket 07's now-playing uses), and
+     * this plays that artist's own Spotify context (`spotify:artist:...`) through the SAME
+     * [SpotifyController.playUri] path every other play in this file uses - App Remote's `play()`
+     * documented as accepting an artist URI directly, no different from a track/album/playlist one.
+     * When nothing is playing (or a non-Spotify session is), [SpotifyController.currentArtist] is
+     * null and this fails honestly rather than ever guessing an artist from something seen earlier
+     * (ticket 13 scope item 5).
+     */
+    private suspend fun controlMusicMoreFromArtist(context: Context): JSONObject {
+        val artist = SpotifyController.currentArtist() ?: return result(
+            success = false,
+            message = "I can't tell who's playing right now, so I don't know whose music to keep " +
+                "going with - play something on Spotify first, then ask again.",
+        )
+        val outcome = SpotifyController.playUri(context, artist.uri, pickedLabel = artist.name)
+        if (SpotifyController.succeeded(outcome)) {
+            NowPlayingController.markLegionInitiatedPlay()
+        }
+        return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, artist.name))
+    }
+
+    /** "Back 30 seconds" with nothing said defaults to 30 (ticket 06 scope item 3). */
+    private const val DEFAULT_SEEK_SECONDS = 30
+
+    /**
+     * `shuffle`/`shuffle_on`/`shuffle_off` (ticket 06,
+     * `.scratch/spotify-voice/issues/06-shuffle-repeat-seek.md`). [turnOn] null means the bare
+     * "shuffle" action (toggle); non-null means the explicit on/off request. Either way the
+     * spoken line is built from [SpotifyController.TransportWriteResult] - the state that
+     * RESULTED, read back from Spotify after the write, never the state that was asked for.
+     */
+    private suspend fun controlMusicShuffle(context: Context, turnOn: Boolean?): JSONObject {
+        val state = if (turnOn == null) SpotifyController.toggleShuffle(context) else SpotifyController.setShuffle(context, turnOn)
+        return if (state != null) result(success = true, message = SpotifyController.shuffleMessage(state))
+        else result(success = false, message = SpotifyController.transportWriteFailureMessage())
+    }
+
+    /**
+     * `repeat_off`/`repeat_track`/`repeat_context` - "repeat this" is the track, "repeat the
+     * album" is the context, and the two are genuinely different requests (ticket 06 scope item
+     * 2), never collapsed into one "repeat" action.
+     */
+    private suspend fun controlMusicRepeat(context: Context, action: MusicAction): JSONObject {
+        val state = when (action) {
+            MusicAction.REPEAT_OFF -> SpotifyController.setRepeatOff(context)
+            MusicAction.REPEAT_TRACK -> SpotifyController.setRepeatTrack(context)
+            MusicAction.REPEAT_CONTEXT -> SpotifyController.setRepeatContext(context)
+            else -> error("controlMusicRepeat called with a non-repeat action: $action")
+        }
+        return if (state != null) result(success = true, message = SpotifyController.repeatMessage(state))
+        else result(success = false, message = SpotifyController.transportWriteFailureMessage())
+    }
+
+    /**
+     * `restart` - jumps back to the start of the current track.
+     */
+    private suspend fun controlMusicRestart(context: Context): JSONObject {
+        val state = SpotifyController.restart(context)
+        return if (state != null) result(success = true, message = "Restarted the track.")
+        else result(success = false, message = SpotifyController.transportWriteFailureMessage())
+    }
+
+    /**
+     * `add_to_playlist` (ticket 08 scope item 3): adds the CURRENTLY PLAYING track - same subject
+     * as `like` - to a playlist named by the driver. Deliberately **library-only**: resolves the
+     * target through [SpotifyWebApi.findMyPlaylist], never [SpotifyWebApi.resolvePlaylist]'s
+     * public-search fallback, because adding to a playlist the driver doesn't own or collaborate
+     * on would almost always 403 anyway and was never what "add this to Roadtrip" meant (see
+     * [SpotifyWebApi.findMyPlaylist]'s own doc). A playlist that DOES match but isn't
+     * [SpotifyWebApi.SpotifyPlaylist.readable] - the research's ownership/collaborator boundary,
+     * hit hardest by a followed EDITORIAL playlist like Discover Weekly - is named as unreadable
+     * in words before any write is attempted (ticket 08 scope item 4), never silently skipped and
+     * never reported as "no such playlist".
+     */
+    private suspend fun controlMusicAddToPlaylist(context: Context, playlistName: String): JSONObject {
+        if (playlistName.isBlank()) return result(success = false, message = "Which playlist should I add this to?")
+
+        val track = when (val t = SpotifyController.currentTrack(context)) {
+            is SpotifyController.CurrentTrackOutcome.Found -> t
+            SpotifyController.CurrentTrackOutcome.NothingPlaying -> return result(
+                success = false,
+                message = "Nothing's playing right now, so there's nothing to add.",
+            )
+            SpotifyController.CurrentTrackOutcome.NotConnected -> return result(
+                success = false,
+                message = "Spotify isn't connected - connect your Spotify account in Setup, or pick " +
+                    "something on your phone yourself and I'll control play/pause/skip from here.",
+            )
         }
 
+        val playlist = when (val lookup = SpotifyWebApi.findMyPlaylist(context, playlistName)) {
+            is SpotifyWebApi.PlaylistLookup.Found -> lookup.playlist
+            SpotifyWebApi.PlaylistLookup.NeedsAuthorization -> return spotifyNeedsAuthorizationResult()
+            is SpotifyWebApi.PlaylistLookup.Unauthorized -> return spotifyUnauthorizedResult(lookup.detail)
+            SpotifyWebApi.PlaylistLookup.Unreachable -> return spotifyUnreachableResult()
+            SpotifyWebApi.PlaylistLookup.NoMatch -> return result(
+                success = false,
+                message = "\"$playlistName\" doesn't match any playlist you own or a friend has " +
+                    "shared with you - I can only add to playlists in your own library.",
+            )
+            is SpotifyWebApi.PlaylistLookup.Failed -> return result(
+                success = false,
+                message = "Spotify's playlist lookup returned an error (${lookup.code})" +
+                    (lookup.detail?.let { ": $it" } ?: "."),
+            )
+        }
+
+        // The honesty boundary this ticket exists for: said in words BEFORE attempting the
+        // write, never left to surface as a bare 403.
+        if (!playlist.readable) {
+            return result(
+                success = false,
+                message = "I can't add to \"${playlist.name}\" - you don't own it or collaborate on " +
+                    "it, so Spotify won't allow changes to it. This is Spotify's own rule, the same " +
+                    "reason a playlist like Discover Weekly can't be edited by anyone but Spotify.",
+            )
+        }
+
+        return when (val outcome = SpotifyWebApi.addTrackToPlaylist(context, playlist.id, track.uri)) {
+            SpotifyWebApi.PlaylistWriteOutcome.Added -> result(
+                success = true,
+                message = "Added \"${track.name}\" to \"${playlist.name}\".",
+            )
+            // Belt-and-braces: the cache said readable, Spotify disagreed. Same honest wording as
+            // the proactive check above rather than a generic error.
+            SpotifyWebApi.PlaylistWriteOutcome.NotYours -> result(
+                success = false,
+                message = "Spotify wouldn't let me add to \"${playlist.name}\" - you don't own or " +
+                    "collaborate on it.",
+            )
+            SpotifyWebApi.PlaylistWriteOutcome.NeedsAuthorization -> spotifyNeedsAuthorizationResult()
+            is SpotifyWebApi.PlaylistWriteOutcome.Unauthorized -> spotifyUnauthorizedResult(outcome.detail)
+            SpotifyWebApi.PlaylistWriteOutcome.Unreachable -> spotifyUnreachableResult()
+            is SpotifyWebApi.PlaylistWriteOutcome.Failed -> result(
+                success = false,
+                message = "Spotify wouldn't add that (${outcome.code})" + (outcome.detail?.let { ": $it" } ?: "."),
+            )
+        }
+    }
+
+    /**
+     * `seek_forward`/`seek_back` - relative seek, default [DEFAULT_SEEK_SECONDS]. **Seeking past
+     * the end of a track starts the next one** (Spotify's own documented behaviour, ticket 06
+     * scope item 3) - [SpotifyController.SeekOutcome.TrackChanged] is spoken as exactly that,
+     * never as "jumped forward N seconds" when the track actually changed underneath the driver.
+     */
+    private suspend fun controlMusicSeek(context: Context, forward: Boolean, seconds: Int): JSONObject {
+        val secs = seconds.coerceAtLeast(1)
+        val deltaMs = secs * 1000L * if (forward) 1L else -1L
+        return when (val outcome = SpotifyController.seekRelative(context, deltaMs)) {
+            is SpotifyController.SeekOutcome.Landed ->
+                result(success = true, message = "Jumped ${if (forward) "forward" else "back"} $secs seconds.")
+            SpotifyController.SeekOutcome.TrackChanged ->
+                result(success = true, message = "That went past the end of the track, so Spotify moved on to the next song.")
+            SpotifyController.SeekOutcome.NotConnected ->
+                result(success = false, message = SpotifyController.transportWriteFailureMessage())
+            SpotifyController.SeekOutcome.SeekRejected ->
+                result(success = false, message = "Spotify wouldn't seek there.")
+        }
+    }
+
+    /**
+     * `like`/`unlike`/`follow_artist`/`unfollow_artist` (ticket 05,
+     * `.scratch/spotify-voice/issues/05-library-writes.md`): all four route through
+     * [SpotifyController]'s shared `libraryWrite` sequence, which reads `getLibraryState` BEFORE
+     * writing so "already liked" and "liked it" are told apart rather than guessed.
+     */
+    private suspend fun controlMusicLibrary(context: Context, action: SpotifyController.LibraryAction): JSONObject {
+        val outcome = when (action) {
+            SpotifyController.LibraryAction.LIKE -> SpotifyController.like(context)
+            SpotifyController.LibraryAction.UNLIKE -> SpotifyController.unlike(context)
+            SpotifyController.LibraryAction.FOLLOW_ARTIST -> SpotifyController.followArtist(context)
+            SpotifyController.LibraryAction.UNFOLLOW_ARTIST -> SpotifyController.unfollowArtist(context)
+        }
+        return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, action))
+    }
+
+    /**
+     * Handles ONLY [MusicAction.PLAY]/[PAUSE]/[NEXT]/[PREVIOUS] - [controlMusic]'s own `when` is
+     * what actually restricts callers to those four. The `else` branches below exist purely to
+     * satisfy exhaustiveness against the FULL [MusicAction] enum (which keeps growing as later
+     * tickets land); reaching one would mean [controlMusic]'s routing itself is broken, so they
+     * throw rather than silently doing nothing.
+     */
+    private suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject {
         if (NowPlayingController.hasAccess(context)) {
             val ok = withContext(Dispatchers.Main) {
                 when (action) {
-                    "play"     -> MusicController.play(context)
-                    "pause"    -> MusicController.pause(context)
-                    "next"     -> MusicController.next(context)
-                    else       -> MusicController.previous(context)
+                    MusicAction.PLAY     -> MusicController.play(context)
+                    MusicAction.PAUSE    -> MusicController.pause(context)
+                    MusicAction.NEXT     -> MusicController.next(context)
+                    MusicAction.PREVIOUS -> MusicController.previous(context)
+                    else -> error("controlMusicTransport called with non-transport action: $action")
                 }
             }
             if (ok) return result(success = true, message = null)
@@ -4985,10 +5365,11 @@ object LiveToolbox {
         // cannot support.
         if (SpotifyController.isConnected) {
             val ok = when (action) {
-                "play"     -> SpotifyController.play()
-                "pause"    -> SpotifyController.pause()
-                "next"     -> SpotifyController.next()
-                else       -> SpotifyController.previous()
+                MusicAction.PLAY     -> SpotifyController.play()
+                MusicAction.PAUSE    -> SpotifyController.pause()
+                MusicAction.NEXT     -> SpotifyController.next()
+                MusicAction.PREVIOUS -> SpotifyController.previous()
+                else -> error("controlMusicTransport called with non-transport action: $action")
             }
             if (ok) return result(success = true, message = null)
         }
@@ -5079,16 +5460,39 @@ object LiveToolbox {
     }
 
     /**
-     * Plays a specific track/artist by name, in-app, via Spotify App Remote +
-     * Web API search. This is the only "play something specific" path left -
-     * the old OS-level play-from-search-intent fallback (opening a separate
-     * music app full-screen, with a floating companion badge over it) was
-     * retired with the rest of the car-launcher UI in the 2026-07-31 pivot.
-     * If Spotify isn't connected, this fails with an actionable message rather
-     * than falling back to launching another app.
+     * The result of turning a spoken name into a Spotify URI - [Found] or a fully-built failure
+     * [JSONObject] ready to return as-is. Kept as its own tiny sealed type rather than a nullable
+     * String so a caller cannot forget to check which one it got.
      */
-    private suspend fun playMusic(context: Context, query: String, type: String = "song"): JSONObject {
-        if (query.isBlank()) return result(success = false, message = "What should I play?")
+    private sealed interface SpotifyUriResolution {
+        /**
+         * [name]/[subtitle] (ticket 07) are Spotify's OWN name for whatever [uri] resolved to, so
+         * `play_music` can say what it actually picked ("Discovery, Daft Punk") instead of echoing
+         * the driver's own words back. Null on the paths where nothing was searched for.
+         *
+         * [note] (ticket 08) is set only by [resolvePlaylistForPlay], when the URI came from the
+         * public search fallback rather than the driver's own library - the one case where what
+         * starts may not be what he meant, and it has to be said rather than silently substituted.
+         */
+        data class Found(
+            val uri: String,
+            val name: String? = null,
+            val subtitle: String? = null,
+            val note: String? = null,
+        ) : SpotifyUriResolution
+        data class Failed(val toolResult: JSONObject) : SpotifyUriResolution
+    }
+
+    /**
+     * The shared "turn what the driver said into a Spotify URI" sequence: `ensureConnected` (a
+     * silent reconnect attempt), confirm the Web API grant is authorized, then
+     * [SpotifyWebApi.search]. Extracted (ticket 04, `.scratch/spotify-voice/issues/04-queue.md`
+     * scope item 1: "`queue`, taking a `query` resolved through the same search path `play_music`
+     * uses") so [playMusic] and `control_music`'s `queue` action fail with the IDENTICAL words
+     * for the IDENTICAL reasons - they are the same resolve step with two different things done
+     * to the result.
+     */
+    private suspend fun resolveSpotifyUri(context: Context, query: String, type: String): SpotifyUriResolution {
         // Tool-facing vocabulary is "song" (matches how a driver actually talks); Spotify's own
         // API calls that "track" - translated at the boundary so nothing upstream of this line
         // needs to know Spotify's word for it.
@@ -5099,11 +5503,11 @@ object LiveToolbox {
         // Only attempts a reconnect when a client ID is actually saved, so a
         // driver who never set Spotify up pays nothing here.
         if (!SpotifyController.ensureConnected(context)) {
-            return result(
+            return SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "Spotify isn't connected - connect your Spotify account in Setup, or pick " +
                     "something on your phone yourself and I'll control play/pause/skip from here.",
-            )
+            ))
         }
 
         // Not authorized = no Web API = no way to turn a name into a URI. Say so
@@ -5113,20 +5517,22 @@ object LiveToolbox {
         // browse_my_music) - the two need different words, since the second driver has already
         // done this once and "isn't finished connecting" would read as if nothing was saved.
         if (!SpotifyWebApi.isAuthorized(context)) {
-            return if (SpotifyWebApi.hasStaleGrant(context)) {
-                result(
-                    success = false,
-                    message = "Spotify needs re-approving - I picked up a couple of new permissions " +
-                        "and your old approval doesn't cover them. Open Setup, Spotify, and tap " +
-                        "AUTHORIZE again. Takes a few seconds.",
-                )
-            } else {
-                result(
-                    success = false,
-                    message = "Spotify isn't finished connecting - open Setup, tap CONNECT under the " +
-                        "Spotify client ID, and approve it in the browser. Then I can play by name.",
-                )
-            }
+            return SpotifyUriResolution.Failed(
+                if (SpotifyWebApi.hasStaleGrant(context)) {
+                    result(
+                        success = false,
+                        message = "Spotify needs re-approving - I picked up a couple of new permissions " +
+                            "and your old approval doesn't cover them. Open Setup, Spotify, and tap " +
+                            "AUTHORIZE again. Takes a few seconds.",
+                    )
+                } else {
+                    result(
+                        success = false,
+                        message = "Spotify isn't finished connecting - open Setup, tap CONNECT under the " +
+                            "Spotify client ID, and approve it in the browser. Then I can play by name.",
+                    )
+                },
+            )
         }
 
         // Each outcome gets its own answer (2026-08-12). These used to be one nullable
@@ -5134,14 +5540,14 @@ object LiveToolbox {
         // connection and a genuinely unknown song were indistinguishable to the driver
         // AND to anyone debugging it - the exact collapse GoogleGrantResolver.diagnose
         // was written to undo on the Drive side.
-        val uri = when (val outcome = SpotifyWebApi.search(context, query, spotifyType)) {
-            is SpotifyWebApi.SearchOutcome.Found -> outcome.uri
-            SpotifyWebApi.SearchOutcome.NeedsAuthorization -> return result(
+        return when (val outcome = SpotifyWebApi.search(context, query, spotifyType)) {
+            is SpotifyWebApi.SearchOutcome.Found -> SpotifyUriResolution.Found(outcome.uri, outcome.name, outcome.subtitle)
+            SpotifyWebApi.SearchOutcome.NeedsAuthorization -> SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "Spotify hasn't been authorized on this device yet - open Setup, " +
                     "Spotify, and tap AUTHORIZE.",
-            )
-            is SpotifyWebApi.SearchOutcome.Unauthorized -> return result(
+            ))
+            is SpotifyWebApi.SearchOutcome.Unauthorized -> SpotifyUriResolution.Failed(result(
                 success = false,
                 // Spotify's own words are carried through rather than paraphrased: a 403
                 // saying "the user may not be registered" is a dashboard problem that
@@ -5150,35 +5556,184 @@ object LiveToolbox {
                 message = "Spotify rejected the request" +
                     (outcome.detail?.let { ": $it" } ?: ".") +
                     " Run the search test in Setup, Spotify for the details.",
-            )
-            SpotifyWebApi.SearchOutcome.Unreachable -> return result(
+            ))
+            SpotifyWebApi.SearchOutcome.Unreachable -> SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "I couldn't reach Spotify just now. Worth trying again when you have " +
                     "a better connection.",
-            )
-            SpotifyWebApi.SearchOutcome.NoMatch -> return result(
+            ))
+            SpotifyWebApi.SearchOutcome.NoMatch -> SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "Spotify has nothing matching \"$query\".",
-            )
-            is SpotifyWebApi.SearchOutcome.Failed -> return result(
+            ))
+            is SpotifyWebApi.SearchOutcome.Failed -> SpotifyUriResolution.Failed(result(
                 success = false,
                 message = "Spotify's search returned an error (${outcome.code})" +
                     (outcome.detail?.let { ": $it" } ?: "."),
+            ))
+        }
+    }
+
+    // --- Shared Spotify failure wording (ticket 08) --------------------------------------------
+    // Extracted so the playlist paths below ([resolvePlaylistForPlay], [controlMusicAddToPlaylist])
+    // say the IDENTICAL words for the IDENTICAL Spotify-account-level failures as
+    // [resolveSpotifyUri] above does for song/artist/album - a driver hearing two different
+    // sentences for "you haven't authorized Spotify yet" depending on WHICH thing they asked for
+    // would read as two different problems.
+
+    private fun spotifyNeedsAuthorizationResult(): JSONObject = result(
+        success = false,
+        message = "Spotify hasn't been authorized on this device yet - open Setup, Spotify, and tap AUTHORIZE.",
+    )
+
+    private fun spotifyUnauthorizedResult(detail: String?): JSONObject = result(
+        success = false,
+        message = "Spotify rejected the request" +
+            (detail?.let { ": $it" } ?: ".") +
+            " Run the search test in Setup, Spotify for the details.",
+    )
+
+    private fun spotifyUnreachableResult(): JSONObject = result(
+        success = false,
+        message = "I couldn't reach Spotify just now. Worth trying again when you have a better connection.",
+    )
+
+    /**
+     * `play_music`'s playlist path (ticket 08 scope items 1-2): [SpotifyWebApi.resolvePlaylist]
+     * first tries the driver's OWN cached library, and only falls through to public
+     * `/v1/search` when nothing there matched. When it fell through, [playlistFallbackNote]
+     * carries the honesty line - "say which one it used when the answer might surprise him" -
+     * for [playMusic] to fold into its spoken confirmation; null on every other outcome.
+     */
+    private suspend fun resolvePlaylistForPlay(context: Context, query: String): SpotifyUriResolution {
+        return when (val resolution = SpotifyWebApi.resolvePlaylist(context, query)) {
+            is SpotifyWebApi.PlaylistResolution.FromLibrary -> SpotifyUriResolution.Found(resolution.playlist.uri)
+            is SpotifyWebApi.PlaylistResolution.FromSearch -> SpotifyUriResolution.Found(
+                uri = resolution.uri,
+                // A distinct URI from the public catalogue, not the driver's own library -
+                // this note is [playMusic]'s honesty line for scope item 2 ("say which one it
+                // used when the answer might surprise him"), carried on the resolution itself
+                // rather than through shared state (tool dispatch is concurrent across sessions).
+                note = "Couldn't find \"$query\" among your own playlists, so I played the " +
+                    "closest match in Spotify's public catalogue" +
+                    (resolution.name?.let { " - \"$it\"" } ?: "") + ".",
             )
+            SpotifyWebApi.PlaylistResolution.NeedsAuthorization -> SpotifyUriResolution.Failed(spotifyNeedsAuthorizationResult())
+            is SpotifyWebApi.PlaylistResolution.Unauthorized -> SpotifyUriResolution.Failed(spotifyUnauthorizedResult(resolution.detail))
+            SpotifyWebApi.PlaylistResolution.Unreachable -> SpotifyUriResolution.Failed(spotifyUnreachableResult())
+            SpotifyWebApi.PlaylistResolution.NoMatch -> SpotifyUriResolution.Failed(result(
+                success = false,
+                message = "Spotify has nothing matching \"$query\".",
+            ))
+            is SpotifyWebApi.PlaylistResolution.Failed -> SpotifyUriResolution.Failed(result(
+                success = false,
+                message = "Spotify's playlist search returned an error (${resolution.code})" +
+                    (resolution.detail?.let { ": $it" } ?: "."),
+            ))
+        }
+    }
+
+    /**
+     * Plays a specific track/artist by name, in-app, via Spotify App Remote +
+     * Web API search. This is the only "play something specific" path left -
+     * the old OS-level play-from-search-intent fallback (opening a separate
+     * music app full-screen, with a floating companion badge over it) was
+     * retired with the rest of the car-launcher UI in the 2026-07-31 pivot.
+     * If Spotify isn't connected, this fails with an actionable message rather
+     * than falling back to launching another app.
+     */
+    private suspend fun playMusic(
+        context: Context,
+        query: String,
+        type: String = "song",
+        knownUri: String? = null,
+    ): JSONObject {
+        if (query.isBlank()) return result(success = false, message = "What should I play?")
+
+        // knownUri (ticket 09, scope item 2) is the "play that thing from Tuesday" path: a caller
+        // that already holds a concrete URI - today only a `legion_history` row with `replayable`
+        // true - skips name-to-URI resolution entirely. Searching anyway would risk landing on a
+        // DIFFERENT track than the one the driver actually pointed at. [query] is still carried
+        // for the spoken confirmation, so the message names what was asked for either way.
+        var fallbackNote: String? = null
+        // pickedLabel (ticket 07) is what search actually resolved to ("Discovery, Daft Punk"),
+        // not the driver's own words - a loose spoken query and the top hit can genuinely differ,
+        // and he should hear which one started, once, briefly. Null on the knownUri replay path
+        // (the query already names the legion_history row about to play) and on the playlist path,
+        // which carries its own fallback note instead.
+        val (uri, pickedLabel) = if (!knownUri.isNullOrBlank()) {
+            knownUri to null
+        } else if (type == "playlist") {
+            // Ticket 08: playlists route through the driver's OWN library cache first, falling
+            // through to public search only when nothing there matched - see
+            // [resolvePlaylistForPlay]'s own doc for why this cannot share [resolveSpotifyUri],
+            // which only ever calls Spotify's public search.
+            when (val resolved = resolvePlaylistForPlay(context, query)) {
+                is SpotifyUriResolution.Found -> {
+                    fallbackNote = resolved.note
+                    resolved.uri to null
+                }
+                is SpotifyUriResolution.Failed -> return resolved.toolResult
+            }
+        } else {
+            when (val resolved = resolveSpotifyUri(context, query, type)) {
+                is SpotifyUriResolution.Found -> resolved.uri to
+                    (resolved.subtitle?.let { "${resolved.name}, $it" } ?: resolved.name)
+                is SpotifyUriResolution.Failed -> return resolved.toolResult
+            }
         }
 
-        // playUri awaits App Remote's real result, so this genuinely means
-        // playback started - it is not just "the call didn't throw".
-        if (SpotifyController.playUri(uri)) {
+        // playUri (ticket 02, map decision 4) is the one play path: isInstalled ->
+        // ensureConnected -> connectSwitchToLocalDevice -> play(uri), and it awaits App Remote's
+        // real result, so a Started outcome genuinely means playback started - not just that the
+        // call didn't throw. SpotifyController.message/succeeded are the pure outcome -> spoken
+        // mapping (same shape as NavigationController's), so every one of the four distinct
+        // connect failures the research called for gets its own line here, never one generic one.
+        val outcome = SpotifyController.playUri(context, uri, pickedLabel = pickedLabel)
+        if (SpotifyController.succeeded(outcome)) {
             // Attributes the track NowPlayingController is about to observe to LEGION rather
             // than the driver having started it themselves - see its own doc comment.
             NowPlayingController.markLegionInitiatedPlay()
-            return result(success = true, message = "Playing \"$query\" on Spotify.")
         }
-        return result(
-            success = false,
-            message = "Spotify wouldn't start that one - it may not be playable on your account here.",
-        )
+        val succeeded = SpotifyController.succeeded(outcome)
+        // fallbackNote only ever exists on a successful playlist resolution - append it so the
+        // driver hears WHICH playlist actually played when it wasn't one of his own (ticket 08
+        // scope item 2). Never appended on failure: a failed play has nothing to caveat further.
+        val message = SpotifyController.message(outcome, query) + (fallbackNote?.takeIf { succeeded }?.let { " $it" } ?: "")
+        return result(success = succeeded, message = message)
+    }
+
+    /**
+     * `control_music`'s `queue` action (ticket 04, `.scratch/spotify-voice/issues/04-queue.md`):
+     * resolves [query] through [resolveSpotifyUri] - the identical path [playMusic] uses - then
+     * [SpotifyController.queueUri]. "Play X next" and "add X to the queue" are the same operation
+     * to Spotify (there is no insert-at-position), which is why they share one action and one
+     * spoken line ([SpotifyController.message] for [SpotifyController.QueueOutcome] says so).
+     */
+    private suspend fun controlMusicQueue(context: Context, query: String): JSONObject {
+        if (query.isBlank()) return result(success = false, message = "What should I queue?")
+
+        val uri = when (val resolved = resolveSpotifyUri(context, query, "song")) {
+            is SpotifyUriResolution.Found -> resolved.uri
+            is SpotifyUriResolution.Failed -> return resolved.toolResult
+        }
+
+        val outcome = SpotifyController.queueUri(context, uri)
+        return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, query))
+    }
+
+    /**
+     * `get_music_queue` (ticket 04 scope item 3): "what's coming up" - Spotify's OWN up-next
+     * queue via [SpotifyWebApi.getQueue]. This is the map's one net-new tool declaration across
+     * tickets 03-06 (ticket 03 scope item 4): a READ belongs as its own tool rather than folded
+     * into the WRITE-shaped `control_music` action enum, and no existing declaration's shape
+     * fits "list what's coming up" without stretching its own promise.
+     */
+    private suspend fun getMusicQueue(context: Context, args: JSONObject): JSONObject {
+        val limit = args.optInt("limit", 5).coerceIn(1, 10)
+        return libraryOutcomeToJson(context, SpotifyWebApi.getQueue(context, limit), "the upcoming queue") { t ->
+            JSONObject().put("name", t.name).put("artist", t.artist)
+        }
     }
 
     /**
@@ -5217,6 +5772,7 @@ object LiveToolbox {
                 JSONObject().put("name", t.name).put("artist", t.artist)
             }
             "legion_history" -> browseLegionHistory(context, limit)
+            "artist_albums" -> browseArtistAlbums(context, limit)
             else -> result(success = false, message = "Unknown source: $source")
         }
     }
@@ -5285,6 +5841,25 @@ object LiveToolbox {
     }
 
     /**
+     * `artist_albums` source of [browseMyMusic] (ticket 13, scope item 2): "what else does he
+     * have" - the CURRENT track's artist, read via [SpotifyController.currentArtist] (never a
+     * guess - see its own doc), then [SpotifyWebApi.getArtistAlbums]. Every returned item carries
+     * its own `spotifyUri` (ticket 13 scope item 3): `play_music` can be handed one directly to
+     * play "his album X" resolved within THIS artist's own catalogue, never through open search.
+     */
+    private suspend fun browseArtistAlbums(context: Context, limit: Int): JSONObject {
+        val artist = SpotifyController.currentArtist() ?: return result(
+            success = false,
+            message = "I can't tell who's playing right now, so I don't know whose albums to " +
+                "look up - play something on Spotify first, then ask again.",
+        )
+        val outcome = SpotifyWebApi.getArtistAlbums(context, artist.uri, limit)
+        return libraryOutcomeToJson(context, outcome, "${artist.name}'s albums") { a ->
+            JSONObject().put("name", a.name).put("spotifyUri", a.uri)
+        }
+    }
+
+    /**
      * `legion_history` source of [browseMyMusic] - LEGION's OWN observed-listening log
      * ([com.kevin.legion.data.local.MusicPlayHistoryEntry]), never Spotify's. Every path out of
      * this function says so in words, including the empty-table case: "nothing recorded yet" is
@@ -5310,7 +5885,16 @@ object LiveToolbox {
                 JSONObject()
                     .put("title", e.title)
                     .put("artist", e.artist)
-                    .put("startedByLegion", e.startedByLegion),
+                    .put("startedByLegion", e.startedByLegion)
+                    // Ticket 09 (`.scratch/spotify-voice/issues/09-history-uri.md`): a row logged
+                    // before App Remote's player state was wired in (or one observed off a
+                    // non-Spotify session) carries no URI. `replayable` is handed over pre-computed
+                    // rather than left for the model to derive from a JSON null, so there is no
+                    // path where a null spotifyUri quietly reads as "sure, play it" - see
+                    // play_music's spotifyUri param and this tool's own description for how the
+                    // model is told to act on it.
+                    .put("spotifyUri", e.spotifyUri ?: JSONObject.NULL)
+                    .put("replayable", e.spotifyUri != null),
             )
         }
 
@@ -5325,11 +5909,56 @@ object LiveToolbox {
         return result(
             success = true,
             message = "This is LEGION's OWN observed-listening log on this device, not Spotify's " +
-                "history." + (favouriteNote?.let { " $it" } ?: ""),
+                "history." + (favouriteNote?.let { " $it" } ?: "") + (replayabilityNote(recent)?.let { " $it" } ?: ""),
         ).put("items", items)
     }
 
+    /**
+     * ADR 0031's outcome-asserting-vocabulary clause applied to a READ path (ticket 09, scope
+     * item 4): a null-URI row can be NAMED but never REPLAYED, and that has to be said in words
+     * to the model reading this result, not left for it to infer from a JSON `null`. Returns null
+     * (no note appended) only when every row in [recent] already carries a URI, so the note never
+     * shows up as noise on a history that has nothing to caveat.
+     *
+     * Pure and `internal` so the exact wording is a plain JVM unit test rather than something
+     * only checkable by reading a live tool result off a real turn.
+     */
+    internal fun replayabilityNote(recent: List<MusicPlayHistoryEntry>): String? {
+        if (recent.none { it.spotifyUri == null }) return null
+        return "Rows with spotifyUri null were never observed with a resolvable Spotify URI - " +
+            "you can tell the driver what they were, but say plainly you can't play them again " +
+            "from here. Never search for a title to invent a URI for one; a guess that plays the " +
+            "wrong song is worse than an honest no."
+    }
+
     /** Brings our own app to the foreground on request. */
+    /**
+     * Hands a destination to the phone's map app via [NavigationController].
+     *
+     * Ticket 03 of `.scratch/drive-test-2026-08-18/` exists because the assistant told Kevin, on
+     * a real drive, that it had opened Maps when the app had no navigation capability at all -
+     * with nothing to call, the model produced a plausible sentence. So the load-bearing rule
+     * here is that success is DERIVED from whether `startActivity` actually ran, exactly like
+     * `set_odometer`/`log_service`'s no-op guard: a tool that returns true unconditionally would
+     * reproduce the original bug behind a tool call instead of in front of one.
+     *
+     * The map-pin fallback returns success WITH a message, because something real but lesser
+     * happened and the driver has to be told which one they got.
+     */
+    private fun openNavigation(context: Context, args: JSONObject): JSONObject {
+        val destination = args.optString("destination").trim()
+        val mode = if (args.optString("mode", "navigate") == "show") {
+            NavigationController.Mode.SHOW
+        } else {
+            NavigationController.Mode.NAVIGATE
+        }
+        val outcome = NavigationController.launch(context, destination, mode)
+        return result(
+            success = NavigationController.succeeded(outcome),
+            message = NavigationController.message(outcome, destination),
+        )
+    }
+
     private fun showApp(context: Context): JSONObject {
         val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT) }

@@ -4153,6 +4153,31 @@ track for my goals."*
 | 3 | `AdvisorAgent` is the brain. No second thing reasons about goals. | Kevin |
 | 4 | Goal SETTING is in scope, over a recommendation to exclude it - the map owns the whole loop, stated through retired. Accepted cost: overlaps the advisor and pushes the destination further out. | Kevin |
 
+## 2026-08-18 - Reading Kevin's own Spotify library (.scratch/drive-test-2026-08-18, ticket 05, BUILT)
+
+Ticket: `.scratch/drive-test-2026-08-18/issues/05-reading-kevins-spotify-library.md` (resolved).
+
+Asked on 2026-08-18: the obstacle was not the code but the re-auth trap. Adding scopes for `user-library-read`, `user-read-recently-played`, and `user-top-read` invalidates an existing grant by design, because `isAuthorized` compares the granted scope string against the current `SCOPES` constant as an equality check. Kevin's three calls:
+
+| # | Question | Answer | Consequence |
+|---|---|---|---|
+| 1 | When does the re-auth land? | **Now.** He is at a desk, not driving, which is the only condition that mattered. | The Setup screen now reads "Needs re-approving" with copy saying nothing was lost. Both music tools fail in words naming the same cause. Re-auth trap was handled, not just noted. |
+| 2 | Spotify's history, or LEGION's own? | **Both.** `recently_played` and the top rankings are Spotify's; `legion_history` is LEGION's own. | New table `MusicPlayHistoryEntry` added (v26 migration). `MusicPlayHistoryEntry.spotifyUri` is always null—MediaSession metadata carries no URI and App Remote's player state is not wired in. Documented on the entity. |
+| 3 | Does `play_music` gain album/playlist? | **Yes** - widen the search, not narrow the description. | Tracks-only search widened to include albums and playlists. A honesty bug was fixed in passing: `play_music`'s description advertised "song, artist, album, or playlist" but the implementation searched tracks only. |
+
+Built in a19ab4d (the history table) and 18e881c (the library reads and the tool).
+
+**One tool, not five.** `browse_my_music(source, limit)` with `source` in `saved_albums`, `recently_played`, `top_artists`, `top_tracks`, `legion_history`. There are already 89 tools and a bloated surface makes the live model worse at choosing; five near-identical declarations would have worsened that for no gain.
+
+**Whose numbers they are is written into the tool description.** Spotify's rankings are named as Spotify's and as covering every device Kevin uses Spotify on. `legion_history` is named as LEGION's own observation of this device only, and any "favourite" drawn from it as LEGION's inference from what it happened to see. A failure states its cause and is never allowed to read as "you have nothing".
+
+### Verification state (still owed)
+
+- **On-device QA.** Nothing here has touched a real Spotify account. The four endpoints, album and playlist search against real results, and the re-auth flow are all `reasoned`, never `tested`.
+- `MusicPlayHistoryEntry.spotifyUri` is always null. Documented on the entity.
+- `LIBRARY_LIMIT = 10` is inherited by inference. `SEARCH_LIMIT` was probed value-by-value on 2026-08-12; this ceiling was not, and says so.
+- The v25 to v26 migration test compiles but has never run. `connectedAndroidTest` would uninstall the app and consume Kevin's real data.
+
 ---
 
 ## 2026-08-02 - Safety amendment: blanket sentience ban lifted (filed late 2026-08-18)
@@ -4193,4 +4218,35 @@ Decided by Kevin. `.claude/skills/domain-modeling/ADR-FORMAT.md` and `SKILL.md` 
 - Room is v25 not v21 (and `CarDatabase.kt`'s own KDoc says v15 in a third place).
 - `ui/` is 87 files not a clean slate.
 - The safety amendment citation pointed at nothing (entry above, filed same day).
+
+## 2026-08-19 - Honesty when no tool exists (.scratch/drive-test-2026-08-18, ticket 04, BUILT)
+
+Decided by Kevin. **The problem:** the prompt's existing rule "always call the matching tool before claiming you've done something" cannot bind where NO tool exists. Kevin asked the assistant for navigation on a real drive; no navigation tool existed; the model said "opening it" and nothing opened. Building ticket 03's navigation tool closed the instance, not the class.
+
+**Evidence gathered before deciding, all traced:**
+
+- `sharedInstructions` (the honesty rules) live in `ai/AriaBrain.kt`, NOT in `Personas.kt` - ticket 04's premise that they lived per-persona was wrong. Personas.kt carries register only.
+- Nothing in the repo tested `sharedInstructions` at all.
+- `outputAudioTranscription` (the companion's own speech transcript) is OFF by default and only enabled by the debug-subtitle toggle, because it costs tokens every turn.
+
+**Kevin's three calls:**
+
+1. **GUARD:** prompt clause only. A detector was costed and DECLINED. It would need always-on output transcription (token cost every turn on his own key) and could only catch a false claim after the fact, never prevent one, since the audio is already streamed by the time the sentence exists. Stated honestly: a prompt rule is the only lever that can prevent this, and it is weaker than a gate.
+2. **REGISTER:** say plainly it cannot, then offer the nearest thing it genuinely can do. The trap, written into the clause itself: the alternative must itself be a real tool, or the invention has just moved one sentence later.
+3. **REGRESSION CHECK:** a unit test that the clause is PRESENT. An offline eval against Kevin's key that tests obedience was offered and declined (cost per run, hand-run, would never run in the suite).
+
+**Decided implementation, not asked:**
+
+- No negative list of what LEGION cannot do (correct only until the next tool lands, burns tokens describing absences). The rule is conditioned on the TOOL RESULT instead, so it scales as the toolset grows.
+- The method is copied from the garage relay clause - a forbidden-vocabulary list ("done, started, sent, opened, booked, played, set"), not an appeal to care - which is the one honesty rule in the file that has never failed.
+- An UNSUCCESSFUL tool result is explicitly treated as no tool at all, which is what connects the clause to ticket 03's requirement 5.
+
+**Built:**
+
+- CANNOT_CLAUSE and SHARED_INSTRUCTIONS moved to file scope in `ai/AriaBrain.kt` (so a test can read them with no Context, Room or Bluetooth).
+- 5 tests in AriaBrainHonestyClauseTest covering the wiring, the forbidden verbs, the no-enumeration property, the nearest-thing rule, and the four PRE-EXISTING honesty rules that nothing had ever guarded.
+- The guard was PROVEN to fail before being trusted: unwiring CANNOT_CLAUSE was run and the test failed.
+- Full suite 1646 tests, 0 failures.
+
+**Standing consequence:** presence is guarded, obedience is not, and a green suite is not evidence the assistant told the truth on a drive.
 

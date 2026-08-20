@@ -69,12 +69,49 @@ says so in its own message; it explicitly did not touch the second.
 
 <!-- one line per closed ticket -->
 
+- [What the assistant must say when it cannot do something](issues/04-what-the-assistant-says-when-it-cannot.md)
+  — **Decided and built 2026-08-19.** A forbidden-vocabulary clause in `sharedInstructions`, the
+  garage relay's method: outcome verbs may only follow a tool call that came back successful, and an
+  unsuccessful result is the same as no tool at all. No list of what LEGION cannot do - the rule is
+  conditioned on the tool RESULT, so it scales with the toolset. Kevin's register call: say it
+  cannot, then offer the nearest thing it genuinely can, never an invented one. **Kevin declined
+  both a runtime detector** (always-on transcription, token cost every turn, catches after the fact
+  and cannot prevent) **and an obedience eval.** So presence is guarded by a test and obedience is
+  not guarded at all - written down as the position, not left implied.
+
+- [The assistant said it opened Maps. There is no map feature at all.](issues/03-no-navigation-capability.md)
+  — **Built and verified on the phone 2026-08-19.** `open_navigation` fires `google.navigation:`/`geo:`
+  at the driver's own map app through `location/NavigationController`, with success DERIVED from
+  whether `startActivity` ran - the load-bearing requirement, since a tool that always reports
+  success would only move the original bug behind a tool call. Turn-by-turn that cannot be served
+  falls back to a map pin and says so. Kevin ran the on-device checks and reported them passed.
+
 - [A conversation waits for the driver, not a ten-second timer](issues/01-conversation-waits-for-the-driver.md)
   — **Fixed in `1e3ee04`, not re-tested on a drive.** The `vadMode` branch of `turnComplete` no
   longer arms an idle timer; `armIdleTimeout` now governs speak-only sessions only. Kevin's call,
   asked directly: a hands-free conversation waits indefinitely. Accepted consequence, written into
   the commit: a forgotten conversation holds a live mic and a billed session until the service is
   torn down.
+
+## What is left: one drive
+
+**Every ticket on this map is decided and built. Ticket 03 is verified on the phone (Kevin,
+2026-08-19); the rest are not verified in a car.** This is the whole remaining list, in the order it
+is quickest to walk:
+
+- **04, the honesty clause.** Ask for something LEGION genuinely cannot do (booking a table, sending
+  a text). It must say it cannot, offer only something it really has, and never use an outcome verb.
+  **This is the one item no test on any machine can close** - presence is guarded, obedience is not.
+- **01, the conversation timer.** Hold a conversation across a long silence and confirm the mic is
+  still live. Fixed in `1e3ee04`, never re-driven.
+- **02, context across a socket death.** Talk long enough to cross a `goAway`, then confirm the
+  thread survives the handover. Built in `0e3319b`; neither the margin nor a real resume has ever
+  been observed.
+- **05, Spotify.** Complete the re-approval on Setup FIRST, at a desk. Then ask for saved albums,
+  recently played and top artists, and play a named album and confirm the whole album plays rather
+  than one track off it. **Nothing here has touched a real Spotify account.**
+
+The map closes when that drive has happened, not when the tickets read resolved.
 
 ## Not yet specified
 

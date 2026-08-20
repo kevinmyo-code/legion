@@ -3,7 +3,61 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
+## START HERE - 2026-08-19 (late) - SPOTIFY VOICE, BUILT AND NOT INSTALLED
+
+**Ten of twelve tickets on `.scratch/spotify-voice/` are built, merged to `dev` and pushed. NOT ONE
+of them has run on a phone.** Suite 1747 green. Everything below is `built`+`tested`, nothing is
+`on-device`.
+
+**Two things to do FIRST, in this order:**
+1. **Re-approve Spotify in Setup.** `SCOPES` went 4 -> 13 (ticket 01), so the existing grant is stale
+   BY DESIGN and `play_music` refuses until the browser hop is done. Do it at a desk. If it is
+   discovered in the car, ticket 01 failed at its own purpose.
+2. **Install from the OTHER laptop.** This machine's debug keystore differs from the one that signed
+   the install on the A25, so `adb install -r` from here cannot update it. **NEVER uninstall to get
+   around that** - `sync/` has still never executed, so the phone holds the only copy of 18,645 OBD
+   samples, 148 ledger rows and the Keystore-sealed Gemini key. Kevin chose to pull and install from
+   the laptop that has the key.
+
+**What landed:** the App Remote spine (it CREATES an active device rather than needing one, so
+asking for music with Spotify closed should now work - **the headline claim, never run**), a
+20-action `control_music` (queue, like, unlike, follow, shuffle, repeat, seek, restart, add to
+playlist, more from this artist), playlists matched against his OWN library before the catalogue,
+now-playing read from Spotify's own pushed state, `play_music` naming what it actually picked, and
+`legion_history` rows that can finally be replayed.
+
+**Left:** ticket 11 (the recommender - Kevin's own call: least important thing on the map) and
+ticket 12 (ship pass, which is the on-device test list).
+
+**Two numbers nobody has measured:** the playlist fuzzy-match threshold (0.6) and its cache TTL
+(15 min). Both were tuned against unit tests, never against a spoken transcript.
+
+**A research claim was DOWNGRADED:** the "Feb-2026 dev-mode cull" in
+`.scratch/spotify-voice/research/01-api-capability-surface.md` could not be re-verified from primary
+docs, and a confirmed-dead endpoint renders an identically normal reference page - so page
+appearance proves nothing. `/artists/{id}/albums` may 403 on the real Client ID; ticket 13 degrades
+to an honest spoken failure if it does.
+
+## START HERE - 2026-08-19
+
+**Second laptop is live** (`C:\Users\kevin\AndroidStudioProjects\legion`, Studio at the default
+`C:\Program Files\Android\Android Studio`). Builds and the full suite run there; **the A25 has
+never been plugged into it**, so nothing built there can be verified on-device from there.
+
+**`open_navigation` shipped to `dev` (`b210ac3`, merged `6513ec3`)** - drive-test ticket 03. The
+assistant could not open a map at all and said it had; now `location/NavigationController` fires
+`google.navigation:`/`geo:` and its success is derived from whether `startActivity` ran.
+**Every on-device box on that ticket is still unticked.**
+
+**The suite is GREEN: 1641 tests, 0 failures.** `BioDigestBuilderTest` passes now - the
+"known-failing, pre-existing" line below is STALE, do not repeat it.
+
 ## START HERE - 2026-08-18 night
+
+**SWEPT 2026-08-19: all 39 open tickets across 9 maps were verified against the tree by five
+readers. Exactly ONE was stale** (quant-viz 17, four of its five decisions built; narrowed to the
+fifth). Everything else is genuinely open, waiting on Kevin, or waiting on a device, a car or a USB
+cable. **The repo is NOT ahead of its docs this time** - the tickets' own notes were honest.
 
 **Everything below is committed on `feat/mission-control` and installed on the A25, hash-verified.**
 Nothing has been looked at on the phone. That is the whole outstanding risk.
@@ -16,9 +70,11 @@ Nothing has been looked at on the phone. That is the whole outstanding risk.
 2. **The alarm pane's contrast, on the phone.** It is the first thing in the app to read
    `errorContainer`. That colour colliding with `surface` is what once drew every screen's body text
    in quarantine red, and only an APK install caught it.
-3. **`.scratch/proactive-mode/issues/09-fgs-start-delay.md`** - the only `bug` ticket on any map. A
-   boot-started service taking 123s to call `startForeground` against a 10s window is a crash, not a
-   decision.
+3. ~~**`.scratch/proactive-mode/issues/09-fgs-start-delay.md`** - a 123s `startForeground` is a
+   crash~~ **STALE. Downgraded by its own author in `65884a0` (2026-08-17) and still open as a
+   MISREADING CANDIDATE**: a second `dumpsys` read showed `startForegroundDelayMs:554912` on a
+   demonstrably healthy running service, so the field's meaning is unestablished. `startForegroundCompat()`
+   is already first in `onCreate`. Unfixed AND unconfirmed as a bug - do not report it either way.
 
 **Shipped tonight, all unverified on-device:** driver-editable playbooks + one priming resolver for
 both answer paths; a memory screen (read + delete) and a playbook editor; temperature as a Setup

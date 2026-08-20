@@ -13,6 +13,8 @@ import androidx.core.app.NotificationManagerCompat
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MusicPlayHistoryEntry
 import com.kevin.legion.service.MediaNotificationListener
+import com.spotify.protocol.types.PlayerState
+import com.spotify.protocol.types.Track
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -87,6 +89,13 @@ object NowPlayingController {
     internal const val PLAY_HISTORY_DEDUP_WINDOW_MS = 120_000L
 
     /**
+     * Spotify's own package, duplicated here rather than imported from [com.kevin.legion.media.SpotifyController]
+     * (which keeps its own copy private) - matches [MusicController]'s same duplication, both
+     * places small enough that a shared constant isn't worth a new coupling.
+     */
+    private const val SPOTIFY_PACKAGE = "com.spotify.music"
+
+    /**
      * How long after [markLegionInitiatedPlay] a newly observed track is attributed to LEGION
      * itself rather than to the driver starting something unprompted. Generous enough to cover
      * App Remote's own round trip plus the MediaSession callback landing after it, tight enough
@@ -127,6 +136,37 @@ object NowPlayingController {
     }
 
     /**
+     * Resolves the Spotify URI to store for [candidate], if App Remote's own player-state
+     * [track] genuinely matches the MediaSession observation that produced it - ticket 09
+     * (`.scratch/spotify-voice/issues/09-history-uri.md`) spending ticket 02's
+     * [SpotifyController.playerState] wiring. Pure and internal for the same reason
+     * [shouldLogHistoryEntry] is: a plain JVM unit test, no Android or App Remote connection
+     * needed (both [Track] and its nested [com.spotify.protocol.types.Artist] are plain POJOs
+     * with no Android dependency - confirmed by decompiling the bundled `classes.jar`).
+     *
+     * Two checks, both load-bearing:
+     * - [sourcePackage] must be Spotify's own package. MediaSession metadata from a NON-Spotify
+     *   player (phone AVRCP, another app) must never pick up whatever URI App Remote happens to
+     *   be holding, even if title and artist happen to coincide.
+     * - [track]'s own name/artist must equal [candidate]'s. MediaSession's callback and App
+     *   Remote's push are two independent event streams that can observe a track change
+     *   microseconds apart, so [track] can legitimately be one step stale relative to
+     *   [candidate] at the instant this runs - the equality check is what stops a stale [track]
+     *   from being attached to the wrong row.
+     *
+     * Ticket 09 is explicit that a wrong URI is worse than no URI (the same reasoning as its
+     * ban on backfilling old null rows by searching titles) - on ANY mismatch this returns
+     * null, same as "unknown", never a best guess.
+     */
+    internal fun resolveSpotifyUri(sourcePackage: String?, candidate: LoggedTrack, track: Track?): String? {
+        if (sourcePackage != SPOTIFY_PACKAGE) return null
+        if (track == null) return null
+        if (track.name != candidate.title) return null
+        if (track.artist?.name != candidate.artist) return null
+        return track.uri
+    }
+
+    /**
      * Writes a [MusicPlayHistoryEntry] for [info] if [shouldLogHistoryEntry] says this is a new
      * observation, not a re-fire on the same track. Best-effort and fire-and-forget on
      * [ioScope]: a history-write failure must never take down playback observation, which is why
@@ -135,8 +175,13 @@ object NowPlayingController {
      * [info] can be null (session gone) or carry the metadata sentinel `"Unknown title"`
      * [NowPlayingInfo.title] falls back to when the MediaSession reported no title at all -
      * neither is a real track, so neither is logged.
+     *
+     * [sourcePackage] is the package of the [android.media.session.MediaController] that
+     * produced [info] ([pickController]'s selection) - the sole input [resolveSpotifyUri] needs
+     * to tell a Spotify-sourced observation from any other player's. Non-Spotify audio always
+     * writes [MusicPlayHistoryEntry.spotifyUri] null here, correctly - there is no URI to have.
      */
-    private fun maybeLogHistory(info: NowPlayingInfo?) {
+    private fun maybeLogHistory(info: NowPlayingInfo?, sourcePackage: String?) {
         if (info == null) return
         val title = info.title
         if (title.isBlank() || title == "Unknown title") return
@@ -150,6 +195,11 @@ object NowPlayingController {
         // See markLegionInitiatedPlay's own doc: within the attribution window, this observed
         // change is attributed to a LEGION-initiated play rather than the driver's own.
         val startedByLegion = now - legionInitiatedAt <= LEGION_INITIATED_ATTRIBUTION_WINDOW_MS
+        // Read HERE, not inside the launched coroutine below: App Remote's playerState can move
+        // on between now and when that coroutine actually runs, and resolveSpotifyUri's equality
+        // check is what this instant's candidate was compared against - reading it again later
+        // would compare against a DIFFERENT moment than the one that produced startedByLegion.
+        val spotifyUri = resolveSpotifyUri(sourcePackage, candidate, SpotifyController.playerState.value?.track)
         ioScope.launch {
             try {
                 CarDatabase.getDatabase(ctx).musicPlayHistoryDao().insert(
@@ -157,10 +207,7 @@ object NowPlayingController {
                         title = title,
                         artist = info.artist,
                         album = info.album,
-                        // NowPlayingController has no URI source today - MediaSession metadata
-                        // doesn't carry one, and App Remote's own playerApi state wasn't wired
-                        // in here. Always null for now; see MusicPlayHistoryEntry's own doc.
-                        spotifyUri = null,
+                        spotifyUri = spotifyUri,
                         startedAt = now,
                         startedByLegion = startedByLegion,
                     ),
@@ -208,6 +255,67 @@ object NowPlayingController {
         } catch (e: SecurityException) {
             // Notification access not granted yet.
         }
+
+        // ticket 07 (.scratch/spotify-voice/issues/07-now-playing-truth.md): App Remote's
+        // subscribeToPlayerState (ticket 02) is Spotify's OWN truth - pushed the instant Spotify's
+        // player changes, no polling, no quota - so it is listened to DIRECTLY here rather than
+        // only being read opportunistically inside updateState. This matters because the two
+        // event streams (MediaSession's callback and App Remote's push) are independent and can
+        // land microseconds apart; without this collector, "what's playing" would only refresh
+        // when MediaSession's OWN callback happened to fire next, which is exactly the "whatever
+        // the player app chose to publish" staleness this ticket exists to close. Gated on Spotify
+        // actually being the CURRENTLY SELECTED source ([isSpotifyActive]) so a push arriving while
+        // some other app is playing (or before any session has been chosen at all) never overwrites
+        // [_state] with Spotify data nobody asked to hear about.
+        //
+        // Guarded by its OWN flag, not [initialized]: [init] is "safe to call repeatedly - retries
+        // until notification access is granted" per this function's own doc, so a caller may invoke
+        // it several times before [initialized] ever flips true. Gating this collector on
+        // [initialized] instead would either delay it indefinitely behind a permission this
+        // collector doesn't need, or (worse) launch a fresh duplicate collector on every retry.
+        if (!spotifyCollectorStarted) {
+            spotifyCollectorStarted = true
+            ioScope.launch {
+                SpotifyController.playerState.collect { onSpotifyPlayerStateChanged(it) }
+            }
+        }
+    }
+
+    @Volatile private var spotifyCollectorStarted = false
+
+    /** True when the [MediaSessionManager] session currently selected as the source is Spotify's own. */
+    private fun isSpotifyActive(): Boolean = activeController?.packageName == SPOTIFY_PACKAGE
+
+    /** See the doc on the collector in [init] this backs. */
+    private fun onSpotifyPlayerStateChanged(state: PlayerState?) {
+        if (state == null || !isSpotifyActive()) return
+        _state.value = infoFromPlayerState(state, _state.value)
+    }
+
+    /**
+     * Builds [NowPlayingInfo] straight from App Remote's [PlayerState] (ticket 07) rather than
+     * MediaSession metadata, for every field App Remote actually reports. [previous] supplies the
+     * album-art fields: App Remote's own [com.spotify.protocol.types.ImageUri] is a `spotify:image:...`
+     * URI that needs a further `ImagesApi` round trip to resolve to bytes, which this ticket does
+     * not ask for - carrying the last art MediaSession found forward is strictly better than
+     * dropping it, and wrong only in the rare case the track changed between the two callbacks,
+     * which self-corrects the next time MediaSession's own metadata update lands.
+     */
+    internal fun infoFromPlayerState(state: PlayerState, previous: NowPlayingInfo?): NowPlayingInfo {
+        val track = state.track
+        val isPlaying = !state.isPaused
+        return NowPlayingInfo(
+            title = track?.name?.takeIf { it.isNotBlank() } ?: "Unknown title",
+            artist = track?.artist?.name.orEmpty(),
+            album = track?.album?.name.orEmpty(),
+            isPlaying = isPlaying,
+            isActive = isPlaying,
+            position = state.playbackPosition,
+            duration = track?.duration ?: 0L,
+            albumArtUri = previous?.albumArtUri,
+            playbackStateRaw = if (isPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED,
+            artSource = previous?.artSource ?: "none",
+        )
     }
 
     // Wrapped in try/catch: this re-enters on every cross-package session change
@@ -295,19 +403,30 @@ object NowPlayingController {
                 else -> "none"
             }
 
-            _state.value = NowPlayingInfo(
-                title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "Unknown title",
-                artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "",
-                album = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM) ?: "",
-                isPlaying = rawState == PlaybackState.STATE_PLAYING,
-                isActive = isActive,
-                position = playbackState?.position ?: 0L,
-                duration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION),
-                albumArtUri = artUri,
-                playbackStateRaw = rawState,
-                artSource = artSource,
-            )
-            maybeLogHistory(_state.value)
+            // ticket 07: when THIS controller is Spotify's own AND App Remote already holds a
+            // pushed PlayerState, that state is Spotify's OWN truth and wins over whatever
+            // MediaSession's metadata happens to say - see [infoFromPlayerState]'s own doc for why
+            // art is still taken from metadata rather than App Remote. Every non-Spotify session
+            // (and a Spotify session before App Remote's first push lands) is completely unchanged
+            // from before this ticket: built from MediaSession metadata exactly as always.
+            val spotifyState = if (controller.packageName == SPOTIFY_PACKAGE) SpotifyController.playerState.value else null
+            _state.value = if (spotifyState != null) {
+                infoFromPlayerState(spotifyState, _state.value).copy(albumArtUri = artUri, artSource = artSource)
+            } else {
+                NowPlayingInfo(
+                    title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "Unknown title",
+                    artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "",
+                    album = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM) ?: "",
+                    isPlaying = rawState == PlaybackState.STATE_PLAYING,
+                    isActive = isActive,
+                    position = playbackState?.position ?: 0L,
+                    duration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION),
+                    albumArtUri = artUri,
+                    playbackStateRaw = rawState,
+                    artSource = artSource,
+                )
+            }
+            maybeLogHistory(_state.value, controller.packageName)
 
             // Most apps (Spotify, YT Music) embed art as a Bitmap in METADATA_KEY_ALBUM_ART
             // rather than a content URI. If there's no URI, write the bitmap to the cache

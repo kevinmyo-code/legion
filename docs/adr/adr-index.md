@@ -44,6 +44,7 @@ Format and the test for whether something deserves an ADR:
 | 0028 | [[0028-driver-editable-doctrine\|Domain doctrine is a file the driver can edit]] | accepted | 2026-08-18 | - |
 | 0029 | [[0029-one-gate-for-proactive-speech\|One gate for unprompted speech, and nothing is exempt]] | accepted | 2026-08-18 | - |
 | 0030 | [[0030-retired-carry-overs\|What did not survive the port, and why]] | locked | 2026-07-31 | - |
+| 0031 | [[0031-speech-honesty-clause\|The assistant may not assert an outcome it did not observe]] | accepted | 2026-08-19 | - |
 
 ## Superseded
 

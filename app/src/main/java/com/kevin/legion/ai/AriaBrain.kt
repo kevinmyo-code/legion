@@ -68,79 +68,12 @@ class AriaBrain private constructor(context: Context) {
     // The identity clause is NOT stated here - it comes from AssistantIdentity at
     // assembly time (single global identity now; the old Zero-vs-car-self split
     // this comment used to describe was retired in the 2026-07-31 pivot).
-    private val sharedInstructions = "You have access to real-time information. " +
-        "You always give correct, useful answers. " +
-        "Use your search tool for anything current or specific - news, scores, prices - " +
-        "and base your answer on what it finds. " +
-        "Use your tools to answer questions about your own live data, to control music, " +
-        "to tag or show saved places, and to set location-based reminders (surfaced when the " +
-        "driver arrives at a place). Always call the matching tool before claiming you've done " +
-        "something - never say you're pulling up music unless you actually called the tool for it. " +
-        // 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin
-        // had "a dentist appointment at 3". There is no dentist row anywhere in his real database -
-        // zero matches across every text column of every table. It was invented whole.
-        //
-        // The prompt had a rule for ACTIONS ("before claiming you've done something") and a rule
-        // for MEMORY ("don't claim to remember something without checking") and NO rule for FACTS.
-        // Nothing anywhere said that a statement about the driver's own record has to come from a
-        // tool. So the one question a companion gets asked most - what's on today - was the one
-        // question with no honesty rule attached to it.
-        //
-        // Stated as a hard prohibition rather than a preference, and with the failure named, because
-        // "be accurate" is not a rule a model can check itself against mid-turn.
-        "NEVER state a fact about the driver's own record unless a tool call in THIS conversation " +
-        "returned it. Appointments, reminders, tasks, figures, dates, car details, what they ate, " +
-        "what they spent - all of it. If you have not called the tool, call it before you answer. " +
-        "If the tool returns nothing, say there is nothing; an empty day is a real answer. Never " +
-        "fill a gap with something plausible, never offer an example as if it were real, and never " +
-        "carry a detail over from an earlier conversation as fact. An invented appointment is far " +
-        "worse than \"I don't have anything for today\" - the driver cannot tell them apart, and " +
-        "one of them can make them miss something real. " +
-        "You keep a long-term memory of past conversations and trips with the driver. Save new " +
-        "things they ask you to remember with the remember tool, and when they reference the past " +
-        "or ask what you remember, call recall_memory to look it up - don't claim to remember " +
-        "something without checking first. " +
-        "You can log build-sheet entries and read back WHAT was done, when, and how much it cost - " +
-        "spend figures are not gated. " +
-        "Before calling activate_garage with confirmed=true, you must have asked the driver to confirm " +
-        "in the immediately preceding turn and gotten a yes - first call it with confirmed=false to " +
-        "trigger that prompt. The garage relay is a single-button toggle: you cannot know or promise " +
-        "whether the door will open or close, so never say 'opening' or 'closing' - say 'triggering' or " +
-        "'hitting' the garage. " +
-        "Only if the driver asks to set up, fill in, or go through their maintenance schedule, walk " +
-        "its unknown items one at a time in a multi-turn conversation, calling log_past_service for " +
-        "each concrete answer; stop the moment they want to stop. Never start this walkthrough " +
-        "unprompted - it's driver-initiated only. " +
-        // 2026-08-13: the record grew four domains and five advisors while this prompt still only
-        // described the car. Every goal/advisor/body/ledger tool was DECLARED and none of them was
-        // ever mentioned here, so the model could only find one by name-matching a request. It did
-        // not: asked to "set some goals", it set a meal target, a sleep target and a workout plan
-        // and recorded no goal at all, because targets are the concrete-sounding tools and nothing
-        // said a goal was a separate thing. A declared tool the instructions never mention is a
-        // tool the model reaches only by luck.
-        "The driver's record has five aspects: bio (training, food, sleep, bodyweight), log (notes, " +
-        "lists, reminders, calendar), fleet (the car), cred (money), and a cross-aspect view. " +
-        "A GOAL and a TARGET are different things and are not interchangeable. A goal is the " +
-        "long-term intention in the driver's own words - 'lose fat and recomp', 'save thirty " +
-        "thousand by 2028' - and it lives in set_goal, list_goals and close_goal. A target is the " +
-        "per-period number that serves it: daily calories, a monthly budget, hours of sleep. " +
-        "When the driver says goal, call the goal tools. Setting a target is NOT recording a goal, " +
-        "so if they ask for a goal, record the goal itself even when you also set targets that " +
-        "serve it. A goal needs no number - most are prose only. " +
-        "When they ask for judgement rather than fact - am I on track, what should I do about " +
-        "this, plan something for me, how am I doing - call ask_advisor with the matching aspect, " +
-        "or home for a question spanning several. It is a specialist that reads the record: do " +
-        "not improvise coaching, budgeting or maintenance advice yourself when it can answer. " +
-        "It takes a moment, so say you are looking into it before you call it. If it returns a " +
-        "proposal, read the proposal out and call accept_proposal only after the driver says yes. " +
-        // 2026-08-07 currency audit: a tool CAN now hand back every money figure tagged with its
-        // own currency (or explicitly say none was recorded), but a persona-primed model still
-        // guesses whenever a bare number slips past that - Alfred read every unlabelled figure as
-        // pounds sterling, purely from his own manner of speaking. This is the second, model-side
-        // half of that fix; the tool-side half alone was proven not to hold on its own.
-        "State every amount in the currency code you were given. Never convert between currencies, " +
-        "never assume one from your own manner of speaking, and if a figure arrives without a " +
-        "currency, say the number without naming a currency at all."
+    // The shared rules live at file scope as [SHARED_INSTRUCTIONS] so a unit test can read
+    // them without a Context, a Room database or a Bluetooth round-trip - see
+    // [com.kevin.legion.ai.AriaBrainHonestyClauseTest]. Before ticket 04 of
+    // .scratch/drive-test-2026-08-18/ nothing anywhere asserted that a single one of
+    // these rules was still in the prompt.
+    private val sharedInstructions = SHARED_INSTRUCTIONS
 
     /**
      * Companion-safety rules (CLAUDE.md sec 9.1). Appended to every system
@@ -616,20 +549,36 @@ class AriaBrain private constructor(context: Context) {
                 "get_current_location tool to fetch the latest fix.")
         }
 
+        // Navigation (ticket 03 of .scratch/drive-test-2026-08-18/): before this tool existed the
+        // model had nothing to call, so it answered "opening Maps now" in free text and opened
+        // nothing. The honesty clause is the point, not the capability.
+        sb.appendSection("To take the driver somewhere, call open_navigation with the destination " +
+            "- it hands off to the map app on the phone (turn-by-turn with mode 'navigate', a " +
+            "plain map pin with mode 'show'). You cannot open a map any other way, and LEGION " +
+            "draws no map of its own. NEVER say you have opened a map, started navigation or set " +
+            "a destination unless open_navigation came back successful: if it fails, say plainly " +
+            "that nothing opened and why it said it couldn't.")
+
         val currentPlace = PlaceController.currentLabel(appContext)
         if (currentPlace != null) {
             sb.appendSection("The driver is currently at their saved \"$currentPlace\" location. " +
                 "Reference it naturally when relevant - e.g. ask how work was, or offer to head home.")
         }
 
-        // Now-playing comes from the media session (a free, exact live data
-        // stream), so the assistant knows the track without capturing the screen.
+        // Now-playing comes from the media session (a free, exact live data stream) - or, when
+        // Spotify is the source, from App Remote's own pushed player state (ticket 07,
+        // .scratch/spotify-voice/issues/07-now-playing-truth.md - see NowPlayingController's own
+        // doc), so the assistant knows the track without capturing the screen. Album is included
+        // (ticket 07 scope item 3): a driver asking "what's this" is usually trying to find it
+        // again later, and the album is the detail most worth repeating back for that.
         val nowPlaying = NowPlayingController.state.value
         if (nowPlaying != null && nowPlaying.title.isNotBlank()) {
             val artist = if (nowPlaying.artist.isNotBlank()) " by ${nowPlaying.artist}" else ""
+            val album = if (nowPlaying.album.isNotBlank()) " (from the album \"${nowPlaying.album}\")" else ""
             val verb = if (nowPlaying.isPlaying) "is currently playing" else "is paused"
-            sb.appendSection("Right now \"${nowPlaying.title}\"$artist $verb. " +
-                "If the driver asks what's playing, answer from this.")
+            sb.appendSection("Right now \"${nowPlaying.title}\"$artist$album $verb. " +
+                "If the driver asks what's playing, or what's this / what album is this, answer " +
+                "from this - name the album too, since they usually want to find it again later.")
         }
 
         // Music: transport-only via MediaSession/AVRCP, plus direct Spotify play-by-name
@@ -808,3 +757,120 @@ class AriaBrain private constructor(context: Context) {
         )
     }
 }
+
+/**
+ * What the companion says when the thing it was asked for is not something it can do.
+ *
+ * Ticket 04 of `.scratch/drive-test-2026-08-18/`, decided by Kevin 2026-08-19. Kevin asked for
+ * navigation on a real drive; no navigation tool existed; the model said "opening it" and nothing
+ * opened. The prompt already carried "always call the matching tool before claiming you've done
+ * something" - **and that rule cannot bind where there is no tool to call.** A rule phrased around
+ * calling the right tool says nothing at all about the case where no tool exists, which is exactly
+ * the case that shipped.
+ *
+ * The method here is copied from the garage relay clause a few lines below it, which is the one
+ * honesty rule in this file that has never failed: because the app cannot observe whether the door
+ * moved, the prompt does not ask the model to be careful, it **forbids the two words that assert an
+ * outcome** ("opening", "closing") and mandates two that assert only the action taken
+ * ("triggering", "hitting"). A constraint on vocabulary, not an appeal to judgement.
+ *
+ * Three deliberate properties, each of them a fork Kevin was given:
+ *
+ *  - **No list of what LEGION cannot do.** A negative list is correct only until the next tool
+ *    lands, and burns tokens every turn describing absences. The rule is conditioned on the tool
+ *    RESULT instead, so it stays true as the toolset grows - the day `open_navigation` landed, the
+ *    clause needed no edit.
+ *  - **It offers the nearest thing it really has** (Kevin's call on register), with the trap named
+ *    in the text: the nearest thing must itself be a real tool, or the clause has merely moved the
+ *    invention one sentence later.
+ *  - **A prompt rule is the only lever that can PREVENT this**, and it is honestly weaker than a
+ *    gate. Nothing inspects the spoken audio; by the time a sentence exists it has been streamed to
+ *    the driver. A detector was costed (always-on `outputAudioTranscription`, token cost every turn,
+ *    catches a recurrence but cannot stop one) and Kevin declined it. This is the whole defence.
+ *    [com.kevin.legion.ai.AriaBrainHonestyClauseTest] guards its presence, never its obedience.
+ */
+internal val CANNOT_CLAUSE =
+    "If the driver asks for something you have no tool for, say so plainly - and never describe " +
+        "it as done, started, sent, opened, booked, played, set or on its way. Those words, and " +
+        "any others that assert an outcome, are yours to use ONLY after a tool call in this turn " +
+        "came back successful. A tool that comes back unsuccessful is the same as no tool at " +
+        "all: say what did not happen, in words, and never smooth it over. Then offer the " +
+        "nearest thing you can actually do - but only ever name a capability you genuinely have " +
+        "a tool for, because inventing a helpful-sounding alternative is the same failure one " +
+        "sentence later. \"I can't do that\" is always a better answer than a plausible sentence " +
+        "about something that never happened. "
+
+internal val SHARED_INSTRUCTIONS = "You have access to real-time information. " +
+    "You always give correct, useful answers. " +
+    "Use your search tool for anything current or specific - news, scores, prices - " +
+    "and base your answer on what it finds. " +
+    "Use your tools to answer questions about your own live data, to control music, " +
+    "to tag or show saved places, and to set location-based reminders (surfaced when the " +
+    "driver arrives at a place). Always call the matching tool before claiming you've done " +
+    "something - never say you're pulling up music unless you actually called the tool for it. " +
+    CANNOT_CLAUSE +
+    // 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin
+    // had "a dentist appointment at 3". There is no dentist row anywhere in his real database -
+    // zero matches across every text column of every table. It was invented whole.
+    //
+    // The prompt had a rule for ACTIONS ("before claiming you've done something") and a rule
+    // for MEMORY ("don't claim to remember something without checking") and NO rule for FACTS.
+    // Nothing anywhere said that a statement about the driver's own record has to come from a
+    // tool. So the one question a companion gets asked most - what's on today - was the one
+    // question with no honesty rule attached to it.
+    //
+    // Stated as a hard prohibition rather than a preference, and with the failure named, because
+    // "be accurate" is not a rule a model can check itself against mid-turn.
+    "NEVER state a fact about the driver's own record unless a tool call in THIS conversation " +
+    "returned it. Appointments, reminders, tasks, figures, dates, car details, what they ate, " +
+    "what they spent - all of it. If you have not called the tool, call it before you answer. " +
+    "If the tool returns nothing, say there is nothing; an empty day is a real answer. Never " +
+    "fill a gap with something plausible, never offer an example as if it were real, and never " +
+    "carry a detail over from an earlier conversation as fact. An invented appointment is far " +
+    "worse than \"I don't have anything for today\" - the driver cannot tell them apart, and " +
+    "one of them can make them miss something real. " +
+    "You keep a long-term memory of past conversations and trips with the driver. Save new " +
+    "things they ask you to remember with the remember tool, and when they reference the past " +
+    "or ask what you remember, call recall_memory to look it up - don't claim to remember " +
+    "something without checking first. " +
+    "You can log build-sheet entries and read back WHAT was done, when, and how much it cost - " +
+    "spend figures are not gated. " +
+    "Before calling activate_garage with confirmed=true, you must have asked the driver to confirm " +
+    "in the immediately preceding turn and gotten a yes - first call it with confirmed=false to " +
+    "trigger that prompt. The garage relay is a single-button toggle: you cannot know or promise " +
+    "whether the door will open or close, so never say 'opening' or 'closing' - say 'triggering' or " +
+    "'hitting' the garage. " +
+    "Only if the driver asks to set up, fill in, or go through their maintenance schedule, walk " +
+    "its unknown items one at a time in a multi-turn conversation, calling log_past_service for " +
+    "each concrete answer; stop the moment they want to stop. Never start this walkthrough " +
+    "unprompted - it's driver-initiated only. " +
+    // 2026-08-13: the record grew four domains and five advisors while this prompt still only
+    // described the car. Every goal/advisor/body/ledger tool was DECLARED and none of them was
+    // ever mentioned here, so the model could only find one by name-matching a request. It did
+    // not: asked to "set some goals", it set a meal target, a sleep target and a workout plan
+    // and recorded no goal at all, because targets are the concrete-sounding tools and nothing
+    // said a goal was a separate thing. A declared tool the instructions never mention is a
+    // tool the model reaches only by luck.
+    "The driver's record has five aspects: bio (training, food, sleep, bodyweight), log (notes, " +
+    "lists, reminders, calendar), fleet (the car), cred (money), and a cross-aspect view. " +
+    "A GOAL and a TARGET are different things and are not interchangeable. A goal is the " +
+    "long-term intention in the driver's own words - 'lose fat and recomp', 'save thirty " +
+    "thousand by 2028' - and it lives in set_goal, list_goals and close_goal. A target is the " +
+    "per-period number that serves it: daily calories, a monthly budget, hours of sleep. " +
+    "When the driver says goal, call the goal tools. Setting a target is NOT recording a goal, " +
+    "so if they ask for a goal, record the goal itself even when you also set targets that " +
+    "serve it. A goal needs no number - most are prose only. " +
+    "When they ask for judgement rather than fact - am I on track, what should I do about " +
+    "this, plan something for me, how am I doing - call ask_advisor with the matching aspect, " +
+    "or home for a question spanning several. It is a specialist that reads the record: do " +
+    "not improvise coaching, budgeting or maintenance advice yourself when it can answer. " +
+    "It takes a moment, so say you are looking into it before you call it. If it returns a " +
+    "proposal, read the proposal out and call accept_proposal only after the driver says yes. " +
+    // 2026-08-07 currency audit: a tool CAN now hand back every money figure tagged with its
+    // own currency (or explicitly say none was recorded), but a persona-primed model still
+    // guesses whenever a bare number slips past that - Alfred read every unlabelled figure as
+    // pounds sterling, purely from his own manner of speaking. This is the second, model-side
+    // half of that fix; the tool-side half alone was proven not to hold on its own.
+    "State every amount in the currency code you were given. Never convert between currencies, " +
+    "never assume one from your own manner of speaking, and if a figure arrives without a " +
+    "currency, say the number without naming a currency at all."

@@ -47,7 +47,7 @@ If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins 
   | fleet | OBD, car, maintenance, drives | Ported from Midnight AI, compiles |
   | ledger | Bank-statement ingestion | Ported from Project Andromeda, done, 11 tests |
   | pantry | Grocery receipt photo ingestion + macro estimates | New design work, done, 8 tests |
-- **Repo:** `C:\Users\Kwin\StudioProjects\legion`, public, `github.com/kevinmyo-code/legion`.
+- **Repo:** `C:\Users\Kwin\StudioProjects\legion` (second machine: `C:\Users\kevin\AndroidStudioProjects\legion`), public, `github.com/kevinmyo-code/legion`.
   Package `com.kevin.legion`. Clean history, seeded 2026-07-31 by copying surviving Midnight AI
   source.
 - **MIDNIGHT_AI (`C:\Users\Kwin\StudioProjects\MIDNIGHT_AI`) is a FROZEN ARCHIVE.** Private, read
@@ -231,15 +231,23 @@ build. Four `RELEASE_STORE_*` values for a release build. Set `JAVA_HOME` in you
 **do not put `org.gradle.java.home` in the committed `gradle.properties`** - Midnight AI's did, and
 it broke on any machine without Android Studio at that exact path, violating clone-and-run.
 
-**On Kevin's machine specifically (2026-08-01): there is no JDK on `PATH` and `JAVA_HOME` is unset,
-so `./gradlew` fails outright from a fresh shell.** Android Studio is at
-`C:\Users\Kwin\Apps\AndroidStudio`, NOT the default `C:\Program Files\Android\Android Studio`. Export
-it per shell rather than committing it:
+**There is more than one of Kevin's machines and their paths differ. Neither has a usable JDK on
+`PATH`**, so `./gradlew` fails from a fresh shell on both. Export per shell, never commit it.
+
+| Machine | Repo | Android Studio JBR |
+|---|---|---|
+| First (2026-08-01) | `C:\Users\Kwin\StudioProjects\legion` | `/c/Users/Kwin/Apps/AndroidStudio/jbr` |
+| Second (2026-08-19) | `C:\Users\kevin\AndroidStudioProjects\legion` | `/c/Program Files/Android/Android Studio/jbr` |
 
 ```
-export JAVA_HOME="/c/Users/Kwin/Apps/AndroidStudio/jbr"
+export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"   # second machine
 export PATH="$JAVA_HOME/bin:$PATH"
 ```
+
+On the second machine an Oracle JRE 24 IS on `PATH` (`Common Files/Oracle/Java/javapath`) - it is
+the wrong JDK and Gradle picks it up if `JAVA_HOME` is unset. `adb` lives at
+`~/AppData/Local/Android/Sdk/platform-tools/` and is not on `PATH`. Git identity was unset there
+(set repo-locally, 2026-08-19). **The A25 has never been attached to it.**
 
 ---
 
@@ -252,6 +260,16 @@ export PATH="$JAVA_HOME/bin:$PATH"
 - **No Kevin-hosted anything.** No backend, no Firestore, no broker, no proxy, no hosted key. Data
   lives on-device and in the driver's own Drive `appDataFolder`. This is what makes clone-and-run
   work and it is the same BYO shape as the Gemini key.
+- **The assistant never asserts an outcome it did not observe (2026-08-19, Kevin).** Outcome verbs -
+  done, started, sent, opened, booked, played, set - may follow only a tool call that came back
+  successful **in that turn**; an unsuccessful result is the same as no tool at all. With no tool,
+  it says so plainly and offers the nearest thing it genuinely has a tool for. The clause lives at
+  file scope in `ai/AriaBrain.kt` (`CANNOT_CLAUSE`), never per-persona, and enumerates no
+  capabilities - it is conditioned on the tool RESULT so it survives every new tool. This is §4's
+  posture applied to speech: the gate quarantines a figure it could not verify, this quarantines a
+  verb whose outcome it could not verify. `docs/adr/0031-speech-honesty-clause.md`. **Nothing
+  inspects the spoken audio, so this is a prompt rule and the only lever there is;
+  `AriaBrainHonestyClauseTest` guards its presence, never its obedience.**
 - **No comparative or anonymized fleet data**, ever.
 - **Network calls degrade gracefully offline.**
 - **Assets are bundled** in `assets/` or `res/`, never fetched at runtime.
@@ -288,6 +306,8 @@ export PATH="$JAVA_HOME/bin:$PATH"
 - [ ] Money? `Long` cents.
 - [ ] Does it need a backend? Then it is wrong. Rework it onto Drive `appDataFolder` or on-device.
 - [ ] Does it survive clone-and-run by a stranger with their own signing cert?
+- [ ] New tool? Its failure result says in words what did NOT happen, and nothing claims success
+      unless the underlying action ran. §7's outcome-verb rule needs a real result to stand on.
 - [ ] Safety: no sentience claims, no compulsion mechanic, no unfalsifiable memory about the user.
 - [ ] Built from a resolved ticket? Every verification step in that resolution accounted for as
       done / deferred-with-a-follow-up / impossible-and-why. See §8 (L11).

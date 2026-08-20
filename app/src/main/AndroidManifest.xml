@@ -67,10 +67,23 @@
          Setup screen). Browsers are queried for SpotifyWebApi.beginAuthorization's
          ACTION_VIEW hop to Spotify's approval page. -->
     <queries>
+        <package android:name="com.google.android.apps.maps" />
         <package android:name="com.spotify.music" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
+        </intent>
+        <!-- NavigationController's two schemes. Without these resolveActivity returns null on
+             API 30+ and open_navigation launches nothing at all - the same package-visibility
+             bite the Spotify line above documents. The geo intent is what lets a map app that
+             is not Google Maps serve the map-pin fallback. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="google.navigation" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
         </intent>
     </queries>
 

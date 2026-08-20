@@ -28,7 +28,7 @@
       "y": 300,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "287341590e50a8ff",
@@ -48,7 +48,7 @@
       "y": 0,
       "width": 320,
       "height": 110,
-      "color": "5"
+      "color": "4"
     }
   ],
   "edges": [

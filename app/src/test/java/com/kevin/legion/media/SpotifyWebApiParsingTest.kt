@@ -88,4 +88,135 @@ class SpotifyWebApiParsingTest {
         )
         assertEquals(listOf(TopTrack("The Less I Know The Better", "Tame Impala")), SpotifyWebApi.parseTopTracks(json))
     }
+
+    // ------------------------------------------------------------ queue (ticket 04)
+
+    @Test
+    fun `parseQueue reads bare track objects from the top-level queue array, not nested under track`() {
+        // Unlike recently-played, GET /v1/me/player/queue's "queue" entries ARE the track
+        // objects - there is no wrapping "track" key, which is exactly the shape difference
+        // this test guards against a copy-paste of parseRecentlyPlayed's nesting.
+        val json = JSONObject(
+            """
+            {"currently_playing": {"name": "Not This One"},
+             "queue": [
+                {"name": "Plastic Love", "artists": [{"name": "Mariya Takeuchi"}]},
+                {"name": "Midnight City", "artists": [{"name": "M83"}]}
+             ]}
+            """.trimIndent(),
+        )
+        val queue = SpotifyWebApi.parseQueue(json)
+        assertEquals(2, queue.size)
+        assertEquals(QueuedTrack("Plastic Love", "Mariya Takeuchi"), queue[0])
+        assertEquals(QueuedTrack("Midnight City", "M83"), queue[1])
+    }
+
+    @Test
+    fun `parseQueue skips an entry with no name rather than throwing`() {
+        val json = JSONObject("""{"queue": [{"artists": [{"name": "Nobody"}]}]}""")
+        assertTrue(SpotifyWebApi.parseQueue(json).isEmpty())
+    }
+
+    @Test
+    fun `parseQueue on a missing queue array returns empty, not a throw`() {
+        assertTrue(SpotifyWebApi.parseQueue(JSONObject("""{"currently_playing": {"name": "X"}}""")).isEmpty())
+    }
+
+    // ------------------------------------------------------------ pickedDisplayName (ticket 07)
+
+    @Test
+    fun `pickedDisplayName for a track names it and its first artist`() {
+        val track = JSONObject("""{"name": "Discovery", "artists": [{"name": "Daft Punk"}, {"name": "Someone Else"}]}""")
+        assertEquals("Discovery" to "Daft Punk", SpotifyWebApi.pickedDisplayName(track, "track"))
+    }
+
+    @Test
+    fun `pickedDisplayName for an album names it and its first artist`() {
+        val album = JSONObject("""{"name": "Discovery", "artists": [{"name": "Daft Punk"}]}""")
+        assertEquals("Discovery" to "Daft Punk", SpotifyWebApi.pickedDisplayName(album, "album"))
+    }
+
+    @Test
+    fun `pickedDisplayName for a playlist names it and the owner's display name`() {
+        val playlist = JSONObject("""{"name": "Roadtrip", "owner": {"display_name": "Kevin"}}""")
+        assertEquals("Roadtrip" to "Kevin", SpotifyWebApi.pickedDisplayName(playlist, "playlist"))
+    }
+
+    @Test
+    fun `pickedDisplayName for a playlist with no owner display name has no subtitle`() {
+        val playlist = JSONObject("""{"name": "Roadtrip", "owner": {}}""")
+        assertEquals("Roadtrip" to null, SpotifyWebApi.pickedDisplayName(playlist, "playlist"))
+    }
+
+    @Test
+    fun `pickedDisplayName for an artist has no subtitle at all`() {
+        val artist = JSONObject("""{"name": "Daft Punk"}""")
+        assertEquals("Daft Punk" to null, SpotifyWebApi.pickedDisplayName(artist, "artist"))
+    }
+
+    @Test
+    fun `pickedDisplayName falls back to Unknown rather than an empty name`() {
+        val blank = JSONObject("""{"name": ""}""")
+        assertEquals("Unknown", SpotifyWebApi.pickedDisplayName(blank, "track").first)
+    }
+
+    // ------------------------------------------------------------ artist albums (ticket 13)
+
+    @Test
+    fun `parseArtistAlbums reads name and uri from bare album objects, not nested`() {
+        // Unlike parseSavedAlbums, GET artists-id-albums's own "items" entries ARE the album
+        // objects - no wrapping "album" key, since the request is already scoped to one artist.
+        val json = JSONObject(
+            """{"items": [
+                {"name": "Discovery", "uri": "spotify:album:abc"},
+                {"name": "Random Access Memories", "uri": "spotify:album:def"}
+            ]}""",
+        )
+        val albums = SpotifyWebApi.parseArtistAlbums(json)
+        assertEquals(listOf(ArtistAlbum("Discovery", "spotify:album:abc"), ArtistAlbum("Random Access Memories", "spotify:album:def")), albums)
+    }
+
+    @Test
+    fun `parseArtistAlbums dedupes repeated market editions of the same album by name`() {
+        val json = JSONObject(
+            """{"items": [
+                {"name": "Discovery", "uri": "spotify:album:us-edition"},
+                {"name": "Discovery", "uri": "spotify:album:jp-edition"},
+                {"name": "Homework", "uri": "spotify:album:xyz"}
+            ]}""",
+        )
+        val albums = SpotifyWebApi.parseArtistAlbums(json)
+        assertEquals(2, albums.size)
+        // First occurrence wins - Spotify's own ordering (newest first) is preserved, not resorted.
+        assertEquals(ArtistAlbum("Discovery", "spotify:album:us-edition"), albums[0])
+        assertEquals(ArtistAlbum("Homework", "spotify:album:xyz"), albums[1])
+    }
+
+    @Test
+    fun `parseArtistAlbums skips an item with no name or no uri rather than throwing`() {
+        val json = JSONObject("""{"items": [{"uri": "spotify:album:abc"}, {"name": "No URI"}]}""")
+        assertTrue(SpotifyWebApi.parseArtistAlbums(json).isEmpty())
+    }
+
+    @Test
+    fun `parseArtistAlbums on a missing items array returns empty, not a throw`() {
+        assertTrue(SpotifyWebApi.parseArtistAlbums(JSONObject("{}")).isEmpty())
+    }
+
+    @Test
+    fun `spotifyIdFromUri extracts the bare id from a well-formed artist URI`() {
+        assertEquals("0TnOYISbd1XYRBk9myaseg", SpotifyWebApi.spotifyIdFromUri("spotify:artist:0TnOYISbd1XYRBk9myaseg"))
+    }
+
+    @Test
+    fun `spotifyIdFromUri works for any Spotify URI shape, not just artist`() {
+        assertEquals("abc123", SpotifyWebApi.spotifyIdFromUri("spotify:track:abc123"))
+    }
+
+    @Test
+    fun `spotifyIdFromUri returns null for a blank id, a non-spotify scheme, or a malformed string`() {
+        assertEquals(null, SpotifyWebApi.spotifyIdFromUri("spotify:artist:"))
+        assertEquals(null, SpotifyWebApi.spotifyIdFromUri("not-a-uri"))
+        assertEquals(null, SpotifyWebApi.spotifyIdFromUri("http:example:abc"))
+    }
 }
