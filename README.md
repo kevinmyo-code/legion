@@ -133,6 +133,33 @@ extraction safe to use for money and health data at all, rather than a liability
 - Running ledger of failure modes and the rule each one graduated into:
   `memory/library/lessons.md`.
 
+## How the work is managed
+
+All planning is in the repo, versioned like code, and most of the tracking surfaces are generated
+from it rather than maintained by hand.
+
+- **Live progress wiki: <https://kevinmyo-code.github.io/legion/>** - every open ticket across
+  every active effort on one page, grouped by map, filterable by ready / blocked / decision /
+  buildable. Served by GitHub Pages from `docs/index.html` and regenerated on every planning
+  change, so it cannot drift from the tickets it renders.
+- **Work is charted as maps and tickets** under `.scratch/<effort>/` - one `map.md` per effort
+  (destination, settled decisions, out-of-scope) and one Markdown file per ticket, with
+  machine-readable status and blocked-by frontmatter. A ticket's verification steps are binding
+  gates, not notes: nothing is reported built until each step is done, deferred with a named
+  follow-up, or impossible with the reason stated.
+- **The derived layer is generated, never hand-edited.** `tools/obsidian_sync.py` rewrites the
+  ticket board (`vault/Board.md`) and a dependency-graph canvas per map; `tools/pending_wiki.py`
+  renders the wiki above from the same frontmatter. The repo root doubles as an Obsidian vault.
+- **Decisions live in two stores with a hard boundary**: `docs/adr/` says what is binding right
+  now (one file per standing decision, superseded ADRs keep their original text);
+  `memory/library/decisions.md` is the append-only dated log of what happened when.
+- **Architecture is C4 levels 1-3** as Mermaid in `docs/architecture/` - context, containers, and
+  the paths worth a picture (voice loop, ingestion, music, data). Level 4 is deliberately absent;
+  it goes stale the day it lands.
+- **Docs are checked, not trusted**: `tools/docs_check.py` fails on any source path named in
+  `docs/` that no longer exists, on broken ADR supersession links, and on wikilinks pointing at
+  nothing.
+
 ## Honest status
 
 | Area | Status |
