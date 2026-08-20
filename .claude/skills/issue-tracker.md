@@ -105,3 +105,16 @@ ticket by its title, not `01`/`02`. The filename rides inside the name as its li
   competitive-landscape brainstorm, thirteen tickets, three research fired at charting.
   Destination is DECISIONS. Deliberately reopens two google-account out-of-scope rulings (Gmail
   ingestion, background fetch) as the fresh efforts those rulings promised.
+- `.scratch/wake-word/` - the wake word made reachable and honest on a phone. Charted 2026-08-20,
+  seven tickets, one research. Execution in scope. **The engine was already complete and wired
+  (283 lines, Vosk, bundled model, FGS start/stop/refresh) and unreachable**: nothing in the app
+  writes `WakeWordPreferences`, so `start()` had always no-opped. Its only on-hardware validation
+  (2026-07-19) assumed permanent shore power, a premise phone-only retired. Kevin's call at
+  charting: **always on, but measure first** - the battery number scopes the map.
+- `.scratch/ambient-listening/` - open-vocabulary cabin transcription that reacts unprompted, and
+  what it owes the room. Charted 2026-08-20, seven tickets. Execution in scope. Same dead-code shape
+  as the wake word, plus a worse gap: **the persistent listening indicator its own KDoc calls
+  required points at `ui/CruiseScreen.kt`, which died with the city-pop UI.** Downstream of
+  `wake-word` on mic ownership and battery; the tracker cannot express a cross-map blocker, so that
+  dependency is written into the map body instead. Kevin's ruling at charting: the consent surface
+  is an in-app indicator plus a toggle.

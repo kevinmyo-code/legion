@@ -1,0 +1,111 @@
+{
+  "nodes": [
+    {
+      "id": "ad5453e05eb7eb46",
+      "type": "file",
+      "file": ".scratch/ambient-listening/issues/01-the-listening-indicator.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f09d90286998529f",
+      "type": "file",
+      "file": ".scratch/ambient-listening/issues/03-what-is-worth-speaking-into.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "90162f272c0831f1",
+      "type": "file",
+      "file": ".scratch/ambient-listening/issues/04-what-is-retained.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "3ee656d57d898917",
+      "type": "file",
+      "file": ".scratch/ambient-listening/issues/02-the-toggle-and-its-words.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "eef088bf54d1ba88",
+      "type": "file",
+      "file": ".scratch/ambient-listening/issues/07-passengers-who-did-not-consent.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "e38a39fe42f8c537",
+      "type": "file",
+      "file": ".scratch/ambient-listening/issues/05-what-it-costs-per-drive.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b9a585a83191de8b",
+      "type": "file",
+      "file": ".scratch/ambient-listening/issues/06-prove-it-hears-and-stays-quiet.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "83a5bdf55653e919",
+      "fromNode": "ad5453e05eb7eb46",
+      "fromSide": "right",
+      "toNode": "3ee656d57d898917",
+      "toSide": "left"
+    },
+    {
+      "id": "87d0216f79c258c7",
+      "fromNode": "3ee656d57d898917",
+      "fromSide": "right",
+      "toNode": "e38a39fe42f8c537",
+      "toSide": "left"
+    },
+    {
+      "id": "d05c202346111475",
+      "fromNode": "3ee656d57d898917",
+      "fromSide": "right",
+      "toNode": "b9a585a83191de8b",
+      "toSide": "left"
+    },
+    {
+      "id": "7793710ca2c5a8fc",
+      "fromNode": "f09d90286998529f",
+      "fromSide": "right",
+      "toNode": "b9a585a83191de8b",
+      "toSide": "left"
+    },
+    {
+      "id": "b92c75465fca3ef2",
+      "fromNode": "ad5453e05eb7eb46",
+      "fromSide": "right",
+      "toNode": "eef088bf54d1ba88",
+      "toSide": "left"
+    }
+  ]
+}

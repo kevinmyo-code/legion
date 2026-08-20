@@ -1,0 +1,125 @@
+{
+  "nodes": [
+    {
+      "id": "69fe918ed796e72b",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/01-mic-under-doze.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "1890876f18bb4293",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/02-the-settings-toggle.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "a8179692d607a640",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/03-measure-the-battery-cost.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f13287a51a4ee830",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/05-mic-ownership.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "7a3c9183aaf64e84",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/04-what-drain-is-acceptable.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "52694f0c1eb1b960",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/06-prove-it-on-the-phone.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "2e7297a284aa0474",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/07-false-triggers.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    }
+  ],
+  "edges": [
+    {
+      "id": "4992f546068e4030",
+      "fromNode": "1890876f18bb4293",
+      "fromSide": "right",
+      "toNode": "a8179692d607a640",
+      "toSide": "left"
+    },
+    {
+      "id": "bccda7265a6ef589",
+      "fromNode": "a8179692d607a640",
+      "fromSide": "right",
+      "toNode": "7a3c9183aaf64e84",
+      "toSide": "left"
+    },
+    {
+      "id": "6dc76f20a0b328c7",
+      "fromNode": "69fe918ed796e72b",
+      "fromSide": "right",
+      "toNode": "f13287a51a4ee830",
+      "toSide": "left"
+    },
+    {
+      "id": "bbe22ab2cd393114",
+      "fromNode": "69fe918ed796e72b",
+      "fromSide": "right",
+      "toNode": "52694f0c1eb1b960",
+      "toSide": "left"
+    },
+    {
+      "id": "6ab71aa62b64c87d",
+      "fromNode": "1890876f18bb4293",
+      "fromSide": "right",
+      "toNode": "52694f0c1eb1b960",
+      "toSide": "left"
+    },
+    {
+      "id": "42f8d9108b9c8f07",
+      "fromNode": "f13287a51a4ee830",
+      "fromSide": "right",
+      "toNode": "52694f0c1eb1b960",
+      "toSide": "left"
+    },
+    {
+      "id": "d7ec5eee359bea80",
+      "fromNode": "52694f0c1eb1b960",
+      "fromSide": "right",
+      "toNode": "2e7297a284aa0474",
+      "toSide": "left"
+    }
+  ]
+}
