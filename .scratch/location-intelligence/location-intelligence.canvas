@@ -1,0 +1,121 @@
+{
+  "nodes": [
+    {
+      "id": "f76e6b9fa14b80eb",
+      "type": "file",
+      "file": ".scratch/location-intelligence/issues/01-background-location.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b4b1c57a56ed05f2",
+      "type": "file",
+      "file": ".scratch/location-intelligence/issues/03-airnow-endpoint.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d74f59853c47aa6a",
+      "type": "file",
+      "file": ".scratch/location-intelligence/issues/07-tomtom-caching.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "49ec3b45e390bb68",
+      "type": "file",
+      "file": ".scratch/location-intelligence/issues/02-area-info-tool.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "21181e7fadd92bc3",
+      "type": "file",
+      "file": ".scratch/location-intelligence/issues/05-geofences.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "12cc620afa98d07f",
+      "type": "file",
+      "file": ".scratch/location-intelligence/issues/04-hazard-raises.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "18e51a74c384ced1",
+      "type": "file",
+      "file": ".scratch/location-intelligence/issues/06-departure-advisor.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "9c9b7dfc88f72e47",
+      "type": "file",
+      "file": ".scratch/location-intelligence/issues/08-garage-on-approach.md",
+      "x": 1040,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "033081f479d4a59a",
+      "fromNode": "f76e6b9fa14b80eb",
+      "fromSide": "right",
+      "toNode": "49ec3b45e390bb68",
+      "toSide": "left"
+    },
+    {
+      "id": "0f370271a95a4bf8",
+      "fromNode": "49ec3b45e390bb68",
+      "fromSide": "right",
+      "toNode": "12cc620afa98d07f",
+      "toSide": "left"
+    },
+    {
+      "id": "89aa1169f5aa9e22",
+      "fromNode": "f76e6b9fa14b80eb",
+      "fromSide": "right",
+      "toNode": "21181e7fadd92bc3",
+      "toSide": "left"
+    },
+    {
+      "id": "1eef51d21c8b9694",
+      "fromNode": "49ec3b45e390bb68",
+      "fromSide": "right",
+      "toNode": "18e51a74c384ced1",
+      "toSide": "left"
+    },
+    {
+      "id": "681d6d9678154cbe",
+      "fromNode": "21181e7fadd92bc3",
+      "fromSide": "right",
+      "toNode": "9c9b7dfc88f72e47",
+      "toSide": "left"
+    }
+  ]
+}

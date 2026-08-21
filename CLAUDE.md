@@ -521,6 +521,12 @@ asking for the next map every session. The repo root IS the vault; nothing moved
   ```
 
   It rewrites ticket and map frontmatter, one `.canvas` dependency graph per map, and `vault/Board.md`.
+- **Anything READY is built, not parked (Kevin, standing, 2026-08-21).** *"from now on, anything
+  thats ready to build (no more decisions needed) should get built."* A `ready` ticket with no open
+  decisions is unstarted work, not a plan - resolving a decision and stopping is what left the
+  sitrep fully decided and unwritten. **Building may run in parallel with grilling another effort**;
+  Kevin asked for that shape explicitly, so dispatch the build and keep the conversation going.
+  Verification is unchanged: compile, suite green, and say plainly what is owed on the phone.
 - **A resolved decision ticket must leave a BUILD ticket behind, created at resolution time.** The
   wiki lists only OPEN tickets, so resolving a decision makes it vanish - and a fully-decided,
   entirely unbuilt feature then looks exactly like finished work. It happened within an hour of the

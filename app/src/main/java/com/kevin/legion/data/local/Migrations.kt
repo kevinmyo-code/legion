@@ -1162,3 +1162,38 @@ val MIGRATION_27_28 = object : Migration(27, 28) {
         )
     }
 }
+
+/**
+ * Sitrep's two tables (`.scratch/hands-and-senses/issues/22-build-the-sitrep.md`, 2026-08-21).
+ *
+ * `sitrep_modules` is the per-module switch (CALENDAR/WEATHER/FLEET/NEWS), key/value shaped
+ * identically to `proactive_settings` above - see [SitrepModuleSetting]'s own doc for why.
+ *
+ * `sitrep_schedule` is the one-row schedule time plus the newsletter sender list - see
+ * [SitrepSchedule]'s own doc for why it is a sibling table rather than columns on the module
+ * rows.
+ *
+ * PLACEHOLDER SQL - see the doc comment on [MIGRATION_27_28] above for why this must be
+ * overwritten with whatever `app/schemas/.../29.json` actually generates before this migration
+ * is trusted: Room does not turn a Kotlin constructor default (`SitrepSchedule.hour`'s none,
+ * `SitrepModuleSetting`'s none either) into a SQL `DEFAULT`, and hand-writing one here would make
+ * the identity hash disagree the same way it did on v28's first cut.
+ */
+val MIGRATION_28_29 = object : Migration(28, 29) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `sitrep_modules` (" +
+                "`key` TEXT NOT NULL, " +
+                "`enabled` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`key`))"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `sitrep_schedule` (" +
+                "`id` INTEGER NOT NULL, " +
+                "`hour` INTEGER NOT NULL, " +
+                "`minute` INTEGER NOT NULL, " +
+                "`senders` TEXT NOT NULL, " +
+                "PRIMARY KEY(`id`))"
+        )
+    }
+}

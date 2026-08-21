@@ -31,6 +31,9 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-memory-decay\|20]] | grilling | Memory that forgets like a person does |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[22-build-the-sitrep\|22]] | build | Build the sitrep |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | [[03-airnow-endpoint\|03]] | research | Which AirNow endpoint survives the fall-2026 retirement |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | [[07-tomtom-caching\|07]] | research | TomTom's caching clause, before anything is stored |
 | [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
 | [[.scratch/wake-word/map\|wake-word]] | [[05-mic-ownership\|05]] | grilling | Who owns the microphone, and what yields to what? |
@@ -63,6 +66,11 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[05-revision-and-retirement\|05]] | grilling | What prompts a revision, and what an abandoned goal costs  waiting on [[01-what-on-track-means\|01]], [[03-the-check-in-record\|03]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[06-advisor-with-an-opinion-about-time\|06]] | grilling | Where the advisor learns to hold an opinion about time  waiting on [[04-when-a-moment-is-worth-it\|04]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[07-which-surface-says-it\|07]] | grilling | Which surface says it, and how it coordinates with the five categories  waiting on [[04-when-a-moment-is-worth-it\|04]] |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | [[02-area-info-tool\|02]] | build | The area_info tool, with attribution baked in  waiting on [[01-background-location\|01]] |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | [[04-hazard-raises\|04]] | build | Hazard alerts that speak first  waiting on [[02-area-info-tool\|02]] |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | [[06-departure-advisor\|06]] | build | The departure advisor  waiting on [[02-area-info-tool\|02]] |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | [[08-garage-on-approach\|08]] | build | Garage on approach, as an offer  waiting on [[05-geofences\|05]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[04-queue\|04]] | task | Add this to the queue, and play this next  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[05-library-writes\|05]] | task | Like this, and follow them, without touching the phone  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[06-shuffle-repeat-seek\|06]] | task | Shuffle, repeat, and moving inside a track  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
@@ -111,6 +119,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |
 | [[.scratch/legion-shape/map\|legion-shape]] | 12 | 0 | [[.scratch/legion-shape/legion-shape.canvas\|open]] |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | 8 | 8 | [[.scratch/location-intelligence/location-intelligence.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 12 | 2 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |

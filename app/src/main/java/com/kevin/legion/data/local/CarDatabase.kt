@@ -228,8 +228,9 @@ import androidx.room.RoomDatabase
         Drive::class,
         MusicPlayHistoryEntry::class, MemoryAudit::class,
         ProactiveSetting::class, ProactiveRaiseRow::class,
+        SitrepModuleSetting::class, SitrepSchedule::class,
     ],
-    version = 28,
+    version = 29,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -286,6 +287,12 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun proactiveSettingDao(): ProactiveSettingDao
     abstract fun proactiveRaiseDao(): ProactiveRaiseDao
 
+    /** The sitrep module registry (ticket 22) - per-module on/off. */
+    abstract fun sitrepModuleSettingDao(): SitrepModuleSettingDao
+
+    /** The sitrep's schedule time and newsletter sender list - one row, see [SitrepSchedule]. */
+    abstract fun sitrepScheduleDao(): SitrepScheduleDao
+
     companion object {
         @Volatile
         private var INSTANCE: CarDatabase? = null
@@ -316,7 +323,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 28
+        const val SCHEMA_VERSION = 29
         // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
         // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
@@ -343,7 +350,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
                         MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
                         MIGRATION_25_26,
-                        MIGRATION_26_27, MIGRATION_27_28,
+                        MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

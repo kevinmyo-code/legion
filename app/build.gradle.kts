@@ -19,6 +19,17 @@ val localProps: Properties = Properties().apply {
 val geminiApiKey: String =
     if (project.hasProperty("nokey")) "" else localProps.getProperty("GEMINI_API_KEY", "")
 
+// TomTom, for traffic and ETA (location-intelligence map, settled decision 4). Same convenience-
+// key shape as GEMINI_API_KEY and for the same reason: local.properties is gitignored, so a real
+// key never reaches a public repo, and -Pnokey exercises the honest no-key path.
+//
+// **This is the DEV convenience key, not the shipping path.** Clone-and-run means a stranger has
+// no key here, so the product path is BYO through KeyVault on the Setup screen, exactly like the
+// Gemini and Spotify keys. A build with no TomTom key must degrade in words - "I can't check
+// traffic without a TomTom key" - never fail silently.
+val tomtomApiKey: String =
+    if (project.hasProperty("nokey")) "" else localProps.getProperty("TOMTOM_API_KEY", "")
+
 // Release signing. The keystore (app/release.jks, gitignored) is a personal
 // signing key, not a Play Store upload key. All four values must come from
 // local.properties - no hardcoded fallback, so the password never lands in
@@ -54,6 +65,7 @@ android {
         }
 
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
+        buildConfigField("String", "TOMTOM_API_KEY", "\"$tomtomApiKey\"")
     }
 
     signingConfigs {
