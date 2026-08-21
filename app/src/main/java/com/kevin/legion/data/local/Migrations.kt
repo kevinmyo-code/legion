@@ -1094,3 +1094,24 @@ val MIGRATION_25_26 = object : Migration(25, 26) {
         )
     }
 }
+
+/**
+ * v27: `memory_audit` (2026-08-20). Kevin: "leave an audit trail for us to check."
+ *
+ * Purely additive - one new table, nothing else touched. SQL copied verbatim from the generated
+ * schema, per CLAUDE.md sec 5.
+ */
+val MIGRATION_26_27 = object : Migration(26, 27) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `memory_audit` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`event` TEXT NOT NULL, " +
+                "`store` TEXT NOT NULL, " +
+                "`detail` TEXT NOT NULL, " +
+                "`refId` INTEGER NOT NULL DEFAULT 0, " +
+                "`vehicleId` TEXT NOT NULL DEFAULT '', " +
+                "`at` INTEGER NOT NULL)"
+        )
+    }
+}

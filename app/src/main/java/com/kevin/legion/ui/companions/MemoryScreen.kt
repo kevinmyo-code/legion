@@ -24,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.MemoryAudit
+import com.kevin.legion.data.local.record
 import com.kevin.legion.data.local.CompanionMemory
 import com.kevin.legion.data.local.MemoryEntry
 import com.kevin.legion.ui.common.DeckScreenHeader
@@ -102,7 +104,18 @@ fun MemoryScreen(onBack: () -> Unit) {
                                     entry = entry,
                                     onDelete = {
                                         scope.launch {
-                                            CarDatabase.getDatabase(context).memoryDao().deleteById(entry.id)
+                                            val db = CarDatabase.getDatabase(context)
+                                            db.memoryDao().deleteById(entry.id)
+                                            // Audit trail (2026-08-20): a rejected memory is the
+                                            // most interesting row in the trail. The memory itself
+                                            // is gone, so without this there is no record that the
+                                            // companion ever believed it, or that Kevin said no.
+                                            db.memoryAuditDao().record(
+                                                MemoryAudit.Event.DELETED,
+                                                MemoryAudit.Store.FLAT,
+                                                entry.text,
+                                                refId = entry.id,
+                                            )
                                             facts = facts.filterNot { it.id == entry.id }
                                         }
                                     },
@@ -122,7 +135,15 @@ fun MemoryScreen(onBack: () -> Unit) {
                                     memory = memory,
                                     onDelete = {
                                         scope.launch {
-                                            CarDatabase.getDatabase(context).companionMemoryDao().deleteById(memory.id)
+                                            val db = CarDatabase.getDatabase(context)
+                                            db.companionMemoryDao().deleteById(memory.id)
+                                            db.memoryAuditDao().record(
+                                                MemoryAudit.Event.DELETED,
+                                                MemoryAudit.Store.COMPANION,
+                                                "[${memory.category}/${memory.source}] ${memory.text}",
+                                                refId = memory.id,
+                                                vehicleId = memory.vehicleId,
+                                            )
                                             learned = learned.filterNot { it.id == memory.id }
                                         }
                                     },

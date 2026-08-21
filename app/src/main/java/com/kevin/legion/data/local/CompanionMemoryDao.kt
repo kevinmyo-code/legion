@@ -13,6 +13,30 @@ interface CompanionMemoryDao {
     @Query("SELECT * FROM companion_memories WHERE vehicleId = :vehicleId ORDER BY createdAt DESC LIMIT :limit")
     suspend fun getRecent(vehicleId: String, limit: Int): List<CompanionMemory>
 
+    /**
+     * The recall scan window: **everything the companion knows about the DRIVER, whichever car is
+     * connected**, plus the car facts belonging to the car that IS connected.
+     *
+     * Replaces [getRecent] on the recall path, 2026-08-20. `companion_memories` is keyed by
+     * `vehicleId` because it was written for a car launcher, so recall only ever read the active
+     * car's slice - and on Kevin's own device that stranded **46 memories about him** the moment
+     * the Jeep was the active car. Not car facts: his music taste, his work address, what he
+     * thought of an album. Which car happened to be connected decided what his companion
+     * remembered about him.
+     *
+     * `car_anchored` stays scoped, because a service record genuinely belongs to one car and
+     * surfacing the Outlander's oil change while he is in the Jeep would be a different bug.
+     * `driver` and `relationship` are about the person, and the person does not change car to car.
+     *
+     * No schema change: the partition was only ever in this WHERE clause.
+     */
+    @Query(
+        "SELECT * FROM companion_memories " +
+            "WHERE category != 'car_anchored' OR vehicleId = :vehicleId " +
+            "ORDER BY createdAt DESC LIMIT :limit"
+    )
+    suspend fun getRecallScan(vehicleId: String, limit: Int): List<CompanionMemory>
+
     /** All memories of one [CompanionMemory.Source] for a car - reflection's input pool (ticket 05). */
     @Query("SELECT * FROM companion_memories WHERE vehicleId = :vehicleId AND source = :source ORDER BY createdAt DESC")
     suspend fun bySource(vehicleId: String, source: String): List<CompanionMemory>

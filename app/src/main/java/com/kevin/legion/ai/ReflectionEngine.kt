@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CompanionMemory
+import com.kevin.legion.data.local.MemoryAudit
+import com.kevin.legion.data.local.record
 import com.kevin.legion.service.ConversationState
 import com.kevin.legion.vehicle.ActiveVehicle
 import org.json.JSONArray
@@ -64,8 +66,9 @@ object ReflectionEngine {
 
         if (ConversationState.isBusy) return // a conversation started while the model call was in flight
         val now = System.currentTimeMillis()
+        val auditDao = CarDatabase.getDatabase(context).memoryAuditDao()
         for (insight in insights) {
-            dao.insert(CompanionMemory(
+            val id = dao.insert(CompanionMemory(
                 vehicleId = vehicleId,
                 text = insight.text,
                 category = insight.category,
@@ -74,6 +77,17 @@ object ReflectionEngine {
                 createdAt = now,
                 lastAccessedAt = now,
             ))
+            // Audit trail (2026-08-20). Reflection is the pass most worth auditing: it writes a
+            // memory synthesized from OTHER memories rather than from anything the driver said, so
+            // it is the one place a plausible-sounding claim can enter the record with no external
+            // anchor behind it at all.
+            auditDao.record(
+                MemoryAudit.Event.WRITTEN,
+                MemoryAudit.Store.COMPANION,
+                "[${insight.category}/reflection] ${insight.text}",
+                refId = id,
+                vehicleId = vehicleId,
+            )
         }
     }
 

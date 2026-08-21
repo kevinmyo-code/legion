@@ -226,9 +226,9 @@ import androidx.room.RoomDatabase
         Goal::class, AdvisorAdvice::class,
         CodeClearEvent::class,
         Drive::class,
-        MusicPlayHistoryEntry::class,
+        MusicPlayHistoryEntry::class, MemoryAudit::class,
     ],
-    version = 26,
+    version = 27,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -279,6 +279,9 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun codeClearEventDao(): CodeClearEventDao
     abstract fun driveDao(): DriveDao
     abstract fun musicPlayHistoryDao(): MusicPlayHistoryDao
+
+    /** The memory audit trail (2026-08-20) - a record of what happened, never an input. */
+    abstract fun memoryAuditDao(): MemoryAuditDao
 
     companion object {
         @Volatile
@@ -332,6 +335,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
                         MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
                         MIGRATION_25_26,
+                        MIGRATION_26_27,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

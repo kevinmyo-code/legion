@@ -1,4 +1,4 @@
-﻿package com.kevin.legion.ai
+package com.kevin.legion.ai
 
 import android.content.Context
 import android.location.Geocoder
@@ -7,6 +7,8 @@ import android.util.Log
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CompanionMemory
+import com.kevin.legion.data.local.MemoryAudit
+import com.kevin.legion.data.local.record
 import com.kevin.legion.data.local.MemoryEntry
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.location.LocationController
@@ -41,6 +43,7 @@ class AriaBrain private constructor(context: Context) {
     private val memoryDao = CarDatabase.getDatabase(context).memoryDao()
     private val companionMemoryDao = CarDatabase.getDatabase(context).companionMemoryDao()
     private val episodicTurnDao = CarDatabase.getDatabase(context).episodicTurnDao()
+    private val auditDao = CarDatabase.getDatabase(context).memoryAuditDao()
     private val geocoder by lazy { Geocoder(appContext, Locale.getDefault()) }
 
     // buildSystemInstruction is called at the start of every session, and both
@@ -105,6 +108,36 @@ class AriaBrain private constructor(context: Context) {
         "picture of the driver as special, uniquely understood by you, or bonded to you."
 
     /**
+     * Appends one line to the memory audit trail (2026-08-20).
+     *
+     * Never throws into its caller. An audit is a record ABOUT the work, so a failure to record
+     * must not become a failure to remember - losing an audit line is bad, losing the driver's
+     * memory because the audit failed would be worse.
+     */
+    private suspend fun audit(
+        event: String,
+        store: String,
+        detail: String,
+        refId: Long = 0,
+    ) {
+        auditDao.record(event, store, detail, refId, ActiveVehicle.current(appContext))
+    }
+
+    /**
+     * Records a line the assistant actually SPOKE.
+     *
+     * This is the gap that made 2026-08-20's "the Jeep is at 142k" undiagnosable: the record said
+     * 227,612, the figure appeared in no table, the tool returns the right label - and there was no
+     * way to establish whether the model skipped the tool or was handed the right answer and said a
+     * different one, because nothing anywhere kept what it said. `episodic_turns` is emptied once
+     * consolidated, the transcript log holds only the DRIVER's words, and logcat rolls.
+     */
+    suspend fun auditSpoken(text: String) = withContext(Dispatchers.IO) {
+        if (text.isBlank()) return@withContext
+        audit(MemoryAudit.Event.SPOKEN, MemoryAudit.Store.SPEECH, text)
+    }
+
+    /**
      * Saves something to long-term memory and returns a short in-character
      * acknowledgement. Invoked when Gemini calls the "remember" tool.
      */
@@ -119,6 +152,7 @@ class AriaBrain private constructor(context: Context) {
             memoryDao.touch(existing.id, System.currentTimeMillis())
         } else {
             memoryDao.insert(MemoryEntry(text = trimmed, timestamp = System.currentTimeMillis()))
+            audit(MemoryAudit.Event.WRITTEN, MemoryAudit.Store.FLAT, trimmed)
         }
         // The memory list just changed; force the next base instruction to rebuild.
         baseCache = null
@@ -335,7 +369,7 @@ class AriaBrain private constructor(context: Context) {
      * Searches long-term memory for entries relevant to [query], across BOTH
      * memory stores - the older explicit-"remember X" table ([MemoryEntry],
      * global) and the consolidated/reflected companion-memory table
-     * ([CompanionMemory], ticket 01/02, per active car). Returns the top
+     * ([CompanionMemory], ticket 01/02). Returns the top
      * matches as spoken-friendly, date-tagged lines for the recall_memory
      * tool. Pull-based, not pre-injected into every prompt.
      *
@@ -350,12 +384,19 @@ class AriaBrain private constructor(context: Context) {
      *
      * A blank/term-less query returns the most recent+important memories
      * instead of scoring by relevance (nothing to be relevant TO).
+     *
+     * **Not partitioned by car since 2026-08-20.** It was, because this table was written for a
+     * car launcher, and that stranded 46 of Kevin's own driver memories behind whichever car
+     * happened to be connected. `car_anchored` rows are still scoped to the active car; facts
+     * about the driver are not, because the driver is the same person in every car.
      */
     suspend fun recallMemories(query: String, limit: Int = RECALL_LIMIT): List<String> =
         withContext(Dispatchers.IO) {
             val vehicleId = ActiveVehicle.current(appContext)
             val legacy = memoryDao.getRecent(RECALL_SCAN)
-            val companion = companionMemoryDao.getRecent(vehicleId, RECALL_SCAN)
+            // getRecallScan, not getRecent: driver/relationship memories come back whichever car
+            // is connected, car facts stay scoped to the car in front of him. See its own doc.
+            val companion = companionMemoryDao.getRecallScan(vehicleId, RECALL_SCAN)
 
             val terms = query.lowercase()
                 .split(Regex("[^a-z0-9]+"))
@@ -375,6 +416,19 @@ class AriaBrain private constructor(context: Context) {
             // Rehearsal: recalling a companion_memories row refreshes its recency,
             // same effect the old table's touch() has on re-mention.
             for (c in chosen) if (c is Candidate.Companion) companionMemoryDao.touch(c.memory.id, now)
+
+            // The audit trail's most useful pair: the query that was asked, then one line per
+            // memory the model was actually handed. Without the second half, "it had the right
+            // memory and said something else" cannot be told from "it never saw it".
+            audit(MemoryAudit.Event.RECALL, MemoryAudit.Store.COMPANION, query.ifBlank { "(no query - continuity)" })
+            for (c in chosen) {
+                audit(
+                    MemoryAudit.Event.RECALLED,
+                    if (c is Candidate.Companion) MemoryAudit.Store.COMPANION else MemoryAudit.Store.FLAT,
+                    c.text,
+                    refId = if (c is Candidate.Companion) c.memory.id else 0L,
+                )
+            }
 
             chosen.map { formatMemory(it) }
         }

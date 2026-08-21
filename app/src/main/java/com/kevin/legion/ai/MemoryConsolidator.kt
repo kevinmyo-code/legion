@@ -5,6 +5,8 @@ import android.util.Log
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CompanionMemory
 import com.kevin.legion.data.local.EpisodicTurn
+import com.kevin.legion.data.local.MemoryAudit
+import com.kevin.legion.data.local.record
 import com.kevin.legion.service.ConversationState
 import org.json.JSONArray
 
@@ -49,6 +51,7 @@ object MemoryConsolidator {
         val db = CarDatabase.getDatabase(context)
         val turnDao = db.episodicTurnDao()
         val memoryDao = db.companionMemoryDao()
+        val auditDao = db.memoryAuditDao()
 
         for (sessionId in turnDao.pendingSessionIds()) {
             if (ConversationState.isBusy) return // a new conversation started mid-sweep
@@ -67,7 +70,7 @@ object MemoryConsolidator {
             val vehicleId = turns.first().vehicleId
             val now = System.currentTimeMillis()
             for (m in distilled) {
-                memoryDao.insert(CompanionMemory(
+                val id = memoryDao.insert(CompanionMemory(
                     vehicleId = vehicleId,
                     text = m.text,
                     category = m.category,
@@ -76,6 +79,16 @@ object MemoryConsolidator {
                     createdAt = now,
                     lastAccessedAt = now,
                 ))
+                // Audit trail (2026-08-20): this pass runs unattended and writes durable memories
+                // from a transcript it then DELETES, so without a line here a wrong memory has no
+                // recoverable provenance at all.
+                auditDao.record(
+                    MemoryAudit.Event.WRITTEN,
+                    MemoryAudit.Store.COMPANION,
+                    "[${m.category}/consolidated] ${m.text}",
+                    refId = id,
+                    vehicleId = vehicleId,
+                )
             }
             if (ConversationState.isBusy) continue // don't delete turns a live convo might still need
             turnDao.deleteSession(sessionId)
