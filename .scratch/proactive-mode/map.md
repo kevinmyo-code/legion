@@ -5,7 +5,7 @@ charted: 2026-08-16
 charted-by: ""
 effort: "`.scratch/proactive-mode/`"
 tickets: 12
-open: 8
+open: 2
 status: open
 tags: [map]
 ---
@@ -21,6 +21,13 @@ register.
 Destination is DECISIONS, same shape as its parent map. **One exception: [the choke
 point](issues/01-one-gate-not-three.md) carries its own build spec** - it is a prerequisite rather
 than a feature, and nothing else on this map is honest until it lands.
+
+**REACHED, 2026-08-21.** All eight decision tickets are resolved and the two open tickets are both
+`built`, owing only a run on the phone. Twenty-one settled decisions. **Nothing on this map is built
+except the choke point, the ambient retirement, and the concierge rename** - the trigger engine, the
+five switches, the cap, the quiet hours, the typed raise object and the notification fallback are all
+decided and unwritten. The build wants its own map; the shopping list is at the foot of
+[ticket 02](issues/02-trigger-engine.md).
 
 ## Notes
 
@@ -68,11 +75,56 @@ ticket carried eight decision clusters plus a build.
 | 9 | **A raise's memory of itself lives in Room, not in a field.** (Kevin, 2026-08-21.) | One `proactive_raise` table backs never-nag-twice, [the budget](issues/05-quiet-hours-and-budget.md), and the reason affordance. Nothing new may hand-roll process-life dedup state. |
 | 10 | **Every raise carries the reason that fired it.** (Kevin, 2026-08-21.) | Nearly free under decision 8 - the rule IS the reason. [Ticket 08](issues/08-proactive-register.md) owns how it is worded aloud. |
 | 11 | **No raise may let the model decide BOTH that there is something to say and what it is.** (2026-08-21; `AmbientListener` was the only one and is [retired](issues/12-retire-ambient-listening.md).) | This is decision 8 stated as a prohibition, so a future feature cannot reintroduce shape (b) by the side door. |
+| 12 | **The compulsion test, four clauses.** A raise is anchored to a fact Kevin could verify, actionable now, never references his absence or streak or engagement, and is silenceable forever in one instruction. **Lives in CLAUDE.md §7**, checked by a test over the raise registry. (Kevin, 2026-08-21, [ticket 03](issues/03-compulsion-test.md).) | Clauses (a) and (d) become machine-checked. **(b) and (c) stay human-reviewed** - do not let the test's existence imply all four are covered. |
+| 13 | **A nudge about a goal Kevin set and then ignored is PERMITTED.** (Kevin, 2026-08-21, against the recommendation.) | The useful/guilt line is now TONE, not a checkable rule, and it rests on [ticket 08](issues/08-proactive-register.md)'s clause - the weakest lever available. Recorded so nobody re-derives the rejected fifth clause and thinks it is new. |
+| 14 | **Master + five categories live in Room, not SharedPreferences.** Fresh install is QUIET (master on, every category off); an existing `muted=false` upgrades to Safety+Fleet+Timing on, so Kevin's behaviour does not change. (Kevin, 2026-08-21, [ticket 04](issues/04-categories-storage-and-surface.md).) | Eligible to sync, which is not the same as syncing - `sync/` has never executed. Do not document these as synced until a device pair proves it. |
+| 15 | **Three unprompted SPOKEN lines a day. Safety is outside the cap, inside the master.** (Kevin, 2026-08-21, [ticket 05](issues/05-quiet-hours-and-budget.md).) | The only anti-compulsion guarantee that is countable. "Always speaks" is always shorthand for *while the master is on* - read every future exemption against that. |
+| 16 | **Quiet hours are per category per window. Wellbeing may speak inside the night window; Digest, Fleet and Timing may not.** (Kevin, 2026-08-21.) | Resolves the founding tension by design rather than by exception: the rest nudge that started this map is legal where it lives. |
+| 17 | **It speaks aloud THROUGH THE DAY, not only in a car** - gated on screen-on AND no live calendar event. (Kevin, 2026-08-21, [ticket 06](issues/06-delivery.md): *"thats the whole point of something like jarvis or alfred"*.) | The delivery-layer counterpart to the concierge reframe. Every existing raise assumes driving; none may after this. No calendar permission resolves to *unknown, so notify*, never *free, so speak*. |
+| 18 | **A raise that cannot be spoken is NOTIFIED, never dropped**, on its own proactive channel. One delivery per raise - never both. (Kevin, 2026-08-21.) | The cap governs SPEECH, not existence. An OS channel is a second kill switch Kevin can use without the app knowing, so nothing may ever claim a notification was delivered or seen. |
+| 19 | **A raise is a typed object, not a String** - id, category, rule, facts - and the bus refuses one whose facts are empty for a subject it invites the model to mention. (Kevin, 2026-08-21, [ticket 10](issues/10-what-a-raise-may-say.md).) | Churns all 11 call sites once and pays for three things: decision 7's contract, decision 9's raise row, and decision 18's "spoke, so do not notify". |
+| 20 | **Unreadable and empty are different sentences, for every permissioned source.** (2026-08-21, generalised from `OpenerCalendarBriefing`.) | Applies to contacts, health, notifications, anything added later - not just the calendar. |
+| 21 | **The proactive register is ONE shared clause every persona inherits**, at file scope in `ai/AriaBrain.kt` beside `CANNOT_CLAUSE`. A declined nudge suppresses that rule for a fixed window, silently. (Kevin, 2026-08-21, [ticket 08](issues/08-proactive-register.md).) | Never per-persona - that is the known weakness this map was told not to repeat. Suppression happens before the raise reaches the model, so there is no "second time" state for it to leak. |
 | 7 | **An unsolicited prompt states the facts of any subject it asks the model to mention, or forbids that subject in words.** Silence about a subject is not neutral - it is where invention goes. (2026-08-21, from the invented "lunch with Sam"; wording and enforcement are [ticket 10](issues/10-what-a-raise-may-say.md)'s to settle.) | Every raise site pre-fetches or says "you do not know". Unreadable and empty must never render as the same sentence. |
 
 ## Decisions so far
 
 <!-- one line per closed ticket -->
+
+- [The compulsion line, written as a test](issues/03-compulsion-test.md) — **Four clauses accepted,
+  into CLAUDE.md §7, checked by a test over the raise registry.** The hardest case went the other way
+  from the recommendation: a nudge about a goal Kevin set and then ignored is **permitted**, which
+  moves the useful-versus-guilt line out of a checkable rule and into tone. Said plainly on the ticket,
+  including what it costs.
+
+- [Five switches that actually switch something](issues/04-categories-storage-and-surface.md) —
+  **Room-backed so they can sync, quiet by default, and Kevin's own phone carries its current
+  behaviour.** A fresh install says nothing until asked; an existing `muted=false` becomes
+  Safety+Fleet+Timing on. An empty category row says *"nothing uses this yet"* in words - a switch that
+  governs nothing must not imply it does.
+
+- [Quiet hours, and how often it may speak](issues/05-quiet-hours-and-budget.md) — **Three spoken
+  lines a day, Safety uncapped, quiet hours per category per window.** The founding tension is resolved
+  by design: Wellbeing may speak inside the night window, which is where the rest nudge lives. Over the
+  cap means *not spoken*, never *lost* - it becomes a notification. A brush-off spends a slot and is
+  inferred from the reply, with the imperfection of that inference stated and bounded.
+
+- [Speak, notify, or wait](issues/06-delivery.md) — **It speaks aloud through the day**, Kevin
+  overriding the session-gated recommendation: *"thats the whole point of something like jarvis or
+  alfred right, throughout the day keeps me on track."* Gated on screen-on plus a calendar check for a
+  live event. Own notification channel; anything unspeakable is notified; one delivery per raise, which
+  fixes `ReminderAlarmReceiver`'s existing speak-and-notify echo.
+
+- [How it sounds when nobody asked](issues/08-proactive-register.md) — **One shared clause every
+  persona inherits**, at file scope beside `CANNOT_CLAUSE`, never per-persona. A declined nudge goes
+  quiet for a fixed window and returns in an identical tone. Register-by-category is the better answer
+  and is deferred, not lost. "Why did you say that?" names the rule and the fact, never a
+  justification.
+
+- [What an unsolicited prompt may contain](issues/10-what-a-raise-may-say.md) — **Contract
+  accepted and made enforceable by a typed raise object**, because a convention with a comment is
+  exactly what ticket 01 found had already failed once. Unreadable-versus-empty is promoted to a rule
+  of the contract for every permissioned source, not a calendar detail.
 
 - [What decides there is something worth saying](issues/02-trigger-engine.md) — **Hybrid (c): rules
   decide, the model words it.** `advisor/` turned out to be pull-only with a single caller
@@ -83,6 +135,16 @@ ticket carried eight decision clusters plus a build.
   that shaped the rest: every raise's dedup state is process-life against a `START_STICKY` service,
   so "never nag twice" was impossible - a `proactive_raise` Room table now backs it, the budget, and
   the reason each raise carries. Four calls, full record on the ticket.
+
+- [The boot-started service takes 123s to call startForeground](issues/09-fgs-start-delay.md) —
+  **Closed as a misreading, from AOSP source. No fix, no bug.** `startForegroundDelayMs` is a benign
+  diagnostic string appended to `mInfoAllowStartForeground`, measured from **ServiceRecord creation**
+  and **sticky**, so a large value on a healthy service is normal. Two constants were being conflated:
+  the 10s one only triggers a restriction re-check, while the ANR clock is a different 30s constant.
+  Decisive: the string is emitted only when `!r.fgRequired`, and the ANR timer arms only when
+  `r.fgRequired` - **a record that can print this field is one whose ANR timer was never armed.** The
+  temp allowlist affects allow-START only. And point 4 was already true: `startForegroundCompat()` is
+  the second statement of `onCreate`, so the delay was impossible from app code all along.
 
 - [What may a background process actually do on Android in 2026?](issues/07-scheduling-research.md)
   — **The threat is Samsung's sleeping-apps layer, not the six-hour cap.** Full findings with
@@ -125,13 +187,17 @@ In scope, but not sharp enough to ticket. Graduates as the frontier advances.
   (decision 9): it is remembered, in a `proactive_raise` Room table.** What is still open is the
   narrower question of **how a brush-off is detected** - inferred from the reply, or asked for -
   and how long a refusal suppresses its rule.
-- **Per-category quiet hours** versus one global window. Cannot be specified until
-  [quiet hours](issues/05-quiet-hours-and-budget.md) settles the simple case.
+- ~~**Per-category quiet hours** versus one global window.~~ **Settled 2026-08-21 (decision 16):
+  per category, per window.** What is still open is the window's actual hours.
+- **Register as a property of the CATEGORY**, not the persona - a 3am Safety warning and a Wellbeing
+  rest nudge cannot share a delivery. Deferred by [ticket 08](issues/08-proactive-register.md), and it
+  needs [the categories](issues/04-categories-storage-and-surface.md) built first. It sits ON TOP of
+  the shared clause, never instead of it.
 - **Whether the Digest category subsumes the morning brief** or merely delivers it. Waits on
   `.scratch/hands-and-senses/issues/08-morning-brief.md`.
-- **A "why did you say that?" affordance.** If Alfred speaks unprompted, being able to ask what
-  triggered it is the cheapest trust mechanism available - but it depends on the trigger engine
-  having an inspectable reason, which is [ticket 02](issues/02-trigger-engine.md)'s outcome.
+- ~~**A "why did you say that?" affordance.**~~ **Settled: [ticket 02](issues/02-trigger-engine.md)
+  decision 10 stores the reason, [ticket 08](issues/08-proactive-register.md) decides its wording.**
+  What remains is building it.
 
 ## Out of scope
 

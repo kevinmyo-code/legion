@@ -3,12 +3,12 @@ map: proactive-mode
 ticket: 03
 title: "The compulsion line, written as a test rather than a vibe"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "2026-08-21, Kevin - 4 calls; the hardest case ruled PERMITTED"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The compulsion line, written as a test rather than a vibe
@@ -46,3 +46,51 @@ Decide:
    nudge about it is anchored to a fact he chose (passes (a)), is actionable (passes (b)), and does
    not mention his absence (passes (c)) - **and yet "you set this and did nothing" is exactly the
    guilt mechanic §7 bans.** Either the test is incomplete or that nudge is permitted. Say which.
+
+## Resolution - 2026-08-21 (Kevin, 4 calls)
+
+### 1. All four clauses accepted, as written
+
+A raise must **(a)** be anchored to a fact Kevin could verify himself, **(b)** be actionable right
+now, **(c)** never reference his absence, his streak, or his engagement with the app, and **(d)** be
+silenceable forever in one instruction.
+
+### 2. The hardest case: the ignored goal is PERMITTED. The test stands unchanged.
+
+Kevin's call, against the recommendation, which proposed a fifth clause banning any reference to a
+history of inaction.
+
+**State the consequence plainly, because it is the whole reason this ticket exists.** A nudge about a
+goal set and then ignored for two weeks passes all four clauses, and *"you set this and did nothing"*
+is guilt. Ruling it permitted means **the line between a useful reminder and a scolding one is now
+TONE, and tone is not checkable.** It moves to [ticket 08](08-proactive-register.md)'s register -
+"always offer, never instruct", "never mention that it is the second time" - which is a prompt rule,
+and prompt rules are the weakest lever this codebase has (CLAUDE.md §7 on the speech-honesty clause:
+nothing inspects the spoken audio).
+
+That is a real cost, accepted knowingly rather than missed. It is written here so a future session
+finds the decision rather than re-deriving the same fifth clause and thinking it is new.
+
+**What still constrains it:** clause (c) is untouched. A goal nudge may reference the goal, its
+deadline, and its next action. It may **not** reference how long Kevin has been away from the app, a
+streak, or a count of missed days - those are about his engagement, not about the goal.
+
+### 3. The test lives in CLAUDE.md §7
+
+The heaviest and hardest-to-reverse option, chosen deliberately: §7 already bans compulsion in the
+abstract, and this makes the ban checkable. A rule protecting against slow erosion belongs in the
+file that is read every session, not in a map that a future effort may never open.
+
+### 4. Checked by a test over the raise registry
+
+[Ticket 02](02-trigger-engine.md)'s `proactive_raise` table gives every raise an id, a category and a
+reason, so a unit test can assert that every registered raise declares its anchor (a) and its silence
+instruction (d). Machine-checked, the same posture as `PromptRoleNamingTest`.
+
+**Honest limit, and it is the same shape as clause 2's:** a test can check that a raise DECLARES an
+anchor. It cannot check that the anchor is real, that the raise is actionable (b), or that the
+wording avoids guilt. **Clauses (a) and (d) become enforceable; (b) and (c) stay reviewed by a
+human.** Do not let the existence of the test imply all four are covered.
+
+**Ordering:** this test needs the registry, so it lands with [ticket 04](04-categories-storage-and-surface.md)'s
+build, not before it.

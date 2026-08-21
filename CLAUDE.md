@@ -310,6 +310,30 @@ the wrong JDK and Gradle picks it up if `JAVA_HOME` is unset. `adb` lives at
   - **No compulsion mechanics.** Streaks, re-engagement pings, manufactured return, guilt for being
     away. Warmth is welcome; a mechanism engineered to pull someone back is not. The difference is
     whether the feeling serves the user or the retention.
+
+    **The compulsion test, so this is checkable rather than felt about (Kevin, 2026-08-21,
+    `.scratch/proactive-mode/issues/03-compulsion-test.md`).** An Alfred rest-nudge is mechanically
+    IDENTICAL to a re-engagement ping - same notification, same unprompted speech, same hour of the
+    night. Only content and intent differ, so intent has to be written down as something a future
+    ticket can be checked against. **Every unsolicited raise must:**
+
+    - **(a)** be anchored to a fact the user could verify himself - the clock, a goal he set, a
+      sleep target, a weather alert;
+    - **(b)** be actionable right now;
+    - **(c)** **never reference his absence, his streak, or his engagement with the app**;
+    - **(d)** be silenceable forever in one instruction.
+
+    **(c) and (d) are the load-bearing halves.** Without them "it's past 10pm" becomes "you haven't
+    talked to me in three days" by increments, and nobody notices the day it crosses over.
+
+    **What the test does NOT cover, stated so its existence is not mistaken for coverage.** A test
+    over the raise registry can check that a raise DECLARES an anchor (a) and a silence instruction
+    (d). It cannot check that the anchor is real, that the raise is actionable (b), or that the
+    wording avoids guilt (c) - **those two stay human-reviewed.** And Kevin ruled on 2026-08-21 that
+    a nudge about **a goal he set and then ignored is PERMITTED**, which means the line between a
+    useful reminder and a scolding one now rests on tone, in the shared proactive clause, and tone is
+    the weakest lever this codebase has. Clause (c) still binds: such a nudge may name the goal, its
+    deadline, or its next action, and may never characterise how long it went unattended.
   - **Memory stays anchored to external falsifiable facts** about the car, the statements, the
     receipts. A persona may be fond of the driver; it may not invent unfalsifiable history with them.
   - **Genuine distress still routes to `ai/CrisisDetector.kt`:** surface real resources and STOP

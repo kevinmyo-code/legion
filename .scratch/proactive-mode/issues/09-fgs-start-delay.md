@@ -3,12 +3,12 @@ map: proactive-mode
 ticket: 09
 title: "The boot-started service takes 123s to call startForeground, against a 10s window"
 type: bug
-status: open
-status-detail: ""
+status: resolved
+status-detail: "2026-08-21 - closed as a misreading, settled from AOSP source"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The boot-started service takes 123s to call startForeground, against a 10s window
@@ -88,3 +88,63 @@ that neither service implements `onTimeout`.
   reboot answers the still-open question from `80a1758` about whether the boot start omits the
   microphone FGS type, since opening the app promotes it and destroys that evidence.
 - Confirm no `ForegroundServiceDidNotStartInTimeException` in logcat across several reboots.
+
+## Resolution - 2026-08-21: the field does not mean what this ticket assumed. Closed, no fix.
+
+The ticket's own instruction was to establish what `startForegroundDelayMs` means from primary
+sources before spending any effort on a fix. Done, from AOSP.
+
+**It is a benign diagnostic breadcrumb, not a timeout.** It is written in
+`ActiveServices.setServiceForegroundInnerLocked()` and appended as free text to
+`mInfoAllowStartForeground`, which is the same blob that carries the `tempAllowListReason:<...>`
+string this ticket also quoted. There is no such member field and no proto field - it reaches
+`dumpsys` only as text. [AOSP-source]
+
+```java
+if (!r.fgRequired) {
+    final long delayMs = SystemClock.elapsedRealtime() - r.createRealTime;
+    if (delayMs > mAm.mConstants.mFgsStartForegroundTimeoutMs) {
+        ...
+        final String temp = "startForegroundDelayMs:" + delayMs;
+```
+
+**Three things settle it, and the third is decisive.**
+
+1. **The zero point is `ServiceRecord` creation, not the `startForegroundService()` call.** It is a
+   real duration, `elapsedRealtime() - createRealTime`, measured when `startForeground()` is
+   processed - and it is **sticky**, so a value read at `dumpsys` time is a historical measurement
+   rather than a live counter. That alone explains 554 seconds on a healthy service.
+2. **Two different constants were being conflated.** `mFgsStartForegroundTimeoutMs` is 10s and its
+   only effect is to trigger a BFSL restriction re-check and print this string - no ANR, no kill.
+   The ANR clock is a different constant, `mServiceStartForegroundTimeoutMs` at **30s**, plus a
+   further 10s delay before the ANR fires. The "10 second window" this ticket was written against is
+   the harmless one. [AOSP-source]
+3. **The two paths are mutually exclusive by construction.** The string is emitted only when
+   `!r.fgRequired` - a service started with plain `startService()`. The ANR timer is armed only at
+   `if (r.fgRequired && !r.fgWaiting)`. **A record that can print `startForegroundDelayMs` is a
+   record whose ANR timer was never armed.** The feared `ForegroundServiceDidNotStartInTimeException`
+   was not merely unlikely here; it was structurally impossible on that code path. [AOSP-source]
+
+Also settled, since the ticket asked: **the BOOT_COMPLETED temp allowlist affects allow-START only.**
+Nothing in `scheduleServiceForegroundTransitionTimeoutLocked()` or `serviceForegroundTimeout()` reads
+the allowlist. The `duration:20000` is the window for permitting the start and has nothing to do with
+any `startForeground` deadline. And it is **not** notification deferral either - that mechanism uses
+`fgDisplayTime` and `mFgsNotificationDeferred` and never produces this string. [AOSP-source]
+
+### Point 4 was already true before the ticket was written
+
+`startForegroundCompat()` is the **second statement of `onCreate`**
+(`service/AriaForegroundService.kt:136`), after only `createNotificationChannel()`, and
+`onStartCommand` calls it again as its first act. There was never any slow work in front of it to
+hoist. Had anyone read the startup path, the 123-second reading would have been obviously
+impossible from app code, which is the cheaper of the two ways to have caught this. [traced]
+
+### The lesson, which is the only thing worth keeping
+
+**A number read off `dumpsys` is a string, not a measurement.** This ticket built a fatal-crash
+theory on a field name that read like a duration against a constant that read like its deadline, and
+both readings were wrong. The ticket did the right thing at the time - it recorded the second,
+contradictory reading and said in writing that the framing was "an inference, not a finding" - and
+that is what stopped a fix being built for a bug that did not exist. **Filed to `lessons.md`.**
+
+Nothing owed on the phone. Nothing to fix.
