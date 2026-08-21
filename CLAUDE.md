@@ -42,7 +42,12 @@ If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins 
   the driver's, so a profile can be Alfred's register wearing another name. Never hardcode an
   assistant name into copy.
 - **The assistant is a CONCIERGE, not a car companion (2026-08-20, Kevin).** The prompt layer used
-  to call the user "the driver" in 45 string literals, and the model answered accordingly - a
+  to call the user "the driver" in 45 string literals **(CORRECTED 2026-08-21: 45 was the count in
+  the three files that commit looked at. The real total was 281 - `service/LiveToolbox.kt` alone
+  held 183, ~149 of them in non-fleet tool descriptions, which the model reads on EVERY turn. All
+  renamed; `ai/PromptRoleNamingTest.kt` now fails the build on the next one, with a per-file
+  allowlist for the places "driver" is genuinely right - OBD signal names and the stored
+  `"driver"` memory-category value)**, and the model answered accordingly - a
   greeting about the weather came out as a greeting about the weather *for a drive*. It now says
   "the user", and `ai/AriaBrain.kt`'s `ASSISTANT_FRAME` states the frame outright at the head of
   `SHARED_INSTRUCTIONS`: the person may be at a desk, in a kitchen, in bed, or occasionally in a
@@ -50,6 +55,15 @@ If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins 
   car context, all of it - but car context is injected only when the OBD dongle is connected, which
   is the one signal that says he is IN a car rather than merely owns three. Anything spoken
   verbatim gets the same treatment: `REMEMBER_ACKS` were car jokes and are now plain.
+- **A proactive prompt states its facts or forbids its subject.** Asking the model to mention
+  what is "coming up" while handing it no schedule is not a neutral prompt - it is a request for
+  content with no source, and it produced an invented lunch appointment with a person who does not
+  exist (2026-08-21). An unsolicited raise pre-fetches the facts of anything it invites the model to
+  mention, or says in words that it does not know. **Unreadable and empty are different sentences:**
+  a `ContentResolver` returns an empty list for a refused permission and for a clear day, and
+  rendering the first as the second tells the user they are free when the app cannot see.
+  `calendar/OpenerCalendarBriefing.kt` is the worked example;
+  `.scratch/proactive-mode/issues/10-what-a-raise-may-say.md` owns the general rule.
 - **Never hand the model an IANA timezone id.** `America/Chicago` is a database key that happens to
   contain a city, and asserting it made the assistant talk about Chicago to a man in Houston. The
   clock is a UTC offset, the place comes from `LocationController`, and with no fix it says the
