@@ -271,6 +271,87 @@ fun ProactiveCategoryRow(
 }
 
 /**
+ * One sitrep module switch (ticket 22, `.scratch/hands-and-senses/issues/22-build-the-sitrep.md`)
+ * - shape lifted straight from [ProactiveCategoryRow], the ticket's own instruction to follow
+ * that file "exactly as the pattern." No `masterOn` parameter here, unlike that row: the sitrep
+ * has no master kill switch of its own ([com.kevin.legion.sitrep.SitrepSettings]'s own class doc
+ * explains why - the askable path is never gated at all, and the SCHEDULED path is gated by
+ * [ProactiveCategory.DIGEST]'s switch above, not by anything on this row).
+ */
+@Composable
+fun SitrepModuleRow(
+    module: com.kevin.legion.sitrep.SitrepModule,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(module.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(module.blurb, style = LegionType.stamp, color = sem.faint)
+            }
+            DeckSwitch(checked = enabled, onCheckedChange = onToggle)
+        }
+    }
+}
+
+/**
+ * The sitrep's schedule time and newsletter sender list (ticket 22 part F) - one row, matching
+ * [com.kevin.legion.data.local.SitrepSchedule]'s own one-row-per-schedule shape. [hourText]/
+ * [minuteText] are plain typed digits rather than a picker dialog (this app's clean-slate `ui/`
+ * has no time-picker component yet, and CLAUDE.md says to STOP and surface a missing design
+ * primitive rather than improvise a new one - a two-field typed time is the smallest thing that
+ * does not require inventing one). [onSave] is called with the whole row's state at once so the
+ * caller can validate/persist it as one write, same as [com.kevin.legion.ui.common.DeckTextField]'s
+ * callers elsewhere on this screen.
+ *
+ * **Newsletter senders are curated by Kevin, by hand** (ticket 08 §6) - this field is a plain
+ * comma-separated text entry, never a picker or a suggestion list; nothing here infers a sender.
+ */
+@Composable
+fun SitrepScheduleRow(
+    hourText: String,
+    minuteText: String,
+    sendersText: String,
+    onHourChange: (String) -> Unit,
+    onMinuteChange: (String) -> Unit,
+    onSendersChange: (String) -> Unit,
+    onSave: () -> Unit,
+    statusLine: String,
+) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text("Sitrep schedule", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(statusLine, style = LegionType.stamp, color = sem.faint)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.kevin.legion.ui.common.DeckTextField(
+                    value = hourText, onValueChange = onHourChange, label = "Hour (0-23)",
+                    modifier = Modifier.weight(1f),
+                )
+                com.kevin.legion.ui.common.DeckTextField(
+                    value = minuteText, onValueChange = onMinuteChange, label = "Minute (0-59)",
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            com.kevin.legion.ui.common.DeckTextField(
+                value = sendersText, onValueChange = onSendersChange,
+                label = "Newsletter senders (comma-separated)",
+            )
+            Spacer(Modifier.height(8.dp))
+            DeckButton(text = "Save schedule", onClick = onSave)
+        }
+    }
+}
+
+/**
  * Caller ID and voice call control (2026-08-21, Kevin: *"i wanna know whos calling ... can i also
  * pick it up or decline via voice?"*).
  *

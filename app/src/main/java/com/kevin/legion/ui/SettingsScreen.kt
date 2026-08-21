@@ -56,6 +56,9 @@ import com.kevin.legion.service.ProactiveCategory
 import com.kevin.legion.service.ProactiveSettings
 import com.kevin.legion.service.CallActions
 import com.kevin.legion.service.CallerId
+import com.kevin.legion.sitrep.SitrepModule
+import com.kevin.legion.sitrep.SitrepScheduler
+import com.kevin.legion.sitrep.SitrepSettings
 
 /**
  * `settings` tab. Owns the assistant ignition toggle (ticket 07 resolution
@@ -126,6 +129,13 @@ fun SettingsScreen(
     // `.scratch/wake-word/issues/02-the-settings-toggle.md`: WakeWordPreferences.setEnabled had
     // zero callers, so the engine could never start. This row's handler is now its only writer.
     var wakeWordOn by remember { mutableStateOf(WakeWordPreferences.isEnabled(context)) }
+    // Ticket 22's module registry - same seeded-false-corrected-on-load shape as
+    // `proactiveCategories` above, since [SitrepSettings.load] is itself a suspend Room read.
+    var sitrepModules by remember { mutableStateOf<Map<SitrepModule, Boolean>>(emptyMap()) }
+    var sitrepHourText by remember { mutableStateOf("") }
+    var sitrepMinuteText by remember { mutableStateOf("") }
+    var sitrepSendersText by remember { mutableStateOf("") }
+    var sitrepScheduleStatus by remember { mutableStateOf("No schedule set - the sitrep is askable any time, but never fires on its own.") }
     var canSeeCaller by remember { mutableStateOf(false) }
     var canAnswerCalls by remember { mutableStateOf(false) }
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
@@ -174,9 +184,28 @@ fun SettingsScreen(
             db.companionMemoryDao().allRecent(MEMORY_SETTINGS_SCAN).size
     }
 
+    // Ticket 22 part F: loads the module switches plus whatever schedule is stored, formatting
+    // hour/minute as plain zero-padded digits for the two [DeckTextField]s. A never-set schedule
+    // (`SitrepSettings.schedule` returns null) leaves the three fields blank rather than seeding a
+    // fake default time - an empty field is what tells Kevin nothing has been saved yet.
+    suspend fun reloadSitrepSettings() {
+        SitrepSettings.load(context)
+        sitrepModules = SitrepSettings.modules.value
+        val schedule = SitrepSettings.schedule(context)
+        if (schedule != null) {
+            sitrepHourText = schedule.hour.toString()
+            sitrepMinuteText = schedule.minute.toString()
+            sitrepSendersText = schedule.senders
+            sitrepScheduleStatus = "Fires daily at %02d:%02d".format(schedule.hour, schedule.minute)
+        } else {
+            sitrepScheduleStatus = "No schedule set - the sitrep is askable any time, but never fires on its own."
+        }
+    }
+
     LaunchedEffect(reloadNonce) {
         reloadActiveProfile()
         reloadPlaybookAndMemoryStatus()
+        reloadSitrepSettings()
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         reloadNonce++
@@ -393,6 +422,48 @@ fun SettingsScreen(
                     },
                 )
             }
+
+            // Ticket 22: the sitrep module registry, plus its schedule. Sits right below Digest's
+            // own switch/category row above, since a scheduled sitrep is delivered THROUGH that
+            // category (ticket 08 §1) - these rows configure WHAT it says, not WHETHER it may.
+            Spacer(Modifier.height(8.dp))
+            SitrepModule.entries.forEach { module ->
+                Spacer(Modifier.height(4.dp))
+                SitrepModuleRow(
+                    module = module,
+                    enabled = sitrepModules[module] == true,
+                    onToggle = { on ->
+                        sitrepModules = sitrepModules + (module to on)
+                        scope.launch { SitrepSettings.setModule(context, module, on) }
+                    },
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            SitrepScheduleRow(
+                hourText = sitrepHourText,
+                minuteText = sitrepMinuteText,
+                sendersText = sitrepSendersText,
+                onHourChange = { sitrepHourText = it.filter(Char::isDigit).take(2) },
+                onMinuteChange = { sitrepMinuteText = it.filter(Char::isDigit).take(2) },
+                onSendersChange = { sitrepSendersText = it },
+                statusLine = sitrepScheduleStatus,
+                onSave = {
+                    val hour = sitrepHourText.toIntOrNull()?.coerceIn(0, 23)
+                    val minute = sitrepMinuteText.toIntOrNull()?.coerceIn(0, 59)
+                    if (hour == null || minute == null) {
+                        sitrepScheduleStatus = "Enter a valid hour (0-23) and minute (0-59) first."
+                        return@SitrepScheduleRow
+                    }
+                    val senders = sitrepSendersText.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    scope.launch {
+                        SitrepSettings.setSchedule(context, hour, minute, senders)
+                        // Re-arms immediately (ticket 22 part D) - a saved schedule with no armed
+                        // alarm until the next reboot would be a setting that lies about being live.
+                        SitrepScheduler.schedule(context, hour, minute)
+                        sitrepScheduleStatus = "Fires daily at %02d:%02d".format(hour, minute)
+                    }
+                },
+            )
 
             // `.scratch/wake-word/issues/02-the-settings-toggle.md`. The handler is the ONLY writer
             // of WakeWordPreferences, matching AssistantIgnition's single-writer discipline.

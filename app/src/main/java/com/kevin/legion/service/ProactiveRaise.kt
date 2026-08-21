@@ -110,6 +110,23 @@ data class ProactiveRaise(
      * shape this flag's doc is warning about.
      */
     val listensForReply: Boolean = false,
+    /**
+     * True when this raise's spoken text contains READ-THROUGH content - material that was read,
+     * used, and must not be stored (2026-08-21).
+     *
+     * **The scheduled sitrep is why this exists.** Its NEWS module summarises Gmail bodies, and the
+     * summary is mail content one derivation removed. The voice path is covered by
+     * `LiveToolbox.EPISODIC_EXCLUDED_TOOLS`, which keys on the TOOL that ran - but a scheduled raise
+     * calls no tool, so that gate cannot see it. Without this flag, replying to a spoken sitrep
+     * would write the news summary into `episodic_turns` and from there into `CompanionMemory`,
+     * storing exactly what ticket 08 call 4 refused.
+     *
+     * A raise that is never replied to was already safe: `captureEpisodicTurn` returns early on a
+     * blank driver turn. **That is a narrow accident, not a guarantee** - the leak was real the
+     * moment Kevin answered - which is why this is a declared property of the raise rather than a
+     * reliance on him staying quiet.
+     */
+    val carriesReadThroughContent: Boolean = false,
 ) {
     init {
         require(ruleId.isNotBlank()) { "a raise must name the rule that fired it" }

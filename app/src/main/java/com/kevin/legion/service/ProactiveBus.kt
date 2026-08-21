@@ -63,7 +63,13 @@ object ProactiveBus {
      * proactive line opens the mic is a property OF THAT LINE - see [ProactiveRaise.listensForReply]
      * - and threading it through a side channel would let the two disagree.
      */
-    data class SpeakRequest(val prompt: String, val listensForReply: Boolean = false)
+    data class SpeakRequest(
+        val prompt: String,
+        val listensForReply: Boolean = false,
+        /** See [ProactiveRaise.carriesReadThroughContent] - the turn this opens must not be
+         * written to episodic memory. */
+        val carriesReadThroughContent: Boolean = false,
+    )
 
     private val _requestSpeak = MutableSharedFlow<SpeakRequest>(extraBufferCapacity = 4)
     val requestSpeak: SharedFlow<SpeakRequest> = _requestSpeak
@@ -197,8 +203,12 @@ object ProactiveBus {
     }
 
     /** The only place that touches the raw flow. */
-    private fun emit(prompt: String, listensForReply: Boolean = false) {
-        _requestSpeak.tryEmit(SpeakRequest(prompt, listensForReply))
+    private fun emit(
+        prompt: String,
+        listensForReply: Boolean = false,
+        carriesReadThroughContent: Boolean = false,
+    ) {
+        _requestSpeak.tryEmit(SpeakRequest(prompt, listensForReply, carriesReadThroughContent))
     }
 
     /**
@@ -277,7 +287,7 @@ object ProactiveBus {
             // accepted: a spoken line leaves nothing on the lock screen to find afterwards.
             // Arm decline detection BEFORE the line goes out, so a fast reply cannot beat it.
             awaitingReplyFor = raise.ruleId
-            emit(raise.prompt, raise.listensForReply)
+            emit(raise.prompt, raise.listensForReply, raise.carriesReadThroughContent)
             return RaiseOutcome.Raised(rowId)
         }
 

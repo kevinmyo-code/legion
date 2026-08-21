@@ -67,6 +67,13 @@ class SitrepAlarmReceiver : BroadcastReceiver() {
                     reason = "the scheduled sitrep came due",
                     facts = text,
                     prompt = buildPrompt(text),
+                    // The NEWS module summarises Gmail bodies, so this spoken text IS mail content
+                    // one derivation removed. Ticket 08 call 4 rejected storing the summary, and a
+                    // scheduled raise calls no tool, so LiveToolbox.EPISODIC_EXCLUDED_TOOLS cannot
+                    // see it. Set unconditionally rather than only when NEWS is enabled: a flag
+                    // that depends on which modules happened to be on is a flag that is right most
+                    // of the time.
+                    carriesReadThroughContent = true,
                 ),
             )
         }

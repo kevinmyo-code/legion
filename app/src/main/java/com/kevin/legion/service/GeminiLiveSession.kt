@@ -697,6 +697,23 @@ class GeminiLiveSession(
      */
     fun readThroughToolTouchedThisTurn(): Boolean = mailToolCalledThisTurn
 
+    /**
+     * Marks this turn as carrying read-through content, so [captureEpisodicTurn] skips it and
+     * `remember` refuses - the same protection a mail TOOL call gets, for speech that never called
+     * a tool.
+     *
+     * **A scheduled proactive raise is why this is public.** The tool-keyed gate
+     * ([LiveToolbox.EPISODIC_EXCLUDED_TOOLS]) cannot see a sitrep that arrived on a timer, because
+     * no tool ran - and that sitrep's news section is a summary of Kevin's mail. Without this, a
+     * reply to a spoken sitrep would write it into `episodic_turns`.
+     *
+     * Sets the SAME flag the mail tools set rather than a parallel one, deliberately: two flags
+     * meaning "do not remember this" is how one of them ends up checked in only half the places.
+     */
+    fun markTurnReadThrough() {
+        mailToolCalledThisTurn = true
+    }
+
     val isActive: Boolean get() = running.get() && !closed.get()
 
     // --- WebSocket -------------------------------------------------------

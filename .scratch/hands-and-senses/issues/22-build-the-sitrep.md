@@ -3,8 +3,8 @@ map: hands-and-senses
 ticket: 22
 title: "Build the sitrep"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "2026-08-21 - built; owes a run on the phone"
 blockers: ["08"]
 blocked-by: ["[[08-morning-brief]]"]
 open-blockers: 0
@@ -79,3 +79,39 @@ needs its own decision.
 - **On the phone:** a scheduled sitrep actually fires at the set time, survives a reboot, and is
   silenced by the master switch. The last one is not optional - Digest is a category, and settled
   decision 2 says the master has no exemptions.
+
+## Built - 2026-08-21
+
+Green at 1840 tests. `SitrepBuilder`, `SitrepScheduler`, `SitrepAlarmReceiver`, `SitrepSettings`,
+`SitrepModule`, Room v29 (`sitrep_modules` + `sitrep_schedule`), `get_sitrep`, two settings rows,
+`BootReceiver` re-arm, and `DIGEST.hasContent` flipped in the same change.
+
+### A read-through leak that the build introduced, found in review
+
+The executing agent flagged one call as `reasoned` rather than checked: whether `get_sitrep` needed
+adding to `LiveToolbox.EPISODIC_EXCLUDED_TOOLS`. It decided no. **That was wrong, and it had two
+paths, not one.**
+
+The news module summarises Gmail bodies, so **the summary is mail content one derivation removed** -
+and [ticket 08](08-morning-brief.md) call 4 rejected "store the summary, drop the bodies" in exactly
+those words.
+
+1. **Asking by voice** would have written the sitrep into `episodic_turns`, and from there into
+   `CompanionMemory` via the consolidation pass. Fixed by adding `get_sitrep` to the excluded set.
+2. **The SCHEDULED sitrep** was worse, because the tool-keyed gate cannot see it at all - no tool
+   runs. Fixed with `ProactiveRaise.carriesReadThroughContent`, carried through the bus and the
+   session controller onto the same flag the mail tools set.
+
+**Path 2 was live and a green suite would never have caught it.** An unanswered raise happens to be
+safe, because `captureEpisodicTurn` returns early on a blank driver turn - so the leak only opened
+the moment Kevin replied to a spoken sitrep. A narrow accident is not a guarantee.
+
+The existing exact-set drift guard failed on the addition and **that is the guard working**: it
+forced the fourth name to be a decision written down here, rather than absorbed silently.
+
+### Owed on the phone
+
+- The alarm fires at the set time, survives a reboot, and is silenced by the master switch. The last
+  is not optional - Digest is a category and settled decision 2 says the master has no exemptions.
+- The two new settings rows render (no Compose preview was run - the executing agent flagged this).
+- No migration test for v28→v29, matching v27/v28's posture; the SQL was diffed against `29.json`.

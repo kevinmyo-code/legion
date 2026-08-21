@@ -246,7 +246,9 @@ class AriaForegroundService : Service() {
         // Wire the proactive engine to the one session (the Cruise screen drives
         // listening directly). Used to be collected in AriaLiveScreen.
         serviceScope.launch {
-            ProactiveBus.requestSpeak.collect { sessionController.requestSpeak(it.prompt, it.listensForReply) }
+            ProactiveBus.requestSpeak.collect {
+                sessionController.requestSpeak(it.prompt, it.listensForReply, it.carriesReadThroughContent)
+            }
         }
         // The other half of a ring-listening window (2026-08-21): TelephonyController is a platform
         // callback with no session reference, so it signals through the bus and this collector

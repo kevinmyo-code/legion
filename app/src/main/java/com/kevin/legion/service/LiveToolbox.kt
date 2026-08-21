@@ -2306,7 +2306,21 @@ object LiveToolbox {
     // the two original names stay too, since dispatch still runs them internally inside ask_mail's
     // own investigate loop (agentToolsFor("mail", ...)), and a future direct caller of either
     // should still be caught.
-    val EPISODIC_EXCLUDED_TOOLS = setOf("search_mail", "read_mail", "ask_mail")
+    // `get_sitrep` joined 2026-08-21, and it is the first NON-mail tool here. It belongs because a
+    // sitrep's NEWS module fetches Gmail bodies and hands back an LLM summary of them: the summary
+    // IS mail content, one derivation removed. Ticket 08 call 4 rejected "store the summary, drop
+    // the bodies" explicitly, so letting the spoken sitrep land in `episodic_turns` - and from
+    // there into CompanionMemory via the consolidation pass - would have stored exactly what that
+    // call refused.
+    //
+    // The cost is accepted and was already accepted by that ticket: a sitrep turn is not
+    // remembered, so "what did yesterday's sitrep say" cannot be answered. A sitrep is a snapshot
+    // of now, not a feed with a history.
+    //
+    // **Excluded unconditionally, not only when NEWS ran.** A conditional exclusion would depend on
+    // which modules were enabled at the moment of the call, which is exactly the kind of "safe most
+    // of the time" gate this set exists to avoid.
+    val EPISODIC_EXCLUDED_TOOLS = setOf("search_mail", "read_mail", "ask_mail", "get_sitrep")
 
     /**
      * Ticket 21 (google-account-integration, "close the remember leak"): the gate `remember`'s

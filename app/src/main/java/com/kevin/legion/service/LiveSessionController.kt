@@ -308,8 +308,15 @@ class LiveSessionController(context: Context) {
      * `incoming_call` sets it (see [ProactiveRaise.listensForReply]); a window opened this way MUST
      * be closed by [stopListening], or it lingers to the idle backstop.
      */
-    fun requestSpeak(prompt: String, listensForReply: Boolean = false) {
-        if (listensForReply) { speakAndListen(prompt); return }
+    fun requestSpeak(
+        prompt: String,
+        listensForReply: Boolean = false,
+        carriesReadThroughContent: Boolean = false,
+    ) {
+        // Mark BEFORE the line is spoken, and on every branch below, so a reply that arrives fast
+        // still lands in a turn already flagged. See GeminiLiveSession.markTurnReadThrough.
+        if (carriesReadThroughContent) session?.markTurnReadThrough()
+        if (listensForReply) { speakAndListen(prompt, carriesReadThroughContent); return }
         val s = session
         // DIAGNOSTIC (B9, remove once root-caused): which branch a proactive line
         // takes decides whether the mic reopens after (only the inConversation
@@ -498,7 +505,7 @@ class LiveSessionController(context: Context) {
      * away from someone mid-sentence to tell them the phone is ringing, which they can already
      * hear.
      */
-    private fun speakAndListen(prompt: String) {
+    private fun speakAndListen(prompt: String, carriesReadThroughContent: Boolean = false) {
         val existing = session
         if (existing != null && existing.inConversation) {
             // Already listening - fold the line in and let the open mic do its job.
@@ -513,6 +520,9 @@ class LiveSessionController(context: Context) {
         existing?.silentDestroy()
         val s = newSession()
         session = s
+        // The mark in requestSpeak landed on the PREVIOUS session (or on nothing, cold). This one
+        // is the session that will actually carry the turn.
+        if (carriesReadThroughContent) s.markTurnReadThrough()
         ringListening = true
         pendingAction = Pending.PROACTIVE_COLD
         pendingPrompt = prompt

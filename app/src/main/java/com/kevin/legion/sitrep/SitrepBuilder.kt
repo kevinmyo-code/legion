@@ -70,8 +70,7 @@ object SitrepBuilder {
      */
     suspend fun build(context: Context, modules: Set<SitrepModule>? = null): String {
         SitrepSettings.load(context)
-        val enabled = SitrepSettings.enabledModules()
-        val requested = if (modules == null) enabled else modules.intersect(enabled)
+        val requested = resolveRequestedModules(modules, SitrepSettings.enabledModules())
 
         if (requested.isEmpty()) {
             return if (modules != null && modules.isNotEmpty()) {
@@ -116,6 +115,16 @@ object SitrepBuilder {
 
         return compose(SitrepModule.entries, sections)
     }
+
+    /**
+     * The module-filtering decision itself, pulled out of [build] as a pure function so it is a
+     * direct unit test target (ticket 22's verification: "`get_sitrep` covered where it is pure ...
+     * module filtering") without needing Room/[SitrepSettings] just to exercise the intersection
+     * rule. [requested] narrows [enabled], never widens it - see [build]'s own doc comment for why.
+     * `null` means "no filter was asked for" and passes [enabled] straight through.
+     */
+    internal fun resolveRequestedModules(requested: Set<SitrepModule>?, enabled: Set<SitrepModule>): Set<SitrepModule> =
+        if (requested == null) enabled else requested.intersect(enabled)
 
     /** Pure join, in [SitrepModule] declaration order (CALENDAR, WEATHER, FLEET, NEWS) regardless
      * of [sections]' own map iteration order - a sitrep should read the same way every time, not

@@ -56,9 +56,12 @@ enum class ProactiveCategory(
     /** The cars. Open recalls, an odometer milestone, a long drive without a break. */
     FLEET("fleet", "Fleet", "Your cars - recalls, milestones, and a nudge on a long drive.", true),
 
-    /** A summary you asked to receive, at a time you chose. Nothing raises here yet; whether it
-     * subsumes the morning brief or merely delivers it is still open on the map. */
-    DIGEST("digest", "Digest", "Round-ups and briefings, at a time you pick.", false);
+    /** A summary you asked to receive, at a time you chose. **First content, ticket 22
+     * (`.scratch/hands-and-senses/issues/22-build-the-sitrep.md`): the scheduled sitrep**
+     * ([com.kevin.legion.sitrep.SitrepAlarmReceiver]) raises through this category. `hasContent`
+     * flips to `true` in the SAME commit that lands the alarm/receiver wiring, per this file's own
+     * class doc rule and ticket 08's resolution §1/§7 - never before, and never a commit later. */
+    DIGEST("digest", "Digest", "Round-ups and briefings, at a time you pick.", true);
 
     companion object {
         fun fromKey(key: String): ProactiveCategory? = entries.firstOrNull { it.key == key }

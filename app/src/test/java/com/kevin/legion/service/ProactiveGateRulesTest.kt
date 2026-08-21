@@ -299,6 +299,51 @@ class ProactiveGateRulesTest {
         assertTrue(asking.listensForReply)
     }
 
+    // ------------------------------------------------------------------- read-through
+
+    /**
+     * The sitrep's news section is an LLM summary of Kevin's Gmail, and ticket 08 call 4 rejected
+     * "store the summary, drop the bodies" **explicitly**. Two paths could have written it into
+     * `episodic_turns` and from there into `CompanionMemory`:
+     *
+     *  - asking for a sitrep by voice - closed by adding `get_sitrep` to
+     *    `LiveToolbox.EPISODIC_EXCLUDED_TOOLS`;
+     *  - **a SCHEDULED sitrep** - which calls no tool, so the tool-keyed gate cannot see it at all.
+     *    Closed by [ProactiveRaise.carriesReadThroughContent].
+     *
+     * The second was live and was not caught by a green suite: an unanswered raise happens to be
+     * safe because `captureEpisodicTurn` returns early on a blank driver turn, so the leak only
+     * opened the moment Kevin replied. **A narrow accident is not a guarantee**, which is what these
+     * two assertions are for.
+     */
+    @Test
+    fun `get_sitrep is excluded from episodic capture, like the mail tools`() {
+        assertTrue(LiveToolbox.EPISODIC_EXCLUDED_TOOLS.contains("get_sitrep"))
+        // The originals must not have been displaced by the addition.
+        assertTrue(LiveToolbox.EPISODIC_EXCLUDED_TOOLS.contains("search_mail"))
+        assertTrue(LiveToolbox.EPISODIC_EXCLUDED_TOOLS.contains("read_mail"))
+    }
+
+    @Test
+    fun `a raise can declare it carries read-through content, and does not by default`() {
+        val ordinary = ProactiveRaise(
+            ruleId = "test_rule",
+            category = ProactiveCategory.TIMING,
+            reason = "a test raise fired",
+            facts = "test facts",
+            prompt = "(System: say the thing.)",
+        )
+        assertFalse("the default must be safe-to-remember", ordinary.carriesReadThroughContent)
+        assertTrue(ordinary.copy(carriesReadThroughContent = true).carriesReadThroughContent)
+    }
+
+    @Test
+    fun `the bus carries the read-through flag rather than dropping it`() {
+        val req = ProactiveBus.SpeakRequest("prompt", listensForReply = false, carriesReadThroughContent = true)
+        assertTrue(req.carriesReadThroughContent)
+        assertFalse(ProactiveBus.SpeakRequest("prompt").carriesReadThroughContent)
+    }
+
     // ------------------------------------------------------------------- categories
 
     @Test
@@ -313,9 +358,12 @@ class ProactiveGateRulesTest {
     }
 
     @Test
-    fun `a category with no content says so, and the two empty ones are the expected two`() {
+    fun `a category with no content says so, and WELLBEING is the one still empty`() {
+        // Ticket 22: DIGEST got its first content (the scheduled sitrep) and its own hasContent
+        // flipped to true in that same commit - WELLBEING is the only category left with nothing
+        // raising into it.
         val empty = ProactiveCategory.entries.filter { !it.hasContent }.toSet()
-        assertEquals(setOf(ProactiveCategory.WELLBEING, ProactiveCategory.DIGEST), empty)
+        assertEquals(setOf(ProactiveCategory.WELLBEING), empty)
     }
 
     @Test

@@ -56,10 +56,20 @@ class GeminiLiveSessionEpisodicExclusionTest {
     }
 
     @Test
-    fun `the excluded set is exactly the three mail-shaped tool names - guards against silent drift`() {
+    fun `the excluded set is exactly these four names - guards against silent drift`() {
         // Three, not two, since 2026-08-17: the original two names stay (dispatch still runs them
         // internally inside ask_mail's own investigate loop, and a future direct caller of either
         // should still be caught), and "ask_mail" joined them - see the doc comment above.
-        assertEquals(setOf("search_mail", "read_mail", "ask_mail"), LiveToolbox.EPISODIC_EXCLUDED_TOOLS)
+        //
+        // FOUR since 2026-08-21, and the fourth is deliberately NOT mail-shaped. `get_sitrep`'s
+        // news module fetches Gmail bodies and returns an LLM summary of them, so the summary is
+        // mail content one derivation removed - and ticket 08 call 4 rejected "store the summary,
+        // drop the bodies" in those words. This guard did its job: adding the name failed this
+        // assertion and forced the decision to be made here rather than absorbed silently, which
+        // is the whole reason the test is written as an exact-set comparison.
+        assertEquals(
+            setOf("search_mail", "read_mail", "ask_mail", "get_sitrep"),
+            LiveToolbox.EPISODIC_EXCLUDED_TOOLS,
+        )
     }
 }

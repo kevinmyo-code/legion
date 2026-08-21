@@ -29,10 +29,9 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[19-people-dates\|19]] | grilling | The people in Kevin's life: dates and facts he tells it |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-it-said-142k\|20]] | task | It said the Jeep was at 142k when the record says 227k |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-memory-decay\|20]] | grilling | Memory that forgets like a person does |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[22-build-the-sitrep\|22]] | build | Build the sitrep |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
-| [[.scratch/location-intelligence/map\|location-intelligence]] | [[03-airnow-endpoint\|03]] | research | Which AirNow endpoint survives the fall-2026 retirement |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
 | [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
 | [[.scratch/wake-word/map\|wake-word]] | [[05-mic-ownership\|05]] | grilling | Who owns the microphone, and what yields to what? |
@@ -43,6 +42,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[22-build-the-sitrep\|22]] | build | Build the sitrep |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[11-reframe-missed-the-toolbox\|11]] | bug | The concierge reframe missed the largest prompt surface |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[01-scopes-and-one-reapproval\|01]] | task | Every scope this map needs, taken in one re-approval |
@@ -119,7 +119,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |
 | [[.scratch/legion-shape/map\|legion-shape]] | 12 | 0 | [[.scratch/legion-shape/legion-shape.canvas\|open]] |
-| [[.scratch/location-intelligence/map\|location-intelligence]] | 9 | 8 | [[.scratch/location-intelligence/location-intelligence.canvas\|open]] |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | 10 | 8 | [[.scratch/location-intelligence/location-intelligence.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 12 | 2 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
