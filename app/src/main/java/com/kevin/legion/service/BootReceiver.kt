@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.notes.AlarmScheduler
+import com.kevin.legion.sitrep.SitrepScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,6 +55,14 @@ class BootReceiver : BroadcastReceiver() {
                 // versa; before this they shared one try and the first thrower ate the second.
                 runCatching { AlarmScheduler.rescheduleAll(context) }
                     .onFailure { MidnightEvents.appStartWorkFailed("boot_reschedule_alarms", it) }
+                // The sitrep's own single alarm (ticket 22) - `AlarmManager` forgets it across a
+                // reboot exactly the same way it forgets every reminder alarm above, and this is a
+                // no-op when Kevin has never set a schedule (SitrepScheduler.rescheduleFromSettings
+                // reads null and returns). Guarded separately, same reasoning as the two guards
+                // already here: a failure to re-arm the sitrep must not cost the reminders their
+                // restart, or the ignition its resume.
+                runCatching { SitrepScheduler.rescheduleFromSettings(context) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("boot_reschedule_sitrep", it) }
                 // resumeIfEnabled is a plain (non-suspend) SharedPreferences read plus a
                 // startForegroundService IPC call - safe to fire from this receiver's IO scope
                 // same as rescheduleAll above; nothing about starting a Service requires the

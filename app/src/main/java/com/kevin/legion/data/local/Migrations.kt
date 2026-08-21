@@ -1173,11 +1173,13 @@ val MIGRATION_27_28 = object : Migration(27, 28) {
  * [SitrepSchedule]'s own doc for why it is a sibling table rather than columns on the module
  * rows.
  *
- * PLACEHOLDER SQL - see the doc comment on [MIGRATION_27_28] above for why this must be
- * overwritten with whatever `app/schemas/.../29.json` actually generates before this migration
- * is trusted: Room does not turn a Kotlin constructor default (`SitrepSchedule.hour`'s none,
- * `SitrepModuleSetting`'s none either) into a SQL `DEFAULT`, and hand-writing one here would make
- * the identity hash disagree the same way it did on v28's first cut.
+ * SQL below is copied VERBATIM from the generated `app/schemas/.../29.json`'s own `createSql` for
+ * both tables (confirmed by a real `compileDebugKotlin -Pnokey` run, not hand-derived) - same
+ * discipline [MIGRATION_27_28] above documents, and it held on the first attempt here because
+ * neither new entity gives Room anything to turn into a column `DEFAULT` (no Kotlin constructor
+ * default on `SitrepModuleSetting.enabled`, and `SitrepSchedule.hour`/`minute`/`senders` are all
+ * required constructor params with no default either - only `SitrepSchedule.id` has one, and it is
+ * the `@PrimaryKey`, which Room never defaults in SQL regardless).
  */
 val MIGRATION_28_29 = object : Migration(28, 29) {
     override fun migrate(db: SupportSQLiteDatabase) {

@@ -55,7 +55,7 @@ re-openable without Kevin.
 | 1 | **Four keyless categories ship: NWS weather, USGS quakes + NIFC fire, AirNow air quality, FEMA declarations.** | Behind ONE `area_info` tool with a category parameter, never five tools. |
 | 2 | **USGS real-time GeoJSON summary feeds, never `fdsnws/event/1/query`, on any timer.** USGS steers automated clients there and they update every minute. | |
 | 3 | **NIFC WFIGS over NASA FIRMS for fire.** NIFC gives incident name, size and containment; FIRMS gives thermal anomalies. | If FIRMS is ever used it is spoken as "satellite heat detection", **never** as a fire. |
-| 4 | **TomTom for traffic, on request only** - the one vendor needing no card, with traffic-aware as its default tier rather than a premium SKU. | Key in `KeyVault`. **No ETA persisted to Room or Drive until TomTom's caching clause is actually read.** Spoken as "per TomTom". |
+| 4 | **TomTom for traffic, on request only** - the one vendor needing no card, with traffic-aware as its default tier rather than a premium SKU. | Key in `KeyVault`. **Superseded in two places by [ticket 07](issues/07-tomtom-caching.md):** the caching clause came back at zero permitted retention (decision 18), and the "per TomTom" phrasing was dropped (decision 19). Read those two rather than this one for storage and attribution. |
 | 5 | **Raises: NWS warnings at Severe or Extreme only; USGS M4.5 within 150 miles; NIFC fire within 25 miles.** All Safety category. | **Watches and advisories are excluded deliberately** - they fire constantly, and a channel that cries wolf trains Kevin to ignore the one warning that matters. Thresholds are starting points, not findings. |
 | 6 | **Attribution always.** "NWS has a tornado warning until 6:15pm", never "there is a tornado warning". | Baked into the tool's own output (decision 12), not left to a prompt rule. |
 | 7 | **Crime ships as `get_reported_crime_history`. `is_area_safe` is NEVER built.** | Agency-level, ~13 months stale, measures reporting propensity as much as crime. **Not even "estimate" is an honest label** - CLAUDE.md §4 rule 5 at its strongest. The refusal is the feature. |
@@ -67,11 +67,25 @@ re-openable without Kevin.
 | 13 | **One NWS alert speaks ONCE, ever, keyed on its stable alert id.** | An upgrade (watch becoming warning) is a NEW id and does speak, which is the wanted behaviour. Uses the raise history already built. |
 | 14 | **"Here" is the live GPS fix, with NO fallback.** With no fix it says so and checks nothing. | No stored hometown - the research warned it breaks the moment he travels, and it could not determine his city anyway. |
 | 15 | **The departure advisor's prep buffer is ONE global setting** Kevin can change. | Wrong for a flight versus a dentist; he overrides in the moment by ignoring it. Learned buffers need departure data that does not exist. |
+| 17 | **TomTom's Evaluation licence is read as covering this app, knowingly.** Its terms license "internal evaluation and testing by you"; LEGION is a sideloaded personal build with one developer and one user, never distributed. (Kevin, 2026-08-21, on the full terms.) | An ambiguous term read deliberately, not missed. The pricing page advertises the free tier without ever calling it Evaluation Use, and how the two map onto each other **is not stated in either document**. Failure mode is a revoked key (23.1 allows termination at any time, without notice), never a bill - there is no card. |
+| 18 | **NO ETA is persisted. Not to Room, not to Drive, ever.** Request-time use and immediate discard. (Established, not chosen - [ticket 07](issues/07-tomtom-caching.md).) | Routing returns `Cache-Control: no-cache` with no `max-age`, so clause 11.4's caching exception permits **zero** retention. Independently, 11.6.1 forbids building "any secondary or derived database" from Results. A second reason [decision 15](#) chose a global prep buffer over a learned one: the history a learned buffer needs cannot legally exist. |
+| 19 | **Spoken ETAs carry NO attribution** (Kevin, 2026-08-21, against the recommendation). | **This narrows decision 6, which it does not otherwise touch** - NWS, USGS, NIFC, AirNow, FEMA and FBI results are still always attributed. The cost, stated once: an unattributed ETA sounds like LEGION's own claim rather than a vendor's, which is the thing decision 6 exists to prevent. The counter-argument is that TomTom's own terms cannot be satisfied by a voice surface at all - 17.3 wants the Copyright API and a **logo** - so no spoken phrasing was ever compliant. |
 | 16 | **The Samsung sleeping-apps risk is NOTED, and the build proceeds anyway** (Kevin, against the recommendation). | `.scratch/proactive-mode/issues/07-scheduling-research.md`: an app unused ~3 days drops to one alarm a day and no network **while the foreground service keeps running and everything looks fine.** **The first real tornado warning is therefore also the first test of whether delivery works at all.** Accepted knowingly. |
 
 ## Decisions so far
 
 <!-- one line per closed ticket -->
+
+- [TomTom's caching clause, before anything is stored](issues/07-tomtom-caching.md) — **No storage
+  of an ETA, for any duration**, and a licence problem bigger than the question asked. Routing emits
+  `Cache-Control: no-cache` with no `max-age`, so clause 11.4's carve-out permits zero retention, and
+  "Results" covers a travel-time integer exactly as it covers a polyline - there is no
+  derived-number allowance of the kind Google and HERE grant. On-device is not a loophole; 11.4.1
+  regulates caching "in clients" and the phone is the client. **Separately**, the free key licenses
+  only "internal evaluation and testing by you" and the paid tier is scoped to apps with "Asset
+  Management Functionality" licensed to end users - Kevin read the former as covering a personal
+  build he alone uses (decision 17), knowing the pricing page never maps the advertised free tier
+  onto either grant.
 
 ## Not yet specified
 

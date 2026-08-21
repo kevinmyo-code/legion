@@ -33,7 +33,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[03-airnow-endpoint\|03]] | research | Which AirNow endpoint survives the fall-2026 retirement |
-| [[.scratch/location-intelligence/map\|location-intelligence]] | [[07-tomtom-caching\|07]] | research | TomTom's caching clause, before anything is stored |
 | [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
 | [[.scratch/wake-word/map\|wake-word]] | [[05-mic-ownership\|05]] | grilling | Who owns the microphone, and what yields to what? |
@@ -98,6 +97,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/android-auto/map\|android-auto]] | [[13-prove-the-obd-silent-stall\|13]] | task | Prove or kill the OBD silent-stall claim |
 | [[.scratch/android-auto/map\|android-auto]] | [[14-does-gearhead-draw-the-call\|14]] | task | Does gearhead actually draw the call? |
 | [[.scratch/android-auto/map\|android-auto]] | [[15-the-live-session-can-be-silenced\|15]] | task | The live session can be silenced with no error |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | [[09-tomtom-surface-area\|09]] | grilling | The rest of the TomTom surface area |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[11-rec-engine\|11]] | task | The recommendation engine LEGION has to build itself |
 
 ## Maps
@@ -119,7 +119,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |
 | [[.scratch/legion-shape/map\|legion-shape]] | 12 | 0 | [[.scratch/legion-shape/legion-shape.canvas\|open]] |
-| [[.scratch/location-intelligence/map\|location-intelligence]] | 8 | 8 | [[.scratch/location-intelligence/location-intelligence.canvas\|open]] |
+| [[.scratch/location-intelligence/map\|location-intelligence]] | 9 | 8 | [[.scratch/location-intelligence/location-intelligence.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 12 | 2 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |

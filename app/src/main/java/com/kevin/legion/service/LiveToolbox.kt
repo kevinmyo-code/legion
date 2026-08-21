@@ -91,6 +91,8 @@ import com.kevin.legion.vehicle.VinDecoder
 import org.json.JSONArray
 import org.json.JSONObject
 import com.kevin.legion.data.local.ProactiveRaiseRow
+import com.kevin.legion.sitrep.SitrepBuilder
+import com.kevin.legion.sitrep.SitrepModule
 
 /**
  * The function tools the Live session exposes to Gemini, plus their dispatch.
@@ -1452,6 +1454,31 @@ object LiveToolbox {
             required = emptyList(),
         ))
 
+        // The sitrep (ticket 22, `.scratch/hands-and-senses/issues/22-build-the-sitrep.md`,
+        // building the decision at `08-morning-brief.md`). ONE tool, never six - ticket 08's
+        // resolution §6 is explicit that a per-module tool would let the model choose which
+        // sections to ask for on Kevin's behalf, the same "model decides what he doesn't hear"
+        // failure the whole design avoids elsewhere. Askable at any hour by name - "sitrep" is
+        // deliberately time-agnostic (see SitrepModule's own doc) - AND fired on a schedule via
+        // SitrepAlarmReceiver/ProactiveBus; this declaration only covers the askable half.
+        fns.put(fn(
+            name = "get_sitrep",
+            description = "Give the user a sitrep: a status report pulling together their " +
+                "calendar, the weather, their car's fleet status, and a newsletter summary - " +
+                "whichever of those they have switched on in settings. Deterministic figures " +
+                "only for calendar/weather/fleet; the newsletter section is the one part that " +
+                "is summarized rather than stated as a raw fact. Say each section plainly, " +
+                "including when one reports nothing or could not be checked - never invent a " +
+                "detail that is not in the result.",
+            params = obj(
+                "modules" to schema("string", "Optional: a comma-separated subset to narrow the " +
+                    "sitrep to, e.g. \"calendar,weather\" when the user asks for just those. " +
+                    "Omit to get every module they have enabled. A module they have switched " +
+                    "off in settings never appears even if named here."),
+            ),
+            required = listOf(),
+        ))
+
         // Answering and declining a ringing call by voice (2026-08-21, Kevin: "can i also pick it
         // up or decline via voice?"). Two tools rather than one with a boolean: the live model
         // picks a tool far more reliably than it fills a parameter, and mixing up "answer" and
@@ -2206,6 +2233,7 @@ object LiveToolbox {
             "read_mail" -> readMail(context, args)
             "read_calendar" -> readCalendar(context, args)
             "why_did_you_say_that" -> whyDidYouSayThatTool(context)
+            "get_sitrep" -> getSitrepTool(context, args)
             "answer_call" -> answerCallTool(context, args)
             "decline_call" -> declineCallTool(context)
             "set_goal" -> setGoalTool(context, args)
@@ -3546,6 +3574,29 @@ object LiveToolbox {
             "Rule \"${row.ruleId}\" (${row.category}) fired and was $delivery. The fact behind " +
                 "it: ${row.reason}. Say the rule and the fact plainly; do not justify it.",
         )
+    }
+
+    /**
+     * `get_sitrep`. Parses the optional `modules` filter and hands off entirely to
+     * [SitrepBuilder.build] - this function does no formatting of its own, matching this file's own
+     * thin-dispatch convention for every other domain (`ai/SubAgent.kt`'s callers, `GmailToolLogic`,
+     * `CalendarReadToolLogic`) of keeping the actual logic in a plain, independently-testable object.
+     */
+    private suspend fun getSitrepTool(context: Context, args: JSONObject): JSONObject {
+        val modules = parseSitrepModules(args.optString("modules").takeIf { args.has("modules") })
+        return result(true, SitrepBuilder.build(context, modules))
+    }
+
+    /** A blank/omitted `modules` argument means "every enabled module" - [SitrepBuilder.build]'s
+     * own `null` sentinel - never an empty set, which would instead mean "the model explicitly
+     * asked for nothing." An unrecognised token (a typo, a module name that doesn't exist) is
+     * silently dropped from the requested set rather than failing the whole call - the same
+     * "narrows, never widens" contract [SitrepBuilder.build] documents for this filter. `internal`
+     * for direct unit testing. */
+    internal fun parseSitrepModules(raw: String?): Set<SitrepModule>? {
+        if (raw.isNullOrBlank()) return null
+        val requested = raw.split(",").mapNotNull { SitrepModule.fromKey(it.trim().lowercase()) }.toSet()
+        return requested
     }
 
     /**

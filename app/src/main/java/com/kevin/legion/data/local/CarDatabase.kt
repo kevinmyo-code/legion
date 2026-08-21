@@ -329,6 +329,9 @@ abstract class CarDatabase : RoomDatabase() {
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
         // the restore button more conservative, but "harmless when wrong" is not the same as
         // "checked", and nothing checks it.
+        // 2026-08-21: bumped to 29 alongside `@Database(version=)` in the SAME edit this time
+        // (`sitrep_modules`/`sitrep_schedule`, ticket 22) - the two constants staying in sync is
+        // the whole point of this comment existing at all.
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {

@@ -28,7 +28,17 @@
       "y": 300,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
+    },
+    {
+      "id": "c05c9a88f2b257d8",
+      "type": "file",
+      "file": ".scratch/location-intelligence/issues/09-tomtom-surface-area.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "5"
     },
     {
       "id": "49ec3b45e390bb68",

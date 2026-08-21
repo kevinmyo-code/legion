@@ -41,9 +41,13 @@ and a wrong learned buffer is invisible until he is late.
 
 - Key from `KeyVault`, BYO. `BuildConfig.TOMTOM_API_KEY` is a dev convenience only - a build without
   a key must say "I can't check traffic without a TomTom key", never fail silently.
-- **No ETA persisted to Room or Drive** until TomTom's caching clause has actually been read
-  ([ticket 07](07-tomtom-caching.md) blocks any storage, not the feature).
-- Spoken as "per TomTom".
+- **No ETA persisted to Room or Drive - ever.** [Ticket 07](07-tomtom-caching.md) came back at zero
+  permitted retention, so this is established rather than precautionary. Compute inside the window,
+  speak it, discard it. **Do not accumulate ETA history for a learned prep buffer** - that database
+  is what clause 11.6.1 forbids by name.
+- **No spoken attribution** (settled decision 19, Kevin's call). TomTom's own terms want the
+  Copyright API and a logo, which a voice surface cannot render, so no phrasing was compliant
+  either way.
 
 ## Verification
 
