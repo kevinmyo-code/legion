@@ -207,6 +207,9 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 .f:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
 .f[aria-pressed="true"]{color:var(--ground);background:var(--ink);border-color:var(--ink)}
 .map{margin:0 0 10px;background:var(--panel);border:1px solid var(--rule)}
+.guidelink{margin:-8px 0 22px}
+.guidelink a{color:#d4a24c;text-decoration:none;font-size:.92rem}
+.guidelink a:hover{text-decoration:underline}
 .mh{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:13px 16px;
   border-bottom:1px solid var(--rule-faint)}
 .mh h2{font-family:var(--mono);font-size:14px;font-weight:600;margin:0;letter-spacing:.02em}
@@ -281,6 +284,10 @@ doc = (
     '<div class="wrap">' + NL +
     '<p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>' + NL +
     '<h1>' + str(tot) + ' tickets open</h1>' + NL +
+    # Link to the user-facing guide. This page is for whoever is BUILDING LEGION; voice.html is
+    # for whoever is using it, and a visitor landing on a wall of tickets has no other way to
+    # find out what the app actually does.
+    '<p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a></p>' + NL +
     '<p class="lede">Across ' + str(len(d)) + ' maps. <b>' + str(dec) + ' of them are decisions</b>, '
     'not code &mdash; they need an answer from you before anyone can build. '
     + str(blocked_n) + ' are waiting on another ticket first. <b>' + str(test_n) + ' are already '

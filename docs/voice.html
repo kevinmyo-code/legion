@@ -1,0 +1,186 @@
+<title>Talking to LEGION</title>
+<style>
+:root{--bg:#0f1113;--fg:#e8e6e3;--dim:#9aa0a6;--accent:#d4a24c;--line:#24282c;--card:#15181b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:820px;margin:0 auto;padding:48px 20px 96px}
+h1{font-size:1.9rem;letter-spacing:.02em;margin:0 0 .3em}
+h2{font-size:1.05rem;text-transform:uppercase;letter-spacing:.12em;color:var(--accent);
+ margin:2.6em 0 .2em;border-bottom:1px solid var(--line);padding-bottom:.4em}
+p.intro{color:var(--fg);margin:0 0 .6em}
+p.count{color:var(--dim);font-size:.85rem;margin:0 0 1em}
+p.blurb{color:var(--dim);font-size:.9rem;margin:.6em 0 1.2em}
+dl{margin:0}
+dt{margin-top:1.1em;color:var(--fg);font-weight:600}
+dd{margin:.15em 0 0;color:var(--dim);font-size:.93rem}
+footer{margin-top:4em;padding-top:1.4em;border-top:1px solid var(--line);
+ color:var(--dim);font-size:.85rem}
+footer strong{color:var(--fg)}
+code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
+@media(prefers-color-scheme:light){
+ :root{--bg:#faf9f7;--fg:#1a1c1e;--dim:#5f6368;--card:#eeece8;--line:#dcd8d2;--accent:#8a5a12}}
+</style>
+<main>
+<h1>Talking to LEGION</h1>
+<p class="intro">LEGION is a voice assistant for the phone. Hold the button or say the wake word, then just talk. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing.</p>
+<p class="count">97 things it can do by voice.</p>
+<section><h2>Getting started</h2>
+<p class="blurb">The first things worth trying.</p>
+<dl>
+<dt>&ldquo;Give me a sitrep&rdquo;</dt><dd>A status report: calendar, weather, car and a newsletter summary - whichever you have switched on.</dd>
+<dt>&ldquo;What time is it?&rdquo;</dt><dd>The time and date where you are.</dd>
+<dt>&ldquo;Where am I?&rdquo;</dt><dd>Your current location. Says it does not know rather than guessing when there is no GPS fix.</dd>
+<dt>&ldquo;Open the ledger&rdquo;</dt><dd>Opens a screen in the app for you.</dd>
+<dt>&ldquo;I&#x27;m done setting up&rdquo;</dt><dd>Finishes first-run setup.</dd>
+<dt>&ldquo;That&#x27;s all, thanks&rdquo;</dt><dd>Ends the conversation and closes the mic.</dd>
+</dl></section>
+<section><h2>Your day</h2>
+<p class="blurb">Calendar, lists, reminders and the round-up.</p>
+<dl>
+<dt>&ldquo;Add milk to the shopping list&rdquo;</dt><dd>Adds, ticks off, or changes an item on any of your lists.</dd>
+<dt>&ldquo;What&#x27;s on my shopping list?&rdquo;</dt><dd>Reads back a list.</dd>
+<dt>&ldquo;Remind me to call the shop at four&rdquo;</dt><dd>Sets a reminder for a time, or for when you arrive somewhere.</dd>
+<dt>&ldquo;What&#x27;s on today?&rdquo;</dt><dd>Reads your Google Calendar. Says nothing is on when nothing is - it never invents an appointment.</dd>
+<dt>&ldquo;Save this as work&rdquo;</dt><dd>Saves where you are now under a name, so reminders can trigger there.</dd>
+<dt>&ldquo;Forget the old gym&rdquo;</dt><dd>Removes a saved place.</dd>
+<dt>&ldquo;Show my saved places&rdquo;</dt><dd>Puts your saved places on screen.</dd>
+<dt>&ldquo;Navigate to the hardware store&rdquo;</dt><dd>Hands off to your maps app.</dd>
+</dl></section>
+<section><h2>The cars</h2>
+<p class="blurb">Diagnostics, maintenance and history. Most of it needs the OBD dongle plugged in.</p>
+<dl>
+<dt>&ldquo;Any trouble codes?&rdquo;</dt><dd>Reads fault codes stored in the car right now.</dd>
+<dt>&ldquo;What&#x27;s wrong with the car?&rdquo;</dt><dd>Digs into the stored codes and explains them. Takes a few seconds.</dd>
+<dt>&ldquo;Clear the codes&rdquo;</dt><dd>Clears stored fault codes. Asks you to confirm first.</dd>
+<dt>&ldquo;Has that code come back before?&rdquo;</dt><dd>The history of faults this car has thrown.</dd>
+<dt>&ldquo;It&#x27;s making a whining noise on turns&rdquo;</dt><dd>Describe how the car is behaving and it works from that, not from a code.</dd>
+<dt>&ldquo;Is it ready for emissions?&rdquo;</dt><dd>Whether the car&#x27;s self-tests have run - the emissions readiness monitors.</dd>
+<dt>&ldquo;Did it do a cold start test?&rdquo;</dt><dd>Whether the cold-start monitor has completed.</dd>
+<dt>&ldquo;What&#x27;s the coolant temperature?&rdquo;</dt><dd>Live readings from the OBD dongle.</dd>
+<dt>&ldquo;What&#x27;s the oil temp?&rdquo;</dt><dd>Reads one specific sensor by name.</dd>
+<dt>&ldquo;How&#x27;s the car doing?&rdquo;</dt><dd>An overall health summary - codes, temperatures, readiness.</dd>
+<dt>&ldquo;What am I getting to the gallon?&rdquo;</dt><dd>Fuel economy from recorded drives.</dd>
+<dt>&ldquo;Is the voltage getting worse?&rdquo;</dt><dd>How a reading has moved over time.</dd>
+<dt>&ldquo;What oil does it take?&rdquo;</dt><dd>Factory specs for the car - engine, drivetrain, fluids.</dd>
+<dt>&ldquo;Look up this VIN&rdquo;</dt><dd>Decodes a VIN into make, model and year.</dd>
+<dt>&ldquo;Any recalls on it?&rdquo;</dt><dd>Open safety recalls, from the NHTSA database.</dd>
+<dt>&ldquo;What&#x27;s due next?&rdquo;</dt><dd>The next maintenance item, by miles or by date.</dd>
+<dt>&ldquo;When did I last do the brakes?&rdquo;</dt><dd>Questions about your service history.</dd>
+<dt>&ldquo;I changed the oil today&rdquo;</dt><dd>Records a service you just did.</dd>
+<dt>&ldquo;I did the plugs back in June&rdquo;</dt><dd>Records a service from the past.</dd>
+<dt>&ldquo;Set the oil change to every 5000 miles&rdquo;</dt><dd>Changes how often an item is due.</dd>
+<dt>&ldquo;The odometer reads 148,200&rdquo;</dt><dd>Updates the mileage, which keeps due-dates honest.</dd>
+<dt>&ldquo;Log that I fitted new plugs, forty quid&rdquo;</dt><dd>Records a build or modification, with cost.</dd>
+<dt>&ldquo;What have I done to this car?&rdquo;</dt><dd>Reads back the build history.</dd>
+<dt>&ldquo;Add my Jeep&rdquo;</dt><dd>Adds a car to the fleet.</dd>
+<dt>&ldquo;Register this vehicle&rdquo;</dt><dd>Registers a vehicle by VIN or details.</dd>
+<dt>&ldquo;Rename the Jeep to the XJ&rdquo;</dt><dd>Renames, updates or removes a car.</dd>
+<dt>&ldquo;What cars do I have?&rdquo;</dt><dd>Lists your fleet.</dd>
+<dt>&ldquo;Ask the fleet advisor about my tyres&rdquo;</dt><dd>Sends a harder car question to the fleet specialist.</dd>
+</dl></section>
+<section><h2>Driving</h2>
+<p class="blurb">Things that only make sense while you are actually out.</p>
+<dl>
+<dt>&ldquo;Open the garage&rdquo;</dt><dd>Triggers the garage relay. Asks you to confirm, and never claims to know whether the door opened or closed.</dd>
+<dt>&ldquo;Turn it up&rdquo;</dt><dd>Changes the volume.</dd>
+</dl></section>
+<section><h2>Money</h2>
+<p class="blurb">Bank statements, budgets and spending. Figures come from your own imported statements.</p>
+<dl>
+<dt>&ldquo;Import my bank statement&rdquo;</dt><dd>Opens the statement importer.</dd>
+<dt>&ldquo;What&#x27;s my balance?&rdquo;</dt><dd>Balance from your imported statements.</dd>
+<dt>&ldquo;How much did I spend on fuel?&rdquo;</dt><dd>Spending in a category or over a period.</dd>
+<dt>&ldquo;What did I spend last month?&rdquo;</dt><dd>A month&#x27;s total.</dd>
+<dt>&ldquo;What have I spent lately?&rdquo;</dt><dd>Recent transactions.</dd>
+<dt>&ldquo;Sort out my uncategorised spending&rdquo;</dt><dd>Sorts transactions into categories.</dd>
+<dt>&ldquo;That one&#x27;s groceries&rdquo;</dt><dd>Recategorises a transaction.</dd>
+<dt>&ldquo;Budget two hundred a month for fuel&rdquo;</dt><dd>Sets a monthly budget for a category.</dd>
+<dt>&ldquo;What budgets do I have?&rdquo;</dt><dd>Lists your budget categories.</dd>
+<dt>&ldquo;I just spent thirty on petrol&rdquo;</dt><dd>Records a spend by voice before it hits the bank.</dd>
+<dt>&ldquo;What have I logged but not banked?&rdquo;</dt><dd>Voice-logged spends the bank has not posted yet.</dd>
+<dt>&ldquo;That petrol one has gone through&rdquo;</dt><dd>Clears a pending spend once the bank catches up.</dd>
+</dl></section>
+<section><h2>Food and shopping</h2>
+<p class="blurb">Groceries, receipts and meals.</p>
+<dl>
+<dt>&ldquo;Scan this receipt&rdquo;</dt><dd>Opens the camera to photograph a grocery receipt.</dd>
+<dt>&ldquo;Add eggs to the pantry&rdquo;</dt><dd>Adds or updates something in the pantry.</dd>
+<dt>&ldquo;What did I buy last shop?&rdquo;</dt><dd>Recent grocery purchases.</dd>
+<dt>&ldquo;How much on groceries this month?&rdquo;</dt><dd>Grocery spending.</dd>
+<dt>&ldquo;I had chicken and rice&rdquo;</dt><dd>Logs a meal. Calories and macros are estimates from the description, not measurements.</dd>
+<dt>&ldquo;What have I eaten today?&rdquo;</dt><dd>Recent meals.</dd>
+<dt>&ldquo;When did I last eat?&rdquo;</dt><dd>How long since your last logged meal.</dd>
+<dt>&ldquo;Set my protein target to 180&rdquo;</dt><dd>Sets a daily nutrition target.</dd>
+<dt>&ldquo;Ask the pantry what I&#x27;m low on&rdquo;</dt><dd>Sends a harder food question to the pantry specialist.</dd>
+</dl></section>
+<section><h2>Training and sleep</h2>
+<p class="blurb">Workouts, bodyweight and rest.</p>
+<dl>
+<dt>&ldquo;Squats, five at a hundred kilos&rdquo;</dt><dd>Logs a set.</dd>
+<dt>&ldquo;What did I train this week?&rdquo;</dt><dd>Recent workouts.</dd>
+<dt>&ldquo;When did I last train legs?&rdquo;</dt><dd>How long since you trained.</dd>
+<dt>&ldquo;Make me a plan to get stronger&rdquo;</dt><dd>Builds a training plan from a goal you describe.</dd>
+<dt>&ldquo;I&#x27;m eighty-two kilos&rdquo;</dt><dd>Logs your bodyweight.</dd>
+<dt>&ldquo;I slept six hours, woke up twice&rdquo;</dt><dd>Logs a night&#x27;s sleep.</dd>
+<dt>&ldquo;How have I been sleeping?&rdquo;</dt><dd>Recent sleep.</dd>
+<dt>&ldquo;When did I last log sleep?&rdquo;</dt><dd>How long since your last sleep entry.</dd>
+<dt>&ldquo;I want eight hours a night&rdquo;</dt><dd>Sets your nightly sleep target.</dd>
+<dt>&ldquo;Ask the coach about my recovery&rdquo;</dt><dd>Sends a harder training or nutrition question to the coach.</dd>
+</dl></section>
+<section><h2>Goals and advice</h2>
+<p class="blurb">Longer-term things, and the per-aspect advisors.</p>
+<dl>
+<dt>&ldquo;I want to save five grand by December&rdquo;</dt><dd>Sets a goal.</dd>
+<dt>&ldquo;What am I working towards?&rdquo;</dt><dd>Lists your current goals.</dd>
+<dt>&ldquo;I hit the savings goal&rdquo;</dt><dd>Closes a goal as achieved or abandoned.</dd>
+<dt>&ldquo;How am I doing on my goals?&rdquo;</dt><dd>Sends a goals question to the specialist.</dd>
+<dt>&ldquo;How am I doing overall?&rdquo;</dt><dd>Asks one of the five advisors - body, notes, fleet, money, or overall.</dd>
+<dt>&ldquo;Yes, do that&rdquo;</dt><dd>Accepts something an advisor proposed.</dd>
+<dt>&ldquo;Undo that&rdquo;</dt><dd>Undoes the last thing you logged.</dd>
+</dl></section>
+<section><h2>Music</h2>
+<p class="blurb">Spotify, mostly. Needs it connected in Setup.</p>
+<dl>
+<dt>&ldquo;Play the Roadtrip playlist&rdquo;</dt><dd>Plays something on Spotify.</dd>
+<dt>&ldquo;Skip this&rdquo;</dt><dd>Play, pause, skip, previous.</dd>
+<dt>&ldquo;What&#x27;s coming up?&rdquo;</dt><dd>What is queued next.</dd>
+<dt>&ldquo;What albums have I saved?&rdquo;</dt><dd>Looks through your own Spotify library.</dd>
+</dl></section>
+<section><h2>Mail and calendar</h2>
+<p class="blurb">Needs a Google account connected.</p>
+<dl>
+<dt>&ldquo;Any mail from the garage?&rdquo;</dt><dd>Searches your Gmail. Mail is read and used, never stored.</dd>
+<dt>&ldquo;Read me that one&rdquo;</dt><dd>Reads an email out.</dd>
+<dt>&ldquo;What did the insurance email say?&rdquo;</dt><dd>Digs through your mail to answer a question.</dd>
+</dl></section>
+<section><h2>Phone calls</h2>
+<p class="blurb">Needs phone permissions granted in Setup.</p>
+<dl>
+<dt>&ldquo;Answer it&rdquo;</dt><dd>Picks up a ringing call. Add “and put it on speaker” and it does both. Cannot answer WhatsApp, Signal or Teams calls - Android does not allow it.</dd>
+<dt>&ldquo;Decline it&rdquo;</dt><dd>Rejects a ringing call.</dd>
+</dl></section>
+<section><h2>Memory</h2>
+<p class="blurb">What it remembers about you, and why it said something.</p>
+<dl>
+<dt>&ldquo;Remember that the XJ takes 5W-30&rdquo;</dt><dd>Stores something for later.</dd>
+<dt>&ldquo;What do you remember about the Jeep?&rdquo;</dt><dd>Looks up what it has stored.</dd>
+<dt>&ldquo;Why did you say that?&rdquo;</dt><dd>Explains what triggered the last thing it said on its own - the rule and the fact behind it.</dd>
+</dl></section>
+<section><h2>Settings and control</h2>
+<p class="blurb">Changing how it behaves, by voice.</p>
+<dl>
+<dt>&ldquo;Call yourself Alfred&rdquo;</dt><dd>Renames your companion.</dd>
+<dt>&ldquo;Be drier about it&rdquo;</dt><dd>Changes the personality.</dd>
+<dt>&ldquo;My name is Kevin&rdquo;</dt><dd>Tells it what to call you.</dd>
+</dl></section>
+<footer>
+<p><strong>You do not have to say these exactly.</strong> Ask in your own words - the phrases above
+are examples, not commands. If it cannot do something, it says so rather than pretending.</p>
+<p><strong>Some of these need a key or a permission.</strong> Music needs Spotify connected, mail and
+calendar need a Google account, caller ID needs phone permissions, and everything spoken needs a
+Gemini key. The Setup screen says which are missing.</p>
+<p>Generated from <code>LiveToolbox.kt</code> by <code>tools/voice_guide.py</code> - if a tool exists
+in the app it is on this page, because the build fails otherwise.</p>
+</footer>
+</main>
