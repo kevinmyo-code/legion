@@ -719,3 +719,49 @@ database.
 **Regression check:** a handleEvent branch that calls an async operation without an intermediate phase change, or a tool invocation that does not set a THINKING/WORKING state.
 
 **Status:** CLOSED. Rule recorded here. Commit 57ed400 graduated the rule into code: Phase.THINKING handling in LiveSessionController with reference-counted concurrent calls.
+
+## L31 - A number read off `dumpsys` is a string, not a measurement (2026-08-21)
+
+**Context:** `.scratch/proactive-mode/issues/09-fgs-start-delay.md`. A post-reboot
+`dumpsys activity services com.kevin.legion` on the A25 reported `startForegroundDelayMs:123489`.
+Read as 123 seconds between `startForegroundService()` and `startForeground()`, against a
+"documented 10 second window" after which the system throws
+`ForegroundServiceDidNotStartInTimeException`. Filed as a latent fatal crash in the one service the
+whole app lives in.
+
+**Every part of that reading was wrong.** From AOSP source: the string is appended to
+`mInfoAllowStartForeground` in `ActiveServices.setServiceForegroundInnerLocked()`; it is measured
+from **ServiceRecord creation**, not from the start call; it is **sticky**, so it is a historical
+measurement rather than a live counter; the 10s constant it is compared against
+(`mFgsStartForegroundTimeoutMs`) only triggers a restriction re-check and never an ANR, while the
+real ANR clock is a different 30s constant. And decisively, **the string is emitted only when
+`!r.fgRequired` while the ANR timer is armed only when `r.fgRequired`** - the two are mutually
+exclusive by construction, so a record that can print this field is one whose timer was never armed.
+
+**Discovery:** the ticket's own author took a second reading that evening - `554912` on a service
+that was demonstrably healthy and app-open - and wrote in the ticket that the framing was "an
+inference, not a finding", with an instruction to establish the field's meaning from primary sources
+before spending any effort on a fix. **That instruction is the only reason no fix was built for a bug
+that did not exist.**
+
+**A second, cheaper catch was available and missed.** `startForegroundCompat()` is the second
+statement of `AriaForegroundService.onCreate`, after only `createNotificationChannel()`. A 123-second
+gap was impossible from app code, and reading the startup path would have shown that in a minute
+without any AOSP archaeology. **Check whether your own code could even produce the number before
+researching what the number means.**
+
+**Root class:** a diagnostic field whose NAME reads like a measurement, compared against a constant
+whose NAME reads like its deadline. Neither name was load-bearing; both were assumed to be.
+
+**Rule:** a value from `dumpsys`, `logcat` or any platform diagnostic is **untyped text until its
+AOSP source is read**. Never build a severity assessment on a field name. Two checks before the
+research, in this order: (1) could our own code produce this value at all - read the path; (2) is
+there a second observation that contradicts the reading - a healthy instance showing the same
+"failure" value falsifies it outright.
+
+**Regression check:** a ticket that quotes a platform diagnostic number and asserts a consequence,
+without an AOSP or official-docs citation for what the field means.
+
+**Status:** CLOSED. Ticket 09 resolved as a misreading, no code changed. Rule recorded here.
+Related to L10 (a grep-clean result is not a done result) - both are "the cheap check you did is not
+the check you needed". See [[decisions]] 2026-08-21.
