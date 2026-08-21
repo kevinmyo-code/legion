@@ -131,11 +131,21 @@
       "color": "5"
     },
     {
+      "id": "62343904080e9d78",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/20-it-said-142k.md",
+      "x": 0,
+      "y": 1950,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "ef35cdc66451bc3b",
       "type": "file",
       "file": ".scratch/hands-and-senses/issues/20-memory-decay.md",
       "x": 0,
-      "y": 1950,
+      "y": 2100,
       "width": 320,
       "height": 110,
       "color": "5"
@@ -145,7 +155,7 @@
       "type": "file",
       "file": ".scratch/hands-and-senses/issues/21-proactive-mode.md",
       "x": 0,
-      "y": 2100,
+      "y": 2250,
       "width": 320,
       "height": 110,
       "color": "4"

@@ -29,6 +29,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[17-document-vault\|17]] | grilling | The document vault: LEGION reads the papers that run your life |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[18-inbox-intelligence\|18]] | grilling | Inbox intelligence: packages and travel, from mail LEGION can already read |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[19-people-dates\|19]] | grilling | The people in Kevin's life: dates and facts he tells it |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-it-said-142k\|20]] | task | It said the Jeep was at 142k when the record says 227k |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-memory-decay\|20]] | grilling | Memory that forgets like a person does |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[02-trigger-engine\|02]] | grilling | What decides there is something worth saying |
@@ -112,7 +113,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | 8 | 7 | [[.scratch/goal-keeping/goal-keeping.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 1 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 21 | 9 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 22 | 10 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |

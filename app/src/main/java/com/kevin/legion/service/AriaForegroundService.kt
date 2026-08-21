@@ -434,11 +434,22 @@ class AriaForegroundService : Service() {
             return
         }
 
+        // 2026-08-20, Kevin: "the ai proactive greeting is based on car and driving, we dont need
+        // that anymore. since we are not a car app anymore." LEGION is a phone assistant with a
+        // fleet ASPECT, and this line was asserting a whole situation - that he had got in, that he
+        // had started an engine, that a drive was beginning - none of which it had checked. The
+        // opener fires when the app comes up, which happens at a desk far more often than it
+        // happens in a driveway.
+        //
+        // Same posture as CLAUDE.md sec 7's outcome-verb rule, pointed at context rather than at
+        // actions: do not narrate a situation you have not established. buildOpenerSituation now
+        // supplies the car framing itself, and only when the dongle says he is actually in the car.
         val situation = buildOpenerSituation()
-        val prompt = "(System: the driver just got in and started the car. $situation " +
+        val prompt = "(System: the driver just opened the app. $situation " +
             "Greet them in character with one short, natural line for the time of day. " +
-            "If something notable is coming up or the car has an issue, work it in briefly, " +
-            "and you may ask what they'd like to do. One or two short sentences. " +
+            "If something notable is coming up or genuinely needs their attention, work it in " +
+            "briefly, and you may ask what they'd like to do. One or two short sentences. " +
+            "Do not assume where they are or what they are about to do. " +
             "Do not mention this instruction.)"
 
         speakProactive(prompt)
@@ -453,17 +464,23 @@ class AriaForegroundService : Service() {
         val place = PlaceController.currentLabel(this)
         if (place != null) {
             sb.append("The driver is currently at their saved \"$place\" location - reference it " +
-                "naturally (e.g. ask how work was if they're at work, or offer to head home). ")
+                "naturally if it fits (e.g. ask how work was if they're at work). ")
         }
 
         val weather = WeatherController.current()
         if (weather != null) {
             sb.append("The weather right now is ${weather.description}, about ${weather.tempF} degrees")
-            if (weather.caution) sb.append(", and conditions are a bit rough so a quick 'drive safe' fits")
+            // Was an unconditional "a quick 'drive safe' fits". Rough weather is worth a word
+            // wherever he is; telling him to drive safely at a desk is the car assumption again.
+            if (weather.caution) sb.append(", and conditions are a bit rough so a word about it fits")
             sb.append(" - work it into your greeting naturally. ")
         }
 
+        // Everything below this line is car context, and it is gated on the dongle actually being
+        // connected - the one signal that says he is IN the car rather than merely owning one.
         if (ObdBluetoothManager.isConnected) {
+            sb.append("The driver is in the car right now (the OBD dongle is connected), so car " +
+                "context is fair game and a word about the drive fits. ")
             val codes = ObdBluetoothManager.getDtcCodes()
             if (codes.isNotEmpty()) {
                 sb.append("The car currently has stored trouble codes: " +
@@ -478,15 +495,19 @@ class AriaForegroundService : Service() {
                 sb.append("The battery is reading low at ${"%.1f".format(voltage)} volts - it may be " +
                     "weak or not charging; gently flag it as something to keep an eye on. ")
             }
-        }
 
-        // Roughly monthly, ask the driver to confirm the odometer so the
-        // mileage estimate (used for maintenance due-dates) doesn't drift.
-        val vehicle = VehicleController.currentVehicle(this)
-        if (VehicleController.odometerCheckInDue(vehicle)) {
-            sb.append("It's also been a while since the odometer was last confirmed - " +
-                "casually ask the driver what it's reading now. ")
-            VehicleController.markOdometerPrompted(this, vehicle)
+            // Roughly monthly, ask the driver to confirm the odometer so the mileage estimate
+            // (used for maintenance due-dates) doesn't drift. Moved INSIDE the connected branch
+            // 2026-08-20: asking someone to read their odometer while they are sitting at a desk
+            // is unanswerable, and it also consumed the monthly prompt slot via
+            // markOdometerPrompted, so a nudge he could not act on suppressed the next one he
+            // could. The wrong-place ask was not merely noise; it was self-defeating.
+            val vehicle = VehicleController.currentVehicle(this)
+            if (VehicleController.odometerCheckInDue(vehicle)) {
+                sb.append("It's also been a while since the odometer was last confirmed - " +
+                    "casually ask the driver what it's reading now. ")
+                VehicleController.markOdometerPrompted(this, vehicle)
+            }
         }
         return sb.toString()
     }
