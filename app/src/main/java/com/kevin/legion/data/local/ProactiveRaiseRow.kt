@@ -18,7 +18,12 @@ import androidx.room.Query
  * restarts things, so **"never nag twice" was not weakly enforced - it was impossible**, and would
  * have stayed impossible under any engine built on that state.
  *
- * One table backs three separate promises, which is what justified the schema change:
+ * One table is MEANT to back three separate promises, which is what justified the schema change.
+ * **Two of the three are not wired yet (2026-08-21), and this comment previously implied all three
+ * were live:** nothing calls [ProactiveRaiseDao.markDeclined], so no row is ever marked declined and
+ * the suppression window cannot fire; and nothing calls [ProactiveRaiseDao.mostRecent], so there is
+ * no tool for "why did you say that?" to read. **The daily cap is the only one actually running.**
+ * Both gaps need a caller, not a schema change.
  *
  *  - **Never nag twice** - a declined raise suppresses its own [ruleId] for a window
  *    (ticket 08 call 3), silently, with the tone identical whenever it returns.

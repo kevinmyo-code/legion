@@ -938,9 +938,14 @@ internal val CANNOT_CLAUSE =
  * **Two clauses here are load-bearing beyond taste, and both are doing a job a checkable rule could
  * not be made to do:**
  *
- *  - *Never reference a previous attempt.* This one is genuinely enforceable, and not by the model:
- *    a brushed-off rule is suppressed in [com.kevin.legion.service.ProactiveBus] before the raise is
- *    ever built, so there is no "second time" state in the prompt for the model to leak.
+ *  - *Never reference a previous attempt.* This one is **designed** to be enforceable rather than
+ *    trusted to the model: `ProactiveBus` suppresses a brushed-off rule before the raise is ever
+ *    built, so no "second time" state reaches the prompt for the model to leak.
+ *    **BUT IT IS NOT WIRED YET, and this comment used to claim it was.** `ProactiveBus.markDeclined`
+ *    has no production caller - nothing yet reads a reply and reports the brush-off back - so no row
+ *    is ever marked declined and `RaiseOutcome.Suppressed` cannot fire in production today. The
+ *    mechanism exists in the schema, the DAO and the gate's unit tests, and the missing half is a
+ *    decline-detection path. Until that lands, this clause is doing the work alone, on trust.
  *  - *Never characterise how long a goal has gone unattended.* This one is NOT enforceable, and it
  *    is carrying real weight. Ticket 03 ruled that a nudge about a goal Kevin set and then ignored
  *    is **permitted**, which moved the useful-versus-guilt line out of the compulsion test and into

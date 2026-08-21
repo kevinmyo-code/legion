@@ -158,8 +158,10 @@ fun RecallAlertsRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
 }
 
 /**
- * The proactive master switch ([com.kevin.legion.service.ProactivePreferences.muted], inverted for
- * display - the row reads "Proactive speech", not "Muted"). `.scratch/proactive-mode/issues/
+ * The proactive master switch. **Backed by [com.kevin.legion.service.ProactiveSettings.master] in
+ * Room since 2026-08-21** (ticket 04); it used to read
+ * [com.kevin.legion.service.ProactivePreferences]'s inverted `muted` boolean, which is now a
+ * migration source and gates nothing. The row still reads "Proactive speech", not "Muted". `.scratch/proactive-mode/issues/
  * 01-one-gate-not-three.md` (2026-08-18): `setMuted`/`toggle` had zero callers anywhere before this
  * row, so the kill switch this whole effort depends on had never been reachable by a human. Uses
  * [DeckSwitch] rather than [RecallAlertsRow]/[IgnitionRow]'s raw Material `Switch` - those predate

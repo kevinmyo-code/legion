@@ -83,7 +83,10 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         val outcome = ProactiveBus.speakIfAllowed(
             context,
             ProactiveRaise(
-                ruleId = "reminder_due",
+                // Per ITEM, not per rule: the suppression key is the ruleId, so a single shared
+                // "reminder_due" would let a brush-off on one reminder silence the spoken
+                // readback of every other, unrelated reminder for the whole window.
+                ruleId = "reminder_due:${item.id}",
                 category = ProactiveCategory.TIMING,
                 reason = "reminder \"${item.text}\" came due",
                 facts = "reminder \"${item.text}\" on $listName, due now",
