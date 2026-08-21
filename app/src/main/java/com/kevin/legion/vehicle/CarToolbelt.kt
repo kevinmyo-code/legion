@@ -381,7 +381,7 @@ object CarToolbelt {
         name = "read_live_data",
         description = "Read live sensor values off the OBD port right now. items is a comma list from: " +
             "rpm, coolant, voltage, load, stft, ltft, iat, maf, speed, fuel_level. Returns 'OBD not " +
-            "connected' if the adapter is unplugged. coolant and iat are already in the driver's " +
+            "connected' if the adapter is unplugged. coolant and iat are already in the user's " +
             "chosen temperature unit - do not convert them.",
         params = props("items" to prop("string", "Comma-separated sensor names to read.")),
         required = listOf("items"),
@@ -399,7 +399,7 @@ object CarToolbelt {
 
     private fun specsTool(context: Context, vehicleId: String? = null) = AgentTool(
         name = "get_specs",
-        description = "Decoded factory specs for this car (engine, drivetrain, fuel) plus any driver " +
+        description = "Decoded factory specs for this car (engine, drivetrain, fuel) plus any user " +
             "build notes. Use when the answer depends on the exact powertrain.",
         timeoutMs = 5_000,
     ) { specsSummary(context, vehicleId) }

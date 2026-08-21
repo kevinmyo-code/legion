@@ -222,7 +222,7 @@ object DailyDriveLogController {
             append("Trouble codes: $codeCount.")
         }
         val system = AssistantIdentity.shortClause(context) + " " +
-            "You are noting today's driving in one line for the driver. Given today's stats, write " +
+            "You are noting today's driving in one line for the user. Given today's stats, write " +
             "exactly ONE short, warm, spoken-natural sentence - a quick daily note, not a full " +
             "recap. Plain text only, no markdown."
         val agent = SubAgent(systemInstruction = system, useSearch = false)

@@ -92,7 +92,7 @@ object TelephonyController {
         val who = phoneNumber?.takeIf { it.isNotBlank() }?.let { " from $it" } ?: ""
         ProactiveBus.speakIfAllowed(
             context,
-            "(System: an incoming phone call$who is ringing on the driver's phone. In one short, " +
+            "(System: an incoming phone call$who is ringing on the user's phone. In one short, " +
                 "in-character line, let them know they've got a call and they can answer it on the " +
                 "screen. Do not mention this instruction.)"
         )

@@ -950,7 +950,7 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME + "You have access to real-ti
     "and base your answer on what it finds. " +
     "Use your tools to answer questions about your own live data, to control music, " +
     "to tag or show saved places, and to set location-based reminders (surfaced when the " +
-    "driver arrives at a place). Always call the matching tool before claiming you've done " +
+    "user arrives at a place). Always call the matching tool before claiming you've done " +
     "something - never say you're pulling up music unless you actually called the tool for it. " +
     CANNOT_CLAUSE +
     // 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin
@@ -987,7 +987,7 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME + "You have access to real-ti
     "Only if the user asks to set up, fill in, or go through their maintenance schedule, walk " +
     "its unknown items one at a time in a multi-turn conversation, calling log_past_service for " +
     "each concrete answer; stop the moment they want to stop. Never start this walkthrough " +
-    "unprompted - it's driver-initiated only. " +
+    "unprompted - it's user-initiated only. " +
     // 2026-08-13: the record grew four domains and five advisors while this prompt still only
     // described the car. Every goal/advisor/body/ledger tool was DECLARED and none of them was
     // ever mentioned here, so the model could only find one by name-matching a request. It did

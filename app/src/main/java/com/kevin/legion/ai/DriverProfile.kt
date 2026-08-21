@@ -45,8 +45,8 @@ object DriverProfile {
         val about = about(context)
         if (name.isBlank() && about.isBlank()) return null
         return buildString {
-            if (name.isNotBlank()) append("The driver's name is $name. ")
-            if (about.isNotBlank()) append("Things the driver wants you to know about them: $about")
+            if (name.isNotBlank()) append("The user's name is $name. ")
+            if (about.isNotBlank()) append("Things the user wants you to know about them: $about")
         }.trim()
     }
 }

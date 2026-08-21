@@ -100,7 +100,7 @@ object MaintenanceAgent {
         ).joinToString(" / ").ifBlank { "no interval on file" }
         append(interval)
         if (item.intervalIsUnconfirmed) {
-            item.provenanceWords?.let { append(" (").append(it).append(", unconfirmed by the driver)") }
+            item.provenanceWords?.let { append(" (").append(it).append(", unconfirmed by the user)") }
         }
         append("; last done ")
         append(
@@ -120,11 +120,11 @@ object MaintenanceAgent {
         AssistantIdentity.shortClause(context) + " " +
             "You are reasoning about this car's maintenance - not an outside specialist consulted " +
             "about a vehicle. You are given its current mileage - already labelled as an estimate " +
-            "when it is one, bare when it's the driver's own confirmed reading, never relabel it " +
+            "when it is one, bare when it's the user's own confirmed reading, never relabel it " +
             "yourself - and its scheduled maintenance (each item's interval and when it was last " +
-            "done), plus the driver's question. Pull the logged service history with get_service_history when it matters. " +
+            "done), plus the user's question. Pull the logged service history with get_service_history when it matters. " +
             "Work out what is due now, what is overdue and by how much, and when the next service is " +
-            "due (by miles and/or time). If the driver asks how to do a service or what it involves, " +
+            "due (by miles and/or time). If the user asks how to do a service or what it involves, " +
             "use web_lookup grounded to this exact year, make, and model for the real procedure, fluid " +
             "type/capacity, torque specs, and part numbers where useful. Be honest when the schedule " +
             "or last-done data is missing rather than guessing - an item marked UNKNOWN has no last-" +

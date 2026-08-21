@@ -46,7 +46,7 @@ object MealAgent {
         "\"carbsG\": number or null (estimate), \"fatG\": number or null (estimate)}"
 
     suspend fun estimateFromDescription(spokenDescription: String): MealEstimate? {
-        val prompt = "Estimate calories and macros for this meal, described by the driver: " +
+        val prompt = "Estimate calories and macros for this meal, described by the user: " +
             "\"$spokenDescription\". $PROMPT_SHAPE"
         val raw = try {
             SubAgent(systemInstruction = SYSTEM_INSTRUCTION, useSearch = false).ask(context = "", question = prompt)

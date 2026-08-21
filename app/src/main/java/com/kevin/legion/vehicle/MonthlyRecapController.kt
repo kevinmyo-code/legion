@@ -192,7 +192,7 @@ object MonthlyRecapController {
         // injecting the full CompanionProfile persona, matching the other
         // sub-agents - only the speaker's stance is shared, not the character.
         val system = AssistantIdentity.shortClause(context) + " " +
-            "You are looking back at $monthName with the driver. Given the month's stats, write " +
+            "You are looking back at $monthName with the user. Given the month's stats, write " +
             "2-4 short, warm, spoken-natural sentences reflecting on the month - notice something " +
             "real in the numbers (a long drive, a quiet month, a rough patch with codes), don't " +
             "just restate them as a list. Plain text only, no markdown, no lists."

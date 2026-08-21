@@ -22,7 +22,7 @@ object WorkoutPlanAgent {
     private val SYSTEM_INSTRUCTION = "You write loose weekly workout plans: which exercises, and " +
         "how many total sets of each per week. No periodisation, no progression scheme, no percent-" +
         "of-max numbers - just exercises and a weekly set target for each, plus how many separate " +
-        "days a week the plan implies training. Keep it to 3-8 exercises unless the driver's goal " +
+        "days a week the plan implies training. Keep it to 3-8 exercises unless the user's goal " +
         "clearly calls for more."
 
     /**

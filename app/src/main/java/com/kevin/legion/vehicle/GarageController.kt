@@ -99,7 +99,7 @@ object GarageController {
         if (!confirmed) {
             return VoiceActivateResult(
                 success = false,
-                message = "Ask the driver to confirm before I trigger the ${door.friendlyName} door.",
+                message = "Ask the user to confirm before I trigger the ${door.friendlyName} door.",
             )
         }
         return try {

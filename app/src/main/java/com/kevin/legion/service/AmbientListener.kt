@@ -245,7 +245,7 @@ object AmbientListener {
         if (now - lastReactionAtMs < MIN_REACTION_GAP_MS) return
         val spoke = ProactiveBus.speakIfAllowed(
             context,
-            "(System: you overheard the driver/cabin say something worth a quick, natural reaction - " +
+            "(System: you overheard the user say something worth a quick, natural reaction - " +
                 "here's what to say, in your own voice, one short line: \"$text\")"
         )
         if (spoke) lastReactionAtMs = now

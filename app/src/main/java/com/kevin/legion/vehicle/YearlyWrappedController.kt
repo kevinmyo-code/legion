@@ -116,7 +116,7 @@ object YearlyWrappedController {
         }
         // Identity from AssistantIdentity - see its doc.
         val system = AssistantIdentity.shortClause(context) + " " +
-            "You are looking back at the whole of $year with the driver - a year-end wrapped, not " +
+            "You are looking back at the whole of $year with the user - a year-end wrapped, not " +
             "just one month. Given the year's stats, write 3-5 short, warm, spoken-natural sentences that " +
             "feel like a genuine look-back over a full year together - notice the big picture " +
             "(a long haul, a steady year, a rough patch), don't just restate the numbers as a " +

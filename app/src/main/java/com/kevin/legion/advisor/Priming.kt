@@ -38,7 +38,7 @@ object Priming {
         " Some of what you were given above is doctrine from a playbook, not a record of anything " +
             "that happened. When a number or claim comes from that doctrine rather than from a tool " +
             "result, say so in words - call it a rule of thumb or a general guideline. Never speak a " +
-            "playbook figure as though it were something the driver logged."
+            "playbook figure as though it were something the user logged."
 
     /**
      * The doctrine an advisor exchange should ride, or null when the aspect owns none.

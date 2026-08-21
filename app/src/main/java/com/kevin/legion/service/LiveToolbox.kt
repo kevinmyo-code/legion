@@ -136,11 +136,11 @@ object LiveToolbox {
             description = "Read a live value from the car's OBD-II port: fuel level, coolant " +
                 "temperature, RPM, road speed, battery voltage, engine load, intake air " +
                 "temperature, air flow, fuel trims, or whether any stored trouble/check-engine " +
-                "codes are present. Use whenever the driver asks what any of those are RIGHT NOW - " +
+                "codes are present. Use whenever the user asks what any of those are RIGHT NOW - " +
                 "'how much fuel have I got', 'what's the temp', 'how's the battery'. To explain " +
                 "what a code MEANS or how to FIX it, use diagnose_codes instead. Reads the OBD " +
                 "dongle in the car it is plugged into right now. Cannot answer for any other car. " +
-                "coolant_temp and intake_air_temp return `temperature` already in the driver's " +
+                "coolant_temp and intake_air_temp return `temperature` already in the user's " +
                 "chosen unit (see `temperatureUnit`) - do not convert it.",
             params = obj(
                 "metric" to schema("string", "Which live reading to fetch.",
@@ -157,16 +157,16 @@ object LiveToolbox {
             name = "diagnose_codes",
             description = "Hand off to the diagnostics specialist to explain the car's trouble / " +
                 "check-engine codes: what they mean, likely causes, how serious, and how to fix. Use " +
-                "whenever the driver asks what's wrong with the car, about the check engine light, " +
+                "whenever the user asks what's wrong with the car, about the check engine light, " +
                 "what a code means, or how to fix one. The specialist reads the live codes from the " +
-                "port itself - only pass 'codes' when the driver names specific ones (e.g. 'what's P0420'). " +
-                "Tell the driver you're digging into it before calling this - it takes a little while. " +
+                "port itself - only pass 'codes' when the user names specific ones (e.g. 'what's P0420'). " +
+                "Tell the user you're digging into it before calling this - it takes a little while. " +
                 "Reads the OBD dongle in the car it is plugged into right now. Cannot answer for any " +
                 "other car.",
             params = obj(
-                "question" to schema("string", "The driver's question in their own words, e.g. " +
+                "question" to schema("string", "The user's question in their own words, e.g. " +
                     "'what's wrong with my car' or 'how do I fix P0301'."),
-                "codes" to schema("string", "Optional: specific codes the driver named, comma-" +
+                "codes" to schema("string", "Optional: specific codes the user named, comma-" +
                     "separated, e.g. 'P0301, P0420'. Leave empty to use the live codes from the port."),
             ),
             required = listOf("question"),
@@ -177,7 +177,7 @@ object LiveToolbox {
             description = "Quick read of the stored trouble codes themselves - just the codes and " +
                 "their names, no causal explanation. Instant, offline, free. Use for a plain factual " +
                 "ask like 'what's the codes' or 'what codes are stored' - use diagnose_codes instead " +
-                "when the driver wants to know what's WRONG or how to fix it. Reads the OBD dongle in " +
+                "when the user wants to know what's WRONG or how to fix it. Reads the OBD dongle in " +
                 "the car it is plugged into right now. Cannot answer for any other car.",
             params = obj(),
             required = listOf(),
@@ -232,7 +232,7 @@ object LiveToolbox {
                 "connected to that car. If a sensor is not on a car's list, say so plainly - " +
                 "different cars genuinely support different sensors and that is not a fault.",
             params = obj(
-                "sensor" to schema("string", "What to read, in the driver's words - 'oil temp', " +
+                "sensor" to schema("string", "What to read, in the user's words - 'oil temp', " +
                     "'boost', 'fuel rate', 'ambient'. Omit entirely to list everything this car supports."),
                 "vehicle" to VEHICLE_PARAM,
             ),
@@ -242,7 +242,7 @@ object LiveToolbox {
         fns.put(fn(
             name = "get_current_time",
             description = "Read the current date and time from the phone's own clock, in the " +
-                "driver's timezone. Call this whenever the driver asks what time or what day it " +
+                "user's timezone. Call this whenever the user asks what time or what day it " +
                 "is, or whenever the answer depends on the current time - how long until " +
                 "something, whether it is morning or evening, what 'today' or 'tonight' means. " +
                 "NEVER state a time or date from your own guess: you do not have a clock, and a " +
@@ -253,15 +253,15 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "triage_symptom",
-            description = "Use when the driver describes how the car is BEHAVING rather than naming " +
+            description = "Use when the user describes how the car is BEHAVING rather than naming " +
                 "a code: a noise, smell, vibration, leak, rough idle, hard start, loss of power, or " +
                 "how a warning light is acting - 'what's that rattle', 'why does it shudder at idle', " +
                 "'it smells like burning'. The specialist reasons from the symptom plus live readings " +
                 "and stored codes, grounded to this exact car. Use diagnose_codes instead when the " +
-                "driver names a specific code. Tell the driver you're digging into it before calling " +
+                "user names a specific code. Tell the user you're digging into it before calling " +
                 "this - it takes a little while. Reads the OBD dongle in the car it is plugged into " +
                 "right now. Cannot answer for any other car.",
-            params = obj("symptom" to schema("string", "The driver's description of the problem in " +
+            params = obj("symptom" to schema("string", "The user's description of the problem in " +
                 "their own words, e.g. 'grinding when I brake' or 'rough idle when cold'.")),
             required = listOf("symptom"),
         ))
@@ -269,10 +269,10 @@ object LiveToolbox {
         fns.put(fn(
             name = "get_health",
             description = "Read a quick health snapshot from the OBD port - battery voltage, coolant " +
-                "temperature, and whether any trouble codes are stored. Use when the driver asks if " +
+                "temperature, and whether any trouble codes are stored. Use when the user asks if " +
                 "the car's okay, wants a health check, or is about to set off on a long drive (a " +
                 "pre-trip check). Reads the OBD dongle in the car it is plugged into right now. Cannot " +
-                "answer for any other car. The coolant reading is already in the driver's chosen " +
+                "answer for any other car. The coolant reading is already in the user's chosen " +
                 "unit (see coolantUnit) - do not convert it.",
             params = obj(),
             required = listOf(),
@@ -290,16 +290,16 @@ object LiveToolbox {
                 "ECU. This also wipes the freeze frame and RESETS THE EMISSIONS READINESS MONITORS, " +
                 "so the car will fail an inspection until it has driven enough to reset them. " +
                 "Destructive and not reversible. ALWAYS call this first with confirmed=false - it " +
-                "reads the stored codes and returns the exact warning to recite to the driver; only " +
-                "call it again with confirmed=true after the driver says yes in the very next turn. " +
+                "reads the stored codes and returns the exact warning to recite to the user; only " +
+                "call it again with confirmed=true after the user says yes in the very next turn. " +
                 "After sending, this re-reads the codes and reports what actually came back - only " +
                 "ever say 'cleared' if that is what this tool's own result says, never assume the " +
-                "send alone means it worked. Use when the driver asks to clear codes, reset the " +
+                "send alone means it worked. Use when the user asks to clear codes, reset the " +
                 "check engine light, or erase trouble codes. Reads the OBD dongle in the car it is " +
                 "plugged into right now. Cannot answer for any other car.",
             params = obj(
                 "confirmed" to schema("boolean", "False on the first call to read the codes and get " +
-                    "the confirm warning to recite. True only after the driver has just confirmed."),
+                    "the confirm warning to recite. True only after the user has just confirmed."),
             ),
             required = listOf("confirmed"),
         ))
@@ -315,7 +315,7 @@ object LiveToolbox {
             // is suppressed app-wide pending a fill-up calibration, and get_mpg below refuses in
             // words rather than silently answering through this tool with a wrong number instead.
             description = "Fetch how a vehicle metric has trended over recent weeks from the recorded " +
-                "history (coolant, rpm, voltage, load, fuel_trim). Use when the driver asks how " +
+                "history (coolant, rpm, voltage, load, fuel_trim). Use when the user asks how " +
                 "something has been running lately, whether it's been getting worse, or how it compares " +
                 "to before.",
             params = obj(
@@ -337,7 +337,7 @@ object LiveToolbox {
             description = "Fuel economy is currently WITHHELD on this car - LEGION's own on-board " +
                 "estimate was found to read almost 2x the real figure and needs a tank-to-tank " +
                 "fill-up to calibrate before it can be trusted again. Calling this tool returns that " +
-                "refusal, in words, never a number. Use when the driver asks about gas mileage or " +
+                "refusal, in words, never a number. Use when the user asks about gas mileage or " +
                 "fuel economy, so the refusal can be spoken rather than the question going unanswered.",
             params = obj("vehicle" to VEHICLE_PARAM),
             required = listOf(),
@@ -347,7 +347,7 @@ object LiveToolbox {
             name = "check_readiness",
             description = "Read the emissions readiness monitors live from the OBD port - which " +
                 "self-tests are complete and which still need drive time. Use before a state " +
-                "inspection or smog check, or when the driver asks if the car will pass. Reads the " +
+                "inspection or smog check, or when the user asks if the car will pass. Reads the " +
                 "OBD dongle in the car it is plugged into right now. Cannot answer for any other car.",
             params = obj(),
             required = listOf(),
@@ -356,9 +356,9 @@ object LiveToolbox {
         fns.put(fn(
             name = "check_cold_start",
             description = "Analyze the most recent recorded cold start (the first minute of warm-up: " +
-                "idle, fuel trims, warm-up rate) against earlier ones. Use when the driver asks how " +
+                "idle, fuel trims, warm-up rate) against earlier ones. Use when the user asks how " +
                 "the car has been starting, mentions rough cold idle, or asks about warm-up health. " +
-                "Tell the driver you're digging into it before calling this - it takes a little while. " +
+                "Tell the user you're digging into it before calling this - it takes a little while. " +
                 "Reads the OBD dongle in the car it is plugged into right now. Cannot answer for any " +
                 "other car.",
             params = obj(),
@@ -371,7 +371,7 @@ object LiveToolbox {
                 "the OVERALL soonest item by miles and the overall soonest by time, straight from the " +
                 "logged intervals and mileage, no reasoning involved. Use this for 'what's next', " +
                 "'what's coming up', 'how far off am I', or 'how many miles until my next service' - " +
-                "only when the driver has NOT named a specific service. If they name one (e.g. 'how " +
+                "only when the user has NOT named a specific service. If they name one (e.g. 'how " +
                 "many miles until my oil change'), use ask_maintenance instead - it has per-item " +
                 "access and this tool can't answer about a single named item, only the schedule's " +
                 "overall next-up one. This also only covers UPCOMING items - it does not report " +
@@ -392,10 +392,10 @@ object LiveToolbox {
                 "overall next-up item and can't answer about one named item or an overdue one. It " +
                 "uses the car's logged intervals, mileage, and service history. Use get_next_service " +
                 "instead for a plain, no-service-named 'what's due/coming up next' - it's instant and " +
-                "free; don't call this for that. Tell the driver you're digging into it before calling " +
+                "free; don't call this for that. Tell the user you're digging into it before calling " +
                 "this - it takes a little while.",
             params = obj(
-                "question" to schema("string", "The driver's maintenance question in their own " +
+                "question" to schema("string", "The user's maintenance question in their own " +
                     "words, e.g. 'how do I change the brake fluid' or 'should I be worried about " +
                     "this noise'."),
                 "vehicle" to VEHICLE_PARAM,
@@ -424,7 +424,7 @@ object LiveToolbox {
                 "'repeat_context' repeats the whole album/playlist ('repeat the album') - these " +
                 "are genuinely different requests, don't collapse them. 'repeat_off' turns " +
                 "repeat off entirely. 'seek_forward'/'seek_back' jump within the current track " +
-                "- pass 'seconds' if the driver named a duration, otherwise it defaults to 30. " +
+                "- pass 'seconds' if the user named a duration, otherwise it defaults to 30. " +
                 "Seeking forward past the end of the track moves on to the next song (Spotify's " +
                 "own behaviour) - say so plainly if it happens, don't just report a jump. " +
                 "'restart' jumps back to the start of the current track. 'more_from_artist' " +
@@ -434,8 +434,8 @@ object LiveToolbox {
                 "if nothing is, or it's a non-Spotify source, say plainly you can't tell who's " +
                 "playing rather than guessing an artist from something heard earlier. " +
                 "'add_to_playlist' adds the CURRENTLY PLAYING track (same subject as 'like') to a " +
-                "playlist the driver names, e.g. 'add this to my Roadtrip playlist' - pass " +
-                "'playlistName'. Only matches playlists the driver owns or a friend made them a " +
+                "playlist the user names, e.g. 'add this to my Roadtrip playlist' - pass " +
+                "'playlistName'. Only matches playlists the user owns or a friend made them a " +
                 "collaborator on - it does NOT search the public catalogue for a playlist to add " +
                 "to, and if the name matches a playlist that's followed but not owned or " +
                 "collaborative (an editorial playlist like Discover Weekly), this fails and says " +
@@ -451,13 +451,13 @@ object LiveToolbox {
                         "more_from_artist", "add_to_playlist",
                     )),
                 "query" to schema("string",
-                    "Required for 'queue': what to add, in the driver's own words, e.g. " +
+                    "Required for 'queue': what to add, in the user's own words, e.g. " +
                         "'Plastic Love by Mariya Takeuchi'."),
                 "seconds" to schema("integer",
                     "For 'seek_forward'/'seek_back' only: how many seconds to jump. Defaults to 30."),
                 "playlistName" to schema("string",
                     "Required for 'add_to_playlist': which playlist to add the current track to, " +
-                        "in the driver's own words, e.g. 'Roadtrip' or 'my summer playlist'."),
+                        "in the user's own words, e.g. 'Roadtrip' or 'my summer playlist'."),
             ),
             required = listOf("action"),
         ))
@@ -466,7 +466,7 @@ object LiveToolbox {
             name = "control_volume",
             description = "Adjust the phone's music/media volume - an instant on-device action. " +
                 "'up'/'down' nudge it, 'set' jumps to a level (0-100), 'mute'/'unmute' silence or " +
-                "restore it. This controls the music the driver hears, not your own speaking voice.",
+                "restore it. This controls the music the user hears, not your own speaking voice.",
             params = obj(
                 "action" to schema("string", "The volume action.",
                     enum = listOf("up", "down", "set", "mute", "unmute")),
@@ -486,11 +486,11 @@ object LiveToolbox {
         // would make this maddening: "shall I add that?" / "no" must never hang up.
         fns.put(fn(
             name = "end_conversation",
-            description = "End the conversation because the driver has signalled they are DONE " +
+            description = "End the conversation because the user has signalled they are DONE " +
                 "talking to you - 'never mind', 'nothing', 'I'm good', 'that's all', 'go away', " +
                 "'I don't need you right now'. Say a short in-character sign-off in the same turn; " +
-                "the conversation closes once you finish speaking, and the driver can always call " +
-                "you again. Do NOT call this when the driver is merely answering 'no' to something " +
+                "the conversation closes once you finish speaking, and the user can always call " +
+                "you again. Do NOT call this when the user is merely answering 'no' to something " +
                 "you asked, declining one suggestion, or pausing to think - those are ordinary " +
                 "turns and ending the conversation there would be infuriating. Only call it when " +
                 "they are dismissing YOU, not rejecting an offer.",
@@ -500,16 +500,16 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "open_navigation",
-            description = "Open the driver's map app on a destination they name - 'take me to', " +
+            description = "Open the user's map app on a destination they name - 'take me to', " +
                 "'navigate to', 'where is', 'show me on the map'. mode 'navigate' starts " +
                 "turn-by-turn guidance in Google Maps; mode 'show' just drops the place on the " +
                 "map without starting directions. Defaults to navigate. LEGION does not draw a " +
                 "map itself; this hands off to the map app on the phone. It reports honestly " +
                 "whether the map actually opened - if it comes back unsuccessful, tell the " +
-                "driver plainly that nothing opened and never say you started navigation.",
+                "user plainly that nothing opened and never say you started navigation.",
             params = obj(
                 "destination" to schema("string",
-                    "Where the driver wants to go, in their own words - an address, a business " +
+                    "Where the user wants to go, in their own words - an address, a business " +
                         "name, or a place, e.g. '2200 Kirby Drive' or 'the nearest Shell station'."),
                 "mode" to schema("string",
                     "'navigate' for turn-by-turn (the default), 'show' to just display it.",
@@ -521,18 +521,18 @@ object LiveToolbox {
         fns.put(fn(
             name = "play_music",
             description = "Play something specific by name - a song, artist, album, or playlist - " +
-                "directly in-app via Spotify (requires the driver to have connected their own Spotify " +
-                "account in Setup). Use when the driver names what they want to hear, e.g. 'play " +
+                "directly in-app via Spotify (requires the user to have connected their own Spotify " +
+                "account in Setup). Use when the user names what they want to hear, e.g. 'play " +
                 "Plastic Love' or 'play some city pop' (song, the default), 'play the album Discovery' " +
                 "(album), or 'play my Roadtrip playlist' (playlist). Set 'type' to match what the " +
-                "driver actually asked for - defaults to song if they didn't say. For type 'playlist', " +
-                "this checks the driver's OWN playlists (including ones friends made him a " +
+                "user actually asked for - defaults to song if they didn't say. For type 'playlist', " +
+                "this checks the user's OWN playlists (including ones friends made him a " +
                 "collaborator on) FIRST, and only falls back to Spotify's public catalogue if " +
                 "nothing there matches - when it falls back, say so and name what actually played, " +
-                "since it may not be what the driver meant. If Spotify isn't " +
-                "connected, this fails with a message telling the driver to connect it in Setup or " +
+                "since it may not be what the user meant. If Spotify isn't " +
+                "connected, this fails with a message telling the user to connect it in Setup or " +
                 "pick something on their phone themselves. Once something's playing, control_music " +
-                "handles play/pause/skip. To replay something the driver names from LEGION's own " +
+                "handles play/pause/skip. To replay something the user names from LEGION's own " +
                 "history (browse_my_music's legion_history source, e.g. 'play that thing from " +
                 "Tuesday'), OR to play a NAMED album from the current artist's own catalogue " +
                 "(browse_my_music's artist_albums source, e.g. 'play his album Discovery'), pass " +
@@ -544,7 +544,7 @@ object LiveToolbox {
                 "you can't replay that one instead.",
             params = obj(
                 "query" to schema("string",
-                    "What to play, in the driver's own words, e.g. 'Plastic Love by Mariya Takeuchi' " +
+                    "What to play, in the user's own words, e.g. 'Plastic Love by Mariya Takeuchi' " +
                         "or 'Discovery by Daft Punk'. Still required even when spotifyUri is set - " +
                         "used to build the spoken confirmation."),
                 "type" to schema("string",
@@ -560,7 +560,7 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "browse_my_music",
-            description = "Look up the driver's Spotify listening. 'saved_albums' - albums " +
+            description = "Look up the user's Spotify listening. 'saved_albums' - albums " +
                 "they've liked on Spotify. 'recently_played' - Spotify's OWN play history, " +
                 "across every device they use Spotify on, not just here - say so if you mention " +
                 "it. 'top_artists'/'top_tracks' - Spotify's own top rankings for this account. " +
@@ -570,7 +570,7 @@ object LiveToolbox {
                 "to see - never present it as a number Spotify published. 'artist_albums' - what " +
                 "the CURRENTLY PLAYING artist has out, for 'what else does he have' / 'what other " +
                 "albums does she have' - taken straight from the current track's artist, no name " +
-                "needed from the driver; requires something actually playing on Spotify, and if " +
+                "needed from the user; requires something actually playing on Spotify, and if " +
                 "nothing is (or it's a non-Spotify source) this fails saying it can't tell who's " +
                 "playing rather than guessing. Every result item here carries its own spotifyUri - " +
                 "to play one of them, pass that spotifyUri straight to play_music (same as a " +
@@ -578,7 +578,7 @@ object LiveToolbox {
                 "artist's own catalogue rather than an open search that could land on someone " +
                 "else's album of the same name. Every source needs Spotify connected and approved " +
                 "in Setup (same as play_music); if that's missing or stale, this fails and tells " +
-                "the driver exactly what to do about it - never read a failure as 'you have " +
+                "the user exactly what to do about it - never read a failure as 'you have " +
                 "nothing'. Keep the spoken answer short - name a handful of results, don't read " +
                 "out the whole list.",
             params = obj(
@@ -611,7 +611,7 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "show_app",
-            description = "Bring this app to the foreground. Use when the driver asks to open the " +
+            description = "Bring this app to the foreground. Use when the user asks to open the " +
                 "app or come back to it.",
             params = obj(),
             required = listOf(),
@@ -619,20 +619,20 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "set_reminder",
-            description = "Save a reminder tied to one of the driver's saved places, surfaced when " +
+            description = "Save a reminder tied to one of the user's saved places, surfaced when " +
                 "they next arrive there. Use for 'remind me to X when I get to / when I'm at the Y', " +
                 "e.g. 'remind me to grab my gym bag when I get to the gym'.",
             params = obj(
                 "place" to schema("string", "The saved place the reminder is for, e.g. home, work, gym, walmart."),
-                "text" to schema("string", "What to remind the driver about, in their own words, e.g. 'grab your gym bag'."),
+                "text" to schema("string", "What to remind the user about, in their own words, e.g. 'grab your gym bag'."),
             ),
             required = listOf("place", "text"),
         ))
 
         fns.put(fn(
             name = "tag_place",
-            description = "Save the driver's CURRENT location under a label like 'home', 'work', or " +
-                "'gym', so it can be referenced later. Use when the driver says something like 'this " +
+            description = "Save the user's CURRENT location under a label like 'home', 'work', or " +
+                "'gym', so it can be referenced later. Use when the user says something like 'this " +
                 "is my work' while they're there. No address-based tagging - only the current GPS spot.",
             params = obj(
                 "label" to schema("string", "Short label for this place, e.g. home, work, gym."),
@@ -649,7 +649,7 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "show_saved_places",
-            description = "Show or hide the on-screen list of the driver's saved places.",
+            description = "Show or hide the on-screen list of the user's saved places.",
             params = obj("visible" to schema("boolean", "True to show the list, false to hide it.")),
             required = listOf("visible"),
         ))
@@ -657,7 +657,7 @@ object LiveToolbox {
         fns.put(fn(
             name = "import_statement",
             description = "Open the file picker to import a bank statement PDF into the ledger. " +
-                "Use when the driver asks to import, add, or upload a statement, or add a bank " +
+                "Use when the user asks to import, add, or upload a statement, or add a bank " +
                 "account's transactions.",
             params = obj(),
             required = listOf(),
@@ -666,16 +666,16 @@ object LiveToolbox {
         fns.put(fn(
             name = "get_balance",
             description = "Report the latest known balance for a ledger account, LEADING WITH THE " +
-                "AVAILABLE FIGURE the way the driver's own bank app does. If the driver doesn't " +
+                "AVAILABLE FIGURE the way the user's own bank app does. If the user doesn't " +
                 "name one and only one account is on file, use that one; if several exist, ask " +
                 "which, or report all of them. The available figure can include TWO different " +
                 "kinds of unconfirmed activity, and both must be said out loud, not just reported " +
                 "as a final number: pending_delta_cents is card activity read from a mid-cycle " +
                 "export that hasn't been confirmed by a statement yet (CLAUDE.md §4 rule 7), and " +
-                "pending_count is charges the DRIVER logged by voice that the bank hasn't posted " +
+                "pending_count is charges the USER logged by voice that the bank hasn't posted " +
                 "or confirmed at all. The response marks the account verified=false when either is " +
                 "nonzero - say the figure is pending or unverified rather than presenting it as final.",
-            params = obj("account" to schema("string", "Which account, if the driver named one. " +
+            params = obj("account" to schema("string", "Which account, if the user named one. " +
                 "Leave empty to get all known accounts.")),
             required = listOf(),
         ))
@@ -684,7 +684,7 @@ object LiveToolbox {
             name = "list_recent_transactions",
             description = "Read back the most recent ledger transactions (raw descriptions and " +
                 "amounts - there's no spend-by-category breakdown yet, so don't imply insight this " +
-                "doesn't have). Use when the driver asks what they've spent money on recently or " +
+                "doesn't have). Use when the user asks what they've spent money on recently or " +
                 "wants to review recent transactions. Some rows are pending card activity read from a " +
                 "mid-cycle export, not yet confirmed by a statement (CLAUDE.md §4 rule 7) - each such " +
                 "row has verified=false and a note; say it's pending, don't present it as confirmed.",
@@ -705,9 +705,9 @@ object LiveToolbox {
             name = "categorize_transactions",
             description = "Have the AI guess a spending category for every transaction that has " +
                 "none yet, batched once per distinct merchant (never per transaction - cheap even " +
-                "for a large backlog). Every guess is a GUESS, not a fact, until the driver " +
+                "for a large backlog). Every guess is a GUESS, not a fact, until the user " +
                 "confirms or corrects it with set_category - a budget figure built on unconfirmed " +
-                "guesses is REPORTED, not PROVEN, and must be said that way. Use when the driver " +
+                "guesses is REPORTED, not PROVEN, and must be said that way. Use when the user " +
                 "asks to categorize their transactions, sort out their spending, or asks why so " +
                 "much is 'uncategorised'.",
             params = obj(),
@@ -719,12 +719,12 @@ object LiveToolbox {
             description = "Confirm or correct the spending category for a merchant - applies to " +
                 "every transaction from that merchant on file, past and future (correcting rewrites " +
                 "history: last month's budget figure was wrong and is now right). Use when the " +
-                "driver confirms an AI-guessed category is right, or tells you the right one, e.g. " +
+                "user confirms an AI-guessed category is right, or tells you the right one, e.g. " +
                 "'yes, Kroger is groceries' or 'no, that Amazon charge was actually a gift, not " +
                 "shopping'. Call list_budget_categories first if unsure of the exact category name - " +
                 "only a category from that fixed list is accepted.",
             params = obj(
-                "merchant" to schema("string", "The merchant name, in the driver's own words, e.g. 'Kroger'."),
+                "merchant" to schema("string", "The merchant name, in the user's own words, e.g. 'Kroger'."),
                 "category" to schema("string", "The category to assign, spelled exactly as list_budget_categories gives it."),
             ),
             required = listOf("merchant", "category"),
@@ -742,10 +742,10 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "log_pending_transaction",
-            description = "Log a charge or credit the driver knows about but that hasn't shown up " +
+            description = "Log a charge or credit the user knows about but that hasn't shown up " +
                 "on any statement or export yet - a still-processing/pending card transaction. " +
-                "This is the driver's OWN REPORT, not confirmed by the bank; the reply must say " +
-                "so out loud, not present it as a normal logged transaction. Use when the driver " +
+                "This is the user's OWN REPORT, not confirmed by the bank; the reply must say " +
+                "so out loud, not present it as a normal logged transaction. Use when the user " +
                 "says something like 'I just spent forty dollars at the hardware store, put it on " +
                 "the BofA card' or 'log a pending charge of twelve fifty for coffee'.",
             params = obj(
@@ -755,22 +755,22 @@ object LiveToolbox {
                 "direction" to schema(
                     "string",
                     "Whether this is money leaving the account (a charge) or arriving (a credit/refund). " +
-                        "Defaults to debit if the driver doesn't say.",
+                        "Defaults to debit if the user doesn't say.",
                     enum = listOf("debit", "credit"),
                 ),
-                "account" to schema("string", "Which account this belongs to, if the driver named " +
+                "account" to schema("string", "Which account this belongs to, if the user named " +
                     "one or only one account is on file. If it's unclear which account, ASK rather " +
                     "than guessing - this tool will never invent an account."),
-                "date" to schema("string", "MM/DD/YYYY. Defaults to today if the driver doesn't say."),
+                "date" to schema("string", "MM/DD/YYYY. Defaults to today if the user doesn't say."),
             ),
             required = listOf("description", "amount"),
         ))
 
         fns.put(fn(
             name = "list_pending_transactions",
-            description = "Read back every pending transaction the driver has logged by voice - " +
+            description = "Read back every pending transaction the user has logged by voice - " +
                 "none of these are confirmed by the bank, every one carries verified=false. Use " +
-                "when the driver asks what pending charges they've logged, or wants to review or " +
+                "when the user asks what pending charges they've logged, or wants to review or " +
                 "clear one.",
             params = obj(),
             required = listOf(),
@@ -779,7 +779,7 @@ object LiveToolbox {
         fns.put(fn(
             name = "clear_pending_transaction",
             description = "Remove a voice-logged pending transaction, e.g. because it posted for " +
-                "real and will now show up in a statement, or the driver logged it in error. " +
+                "real and will now show up in a statement, or the user logged it in error. " +
                 "Matches by description - if more than one pending row matches, ask which rather " +
                 "than guessing. This can only ever remove a pending row, never a real imported one.",
             params = obj("description" to schema("string", "Which pending transaction to remove, " +
@@ -790,7 +790,7 @@ object LiveToolbox {
         fns.put(fn(
             name = "import_receipt",
             description = "Open the camera or gallery picker to log a grocery receipt into the " +
-                "pantry. Use when the driver asks to log, add, or scan a grocery receipt.",
+                "pantry. Use when the user asks to log, add, or scan a grocery receipt.",
             params = obj(),
             required = listOf(),
         ))
@@ -818,19 +818,19 @@ object LiveToolbox {
         fns.put(fn(
             name = "create_workout_plan",
             description = "Have the AI write a loose weekly workout plan (which exercises, target " +
-                "sets per week for each, and how many days a week) from the driver's stated goal. " +
-                "Use when the driver asks for a workout plan or routine, e.g. 'make me a plan to " +
+                "sets per week for each, and how many days a week) from the user's stated goal. " +
+                "Use when the user asks for a workout plan or routine, e.g. 'make me a plan to " +
                 "build strength three days a week'. Replaces the current plan going forward - past " +
                 "weeks are untouched.",
-            params = obj("goal" to schema("string", "The driver's goal in their own words.")),
+            params = obj("goal" to schema("string", "The user's goal in their own words.")),
             required = listOf("goal"),
         ))
 
         fns.put(fn(
             name = "log_workout_set",
             description = "Log a set-group just performed, e.g. 'three sets of squats at 225'. Use " +
-                "the moment the driver reports a set - no confirmation needed, just log it and say " +
-                "back what was recorded. If the driver only names the exercise with no set count, " +
+                "the moment the user reports a set - no confirmation needed, just log it and say " +
+                "back what was recorded. If the user only names the exercise with no set count, " +
                 "ask once for how many sets rather than guessing.",
             params = obj(
                 "exercise" to schema("string", "The exercise, e.g. squats, bench press, pushups."),
@@ -844,7 +844,7 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "log_bodyweight",
-            description = "Log the driver's current bodyweight, e.g. 'I weigh 180 today'. A plain " +
+            description = "Log the user's current bodyweight, e.g. 'I weigh 180 today'. A plain " +
                 "reported measurement, separate from any workout log.",
             params = obj(
                 "weight" to schema("number", "The bodyweight value."),
@@ -855,8 +855,8 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "get_workout_gap",
-            description = "Report sessions done versus sessions planned this week - the driver's " +
-                "adherence to their current plan. Use when the driver asks how they're doing this " +
+            description = "Report sessions done versus sessions planned this week - the user's " +
+                "adherence to their current plan. Use when the user asks how they're doing this " +
                 "week or how they're sticking to their plan. Says there's no plan yet if none is set.",
             params = obj(),
             required = listOf(),
@@ -873,16 +873,16 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "log_meal",
-            description = "Log a meal from the driver's spoken description, e.g. 'I had a chicken " +
+            description = "Log a meal from the user's spoken description, e.g. 'I had a chicken " +
                 "burrito bowl for lunch'. Calories and macros are LLM ESTIMATES from the description, " +
                 "never measured - always phrase them as estimates, never as fact.",
-            params = obj("description" to schema("string", "What was eaten, in the driver's own words.")),
+            params = obj("description" to schema("string", "What was eaten, in the user's own words.")),
             required = listOf("description"),
         ))
 
         fns.put(fn(
             name = "set_meal_target",
-            description = "Set the driver's daily calorie and macro target. Use when the driver " +
+            description = "Set the user's daily calorie and macro target. Use when the user " +
                 "states a goal, e.g. 'I want to hit 2200 calories and 150 grams of protein a day'.",
             params = obj(
                 "calories" to schema("integer", "Daily calorie target."),
@@ -901,7 +901,7 @@ object LiveToolbox {
         // the same class of failure as a figure the app cannot defend.
         fns.put(fn(
             name = "set_budget",
-            description = "Set a monthly spending budget for one category. Use when the driver " +
+            description = "Set a monthly spending budget for one category. Use when the user " +
                 "states a limit, e.g. 'budget four hundred a month for groceries'. Applies from " +
                 "the current month onward until changed - it does not need setting again each " +
                 "month. Call list_budget_categories first if unsure of the exact category name.",
@@ -931,7 +931,7 @@ object LiveToolbox {
             name = "get_monthly_spend",
             description = "Report this month's categorised operating spend for the US ledger " +
                 "entity - the SAME figure the Money screen's SPEND pane shows. Money moved between " +
-                "the driver's own accounts (a card payment, a savings transfer) is excluded from " +
+                "the user's own accounts (a card payment, a savings transfer) is excluded from " +
                 "this total; ALWAYS say how many transactions and how much were excluded, exactly " +
                 "as the response's excluded_own_account_movements fields state - never present the " +
                 "total as if nothing was left out. Transactions with no category are ALSO excluded " +
@@ -970,20 +970,20 @@ object LiveToolbox {
         fns.put(fn(
             name = "log_sleep",
             description = "Log a night's sleep, e.g. 'I slept 7 and a half hours' or 'log 8 hours, " +
-                "quality 4 out of 5'. This is the driver's OWN REPORT - nothing verifies it, so " +
+                "quality 4 out of 5'. This is the user's OWN REPORT - nothing verifies it, so " +
                 "never present a sleep figure as independently confirmed.",
             params = obj(
                 "duration_hours" to schema("number", "How long they slept, in hours - decimals allowed, e.g. 7.5."),
                 "quality" to schema("integer", "Optional self-rated sleep quality, 1 (worst) to 5 (best)."),
-                "date" to schema("string", "MM/DD/YYYY, the morning they woke up. Defaults to today if the driver doesn't say."),
-                "notes" to schema("string", "Any extra detail the driver gives, e.g. 'woke up twice'."),
+                "date" to schema("string", "MM/DD/YYYY, the morning they woke up. Defaults to today if the user doesn't say."),
+                "notes" to schema("string", "Any extra detail the user gives, e.g. 'woke up twice'."),
             ),
             required = listOf("duration_hours"),
         ))
 
         fns.put(fn(
             name = "set_sleep_target",
-            description = "Set the driver's nightly sleep target, e.g. 'I want to get 8 hours of " +
+            description = "Set the user's nightly sleep target, e.g. 'I want to get 8 hours of " +
                 "sleep a night'. Applies from tonight onward until changed.",
             params = obj("hours" to schema("number", "The target hours of sleep per night, e.g. 8.")),
             required = listOf("hours"),
@@ -1010,7 +1010,7 @@ object LiveToolbox {
         fns.put(fn(
             name = "undo_last_log",
             description = "Undo the single most recently logged item across workouts, bodyweight, " +
-                "meals, and sleep - whichever was logged last. Use when the driver says something " +
+                "meals, and sleep - whichever was logged last. Use when the user says something " +
                 "like 'no, undo that' or 'that's wrong, take it back' right after logging something " +
                 "in one of these domains. Never used for ledger money - that's clear_pending_transaction.",
             params = obj(),
@@ -1019,8 +1019,8 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "set_odometer",
-            description = "Record the car's current odometer reading (the driver is the source of " +
-                "truth). Use when the driver states their mileage, e.g. 'my odometer is at 142500'.",
+            description = "Record the car's current odometer reading (the user is the source of " +
+                "truth). Use when the user states their mileage, e.g. 'my odometer is at 142500'.",
             params = obj(
                 "miles" to schema("integer", "Current odometer reading in miles."),
                 "vehicle" to VEHICLE_PARAM,
@@ -1031,10 +1031,10 @@ object LiveToolbox {
         fns.put(fn(
             name = "log_service",
             description = "Record that a maintenance service was just completed, clearing its 'due' " +
-                "status. Use when the driver says they did some work, e.g. 'I just changed the oil'.",
+                "status. Use when the user says they did some work, e.g. 'I just changed the oil'.",
             params = obj(
                 "service" to schema("string", "The service performed, e.g. oil change, tire rotation, brake pads."),
-                "cost" to schema("number", "Dollar amount paid, only if the driver stated one. Omit otherwise."),
+                "cost" to schema("number", "Dollar amount paid, only if the user stated one. Omit otherwise."),
                 "vehicle" to VEHICLE_PARAM,
             ),
             required = listOf("service"),
@@ -1043,18 +1043,18 @@ object LiveToolbox {
         fns.put(fn(
             name = "log_past_service",
             description = "Backfill when a maintenance item was last done from memory, not a fresh " +
-                "confirmation of work just finished (that's log_service). Use when the driver recalls " +
+                "confirmation of work just finished (that's log_service). Use when the user recalls " +
                 "an approximate mileage, how long ago, or a date - e.g. 'I think I changed the oil " +
                 "around 8,000 miles ago' or 'the brakes were done last spring'. Use never_done ONLY " +
                 "for a confirmed 'it's never been done', which is different from not knowing. " +
-                "CRITICAL: if the driver says they don't know or can't remember, do NOT call this " +
+                "CRITICAL: if the user says they don't know or can't remember, do NOT call this " +
                 "tool at all - leave it unknown rather than guessing a value.",
             params = obj(
                 "service" to schema("string", "The service, e.g. oil change, tire rotation, brake pads."),
-                "mileage" to schema("integer", "Absolute odometer reading it was done at, if the driver gave one, e.g. 185000."),
-                "miles_ago" to schema("integer", "How many miles ago, if that's how the driver phrased it, e.g. 8000."),
-                "date" to schema("string", "The date it was done, ISO-8601 YYYY-MM-DD or YYYY-MM, if the driver gave one."),
-                "never_done" to schema("boolean", "True only if the driver confirms this has never been done."),
+                "mileage" to schema("integer", "Absolute odometer reading it was done at, if the user gave one, e.g. 185000."),
+                "miles_ago" to schema("integer", "How many miles ago, if that's how the user phrased it, e.g. 8000."),
+                "date" to schema("string", "The date it was done, ISO-8601 YYYY-MM-DD or YYYY-MM, if the user gave one."),
+                "never_done" to schema("boolean", "True only if the user confirms this has never been done."),
                 "vehicle" to VEHICLE_PARAM,
             ),
             required = listOf("service"),
@@ -1071,13 +1071,13 @@ object LiveToolbox {
             name = "set_maintenance_interval",
             description = "Set or change how often a maintenance item is due, e.g. 'change the oil " +
                 "interval to every 7,500 miles' or 'set tire rotation to every 6 months'. Marks the " +
-                "interval as driver-confirmed, so the automatic schedule lookup will never silently " +
-                "overwrite it again. Always reads the value back so the driver can hear it actually " +
+                "interval as user-confirmed, so the automatic schedule lookup will never silently " +
+                "overwrite it again. Always reads the value back so the user can hear it actually " +
                 "changed.",
             params = obj(
                 "service" to schema("string", "The service, e.g. oil change, tire rotation, brake pads."),
-                "interval_miles" to schema("integer", "New mileage interval, if the driver gave one, e.g. 7500."),
-                "interval_months" to schema("integer", "New time interval in months, if the driver gave one, e.g. 6."),
+                "interval_miles" to schema("integer", "New mileage interval, if the user gave one, e.g. 7500."),
+                "interval_months" to schema("integer", "New time interval in months, if the user gave one, e.g. 6."),
                 "vehicle" to VEHICLE_PARAM,
             ),
             required = listOf("service"),
@@ -1095,9 +1095,9 @@ object LiveToolbox {
         fns.put(fn(
             name = "lookup_vin",
             description = "Read the car's VIN from the connected OBD adapter and look up its year, " +
-                "make, model, and trim. Use when the driver wants you to identify the car from the " +
+                "make, model, and trim. Use when the user wants you to identify the car from the " +
                 "port, fill in its details automatically, or asks 'what car is this' / 'pull my VIN'. " +
-                "This only reads the facts - it does NOT save them. Read them back and ask the driver " +
+                "This only reads the facts - it does NOT save them. Read them back and ask the user " +
                 "to confirm, then call register_vehicle to save. Needs the OBD adapter connected. " +
                 "Reads the OBD dongle in the car it is plugged into right now. Cannot answer for any " +
                 "other car.",
@@ -1109,7 +1109,7 @@ object LiveToolbox {
             name = "get_specs",
             description = "Read the car's stored factory specs from its build-details encyclopedia - " +
                 "engine, displacement, horsepower, transmission, drivetrain, body, assembly plant, and " +
-                "any paint/notes the driver saved. Use when the driver asks about the car's specs, " +
+                "any paint/notes the user saved. Use when the user asks about the car's specs, " +
                 "engine, how much power it makes, what transmission/drivetrain it has, where it was " +
                 "built, etc. If nothing's on file, tell them to run a VIN lookup (lookup_vin) or fill " +
                 "it in under Logbook â†’ Specs.",
@@ -1120,8 +1120,8 @@ object LiveToolbox {
         fns.put(fn(
             name = "check_recalls",
             description = "Look up active manufacturer recalls for this car (live from NHTSA by year/" +
-                "make/model). Use when the driver asks if the car has any recalls or open safety " +
-                "campaigns. The driver must have told you their car's year, make, and model first; " +
+                "make/model). Use when the user asks if the car has any recalls or open safety " +
+                "campaigns. The user must have told you their car's year, make, and model first; " +
                 "if they haven't, this returns an error asking you to get those - never guess or " +
                 "assume the car.",
             params = obj("vehicle" to VEHICLE_PARAM),
@@ -1134,7 +1134,7 @@ object LiveToolbox {
                 "for it. Triggers an online lookup of its maintenance schedule. Use ONLY for 'THIS " +
                 "car is a 2003 BMW 330i', or to save details after lookup_vin found them. " +
                 "This OVERWRITES the active car - it never creates a second one. To add another car " +
-                "the driver owns ('add my F-150', 'I also have a...'), or to fix a car that has the " +
+                "the user owns ('add my F-150', 'I also have a...'), or to fix a car that has the " +
                 "wrong details saved, use manage_vehicle instead.",
             params = obj(
                 "year" to schema("integer", "Model year, e.g. 2003."),
@@ -1147,8 +1147,8 @@ object LiveToolbox {
         fns.put(fn(
             name = "remember",
             description = "Save a fact to long-term memory so it persists across drives. Use when " +
-                "the driver explicitly asks you to remember something.",
-            params = obj("text" to schema("string", "The fact to remember, in the driver's own terms.")),
+                "the user explicitly asks you to remember something.",
+            params = obj("text" to schema("string", "The fact to remember, in the user's own terms.")),
             required = listOf("text"),
         ))
 
@@ -1176,14 +1176,14 @@ object LiveToolbox {
             // that context) without dropping any distinct rule, enum value, or capability - notes/
             // lists/calendar stays genuinely multi-shaped, this only removes restated words.
             description = "Add, tick, untick, remove, schedule (time and/or repeat), or skip one " +
-                "occurrence of ONE item on the driver's ONE PERSISTENT list: car to-dos, errands, " +
+                "occurrence of ONE item on the user's ONE PERSISTENT list: car to-dos, errands, " +
                 "reminders, and notes all live on it, so never ask which of those to use or " +
                 "mention lists in the plural. NOT for shopping: the grocery/shopping list is a " +
                 "separate short-lived trip list with its own tool, so 'add tums to the grocery " +
                 "list', 'put milk on the shopping list' and anything else naming groceries or " +
                 "shopping goes to manage_grocery - never here. A " +
                 "dated appointment (see 'kind') goes to Google Calendar instead of this list. Pass " +
-                "any date/time the driver gives on the SAME 'add' call via date/time - never add " +
+                "any date/time the user gives on the SAME 'add' call via date/time - never add " +
                 "first and schedule in a second call, which stores an appointment with no date at " +
                 "all. Use 'schedule' only to change an existing item's date or set up a repeat. " +
                 "For every action but 'add', 'item' fuzzily matches the existing item's text, " +
@@ -1192,8 +1192,8 @@ object LiveToolbox {
             params = obj(
                 "action" to schema("string", "What to do.",
                     enum = listOf("add", "tick", "untick", "remove", "schedule", "skip")),
-                "item" to schema("string", "For 'add', the new item's text. For every other action, which existing item to match, in the driver's words."),
-                "date" to schema("string", "Calendar date, yyyy-MM-dd. For 'add'/'schedule': the item's due date - always pass it on 'add' if the driver said one. For 'skip': which occurrence to skip."),
+                "item" to schema("string", "For 'add', the new item's text. For every other action, which existing item to match, in the user's words."),
+                "date" to schema("string", "Calendar date, yyyy-MM-dd. For 'add'/'schedule': the item's due date - always pass it on 'add' if the user said one. For 'skip': which occurrence to skip."),
                 "time" to schema("string", "24-hour HH:mm. For 'add'/'schedule' only if a specific time was given - omit for an all-day item. Requires 'date'."),
                 "kind" to schema("string", "Only for 'add' with a date. 'appointment' goes to Google " +
                     "Calendar (e.g. 'dentist Tuesday at 3', 'lunch with Sam Friday'); 'reminder' " +
@@ -1210,7 +1210,7 @@ object LiveToolbox {
                     enum = listOf("never", "on_date", "after_count")),
                 "repeat_end_date" to schema("string", "For repeat_end_kind on_date: yyyy-MM-dd, the series' last possible date."),
                 "repeat_end_count" to schema("integer", "For repeat_end_kind after_count: total occurrences."),
-                "exact" to schema("boolean", "Only for 'schedule', only when the driver wants a precise, punctual " +
+                "exact" to schema("boolean", "Only for 'schedule', only when the user wants a precise, punctual " +
                     "alarm (e.g. 'wake me up at exactly 6am, don't be late'). Omit for the default, which fires " +
                     "within about an hour and needs no extra permission. Falls back silently to the default if " +
                     "exact permission isn't available - the reply must say so."),
@@ -1232,26 +1232,26 @@ object LiveToolbox {
             description = "Manage the CURRENT grocery/shopping trip - a short-lived list that is " +
                 "thrown away once the shopping is done. Use for 'add milk to the grocery list', " +
                 "'what's on the shopping list', 'got the eggs', 'I'm done shopping'. This is " +
-                "SEPARATE from the driver's normal list (manage_item): anything that is not " +
+                "SEPARATE from the user's normal list (manage_item): anything that is not " +
                 "shopping for this trip belongs there instead. " +
                 "'finish' is DESTRUCTIVE - it deletes the whole list and only remembers what was " +
                 "ticked - so it ALWAYS confirms: call with confirmed=false first to ask, then " +
-                "confirmed=true only after the driver says yes in the very next turn. " +
+                "confirmed=true only after the user says yes in the very next turn. " +
                 "'suggest' reads back what they usually buy, for starting a trip.",
             params = obj(
                 "action" to schema("string", "What to do.",
                     enum = listOf("add", "tick", "untick", "remove", "read", "suggest", "finish")),
                 "item" to schema("string", "For 'add', what to add. For tick/untick/remove, which " +
-                    "existing item to match, in the driver's words - never a position like 'the third one'."),
+                    "existing item to match, in the user's words - never a position like 'the third one'."),
                 "confirmed" to schema("boolean", "Only for 'finish': false to trigger the confirm prompt, " +
-                    "true only after the driver just confirmed."),
+                    "true only after the user just confirmed."),
             ),
             required = listOf("action"),
         ))
 
         fns.put(fn(
             name = "read_list",
-            description = "Read back the driver's list - every open item, soonest due date first, " +
+            description = "Read back the user's list - every open item, soonest due date first, " +
                 "with the date on any item that has one. There is exactly one list. Use for " +
                 "'what's on my list', 'what's left to do for the car', 'what have I got coming up'.",
             params = obj(),
@@ -1261,7 +1261,7 @@ object LiveToolbox {
         fns.put(fn(
             name = "recall_memory",
             description = "Search your long-term memory of past conversations and trips with the " +
-                "driver. Use when they ask what you remember, reference something from before, or " +
+                "user. Use when they ask what you remember, reference something from before, or " +
                 "when recalling a past detail would make your reply more personal. Returns the " +
                 "closest-matching memories with the date each was noted.",
             params = obj("query" to schema("string", "What to look for, in a few words - e.g. " +
@@ -1272,18 +1272,18 @@ object LiveToolbox {
         fns.put(fn(
             name = "log_build_entry",
             description = "Log something on the car's build sheet / spend ledger - a mod, part, " +
-                "repair, consumable, or general purchase for the car. Use when the driver says they " +
+                "repair, consumable, or general purchase for the car. Use when the user says they " +
                 "did, bought, or installed something, or spent on the car (e.g. 'I just put on " +
                 "coilovers', 'logged a new clutch, six hundred bucks'). Only capture a cost if they " +
                 "actually state one. This log has no currency column - the number is stored plainly, " +
-                "in whatever unit the driver said it in.",
+                "in whatever unit the user said it in.",
             params = obj(
                 "title" to schema("string", "What it is, e.g. 'BC Racing coilovers' or 'new clutch'."),
                 "type" to schema("string", "Category of the entry.",
                     enum = listOf("mod", "part", "repair", "consumable", "other")),
-                "cost" to schema("number", "Dollar amount, only if the driver stated one. Omit otherwise."),
+                "cost" to schema("number", "Dollar amount, only if the user stated one. Omit otherwise."),
                 "vendor" to schema("string", "Where it was bought / the shop, if mentioned."),
-                "notes" to schema("string", "Any extra detail the driver gives."),
+                "notes" to schema("string", "Any extra detail the user gives."),
                 "vehicle" to VEHICLE_PARAM,
             ),
             required = listOf("title"),
@@ -1292,7 +1292,7 @@ object LiveToolbox {
         fns.put(fn(
             name = "list_build_history",
             description = "Read back the car's build history - what's been done, installed, or bought " +
-                "and when. Use when the driver asks what's on the build sheet, what they've done to the " +
+                "and when. Use when the user asks what's on the build sheet, what they've done to the " +
                 "car, or wants a build rundown (e.g. for selling it). The history is always available; " +
                 "dollar amounts are only included when the spend log is unlocked, and this log never " +
                 "recorded a currency for any cost - state a cost plainly, never attach a currency to it.",
@@ -1307,7 +1307,7 @@ object LiveToolbox {
         fns.put(fn(
             name = "get_spend",
             description = "Report how much has been spent on the car - the grand total or one category. " +
-                "Only use when the driver explicitly asks about money, cost, or total spent. This build " +
+                "Only use when the user explicitly asks about money, cost, or total spent. This build " +
                 "sheet spend log never recorded a currency for any entry - state the number plainly, " +
                 "never attach a currency to it or guess one.",
             params = obj("category" to schema("string", "Optional category, e.g. 'mods' or 'maintenance'.")),
@@ -1319,23 +1319,23 @@ object LiveToolbox {
             description = "Trigger the garage door / gate relay - a single momentary pulse, exactly " +
                 "like pressing a handheld garage remote once. There is no way to know or promise " +
                 "whether this will open or close the door (no door sensor), so never say 'opening' " +
-                "or 'closing' - say 'triggering' or 'hitting' the door. Use when the driver asks to " +
+                "or 'closing' - say 'triggering' or 'hitting' the door. Use when the user asks to " +
                 "open, close, hit, trigger, or use the garage or gate. ALWAYS call this first with " +
-                "confirmed=false to ask the driver to confirm; only call it again with confirmed=true " +
+                "confirmed=false to ask the user to confirm; only call it again with confirmed=true " +
                 "after they say yes in the very next turn.",
             params = obj(
-                "door" to schema("string", "Which door, if the driver named one or there's more than " +
+                "door" to schema("string", "Which door, if the user named one or there's more than " +
                     "one set up, e.g. 'garage' or 'side gate'. Leave empty for the default door."),
                 "confirmed" to schema("boolean", "False on the first call to trigger the confirm " +
-                    "prompt. True only after the driver has just confirmed."),
+                    "prompt. True only after the user has just confirmed."),
             ),
             required = listOf("confirmed"),
         ))
 
         fns.put(fn(
             name = "get_current_location",
-            description = "Get the driver's current GPS location and human-readable address. Use " +
-                "whenever the driver asks 'where am I', or when you need the current city/state " +
+            description = "Get the user's current GPS location and human-readable address. Use " +
+                "whenever the user asks 'where am I', or when you need the current city/state " +
                 "to ground a nearby search.",
             params = obj(),
             required = listOf(),
@@ -1352,7 +1352,7 @@ object LiveToolbox {
             description = "List every car on file: name, year, make, model, trim, whether it's the " +
                 "one currently being driven, whether the OBD dongle is plugged into it right now, and " +
                 "its last-known odometer. This is how to find out whether there's more than one car - " +
-                "call this whenever the driver asks what cars they have, or before assuming there's " +
+                "call this whenever the user asks what cars they have, or before assuming there's " +
                 "only one.",
             params = obj(),
             required = listOf(),
@@ -1372,7 +1372,7 @@ object LiveToolbox {
         fns.put(fn(
             name = "manage_vehicle",
             description = "Add a car to the fleet, fix a car's saved details, rename one, switch " +
-                "which car you're on, or archive/unarchive one. Use 'add' when the driver mentions " +
+                "which car you're on, or archive/unarchive one. Use 'add' when the user mentions " +
                 "another car they own ('add my F-150', 'I also drive a...') - this is the ONLY way " +
                 "to create a second car, and it does NOT change which car is active. Use 'correct' " +
                 "when a car has the wrong year/make/model saved; its drives and service history stay " +
@@ -1380,13 +1380,13 @@ object LiveToolbox {
             params = obj(
                 "action" to schema("string", "What to do.",
                     enum = listOf("add", "correct", "rename", "switch", "archive", "unarchive")),
-                "vehicle" to schema("string", "Which car, as the driver says it, e.g. 'the Outlander'. " +
+                "vehicle" to schema("string", "Which car, as the user says it, e.g. 'the Outlander'. " +
                     "Required for everything EXCEPT add; for add, leave blank."),
                 "year" to schema("integer", "Model year, e.g. 2020. For add and correct."),
                 "make" to schema("string", "Manufacturer, e.g. Mitsubishi. Required for add."),
                 "model" to schema("string", "Model, e.g. Outlander. Required for add."),
                 "trim" to schema("string", "Optional trim, e.g. SEL."),
-                "name" to schema("string", "What the driver calls it, e.g. 'the truck'. For add and rename."),
+                "name" to schema("string", "What the user calls it, e.g. 'the truck'. For add and rename."),
             ),
             required = listOf("action"),
         ))
@@ -1466,7 +1466,7 @@ object LiveToolbox {
         // is for ADVISOR-authored writes only, a different ticket).
         fns.put(fn(
             name = "set_goal",
-            description = "Set or update a long-term goal for one aspect of the driver's life - " +
+            description = "Set or update a long-term goal for one aspect of the user's life - " +
                 "not a daily or weekly target, a standing intention like 'get to 175 lbs', 'save " +
                 "$30k by 2028', or 'ship the deck'. A NUMBER IS OPTIONAL: most goals are prose " +
                 "only, and a goal with no number is a normal, complete goal, never a broken one - " +
@@ -1481,7 +1481,7 @@ object LiveToolbox {
                         "(notes, lists, planning), fleet (the car), or cred (personal finance).",
                     enum = GoalController.ASPECTS,
                 ),
-                "statement" to schema("string", "The goal in the driver's own words. Always required, even alongside a number."),
+                "statement" to schema("string", "The goal in the user's own words. Always required, even alongside a number."),
                 "target_value" to schema("number", "Optional target number, e.g. 175 or 30000. Omit for a prose-only goal."),
                 "unit" to schema("string", "Unit for target_value, e.g. 'lbs' or 'usd'. Omit if target_value is omitted."),
                 "metric_key" to schema(
@@ -1497,7 +1497,7 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "list_goals",
-            description = "List the driver's current active goals. Omit aspect to list every " +
+            description = "List the user's current active goals. Omit aspect to list every " +
                 "goal across every aspect at once - use that form for a broad 'how am I doing on " +
                 "my goals' question.",
             params = obj(
@@ -1515,7 +1515,7 @@ object LiveToolbox {
             description = "Mark a goal achieved or abandoned. Identify it by aspect plus a few " +
                 "words from its own statement, e.g. 'savings' or 'the old car' - if more than one " +
                 "active goal in that aspect matches, this reports every match instead of guessing, " +
-                "so ask the driver which one they mean rather than picking.",
+                "so ask the user which one they mean rather than picking.",
             params = obj(
                 "aspect" to schema("string", "Which aspect the goal belongs to.", enum = GoalController.ASPECTS),
                 "statement" to schema("string", "A few words from the goal's statement, enough to identify it uniquely."),
@@ -1535,7 +1535,7 @@ object LiveToolbox {
         fns.put(fn(
             name = "ask_advisor",
             description = "Hand off to a domain advisor for coaching, planning, budgeting, or " +
-                "maintenance-planning advice grounded in the driver's own record - it reasons from " +
+                "maintenance-planning advice grounded in the user's own record - it reasons from " +
                 "a deterministic digest of what's actually logged, never a live web lookup, and " +
                 "stays inside stated professional-referral boundaries rather than diagnosing or " +
                 "prescribing past them. Pick 'bio' for fitness/nutrition/sleep coaching, 'log' for " +
@@ -1545,7 +1545,7 @@ object LiveToolbox {
                 "or whenever you are not sure which single aspect fits. ${HarnessPrompt.LATENCY_HINT} " +
                 "The advisor may offer to write something back (a goal, a target, a plan, a " +
                 "maintenance interval, a reminder) - it never writes anything itself. If it does, " +
-                "tell the driver plainly what it is proposing, and only call accept_proposal once " +
+                "tell the user plainly what it is proposing, and only call accept_proposal once " +
                 "they say a clear yes to exactly that - never assume, and never call accept_proposal " +
                 "on your own initiative.",
             params = obj(
@@ -1554,7 +1554,7 @@ object LiveToolbox {
                     "Which advisor to ask: bio, log, fleet, cred, or home for overall/cross-cutting.",
                     enum = AdvisorAspect.values().map { it.key },
                 ),
-                "question" to schema("string", "The driver's question, in their own words."),
+                "question" to schema("string", "The user's question, in their own words."),
             ),
             required = listOf("aspect", "question"),
         ))
@@ -1562,10 +1562,10 @@ object LiveToolbox {
         fns.put(fn(
             name = "accept_proposal",
             description = "Write the proposal a domain advisor just offered, EXACTLY as it was " +
-                "proposed. Call this only after the driver gives a plain, explicit yes to it - never " +
+                "proposed. Call this only after the user gives a plain, explicit yes to it - never " +
                 "on your own initiative. This executes the STORED proposal by its id, never values " +
                 "you recall or restate yourself - you cannot pass or change any of its numbers here. " +
-                "If the driver wants something different from what was proposed ('yes, but 3 days " +
+                "If the user wants something different from what was proposed ('yes, but 3 days " +
                 "not 4'), do NOT call this - ask the advisor again with the change and get a fresh " +
                 "proposal to accept instead.",
             params = obj(
@@ -1672,13 +1672,13 @@ object LiveToolbox {
         get() = obj(
             "question" to schema(
                 "string",
-                "The driver's question or instruction, in their own words.",
+                "The user's question or instruction, in their own words.",
             ),
             "intent" to schema(
                 "string",
-                "\"record\" when the driver is asking for something to be written down, logged, " +
+                "\"record\" when the user is asking for something to be written down, logged, " +
                     "saved, or changed. \"ask\" when they only want information back. Set this " +
-                    "honestly: a \"record\" call that writes nothing is reported to the driver as " +
+                    "honestly: a \"record\" call that writes nothing is reported to the user as " +
                     "a failure rather than answered around.",
                 enum = listOf("record", "ask"),
             ),
@@ -1712,9 +1712,9 @@ object LiveToolbox {
         ))
         fns.put(fn(
             name = "ask_body",
-            description = "READING BACK the driver's own body and training: recent meals, sleep, " +
+            description = "READING BACK the user's own body and training: recent meals, sleep, " +
                 "workouts or bodyweight, and how today or this week compares to target. " +
-                "Read-only - it records NOTHING. Anything the driver phrases as having just " +
+                "Read-only - it records NOTHING. Anything the user phrases as having just " +
                 "eaten, slept, lifted or weighed in is a RECORD and goes to the named tool for " +
                 "it - log_meal, log_sleep, log_workout_set, log_bodyweight, create_workout_plan - " +
                 "never here, including when they frame it as progress toward a goal. Ask a " +
@@ -1724,11 +1724,11 @@ object LiveToolbox {
         ))
         fns.put(fn(
             name = "ask_goals",
-            description = "The driver's long-term goals and a domain advisor's coaching, and " +
+            description = "The user's long-term goals and a domain advisor's coaching, and " +
                 "nothing else: listing the goals currently set, or asking an advisor to reason " +
                 "about progress and what to do next. Advice and reading only - it records NOTHING. " +
                 "A workout, meal, sleep or weigh-in is a RECORD and goes to its own named log tool " +
-                "(log_workout_set, log_meal, log_sleep, log_bodyweight) even when the driver " +
+                "(log_workout_set, log_meal, log_sleep, log_bodyweight) even when the user " +
                 "mentions a goal in the same breath; reading about the cars goes to ask_fleet; " +
                 "groceries to manage_grocery; and setting or closing a goal is " +
                 "set_goal/close_goal, not this. Ask a " +
@@ -1825,7 +1825,7 @@ object LiveToolbox {
     internal fun dispatchBoundaryClause(domain: String): String =
         if (mutatingToolsFor(domain).isEmpty()) {
             " You have NO tool that writes anything - you cannot log, record, save, or change any " +
-                "data at all. If the driver asked for something to be recorded, that request " +
+                "data at all. If the user asked for something to be recorded, that request " +
                 "reached the wrong specialist: say plainly that nothing was recorded and that you " +
                 "cannot record it. Never say or imply something was logged, saved, recorded, or " +
                 "updated."
@@ -1853,7 +1853,7 @@ object LiveToolbox {
     // bounded investigate loop (up to four), not once per dispatch.
 
     private fun fleetDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
-        " You are reasoning about the driver's cars using the tools you're given: live sensor " +
+        " You are reasoning about the user's cars using the tools you're given: live sensor " +
         "readings, trouble codes, mileage, specs, recalls, service history, and maintenance " +
         "scheduling and logging. Pull only what would change your answer, then answer in plain " +
         "spoken text, no markdown." +
@@ -1861,7 +1861,7 @@ object LiveToolbox {
         Priming.dispatchClause(context, "fleet")
 
     private fun bodyDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
-        " You are reasoning about the driver's meals, sleep, workouts, and bodyweight using the " +
+        " You are reasoning about the user's meals, sleep, workouts, and bodyweight using the " +
         "tools you're given. Calorie and macro figures are LLM estimates, never measured - always " +
         "phrase them as estimates, never as fact. Pull only what would change your answer, then " +
         "answer in plain spoken text, no markdown." +
@@ -1869,14 +1869,14 @@ object LiveToolbox {
         Priming.dispatchClause(context, "body")
 
     private fun goalsDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
-        " You are reasoning about the driver's long-term goals and, when asked, handing off to a " +
+        " You are reasoning about the user's long-term goals and, when asked, handing off to a " +
         "domain advisor for grounded coaching or planning advice using the tools you're given. " +
         "Pull only what would change your answer, then answer in plain spoken text, no markdown." +
         dispatchBoundaryClause("goals") +
         Priming.dispatchClause(context, "goals")
 
     private fun pantryDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
-        " You are reasoning about the driver's groceries using the tools you're given: recently " +
+        " You are reasoning about the user's groceries using the tools you're given: recently " +
         "logged items and their estimated macros, total spend by currency, and the current " +
         "shopping trip list. Macro/calorie figures are estimates, never measured - phrase them " +
         "that way. Pull only what would change your answer, then answer in plain spoken text, no " +
@@ -1885,7 +1885,7 @@ object LiveToolbox {
         Priming.dispatchClause(context, "pantry")
 
     private fun mailDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
-        " You are searching and reading the driver's Gmail using the tools you're given. " +
+        " You are searching and reading the user's Gmail using the tools you're given. " +
         "Read-only - you cannot send, reply to, or delete mail. Pull only what would change your " +
         "answer, then answer in plain spoken text, no markdown." +
         dispatchBoundaryClause("mail") +
@@ -2636,7 +2636,7 @@ object LiveToolbox {
             .put("make", decoded.make)
             .put("model", decoded.model)
             .put("trim", decoded.trim)
-            .put("note", "These are read-only. Read them back and ask the driver to confirm, then call register_vehicle to save. The full specs were saved to the build-details encyclopedia.")
+            .put("note", "These are read-only. Read them back and ask the user to confirm, then call register_vehicle to save. The full specs were saved to the build-details encyclopedia.")
     }
 
     /**
@@ -3252,7 +3252,7 @@ object LiveToolbox {
     /** D24's weekly session gap, worded for the model to speak. */
     private suspend fun getWorkoutGap(context: Context): JSONObject {
         val gap = WorkoutController.weekGap(context)
-            ?: return result(success = false, message = "No workout plan set yet - ask the driver if they'd like one.")
+            ?: return result(success = false, message = "No workout plan set yet - ask the user if they'd like one.")
         return JSONObject()
             .put("success", true)
             .put("sessionsPlanned", gap.target)
@@ -4564,7 +4564,7 @@ object LiveToolbox {
         val readings = StringBuilder()
         var codes = emptyList<String>()
         if (ObdBluetoothManager.isConnected) {
-            ObdBluetoothManager.getCoolantTemp()?.let { readings.append("coolant ${Temp.text(context, it.toDouble())} (driver's unit, already converted - do not convert again); ") }
+            ObdBluetoothManager.getCoolantTemp()?.let { readings.append("coolant ${Temp.text(context, it.toDouble())} (user's unit, already converted - do not convert again); ") }
             ObdBluetoothManager.getRpm()?.let { readings.append("RPM $it; ") }
             ObdBluetoothManager.getBatteryVoltage()?.let { readings.append("battery ${"%.1f".format(it)}V; ") }
             codes = ObdBluetoothManager.getDtcCodes()
@@ -4583,7 +4583,7 @@ object LiveToolbox {
     private suspend fun getHealth(context: Context): JSONObject {
         if (!ObdBluetoothManager.isConnected) {
             return JSONObject().put("connected", false)
-                .put("note", "OBD adapter not connected; tell the driver to check it's plugged in.")
+                .put("note", "OBD adapter not connected; tell the user to check it's plugged in.")
         }
         val coolant = ObdBluetoothManager.getCoolantTemp()
         val voltage = ObdBluetoothManager.getBatteryVoltage()
@@ -4994,7 +4994,7 @@ object LiveToolbox {
     private suspend fun getVehicleData(context: Context, metric: String): JSONObject {
         if (!ObdBluetoothManager.isConnected) {
             return JSONObject().put("connected", false)
-                .put("note", "OBD adapter not connected; tell the driver to check it's plugged in.")
+                .put("note", "OBD adapter not connected; tell the user to check it's plugged in.")
         }
         // "This car does not report fuel level" and "the read failed" are
         // different answers and the driver deserves the right one. supportedPids
@@ -5790,7 +5790,7 @@ object LiveToolbox {
                 if (json.optBoolean("success")) {
                     json.put(
                         "note",
-                        "This is Spotify's own play history across every device the driver uses " +
+                        "This is Spotify's own play history across every device the user uses " +
                             "Spotify on, not just through LEGION.",
                     )
                 } else json
@@ -5956,7 +5956,7 @@ object LiveToolbox {
     internal fun replayabilityNote(recent: List<MusicPlayHistoryEntry>): String? {
         if (recent.none { it.spotifyUri == null }) return null
         return "Rows with spotifyUri null were never observed with a resolvable Spotify URI - " +
-            "you can tell the driver what they were, but say plainly you can't play them again " +
+            "you can tell the user what they were, but say plainly you can't play them again " +
             "from here. Never search for a title to invent a URI for one; a guess that plays the " +
             "wrong song is worse than an honest no."
     }
@@ -6015,9 +6015,9 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "set_companion_name",
-            description = "Save the name the driver chose for you (the companion). Call this as soon " +
+            description = "Save the name the user chose for you (the companion). Call this as soon " +
                 "as they tell you what to call you.",
-            params = obj("name" to schema("string", "The name the driver wants to call you.")),
+            params = obj("name" to schema("string", "The name the user wants to call you.")),
             required = listOf("name"),
         ))
 
@@ -6028,7 +6028,7 @@ object LiveToolbox {
             params = obj(
                 "description" to schema("string", "A short second-person persona summary written as an " +
                     "instruction to yourself, e.g. 'You are warm and easygoing, quick with a dry joke, " +
-                    "and you treat the driver like an old friend.'"),
+                    "and you treat the user like an old friend.'"),
                 "look" to schema("string", "A brief visual descriptor of how you'd appear as a " +
                     "character, used to draw your face, e.g. 'a laid-back, warm-eyed retro mascot'."),
             ),
@@ -6037,18 +6037,18 @@ object LiveToolbox {
 
         fns.put(fn(
             name = "set_driver",
-            description = "Save who the driver is. Call this after they tell you their name and " +
+            description = "Save who the user is. Call this after they tell you their name and " +
                 "anything they want you to know about them.",
             params = obj(
-                "name" to schema("string", "The driver's name."),
-                "about" to schema("string", "Optional: anything the driver wants you to know about them."),
+                "name" to schema("string", "The user's name."),
+                "about" to schema("string", "Optional: anything the user wants you to know about them."),
             ),
             required = listOf("name"),
         ))
 
         fns.put(fn(
             name = "register_car",
-            description = "Save the car the driver owns. Call this once they tell you what they drive. " +
+            description = "Save the car the user owns. Call this once they tell you what they drive. " +
                 "Leave fields blank if they don't know or skip them.",
             params = obj(
                 "year" to schema("integer", "The car's model year, e.g. 2003."),

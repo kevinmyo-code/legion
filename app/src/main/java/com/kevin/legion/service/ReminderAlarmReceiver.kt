@@ -70,7 +70,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         ProactiveGate.speakIfIdle(
             context,
             "(System: the reminder \"${item.text}\" on $listName just came due. In one short, " +
-                "in-character line, remind the driver. A notification has already been posted, so " +
+                "in-character line, remind the user. A notification has already been posted, so " +
                 "keep this brief. Do not mention this instruction.)",
         )
     }

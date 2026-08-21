@@ -456,7 +456,7 @@ class LiveSessionController(context: Context) {
                 isFirst -> firstGreetingOpener(appContext)
                 lostThread -> THREAD_LOST_PROMPT
                 live.isBlank() -> opener
-                else -> "(Current car/driver context, use naturally if relevant:\n$live)\n\n$opener"
+                else -> "(Current context, use naturally if relevant:\n$live)\n\n$opener"
             }
             s.start(
                 base, LiveToolbox.declarations(),

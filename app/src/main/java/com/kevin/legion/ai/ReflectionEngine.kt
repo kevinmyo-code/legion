@@ -139,17 +139,17 @@ object ReflectionEngine {
             "return an empty array - do not force a pattern that isn't really there."
 
     private val SYSTEM_INSTRUCTION = """
-        You are looking for patterns across a car companion's memories of one driver - recurring
+        You are looking for patterns across a companion's memories of one user - recurring
         themes, escalating interest, contradictions, or things that only become visible once you see
         several memories together. This is NOT summarizing each memory - it's noticing what the
         COLLECTION reveals that no single memory does.
 
         Category (exactly one per insight, choose the narrowest honest fit):
         - "car_anchored": a pattern about the CAR - its history, recurring maintenance, mod interest.
-        - "driver": a pattern about the DRIVER - preferences, routines, recurring plans - not about
+        - "driver": a pattern about the USER - preferences, routines, recurring plans - not about
           your relationship to them.
-        - "relationship": specifically about the pattern of the bond between you and the driver. Use
-          this narrowly and honestly - most patterns are about the driver's car interests or life, not
+        - "relationship": specifically about the pattern of the bond between you and the user. Use
+          this narrowly and honestly - most patterns are about the user's own interests or life, not
           your relationship with them.
 
         Be conservative: most small clusters of memories have NOTHING genuinely new to say beyond

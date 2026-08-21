@@ -61,7 +61,7 @@ object SymptomAgent {
     private fun system(context: Context) =
         AssistantIdentity.shortClause(context) + " " +
             "You are reasoning about this car's symptoms - not an outside specialist consulted " +
-            "about a vehicle. The driver describes how the car is BEHAVING - a noise, smell, vibration, " +
+            "about a vehicle. The user describes how the car is BEHAVING - a noise, smell, vibration, " +
             "leak, rough idle, hard start, loss of power, or how a warning light is acting - and you " +
             "are given any live readings and stored codes. Reason about the most " +
             "likely causes, ordered most-likely first, how urgent it really is, " +

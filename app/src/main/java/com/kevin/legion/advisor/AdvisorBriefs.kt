@@ -76,7 +76,7 @@ object AdvisorBriefs {
         aspect = AdvisorAspect.HOME,
         synthesisNote = "Spot the cross-domain interaction the single-aspect advisors would miss. " +
             "Name the goal most at risk and the trajectory behind it. If a concrete change is worth " +
-            "proposing, say which aspect's advisor owns it and that the driver should ask that " +
+            "proposing, say which aspect's advisor owns it and that the user should ask that " +
             "advisor directly - you never propose a write yourself. If the question needs domain " +
             "depth this digest doesn't carry, say so rather than improvising past what the headline " +
             "lines actually show.",

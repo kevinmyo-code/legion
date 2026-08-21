@@ -100,7 +100,7 @@ object MemoryConsolidator {
     /** One SubAgent one-shot per session; returns null on any failure (retry next pass). */
     private suspend fun distill(turns: List<EpisodicTurn>): List<DistilledMemory>? {
         val transcript = turns.joinToString("\n") { t ->
-            val speaker = if (t.role == EpisodicTurn.Role.DRIVER) "Driver" else "You"
+            val speaker = if (t.role == EpisodicTurn.Role.DRIVER) "User" else "You"
             "$speaker: ${t.text}"
         }
         val result = agent().askTyped(context = transcript, question = DISTILL_QUESTION)
@@ -138,7 +138,7 @@ object MemoryConsolidator {
     private const val DISTILL_QUESTION =
         "Distill this conversation into durable memories. Respond with ONLY a raw JSON array (no " +
             "markdown, no commentary, no code fences) of 0 to 5 objects, each with keys \"text\" " +
-            "(a short, spoken-friendly memory in third person about the driver, e.g. \"Mentioned " +
+            "(a short, spoken-friendly memory in third person about the user, e.g. \"Mentioned " +
             "wanting an LS swap eventually\"), \"importance\" (integer 1-10), and \"category\" " +
             "(exactly one of \"car_anchored\", \"driver\", \"relationship\")."
 
@@ -160,13 +160,13 @@ object MemoryConsolidator {
 
         Category (exactly one per memory, choose the narrowest honest fit):
         - "car_anchored": a fact about the CAR itself - its history, a mod discussed, service, a quirk.
-        - "driver": a fact about the DRIVER - their preferences, routines, plans, taste - not about
+        - "driver": a fact about the USER - their preferences, routines, plans, taste - not about
           your relationship to them.
-        - "relationship": specifically about the bond between you and the driver (a running joke
+        - "relationship": specifically about the bond between you and the user (a running joke
           between you two, something they said about trusting or relying on you). Use this narrowly -
           most things are "driver", not "relationship".
 
         Never invent anything not actually said. Never claim feelings, sentience, or a need for the
-        driver on your own part - you are recording what happened, not narrating an emotional bond.
+        user on your own part - you are recording what happened, not narrating an emotional bond.
     """.trimIndent()
 }

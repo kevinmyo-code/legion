@@ -33,7 +33,7 @@ class MaintenanceAgentDescribeItemTest {
         val line = MaintenanceAgent.describeItem(item)
         assertTrue(
             "expected the guess wording after the interval clause, got: $line",
-            line.contains("every 7,500 mi / every 6 mo (LEGION's guess, unconfirmed by the driver)"),
+            line.contains("every 7,500 mi / every 6 mo (LEGION's guess, unconfirmed by the user)"),
         )
     }
 
@@ -47,7 +47,7 @@ class MaintenanceAgentDescribeItemTest {
         val line = MaintenanceAgent.describeItem(item)
         assertTrue(
             "expected the factory-lookup wording, got: $line",
-            line.contains("every 7,500 mi (from a factory lookup, unconfirmed by the driver)"),
+            line.contains("every 7,500 mi (from a factory lookup, unconfirmed by the user)"),
         )
         assertFalse("must not also carry the SEEDED wording", line.contains("LEGION's guess"))
     }
