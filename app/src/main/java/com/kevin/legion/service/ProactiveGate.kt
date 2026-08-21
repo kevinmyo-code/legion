@@ -13,7 +13,7 @@ import android.content.Context
  * as a thin delegate purely so the 11 existing raise sites (`AriaForegroundService.
  * speakProactive` and [ReminderAlarmReceiver]) don't have to churn their call sites.
  * Before this, the same four checks were duplicated inline here AND hand-rolled again
- * at [AmbientListener] and [TelephonyController], which is exactly the shape that let
+ * at `AmbientListener` (since retired) and [TelephonyController], which is exactly the shape that let
  * two of those three copies quietly diverge (neither checked onboarding). Putting the
  * gate on the bus instead of here means the raw emit can go private and every caller,
  * present or future, is forced through it - this object stops being load-bearing and

@@ -132,11 +132,10 @@ object WakeWordEngine {
      */
     fun start(context: Context) {
         if (!WakeWordPreferences.isEnabled(context)) return
-        // Ambient listening (2026-07-22) is open-vocabulary and would already
-        // catch "hey <name>" in its own transcript - running both would fight
-        // over the mic for no benefit. Ambient supersedes the narrower wake word
-        // whenever the driver has opted into it.
-        if (AmbientListenPreferences.isEnabled(context)) return
+        // The ambient-listening suppression that used to sit here is gone with the feature
+        // (2026-08-21, `.scratch/proactive-mode/issues/12-retire-ambient-listening.md`). It was
+        // always a no-op in practice: AmbientListenPreferences.setEnabled had no caller anywhere
+        // and the flag defaulted to false, so the wake word was never actually suppressed.
         if (scope != null) return // already running
 
         val appContext = context.applicationContext

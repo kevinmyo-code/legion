@@ -58,12 +58,13 @@ The names are not self-explanatory and several are not where you would guess.
 | `ai/AriaBrain.kt` | **A context supplier, not a turn participant.** Called once per socket for the system instruction and the greeting context. Also backs the `remember` tool and memory recall | Yes, outside |
 | `service/Phase.kt` | `IDLE / CONNECTING / LISTENING / THINKING / SPEAKING`. Set through one method that writes status *before* phase, deliberately, then mirrors to `service/CompanionPhase.kt` so the Activity draws what the service drew | Cross-cutting |
 | `service/ProactiveBus.kt` | The unsolicited-speech ingress. Collected in exactly one place, `AriaForegroundService` | Separate ingress |
-| `service/AmbientListener.kt` | A parallel loop, **not part of an utterance.** Accumulates open-vocabulary transcript for 45s, hands it to a background sub-agent, exits through `ProactiveBus` with a 3-minute floor between reactions | Yes, parallel |
 
 ## Two constraints that bite
 
-**The mic is exclusive.** `WakeWordEngine` and `AmbientListener` both want it and cannot both have
-it. Each guards against the other. If you add a third listener, this is where it breaks.
+**The mic is exclusive.** `WakeWordEngine` is now the only background listener - `AmbientListener`
+was retired 2026-08-21 (`.scratch/proactive-mode/issues/12-retire-ambient-listening.md`), taking the
+mutual guard with it. The constraint has not gone away: if you add a second listener, this is where
+it breaks, and the retired pair is the worked example of what guarding it looks like.
 
 **Sub-agent tools recurse through the same dispatcher.** `LiveToolbox.dispatch()` is called by the
 live session *and* by every sub-agent tool call. It has to be safe to re-enter. Five dispatcher

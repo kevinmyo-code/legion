@@ -297,20 +297,12 @@ class AriaForegroundService : Service() {
         // the Setup toggle. Re-armed here on every service (re)launch so a toggle left
         // on from a prior session resumes without revisiting Setup.
         WakeWordEngine.start(this)
-        // Ambient cabin listening (2026-07-22) - no-op unless opted in AND not
-        // muted (the mute button is a hard LISTENING gate for this feature, not
-        // just a speaking gate - see AmbientListener's own doc). Mutually
-        // exclusive with the wake word above (see its guard clause).
-        AmbientListener.start(this)
-        // The mute toggle must stop LISTENING in real time, not just at the next
-        // launch - a driver flipping the Cruise mute button mid-drive expects the
-        // mic to stop right then. AmbientListener.start()'s own mute check only
-        // covers a fresh (re)start, so react to the flow directly here.
-        serviceScope.launch {
-            ProactivePreferences.muted.collect { muted ->
-                if (muted) AmbientListener.stop() else AmbientListener.start(this@AriaForegroundService)
-            }
-        }
+        // Ambient cabin listening was started here (2026-07-22) and is RETIRED
+        // (2026-08-21, Kevin, `.scratch/proactive-mode/issues/12-retire-ambient-listening.md`).
+        // It was the one raise that let a sub-agent write the spoken line itself, which is the
+        // shape ticket 10's contract exists to forbid - and its opt-in had no UI, so it could
+        // never actually run. Its real-time mute collector went with it: nothing else here holds
+        // the microphone open, so there is no listening left for a mute flip to stop.
     }
 
     /**
@@ -864,7 +856,6 @@ class AriaForegroundService : Service() {
         Log.d(TAG, "Service Destroyed")
         debugTextReceiver?.let { runCatching { unregisterReceiver(it) } }
         WakeWordEngine.stop()
-        AmbientListener.stop()
         TelephonyController.destroy()
         if (this::sessionController.isInitialized) sessionController.destroy()
         serviceScope.cancel()

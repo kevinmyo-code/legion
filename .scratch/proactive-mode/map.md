@@ -4,8 +4,8 @@ title: "Map: Proactive mode"
 charted: 2026-08-16
 charted-by: ""
 effort: "`.scratch/proactive-mode/`"
-tickets: 11
-open: 9
+tickets: 12
+open: 8
 status: open
 tags: [map]
 ---
@@ -37,12 +37,13 @@ ticket carried eight decision clusters plus a build.
 | Claim | Reality |
 |---|---|
 | A proactive layer ships | **Yes, and it is the wrong shape.** `ProactivePreferences` is ONE global boolean, `muted`, default `false` - so **proactive is already ON**, and the control is an inverted mute rather than an opt-in. |
-| Kevin can turn it off | **NO.** `setMuted`/`toggle` have **zero callers anywhere.** `ProactivePreferences` is not referenced in `ui/` at all. The switch exists and nothing is wired to flip it. |
+| Kevin can turn it off | ~~**NO.**~~ **STALE - wired 2026-08-18 with ticket 01.** `ui/SettingsScreen.kt:343` calls `setMuted`, and `ui/SettingsRows.kt`'s `ProactiveSpeechRow` states the kill-switch semantics on screen in words. |
 | There is one gate | **There are three.** `ProactiveGate.speakIfIdle` (onboarding / busy / in-call / muted) has 11 raise sites, but `AmbientListener.kt:245` and `TelephonyController.kt:82` call `ProactiveBus.requestSpeak` **directly**, hand-rolling their own checks. `ProactiveBus` is deliberately NOT the choke point. |
 | The five categories exist | **No.** Zero hits for `ProactiveCategory`, `Wellbeing`, or any proactive enum. They are a decision on the parent map and nothing else. |
 | Anything wellbeing-shaped ships | **No.** Zero hits for bedtime, wind-down, rest. The "past 10pm" line has never existed. |
 | The prompt layer is de-carred | **Only three files of it.** Commit `557c436` renamed 45 literals in `AriaBrain`, `AriaForegroundService` and `LiveSessionController` - and missed `LiveToolbox.kt`, which alone holds **183 literal lines saying "driver"**, ~149 of them in non-fleet tools, sent to the model every turn. [Ticket 11](issues/11-reframe-missed-the-toolbox.md). Verified 2026-08-21. |
 | A periodic LLM pass is hypothetical | **No - one already ships.** `AmbientListener` runs a `SubAgent` over the overheard transcript, decides `SILENT` or not, and **writes the spoken line itself**. Shape (b) from [ticket 02](issues/02-trigger-engine.md) is live today, with no guard beyond the `SILENT` convention. Verified 2026-08-21. |
+| A raise remembers what it already said | **No, and it cannot.** Every raise hand-rolls its own dedup state and all of it is in memory - `AriaForegroundService.kt:97` calls it "Process-life." The service is `START_STICKY`, so a restart re-arms every nudge. "Never nag twice" is impossible today, not merely weak. Verified 2026-08-21. |
 | A raise supplies the facts it asks about | **Ten of eleven do.** The startup opener did not, and invented "lunch with Sam" on the phone (2026-08-21). Survey and the rule it argues for: [ticket 10](issues/10-what-a-raise-may-say.md). |
 | Nineteen things can speak unprompted | **Yes** - first-meeting greeting, ignition opener, NHTSA recalls, new trouble code, coolant overheat, place arrival, two-hour break nudge, rough weather, odometer milestone, idle chatter (x2), fired reminders, incoming calls, and the ambient listener. **All car-shaped ambient chatter. None goal-aware, none time-aware.** |
 
@@ -63,11 +64,25 @@ ticket carried eight decision clusters plus a build.
 | 4 | **The notification listener is NOT a category.** | It stays pull-only. If it ever raises, it joins Timing rather than earning a sixth switch. |
 | 5 | **The kill switch cannot be honoured until the three gates become one** (verified 2026-08-16). | [The choke point](issues/01-one-gate-not-three.md) blocks the categories ticket, and every other ticket assumes it landed. |
 | 6 | **`mission-control` owns screen aesthetics.** | Any surface coordinates with that map rather than building something it will re-skin. |
+| 8 | **The trigger engine is HYBRID (shape c): deterministic rules decide whether to speak, an LLM only words the line.** (Kevin, 2026-08-21, [ticket 02](issues/02-trigger-engine.md).) | Same split as the reconciliation gate. `startHealthMonitor` is the existing worked example. No rule may be an LLM judgement call, and no tick spends a token to decide nothing. |
+| 9 | **A raise's memory of itself lives in Room, not in a field.** (Kevin, 2026-08-21.) | One `proactive_raise` table backs never-nag-twice, [the budget](issues/05-quiet-hours-and-budget.md), and the reason affordance. Nothing new may hand-roll process-life dedup state. |
+| 10 | **Every raise carries the reason that fired it.** (Kevin, 2026-08-21.) | Nearly free under decision 8 - the rule IS the reason. [Ticket 08](issues/08-proactive-register.md) owns how it is worded aloud. |
+| 11 | **No raise may let the model decide BOTH that there is something to say and what it is.** (2026-08-21; `AmbientListener` was the only one and is [retired](issues/12-retire-ambient-listening.md).) | This is decision 8 stated as a prohibition, so a future feature cannot reintroduce shape (b) by the side door. |
 | 7 | **An unsolicited prompt states the facts of any subject it asks the model to mention, or forbids that subject in words.** Silence about a subject is not neutral - it is where invention goes. (2026-08-21, from the invented "lunch with Sam"; wording and enforcement are [ticket 10](issues/10-what-a-raise-may-say.md)'s to settle.) | Every raise site pre-fetches or says "you do not know". Unreadable and empty must never render as the same sentence. |
 
 ## Decisions so far
 
 <!-- one line per closed ticket -->
+
+- [What decides there is something worth saying](issues/02-trigger-engine.md) — **Hybrid (c): rules
+  decide, the model words it.** `advisor/` turned out to be pull-only with a single caller
+  (`LiveToolbox.kt:3488`) and no path to unprompted speech, so nothing collides - but its five
+  deterministic `DigestBuilder`s and `DigestText`'s `[proven]`/`(estimate)`/`"not logged"` vocabulary
+  are the right inputs, while `AdvisorAgent` itself is not reusable (it needs a human question and
+  always spends a call). **`AmbientListener` was the live shape (b) and is retired.** The finding
+  that shaped the rest: every raise's dedup state is process-life against a `START_STICKY` service,
+  so "never nag twice" was impossible - a `proactive_raise` Room table now backs it, the budget, and
+  the reason each raise carries. Four calls, full record on the ticket.
 
 - [What may a background process actually do on Android in 2026?](issues/07-scheduling-research.md)
   — **The threat is Samsung's sleeping-apps layer, not the six-hour cap.** Full findings with
@@ -106,9 +121,10 @@ In scope, but not sharp enough to ticket. Graduates as the frontier advances.
 - **Which nudges actually ship first**, beyond the "past 10pm" rest line that started this. The
   categories are settled; their contents are owned by other maps (location intelligence, health,
   fleet, the brief) and cannot be listed until those resolve.
-- **Whether a declined nudge is remembered**, and for how long. "Never nag twice" is easy to say and
-  needs somewhere to store the refusal - which touches `.scratch/hands-and-senses/issues/20-memory-decay.md`
-  and its own unstarted map.
+- ~~**Whether a declined nudge is remembered**~~ **Settled by [ticket 02](issues/02-trigger-engine.md)
+  (decision 9): it is remembered, in a `proactive_raise` Room table.** What is still open is the
+  narrower question of **how a brush-off is detected** - inferred from the reply, or asked for -
+  and how long a refusal suppresses its rule.
 - **Per-category quiet hours** versus one global window. Cannot be specified until
   [quiet hours](issues/05-quiet-hours-and-budget.md) settles the simple case.
 - **Whether the Digest category subsumes the morning brief** or merely delivers it. Waits on

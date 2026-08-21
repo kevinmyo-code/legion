@@ -52,8 +52,8 @@ data class AskOutcome(val text: String?, val promptTokens: Int?, val candidatesT
  *
  * Optional and off by default (ticket 21): [SubAgent.askTyped]'s `structuredOutput` parameter of
  * this type defaults to null, so [SubAgent]'s three other production callers
- * ([com.kevin.legion.ai.MemoryConsolidator], [com.kevin.legion.ai.ReflectionEngine],
- * [com.kevin.legion.service.AmbientListener]) - none of which pass one - see byte-identical
+ * ([com.kevin.legion.ai.MemoryConsolidator] and [com.kevin.legion.ai.ReflectionEngine] - a third,
+ * the retired AmbientListener, went with that feature) - neither passes one - see byte-identical
  * request bodies to before this ticket. Only [com.kevin.legion.advisor.AdvisorAgent] supplies one,
  * from [com.kevin.legion.advisor.AdvisorAnswer.responseSchema].
  */

@@ -169,9 +169,11 @@ fun RecallAlertsRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
  * flipping this off does not just quiet nudges. It silences every line Alfred would otherwise say
  * unprompted - openers, alerts, reminders, and the incoming-call announcement alike, all now routed
  * through [com.kevin.legion.service.ProactiveBus.speakIfAllowed] - and separately stops
- * [com.kevin.legion.service.AmbientListener] from listening at all, not merely from reacting
- * (Kevin's explicit requirement, unchanged by this ticket). The status line says both, in words,
- * rather than leaving either as an implied consequence of "muted".
+ * ambient listening at all, not merely from reacting (Kevin's explicit requirement at the time).
+ * **Ambient listening was RETIRED 2026-08-21** (`.scratch/proactive-mode/issues/
+ * 12-retire-ambient-listening.md`), so the status line no longer claims to stop it - a switch that
+ * promises to silence something that no longer exists is the same class of lie this row was
+ * written to avoid. The kill-switch semantics for SPEECH are unchanged.
  */
 @Composable
 fun ProactiveSpeechRow(proactiveOn: Boolean, onToggle: (Boolean) -> Unit) {
@@ -189,8 +191,8 @@ fun ProactiveSpeechRow(proactiveOn: Boolean, onToggle: (Boolean) -> Unit) {
                         if (proactiveOn) {
                             "On - Alfred may speak first: openers, alerts, reminders, incoming calls"
                         } else {
-                            "Off - stops every unprompted line, including incoming-call announcements, " +
-                                "and stops ambient listening too. Talking to Alfred yourself still works."
+                            "Off - stops every unprompted line, including incoming-call " +
+                                "announcements. Talking to Alfred yourself still works."
                         },
                         style = LegionType.stamp,
                         color = sem.faint,

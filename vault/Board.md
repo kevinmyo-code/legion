@@ -32,7 +32,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-it-said-142k\|20]] | task | It said the Jeep was at 142k when the record says 227k |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-memory-decay\|20]] | grilling | Memory that forgets like a person does |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
-| [[.scratch/proactive-mode/map\|proactive-mode]] | [[02-trigger-engine\|02]] | grilling | What decides there is something worth saying |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[03-compulsion-test\|03]] | grilling | The compulsion line, written as a test rather than a vibe |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[04-categories-storage-and-surface\|04]] | grilling | Five switches that actually switch something |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[06-delivery\|06]] | grilling | Speak, notify, or wait |
@@ -50,6 +49,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | Map | Ticket | Type | What |
 |---|---|---|---|
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[11-reframe-missed-the-toolbox\|11]] | bug | The concierge reframe missed the largest prompt surface |
+| [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[01-scopes-and-one-reapproval\|01]] | task | Every scope this map needs, taken in one re-approval |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[02-app-remote-spine\|02]] | task | App Remote is the spine, and it creates the device rather than needing one |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[03-tool-surface\|03]] | task | Fold ten capabilities into the tools that already exist |
@@ -121,7 +121,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/legion-shape/map\|legion-shape]] | 12 | 0 | [[.scratch/legion-shape/legion-shape.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
-| [[.scratch/proactive-mode/map\|proactive-mode]] | 11 | 9 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
+| [[.scratch/proactive-mode/map\|proactive-mode]] | 12 | 9 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 12 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
 | [[.scratch/wake-word/map\|wake-word]] | 12 | 6 | [[.scratch/wake-word/wake-word.canvas\|open]] |

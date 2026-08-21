@@ -73,7 +73,7 @@ anything.
 - `MidnightApplication.kt` `appScope` - deliberately has no `CoroutineExceptionHandler`
 - `sync/SyncEngine.kt` `engineScope` - its own doc says nothing cancels it
 - `media/NowPlayingController.kt` `ioScope`
-- `service/WakeWordEngine.kt` and `service/AmbientListener.kt` - on `Dispatchers.Default`, cancelled on `stop()`
+- `service/WakeWordEngine.kt` - on `Dispatchers.Default`, cancelled on `stop()` (`AmbientListener` sat beside it until it was retired 2026-08-21)
 
 **Session-scoped:** `service/GeminiLiveSession.kt` holds an IO scope and a `Main.immediate` scope.
 `service/LiveSessionController.kt` runs on `Main.immediate`, which is why its `activeToolCalls`
