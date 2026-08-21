@@ -3,12 +3,12 @@ map: wake-word
 ticket: "10"
 title: "Say something back when the wake word fires"
 type: grilling
-status: built
-status-detail: "Decided and BUILT 2026-08-20. Kevin accepted the false-trigger cost explicitly. Installed on the A25; whether the line actually speaks is NOT yet confirmed by ear."
+status: resolved
+status-detail: "RESOLVED 2026-08-20, verified by ear on the A25. Kevin: 'hey alfred, nevermind and no works as we expect.'"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Say something back when the wake word fires
@@ -87,3 +87,8 @@ Kevin confirmed "wake word works" after the install, but that was about the trig
 reported hearing the acknowledgement**, and the same field session found the engine deaf in the Jeep
 ([Deaf in the Jeep, fine outside it](12-deaf-in-the-jeep.md)), so this stays `built` rather than
 resolved until someone says they heard it.
+
+### Verified by ear, 2026-08-20
+
+Kevin, after using it: *"hey alfred, nevermind and no works as we expect."* The acknowledgement
+speaks. `on-device`, not `reasoned`.

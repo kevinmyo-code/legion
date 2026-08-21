@@ -3,11 +3,11 @@ map: wake-word
 ticket: "11"
 title: "Let him call it off with his voice"
 type: task
-status: built
-status-detail: "Built 2026-08-20. end_conversation tool, armed by the tool and fired at TurnComplete so the sign-off finishes speaking. 4 tests pin the declaration, NOT the model's obedience - only a driven conversation can prove that."
+status: resolved
+status-detail: "RESOLVED 2026-08-20, verified by voice on the A25 including the guardrail: dismissal ends the chat and an ordinary no does not."
 blockers: ["10"]
 blocked-by: ["[[10-acknowledge-the-wake]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
@@ -81,3 +81,10 @@ only be established by talking to it.
 Installed on the A25 and unexercised. The three things that need a person: that the sign-off is
 spoken in full before the session closes, that "never mind" ends it, and that an ordinary "no" does
 not.
+
+### Verified by voice, 2026-08-20
+
+Kevin: *"hey alfred, nevermind and no works as we expect."* Both halves confirmed on the device -
+"nevermind" ends the conversation after the sign-off, **and an ordinary "no" does not**. That second
+half is the one that mattered: the tests could only ever pin the wording of the guardrail, never the
+model's obedience to it, and this is the only kind of evidence that could close that gap.

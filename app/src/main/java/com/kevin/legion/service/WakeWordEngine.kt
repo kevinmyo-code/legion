@@ -2,8 +2,18 @@ package com.kevin.legion.service
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.AudioRecord
+import android.media.AudioRecordingConfiguration
+import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AudioEffect
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.util.Log
+import kotlin.math.abs
 import com.kevin.legion.ai.CompanionProfile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,8 +28,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
-import org.vosk.android.RecognitionListener
-import org.vosk.android.SpeechService
 import java.io.File
 
 /**
@@ -42,6 +50,9 @@ object WakeWordEngine {
     private const val EVENT_LIMIT = 20
     private const val MODEL_ASSET_DIR = "vosk-model"
     private const val WATCHDOG_INTERVAL_MS = 500L
+    // 0.2s of audio per read, matching the cadence Vosk's own SpeechService used, so the
+    // recognizer sees the same shaped chunks it always did.
+    private const val BUFFER_SECONDS = 0.2f
 
     // A single utterance produces several partial results plus a final one; without a
     // floor between triggers, one "hey <name>" would fire ACTION_TALK repeatedly before
@@ -66,8 +77,38 @@ object WakeWordEngine {
 
     private var scope: CoroutineScope? = null
     private var model: Model? = null
-    private var speechService: SpeechService? = null
     private var watchdogJob: Job? = null
+
+    // stop() takes no Context but teardown has to unregister the recording callback, so the
+    // application context (never an Activity - this outlives every screen) is held from start().
+    @Volatile private var appContextForCallback: Context? = null
+
+    // Ticket 08/12: this engine owns its own AudioRecord now, rather than letting Vosk's
+    // SpeechService own a private one. That single change is what makes the microphone SOURCE,
+    // its processing, and its silenced-state all choosable instead of inherited.
+    private var captureJob: Job? = null
+    @Volatile private var record: AudioRecord? = null
+    private var recognizer: Recognizer? = null
+    private var effects: List<AudioEffect> = emptyList()
+    private var recordingCallback: AudioManager.AudioRecordingCallback? = null
+
+    private val _silenced = MutableStateFlow(false)
+    /**
+     * Ticket 08: true when the platform is handing this engine silence with no error and no state
+     * change - another app won capture arbitration, or the device mic toggle is off. **A silenced
+     * wake word is otherwise indistinguishable from a quiet room**, which is the failure this whole
+     * map kept walking into. False on API < 29, where the platform offers no way to know either
+     * way; that is a real gap, not a claim of safety.
+     */
+    val silenced = _silenced.asStateFlow()
+
+    private val _peakLevel = MutableStateFlow(0)
+    /**
+     * Ticket 07/12: peak absolute PCM amplitude (0-32767) of the most recent buffer. Free once the
+     * capture loop is ours, and it is the difference between "it did not trigger" and knowing
+     * whether the microphone heard anything at all - which is exactly what the Jeep needed.
+     */
+    val peakLevel = _peakLevel.asStateFlow()
     private var targetWords: List<String> = emptyList()
     private var lastTriggerAtMs = 0L
 
@@ -87,6 +128,7 @@ object WakeWordEngine {
         if (scope != null) return // already running
 
         val appContext = context.applicationContext
+        appContextForCallback = appContext
         val runScope = CoroutineScope(Dispatchers.Default)
         scope = runScope
         runScope.launch {
@@ -131,7 +173,9 @@ object WakeWordEngine {
         val newWords = buildTargetWords(appContext)
         if (newWords == targetWords) return
         targetWords = newWords
-        if (speechService != null) {
+        // `record != null` is the post-refactor equivalent of the old `speechService != null`:
+        // it means capture is actually open right now, rather than paused for a conversation.
+        if (record != null) {
             releaseSpeechService()
             beginListening(loadedModel, appContext)
         }
@@ -203,24 +247,152 @@ object WakeWordEngine {
         return words.toList()
     }
 
+    /**
+     * Opens the microphone and drives [Recognizer] from our own read loop.
+     *
+     * **Retired Vosk's `SpeechService` (ticket 12).** That wrapper builds its `AudioRecord` with a
+     * hardcoded `AudioSource.VOICE_RECOGNITION` and exposes no setter - and `VOICE_RECOGNITION`
+     * applies deliberately minimal processing, because speech engines usually want raw audio. In a
+     * Jeep at road speed that meant the wake word did not fire AT ALL, while ordinary tap-to-talk
+     * heard Kevin perfectly on the same phone - because [GeminiLiveSession] opens
+     * `VOICE_COMMUNICATION`, which brings noise suppression, gain and echo cancellation with it.
+     * Kevin ruled out Bluetooth routing as the cause, so it is the processing, and the only way to
+     * change the processing is to own the record. `SpeechService` was always a convenience wrapper
+     * around `acceptWaveForm`, never a requirement.
+     *
+     * Owning it also buys the two things tickets 08 and 07 were blocked on: the silenced-state
+     * signal, and a peak level per buffer.
+     */
     private fun beginListening(loadedModel: Model, context: Context) {
         val grammar = JSONArray(targetWords + listOf("[unk]")).toString()
-        val recognizer = Recognizer(loadedModel, SAMPLE_RATE, grammar)
-        val svc = SpeechService(recognizer, SAMPLE_RATE)
-        speechService = svc
+        val rec = Recognizer(loadedModel, SAMPLE_RATE, grammar)
+        recognizer = rec
+
+        val minBuf = AudioRecord.getMinBufferSize(
+            SAMPLE_RATE.toInt(), AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+        )
+        val chunk = Math.round(SAMPLE_RATE * BUFFER_SECONDS)
+        val format = AudioFormat.Builder()
+            .setSampleRate(SAMPLE_RATE.toInt())
+            .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+            .build()
+        val builder = AudioRecord.Builder()
+            // The whole point of the refactor.
+            .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+            .setAudioFormat(format)
+            .setBufferSizeInBytes(maxOf(minBuf, chunk * 4))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) builder.setPrivacySensitive(true)
+
+        val r = try {
+            builder.build()
+        } catch (e: Exception) {
+            // Missing RECORD_AUDIO lands here. SpeechService used to throw IOException for this and
+            // start() caught it; keep failing loudly rather than looking like a quiet room.
+            Log.e(TAG, "AudioRecord build failed: " + e.message)
+            recordEvent("(microphone unavailable)", isFinal = true, hit = false)
+            return
+        }
+        if (r.state != AudioRecord.STATE_INITIALIZED) {
+            Log.e(TAG, "AudioRecord not initialized - microphone may be in use")
+            recordEvent("(microphone unavailable)", isFinal = true, hit = false)
+            r.release()
+            return
+        }
+        record = r
+        effects = attachVoiceEffects(r.audioSessionId)
+        registerSilenceWatch(context, r)
+
+        // Mirrors GeminiLiveSession's own capture line on purpose: ticket 12 was diagnosed by
+        // comparing the two paths' sources, and that comparison was only possible because one of
+        // them said what it opened. Now both do.
+        Log.d(
+            TAG,
+            "AudioRecord opened: source=VOICE_COMMUNICATION sessionId=" + r.audioSessionId +
+                " effects=" + effects.size + " state=" + r.state,
+        )
+        r.startRecording()
         _running.value = true
-        svc.startListening(object : RecognitionListener {
-            override fun onPartialResult(hypothesis: String?) = handleResult(hypothesis, isFinal = false, context)
-            override fun onResult(hypothesis: String?) = handleResult(hypothesis, isFinal = true, context)
-            override fun onFinalResult(hypothesis: String?) = handleResult(hypothesis, isFinal = true, context)
-            override fun onError(exception: Exception?) {
-                Log.w(TAG, "Vosk recognition error: ${exception?.message}")
-                recordEvent("(error: ${exception?.message})", isFinal = true, hit = false)
+        captureJob = scope?.launch(Dispatchers.IO) {
+            val buf = ShortArray(chunk)
+            try {
+                while (isActive) {
+                    val n = r.read(buf, 0, buf.size)
+                    if (n < 0) {
+                        // ERROR_INVALID_OPERATION / ERROR_DEAD_OBJECT. Say so rather than spinning
+                        // silently, which would look exactly like a quiet room.
+                        Log.w(TAG, "AudioRecord.read returned " + n + " - stopping capture")
+                        recordEvent("(capture error)", isFinal = true, hit = false)
+                        break
+                    }
+                    if (n == 0) continue
+                    var peak = 0
+                    for (i in 0 until n) {
+                        val v = abs(buf[i].toInt())
+                        if (v > peak) peak = v
+                    }
+                    _peakLevel.value = peak
+                    if (rec.acceptWaveForm(buf, n)) {
+                        handleResult(rec.result, isFinal = true, context)
+                    } else {
+                        handleResult(rec.partialResult, isFinal = false, context)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "capture loop ended: " + e.message)
             }
-            override fun onTimeout() {
-                Log.d(TAG, "Vosk recognition timeout")
+        }
+    }
+
+    /** Hardware echo cancellation, noise suppression and gain, where the device has them. */
+    private fun attachVoiceEffects(sessionId: Int): List<AudioEffect> {
+        val out = mutableListOf<AudioEffect>()
+        try {
+            if (AcousticEchoCanceler.isAvailable()) {
+                AcousticEchoCanceler.create(sessionId)?.also { it.enabled = true; out.add(it) }
             }
-        })
+            if (NoiseSuppressor.isAvailable()) {
+                NoiseSuppressor.create(sessionId)?.also { it.enabled = true; out.add(it) }
+            }
+            // Not in GeminiLiveSession's set: a live turn is speech the driver deliberately aims at
+            // the phone, while a wake word has to catch an aside from across a noisy cabin, so the
+            // gain matters more here than it does there.
+            if (AutomaticGainControl.isAvailable()) {
+                AutomaticGainControl.create(sessionId)?.also { it.enabled = true; out.add(it) }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Voice effects unavailable: " + e.message)
+        }
+        return out
+    }
+
+    /**
+     * Ticket 08. The platform silences a losing capture with NO exception and NO state change, so
+     * the only signal is [AudioRecordingConfiguration.isClientSilenced], matched to our own session
+     * id - precisely what could not be done while Vosk owned the record privately.
+     */
+    private fun registerSilenceWatch(context: Context, r: AudioRecord) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Log.d(TAG, "API < 29: cannot detect platform silencing at all")
+            return
+        }
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val cb = object : AudioManager.AudioRecordingCallback() {
+            override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>) {
+                val ours = configs.firstOrNull { it.clientAudioSessionId == r.audioSessionId }
+                val now = ours?.isClientSilenced ?: false
+                if (now != _silenced.value) {
+                    _silenced.value = now
+                    Log.w(TAG, if (now) "SILENCED by the platform - hearing nothing" else "no longer silenced")
+                    recordEvent(
+                        if (now) "(silenced - another app has the mic)" else "(hearing again)",
+                        isFinal = true, hit = false,
+                    )
+                }
+            }
+        }
+        recordingCallback = cb
+        runCatching { am.registerAudioRecordingCallback(cb, null) }
     }
 
     private fun handleResult(hypothesisJson: String?, isFinal: Boolean, context: Context) {
@@ -262,12 +434,40 @@ object WakeWordEngine {
         _events.value = (_events.value + entry).takeLast(EVENT_LIMIT)
     }
 
+    /**
+     * Releases the microphone and everything hanging off it. Safe to call repeatedly, and it must
+     * stay synchronous for its caller in [fireTalkIntent]: the live session's mic opens ~250ms
+     * later, so anything still holding this AudioRecord would leave two records on one microphone
+     * and the conversation would capture silence.
+     *
+     * Order matters. The callback goes first (it closes over the record), then the record stops and
+     * is released, then the effects, then the recognizer - releasing a Vosk `Recognizer` while the
+     * loop could still call `acceptWaveForm` on it would be a native-side use-after-free.
+     */
     private fun releaseSpeechService() {
-        speechService?.let { svc ->
-            runCatching { svc.stop() }
-            runCatching { svc.shutdown() }
+        recordingCallback?.let { cb ->
+            val am = appContextForCallback?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            runCatching { am?.unregisterAudioRecordingCallback(cb) }
         }
-        speechService = null
+        recordingCallback = null
+        _silenced.value = false
+
+        captureJob?.cancel()
+        captureJob = null
+
+        record?.let { r ->
+            runCatching { if (r.recordingState == AudioRecord.RECORDSTATE_RECORDING) r.stop() }
+            runCatching { r.release() }
+        }
+        record = null
+
+        effects.forEach { runCatching { it.release() } }
+        effects = emptyList()
+
+        recognizer?.let { runCatching { it.close() } }
+        recognizer = null
+
+        _peakLevel.value = 0
         _running.value = false
     }
 

@@ -3,7 +3,7 @@ map: wake-word
 ticket: "08"
 title: "The wake word cannot tell silence from a quiet room"
 type: task
-status: open
+status: built
 status-detail: "BLOCKED ON A DECISION 2026-08-20. The ticket claimed the fix was to apply GeminiLiveSession's existing pattern. That is not possible: Vosk SpeechService owns its AudioRecord privately with no getter, so there is no session id to match on. Needs Kevin's call between a real refactor and a weaker signal."
 blockers: []
 blocked-by: []
@@ -112,3 +112,25 @@ once:
 
 It was a defensible deferral when it bought only the first. It is the obvious next move now that it
 buys all three, and the two other tickets are blocked behind it.
+
+## Answer
+
+Built 2026-08-20 via option A, as the amendments concluded. `WakeWordEngine` now owns its own
+`AudioRecord` and drives `Recognizer.acceptWaveForm()` from its own read loop; Vosk's `SpeechService`
+is retired from this engine.
+
+Owning the record is what makes the session id available, so the exact pattern
+`GeminiLiveSession` already uses now applies: an `AudioManager.AudioRecordingCallback` matched on
+`clientAudioSessionId`, reading `isClientSilenced`. Transitions are logged and pushed into the debug
+event ring in words - "(silenced - another app has the mic)" and "(hearing again)" - so a field
+session can say which happened instead of showing a quiet room.
+
+Exposed as `WakeWordEngine.silenced`, alongside a new `peakLevel` the same loop gets for free.
+
+**API 29+ only.** Below that the platform gives no signal at all, and the engine logs that it cannot
+know rather than reporting false and implying safety. `minSdk` is 24, so that gap is real.
+
+### NOT verified
+
+Nobody has yet made the platform silence it. The cheap reproduction is a phone call, or any other
+app that takes the microphone, while the wake word is running - the debug ring should say so.

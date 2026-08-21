@@ -3,12 +3,12 @@ map: wake-word
 ticket: "12"
 title: "Deaf in the Jeep, fine outside it"
 type: task
-status: open
-status-detail: "Field data from Kevin, 2026-08-20, first real-world use: works outside, did not activate at all in the Jeep. Root cause traced to Vosk's hardcoded audio source; fix is ticket 08's refactor."
-blockers: ["08"]
-blocked-by: ["[[08-silenced-not-quiet]]"]
-open-blockers: 1
-ready: false
+status: built
+status-detail: "Built 2026-08-20 together with ticket 08. The engine now opens VOICE_COMMUNICATION with hardware effects, confirmed in logcat on the A25. UNVERIFIED in the actual Jeep - that needs a drive."
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # Deaf in the Jeep, fine outside it
@@ -67,3 +67,36 @@ signal all choosable instead of inherited.
 It also hands [How many false triggers is too many](07-false-triggers.md) the audio levels it needs.
 One piece of work, three tickets - which is a much better trade than it looked like when ticket 08
 was only about detecting silence.
+
+## Answer
+
+**Bluetooth ruled out by Kevin** ("no not bluetooth. just phone only"), which kills the routing
+hypothesis and leaves the processing one. So the fix is to open a different microphone, and the only
+way to do that was to stop letting Vosk own the record - the same refactor
+[The wake word cannot tell silence from a quiet room](08-silenced-not-quiet.md) needed.
+
+Built 2026-08-20. The engine now opens:
+
+- `AudioSource.VOICE_COMMUNICATION` instead of Vosk's hardcoded `VOICE_RECOGNITION` - the same
+  source the live session uses, which is the one that hears Kevin fine at road speed
+- `setPrivacySensitive(true)` on API 30+, matching the live session
+- hardware `AcousticEchoCanceler`, `NoiseSuppressor` and `AutomaticGainControl` where available.
+  **AGC is deliberately in this set although the live session does not use it**: a live turn is
+  speech aimed at the phone, while a wake word has to catch an aside from across a noisy cabin.
+
+Confirmed on the A25 in logcat, which now reports its own capture the way `GeminiLiveSession` always
+did - the asymmetry that made this bug take a comparison to find:
+
+```
+WakeWordEngine: AudioRecord opened: source=VOICE_COMMUNICATION sessionId=29721 effects=2 state=1
+```
+
+`effects=2`, not 3 - one of the three is unavailable on this device. Which one is unestablished and
+does not block anything.
+
+### NOT verified, and only a drive can
+
+The change is `on-device` in that the right microphone demonstrably opens. **Whether it actually
+triggers in the Jeep at road speed is untested**, and that is the only test that matters for this
+ticket. If it still fails there, the next suspect is gain rather than source, and `peakLevel` now
+exists to say whether the microphone heard anything at all.
