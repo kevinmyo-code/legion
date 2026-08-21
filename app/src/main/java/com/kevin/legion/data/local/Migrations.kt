@@ -1115,3 +1115,50 @@ val MIGRATION_26_27 = object : Migration(26, 27) {
         )
     }
 }
+
+/**
+ * Proactive mode's two tables (`.scratch/proactive-mode/`, tickets 02 and 04, 2026-08-21).
+ *
+ * `proactive_settings` is the master switch plus the five category switches, key/value so adding a
+ * sixth category is a row rather than a migration. It is in Room rather than SharedPreferences
+ * because two phones disagreeing about whether the assistant may speak is a real failure - see
+ * [com.kevin.legion.data.local.ProactiveSetting]'s own doc for why that is eligibility to sync
+ * rather than syncing.
+ *
+ * `proactive_raises` is what fired, when, why, and whether it was brushed off. Every raise before
+ * this kept its own dedup state in a field the process owned, against a `START_STICKY` service - so
+ * "never nag twice" was impossible rather than merely weak.
+ *
+ * **No seeding here.** [com.kevin.legion.service.ProactiveSettings] seeds on first read, because the
+ * seed depends on the existing SharedPreferences `muted` value and a migration cannot read
+ * SharedPreferences. An install with `muted=false` must come out with Safety, Timing and Fleet on,
+ * so its behaviour does not change under it (ticket 04 call 3); a fresh install comes out quiet.
+ *
+ * **`declined` and `delivery` carry NO SQL default here, and that is not an oversight.** They have
+ * Kotlin constructor defaults, which Room does NOT turn into column defaults - the generated
+ * `createSql` in `app/schemas/.../28.json` has none, so writing `DEFAULT 0` here (as the first cut
+ * of this migration did) makes the identity hash disagree and fails validation on upgrade. The
+ * tables are new, so a default would buy nothing anyway. **Copy the generated SQL; do not improve
+ * it.** Caught by diffing this against `createSql` rather than by running a migration test, which
+ * is the cheaper of the two checks and the one CLAUDE.md §5 is asking for.
+ */
+val MIGRATION_27_28 = object : Migration(27, 28) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `proactive_settings` (" +
+                "`key` TEXT NOT NULL, " +
+                "`enabled` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`key`))"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `proactive_raises` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`ruleId` TEXT NOT NULL, " +
+                "`category` TEXT NOT NULL, " +
+                "`reason` TEXT NOT NULL, " +
+                "`spokenAt` INTEGER NOT NULL, " +
+                "`declined` INTEGER NOT NULL, " +
+                "`delivery` TEXT NOT NULL)"
+        )
+    }
+}

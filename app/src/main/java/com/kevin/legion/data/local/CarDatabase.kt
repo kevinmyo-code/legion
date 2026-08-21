@@ -227,8 +227,9 @@ import androidx.room.RoomDatabase
         CodeClearEvent::class,
         Drive::class,
         MusicPlayHistoryEntry::class, MemoryAudit::class,
+        ProactiveSetting::class, ProactiveRaiseRow::class,
     ],
-    version = 27,
+    version = 28,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -282,6 +283,8 @@ abstract class CarDatabase : RoomDatabase() {
 
     /** The memory audit trail (2026-08-20) - a record of what happened, never an input. */
     abstract fun memoryAuditDao(): MemoryAuditDao
+    abstract fun proactiveSettingDao(): ProactiveSettingDao
+    abstract fun proactiveRaiseDao(): ProactiveRaiseDao
 
     companion object {
         @Volatile
@@ -313,7 +316,12 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 26
+        const val SCHEMA_VERSION = 28
+        // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
+        // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
+        // 28 with the proactive-mode tables. The comment above is right that the drift only makes
+        // the restore button more conservative, but "harmless when wrong" is not the same as
+        // "checked", and nothing checks it.
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -335,7 +343,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
                         MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
                         MIGRATION_25_26,
-                        MIGRATION_26_27,
+                        MIGRATION_26_27, MIGRATION_27_28,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it
