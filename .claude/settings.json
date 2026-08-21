@@ -7,7 +7,7 @@
           {
             "type": "command",
             "if": "Bash(git commit*)",
-            "command": "echo \"hook fired\" >> /tmp/legion-hook-check.txt; python tools/obsidian_sync.py >/dev/null 2>&1; python tools/pending_wiki.py >/dev/null 2>&1; git add -- docs/index.html docs/adr/adr-index.md vault/Board.md '.scratch/*/map.md' '.scratch/*/issues/*.md' >/dev/null 2>&1; exit 0",
+            "command": "python tools/obsidian_sync.py >/dev/null 2>&1; python tools/pending_wiki.py >/dev/null 2>&1; git add -- docs/index.html docs/adr/adr-index.md vault/Board.md '.scratch/*/map.md' '.scratch/*/issues/*.md' >/dev/null 2>&1; exit 0",
             "timeout": 60,
             "statusMessage": "Regenerating the pending wiki and board"
           }
