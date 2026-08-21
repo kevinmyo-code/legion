@@ -41,6 +41,19 @@ If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins 
   `ui/CompanionsScreen.kt`), and `AssistantIdentity.withName` swaps the persona's default name for
   the driver's, so a profile can be Alfred's register wearing another name. Never hardcode an
   assistant name into copy.
+- **The assistant is a CONCIERGE, not a car companion (2026-08-20, Kevin).** The prompt layer used
+  to call the user "the driver" in 45 string literals, and the model answered accordingly - a
+  greeting about the weather came out as a greeting about the weather *for a drive*. It now says
+  "the user", and `ai/AriaBrain.kt`'s `ASSISTANT_FRAME` states the frame outright at the head of
+  `SHARED_INSTRUCTIONS`: the person may be at a desk, in a kitchen, in bed, or occasionally in a
+  car, and the assistant must never assume which. **The fleet aspect is unchanged** - car tools,
+  car context, all of it - but car context is injected only when the OBD dongle is connected, which
+  is the one signal that says he is IN a car rather than merely owns three. Anything spoken
+  verbatim gets the same treatment: `REMEMBER_ACKS` were car jokes and are now plain.
+- **Never hand the model an IANA timezone id.** `America/Chicago` is a database key that happens to
+  contain a city, and asserting it made the assistant talk about Chicago to a man in Houston. The
+  clock is a UTC offset, the place comes from `LocationController`, and with no fix it says the
+  location is unknown rather than guessing one.
 - **Aspects:**
   | Aspect | What it is | State |
   |---|---|---|
@@ -110,7 +123,7 @@ repeat. Commit map and ticket changes like any other file.
 | Voice AI | Gemini Live WebSocket STS | `service/GeminiLiveSession.kt`, server VAD, half-duplex |
 | Sub-agents | Gemini Flash REST | `ai/SubAgent.kt`, one-shot + bounded investigate loop; now also takes an optional inline image part (`imageBytes`/`imageMimeType`) for pantry vision |
 | BYO key | Paste + 1-token validation ping | Ping is `ai/GeminiKeyValidator.kt` (`VALID`/`INVALID_KEY`/`NETWORK_ERROR`); storage is `ai/KeyVault.kt` (Keystore AES/GCM) via `CompanionProfile.saveGeminiKey`; resolution is `ai/GeminiKeyProvider.kt`. Direct to Google, no proxy |
-| Local DB | Room **v26** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). 47 entities, chain complete through `MIGRATION_25_26`; all real verbatim generated-SQL migrations with `exportSchema` |
+| Local DB | Room **v27** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). 48 entities, chain complete through `MIGRATION_26_27`; all real verbatim generated-SQL migrations with `exportSchema` |
 | OBD | ELM327 Bluetooth RFCOMM + BLE | Unchanged from Midnight AI |
 | Music | Spotify App Remote as the SPINE (`media/SpotifyController`, connection held in the FGS - ADR 0032) + Web API name resolution (`media/SpotifyWebApi`, own library first) + generic MediaSession transport fallback (`media/MusicController`) | BYO Spotify client ID (ADR 0033). `MusicRouter`/`MusicSource`/mixtapes all retired |
 | Location | Android `Geocoder` | The Mapbox-backed `NavGeocoder`, embedded nav, and the phone-to-head-unit GPS beacon are all gone |
@@ -186,7 +199,7 @@ under `app/schemas/`, no destructive fallback on upgrade.
   every row is LLM-extracted by construction, so it would always read the same value.
 - **v4** - `ingested_files` + DAO (the per-file ingestion ledger, ticket 03).
 - **v5** - `companion_profiles` + DAO.
-- **v6 through v26** - not listed here. `data/local/Migrations.kt` is the authority, and the entity
+- **v6 through v27** - not listed here (v27 is `memory_audit`, 2026-08-20). `data/local/Migrations.kt` is the authority, and the entity
   roster grouped by aspect is in `docs/architecture/c3-data.md`. **CORRECTED 2026-08-18:** this
   section said v21 for weeks while the code was at v25, and `CarDatabase.kt`'s own KDoc still says
   15 in one place. Read the code before quoting a version.

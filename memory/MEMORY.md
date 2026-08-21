@@ -3,6 +3,51 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
+## START HERE - 2026-08-20 (late) - WAKE WORD LIVE, MEMORY DE-CARRED
+
+**The wake word works and Kevin has used it.** "hey alfred" opens a turn, the assistant
+acknowledges, "nevermind" closes it, and an ordinary "no" does not - all four verified by ear on the
+A25. The greeting no longer assumes a drive and no longer mentions Chicago; Kevin: *"sounds good
+now."*
+
+**Read `.scratch/wake-word/map.md` first if you are picking up the wake word.** 5 of 12 tickets
+resolved tonight.
+
+**Four defects were found by RUNNING it, none by the compiler or the suite:**
+1. `WakeWordPreferences` had **zero writers** - the engine was complete, wired, and unreachable.
+2. The Vosk model had never been fetched onto this machine (gitignored). Debug APK 78MB -> 120MB.
+3. The grammar was hardcoded to **"hey moose"** while the new Settings row said "hey alfred".
+4. **The wake word went permanently deaf after the first conversation of every launch** - the
+   greeting counts - because `ConversationState.isBusy` going false is not the same fact as "the
+   microphone is free". Only visible because the silence detector had shipped an hour earlier.
+
+**Still open and only Kevin can close them:**
+- **Does it fire in the JEEP?** It did not, before tonight. The engine now opens
+  `VOICE_COMMUNICATION` with hardware AEC/NS/AGC instead of Vosk's hardcoded `VOICE_RECOGNITION`.
+  **Untested at road speed**, and the deaf-after-first-conversation bug may have been the real cause.
+- **The battery number.** `.scratch/wake-word/issues/03-measure-the-battery-cost.md`. A contaminated
+  19-minute window suggested ~0.7%/hour; treat that as a smell, not a measurement. Needs a clean
+  overnight run: screen off, off charger, phone left alone.
+
+**Memory: surveyed, then fixed rather than charted** (Kevin's call). Consolidation, reflection and
+human-like forgetting were ALREADY running. The defect was that `companion_memories` is keyed by
+`vehicleId` and recall read only the active car's slice, so **46 memories about Kevin were invisible
+whenever the Jeep was active**. Fixed in a WHERE clause, no schema change.
+
+**New: `memory_audit` (Room v27).** Records memory writes, deletes, recalls (query + every memory
+handed to the model) and the lines the assistant SPEAKS. Pull it with
+`adb exec-out run-as com.kevin.legion cat databases/legion_database` and read the table - that is
+how the mileage bug got diagnosed.
+
+**KNOWN GAP: the trail can miss a spoken line.** It depends on the API returning
+`outputTranscription`, and a turn was observed speaking audio with none - it missed the very
+greeting Kevin approved. Do not assume silence in the trail means silence from the assistant.
+
+**Open and unexplained: `.scratch/hands-and-senses/issues/20-it-said-142k.md`.** The assistant said
+the Jeep was at 142k when the record says 227,612. The data is correct everywhere, that figure is in
+no table, the tool returns the right label, and it could not be reproduced. The audit trail now
+exists precisely so the next occurrence can be read rather than guessed at.
+
 ## START HERE - 2026-08-20 - SPOTIFY VOICE, INSTALLED BUT NOT EXERCISED
 
 **Ten of twelve tickets on `.scratch/spotify-voice/` are built, merged to `dev` and pushed.** Suite

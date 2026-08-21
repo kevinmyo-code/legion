@@ -4299,3 +4299,50 @@ indistinguishable from a quiet room. Filed as wake-word ticket 08.
 **The pattern across all four: the failure mode of this feature is looking fine while doing nothing.**
 Every one of them was invisible to the compiler and to the test suite, and visible within seconds of
 running it on the device.
+
+## 2026-08-20 (late) - The car premise was in the prompt, not the features
+
+Kevin, twice in one evening: the greeting still assumed a drive, and the assistant mentioned
+Chicago. Both were the same shape - **a premise asserted in the prompt layer, long after the
+product stopped being a car launcher.**
+
+1. **"The driver."** 45 string literals across `AriaBrain`, `AriaForegroundService` and
+   `LiveSessionController` called the user "the driver". Told repeatedly who it was talking to, the
+   model produced "good weather for a drive". Fixing the weather sentence would have been
+   whack-a-mole; the noun was the pull. Now "the user", plus `ASSISTANT_FRAME` stating the frame
+   outright. Only string literals changed - KDoc and identifiers still say driver, because the code
+   really is about a fleet aspect and rewriting the record would falsify it.
+2. **`America/Chicago`.** Asserted three times (base instruction, live context, `get_current_time`)
+   and it was the ONLY place name in the prompt, so it beat the real reverse-geocoded location one
+   section below. A zone id is a database key that happens to contain a city. Clock is now a UTC
+   offset; place comes from `LocationController`; `get_current_time` returns the display name
+   ("Central Daylight Time"), which is what that tool's own doc said it wanted.
+3. **Things spoken VERBATIM are the worst offenders.** `REMEMBER_ACKS` were car jokes ("better than
+   my suspension") with no model in the loop to soften them, and `DEFAULT_PERSONA` - which only
+   reaches a prompt on a fresh install, i.e. a stranger's first impression - ended "You like night
+   drives and cars with histories."
+
+**The lesson worth keeping: when the model says something odd about the world, look for a string in
+the prompt that asserts it before blaming the model.** Every one of these was a sentence LEGION
+wrote, not a hallucination.
+
+## 2026-08-20 (late) - Memory was already built; it was partitioned by car
+
+Surveying before charting was right (Kevin's call: *"do we need to chart it?"* - no). Consolidation,
+reflection and Generative-Agents forgetting were all already running. What was broken was
+`companion_memories` being keyed by `vehicleId` with recall reading only the active car's slice:
+**46 memories about Kevin were invisible whenever the Jeep was active**, including his music taste
+and his work address. Fixed in a WHERE clause, no schema change - driver and relationship memories
+cross cars, `car_anchored` stays put. Proven on real data: with the Jeep active it recalled three
+memories all stored against the Outlander.
+
+Also added `memory_audit` (v27), because "an audit trail for us to check" rules out logcat - logcat
+rolling is exactly why the 142k could not be diagnosed. **Two wrong sources were tried before the
+right one**: `LiveEvent.Subtitle` truncates long lines to a tail (right for a caption, wrong for a
+record), and `captureEpisodicTurn` returns early when the driver said nothing, so proactive lines -
+the greeting, the thing being reported - were captured nowhere. The full line lives in
+`companionTurnText` at turn end.
+
+**Known gap, unresolved:** that text only exists when the API returns `outputTranscription`, and a
+turn was observed speaking audio with none. The trail can still miss a line, and it missed the
+greeting Kevin approved.

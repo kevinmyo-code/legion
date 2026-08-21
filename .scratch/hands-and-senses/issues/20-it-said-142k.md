@@ -4,7 +4,7 @@ ticket: "20"
 title: "It said the Jeep was at 142k when the record says 227k"
 type: task
 status: open
-status-detail: "Reported by Kevin 2026-08-20. The database is CORRECT (227,612) and 142k appears nowhere in it. Could not be reproduced, and the app keeps no record of what it said, which is the deeper problem."
+status-detail: "Reported 2026-08-20, NOT explained. The deeper problem it named is fixed: memory_audit (Room v27) now records recalls and the lines the assistant speaks. The mileage claim itself remains unreproduced."
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -76,3 +76,18 @@ The work:
 **Do not add another prompt sentence as the fix.** The rule is already there, already file-scope,
 already names its own prior incident. Adding a third phrasing of it without evidence about what
 actually happened would be guessing at a fix for a bug nobody has observed the inside of.
+
+## Update 2026-08-20 (late): the missing record now exists
+
+The ticket's own conclusion - *"the actual defect this exposes: nothing records what the assistant
+SAID"* - was acted on the same evening. `memory_audit` (Room v27) records memory writes, deletes,
+recalls (the query AND every memory handed to the model) and the assistant's spoken lines.
+
+**The mileage claim itself is still unexplained**, and this ticket stays open for it. What changed is
+that a recurrence can now be read instead of guessed at: pull the database and look at the `spoken`
+row next to the `recalled` rows around it.
+
+**One honest limit.** The spoken text only exists when the API returns `outputTranscription`, and a
+turn was observed that evening speaking audio with none - it missed the greeting Kevin had just
+approved. So an absent `spoken` row does NOT prove the assistant said nothing, and treating it that
+way would be the same "absence of evidence as evidence" mistake this map keeps running into.
