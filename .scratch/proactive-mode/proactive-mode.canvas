@@ -91,6 +91,16 @@
       "color": "1"
     },
     {
+      "id": "9a8742fa12f9e2ea",
+      "type": "file",
+      "file": ".scratch/proactive-mode/issues/13-silent-after-focus-loss.md",
+      "x": 0,
+      "y": 1350,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "9515a3e93476125b",
       "type": "file",
       "file": ".scratch/proactive-mode/issues/04-categories-storage-and-surface.md",

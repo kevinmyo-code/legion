@@ -6,8 +6,8 @@ type: task
 status: resolved
 status-detail: "RESOLVED 2026-08-20, verified by voice on the A25 including the guardrail: dismissal ends the chat and an ordinary no does not."
 blockers: ["10"]
-blocked-by: ["[[10-acknowledge-the-wake]]"]
-open-blockers: 0
+blocked-by: ["[[10-weak-pickup-on-a-drive]]"]
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

@@ -321,12 +321,25 @@ class GeminiLiveSession(
     // Registered on every requestAudioFocus() call below (2026-08-17) - previously the
     // AudioFocusRequest had no listener at all, so a TRANSIENT focus loss (a notification
     // tone, an incoming call, Spotify grabbing focus) was completely invisible: nothing
-    // logged it, and nothing could correlate one against a bad turn's timing. DIAGNOSTIC
-    // ONLY - this does not change capture behavior on any focus transition. Nothing has
-    // yet shown focus loss is actually implicated in the "sometimes it doesn't hear me"
-    // reports; that has to be established from a real log pull before it's worth reacting
-    // to. Adding capture-altering logic here on spec, before that evidence exists, would be
-    // exactly the kind of guess this file's own delicacy warns against.
+    // logged it, and nothing could correlate one against a bad turn's timing.
+    //
+    // **It was diagnostic-only until 2026-08-21, and the evidence it waited for arrived.** The old
+    // comment here said reacting before a real log pull "would be exactly the kind of guess this
+    // file's own delicacy warns against". That was right at the time. The pull happened, from a
+    // real drive with Spotify playing, and it contains:
+    //
+    //     AudioManager: dispatching onAudioFocusChange(-1) to ...GeminiLiveSession
+    //
+    // -1 is AUDIOFOCUS_LOSS, permanent. Kevin, from that same drive: "transcript subtitles say
+    // sir? but nothing is said on speakers. same with spotify skip track."
+    //
+    // **The mechanism is a one-line trap.** duckNow() opens with `if (ducked) return`. A focus loss
+    // did not clear `ducked`, because nothing here touched it - so the flag stayed true while the
+    // app no longer HELD focus, every later duckNow() returned early, and focus was never
+    // re-requested for the rest of the session. The AudioTrack kept being written and the system
+    // kept it inaudible. Subtitles were unaffected because output transcription arrives over the
+    // socket and never touches the audio path, which is exactly why this presented as "it works
+    // but is silent" rather than as a failure.
     private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         val name = when (focusChange) {
             AudioManager.AUDIOFOCUS_GAIN -> "AUDIOFOCUS_GAIN"
@@ -337,6 +350,16 @@ class GeminiLiveSession(
         }
         Log.d(TAG, "audio focus change: $name")
         CarProbeLog.log("AUDIO_FOCUS", "focus change: $name")
+        // Any loss means the focus we think we hold is gone. Clearing `ducked` IS the whole fix -
+        // it lets the NEXT turn call requestDuckFocus() again instead of short-circuiting on a flag
+        // describing a state we are no longer in. Deliberately does NOT pause playback, alter
+        // capture, or grab focus back: taking focus from whatever just claimed it is how two apps
+        // fight over a car stereo. Losing focus is normal; never noticing was the bug.
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> ducked = false
+        }
     }
 
     // The MIC_HANDOFF_MS delay gives anything else briefly holding the mic (e.g.

@@ -51,11 +51,21 @@
       "color": "4"
     },
     {
+      "id": "841fb7e235928036",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/10-weak-pickup-on-a-drive.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "7cbdd62d9d24ada6",
       "type": "file",
       "file": ".scratch/wake-word/issues/12-deaf-in-the-jeep.md",
       "x": 0,
-      "y": 750,
+      "y": 900,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -173,7 +183,7 @@
     },
     {
       "id": "2f19423f45b53619",
-      "fromNode": "03490f2601d9a6f5",
+      "fromNode": "841fb7e235928036",
       "fromSide": "right",
       "toNode": "4dd57d5aa9688889",
       "toSide": "left"
