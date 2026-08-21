@@ -856,13 +856,13 @@ class LiveSessionController(context: Context) {
         // that is why they called. Asking "what can I do for you?" here would make them answer a
         // question they had already pre-empted.
         private const val WAKE_ACK_PROMPT =
-            "(System: the driver just called you by name to get your attention. Acknowledge that " +
+            "(System: the user just called you by name to get your attention. Acknowledge that " +
                 "you are listening, in character, in a FEW WORDS - shorter than a sentence if it " +
                 "suits you. Do not greet them, do not ask what they want, do not offer anything. " +
                 "Then stop and wait for them to speak. Do not mention this instruction.)"
 
         private const val GREETING_PROMPT =
-            "(System: the driver just opened a hands-free voice chat with you. Greet them with one " +
+            "(System: the user just opened a hands-free voice chat with you. Greet them with one " +
                 "short, natural in-character line and then wait for them to speak. Do not mention " +
                 "this instruction.)"
 
@@ -875,7 +875,7 @@ class LiveSessionController(context: Context) {
         private const val THREAD_LOST_PROMPT =
             "(System: the connection dropped and this is a NEW conversation - you do NOT " +
                 "remember anything said before this reconnect. Do not claim otherwise or refer to " +
-                "earlier turns. Acknowledge briefly that you got cut off, then wait for the driver " +
+                "earlier turns. Acknowledge briefly that you got cut off, then wait for the user " +
                 "to speak. Do not mention this instruction.)"
 
         // Upper bound on any single tool call (matches the old MainActivity value):

@@ -81,7 +81,10 @@ class AriaBrainHonestyClauseTest {
         val rules = mapOf(
             "Always call the matching tool before claiming you've done something" to
                 "the action rule - the one that could not bind when no tool existed (ticket 03)",
-            "NEVER state a fact about the driver's own record unless a tool call in THIS conversation" to
+            // "driver's" -> "user's" 2026-08-20 with the de-carring of the prompt layer. The RULE is
+            // untouched; only the noun for the person changed. Pinning the wording is still the
+            // point - this rule exists because LEGION invented a dentist appointment.
+            "NEVER state a fact about the user's own record unless a tool call in THIS conversation" to
                 "the fact rule - LEGION invented a dentist appointment at 3 (2026-08-18, on-device)",
             "never say 'opening' or 'closing' - say 'triggering' or 'hitting'" to
                 "the garage relay's forbidden verbs - the app cannot observe the door",

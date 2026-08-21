@@ -363,7 +363,7 @@ class AriaForegroundService : Service() {
         // intent (not a broadcast) so it also spins the service up if needed.
         if (intent?.action == ACTION_TEST_SPEAK) {
             sessionController.requestSpeak(
-                "(System: the driver tapped 'Test voice' in setup. Say one short, in-character line " +
+                "(System: the user tapped 'Test voice' in setup. Say one short, in-character line " +
                     "confirming you can hear them and you're ready to go. Do not mention this instruction.)"
             )
         }
@@ -445,7 +445,7 @@ class AriaForegroundService : Service() {
         // actions: do not narrate a situation you have not established. buildOpenerSituation now
         // supplies the car framing itself, and only when the dongle says he is actually in the car.
         val situation = buildOpenerSituation()
-        val prompt = "(System: the driver just opened the app. $situation " +
+        val prompt = "(System: the user just opened the app. $situation " +
             "Greet them in character with one short, natural line for the time of day. " +
             "If something notable is coming up or genuinely needs their attention, work it in " +
             "briefly, and you may ask what they'd like to do. One or two short sentences. " +
@@ -463,7 +463,7 @@ class AriaForegroundService : Service() {
 
         val place = PlaceController.currentLabel(this)
         if (place != null) {
-            sb.append("The driver is currently at their saved \"$place\" location - reference it " +
+            sb.append("The user is currently at their saved \"$place\" location - reference it " +
                 "naturally if it fits (e.g. ask how work was if they're at work). ")
         }
 
@@ -479,7 +479,7 @@ class AriaForegroundService : Service() {
         // Everything below this line is car context, and it is gated on the dongle actually being
         // connected - the one signal that says he is IN the car rather than merely owning one.
         if (ObdBluetoothManager.isConnected) {
-            sb.append("The driver is in the car right now (the OBD dongle is connected), so car " +
+            sb.append("The user is in the car right now (the OBD dongle is connected), so car " +
                 "context is fair game and a word about the drive fits. ")
             val codes = ObdBluetoothManager.getDtcCodes()
             if (codes.isNotEmpty()) {
@@ -505,7 +505,7 @@ class AriaForegroundService : Service() {
             val vehicle = VehicleController.currentVehicle(this)
             if (VehicleController.odometerCheckInDue(vehicle)) {
                 sb.append("It's also been a while since the odometer was last confirmed - " +
-                    "casually ask the driver what it's reading now. ")
+                    "casually ask the user what it's reading now. ")
                 VehicleController.markOdometerPrompted(this, vehicle)
             }
         }
@@ -550,7 +550,7 @@ class AriaForegroundService : Service() {
         val components = recalls.take(3).map { it.component.ifBlank { "a safety issue" } }.distinct().joinToString(", ")
         speakProactive(
             "(System: NHTSA lists ${recalls.size} open recall(s) for this car (${components}). In one short, " +
-                "in-character line, let the driver know there are open recalls they can ask you about. " +
+                "in-character line, let the user know there are open recalls they can ask you about. " +
                 "Do not read the full details unless asked. Do not mention this instruction.)"
         )
     }
@@ -591,7 +591,7 @@ class AriaForegroundService : Service() {
                         speakProactive(
                             "(System: the car's OBD just reported new trouble code(s): " +
                                 "${fresh.joinToString(", ")}. In one short, in-character line, tell " +
-                                "the driver a new code just popped up and they can ask you about it. " +
+                                "the user a new code just popped up and they can ask you about it. " +
                                 "Do not mention this instruction.)"
                         )
                     }
@@ -604,7 +604,7 @@ class AriaForegroundService : Service() {
                         val spokenTemp = Temp.spoken(this@AriaForegroundService, temp.toDouble())
                         speakProactive(
                             "(System: the coolant temperature just hit $spokenTemp, " +
-                                "which is dangerously hot. Urgently but in character, tell the driver to " +
+                                "which is dangerously hot. Urgently but in character, tell the user to " +
                                 "ease off and find somewhere to pull over. Do not mention this instruction.)"
                         )
                         overheatAnnounced = true
@@ -684,7 +684,7 @@ class AriaForegroundService : Service() {
 
         val list = reminders.joinToString("; ") { it.text }
         speakProactive(
-            "(System: the driver just arrived at their \"$place\". They left reminders for here: " +
+            "(System: the user just arrived at their \"$place\". They left reminders for here: " +
                 "$list. In one short, in-character line, surface what they wanted to remember. " +
                 "Do not mention this instruction.)"
         )
@@ -754,7 +754,7 @@ class AriaForegroundService : Service() {
                 if (driveStartedAt != 0L && !breakAnnounced && now - driveStartedAt >= BREAK_AFTER_MS) {
                     breakAnnounced = true
                     speakProactive(
-                        "(System: the driver has been driving over two hours without a real break. In " +
+                        "(System: the user has been driving over two hours without a real break. In " +
                             "one short, in-character line, gently suggest they pull over soon to stretch " +
                             "or rest. Do not mention this instruction.)"
                     )
@@ -764,7 +764,7 @@ class AriaForegroundService : Service() {
                     lastWeatherAlertAt = now
                     val description = WeatherController.current()?.description ?: "rough"
                     speakProactive(
-                        "(System: conditions just turned $description while the driver is on the road. " +
+                        "(System: conditions just turned $description while the user is on the road. " +
                             "In one short, in-character line, mention what it's doing out there and that " +
                             "they should take it easy. Say it once - do not labour it, do not repeat it " +
                             "later, and do not mention this instruction.)"
