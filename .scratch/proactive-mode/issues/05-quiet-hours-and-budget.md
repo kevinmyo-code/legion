@@ -121,3 +121,5 @@ rows) and `f1eff72` (delivery). Suite green at 1794 tests.
   exist to survive;
 - whether a fired reminder now delivers exactly once - a change to behaviour Kevin already had,
   rather than a pure addition.
+
+**Call 5 is wired 2026-08-21.** `NudgeReply` reads each completed turn deterministically (no model round trip) and `ProactiveBus.noteReply` marks the raise declined. Conservative by design: only a short, clearly negative reply counts, silence is never a refusal, and a positive word anywhere vetoes it - because a false decline silently loses a nudge Kevin wanted, while a missed one merely returns on schedule.

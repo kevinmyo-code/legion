@@ -117,3 +117,5 @@ rows) and `f1eff72` (delivery). Suite green at 1794 tests.
   exist to survive;
 - whether a fired reminder now delivers exactly once - a change to behaviour Kevin already had,
   rather than a pure addition.
+
+**Calls 3 and 4 are wired 2026-08-21.** Suppression fires for real (see ticket 05), and `why_did_you_say_that` reads the stored rule and fact off the raise row rather than letting the model reconstruct one.

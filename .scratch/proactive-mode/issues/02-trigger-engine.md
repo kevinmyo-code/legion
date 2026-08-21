@@ -138,3 +138,5 @@ rows) and `f1eff72` (delivery). Suite green at 1794 tests.
   exist to survive;
 - whether a fired reminder now delivers exactly once - a change to behaviour Kevin already had,
   rather than a pure addition.
+
+**Call 4 is wired 2026-08-21.** `why_did_you_say_that` in `LiveToolbox` returns the raise row's stored `ruleId` and `reason`. It returns an explicit "nothing raised recently" rather than an empty success, so the model is never handed a gap to fill.

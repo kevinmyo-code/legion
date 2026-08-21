@@ -1091,6 +1091,11 @@ class GeminiLiveSession(
                 MidnightEvents.silentMicTurn(heard, bytesThisTurn)
             }
             captureEpisodicTurn(heard, companionTurnText.toString().trim())
+            // Ticket 05 call 5: a brush-off of an unprompted line suppresses that rule for a day.
+            // Read here because this is the one place the user's actual words exist; ProactiveBus
+            // is what knows which rule (if any) is still awaiting an answer, and it no-ops when
+            // none is. Deterministic and free - no model round trip to ask "was that a no?".
+            io.launch { runCatching { ProactiveBus.noteReply(appContext, heard) } }
             auditSpokenTurn(companionTurnText.toString().trim())
             mailToolCalledThisTurn = false
             userTurnText.setLength(0)

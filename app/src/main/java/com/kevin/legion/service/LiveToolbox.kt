@@ -90,6 +90,7 @@ import com.kevin.legion.vehicle.VehicleSpecController
 import com.kevin.legion.vehicle.VinDecoder
 import org.json.JSONArray
 import org.json.JSONObject
+import com.kevin.legion.data.local.ProactiveRaiseRow
 
 /**
  * The function tools the Live session exposes to Gemini, plus their dispatch.
@@ -1430,6 +1431,27 @@ object LiveToolbox {
         // what was on his calendar and Alfred correctly said he couldn't check. Net +1 against a
         // budget of 71 (-> 72); see that ticket for why a domain the assistant can write to but
         // not read from is worse than either alone.
+        // "Why did you say that?" - ticket 02 call 4 and ticket 08 call 4
+        // (`.scratch/proactive-mode/`). The map calls an inspectable reason the cheapest trust
+        // mechanism available, and it is nearly free under the hybrid engine: the rule that fired
+        // IS the reason, stored on the raise row at the moment it spoke.
+        //
+        // The whole point is that the answer is a STORED FACT rather than the model reconstructing
+        // a plausible one after the event. Ticket 08 call 4 is explicit about the wording: name
+        // the rule and the fact, never justify the nudge, never guess at his state of mind. A
+        // justification is unfalsifiable; a fact is checkable.
+        fns.put(fn(
+            name = "why_did_you_say_that",
+            description = "Look up why you last spoke without being asked. Use when the user asks " +
+                "why you said something, why you brought that up, or what prompted it - about a " +
+                "line YOU started, not an answer to their question. Returns the rule that fired " +
+                "and the fact behind it. State those; do not justify the nudge itself and do not " +
+                "guess at how they were feeling. If it returns nothing, say you have not raised " +
+                "anything on your own recently.",
+            params = obj(),
+            required = emptyList(),
+        ))
+
         // Answering and declining a ringing call by voice (2026-08-21, Kevin: "can i also pick it
         // up or decline via voice?"). Two tools rather than one with a boolean: the live model
         // picks a tool far more reliably than it fills a parameter, and mixing up "answer" and
@@ -2183,6 +2205,7 @@ object LiveToolbox {
             "search_mail" -> searchMail(context, args)
             "read_mail" -> readMail(context, args)
             "read_calendar" -> readCalendar(context, args)
+            "why_did_you_say_that" -> whyDidYouSayThatTool(context)
             "answer_call" -> answerCallTool(context, args)
             "decline_call" -> declineCallTool(context)
             "set_goal" -> setGoalTool(context, args)
@@ -3504,6 +3527,26 @@ object LiveToolbox {
      * rather than silently narrowed to something the ticket didn't ask for.
      */
     private const val PROPOSAL_TTL_MS = 24L * 60 * 60 * 1000
+
+    /**
+     * `why_did_you_say_that`. Reads the most recent [ProactiveRaiseRow] and hands back its stored
+     * rule and reason.
+     *
+     * **Returns `success = false` with a plain answer when there is nothing**, rather than an empty
+     * success. An empty success invites the model to fill the gap, which is the exact failure the
+     * whole raise contract exists to stop - the same reason `OpenerCalendarBriefing` says "nothing
+     * is scheduled" in words instead of handing back an empty list.
+     */
+    private suspend fun whyDidYouSayThatTool(context: Context): JSONObject {
+        val row = CarDatabase.getDatabase(context).proactiveRaiseDao().mostRecent()
+            ?: return result(false, "You have not raised anything on your own recently.")
+        val delivery = if (row.delivery == ProactiveRaiseRow.DELIVERY_SPOKEN) "said aloud" else "posted as a notification"
+        return result(
+            true,
+            "Rule \"${row.ruleId}\" (${row.category}) fired and was $delivery. The fact behind " +
+                "it: ${row.reason}. Say the rule and the fact plainly; do not justify it.",
+        )
+    }
 
     /**
      * `answer_call` / `decline_call`.

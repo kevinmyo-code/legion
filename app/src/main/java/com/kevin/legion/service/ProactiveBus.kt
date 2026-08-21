@@ -169,6 +169,33 @@ object ProactiveBus {
         data object OverDailyCap : RaiseOutcome()
     }
 
+    /**
+     * The rule of the most recent unsolicited line, while a reply to it could still arrive.
+     *
+     * This is what makes decline detection possible at all: `markDeclined` takes a `ruleId`, and by
+     * the time the user answers, the only thing that knows which rule spoke is this. Cleared as
+     * soon as one turn has been read, so a refusal can never be attributed to a nudge two
+     * conversations ago.
+     */
+    @Volatile private var awaitingReplyFor: String? = null
+
+    /**
+     * Offers the user's reply to whatever was last raised, marking it declined if it reads as a
+     * brush-off (ticket 05 call 5).
+     *
+     * **Called once per completed turn, and only the FIRST turn after a raise counts.** A nudge is
+     * answered immediately or not at all; letting a later "no" - to some entirely different
+     * question - suppress last hour's rule would be worse than never detecting a decline.
+     *
+     * Silence is deliberately not a refusal; see [NudgeReply.isDecline].
+     */
+    suspend fun noteReply(context: Context, reply: String) {
+        val ruleId = awaitingReplyFor ?: return
+        awaitingReplyFor = null
+        if (!NudgeReply.isDecline(reply)) return
+        markDeclined(context, ruleId)
+    }
+
     /** The only place that touches the raw flow. */
     private fun emit(prompt: String, listensForReply: Boolean = false) {
         _requestSpeak.tryEmit(SpeakRequest(prompt, listensForReply))
@@ -248,6 +275,8 @@ object ProactiveBus {
         if (spokenAloud) {
             // Exactly one delivery per raise, never both (ticket 06 call 5). The cost is real and
             // accepted: a spoken line leaves nothing on the lock screen to find afterwards.
+            // Arm decline detection BEFORE the line goes out, so a fast reply cannot beat it.
+            awaitingReplyFor = raise.ruleId
             emit(raise.prompt, raise.listensForReply)
             return RaiseOutcome.Raised(rowId)
         }
