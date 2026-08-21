@@ -48,6 +48,12 @@ import java.util.Calendar
  * ticket 06 call 3 turns most of those into a notification instead. The cap governs whether a line
  * is SPOKEN, not whether it exists. A silently dropped safety warning is the worst outcome on this
  * map, and nothing here produces one.
+ *
+ * **Two refusals deliberately do NOT become a notification**, and both would be wrong if they did:
+ * [RaiseOutcome.MutedByUser], because a kill switch that reroutes to the shade is not a kill
+ * switch; and [RaiseOutcome.Suppressed], because the user already brushed that exact rule off and
+ * posting it would be the same nag through a different door. Quiet hours and the cap DO become
+ * notifications - those mean "not out loud right now", not "you have heard enough of this".
  */
 object ProactiveBus {
     private val _requestSpeak = MutableSharedFlow<String>(extraBufferCapacity = 4)
@@ -98,8 +104,23 @@ object ProactiveBus {
      * "silently gated" from "the user has it switched off" - and so ticket 06's delivery layer can
      * decide which outcomes deserve a notification instead. */
     sealed class RaiseOutcome {
-        /** It got out. [rowId] is its [ProactiveRaiseRow]. */
+        /** It was SPOKEN ALOUD. [rowId] is its [ProactiveRaiseRow]. */
         data class Raised(val rowId: Long) : RaiseOutcome()
+
+        /**
+         * It could not be spoken, so it was posted instead - the phone was asleep, a meeting was
+         * running, quiet hours, or the daily cap.
+         *
+         * **Distinct from [Raised] on purpose.** An earlier cut returned `Raised` for both, which
+         * made "did it actually get said out loud?" unanswerable - and `ReminderAlarmReceiver` has
+         * to answer exactly that to avoid posting twice. A single outcome meaning "delivered
+         * somehow" is the kind that quietly turns into a wrong claim about what the user heard.
+         *
+         * [postedByCaller] is true when the caller owns the notification (see
+         * [ProactiveRaise.callerPostsItsOwnNotification]) - the bus posted nothing and the caller
+         * must.
+         */
+        data class Notified(val rowId: Long, val postedByCaller: Boolean) : RaiseOutcome()
 
         /** The user switched it off. **Never becomes a notification** - a kill switch that reroutes
          * to the shade is not a kill switch. */
@@ -167,19 +188,48 @@ object ProactiveBus {
             if (raise.category == UNCAPPED_CATEGORY) 0
             else dao.spokenCountSince(startOfToday(now), UNCAPPED_CATEGORY.key)
 
-        decideOnHistory(raise, now, last, spokenToday, LocalTime.now())?.let { return it }
+        val refusal = decideOnHistory(raise, now, last, spokenToday, LocalTime.now())
 
+        // --- deliver, or say in the return value that it was not delivered ------------------
+        // Ticket 06 call 3: a raise that cannot be SPOKEN is POSTED. Nothing is silently dropped -
+        // today's behaviour drops everything while the phone is idle-but-locked, and a silently
+        // dropped safety warning is the worst outcome on this map.
+        //
+        // Suppressed is the ONE refusal that does not become a notification, and the reason is the
+        // whole point of the suppression: the user already brushed this exact rule off. Posting it
+        // to the shade instead would be the same nag through a different door.
+        if (refusal == RaiseOutcome.Suppressed) return refusal
+        // A raise the user switched off must not reroute to the shade either - a kill switch that
+        // redirects is not a kill switch (settled decision 2). Same for the pre-database refusals,
+        // which returned above before reaching here.
+        if (refusal == RaiseOutcome.MutedByUser) return refusal
+
+        val spokenAloud = refusal == null && ProactiveDelivery.maySpeakAloud(context)
         val rowId = dao.insert(
             ProactiveRaiseRow(
                 ruleId = raise.ruleId,
                 category = raise.category.key,
                 reason = raise.reason,
                 spokenAt = now,
-                delivery = ProactiveRaiseRow.DELIVERY_SPOKEN,
+                delivery = if (spokenAloud) ProactiveRaiseRow.DELIVERY_SPOKEN
+                else ProactiveRaiseRow.DELIVERY_NOTIFIED,
             )
         )
-        emit(raise.prompt)
-        return RaiseOutcome.Raised(rowId)
+
+        if (spokenAloud) {
+            // Exactly one delivery per raise, never both (ticket 06 call 5). The cost is real and
+            // accepted: a spoken line leaves nothing on the lock screen to find afterwards.
+            emit(raise.prompt)
+            return RaiseOutcome.Raised(rowId)
+        }
+
+        // Nothing here reports that the notification was SEEN, only that it was handed to the
+        // system - the channel is a kill switch the user can pull without the app knowing
+        // (CLAUDE.md §7's outcome-verb rule, applied to delivery).
+        if (!raise.callerPostsItsOwnNotification) {
+            ProactiveDelivery.notify(context, raise, raise.reason)
+        }
+        return RaiseOutcome.Notified(rowId, postedByCaller = raise.callerPostsItsOwnNotification)
     }
 
     /**

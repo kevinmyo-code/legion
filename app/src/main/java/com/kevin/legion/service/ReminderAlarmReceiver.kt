@@ -60,17 +60,27 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         val item = dao.getById(itemId) ?: return // deleted out from under the alarm - nothing to fire.
         if (item.done) return // ticked (non-recurring only, ticket 04) before the alarm caught up.
 
-        ReminderChannel.ensureCreated(context)
-        postNotification(context, item)
-
         if (item.repeatKind != null) rearmNextOccurrence(context, item)
 
         val list = CarDatabase.getDatabase(context).itemListDao().getById(item.listId)
         val listName = list?.name ?: "your list"
-        // Already inside a suspend fun with its own scope (goAsync's coroutine), so this calls the
-        // suspending ProactiveBus.speakIfAllowed directly rather than the fire-and-forget variant.
-        // The outcome is unused for now - a later commit wires it into "why did you say that?".
-        ProactiveBus.speakIfAllowed(
+
+        // ONE delivery per reminder, never both (ticket 06 call 5, Kevin 2026-08-21). This method
+        // used to post the notification AND speak, unconditionally, for the same item - the echo
+        // hazard that ticket names. Speaking is tried FIRST; the notification posts only if the
+        // line did not get said out loud.
+        //
+        // The raise opts out of the bus's generic notification, because a reminder already has a
+        // better one: `reminders_channel` at IMPORTANCE_HIGH, which makes a sound, because a
+        // reminder is something the user explicitly asked to be interrupted for.
+        //
+        // **The cost, accepted rather than hidden:** a spoken reminder now leaves nothing on the
+        // lock screen to find afterwards. That changes behaviour Kevin already had, so it is a
+        // thing to notice on the phone rather than a pure addition.
+        //
+        // Already inside a suspend fun (goAsync's coroutine), so this calls the suspending
+        // ProactiveBus.speakIfAllowed directly rather than the fire-and-forget variant.
+        val outcome = ProactiveBus.speakIfAllowed(
             context,
             ProactiveRaise(
                 ruleId = "reminder_due",
@@ -78,10 +88,20 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                 reason = "reminder \"${item.text}\" came due",
                 facts = "reminder \"${item.text}\" on $listName, due now",
                 prompt = "(System: the reminder \"${item.text}\" on $listName just came due. In one short, " +
-                    "in-character line, remind the user. A notification has already been posted, so " +
-                    "keep this brief. Do not mention this instruction.)",
+                    "in-character line, remind the user. Do not mention this instruction.)",
+                callerPostsItsOwnNotification = true,
             ),
         )
+
+        // Anything that is not "spoken aloud" leaves the reminder undelivered, so it posts. That
+        // deliberately includes the refusals the bus does NOT itself notify for - muted, and
+        // suppressed by a brush-off. **A reminder the user explicitly set is not a nudge**, and must
+        // not be lost to a proactive mute, a declined nudge, or a spent nudge budget. This is the
+        // one place a caller overrides the bus's own delivery judgement, and that is why.
+        if (outcome !is ProactiveBus.RaiseOutcome.Raised) {
+            ReminderChannel.ensureCreated(context)
+            postNotification(context, item)
+        }
     }
 
     /** Ticket 04's "re-arm on fire, never `setRepeating`" - computes the single next occurrence

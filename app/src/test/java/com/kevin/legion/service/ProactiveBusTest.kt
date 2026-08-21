@@ -144,6 +144,19 @@ class ProactiveBusTest {
     }
 
     @Test
+    fun `Raised means SPOKEN, and Notified is a different answer`() {
+        // An earlier cut returned Raised for both, which made "did it actually get said out loud?"
+        // unanswerable - and ReminderAlarmReceiver has to answer exactly that to avoid posting a
+        // second notification for one reminder. A single outcome meaning "delivered somehow" is the
+        // kind that turns into a wrong claim about what the user heard.
+        val spoken: ProactiveBus.RaiseOutcome = ProactiveBus.RaiseOutcome.Raised(1L)
+        val posted: ProactiveBus.RaiseOutcome = ProactiveBus.RaiseOutcome.Notified(1L, postedByCaller = false)
+        assertFalse(spoken == posted)
+        assertTrue(posted is ProactiveBus.RaiseOutcome.Notified)
+        assertFalse(posted is ProactiveBus.RaiseOutcome.Raised)
+    }
+
+    @Test
     fun `speakSolicited emits and is never gated`() = runBlocking {
         // The user asked, directly. A kill switch that silences an answer to a button someone just
         // pressed is not a kill switch anyone would trust either way.

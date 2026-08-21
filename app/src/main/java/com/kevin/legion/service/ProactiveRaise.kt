@@ -73,6 +73,20 @@ data class ProactiveRaise(
      * all three shapes (no permission / read and empty / read with content).
      */
     val prompt: String,
+    /**
+     * True when the CALLER posts its own notification for this event and the bus must not post the
+     * generic one (ticket 06 call 5).
+     *
+     * Exactly one caller sets it: `ReminderAlarmReceiver`, whose fired reminders already have a
+     * notification on `reminders_channel` at `IMPORTANCE_HIGH` - louder than the proactive channel,
+     * and deliberately so, because a reminder is something the user explicitly asked to be
+     * interrupted for while a nudge is not. Letting the bus post as well would produce two
+     * notifications for one reminder, which is the echo this ticket exists to end.
+     *
+     * **It opts out of the bus's notification, never out of the one-delivery rule.** The caller
+     * still posts only when the raise was not spoken - see `ReminderAlarmReceiver.fire`.
+     */
+    val callerPostsItsOwnNotification: Boolean = false,
 ) {
     init {
         require(ruleId.isNotBlank()) { "a raise must name the rule that fired it" }
