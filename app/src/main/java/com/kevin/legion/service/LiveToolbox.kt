@@ -1,4 +1,4 @@
-﻿package com.kevin.legion.service
+package com.kevin.legion.service
 
 import android.content.Context
 import android.content.Intent
@@ -473,6 +473,29 @@ object LiveToolbox {
                 "level" to schema("integer", "For 'set': target volume 0-100. Required for 'set'."),
             ),
             required = listOf("action"),
+        ))
+
+        // Ticket 11 (.scratch/wake-word/issues/11-let-him-say-never-mind.md). Kevin, 2026-08-20:
+        // "i wanna be able to verbally stop listening. oh nothing, i dont need you right now >
+        // yes sir, be here if you need me." A turn opened by voice must be closeable by voice;
+        // until this, the only way out was a second tap, which needs the hand and the screen the
+        // wake word exists to avoid.
+        //
+        // Handled by LiveSessionController, not here - it owns the session. The description
+        // carries the whole burden of NOT firing on an ordinary "no", which is the failure that
+        // would make this maddening: "shall I add that?" / "no" must never hang up.
+        fns.put(fn(
+            name = "end_conversation",
+            description = "End the conversation because the driver has signalled they are DONE " +
+                "talking to you - 'never mind', 'nothing', 'I'm good', 'that's all', 'go away', " +
+                "'I don't need you right now'. Say a short in-character sign-off in the same turn; " +
+                "the conversation closes once you finish speaking, and the driver can always call " +
+                "you again. Do NOT call this when the driver is merely answering 'no' to something " +
+                "you asked, declining one suggestion, or pausing to think - those are ordinary " +
+                "turns and ending the conversation there would be infuriating. Only call it when " +
+                "they are dismissing YOU, not rejecting an offer.",
+            params = obj(),
+            required = emptyList(),
         ))
 
         fns.put(fn(

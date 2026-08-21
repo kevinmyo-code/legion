@@ -1,4 +1,4 @@
-﻿package com.kevin.legion.service
+package com.kevin.legion.service
 
 import android.Manifest
 import android.app.Notification
@@ -383,7 +383,7 @@ class AriaForegroundService : Service() {
 
         // Cruise screen's "tap avatar to talk" - toggles a hands-free turn.
         if (intent?.action == ACTION_TALK) {
-            sessionController.onTap()
+            sessionController.onTap(fromWakeWord = intent.getBooleanExtra(EXTRA_FROM_WAKE_WORD, false))
         }
 
         if (intent?.action == ACTION_CAR_SWITCHED) {
@@ -973,6 +973,13 @@ class AriaForegroundService : Service() {
 
         // Start-intent action: Cruise screen's tap-avatar-to-talk.
         const val ACTION_TALK = "com.kevin.legion.TALK"
+
+        // Ticket 10 (.scratch/wake-word/issues/10-acknowledge-the-wake.md): the SAME action
+        // carries every door into a turn - the strip, the Android Auto play button, and the wake
+        // word - but a voice-opened turn is the one with no screen to look at, so silence there
+        // is indistinguishable from not having heard. This extra tells the two apart. Absent
+        // means a tap, which keeps every existing sender correct without touching it.
+        const val EXTRA_FROM_WAKE_WORD = "com.kevin.legion.FROM_WAKE_WORD"
 
         // Start-intent actions: show / hide the floating companion badge. Show
         // is fired right after LiveToolbox opens nav/music fullscreen; hide is

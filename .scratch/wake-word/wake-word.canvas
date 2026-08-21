@@ -81,6 +81,16 @@
       "color": "1"
     },
     {
+      "id": "7cbdd62d9d24ada6",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/12-deaf-in-the-jeep.md",
+      "x": 520,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "7a3c9183aaf64e84",
       "type": "file",
       "file": ".scratch/wake-word/issues/04-what-drain-is-acceptable.md",
@@ -166,6 +176,13 @@
       "fromNode": "03490f2601d9a6f5",
       "fromSide": "right",
       "toNode": "4dd57d5aa9688889",
+      "toSide": "left"
+    },
+    {
+      "id": "38107f45e5844a24",
+      "fromNode": "7c7ac74f9d4716ee",
+      "fromSide": "right",
+      "toNode": "7cbdd62d9d24ada6",
       "toSide": "left"
     }
   ]

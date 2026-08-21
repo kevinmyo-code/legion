@@ -41,7 +41,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
 | [[.scratch/wake-word/map\|wake-word]] | [[05-mic-ownership\|05]] | grilling | Who owns the microphone, and what yields to what? |
 | [[.scratch/wake-word/map\|wake-word]] | [[08-silenced-not-quiet\|08]] | task | The wake word cannot tell silence from a quiet room |
-| [[.scratch/wake-word/map\|wake-word]] | [[10-acknowledge-the-wake\|10]] | grilling | Say something back when the wake word fires |
 
 ## Built, owing a run on hardware
 
@@ -52,6 +51,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[01-scopes-and-one-reapproval\|01]] | task | Every scope this map needs, taken in one re-approval |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[02-app-remote-spine\|02]] | task | App Remote is the spine, and it creates the device rather than needing one |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[03-tool-surface\|03]] | task | Fold ten capabilities into the tools that already exist |
+| [[.scratch/wake-word/map\|wake-word]] | [[10-acknowledge-the-wake\|10]] | grilling | Say something back when the wake word fires |
 
 ## Blocked
 
@@ -81,6 +81,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery  waiting on [[05-mic-ownership\|05]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[07-false-triggers\|07]] | grilling | How many false triggers is too many, and how would Kevin ever know?  waiting on [[06-prove-it-on-the-phone\|06]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[11-let-him-say-never-mind\|11]] | task | Let him call it off with his voice  waiting on [[10-acknowledge-the-wake\|10]] |
+| [[.scratch/wake-word/map\|wake-word]] | [[12-deaf-in-the-jeep\|12]] | task | Deaf in the Jeep, fine outside it  waiting on [[08-silenced-not-quiet\|08]] |
 
 ## KIV
 
@@ -123,4 +124,4 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 9 | 7 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 12 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
-| [[.scratch/wake-word/map\|wake-word]] | 11 | 8 | [[.scratch/wake-word/wake-word.canvas\|open]] |
+| [[.scratch/wake-word/map\|wake-word]] | 12 | 9 | [[.scratch/wake-word/wake-word.canvas\|open]] |

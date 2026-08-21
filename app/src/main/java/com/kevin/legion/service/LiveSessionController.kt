@@ -1,4 +1,4 @@
-﻿package com.kevin.legion.service
+package com.kevin.legion.service
 
 import android.content.Context
 import android.content.Intent
@@ -234,7 +234,12 @@ class LiveSessionController(context: Context) {
      * conversation stops it; a tap on a warm socket resumes instantly (mic opens,
      * no greeting); otherwise it connects a fresh conversation.
      */
-    fun onTap() {
+    fun onTap(fromWakeWord: Boolean = false) {
+        // Ticket 11: never let a dismissal armed by a previous turn survive into this one. If the
+        // driver tapped stop, or the socket died, between the tool call and TurnComplete, the flag
+        // was never consumed - and a stale one would hang up the NEXT conversation the instant the
+        // assistant finished its first sentence, which would be indistinguishable from a bug.
+        dismissAfterTurn = false
         val s = session
         // DIAGNOSTIC (B9/B12, remove once root-caused): entry state on every tap,
         // to catch a tap racing an in-flight proactive speakOnWarm() (session
@@ -261,7 +266,7 @@ class LiveSessionController(context: Context) {
         if (!isOnline()) { CompanionPhase.showNotice("NO SIGNAL OUT HERE"); return }
 
         if (s != null && s.isWarm()) {
-            resumeWarm(s)
+            resumeWarm(s, fromWakeWord)
             return
         }
         // Anything left here is neither in-conversation nor warm - e.g. mid
@@ -275,7 +280,7 @@ class LiveSessionController(context: Context) {
             s.silentDestroy()
             session = null
         }
-        startConversation()
+        startConversation(fromWakeWord)
     }
 
     /**
@@ -356,7 +361,7 @@ class LiveSessionController(context: Context) {
      * the conversational setup; every subsequent resume opens the mic immediately
      * with no greeting round-trip.
      */
-    private fun resumeWarm(s: GeminiLiveSession) {
+    private fun resumeWarm(s: GeminiLiveSession, fromWakeWord: Boolean = false) {
         conversationMode = true
         val isFirst = !CompanionProfile.isFirstSessionDone(appContext)
         // Ticket 02: a warm socket that resumes here is either a genuinely warm-parked
@@ -375,6 +380,13 @@ class LiveSessionController(context: Context) {
                 set(Phase.THINKING, "...")
                 s.beginConversation(THREAD_LOST_PROMPT)
             }
+            // Ticket 10: THIS is the branch Kevin heard. A warm socket with nothing lost went
+            // straight to LISTENING with a null prompt - silent by construction. Correct for a
+            // tap, wrong for a voice trigger, where nothing on screen confirms it heard.
+            fromWakeWord -> {
+                set(Phase.THINKING, "...")
+                s.beginConversation(WAKE_ACK_PROMPT)
+            }
             else -> {
                 set(Phase.LISTENING, "Listening...")
                 s.beginConversation(null)
@@ -390,7 +402,9 @@ class LiveSessionController(context: Context) {
             // socket) before the fresh conversation starts its own.
             s.silentDestroy()
             session = null
-            startConversation()
+            // Ticket 10: a stale warm socket must not swallow the acknowledgement - the
+            // driver still spoke, and still heard nothing back.
+            startConversation(fromWakeWord)
             return
         }
         // Resuming a warm socket doesn't go through LiveEvent.Connected (it's
@@ -412,7 +426,7 @@ class LiveSessionController(context: Context) {
      * is committed in [handleEvent] once the socket actually connects, so a
      * failed connection doesn't burn the one-time introduction.
      */
-    private fun startConversation() {
+    private fun startConversation(fromWakeWord: Boolean = false) {
         val s = newSession()
         session = s
         pendingAction = Pending.CONVERSATION
@@ -434,11 +448,15 @@ class LiveSessionController(context: Context) {
             // and the model both need to know this is a fresh start, not a continued chat.
             // consumeThreadLossNotice() also flashes the on-screen notice as a side effect.
             val lostThread = consumeThreadLossNotice()
+            // Ticket 10: a wake-opened turn acknowledges rather than greets, cold or warm, so the
+            // two doors do not sound different for no reason the driver can perceive. First run
+            // and a lost thread still win - both are things he genuinely needs told.
+            val opener = if (fromWakeWord) WAKE_ACK_PROMPT else GREETING_PROMPT
             pendingPrompt = when {
                 isFirst -> firstGreetingOpener(appContext)
                 lostThread -> THREAD_LOST_PROMPT
-                live.isBlank() -> GREETING_PROMPT
-                else -> "(Current car/driver context, use naturally if relevant:\n$live)\n\n$GREETING_PROMPT"
+                live.isBlank() -> opener
+                else -> "(Current car/driver context, use naturally if relevant:\n$live)\n\n$opener"
             }
             s.start(
                 base, LiveToolbox.declarations(),
@@ -545,6 +563,12 @@ class LiveSessionController(context: Context) {
                 // this path, e.g. the cold speak-only session in startProactive).
                 if (!conversationMode) {
                     set(Phase.IDLE, IDLE_STATUS)
+                } else if (dismissAfterTurn) {
+                    // Ticket 11: the sign-off has now actually been spoken. Hang up before the mic
+                    // reopens, so the driver is not left with an open session he just dismissed -
+                    // and so a dismissed conversation stops billing rather than idling warm.
+                    dismissAfterTurn = false
+                    session?.stop()
                 }
             }
             // The mic has ACTUALLY started capturing - see [LiveEvent.MicOpened]'s doc for
@@ -651,6 +675,16 @@ class LiveSessionController(context: Context) {
         }
     }
 
+    /**
+     * Ticket 11: set by the `end_conversation` tool, consumed at the next [LiveEvent.TurnComplete].
+     *
+     * **The delay is the entire point.** Stopping the session inside the tool handler would cut the
+     * sign-off off mid-word - the model has not spoken it yet when the tool returns. TurnComplete in
+     * conversation mode is the moment it has finished speaking and the mic is about to reopen, so it
+     * is the only place where "let him finish, then hang up" is true rather than hoped.
+     */
+    @Volatile private var dismissAfterTurn = false
+
     private fun handleToolCall(call: LiveEvent.ToolCall) {
         scope.launch {
             val s = session ?: return@launch
@@ -677,6 +711,17 @@ class LiveSessionController(context: Context) {
                             "show_saved_places" -> {
                                 if (call.args.optBoolean("visible", true)) openSavedPlaces()
                                 JSONObject().put("success", true)
+                            }
+                            // Ticket 11. Arm, do not fire - see [dismissAfterTurn].
+                            "end_conversation" -> {
+                                dismissAfterTurn = true
+                                JSONObject()
+                                    .put("success", true)
+                                    .put(
+                                        "instruction",
+                                        "Say one short in-character sign-off now, then stop. " +
+                                            "The conversation ends when you finish speaking.",
+                                    )
                             }
                             "import_statement" -> {
                                 openLedgerImport()
@@ -783,6 +828,20 @@ class LiveSessionController(context: Context) {
 
         // Spoken first when the driver taps to start a chat, so Zero opens the
         // conversation (then the mic opens for the driver's reply).
+        // Ticket 10 (.scratch/wake-word/issues/10-acknowledge-the-wake.md). Kevin, 2026-08-20,
+        // on hearing the first successful trigger: "i do want a confirmation from the ai though,
+        // like > hey alfred > at your service sir".
+        //
+        // Deliberately NOT the greeting prompt. A greeting opens a conversation; this only says
+        // "I heard you" and gets out of the way, because the driver already has something to say -
+        // that is why they called. Asking "what can I do for you?" here would make them answer a
+        // question they had already pre-empted.
+        private const val WAKE_ACK_PROMPT =
+            "(System: the driver just called you by name to get your attention. Acknowledge that " +
+                "you are listening, in character, in a FEW WORDS - shorter than a sentence if it " +
+                "suits you. Do not greet them, do not ask what they want, do not offer anything. " +
+                "Then stop and wait for them to speak. Do not mention this instruction.)"
+
         private const val GREETING_PROMPT =
             "(System: the driver just opened a hands-free voice chat with you. Greet them with one " +
                 "short, natural in-character line and then wait for them to speak. Do not mention " +

@@ -250,6 +250,9 @@ object WakeWordEngine {
         releaseSpeechService()
         val intent = Intent(context, AriaForegroundService::class.java)
             .setAction(AriaForegroundService.ACTION_TALK)
+            // Ticket 10: mark this turn as voice-opened so it gets spoken back to. A tap does not
+            // need one - the driver is looking at the screen that just changed.
+            .putExtra(AriaForegroundService.EXTRA_FROM_WAKE_WORD, true)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
         else context.startService(intent)
     }

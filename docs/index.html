@@ -82,15 +82,15 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>66 tickets open</h1>
-<p class="lede">Across 12 maps. <b>31 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 17 are waiting on another ticket first. <b>10 are already built</b> and owe nothing but a run on the phone. 10 are parked (KIV) and sit at the bottom.</p>
+<h1>67 tickets open</h1>
+<p class="lede">Across 12 maps. <b>31 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 17 are waiting on another ticket first. <b>12 are already built</b> and owe nothing but a run on the phone. 10 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">66</span><span class="stamp l">open</span></div>
-<div class="stat"><span class="n mint">29</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">10</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n">67</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n mint">28</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n mint">12</span><span class="stamp l">built</span></div>
 <div class="stat"><span class="n amber">17</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">31</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">15</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">14</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">10</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -147,18 +147,19 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>wake-word</h2>
-<span class="counts"><span class="k">8</span> open<span class="sep">&middot;</span><span class="k mint">4</span> ready<span class="sep">&middot;</span><span class="k amber">4</span> blocked<span class="sep">&middot;</span><span class="dim">of 11 tickets</span></span>
-<span class="bar"><i style="flex:4"></i><b style="flex:4"></b></span>
+<span class="counts"><span class="k">9</span> open<span class="sep">&middot;</span><span class="k mint">3</span> ready<span class="sep">&middot;</span><span class="k mint">2</span> built<span class="sep">&middot;</span><span class="k amber">4</span> blocked<span class="sep">&middot;</span><span class="dim">of 12 tickets</span></span>
+<span class="bar"><i style="flex:5"></i><b style="flex:4"></b></span>
 </header>
 <ul class="tl">
 <li class="t is-build" data-type="build" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">What always-on Vosk actually costs the A25 in a day</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
 <li class="t is-decide" data-type="decide" data-state="ready"><span class="num">05</span><span class="body"><span class="tt">Who owns the microphone, and what yields to what?</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">The wake word cannot tell silence from a quiet room</span><span class="det">Surfaced by ticket 01&#x27;s research, 2026-08-20. Confirmed against primary docs and against shipped code: GeminiLiveSession already detects silencing, WakeWordEngine and AmbientListener do not.</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
-<li class="t is-decide" data-type="decide" data-state="ready"><span class="num">10</span><span class="body"><span class="tt">Say something back when the wake word fires</span><span class="det">Kevin, 2026-08-20, immediately after the first successful trigger: &#x27;i do want a confirmation from the ai though, like hey alfred &gt; at your service sir&#x27;.</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">The wake word cannot tell silence from a quiet room</span><span class="det">BLOCKED ON A DECISION 2026-08-20. The ticket claimed the fix was to apply GeminiLiveSession&#x27;s existing pattern. That is not possible: Vosk SpeechService owns its AudioRecord privately with no getter, so there is no session id to match on. Needs Kevin&#x27;s call between a real refactor and a weaker signal.</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">10</span><span class="body"><span class="tt">Say something back when the wake word fires</span><span class="det">Decided and BUILT 2026-08-20. Kevin accepted the false-trigger cost explicitly. Installed on the A25; whether the line actually speaks is NOT yet confirmed by ear.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">11</span><span class="body"><span class="tt">Let him call it off with his voice</span><span class="det">Built 2026-08-20. end_conversation tool, armed by the tool and fired at TurnComplete so the sign-off finishes speaking. 4 tests pin the declaration, NOT the model&#x27;s obedience - only a driven conversation can prove that.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">What drain is acceptable, and what happens when it is not met?</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #03</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Prove hey-name fires on the A25, screen off, on battery</span><span class="det">Step 1 CONFIRMED on the A25 2026-08-20 by Kevin: he said hey alfred, it went to listening. Steps 2-4 (screen off on battery, survives a call/Spotify/live turn, name follows the profile) are untouched.</span></span><span class="chip c-task">build</span><span class="state">waiting on #01, #02, #05</span></li>
 <li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">07</span><span class="body"><span class="tt">How many false triggers is too many, and how would Kevin ever know?</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #06</span></li>
-<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">11</span><span class="body"><span class="tt">Let him call it off with his voice</span><span class="det">Kevin, 2026-08-20: &#x27;then i wanna be able to verbally stop listening. oh nothing, i dont need you right now &gt; yes sir, be here if you need me&#x27;.</span></span><span class="chip c-task">build</span><span class="state">waiting on #10</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">12</span><span class="body"><span class="tt">Deaf in the Jeep, fine outside it</span><span class="det">Field data from Kevin, 2026-08-20, first real-world use: works outside, did not activate at all in the Jeep. Root cause traced to Vosk&#x27;s hardcoded audio source; fix is ticket 08&#x27;s refactor.</span></span><span class="chip c-task">build</span><span class="state">waiting on #08</span></li>
 </ul>
 </section>
 <section class="map">
