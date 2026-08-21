@@ -156,7 +156,7 @@ for m in d:
     blocked_bit = ''
     if m['test']:
         blocked_bit += ('<span class="sep">&middot;</span><span class="k mint">'
-                        + str(m['test']) + '</span> to test')
+                        + str(m['test']) + '</span> built')
     if blocked:
         blocked_bit += ('<span class="sep">&middot;</span><span class="k amber">'
                         + str(blocked) + '</span> blocked')
@@ -166,11 +166,12 @@ for m in d:
     panels.append(
         '<section class="map">' + NL +
         '<header class="mh">' + NL +
+        '<span class="kind">effort</span>' + NL +
         '<h2>' + E(m['slug']) + '</h2>' + NL +
         '<span class="counts"><span class="k">' + str(m['open']) + '</span> open'
         '<span class="sep">&middot;</span><span class="k mint">' + str(m['ready']) + '</span> ready'
         + blocked_bit +
-        '<span class="sep">&middot;</span><span class="dim">' + str(m['total']) + ' total</span></span>' + NL +
+        '<span class="sep">&middot;</span><span class="dim">of ' + str(m['total']) + ' tickets</span></span>' + NL +
         bar + NL + '</header>' + NL +
         '<ul class="tl">' + NL + rows + NL + '</ul>' + NL + '</section>'
     )
@@ -209,6 +210,8 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 .mh{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:13px 16px;
   border-bottom:1px solid var(--rule-faint)}
 .mh h2{font-family:var(--mono);font-size:14px;font-weight:600;margin:0;letter-spacing:.02em}
+.kind{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ghost);border:1px solid var(--rule-faint);padding:2px 6px;white-space:nowrap}
 .counts{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.04em}
 .counts .k{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
 .counts .k.mint{color:var(--mint)} .counts .k.amber{color:var(--amber)}
@@ -286,7 +289,7 @@ doc = (
     '<div class="tot">' + NL +
     '<div class="stat"><span class="n">' + str(tot) + '</span><span class="stamp l">open</span></div>' + NL +
     '<div class="stat"><span class="n mint">' + str(ready) + '</span><span class="stamp l">ready now</span></div>' + NL +
-    '<div class="stat"><span class="n mint">' + str(test_n) + '</span><span class="stamp l">built, untested</span></div>' + NL +
+    '<div class="stat"><span class="n mint">' + str(test_n) + '</span><span class="stamp l">built</span></div>' + NL +
     '<div class="stat"><span class="n amber">' + str(blocked_n) + '</span><span class="stamp l">blocked</span></div>' + NL +
     '<div class="stat"><span class="n amber">' + str(dec) + '</span><span class="stamp l">your call</span></div>' + NL +
     '<div class="stat"><span class="n mint">' + str(build) + '</span><span class="stamp l">still to build</span></div>' + NL +
@@ -298,7 +301,7 @@ doc = (
     '<button class="f" data-f="blocked" aria-pressed="false">blocked</button>' + NL +
     '<button class="f" data-f="decide" aria-pressed="false">your call</button>' + NL +
     '<button class="f" data-f="build" aria-pressed="false">still to build</button>' + NL +
-    '<button class="f" data-f="built" aria-pressed="false">built, needs testing</button>' + NL +
+    '<button class="f" data-f="built" aria-pressed="false">built</button>' + NL +
     '<button class="f" data-f="kiv" aria-pressed="false">KIV</button>' + NL +
     '</div>' + NL +
     NL.join(panels) + NL +

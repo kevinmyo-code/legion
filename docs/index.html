@@ -36,6 +36,8 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 .mh{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:13px 16px;
   border-bottom:1px solid var(--rule-faint)}
 .mh h2{font-family:var(--mono);font-size:14px;font-weight:600;margin:0;letter-spacing:.02em}
+.kind{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ghost);border:1px solid var(--rule-faint);padding:2px 6px;white-space:nowrap}
 .counts{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.04em}
 .counts .k{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
 .counts .k.mint{color:var(--mint)} .counts .k.amber{color:var(--amber)}
@@ -85,7 +87,7 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <div class="tot">
 <div class="stat"><span class="n">65</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">27</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">10</span><span class="stamp l">built, untested</span></div>
+<div class="stat"><span class="n mint">10</span><span class="stamp l">built</span></div>
 <div class="stat"><span class="n amber">18</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">30</span><span class="stamp l">your call</span></div>
 <div class="stat"><span class="n mint">15</span><span class="stamp l">still to build</span></div>
@@ -97,13 +99,14 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <button class="f" data-f="blocked" aria-pressed="false">blocked</button>
 <button class="f" data-f="decide" aria-pressed="false">your call</button>
 <button class="f" data-f="build" aria-pressed="false">still to build</button>
-<button class="f" data-f="built" aria-pressed="false">built, needs testing</button>
+<button class="f" data-f="built" aria-pressed="false">built</button>
 <button class="f" data-f="kiv" aria-pressed="false">KIV</button>
 </div>
 <section class="map">
 <header class="mh">
+<span class="kind">effort</span>
 <h2>spotify-voice</h2>
-<span class="counts"><span class="k">12</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">10</span> to test<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">13 total</span></span>
+<span class="counts"><span class="k">12</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">10</span> built<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 13 tickets</span></span>
 <span class="bar"><i style="flex:10"></i><b style="flex:2"></b></span>
 </header>
 <ul class="tl">
@@ -123,8 +126,9 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </section>
 <section class="map">
 <header class="mh">
+<span class="kind">effort</span>
 <h2>hands-and-senses</h2>
-<span class="counts"><span class="k">9</span> open<span class="sep">&middot;</span><span class="k mint">9</span> ready<span class="sep">&middot;</span><span class="dim">21 total</span></span>
+<span class="counts"><span class="k">9</span> open<span class="sep">&middot;</span><span class="k mint">9</span> ready<span class="sep">&middot;</span><span class="dim">of 21 tickets</span></span>
 <span class="bar"><i style="flex:9"></i><b style="flex:0"></b></span>
 </header>
 <ul class="tl">
@@ -141,8 +145,9 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </section>
 <section class="map">
 <header class="mh">
+<span class="kind">effort</span>
 <h2>ambient-listening</h2>
-<span class="counts"><span class="k">7</span> open<span class="sep">&middot;</span><span class="k mint">3</span> ready<span class="sep">&middot;</span><span class="k amber">4</span> blocked<span class="sep">&middot;</span><span class="dim">7 total</span></span>
+<span class="counts"><span class="k">7</span> open<span class="sep">&middot;</span><span class="k mint">3</span> ready<span class="sep">&middot;</span><span class="k amber">4</span> blocked<span class="sep">&middot;</span><span class="dim">of 7 tickets</span></span>
 <span class="bar"><i style="flex:3"></i><b style="flex:4"></b></span>
 </header>
 <ul class="tl">
@@ -157,8 +162,9 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </section>
 <section class="map">
 <header class="mh">
+<span class="kind">effort</span>
 <h2>goal-keeping</h2>
-<span class="counts"><span class="k">7</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="k amber">6</span> blocked<span class="sep">&middot;</span><span class="dim">8 total</span></span>
+<span class="counts"><span class="k">7</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="k amber">6</span> blocked<span class="sep">&middot;</span><span class="dim">of 8 tickets</span></span>
 <span class="bar"><i style="flex:1"></i><b style="flex:6"></b></span>
 </header>
 <ul class="tl">
@@ -173,8 +179,9 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </section>
 <section class="map">
 <header class="mh">
+<span class="kind">effort</span>
 <h2>proactive-mode</h2>
-<span class="counts"><span class="k">7</span> open<span class="sep">&middot;</span><span class="k mint">6</span> ready<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">9 total</span></span>
+<span class="counts"><span class="k">7</span> open<span class="sep">&middot;</span><span class="k mint">6</span> ready<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">of 9 tickets</span></span>
 <span class="bar"><i style="flex:6"></i><b style="flex:1"></b></span>
 </header>
 <ul class="tl">
@@ -189,8 +196,9 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </section>
 <section class="map">
 <header class="mh">
+<span class="kind">effort</span>
 <h2>wake-word</h2>
-<span class="counts"><span class="k">7</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k amber">5</span> blocked<span class="sep">&middot;</span><span class="dim">7 total</span></span>
+<span class="counts"><span class="k">7</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k amber">5</span> blocked<span class="sep">&middot;</span><span class="dim">of 7 tickets</span></span>
 <span class="bar"><i style="flex:2"></i><b style="flex:5"></b></span>
 </header>
 <ul class="tl">
@@ -205,8 +213,9 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </section>
 <section class="map">
 <header class="mh">
+<span class="kind">effort</span>
 <h2>drive-ui</h2>
-<span class="counts"><span class="k">3</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">9 total</span></span>
+<span class="counts"><span class="k">3</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">of 9 tickets</span></span>
 <span class="bar"><i style="flex:2"></i><b style="flex:1"></b></span>
 </header>
 <ul class="tl">
@@ -217,8 +226,9 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </section>
 <section class="map">
 <header class="mh">
+<span class="kind">effort</span>
 <h2>aspect-advisors</h2>
-<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="dim">21 total</span></span>
+<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="dim">of 21 tickets</span></span>
 <span class="bar"><i style="flex:1"></i><b style="flex:0"></b></span>
 </header>
 <ul class="tl">
@@ -227,8 +237,9 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </section>
 <section class="map">
 <header class="mh">
+<span class="kind">effort</span>
 <h2>google-account-integration</h2>
-<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="dim">23 total</span></span>
+<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="dim">of 23 tickets</span></span>
 <span class="bar"><i style="flex:1"></i><b style="flex:0"></b></span>
 </header>
 <ul class="tl">
@@ -237,8 +248,9 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </section>
 <section class="map">
 <header class="mh">
+<span class="kind">effort</span>
 <h2>ledger-drive-ingestion</h2>
-<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="dim">13 total</span></span>
+<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="dim">of 13 tickets</span></span>
 <span class="bar"><i style="flex:1"></i><b style="flex:0"></b></span>
 </header>
 <ul class="tl">
@@ -247,8 +259,9 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </section>
 <section class="map">
 <header class="mh">
+<span class="kind">effort</span>
 <h2>quant-viz</h2>
-<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="dim">17 total</span></span>
+<span class="counts"><span class="k">1</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="dim">of 17 tickets</span></span>
 <span class="bar"><i style="flex:1"></i><b style="flex:0"></b></span>
 </header>
 <ul class="tl">
@@ -257,8 +270,9 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </section>
 <section class="map">
 <header class="mh">
+<span class="kind">effort</span>
 <h2>android-auto</h2>
-<span class="counts"><span class="k">9</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k dim">9</span> KIV<span class="sep">&middot;</span><span class="dim">16 total</span></span>
+<span class="counts"><span class="k">9</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k dim">9</span> KIV<span class="sep">&middot;</span><span class="dim">of 16 tickets</span></span>
 <span class="bar"><i style="flex:0"></i><b style="flex:9"></b></span>
 </header>
 <ul class="tl">
