@@ -41,6 +41,16 @@
       "color": "4"
     },
     {
+      "id": "03490f2601d9a6f5",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/10-acknowledge-the-wake.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
       "id": "a8179692d607a640",
       "type": "file",
       "file": ".scratch/wake-word/issues/03-measure-the-battery-cost.md",
@@ -59,6 +69,16 @@
       "width": 320,
       "height": 110,
       "color": "5"
+    },
+    {
+      "id": "4dd57d5aa9688889",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/11-let-him-say-never-mind.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     },
     {
       "id": "7a3c9183aaf64e84",
@@ -139,6 +159,13 @@
       "fromNode": "52694f0c1eb1b960",
       "fromSide": "right",
       "toNode": "2e7297a284aa0474",
+      "toSide": "left"
+    },
+    {
+      "id": "2f19423f45b53619",
+      "fromNode": "03490f2601d9a6f5",
+      "fromSide": "right",
+      "toNode": "4dd57d5aa9688889",
       "toSide": "left"
     }
   ]

@@ -4,8 +4,8 @@ title: "Map: Wake word, reachable and honest on a phone"
 charted: 2026-08-20
 charted-by: "Kevin + Opus"
 effort: "`.scratch/wake-word/`"
-tickets: 9
-open: 6
+tickets: 11
+open: 8
 status: open
 tags: [map]
 ---
@@ -84,9 +84,10 @@ result from that validation was measured under an assumption LEGION no longer ho
 
 ## Not yet specified
 
-- **What "hey <name>" should DO once it fires.** Today it broadcasts `ACTION_TALK`. Whether that
-  should open the live session directly, or acknowledge first and wait, hangs on how reliable the
-  trigger turns out to be on this hardware.
+<!-- GRADUATED 2026-08-20: "what hey <name> should DO once it fires" left this section the moment
+     Kevin heard the first successful trigger and found the silence wrong. It is now two tickets,
+     10 and 11 - the opening line and the closing one. -->
+
 - **Multiple companion profiles.** The grammar is built from one `CompanionProfile.name`. What
   happens when Kevin has two profiles with different names is unasked.
 - **Whether "hey" is even the right prefix**, and whether a bare name should trigger.
