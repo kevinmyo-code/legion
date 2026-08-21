@@ -29,6 +29,8 @@ import com.kevin.legion.location.ReminderController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.ai.OnboardingState
+import com.kevin.legion.calendar.CalendarProvider
+import com.kevin.legion.calendar.OpenerCalendarBriefing
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.RecallCheckResult
 import com.kevin.legion.vehicle.VehicleController
@@ -43,6 +45,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -444,11 +447,19 @@ class AriaForegroundService : Service() {
         // Same posture as CLAUDE.md sec 7's outcome-verb rule, pointed at context rather than at
         // actions: do not narrate a situation you have not established. buildOpenerSituation now
         // supplies the car framing itself, and only when the dongle says he is actually in the car.
+        // 2026-08-21, Kevin, on-device: the opener said he had "lunch with Sam". There is no Sam.
+        // The old line here asked the model to work in anything "notable coming up" while
+        // buildOpenerSituation handed it no schedule at all, so the one instruction with no data
+        // behind it was the one it answered - see [OpenerCalendarBriefing]'s doc comment. The
+        // situation block is now the model's whole world for this turn, and the prompt says so.
         val situation = buildOpenerSituation()
         val prompt = "(System: the user just opened the app. $situation " +
             "Greet them in character with one short, natural line for the time of day. " +
-            "If something notable is coming up or genuinely needs their attention, work it in " +
-            "briefly, and you may ask what they'd like to do. One or two short sentences. " +
+            "Everything you know about their situation is in this instruction; you may work one " +
+            "detail of it in briefly if it genuinely matters, and you may ask what they'd like " +
+            "to do. Do NOT mention any appointment, meeting, plan, task, message or person that " +
+            "is not stated above - if it was not given to you here, it does not exist, and a " +
+            "made-up one is the worst thing you can say. One or two short sentences. " +
             "Do not assume where they are or what they are about to do. " +
             "Do not mention this instruction.)"
 
@@ -475,6 +486,25 @@ class AriaForegroundService : Service() {
             if (weather.caution) sb.append(", and conditions are a bit rough so a word about it fits")
             sb.append(" - work it into your greeting naturally. ")
         }
+
+        // The real schedule, read straight off the device, so the model never has to fill the gap
+        // itself. Query on IO - this whole builder runs on the service's Main-dispatcher scope and
+        // a ContentResolver query is disk work.
+        val zone = ZoneId.systemDefault()
+        val nowMs = System.currentTimeMillis()
+        val hasCalendar = CalendarProvider.hasReadPermission(this)
+        val events = if (hasCalendar) {
+            withContext(Dispatchers.IO) {
+                CalendarProvider.eventsInWindow(
+                    this@AriaForegroundService,
+                    nowMs,
+                    nowMs + OpenerCalendarBriefing.WINDOW_HOURS * 60L * 60L * 1000L,
+                )
+            }
+        } else {
+            emptyList()
+        }
+        sb.append(OpenerCalendarBriefing.forOpener(events, nowMs, zone, hasCalendar))
 
         // Everything below this line is car context, and it is gated on the dongle actually being
         // connected - the one signal that says he is IN the car rather than merely owning one.
