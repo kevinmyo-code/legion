@@ -161,7 +161,7 @@ class ProactiveBusTest {
         // The user asked, directly. A kill switch that silences an answer to a button someone just
         // pressed is not a kill switch anyone would trust either way.
         ProactiveSettings.overrideForTest(master = false, on = emptySet())
-        val received = mutableListOf<String>()
+        val received = mutableListOf<ProactiveBus.SpeakRequest>()
         val job = launch { ProactiveBus.requestSpeak.collect { received.add(it) } }
         yield()
 
@@ -169,6 +169,8 @@ class ProactiveBusTest {
 
         withTimeout(1_000) { while (received.isEmpty()) yield() }
         job.cancel()
-        assertEquals(listOf("solicited prompt"), received)
+        assertEquals(listOf("solicited prompt"), received.map { it.prompt })
+        // Solicited speech never opens the mic on its own - the user is already talking.
+        assertTrue(received.none { it.listensForReply })
     }
 }

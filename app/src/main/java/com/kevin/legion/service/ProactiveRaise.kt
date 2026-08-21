@@ -87,6 +87,29 @@ data class ProactiveRaise(
      * still posts only when the raise was not spoken - see `ReminderAlarmReceiver.fire`.
      */
     val callerPostsItsOwnNotification: Boolean = false,
+    /**
+     * True when this raise ASKS SOMETHING the user can answer out loud, so the microphone opens
+     * with the line instead of the assistant speaking into a closed socket (2026-08-21, Kevin:
+     * *"mic open for the whole ring"*).
+     *
+     * **This is a deliberate exception to a rule, not a default.** Every other proactive line is
+     * speak-only - `LiveSessionController.startProactive` passes `vad = false` and the mic never
+     * opens, which is why an announcement cannot be replied to. That default is right: a nudge
+     * that silently opened the microphone every time it fired would be a listening device with a
+     * reason attached.
+     *
+     * Exactly one raise sets it today, and it is the only one that has earned it: `incoming_call`
+     * asks a question with an action behind it ("answer it" / "decline it"), and the window in
+     * which the answer is useful is the few seconds the phone is ringing. Without this the feature
+     * shipped on 2026-08-21 could not be used hands-free at all - the announcement spoke and the
+     * socket closed 10 seconds later having never listened.
+     *
+     * **A raise that sets this MUST have something that closes the window.** Ring-listening is
+     * ended by [ProactiveBus.stopListening] when the phone stops ringing; a raise that opened the
+     * mic with no matching close would leave it open until the idle backstop, which is the exact
+     * shape this flag's doc is warning about.
+     */
+    val listensForReply: Boolean = false,
 ) {
     init {
         require(ruleId.isNotBlank()) { "a raise must name the rule that fired it" }

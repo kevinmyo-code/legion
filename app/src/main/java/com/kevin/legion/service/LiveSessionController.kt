@@ -300,8 +300,16 @@ class LiveSessionController(context: Context) {
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    /** Proactive engine - voice [prompt] once, no mic; reuse the warm socket. */
-    fun requestSpeak(prompt: String) {
+    /**
+     * Proactive engine - voice [prompt] once, **no mic**, reusing the warm socket.
+     *
+     * [listensForReply] is the one exception, and it is narrow on purpose: the line opens the
+     * microphone and waits for an answer, because it asked a question the user can act on. Only
+     * `incoming_call` sets it (see [ProactiveRaise.listensForReply]); a window opened this way MUST
+     * be closed by [stopListening], or it lingers to the idle backstop.
+     */
+    fun requestSpeak(prompt: String, listensForReply: Boolean = false) {
+        if (listensForReply) { speakAndListen(prompt); return }
         val s = session
         // DIAGNOSTIC (B9, remove once root-caused): which branch a proactive line
         // takes decides whether the mic reopens after (only the inConversation
@@ -469,6 +477,80 @@ class LiveSessionController(context: Context) {
                 resumeHandle = sessionResumeHandle,
             )
         }
+    }
+
+    /**
+     * Whether the microphone is currently open because a raise asked something - as opposed to
+     * because the user tapped. [stopListening] only tears down a window this opened, so a real
+     * conversation the user started is never cut off by a phone that stopped ringing.
+     */
+    @Volatile private var ringListening = false
+
+    /**
+     * Speaks [prompt] AND opens the microphone, so the user can answer out loud.
+     *
+     * Structurally this is [beginConversation] with a supplied opener instead of a greeting:
+     * `vad = true` and `keepWarm = true`, which is what actually opens the mic - `startProactive`'s
+     * `vad = false` is why every other proactive line cannot be replied to.
+     *
+     * **It refuses while a conversation is already running.** Folding a ring announcement into a
+     * live turn would be fine, but tearing one down to open this window would take the microphone
+     * away from someone mid-sentence to tell them the phone is ringing, which they can already
+     * hear.
+     */
+    private fun speakAndListen(prompt: String) {
+        val existing = session
+        if (existing != null && existing.inConversation) {
+            // Already listening - fold the line in and let the open mic do its job.
+            existing.sendText(prompt)
+            return
+        }
+        if (!GeminiKeyProvider.hasKey() || !isOnline()) {
+            // No socket is possible, so say nothing rather than half-opening a window. The
+            // notification fallback in ProactiveDelivery is what carries the raise in this case.
+            return
+        }
+        existing?.silentDestroy()
+        val s = newSession()
+        session = s
+        ringListening = true
+        pendingAction = Pending.PROACTIVE_COLD
+        pendingPrompt = prompt
+        conversationMode = true
+        connectedThisSession = false
+        scope.launch {
+            val connectionMode = resolveLiveConnectionMode()
+            if (connectionMode == null) {
+                s.silentDestroy(); session = null; ringListening = false
+                return@launch
+            }
+            val base = brain.buildBaseInstruction()
+            s.start(
+                base, LiveToolbox.declarations(),
+                vad = true, voiceName = CompanionProfile.voice(appContext),
+                keepWarm = true, connectionMode = connectionMode,
+                resumeHandle = sessionResumeHandle,
+            )
+        }
+    }
+
+    /**
+     * Closes a microphone window opened by [speakAndListen] - the phone stopped ringing, so the
+     * question it asked is moot.
+     *
+     * **Only closes a window this opened.** If the user tapped and is mid-conversation, that is
+     * theirs and a caller hanging up must not end it. The [ringListening] flag is the whole
+     * difference, and it is why this is not simply `session?.stop()`.
+     *
+     * The user answering by voice ends the window through this same path: the call goes OFFHOOK,
+     * `TelephonyController` sees ringing stop, and the mic closes because the call now owns the
+     * speakers. A half-spoken confirmation can be cut off by that, which is the right trade - the
+     * call connecting is the answer.
+     */
+    fun stopListening() {
+        if (!ringListening) return
+        ringListening = false
+        session?.let { if (it.inConversation) it.stop() }
     }
 
     /** Cold start a speak-only proactive session (no warm socket existed). */

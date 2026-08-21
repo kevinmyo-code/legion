@@ -245,7 +245,13 @@ class AriaForegroundService : Service() {
 
         // Wire the proactive engine to the one session (the Cruise screen drives
         // listening directly). Used to be collected in AriaLiveScreen.
-        serviceScope.launch { ProactiveBus.requestSpeak.collect { sessionController.requestSpeak(it) } }
+        serviceScope.launch {
+            ProactiveBus.requestSpeak.collect { sessionController.requestSpeak(it.prompt, it.listensForReply) }
+        }
+        // The other half of a ring-listening window (2026-08-21): TelephonyController is a platform
+        // callback with no session reference, so it signals through the bus and this collector
+        // closes the microphone when the phone stops ringing.
+        serviceScope.launch { ProactiveBus.stopListening.collect { sessionController.stopListening() } }
 
         // Greet the driver proactively (the car has just started). Gemini Live
         // does the speaking, so there's no TTS engine to warm up first. The job is

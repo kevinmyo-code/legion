@@ -271,6 +271,34 @@ class ProactiveGateRulesTest {
         )
     }
 
+    // ------------------------------------------------------------------- the mic exception
+
+    /**
+     * Opening the microphone from a proactive line is a deliberate, narrow exception - every other
+     * raise is speak-only, and a nudge that silently opened the mic each time it fired would be a
+     * listening device with a reason attached.
+     *
+     * This asserts the DEFAULT, which is the half a future raise could get wrong by accident: a new
+     * `ProactiveRaise` does not listen unless someone deliberately says so. It cannot assert that
+     * `incoming_call` is the only opted-in raise, because the raises are built inline at their call
+     * sites rather than registered - that is what the raise registry would give us, and it does not
+     * exist yet.
+     */
+    @Test
+    fun `a raise does not open the microphone unless it deliberately opts in`() {
+        val ordinary = ProactiveRaise(
+            ruleId = "test_rule",
+            category = ProactiveCategory.TIMING,
+            reason = "a test raise fired",
+            facts = "test facts",
+            prompt = "(System: say the thing.)",
+        )
+        assertFalse(ordinary.listensForReply)
+
+        val asking = ordinary.copy(listensForReply = true)
+        assertTrue(asking.listensForReply)
+    }
+
     // ------------------------------------------------------------------- categories
 
     @Test

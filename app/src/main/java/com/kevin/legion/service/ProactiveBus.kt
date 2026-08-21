@@ -56,8 +56,34 @@ import java.util.Calendar
  * notifications - those mean "not out loud right now", not "you have heard enough of this".
  */
 object ProactiveBus {
-    private val _requestSpeak = MutableSharedFlow<String>(extraBufferCapacity = 4)
-    val requestSpeak: SharedFlow<String> = _requestSpeak
+    /**
+     * One line for the live session to voice, and whether the microphone opens with it.
+     *
+     * The flow used to carry a bare `String`. It carries [listensForReply] now because whether a
+     * proactive line opens the mic is a property OF THAT LINE - see [ProactiveRaise.listensForReply]
+     * - and threading it through a side channel would let the two disagree.
+     */
+    data class SpeakRequest(val prompt: String, val listensForReply: Boolean = false)
+
+    private val _requestSpeak = MutableSharedFlow<SpeakRequest>(extraBufferCapacity = 4)
+    val requestSpeak: SharedFlow<SpeakRequest> = _requestSpeak
+
+    /**
+     * Fires when a ring-listening window should close - the phone stopped ringing, because it was
+     * answered, declined, or the caller gave up.
+     *
+     * Separate from [requestSpeak] because it is the OPPOSITE of a raise: nothing is said, a
+     * microphone is closed. Collected in `AriaForegroundService` alongside the speak flow, so
+     * `TelephonyController` (a platform callback with no session reference) can end the window it
+     * indirectly opened.
+     */
+    private val _stopListening = MutableSharedFlow<Unit>(extraBufferCapacity = 2)
+    val stopListening: SharedFlow<Unit> = _stopListening
+
+    /** Ends any open ring-listening window. Safe to call when none is open - it is a no-op then. */
+    fun stopListening() {
+        _stopListening.tryEmit(Unit)
+    }
 
     /**
      * The night window. Inside it only [QUIET_HOURS_EXEMPT] may speak.
@@ -144,8 +170,8 @@ object ProactiveBus {
     }
 
     /** The only place that touches the raw flow. */
-    private fun emit(prompt: String) {
-        _requestSpeak.tryEmit(prompt)
+    private fun emit(prompt: String, listensForReply: Boolean = false) {
+        _requestSpeak.tryEmit(SpeakRequest(prompt, listensForReply))
     }
 
     /**
@@ -222,7 +248,7 @@ object ProactiveBus {
         if (spokenAloud) {
             // Exactly one delivery per raise, never both (ticket 06 call 5). The cost is real and
             // accepted: a spoken line leaves nothing on the lock screen to find afterwards.
-            emit(raise.prompt)
+            emit(raise.prompt, raise.listensForReply)
             return RaiseOutcome.Raised(rowId)
         }
 

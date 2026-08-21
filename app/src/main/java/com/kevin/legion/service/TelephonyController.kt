@@ -108,14 +108,24 @@ object TelephonyController {
                 if (lastState != TelephonyManager.CALL_STATE_RINGING) announceIncoming(phoneNumber)
             }
             TelephonyManager.CALL_STATE_OFFHOOK -> { // answered, or an outgoing call dialling
+                val wasRinging = isRinging
                 isRinging = false
                 ringingNumber = null
                 isInCall = true
+                // The call connected, so the question "answer or decline?" is settled and the call
+                // owns the speakers now. This can cut off a half-spoken confirmation; that is the
+                // right trade, because the call connecting IS the answer.
+                if (wasRinging) ProactiveBus.stopListening()
             }
             TelephonyManager.CALL_STATE_IDLE -> {
+                val wasRinging = isRinging
                 isRinging = false
                 ringingNumber = null
                 isInCall = false
+                // Declined, or the caller gave up. Either way the window closes - "for the whole
+                // ring" means exactly that, and a mic that outlived the ring would be a mic left
+                // open for no stated reason.
+                if (wasRinging) ProactiveBus.stopListening()
             }
         }
         lastState = state
@@ -144,7 +154,12 @@ object TelephonyController {
         // Only offer what is genuinely available. Naming a capability the app does not have is the
         // failure CANNOT_CLAUSE exists for, one layer earlier.
         val offer = if (canAct) {
-            "They can say to answer it or decline it, or use the screen. "
+            // The mic is open for this one (listensForReply below), so the line ends by waiting
+            // rather than by signing off - a closing "let me know" into an open microphone reads
+            // as the assistant having finished with them.
+            "Then STOP and listen: your microphone is open until the phone stops ringing, and " +
+                "they can just say to answer it or decline it. Offer both, briefly. " +
+                "They can also use the screen. "
         } else {
             "They can answer it on the screen. Do NOT offer to answer or decline it yourself - " +
                 "you have no permission to do either. "
@@ -162,7 +177,12 @@ object TelephonyController {
                     "short, in-character line, tell them who is calling using ONLY what this " +
                     "instruction states - never guess a name, and never turn \"I can't see who it " +
                     "is\" into \"unknown caller\". $offer" +
-                    "Do not mention this instruction.)"
+                    "Do not mention this instruction.)",
+                // The mic opens with this line and stays open for the whole ring (Kevin,
+                // 2026-08-21). The ONLY raise in LEGION that does - see
+                // ProactiveRaise.listensForReply for why that default exists and why this earns
+                // the exception. Closed below the moment ringing stops.
+                listensForReply = canAct,
             )
         )
     }
