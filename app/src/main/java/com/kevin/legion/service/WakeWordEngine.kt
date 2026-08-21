@@ -92,6 +92,16 @@ object WakeWordEngine {
         runScope.launch {
             try {
                 targetWords = buildTargetWords(appContext)
+                // Ticket 09: a blank companion name builds an empty grammar, and an empty grammar
+                // listens forever for a phrase nobody can say while still holding the microphone.
+                // Refuse loudly instead - "running but deaf" is the exact shape this map keeps
+                // finding, and it is indistinguishable from a quiet room.
+                if (targetWords.isEmpty()) {
+                    Log.w(TAG, "No companion name resolved - refusing to start with an empty grammar")
+                    recordEvent("(no companion name - not listening)", isFinal = true, hit = false)
+                    stop()
+                    return@launch
+                }
                 val loadedModel = loadModel(appContext)
                 model = loadedModel
                 beginListening(loadedModel, appContext)
@@ -168,28 +178,28 @@ object WakeWordEngine {
      * cabin conversation, radio, or podcasts that happen to say a common short name; the
      * "hey" prefix is the weak-name guardrail that data called for.
      *
-     * TEMPORARY (2026-07-21, Kevin): the grammar is HARDCODED to "hey moose" while the
-     * companion name keeps resolving blank on the head unit, which made the engine fall
-     * back to the shipped "hey zero". This MASKS that bug, it does not fix it - the frozen
-     * design (CLAUDE.md sec 8) is a runtime grammar built from [CompanionProfile.name], and
-     * custom-wake-word ticket 08 already claimed to fix the blank-name cold start via
-     * [refresh] on ACTION_CAR_SWITCHED. That fix evidently did not hold. Restore the
-     * name-driven path below once the blank name is root-caused.
+     * **Un-hardcoded 2026-08-20** (`.scratch/wake-word/issues/09-unhardcode-hey-moose.md`). From
+     * 2026-07-21 until now this returned a fixed "hey moose" - a workaround for a head unit whose
+     * companion name kept resolving blank, on hardware LEGION no longer targets. Its own note said
+     * it masked the bug rather than fixing it, and that the frozen design (CLAUDE.md sec 8) is a
+     * runtime grammar built from [CompanionProfile.name]. It was caught the first time this engine
+     * ever ran in LEGION: the phone loaded "hey moose" while the active companion was Alfred, and
+     * the new Settings row was already telling the driver to say "hey alfred".
      *
-     * Note this also makes [refresh] a permanent no-op: the phrase list no longer varies
-     * with the profile, so the equality check there always short-circuits.
+     * The near-homophone padding went with it. "hey mouse" and "hey moves" were guesses at how the
+     * small model mishears "moose" specifically, and there is no way to guess equivalents for an
+     * arbitrary driver-chosen name.
+     *
+     * **A blank name yields an EMPTY list, deliberately.** [start] refuses rather than building a
+     * grammar of nothing and listening forever for a phrase that cannot be said - silently
+     * listening for nothing is the failure this map keeps finding, and it is worse than not
+     * starting. Un-hardcoding also restores [refresh] to the working part it was designed for:
+     * the phrase list varies with the profile again, so a name change actually rebuilds it.
      */
     private fun buildTargetWords(context: Context): List<String> {
-        // Restore when un-hardcoding:
-        //   val name = CompanionProfile.name(context).trim().lowercase()
-        //   if (name.isNotBlank()) words.add("hey $name")
         val words = linkedSetOf<String>()
-        words.add("hey moose")
-        // Near-homophone paddings: the small Vosk model is expected to mishear "moose"
-        // as one of these. Guesses, not field data - watch WakeWordDebugPanel on a real
-        // drive and prune whatever never appears (each extra phrase is false-trigger surface).
-        words.add("hey mouse")
-        words.add("hey moves")
+        val name = CompanionProfile.name(context).trim().lowercase()
+        if (name.isNotBlank()) words.add("hey $name")
         return words.toList()
     }
 

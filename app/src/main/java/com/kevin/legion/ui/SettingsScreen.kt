@@ -41,6 +41,8 @@ import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.service.AssistantIgnition
 import com.kevin.legion.service.DebugSettings
 import com.kevin.legion.service.ProactivePreferences
+import com.kevin.legion.service.WakeWordEngine
+import com.kevin.legion.service.WakeWordPreferences
 import com.kevin.legion.sync.SyncCapability
 import com.kevin.legion.ui.media.MediaTransportAccessBanner
 import com.kevin.legion.ui.spotify.SpotifyConnectResolver
@@ -111,6 +113,9 @@ fun SettingsScreen(
     // stored inverted (ProactivePreferences.muted) but shown as "Proactive speech" so the row reads
     // as what it does, not as a double negative.
     var proactiveOn by remember { mutableStateOf(!ProactivePreferences.isMuted(context)) }
+    // `.scratch/wake-word/issues/02-the-settings-toggle.md`: WakeWordPreferences.setEnabled had
+    // zero callers, so the engine could never start. This row's handler is now its only writer.
+    var wakeWordOn by remember { mutableStateOf(WakeWordPreferences.isEnabled(context)) }
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
     var hasKey by remember { mutableStateOf(GeminiKeyProvider.hasKey()) }
     var driveConnected by remember { mutableStateOf(SyncCapability.syncAvailable(context)) }
@@ -175,6 +180,7 @@ fun SettingsScreen(
         recallAlertsOn = DebugSettings.recallAlertsEnabled(context)
         temperatureUnit = Temp.unit(context)
         proactiveOn = !ProactivePreferences.isMuted(context)
+        wakeWordOn = WakeWordPreferences.isEnabled(context)
     }
 
     // Step 2 of the chain: RECORD_AUDIO. Only reached once POST_NOTIFICATIONS
@@ -336,6 +342,27 @@ fun SettingsScreen(
                 onToggle = { on ->
                     ProactivePreferences.setMuted(context, !on)
                     proactiveOn = on
+                },
+            )
+
+            // `.scratch/wake-word/issues/02-the-settings-toggle.md`. The handler is the ONLY writer
+            // of WakeWordPreferences, matching AssistantIgnition's single-writer discipline.
+            //
+            // It calls start/stop, NOT refresh. Caught on the phone, 2026-08-20: refresh() opens
+            // with `val loadedModel = model ?: return`, so it is a no-op unless the engine is
+            // ALREADY running - it rebuilds a live grammar, it does not ignite one. Wiring the
+            // toggle to it wrote the preference and started nothing, and the row then read "On"
+            // over a dead engine, which is the exact defect this ticket's verification step exists
+            // to catch. start() is idempotent (`if (scope != null) return`) and reads the
+            // preference itself, so it is safe from here.
+            Spacer(Modifier.height(8.dp))
+            WakeWordRow(
+                enabled = wakeWordOn,
+                companionName = activeName,
+                onToggle = { on ->
+                    WakeWordPreferences.setEnabled(context, on)
+                    wakeWordOn = on
+                    if (on) WakeWordEngine.start(context) else WakeWordEngine.stop()
                 },
             )
 

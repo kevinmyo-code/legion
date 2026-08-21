@@ -8,7 +8,7 @@
       "y": 0,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "1890876f18bb4293",
@@ -18,7 +18,27 @@
       "y": 150,
       "width": 320,
       "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "7c7ac74f9d4716ee",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/08-silenced-not-quiet.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
       "color": "1"
+    },
+    {
+      "id": "e3cd032b22b2d24a",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/09-unhardcode-hey-moose.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "4"
     },
     {
       "id": "a8179692d607a640",

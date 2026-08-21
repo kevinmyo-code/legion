@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["01"]
 blocked-by: ["[[01-mic-under-doze]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # Who owns the microphone, and what yields to what?

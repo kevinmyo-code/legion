@@ -4269,3 +4269,33 @@ Scope calls that are map-local, not standing: podcasts/audiobooks OUT, creating 
 Decided by Kevin, verbatim: "ignore the rule. new rule now. you can merge dev to main." Context: the dev -> main PR flow had just produced a stale merge - PR #3 caught dev one commit early, so main published without the docs commit it was meant to carry, and syncing needed a second round-trip through Kevin.
 
 **New standing rule, applied to CLAUDE.md sec 8 in the same commit:** Claude merges `dev` into `main` directly and pushes it. No PR. Bounds Claude keeps: merge only `dev` (never a feature branch straight to main), and only when dev is green. The 2026-07-16 anti-pile lesson (45 unpushed commits on Midnight AI) survives as the reason to merge often rather than hoard.
+
+## 2026-08-20 - Wake word: the feature was finished, unreachable, and lying
+
+Charting `.scratch/wake-word/` found `WakeWordEngine` complete (283 lines) and wired into
+`AriaForegroundService` since the port, but **nothing anywhere wrote `WakeWordPreferences`**, so
+`start()` had always returned at its first line. Same shape as the proactive kill switch found on
+2026-08-18. A feature can be finished, wired, tested and still be dead code; **grep for the WRITER of
+a flag, not just the reader.**
+
+Making it reachable exposed three more, each found only by running it on the phone:
+
+1. **`refresh()` cannot ignite a stopped engine.** It opens `val loadedModel = model ?: return` - it
+   rebuilds a live grammar, it does not start one. Wiring a toggle to it wrote the preference and
+   started nothing, and the row read "On" over a dead engine. Use `start()`/`stop()`.
+2. **The Vosk model had never been fetched onto this machine.** `assets/vosk-model/` is gitignored
+   except its README. Charting recorded it as "Bundled" because the directory existed - a `traced`
+   tag claimed on an `ls`. The debug APK is 78MB without it and 120MB with it.
+3. **The grammar was hardcoded to "hey moose"**, a 2026-07-21 head-unit workaround that outlived its
+   hardware, while the new Settings row told the driver to say "hey alfred". Restored to
+   `CompanionProfile.name`; a blank name now refuses to start rather than holding the microphone
+   against a grammar nobody can satisfy.
+
+Research (ticket 01) also confirmed, from primary docs, that **another app taking the microphone
+yields silence with no error**, and that `WakeWordEngine` and `AmbientListener` both lack the
+`isClientSilenced` detection `GeminiLiveSession` already has. A silenced wake word is
+indistinguishable from a quiet room. Filed as wake-word ticket 08.
+
+**The pattern across all four: the failure mode of this feature is looking fine while doing nothing.**
+Every one of them was invisible to the compiler and to the test suite, and visible within seconds of
+running it on the device.

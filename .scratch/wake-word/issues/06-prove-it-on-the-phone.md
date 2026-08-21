@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["01", "02", "05"]
 blocked-by: ["[[01-mic-under-doze]]", "[[02-the-settings-toggle]]", "[[05-mic-ownership]]"]
-open-blockers: 3
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

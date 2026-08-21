@@ -38,8 +38,9 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[08-proactive-register\|08]] | grilling | How Alfred sounds when nobody asked him anything |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[09-fgs-start-delay\|09]] | bug | The boot-started service takes 123s to call startForeground, against a 10s window |
 | [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
-| [[.scratch/wake-word/map\|wake-word]] | [[01-mic-under-doze\|01]] | research | Does a foreground service still get the microphone with the screen off? |
-| [[.scratch/wake-word/map\|wake-word]] | [[02-the-settings-toggle\|02]] | task | The Settings toggle that nothing currently writes |
+| [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
+| [[.scratch/wake-word/map\|wake-word]] | [[05-mic-ownership\|05]] | grilling | Who owns the microphone, and what yields to what? |
+| [[.scratch/wake-word/map\|wake-word]] | [[08-silenced-not-quiet\|08]] | task | The wake word cannot tell silence from a quiet room |
 
 ## Built, owing a run on hardware
 
@@ -75,10 +76,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[09-history-uri\|09]] | task | legion_history can name a track it can never replay  waiting on [[02-app-remote-spine\|02]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[12-ship-pass\|12]] | task | Ship pass: installed on the A25 and drivable  waiting on [[01-scopes-and-one-reapproval\|01]], [[02-app-remote-spine\|02]], [[03-tool-surface\|03]], [[04-queue\|04]], [[05-library-writes\|05]], [[06-shuffle-repeat-seek\|06]], [[07-now-playing-truth\|07]], [[08-playlists-by-name\|08]], [[09-history-uri\|09]], [[11-rec-engine\|11]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[13-more-from-this-artist\|13]] | task | More from this artist, and what else they have  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
-| [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day  waiting on [[02-the-settings-toggle\|02]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[04-what-drain-is-acceptable\|04]] | grilling | What drain is acceptable, and what happens when it is not met?  waiting on [[03-measure-the-battery-cost\|03]] |
-| [[.scratch/wake-word/map\|wake-word]] | [[05-mic-ownership\|05]] | grilling | Who owns the microphone, and what yields to what?  waiting on [[01-mic-under-doze\|01]] |
-| [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery  waiting on [[01-mic-under-doze\|01]], [[02-the-settings-toggle\|02]], [[05-mic-ownership\|05]] |
+| [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery  waiting on [[05-mic-ownership\|05]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[07-false-triggers\|07]] | grilling | How many false triggers is too many, and how would Kevin ever know?  waiting on [[06-prove-it-on-the-phone\|06]] |
 
 ## KIV
@@ -122,4 +121,4 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 9 | 7 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 12 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
-| [[.scratch/wake-word/map\|wake-word]] | 7 | 7 | [[.scratch/wake-word/wake-word.canvas\|open]] |
+| [[.scratch/wake-word/map\|wake-word]] | 9 | 6 | [[.scratch/wake-word/wake-word.canvas\|open]] |

@@ -203,6 +203,60 @@ fun ProactiveSpeechRow(proactiveOn: Boolean, onToggle: (Boolean) -> Unit) {
 }
 
 /**
+ * The custom wake word ([com.kevin.legion.service.WakeWordEngine]), reachable by a human for the
+ * first time. `.scratch/wake-word/issues/02-the-settings-toggle.md`: the engine has been complete
+ * and wired into [com.kevin.legion.service.AriaForegroundService] since the port, but
+ * [com.kevin.legion.service.WakeWordPreferences.setEnabled] had **zero callers anywhere**, so
+ * `WakeWordEngine.start` always returned at its first line and the feature could not be turned on
+ * at all. Same shape as [ProactiveSpeechRow]'s finding, and the same fix.
+ *
+ * **The name is not hardcoded.** The grammar Vosk matches is built at runtime from the active
+ * [com.kevin.legion.ai.CompanionProfile]'s name, so this row renders whatever the driver actually
+ * called their companion (CLAUDE.md sec 1: LEGION is the app, the companion is user-named). A null
+ * name means no profile is active yet, and the row says so rather than inventing one.
+ *
+ * **Off by default, and a supplement rather than a replacement** - push-to-talk keeps working
+ * whatever this says. Kept deliberately quiet about battery cost: the engine's only on-hardware
+ * validation (2026-07-19) measured a head unit on permanent shore power, a premise phone-only
+ * retired, and `.scratch/wake-word/issues/03-measure-the-battery-cost.md` exists to produce the
+ * real number. Until it does, this row states no cost, because CLAUDE.md sec 7 forbids presenting
+ * an unmeasured figure as a fact.
+ */
+@Composable
+fun WakeWordRow(enabled: Boolean, companionName: String?, onToggle: (Boolean) -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Wake word", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(
+                        when {
+                            !enabled ->
+                                "Off - press to talk. Turning this on listens for a wake phrase " +
+                                    "continuously while the assistant is running."
+                            companionName.isNullOrBlank() ->
+                                "On - but no companion is active yet, so there is no name to listen " +
+                                    "for. Pick one in Companions."
+                            else ->
+                                "On - say \"hey ${companionName.lowercase()}\" to start a turn. " +
+                                    "Press to talk still works."
+                        },
+                        style = LegionType.stamp,
+                        color = sem.faint,
+                    )
+                }
+                DeckSwitch(checked = enabled, onCheckedChange = onToggle)
+            }
+        }
+    }
+}
+
+/**
  * The driver's chosen temperature unit ([com.kevin.legion.util.Temp]), a two-way choice with no
  * destination screen of its own - ticket 07, amended 2026-08-18 to make the unit a setting rather
  * than fixed Celsius. Uses [DeckRadio] rather than a Material `RadioButton`/`Switch` pair,
@@ -368,6 +422,25 @@ private fun PreviewRecallAlertsOn() = LegionTheme {
 @Composable
 private fun PreviewProactiveSpeechOn() = LegionTheme {
     Surface { ProactiveSpeechRow(proactiveOn = true, onToggle = {}) }
+}
+
+@Preview(name = "Settings: wake word off", widthDp = 360)
+@Composable
+private fun PreviewWakeWordOff() = LegionTheme {
+    Surface { WakeWordRow(enabled = false, companionName = "Alfred", onToggle = {}) }
+}
+
+@Preview(name = "Settings: wake word on", widthDp = 360)
+@Composable
+private fun PreviewWakeWordOn() = LegionTheme {
+    Surface { WakeWordRow(enabled = true, companionName = "Dorothy", onToggle = {}) }
+}
+
+// The state the row exists to not lie about: on, but nothing to listen for.
+@Preview(name = "Settings: wake word on, no companion", widthDp = 360)
+@Composable
+private fun PreviewWakeWordNoCompanion() = LegionTheme {
+    Surface { WakeWordRow(enabled = true, companionName = null, onToggle = {}) }
 }
 
 @Preview(name = "Settings: proactive speech off", widthDp = 360)

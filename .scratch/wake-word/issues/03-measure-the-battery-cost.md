@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["02"]
 blocked-by: ["[[02-the-settings-toggle]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # What always-on Vosk actually costs the A25 in a day

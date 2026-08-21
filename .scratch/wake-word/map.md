@@ -4,8 +4,8 @@ title: "Map: Wake word, reachable and honest on a phone"
 charted: 2026-08-20
 charted-by: "Kevin + Opus"
 effort: "`.scratch/wake-word/`"
-tickets: 7
-open: 7
+tickets: 9
+open: 6
 status: open
 tags: [map]
 ---
@@ -33,7 +33,7 @@ gets settled.
 |---|---|
 | `service/WakeWordEngine.kt` | **283 lines, complete.** Vosk, runtime-reconfigurable grammar built from `CompanionProfile.name`, 4s trigger floor, watchdog, debug event ring |
 | Vosk dependency | Ships. `app/build.gradle.kts:195`, `libs.vosk.android` |
-| Vosk model | Bundled. `app/src/main/assets/vosk-model` |
+| Vosk model | **CORRECTED 2026-08-20: NOT bundled.** That directory held only its own README; the 40MB model is gitignored and must be fetched per it. Charting claimed `traced` on the strength of the directory existing. Fetched now; the debug APK goes 78MB -> 120MB |
 | Service wiring | Live. `AriaForegroundService` calls `start` (:296), `refresh` (:391), `stop` (:815) |
 | `service/WakeWordPreferences.kt` | Exists, read by the engine |
 | **Anything that WRITES that preference** | **NOTHING.** Zero writers anywhere in `app/src/main`. |
@@ -67,6 +67,21 @@ result from that validation was measured under an assumption LEGION no longer ho
 
 <!-- one line per resolved ticket -->
 
+- [The Settings toggle that nothing currently writes](issues/02-the-settings-toggle.md) - built and
+  verified on the A25; **the engine has now run in LEGION for the first time.** Its own verification
+  step caught two defects a compile could not: `refresh()` cannot ignite a stopped engine (it is a
+  no-op unless one is already running), and the Vosk model had never been fetched onto this machine.
+- [The grammar is still hardcoded to hey moose](issues/09-unhardcode-hey-moose.md) - a 2026-07-21
+  head-unit workaround that outlived its hardware. The phone was listening for "hey moose" while the
+  Settings row said "hey alfred". Name-driven again, and a blank name now refuses to start rather
+  than holding the mic against an empty grammar.
+- [Does a foreground service still get the microphone with the screen off?](issues/01-mic-under-doze.md) -
+  the manifest already complies and no change is needed there; Doze does not stop a running foreground
+  service (**`reasoned` from an absence, not an explicit exemption**); Samsung's deep sleep versus a
+  live microphone service is **not established**; and the silent-failure fear is **confirmed** - another
+  app taking the mic yields silence with no error, and neither Vosk engine detects it, which is now
+  [The wake word cannot tell silence from a quiet room](issues/08-silenced-not-quiet.md).
+
 ## Not yet specified
 
 - **What "hey <name>" should DO once it fires.** Today it broadcasts `ACTION_TALK`. Whether that
@@ -76,7 +91,8 @@ result from that validation was measured under an assumption LEGION no longer ho
   happens when Kevin has two profiles with different names is unasked.
 - **Whether "hey" is even the right prefix**, and whether a bare name should trigger.
 - **Recovery after the recognizer dies.** There is a watchdog, but nothing has observed it firing on
-  a phone across a screen-off period.
+  a phone across a screen-off period. Narrowed by ticket 01: the watchdog is not the only gap, since
+  a *silenced* recognizer has not died and the watchdog would see nothing wrong.
 
 ## Out of scope
 
