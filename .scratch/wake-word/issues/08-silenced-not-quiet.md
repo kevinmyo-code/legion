@@ -3,12 +3,12 @@ map: wake-word
 ticket: "08"
 title: "The wake word cannot tell silence from a quiet room"
 type: task
-status: built
+status: resolved
 status-detail: "BLOCKED ON A DECISION 2026-08-20. The ticket claimed the fix was to apply GeminiLiveSession's existing pattern. That is not possible: Vosk SpeechService owns its AudioRecord privately with no getter, so there is no session id to match on. Needs Kevin's call between a real refactor and a weaker signal."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The wake word cannot tell silence from a quiet room
@@ -134,3 +134,34 @@ know rather than reporting false and implying safety. `minSdk` is 24, so that ga
 
 Nobody has yet made the platform silence it. The cheap reproduction is a phone call, or any other
 app that takes the microphone, while the wake word is running - the debug ring should say so.
+
+## It caught a real one within a minute of shipping
+
+The detector was built to notice another app stealing the microphone. **The first thing it found was
+LEGION doing it to itself**, on the A25, on the first launch after install:
+
+```
+22:50:54.266  AudioRecord opened (29873)
+22:50:54.787  watchdog: pausing for conversation      <- the startup greeting speaks
+22:51:02.457  watchdog: resuming after conversation
+22:51:02.565  AudioRecord opened (29881)
+22:51:02.602  SILENCED by the platform - hearing nothing
+```
+
+`ConversationState.isBusy` going false is **not** the same fact as "the microphone is free". The live
+socket parks warm and releases slightly later, so the wake word reopened into a mic still held by the
+session and came up deaf - and stayed deaf, because nothing ever re-checked.
+
+**The wake word therefore went permanently deaf after the FIRST conversation of every launch,
+including the greeting that speaks on startup, while looking completely normal.** This is a strong
+candidate for [Deaf in the Jeep, fine outside it](12-deaf-in-the-jeep.md): a driveway test tends to
+be the first thing after opening the app, and a drive is not.
+
+Fixed by making the engine re-acquire rather than wait for a signal from the other engine - which
+also covers any OTHER app taking the mic, and needs no coupling between the two. Verified on the
+device: three re-acquisitions, then `no longer silenced` once the session let go.
+
+**An honest note on the fix's shape:** the final recovery arrived on its own, so a long enough wait
+might have sufficed here. The rebuild is kept as the backstop for the case where the holder never
+releases and no further config change ever arrives - permanent deafness is a far worse failure than
+a few 140ms rebuilds nobody can hear.

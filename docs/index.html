@@ -82,12 +82,12 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>66 tickets open</h1>
-<p class="lede">Across 12 maps. <b>30 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 16 are waiting on another ticket first. <b>12 are already built</b> and owe nothing but a run on the phone. 10 are parked (KIV) and sit at the bottom.</p>
+<h1>65 tickets open</h1>
+<p class="lede">Across 12 maps. <b>30 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 16 are waiting on another ticket first. <b>11 are already built</b> and owe nothing but a run on the phone. 10 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">66</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n">65</span><span class="stamp l">open</span></div>
 <div class="stat"><span class="n mint">28</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">12</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n mint">11</span><span class="stamp l">built</span></div>
 <div class="stat"><span class="n amber">16</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">30</span><span class="stamp l">your call</span></div>
 <div class="stat"><span class="n mint">14</span><span class="stamp l">still to build</span></div>
@@ -199,13 +199,12 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>wake-word</h2>
-<span class="counts"><span class="k">7</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k mint">2</span> built<span class="sep">&middot;</span><span class="k amber">3</span> blocked<span class="sep">&middot;</span><span class="dim">of 12 tickets</span></span>
-<span class="bar"><i style="flex:4"></i><b style="flex:3"></b></span>
+<span class="counts"><span class="k">6</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k mint">1</span> built<span class="sep">&middot;</span><span class="k amber">3</span> blocked<span class="sep">&middot;</span><span class="dim">of 12 tickets</span></span>
+<span class="bar"><i style="flex:3"></i><b style="flex:3"></b></span>
 </header>
 <ul class="tl">
 <li class="t is-build" data-type="build" data-state="ready"><span class="num">03</span><span class="body"><span class="tt">What always-on Vosk actually costs the A25 in a day</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
 <li class="t is-decide" data-type="decide" data-state="ready"><span class="num">05</span><span class="body"><span class="tt">Who owns the microphone, and what yields to what?</span></span><span class="chip c-grilling">decide</span><span class="state">ready</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">08</span><span class="body"><span class="tt">The wake word cannot tell silence from a quiet room</span><span class="det">BLOCKED ON A DECISION 2026-08-20. The ticket claimed the fix was to apply GeminiLiveSession&#x27;s existing pattern. That is not possible: Vosk SpeechService owns its AudioRecord privately with no getter, so there is no session id to match on. Needs Kevin&#x27;s call between a real refactor and a weaker signal.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">12</span><span class="body"><span class="tt">Deaf in the Jeep, fine outside it</span><span class="det">Built 2026-08-20 together with ticket 08. The engine now opens VOICE_COMMUNICATION with hardware effects, confirmed in logcat on the A25. UNVERIFIED in the actual Jeep - that needs a drive.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-decide is-blocked" data-type="decide" data-state="blocked"><span class="num">04</span><span class="body"><span class="tt">What drain is acceptable, and what happens when it is not met?</span></span><span class="chip c-grilling">decide</span><span class="state">waiting on #03</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">06</span><span class="body"><span class="tt">Prove hey-name fires on the A25, screen off, on battery</span><span class="det">Step 1 CONFIRMED on the A25 2026-08-20 by Kevin: he said hey alfred, it went to listening. Steps 2-4 (screen off on battery, survives a call/Spotify/live turn, name follows the profile) are untouched.</span></span><span class="chip c-task">build</span><span class="state">waiting on #01, #02, #05</span></li>

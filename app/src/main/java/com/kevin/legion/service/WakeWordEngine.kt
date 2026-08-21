@@ -19,11 +19,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import org.vosk.Model
@@ -53,6 +56,15 @@ object WakeWordEngine {
     // 0.2s of audio per read, matching the cadence Vosk's own SpeechService used, so the
     // recognizer sees the same shaped chunks it always did.
     private const val BUFFER_SECONDS = 0.2f
+    // One read is ~200ms, so a second is five of them. Bounded rather than indefinite: a wedged
+    // audio driver must not deadlock the caller, which includes the wake-trigger path handing the
+    // microphone to the live session.
+    private const val CAPTURE_JOIN_TIMEOUT_MS = 1_000L
+    // Consecutive watchdog ticks (500ms each) the capture may read as silenced before the engine
+    // tears it down and tries again. Three is ~1.5s: long enough that an ordinary handoff settles
+    // on its own without a pointless rebuild, short enough that the driver does not spend a minute
+    // talking to something that stopped listening.
+    private const val SILENCED_TICKS_BEFORE_REACQUIRE = 3
 
     // A single utterance produces several partial results plus a final one; without a
     // floor between triggers, one "hey <name>" would fire ACTION_TALK repeatedly before
@@ -175,6 +187,7 @@ object WakeWordEngine {
         targetWords = newWords
         // `record != null` is the post-refactor equivalent of the old `speechService != null`:
         // it means capture is actually open right now, rather than paused for a conversation.
+        Log.d(TAG, "refresh: rebuilding grammar, capture open=" + (record != null))
         if (record != null) {
             releaseSpeechService()
             beginListening(loadedModel, appContext)
@@ -452,13 +465,29 @@ object WakeWordEngine {
         recordingCallback = null
         _silenced.value = false
 
-        captureJob?.cancel()
+        // STOP, then JOIN, then release - in that order, and the join is not optional.
+        //
+        // Caught on the A25 the first time the new silence detector ran (2026-08-20): the engine
+        // opened a second AudioRecord 8s after the first, on the ACTION_CAR_SWITCHED grammar
+        // rebuild, and the NEW record came up silenced because the OLD one was still holding the
+        // microphone. Cancelling a coroutine does not wait for it; the read loop was still parked
+        // inside AudioRecord.read() on a record we had already released, so the platform still saw
+        // a live client and arbitrated against us.
+        //
+        // Vosk's SpeechService did not have this bug - its stop() joins the recognizer thread - so
+        // this was introduced by taking ownership of the capture loop, and it is exactly the
+        // "running but deaf" failure this engine keeps producing. stop() first is what makes the
+        // join fast: it forces the in-flight read() to return instead of blocking out its buffer.
+        Log.d(TAG, "releaseSpeechService: hadRecord=" + (record != null) + " hadJob=" + (captureJob != null))
+        val job = captureJob
         captureJob = null
-
         record?.let { r ->
             runCatching { if (r.recordingState == AudioRecord.RECORDSTATE_RECORDING) r.stop() }
-            runCatching { r.release() }
         }
+        runCatching {
+            runBlocking { withTimeoutOrNull(CAPTURE_JOIN_TIMEOUT_MS) { job?.cancelAndJoin() } }
+        }
+        record?.let { r -> runCatching { r.release() } }
         record = null
 
         effects.forEach { runCatching { it.release() } }
@@ -480,15 +509,45 @@ object WakeWordEngine {
     private fun startWatchdog(loadedModel: Model, context: Context) {
         watchdogJob = scope?.launch {
             var pausedForConversation = false
+            var silencedTicks = 0
             while (isActive) {
                 delay(WATCHDOG_INTERVAL_MS)
                 val busy = ConversationState.isBusy
                 if (busy && !pausedForConversation) {
                     pausedForConversation = true
+                    Log.d(TAG, "watchdog: pausing for conversation")
                     releaseSpeechService()
+                    silencedTicks = 0
                 } else if (!busy && pausedForConversation) {
                     pausedForConversation = false
+                    Log.d(TAG, "watchdog: resuming after conversation")
                     beginListening(loadedModel, context)
+                    silencedTicks = 0
+                } else if (!busy && record != null && _silenced.value) {
+                    // Found on the A25, 2026-08-20, and only visible because the silence detector
+                    // existed to report it: resuming here reopened the microphone while the live
+                    // session was STILL holding it, and the fresh capture came up silenced and
+                    // stayed that way. ConversationState.isBusy going false is not the same fact as
+                    // "the microphone is free" - the socket parks warm and lets go slightly later.
+                    //
+                    // So the wake word would go permanently deaf after the FIRST conversation of
+                    // every launch, including the greeting that speaks on startup, and look
+                    // completely normal doing it. That is very likely why it never fired in the
+                    // Jeep while working in a driveway: a driveway test is often the first thing
+                    // after launch, and a drive is not.
+                    //
+                    // Re-acquire rather than wait for a signal from the other engine. It fixes any
+                    // app taking the microphone, not only ours, and it needs no coupling between
+                    // the two.
+                    silencedTicks++
+                    if (silencedTicks >= SILENCED_TICKS_BEFORE_REACQUIRE) {
+                        silencedTicks = 0
+                        Log.w(TAG, "watchdog: still silenced - re-acquiring the microphone")
+                        releaseSpeechService()
+                        beginListening(loadedModel, context)
+                    }
+                } else if (!_silenced.value) {
+                    silencedTicks = 0
                 }
             }
         }
