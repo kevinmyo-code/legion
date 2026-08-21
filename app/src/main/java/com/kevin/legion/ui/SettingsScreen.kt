@@ -1,8 +1,13 @@
 package com.kevin.legion.ui
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -36,6 +41,8 @@ import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.personaFor
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.ledger.LedgerController
+import com.kevin.legion.location.BackgroundLocationAccess
+import com.kevin.legion.location.LocationAccessState
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.service.AssistantIgnition
@@ -138,6 +145,17 @@ fun SettingsScreen(
     var sitrepScheduleStatus by remember { mutableStateOf("No schedule set - the sitrep is askable any time, but never fires on its own.") }
     var canSeeCaller by remember { mutableStateOf(false) }
     var canAnswerCalls by remember { mutableStateOf(false) }
+    // Background location (`.scratch/location-intelligence/issues/01-background-location.md`,
+    // settled decision 11) - three-state resolution, re-read on every resume same as the call
+    // permissions above, because the fix for a permanently-denied background grant is a trip to
+    // system Settings and back, not a re-request from inside the app.
+    var locationAccess by remember { mutableStateOf(BackgroundLocationAccess.current(context)) }
+    // Set only inside requestBackgroundLocation's own callback below, right after a real denial -
+    // NOT recomputed on resume, because shouldShowRequestPermissionRationale reads false both
+    // "never asked" and "asked and permanently denied", and recomputing it blind on every resume
+    // would offer the Settings shortcut to a driver who has never even seen the background dialog
+    // once. See LocationAccessRow's onGrant wiring below for where this is consumed.
+    var offerLocationAppSettings by remember { mutableStateOf(false) }
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
     var hasKey by remember { mutableStateOf(GeminiKeyProvider.hasKey()) }
     var driveConnected by remember { mutableStateOf(SyncCapability.syncAvailable(context)) }
@@ -231,6 +249,11 @@ fun SettingsScreen(
         canSeeCaller = CallerId.hasCallLogPermission(context) &&
             CallerId.hasContactsPermission(context)
         canAnswerCalls = CallActions.hasPermission(context)
+        val newLocationAccess = BackgroundLocationAccess.current(context)
+        // Granted wipes the "offer Settings" flag - a driver who fixed it in system Settings and
+        // came back should see a clean GRANT-less row, not a stale settings shortcut.
+        if (newLocationAccess == LocationAccessState.Granted) offerLocationAppSettings = false
+        locationAccess = newLocationAccess
     }
 
     // Caller ID + voice answer/decline. Asked for as ONE dialog rather than three: they are one
@@ -242,6 +265,51 @@ fun SettingsScreen(
     ) { _ ->
         canSeeCaller = CallerId.hasCallLogPermission(context) && CallerId.hasContactsPermission(context)
         canAnswerCalls = CallActions.hasPermission(context)
+    }
+
+    // Background location, second half of the two-step chain (ticket 01's rule 1: foreground must
+    // be granted FIRST, in its own prompt - Android refuses to grant background otherwise). Fires
+    // ONLY out of requestForegroundLocation below, never launched directly by a tap on the row.
+    val requestBackgroundLocation = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        locationAccess = BackgroundLocationAccess.current(context)
+        offerLocationAppSettings = if (granted) {
+            false
+        } else {
+            // The exact test the ticket specifies: a real denial (not just "haven't asked yet")
+            // where the system itself says it will not show a rationale-eligible dialog again -
+            // that is Android's own signal that the ONLY way forward is system Settings.
+            // findActivity() rather than `context as? Activity`: the cast is correct TODAY, because
+            // LocalContext.current under MainActivity's setContent is the Activity itself and
+            // LegionTheme/LegionShell wrap composition rather than the Context. But it is an
+            // assumption about a chain someone could lengthen later, and its failure is SILENT -
+            // a wrapped context makes this expression `null == false`, so the Settings shortcut
+            // simply never appears and nothing reports why. Walking the wrapper chain removes the
+            // assumption instead of documenting it.
+            context.findActivity()?.shouldShowRequestPermissionRationale(
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+            ) == false
+        }
+    }
+
+    // Background location, first half: fine/coarse together, same "one feature, one dialog" shape
+    // as requestCallPermissions above. Chains straight into the background request the moment
+    // foreground lands - a driver who just said yes to "while using the app" is mid-thought about
+    // location, not somewhere else in the settings screen, so asking the follow-up immediately
+    // (rather than waiting for a second tap on the row) keeps the two-step flow feeling like one
+    // decision instead of two. Below API 30 ACCESS_BACKGROUND_LOCATION does not need a runtime ask
+    // at all (foreground access already implies background), so the chain is skipped there and
+    // BackgroundLocationAccess.current will read Granted directly off the foreground grant.
+    val requestForegroundLocation = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { granted ->
+        locationAccess = BackgroundLocationAccess.current(context)
+        val foregroundGranted = granted[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            granted[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (foregroundGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            requestBackgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
     }
 
     // Step 2 of the chain: RECORD_AUDIO. Only reached once POST_NOTIFICATIONS
@@ -491,6 +559,45 @@ fun SettingsScreen(
                 },
             )
 
+            Spacer(Modifier.height(8.dp))
+            LocationAccessRow(
+                state = locationAccess,
+                onGrant = {
+                    when (locationAccess) {
+                        // No location at all yet - start the chain at the beginning. The
+                        // background follow-up fires on its own out of requestForegroundLocation's
+                        // callback once this lands, so there is nothing else to do here.
+                        LocationAccessState.None -> requestForegroundLocation.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                            )
+                        )
+                        // Foreground already granted - either retry the background dialog, or, if
+                        // the system has already told us (via shouldShowRequestPermissionRationale
+                        // returning false after a real denial) that it will not show one again,
+                        // send the driver straight to the app's own Settings page where "Allow all
+                        // the time" actually lives.
+                        LocationAccessState.ForegroundOnly -> {
+                            if (offerLocationAppSettings) {
+                                context.startActivity(
+                                    Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.fromParts("package", context.packageName, null),
+                                    )
+                                )
+                            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                requestBackgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                            }
+                        }
+                        // Already granted - the row hides its own button in this state, so this
+                        // branch should be unreachable, but it's a no-op rather than a crash if it
+                        // ever is (a stray tap racing a resume re-read, say).
+                        LocationAccessState.Granted -> {}
+                    }
+                },
+            )
+
             WakeWordRow(
                 enabled = wakeWordOn,
                 companionName = activeName,
@@ -537,4 +644,19 @@ fun SettingsScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+/**
+ * The [Activity] hosting this composition, unwrapping any [android.content.ContextWrapper] chain -
+ * or null if there genuinely is not one.
+ *
+ * Exists because `LocalContext.current as? Activity` is an assumption about how deep the context is
+ * wrapped, and **its failure mode is silence**: the cast yields null, the caller reads a `false`
+ * that means "no rationale needed" rather than "could not check", and a permission shortcut quietly
+ * stops appearing. This is the standard AndroidX pattern and it cannot be wrong.
+ */
+internal tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

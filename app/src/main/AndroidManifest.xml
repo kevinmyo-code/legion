@@ -11,6 +11,29 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- Background location (`.scratch/location-intelligence/map.md`, settled decision 11). Kept
+         separate from the foreground pair above because Android enforces the same split at grant
+         time: this can only be requested AFTER foreground is already granted, and from API 30 the
+         system will not even offer it in a normal runtime dialog - the driver is sent to Settings'
+         "Allow all the time" picker by hand. See `location/BackgroundLocationAccess.kt` for the
+         three-state resolution this makes necessary and `ui/SettingsRows.kt`'s LocationAccessRow
+         for how a refusal is worded rather than hidden.
+
+         WHY IT'S NEEDED, NOT JUST WHY IT'S ANNOYING: geofences (place reminders, garage-on-approach)
+         are registered with the OS and do not fire at all without this - `GeofencingClient`
+         silently drops PendingIntents the app has no standing background permission to receive.
+         Hazard checks (NWS/USGS/NIFC raises) are worse without it in a quieter way: they'd only run
+         while LEGION is in the foreground, which is precisely useless for a category whose whole
+         point is acting when Kevin is NOT looking at his phone - a tornado warning that only reaches
+         him if he happens to have the app open is not a safety feature.
+
+         Costs a real battery conversation (map decision 16 notes the Samsung sleeping-apps risk and
+         accepts it knowingly) and a worse permission-dialog flow than any other permission in this
+         file. **Sideloaded, never Play-listed** (same posture as READ_CALL_LOG above) - Play's
+         background-location review policy, which would otherwise require a declared-use form and
+         justification video, does not apply to an app that is never submitted. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />

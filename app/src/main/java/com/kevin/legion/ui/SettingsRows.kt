@@ -413,6 +413,61 @@ fun CallHandlingRow(
 }
 
 /**
+ * Background location access (`.scratch/location-intelligence/issues/01-background-location.md`,
+ * settled decision 11) - `location.LocationAccessState`'s three states, worded honestly rather
+ * than collapsed into a switch. Shape lifted straight from [CallHandlingRow] per the ticket's own
+ * instruction to match it: `Surface` + `tonalElevation`, title in `bodyMedium`, status in
+ * [LegionType.stamp]/[sem.faint], one `TextButton` when there's still something to grant.
+ *
+ * **[LocationAccessState.ForegroundOnly] is not an error state and the copy says so.** Declining
+ * "Allow all the time" is a real, reasonable choice - most people do, the first time they're asked
+ * for it - and the row's job is to report what that choice actually costs (geofences and hazard
+ * checks only run while the app is open), never to shame the choice or hide the cost. This is the
+ * exact same "refusal degrades in words, never silently" posture [CallHandlingRow] already carries.
+ *
+ * `onGrant` is a single callback regardless of state - the caller ([SettingsScreen]) is the one
+ * that knows whether the next tap should launch the foreground `RequestMultiplePermissions` dialog
+ * or the background follow-up or send the driver to the app's Settings page, because that decision
+ * needs `shouldShowRequestPermissionRationale`, which only an `Activity` can answer. This row stays
+ * plain UI with no `Context` in it, same split as every other row here.
+ */
+@Composable
+fun LocationAccessRow(state: com.kevin.legion.location.LocationAccessState, onGrant: () -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Location",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    when (state) {
+                        is com.kevin.legion.location.LocationAccessState.Granted ->
+                            "On - place reminders and hazard alerts work even with the app closed."
+                        is com.kevin.legion.location.LocationAccessState.ForegroundOnly ->
+                            "Partly on - place reminders and hazard alerts only work while LEGION " +
+                                "is open. \"Allow all the time\" is what fixes that."
+                        is com.kevin.legion.location.LocationAccessState.None ->
+                            "Off - place reminders and hazard alerts can't work at all."
+                    },
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                )
+            }
+            if (state != com.kevin.legion.location.LocationAccessState.Granted) {
+                TextButton(onClick = onGrant) { Text("GRANT") }
+            }
+        }
+    }
+}
+
+/**
  * The custom wake word ([com.kevin.legion.service.WakeWordEngine]), reachable by a human for the
  * first time. `.scratch/wake-word/issues/02-the-settings-toggle.md`: the engine has been complete
  * and wired into [com.kevin.legion.service.AriaForegroundService] since the port, but
