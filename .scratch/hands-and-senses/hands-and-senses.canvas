@@ -219,6 +219,16 @@
       "width": 320,
       "height": 110,
       "color": "5"
+    },
+    {
+      "id": "ad4940ad7bc2bb27",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/22-build-the-sitrep.md",
+      "x": 520,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -262,6 +272,13 @@
       "fromNode": "9664d7f07e231620",
       "fromSide": "right",
       "toNode": "2fc2e13c0f7d29d7",
+      "toSide": "left"
+    },
+    {
+      "id": "c7e8ef9b95d154d3",
+      "fromNode": "f0c0f061b206e930",
+      "fromSide": "right",
+      "toNode": "ad4940ad7bc2bb27",
       "toSide": "left"
     }
   ]

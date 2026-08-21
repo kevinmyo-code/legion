@@ -521,6 +521,12 @@ asking for the next map every session. The repo root IS the vault; nothing moved
   ```
 
   It rewrites ticket and map frontmatter, one `.canvas` dependency graph per map, and `vault/Board.md`.
+- **A resolved decision ticket must leave a BUILD ticket behind, created at resolution time.** The
+  wiki lists only OPEN tickets, so resolving a decision makes it vanish - and a fully-decided,
+  entirely unbuilt feature then looks exactly like finished work. It happened within an hour of the
+  sitrep being resolved on 2026-08-21: Kevin asked "where is the daily brief? was it built?" and it
+  had not been. Proactive mode escaped the same trap only because its build happened the same night.
+  **If a decision authorises code, open the build ticket in the same commit that resolves it.**
 - **Never hand-edit `vault/Board.md` or a `.canvas`.** Edit the ticket, re-run the script.
 - **`ready: true` on a ticket means open with every blocker resolved, AND not parked, AND still
   owing code.** It is computed, so it goes stale the moment a status changes without a re-run. Treat
