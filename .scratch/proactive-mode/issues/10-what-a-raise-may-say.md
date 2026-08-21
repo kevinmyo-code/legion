@@ -161,3 +161,22 @@ Settled by [ticket 02](02-trigger-engine.md)'s hybrid: deterministic evaluation 
 speak and gathers the facts, and the model receives them already assembled. Letting a raise call
 `read_calendar` mid-greeting adds a round trip that can hang, and hands the model back the decision
 about what to look at - which is the half the hybrid exists to keep away from it.
+
+## Built - 2026-08-21
+
+**Status stays `resolved`, not `built`.** This was a DECISION ticket and the decision is what it
+owed; the code is recorded here so the two are not confused. `built` on this map means a ticket
+whose own deliverable was code and which is waiting on hardware.
+
+Landed in `f9201c7` (Room v28 storage), `2243b85` (typed raise, gate, register clause, settings
+rows) and `f1eff72` (delivery). Suite green at 1794 tests.
+
+**Nothing in this effort has run on the phone**, and these are the parts a suite cannot reach:
+
+- whether the assistant actually obeys `PROACTIVE_CLAUSE` - nothing inspects the spoken audio, the
+  same limit `CANNOT_CLAUSE` documents about itself;
+- whether screen-on plus the live-calendar check picks the right moments in real use;
+- whether the Room-backed switches and the raise history survive the `START_STICKY` restart they
+  exist to survive;
+- whether a fired reminder now delivers exactly once - a change to behaviour Kevin already had,
+  rather than a pure addition.

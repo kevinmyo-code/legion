@@ -22,12 +22,23 @@ Destination is DECISIONS, same shape as its parent map. **One exception: [the ch
 point](issues/01-one-gate-not-three.md) carries its own build spec** - it is a prerequisite rather
 than a feature, and nothing else on this map is honest until it lands.
 
-**REACHED, 2026-08-21.** All eight decision tickets are resolved and the two open tickets are both
-`built`, owing only a run on the phone. Twenty-one settled decisions. **Nothing on this map is built
-except the choke point, the ambient retirement, and the concierge rename** - the trigger engine, the
-five switches, the cap, the quiet hours, the typed raise object and the notification fallback are all
-decided and unwritten. The build wants its own map; the shopping list is at the foot of
-[ticket 02](issues/02-trigger-engine.md).
+**REACHED, 2026-08-21, and then BUILT the same day.** All eight decision tickets resolved,
+twenty-one settled decisions, and the code landed in three commits: `f9201c7` (Room v28 - the five
+category switches and a raise history that survives a restart), `2243b85` (the typed
+`ProactiveRaise`, the full gate, `PROACTIVE_CLAUSE`, the settings rows) and `f1eff72` (delivery -
+the proactive channel, notify-when-it-cannot-speak, and the reminder echo fix). Suite green at 1794.
+
+**Nothing here has run on the phone.** What that leaves unverified is not incidental: whether the
+assistant obeys the register clause (nothing inspects the spoken audio), whether screen-on plus the
+live-calendar check picks the right moments, whether the switches and the raise history really do
+survive the `START_STICKY` restart they exist to survive, and whether a fired reminder now delivers
+exactly once - which is a change to behaviour Kevin already had, not a pure addition.
+
+**Still unbuilt, deliberately: the RULES themselves.** The engine, the switches, the budget and the
+delivery layer all exist; what does not is a single Wellbeing or Digest raise. Those two categories
+ship switched off and say "Nothing uses this yet" on their own rows. The founding line - *"it's past
+10pm, perhaps rest is in order"* - is now legal by construction and still unwritten, because its
+content belongs to the health and location maps rather than to this one.
 
 ## Notes
 

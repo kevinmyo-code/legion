@@ -102,3 +102,22 @@ here and would not be for anything the app asserts aloud.
 [Ticket 07](07-scheduling-research.md) already established what the OS does on its own. This ticket
 claims no credit for it: quiet hours exist so the app behaves correctly on a phone that is awake at
 2am, not to duplicate what Doze would have enforced on one that is not.
+
+## Built - 2026-08-21
+
+**Status stays `resolved`, not `built`.** This was a DECISION ticket and the decision is what it
+owed; the code is recorded here so the two are not confused. `built` on this map means a ticket
+whose own deliverable was code and which is waiting on hardware.
+
+Landed in `f9201c7` (Room v28 storage), `2243b85` (typed raise, gate, register clause, settings
+rows) and `f1eff72` (delivery). Suite green at 1794 tests.
+
+**Nothing in this effort has run on the phone**, and these are the parts a suite cannot reach:
+
+- whether the assistant actually obeys `PROACTIVE_CLAUSE` - nothing inspects the spoken audio, the
+  same limit `CANNOT_CLAUSE` documents about itself;
+- whether screen-on plus the live-calendar check picks the right moments in real use;
+- whether the Room-backed switches and the raise history survive the `START_STICKY` restart they
+  exist to survive;
+- whether a fired reminder now delivers exactly once - a change to behaviour Kevin already had,
+  rather than a pure addition.
