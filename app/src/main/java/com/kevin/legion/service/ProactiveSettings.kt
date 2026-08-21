@@ -117,4 +117,25 @@ object ProactiveSettings {
         _master.value = true
         _categories.value = ProactiveCategory.entries.associateWith { false }
     }
+
+    /**
+     * Test seam: sets the switches directly and marks them loaded, so [load] short-circuits and
+     * **no Room call happens at all**.
+     *
+     * Exists because of a regression this file caused on 2026-08-21. `ProactiveBus.speakIfAllowed`
+     * did no database work before the switches landed; once it called [load], the existing
+     * Robolectric `ProactiveBusTest` started failing with `IllegalStateException: Illegal connection
+     * pointer` out of Robolectric's legacy SQLite shim. **That is not flakiness and it is not a
+     * pre-existing gap** - it is this file putting a database read inside a gate that used to be
+     * pure, surfacing in the one test that drives the gate end to end.
+     *
+     * The fix is a seam rather than an in-memory database because the thing those tests are about
+     * is the ORDER of the gate's checks, not storage. Anything that genuinely needs the stored value
+     * is covered by [seedFrom], which is pure and takes a `Context` only for SharedPreferences.
+     */
+    internal fun overrideForTest(master: Boolean, on: Set<ProactiveCategory>) {
+        _master.value = master
+        _categories.value = ProactiveCategory.entries.associateWith { it in on }
+        loaded = true
+    }
 }

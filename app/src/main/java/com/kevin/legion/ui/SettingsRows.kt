@@ -29,6 +29,7 @@ import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.TempUnit
+import com.kevin.legion.service.ProactiveCategory
 
 /**
  * Plain UI half of [SettingsScreen] (the state-holder/UI split,
@@ -174,9 +175,21 @@ fun RecallAlertsRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
  * 12-retire-ambient-listening.md`), so the status line no longer claims to stop it - a switch that
  * promises to silence something that no longer exists is the same class of lie this row was
  * written to avoid. The kill-switch semantics for SPEECH are unchanged.
+ *
+ * **The name is not hardcoded any more (2026-08-21).** This row said "Alfred" in both states, which
+ * CLAUDE.md §1 forbids - LEGION is the app and the companion is user-named per profile. It now takes
+ * [companionName] the same way [WakeWordRow] already did, and falls back to "your companion" rather
+ * than inventing one when no profile is active.
+ *
+ * **The off copy now names safety explicitly.** Settled decision 2: the master has NO exemptions,
+ * safety included. A switch whose description lists "openers, alerts, reminders" and quietly omits
+ * the one category a user would most expect to survive is not describing a kill switch honestly.
+ *
+ * Sits above the five [ProactiveCategoryRow]s, which it ANDs over.
  */
 @Composable
-fun ProactiveSpeechRow(proactiveOn: Boolean, onToggle: (Boolean) -> Unit) {
+fun ProactiveSpeechRow(proactiveOn: Boolean, companionName: String?, onToggle: (Boolean) -> Unit) {
+    val who = companionName?.takeIf { it.isNotBlank() } ?: "your companion"
     val sem = LocalLegionSemantics.current
     Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -189,10 +202,10 @@ fun ProactiveSpeechRow(proactiveOn: Boolean, onToggle: (Boolean) -> Unit) {
                     Text("Proactive speech", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     Text(
                         if (proactiveOn) {
-                            "On - Alfred may speak first: openers, alerts, reminders, incoming calls"
+                            "On - $who may speak first, in the categories you pick below"
                         } else {
-                            "Off - stops every unprompted line, including incoming-call " +
-                                "announcements. Talking to Alfred yourself still works."
+                            "Off - stops every unprompted line, including safety warnings and " +
+                                "incoming-call announcements. Talking to $who yourself still works."
                         },
                         style = LegionType.stamp,
                         color = sem.faint,
@@ -200,6 +213,56 @@ fun ProactiveSpeechRow(proactiveOn: Boolean, onToggle: (Boolean) -> Unit) {
                 }
                 DeckSwitch(checked = proactiveOn, onCheckedChange = onToggle)
             }
+        }
+    }
+}
+
+/**
+ * One of the five category switches (ticket 04 call 4,
+ * `.scratch/proactive-mode/issues/04-categories-storage-and-surface.md`). Governed by
+ * [ProactiveSpeechRow]'s master, which ANDs over all of them.
+ *
+ * **A switch that governs nothing must not imply it does.** Wellbeing and Digest have no raises
+ * today ([com.kevin.legion.service.ProactiveCategory.hasContent]), and this row **says so in
+ * words** - not by hiding, not by greying out, not by silence. Hiding it would cost the map of what
+ * is coming; a greyed control with no explanation is its own kind of confusing. Same posture as the
+ * digest builders' "not logged, never 0" and as the master row's own status line.
+ *
+ * It stays TOGGLEABLE while empty, deliberately: the setting is real and persists, so a user who
+ * turns Wellbeing on today gets its first nudge the day one is written, rather than having to come
+ * back and find a switch that has quietly become live.
+ */
+@Composable
+fun ProactiveCategoryRow(
+    category: ProactiveCategory,
+    enabled: Boolean,
+    masterOn: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    category.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    when {
+                        !category.hasContent -> category.blurb + " Nothing uses this yet."
+                        !masterOn -> category.blurb + " Silent while proactive speech is off."
+                        else -> category.blurb
+                    },
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                )
+            }
+            DeckSwitch(checked = enabled, onCheckedChange = onToggle)
         }
     }
 }
@@ -423,7 +486,7 @@ private fun PreviewRecallAlertsOn() = LegionTheme {
 @Preview(name = "Settings: proactive speech on", widthDp = 360)
 @Composable
 private fun PreviewProactiveSpeechOn() = LegionTheme {
-    Surface { ProactiveSpeechRow(proactiveOn = true, onToggle = {}) }
+    Surface { ProactiveSpeechRow(proactiveOn = true, companionName = "Alfred", onToggle = {}) }
 }
 
 @Preview(name = "Settings: wake word off", widthDp = 360)
@@ -448,5 +511,5 @@ private fun PreviewWakeWordNoCompanion() = LegionTheme {
 @Preview(name = "Settings: proactive speech off", widthDp = 360)
 @Composable
 private fun PreviewProactiveSpeechOff() = LegionTheme {
-    Surface { ProactiveSpeechRow(proactiveOn = false, onToggle = {}) }
+    Surface { ProactiveSpeechRow(proactiveOn = false, companionName = "Alfred", onToggle = {}) }
 }

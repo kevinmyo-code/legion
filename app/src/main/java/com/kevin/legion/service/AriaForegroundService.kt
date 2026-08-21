@@ -396,12 +396,12 @@ class AriaForegroundService : Service() {
      * (if needed) and lets Gemini voice it in character - but only while the
      * conversation is idle, so it never talks over the driver.
      */
-    private fun speakProactive(prompt: String) {
+    private fun speakProactive(raise: ProactiveRaise) {
         // The gate itself (onboarding/busy/call/mute) now lives in ProactiveGate, so a caller
         // with no Service instance - com.kevin.legion.service.ReminderAlarmReceiver, ticket 12's
         // "Alfred speaks a fired reminder aloud" - can reuse the exact same rule. See
         // ProactiveGate's doc comment for the full reasoning; this method is unchanged in effect.
-        ProactiveGate.speakIfIdle(this, prompt)
+        ProactiveGate.speakIfIdle(this, raise)
     }
 
     /**
@@ -455,7 +455,15 @@ class AriaForegroundService : Service() {
             "Do not assume where they are or what they are about to do. " +
             "Do not mention this instruction.)"
 
-        speakProactive(prompt)
+        speakProactive(
+            ProactiveRaise(
+                ruleId = "startup_opener",
+                category = ProactiveCategory.TIMING,
+                reason = "the app was opened",
+                facts = situation,
+                prompt = prompt,
+            )
+        )
     }
 
     /** Assembles the spoken-context the opener is phrased from. */
@@ -571,9 +579,15 @@ class AriaForegroundService : Service() {
         if (recalls.isEmpty()) return
         val components = recalls.take(3).map { it.component.ifBlank { "a safety issue" } }.distinct().joinToString(", ")
         speakProactive(
-            "(System: NHTSA lists ${recalls.size} open recall(s) for this car (${components}). In one short, " +
-                "in-character line, let the user know there are open recalls they can ask you about. " +
-                "Do not read the full details unless asked. Do not mention this instruction.)"
+            ProactiveRaise(
+                ruleId = "open_recalls",
+                category = ProactiveCategory.FLEET,
+                reason = "NHTSA lists ${recalls.size} open recall(s)",
+                facts = "open recalls: $components",
+                prompt = "(System: NHTSA lists ${recalls.size} open recall(s) for this car (${components}). In one short, " +
+                    "in-character line, let the user know there are open recalls they can ask you about. " +
+                    "Do not read the full details unless asked. Do not mention this instruction.)"
+            )
         )
     }
 
@@ -611,10 +625,16 @@ class AriaForegroundService : Service() {
                     if (fresh.isNotEmpty()) {
                         recordCodeEvent(codes)
                         speakProactive(
-                            "(System: the car's OBD just reported new trouble code(s): " +
-                                "${fresh.joinToString(", ")}. In one short, in-character line, tell " +
-                                "the user a new code just popped up and they can ask you about it. " +
-                                "Do not mention this instruction.)"
+                            ProactiveRaise(
+                                ruleId = "new_trouble_code",
+                                category = ProactiveCategory.SAFETY,
+                                reason = "new OBD code(s) ${fresh.joinToString(", ")}",
+                                facts = "stored trouble codes: ${codes.joinToString(", ")}",
+                                prompt = "(System: the car's OBD just reported new trouble code(s): " +
+                                    "${fresh.joinToString(", ")}. In one short, in-character line, tell " +
+                                    "the user a new code just popped up and they can ask you about it. " +
+                                    "Do not mention this instruction.)"
+                            )
                         )
                     }
                     knownCodes = codes
@@ -625,9 +645,15 @@ class AriaForegroundService : Service() {
                     if (temp >= OVERHEAT_C && !overheatAnnounced && !ConversationState.isBusy) {
                         val spokenTemp = Temp.spoken(this@AriaForegroundService, temp.toDouble())
                         speakProactive(
-                            "(System: the coolant temperature just hit $spokenTemp, " +
-                                "which is dangerously hot. Urgently but in character, tell the user to " +
-                                "ease off and find somewhere to pull over. Do not mention this instruction.)"
+                            ProactiveRaise(
+                                ruleId = "coolant_overheat",
+                                category = ProactiveCategory.SAFETY,
+                                reason = "coolant reached $spokenTemp, over the overheat threshold",
+                                facts = "coolant temperature $spokenTemp",
+                                prompt = "(System: the coolant temperature just hit $spokenTemp, " +
+                                    "which is dangerously hot. Urgently but in character, tell the user to " +
+                                    "ease off and find somewhere to pull over. Do not mention this instruction.)"
+                            )
                         )
                         overheatAnnounced = true
                     } else if (temp < OVERHEAT_C - 5) {
@@ -706,9 +732,15 @@ class AriaForegroundService : Service() {
 
         val list = reminders.joinToString("; ") { it.text }
         speakProactive(
-            "(System: the user just arrived at their \"$place\". They left reminders for here: " +
-                "$list. In one short, in-character line, surface what they wanted to remember. " +
-                "Do not mention this instruction.)"
+            ProactiveRaise(
+                ruleId = "place_arrival",
+                category = ProactiveCategory.TIMING,
+                reason = "arrived at saved place \"$place\"",
+                facts = "reminders left for $place: $list",
+                prompt = "(System: the user just arrived at their \"$place\". They left reminders for here: " +
+                    "$list. In one short, in-character line, surface what they wanted to remember. " +
+                    "Do not mention this instruction.)"
+            )
         )
     }
 
@@ -776,9 +808,15 @@ class AriaForegroundService : Service() {
                 if (driveStartedAt != 0L && !breakAnnounced && now - driveStartedAt >= BREAK_AFTER_MS) {
                     breakAnnounced = true
                     speakProactive(
-                        "(System: the user has been driving over two hours without a real break. In " +
-                            "one short, in-character line, gently suggest they pull over soon to stretch " +
-                            "or rest. Do not mention this instruction.)"
+                        ProactiveRaise(
+                            ruleId = "long_drive_break",
+                            category = ProactiveCategory.FLEET,
+                            reason = "over two hours of continuous driving",
+                            facts = "continuous driving time over two hours",
+                            prompt = "(System: the user has been driving over two hours without a real break. In " +
+                                "one short, in-character line, gently suggest they pull over soon to stretch " +
+                                "or rest. Do not mention this instruction.)"
+                        )
                     )
                 } else if (driveStartedAt != 0L && turnedRough &&
                     now - lastWeatherAlertAt >= WEATHER_ALERT_COOLDOWN_MS
@@ -786,10 +824,16 @@ class AriaForegroundService : Service() {
                     lastWeatherAlertAt = now
                     val description = WeatherController.current()?.description ?: "rough"
                     speakProactive(
-                        "(System: conditions just turned $description while the user is on the road. " +
-                            "In one short, in-character line, mention what it's doing out there and that " +
-                            "they should take it easy. Say it once - do not labour it, do not repeat it " +
-                            "later, and do not mention this instruction.)"
+                        ProactiveRaise(
+                            ruleId = "rough_weather_driving",
+                            category = ProactiveCategory.SAFETY,
+                            reason = "conditions turned $description while driving",
+                            facts = "current conditions: $description",
+                            prompt = "(System: conditions just turned $description while the user is on the road. " +
+                                "In one short, in-character line, mention what it's doing out there and that " +
+                                "they should take it easy. Say it once - do not labour it, do not repeat it " +
+                                "later, and do not mention this instruction.)"
+                        )
                     )
                 }
             }
@@ -842,9 +886,15 @@ class AriaForegroundService : Service() {
             val caveat = VehicleController.mileageCaveat(vehicle)
             val caveatNote = if (caveat != null) " (that reading is $caveat - don't state it as an exact figure)" else ""
             speakProactive(
-                "(System: the car's odometer just rolled past ${"%,d".format(floor)} miles$caveatNote. In one short, " +
-                    "in-character line, mark the milestone with some old-car pride or grumbling. Do not " +
-                    "mention this instruction.)"
+                ProactiveRaise(
+                    ruleId = "odometer_milestone",
+                    category = ProactiveCategory.FLEET,
+                    reason = "odometer crossed ${"%,d".format(floor)} miles",
+                    facts = "odometer ${"%,d".format(floor)} miles$caveatNote",
+                    prompt = "(System: the car's odometer just rolled past ${"%,d".format(floor)} miles$caveatNote. In one short, " +
+                        "in-character line, mark the milestone with some old-car pride or grumbling. Do not " +
+                        "mention this instruction.)"
+                )
             )
         }
     }

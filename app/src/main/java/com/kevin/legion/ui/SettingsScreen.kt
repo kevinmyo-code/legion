@@ -52,6 +52,8 @@ import com.kevin.legion.util.Temp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.kevin.legion.service.ProactiveCategory
+import com.kevin.legion.service.ProactiveSettings
 
 /**
  * `settings` tab. Owns the assistant ignition toggle (ticket 07 resolution
@@ -112,7 +114,13 @@ fun SettingsScreen(
     // The proactive master switch (`.scratch/proactive-mode/issues/01-one-gate-not-three.md`) -
     // stored inverted (ProactivePreferences.muted) but shown as "Proactive speech" so the row reads
     // as what it does, not as a double negative.
-    var proactiveOn by remember { mutableStateOf(!ProactivePreferences.isMuted(context)) }
+    // Seeded false and corrected by ProactiveSettings.load below, rather than read from the old
+    // ProactivePreferences: that key is now a MIGRATION SOURCE only (see ProactiveSettings), and
+    // reading it here would show a stale answer the moment the two disagree.
+    var proactiveOn by remember { mutableStateOf(true) }
+    var proactiveCategories by remember {
+        mutableStateOf<Map<ProactiveCategory, Boolean>>(emptyMap())
+    }
     // `.scratch/wake-word/issues/02-the-settings-toggle.md`: WakeWordPreferences.setEnabled had
     // zero callers, so the engine could never start. This row's handler is now its only writer.
     var wakeWordOn by remember { mutableStateOf(WakeWordPreferences.isEnabled(context)) }
@@ -179,7 +187,11 @@ fun SettingsScreen(
         hasMediaAccess = NowPlayingController.hasAccess(context)
         recallAlertsOn = DebugSettings.recallAlertsEnabled(context)
         temperatureUnit = Temp.unit(context)
-        proactiveOn = !ProactivePreferences.isMuted(context)
+        scope.launch {
+            ProactiveSettings.load(context)
+            proactiveOn = ProactiveSettings.master.value
+            proactiveCategories = ProactiveSettings.categories.value
+        }
         wakeWordOn = WakeWordPreferences.isEnabled(context)
     }
 
@@ -339,11 +351,28 @@ fun SettingsScreen(
             Spacer(Modifier.height(8.dp))
             ProactiveSpeechRow(
                 proactiveOn = proactiveOn,
+                companionName = activeName,
                 onToggle = { on ->
-                    ProactivePreferences.setMuted(context, !on)
                     proactiveOn = on
+                    scope.launch { ProactiveSettings.setMaster(context, on) }
                 },
             )
+
+            // The five category switches (ticket 04). They render whether or not the master is on -
+            // a user turning proactive back on should find the choices they already made, not a
+            // blank slate - and each row says in words when its category has no content yet.
+            ProactiveCategory.entries.forEach { category ->
+                Spacer(Modifier.height(4.dp))
+                ProactiveCategoryRow(
+                    category = category,
+                    enabled = proactiveCategories[category] == true,
+                    masterOn = proactiveOn,
+                    onToggle = { on ->
+                        proactiveCategories = proactiveCategories + (category to on)
+                        scope.launch { ProactiveSettings.setCategory(context, category, on) }
+                    },
+                )
+            }
 
             // `.scratch/wake-word/issues/02-the-settings-toggle.md`. The handler is the ONLY writer
             // of WakeWordPreferences, matching AssistantIgnition's single-writer discipline.

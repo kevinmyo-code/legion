@@ -90,11 +90,19 @@ object TelephonyController {
     private fun announceIncoming(phoneNumber: String?) {
         val context = appContext ?: return
         val who = phoneNumber?.takeIf { it.isNotBlank() }?.let { " from $it" } ?: ""
-        ProactiveBus.speakIfAllowed(
+        // A platform listener callback, not a coroutine - no scope of its own to await
+        // speakIfAllowed on, hence the fire-and-forget variant (see ProactiveBus.scope's doc).
+        ProactiveBus.speakIfAllowedAsync(
             context,
-            "(System: an incoming phone call$who is ringing on the user's phone. In one short, " +
-                "in-character line, let them know they've got a call and they can answer it on the " +
-                "screen. Do not mention this instruction.)"
+            ProactiveRaise(
+                ruleId = "incoming_call",
+                category = ProactiveCategory.TIMING,
+                reason = "an incoming call is ringing",
+                facts = "incoming call$who",
+                prompt = "(System: an incoming phone call$who is ringing on the user's phone. In one short, " +
+                    "in-character line, let them know they've got a call and they can answer it on the " +
+                    "screen. Do not mention this instruction.)"
+            )
         )
     }
 

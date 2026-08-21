@@ -922,6 +922,47 @@ internal val CANNOT_CLAUSE =
         "sentence later. \"I can't do that\" is always a better answer than a plausible sentence " +
         "about something that never happened. "
 
+/**
+ * How the assistant sounds when NOBODY ASKED IT ANYTHING - ticket 08
+ * (`.scratch/proactive-mode/issues/08-proactive-register.md`), Kevin 2026-08-21.
+ *
+ * **At file scope, exactly where [CANNOT_CLAUSE] sits, and for exactly the same reason.** Ticket 08
+ * named the trap itself: the honesty rules already live inside each persona's own clause, so a
+ * persona written later could simply omit them. Written once here, appended by the resolver, it is
+ * unskippable and it survives a persona nobody has authored yet. **Never per-persona, never in
+ * `Personas.kt`.**
+ *
+ * The whole brief in one line, Kevin 2026-08-16: *"it's past 10pm, perhaps rest is in order."* Dry,
+ * deferential, easy to ignore. It OFFERS rather than instructs.
+ *
+ * **Two clauses here are load-bearing beyond taste, and both are doing a job a checkable rule could
+ * not be made to do:**
+ *
+ *  - *Never reference a previous attempt.* This one is genuinely enforceable, and not by the model:
+ *    a brushed-off rule is suppressed in [com.kevin.legion.service.ProactiveBus] before the raise is
+ *    ever built, so there is no "second time" state in the prompt for the model to leak.
+ *  - *Never characterise how long a goal has gone unattended.* This one is NOT enforceable, and it
+ *    is carrying real weight. Ticket 03 ruled that a nudge about a goal Kevin set and then ignored
+ *    is **permitted**, which moved the useful-versus-guilt line out of the compulsion test and into
+ *    tone. **This sentence is the only thing standing where a checkable rule would otherwise have
+ *    stood**, and a prompt rule is the weakest lever this codebase has - the same limit
+ *    [CANNOT_CLAUSE]'s own doc comment documents about itself. Nothing inspects the spoken audio.
+ *
+ * CLAUDE.md §7's compulsion test is the standing version of the rules this clause voices.
+ */
+internal val PROACTIVE_CLAUSE =
+    "Sometimes you speak first, without being asked. When you do: say ONE short line, never a " +
+        "paragraph. Offer, never instruct - \"perhaps rest is in order\" rather than \"go to " +
+        "bed\". Make it easy to ignore, and let it go the moment they change the subject. " +
+        "Never mention that you have raised something before, never say you are asking again, and " +
+        "never escalate your tone across attempts - if you are speaking, treat it as the first " +
+        "time, because as far as you are concerned it is. Never remark on how long they have been " +
+        "away, how long it has been since they used you, or how much they have or have not done. " +
+        "You may name a goal, its deadline, or its next step; you may never characterise how long " +
+        "it has gone untouched. If they ask why you said something, name the rule and the fact " +
+        "that triggered it in one line - never justify the nudge itself and never guess at their " +
+        "state of mind. "
+
 // 2026-08-20, Kevin: "lets change the ai's system prompts etc and the proactive greeting and stuff
 // from a drive focused to just a general assistant/concierge persona... because im still hearing the
 // ai ask me its a good weather for a drive."
@@ -953,6 +994,7 @@ internal val SHARED_INSTRUCTIONS = ASSISTANT_FRAME + "You have access to real-ti
     "user arrives at a place). Always call the matching tool before claiming you've done " +
     "something - never say you're pulling up music unless you actually called the tool for it. " +
     CANNOT_CLAUSE +
+    PROACTIVE_CLAUSE +
     // 2026-08-18, on-device, from the Android Auto rig: asked about his day, LEGION said Kevin
     // had "a dentist appointment at 3". There is no dentist row anywhere in his real database -
     // zero matches across every text column of every table. It was invented whole.

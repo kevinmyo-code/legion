@@ -67,11 +67,20 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
 
         val list = CarDatabase.getDatabase(context).itemListDao().getById(item.listId)
         val listName = list?.name ?: "your list"
-        ProactiveGate.speakIfIdle(
+        // Already inside a suspend fun with its own scope (goAsync's coroutine), so this calls the
+        // suspending ProactiveBus.speakIfAllowed directly rather than the fire-and-forget variant.
+        // The outcome is unused for now - a later commit wires it into "why did you say that?".
+        ProactiveBus.speakIfAllowed(
             context,
-            "(System: the reminder \"${item.text}\" on $listName just came due. In one short, " +
-                "in-character line, remind the user. A notification has already been posted, so " +
-                "keep this brief. Do not mention this instruction.)",
+            ProactiveRaise(
+                ruleId = "reminder_due",
+                category = ProactiveCategory.TIMING,
+                reason = "reminder \"${item.text}\" came due",
+                facts = "reminder \"${item.text}\" on $listName, due now",
+                prompt = "(System: the reminder \"${item.text}\" on $listName just came due. In one short, " +
+                    "in-character line, remind the user. A notification has already been posted, so " +
+                    "keep this brief. Do not mention this instruction.)",
+            ),
         )
     }
 
