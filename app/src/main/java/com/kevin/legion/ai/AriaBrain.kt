@@ -55,6 +55,10 @@ class AriaBrain private constructor(context: Context) {
     private var geocodeKey: String? = null
     private var geocodeValue: String? = null
 
+    // Coarser cache for whereAndWhen: ~0.01 deg (~1.1km) is plenty for a city name.
+    private var areaKey: String? = null
+    private var areaValue: String? = null
+
     // The static half of the system instruction (persona + rules + date + driver
     // profile + memories) rarely changes, but assembling it hits the DB for
     // memories. Cache the built string so a warm/pre-connected session (which
@@ -264,8 +268,7 @@ class AriaBrain private constructor(context: Context) {
         // 2026-08-07). Naming the gap and pointing at the tool that closes it
         // is the fix; the zone is stated too so nothing has to fall back on
         // UTC as a default.
-        sb.append("\n\nToday's date is $today. The user's timezone is ")
-            .append(ZoneId.systemDefault().id).append(".")
+        sb.append("\n\nToday's date is $today. ").append(whereAndWhen())
         sb.append(" You do NOT have a clock and cannot tell the time on your own. " +
             "Whenever the user asks the time, or the answer depends on it, call the " +
             "get_current_time tool and use what it returns. Never guess a time - a confidently " +
@@ -554,7 +557,7 @@ class AriaBrain private constructor(context: Context) {
         val zone = ZoneId.systemDefault()
         val stamp = java.time.ZonedDateTime.now(zone)
             .format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy 'at' h:mm a"))
-        sb.appendSection("Right now it is $stamp (${zone.id}). Call get_current_time rather " +
+        sb.appendSection("Right now it is $stamp (${utcOffset(zone)}). Call get_current_time rather " +
             "than reusing this if the conversation has been going a while.")
 
         buildContinuityNote()?.let { sb.appendSection(it) }
@@ -719,6 +722,63 @@ class AriaBrain private constructor(context: Context) {
         dtcCache = ObdBluetoothManager.getDtcCodes()
         dtcCacheAt = now
         return dtcCache
+    }
+
+    /**
+     * Where the user is and what their clock reads - **never the raw zone id**.
+     *
+     * 2026-08-20, Kevin: *"why is it mentioning chicago?"* It was. The prompt said "The user's
+     * timezone is America/Chicago", and a model handed the string "Chicago" will eventually say
+     * Chicago - he lives in Houston, which is simply in the same zone. An IANA zone id is a
+     * database key that happens to look like a place, and it is the only place name the prompt was
+     * asserting, so it won by default over the real location sitting one section further down.
+     *
+     * Two replacements, both narrower than what they replace:
+     * - **The clock is a UTC offset.** Unambiguous, sufficient for reasoning about time, and it
+     *   names nowhere.
+     * - **The place comes from [LocationController]**, reverse-geocoded to city and state, which
+     *   is what Kevin asked for and is the only source here that knows where he actually is.
+     *
+     * Says nothing about location when there is no fix, rather than falling back to the zone id:
+     * an unknown location is a real answer, and guessing a city from a timezone is exactly the
+     * failure being fixed.
+     */
+    private fun whereAndWhen(): String {
+        val zone = ZoneId.systemDefault()
+        val area = LocationController.state.value?.let { geocodeArea(it) }
+        return if (area != null) {
+            "The user is in $area, and their clock reads UTC${utcOffset(zone)}."
+        } else {
+            "The user's clock reads UTC${utcOffset(zone)}. You do not know where they are; " +
+                "do not guess a city."
+        }
+    }
+
+    /** e.g. "-05:00". The offset for right now, so it is correct across daylight saving. */
+    private fun utcOffset(zone: ZoneId): String =
+        java.time.ZonedDateTime.now(zone).offset.id.let { if (it == "Z") "+00:00" else it }
+
+    /**
+     * City and state for a fix - "Houston, Texas" - as opposed to [reverseGeocode]'s street-level
+     * string. Deliberately coarse: this answers "roughly where is he", and a street address in the
+     * standing instruction would be both wrong for the question and needlessly precise to leave
+     * sitting in every prompt.
+     */
+    private fun geocodeArea(location: Location): String? {
+        val key = "%.2f,%.2f".format(location.latitude, location.longitude)
+        if (key == areaKey) return areaValue
+        val value = try {
+            @Suppress("DEPRECATION")
+            geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                ?.firstOrNull()
+                ?.let { listOfNotNull(it.locality, it.adminArea).joinToString(", ").ifBlank { null } }
+        } catch (e: Exception) {
+            Log.w(TAG, "Area geocode failed: ${e.message}")
+            null
+        }
+        areaKey = key
+        areaValue = value
+        return value
     }
 
     /**

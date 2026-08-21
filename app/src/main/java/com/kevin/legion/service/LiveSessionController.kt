@@ -548,11 +548,6 @@ class LiveSessionController(context: Context) {
                 set(Phase.IDLE, IDLE_STATUS)
             }
             is LiveEvent.TurnComplete -> {
-                // One audit row per spoken turn, holding the complete line.
-                pendingSpokenLine?.let { line ->
-                    pendingSpokenLine = null
-                    scope.launch { brain.auditSpoken(line) }
-                }
                 // Conversation: the session is ABOUT to reopen the mic, so this is
                 // still active talk time and the segment stays open - but it does
                 // NOT claim Listening here anymore (2026-08-17, same defect class as
@@ -612,17 +607,9 @@ class LiveSessionController(context: Context) {
                 _subtitle.tryEmit(event.text)
                 // Mirror to the process-global holder so the Cruise screen renders captions too.
                 CompanionPhase.setCaption(event.text)
-                // Audit trail (2026-08-20). THE missing record: on that day the assistant said the
-                // Jeep was at 142k when the record said 227,612, and it could not be diagnosed,
-                // because nothing anywhere kept what it had said. The driver's words were logged,
-                // the tools that were dispatched were logged, and its own sentence was not.
-                //
-                // Buffered, NOT written here. Subtitles stream: the first cut wrote a row per
-                // fragment and produced 31 rows for two sentences ("It's a", "It's a warm,",
-                // "It's a warm, partly"...), which would have churned through the whole retention
-                // window in a couple of conversations and buried the useful rows. The last
-                // fragment of a turn is the complete line, so it is flushed at TurnComplete.
-                pendingSpokenLine = event.text
+                // The spoken-line audit does NOT live here. Subtitles stream AND are truncated to
+                // a tail by captionTail, so this event is right for a caption and wrong for a
+                // record. GeminiLiveSession.auditSpokenTurn writes the whole line at turn end.
             }
             is LiveEvent.ToolCall -> handleToolCall(event)
             is LiveEvent.Closed -> {
@@ -701,8 +688,6 @@ class LiveSessionController(context: Context) {
      */
     @Volatile private var dismissAfterTurn = false
 
-    /** Latest streamed caption for the current turn; flushed to the audit trail at TurnComplete. */
-    @Volatile private var pendingSpokenLine: String? = null
 
     private fun handleToolCall(call: LiveEvent.ToolCall) {
         scope.launch {

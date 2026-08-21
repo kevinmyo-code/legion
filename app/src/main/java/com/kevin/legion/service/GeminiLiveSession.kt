@@ -1,4 +1,4 @@
-﻿package com.kevin.legion.service
+package com.kevin.legion.service
 
 import android.Manifest
 import android.content.Context
@@ -25,6 +25,8 @@ import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.car.CarProbeLog
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.EpisodicTurn
+import com.kevin.legion.data.local.MemoryAudit
+import com.kevin.legion.data.local.record
 import com.kevin.legion.media.MusicController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.vehicle.ActiveVehicle
@@ -929,6 +931,35 @@ class GeminiLiveSession(
      * mentioned something else" from plain transcript text, and the guarantee this rule exists
      * to give is that mail was never stored - not that something remembered to scrub it.
      */
+    /**
+     * Records what the assistant actually SAID, in full, to the memory audit trail.
+     *
+     * Deliberately NOT [captureEpisodicTurn], and deliberately not the caption stream:
+     *
+     * - `captureEpisodicTurn` returns early when the driver text is blank, so a proactive line -
+     *   **the greeting, the exact thing Kevin keeps reporting** - was captured nowhere at all.
+     * - The first cut of this audit listened to [LiveEvent.Subtitle], which carries
+     *   [captionTail]'s TRUNCATED tail for long lines. That is right for a caption under an avatar
+     *   and wrong for a record: rows landed starting mid-sentence.
+     *
+     * `companionTurnText` is the whole line, and this is the moment before it is cleared.
+     *
+     * A record ABOUT the work, never an input to it - nothing reads it back into a prompt.
+     */
+    private fun auditSpokenTurn(companionText: String) {
+        if (companionText.isBlank()) return
+        io.launch {
+            runCatching {
+                CarDatabase.getDatabase(appContext).memoryAuditDao().record(
+                    MemoryAudit.Event.SPOKEN,
+                    MemoryAudit.Store.SPEECH,
+                    companionText,
+                    vehicleId = ActiveVehicle.current(appContext),
+                )
+            }
+        }
+    }
+
     private fun captureEpisodicTurn(driverText: String, companionText: String) {
         val sessionId = episodicSessionId
         if (sessionId.isBlank() || driverText.isBlank()) return
@@ -1060,6 +1091,7 @@ class GeminiLiveSession(
                 MidnightEvents.silentMicTurn(heard, bytesThisTurn)
             }
             captureEpisodicTurn(heard, companionTurnText.toString().trim())
+            auditSpokenTurn(companionTurnText.toString().trim())
             mailToolCalledThisTurn = false
             userTurnText.setLength(0)
             companionTurnText.setLength(0)

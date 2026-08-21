@@ -4409,12 +4409,19 @@ object LiveToolbox {
      * The zone's name is returned alongside the time, not just the offset, so the model can say
      * "central time" rather than reciting a number, and so a wrong DEVICE timezone (the one thing
      * this tool cannot fix) is visible in the answer rather than silently baked into it.
+     *
+     * **The DISPLAY name, never the IANA id (2026-08-20).** This returned `America/Chicago`, and
+     * Kevin - who lives in Houston - started hearing about Chicago. A zone id is a database key
+     * that happens to contain a city, and handing one to a model that speaks is handing it a place
+     * name to mention. "Central Daylight Time" serves this doc's own stated purpose better anyway:
+     * it is what the doc says it wants the model to say, and it names no city to get wrong.
      */
     private fun getCurrentTime(): JSONObject {
         val zone = java.time.ZoneId.systemDefault()
         val now = java.time.ZonedDateTime.now(zone)
         val stamp = now.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy 'at' h:mm a"))
-        return result(true, "$stamp (${zone.id}, the phone's own timezone).")
+        val zoneName = zone.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
+        return result(true, "$stamp ($zoneName, the phone's own clock).")
     }
 
     private suspend fun getCodes(context: Context): JSONObject {
