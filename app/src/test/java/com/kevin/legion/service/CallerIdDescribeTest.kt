@@ -72,8 +72,30 @@ class CallerIdDescribeTest {
     // ------------------------------------------------------------------ what actually happened
 
     @Test
+    fun `a refused speaker still reports the call as answered, and says the route did not move`() {
+        // The two are separate facts. Reporting "I could not answer" because the loudspeaker was
+        // refused would be a false claim about the call itself - and the call IS connected.
+        val text = CallActions.describe(
+            CallActions.Outcome.Answered(
+                CallAudioRoute.Result.NotSwitched("the call is on a Bluetooth device")
+            )
+        )
+        assertTrue(text.contains("answered and connected"))
+        assertTrue(text.contains("NOT on speaker"))
+    }
+
+    @Test
+    fun `a speaker that took is stated, and only when it actually took`() {
+        val on = CallActions.describe(CallActions.Outcome.Answered(CallAudioRoute.Result.OnSpeaker))
+        assertTrue(on.contains("on speaker"))
+        // Answering without asking for speaker must say nothing about the route at all.
+        val silent = CallActions.describe(CallActions.Outcome.Answered(null))
+        assertFalse(silent.contains("speaker"))
+    }
+
+    @Test
     fun `only an observed answer is phrased as answered`() {
-        assertEquals("The call is answered and connected.", CallActions.describe(CallActions.Outcome.Answered))
+        assertEquals("The call is answered and connected.", CallActions.describe(CallActions.Outcome.Answered()))
         assertEquals("The call was declined and has stopped ringing.", CallActions.describe(CallActions.Outcome.Rejected))
     }
 

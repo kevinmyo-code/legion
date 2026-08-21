@@ -53,8 +53,12 @@ object CallActions {
 
     /** What actually happened, in a form a tool result can state without overclaiming. */
     sealed class Outcome {
-        /** Observed: the call is now connected. */
-        data object Answered : Outcome()
+        /**
+         * Observed: the call is now connected. [route] is non-null only when the speaker was
+         * asked for, and carries whether the route ACTUALLY moved - a refused route still leaves
+         * the call answered, so this is a separate fact rather than a second failure mode.
+         */
+        data class Answered(val route: CallAudioRoute.Result? = null) : Outcome()
 
         /** Observed: the ringing stopped. */
         data object Rejected : Outcome()
@@ -95,7 +99,7 @@ object CallActions {
      * `acceptRingingCall` needs API 26; [Build.VERSION_CODES.O] is below this app's `minSdk` of 24
      * but above it, so the guard is real rather than decorative.
      */
-    suspend fun answer(context: Context): Outcome {
+    suspend fun answer(context: Context, speaker: Boolean = false): Outcome {
         if (!hasPermission(context)) return Outcome.NoPermission
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return Outcome.DidNotTake("this Android version has no accept-call API")
@@ -111,10 +115,16 @@ object CallActions {
 
         // acceptRingingCall returns void, so the ONLY honest confirmation is the state itself.
         val connected = awaitState(context) { it == TelephonyManager.CALL_STATE_OFFHOOK }
-        return if (connected) Outcome.Answered else Outcome.DidNotTake(
-            "the call did not connect - if it is a WhatsApp, Signal or Teams call, Android does " +
-                "not let this app answer it"
-        )
+        if (!connected) {
+            return Outcome.DidNotTake(
+                "the call did not connect - if it is a WhatsApp, Signal or Teams call, Android " +
+                    "does not let this app answer it"
+            )
+        }
+        // Routing is requested only AFTER the call is confirmed connected: there is nothing to
+        // route before that, and asking early is how a "put it on speaker" silently does nothing.
+        val route = if (speaker) CallAudioRoute.toSpeaker(context) else null
+        return Outcome.Answered(route)
     }
 
     /**
@@ -167,7 +177,9 @@ object CallActions {
      * Everything else says what did NOT happen, in words, per CLAUDE.md §7.
      */
     fun describe(outcome: Outcome): String = when (outcome) {
-        Outcome.Answered -> "The call is answered and connected."
+        is Outcome.Answered ->
+            "The call is answered and connected." +
+                (outcome.route?.let { CallAudioRoute.describe(it) } ?: "")
         Outcome.Rejected -> "The call was declined and has stopped ringing."
         Outcome.NothingRinging -> "Nothing is ringing right now, so nothing was done."
         Outcome.NoPermission ->

@@ -1445,8 +1445,13 @@ object LiveToolbox {
                 "and only for normal phone calls - Android does not let this app answer WhatsApp, " +
                 "Signal, Teams or other in-app calls, and the result will say so if that happens. " +
                 "The result tells you what actually happened; never say the call was answered " +
-                "unless it says so.",
-            params = obj(),
+                "unless it says so. Pass speaker=true when the user asks for it on speaker or " +
+                "speakerphone in the same breath - do NOT use a separate tool for that, and do " +
+                "not claim it is on speaker unless the result says it is.",
+            params = obj(
+                "speaker" to schema("boolean", "True if the user asked for the call on " +
+                    "speakerphone, e.g. \"pick it up and put it on speaker\". Omit otherwise."),
+            ),
             required = emptyList(),
         ))
         fns.put(fn(
@@ -2178,7 +2183,7 @@ object LiveToolbox {
             "search_mail" -> searchMail(context, args)
             "read_mail" -> readMail(context, args)
             "read_calendar" -> readCalendar(context, args)
-            "answer_call" -> answerCallTool(context)
+            "answer_call" -> answerCallTool(context, args)
             "decline_call" -> declineCallTool(context)
             "set_goal" -> setGoalTool(context, args)
             "list_goals" -> listGoalsTool(context, args)
@@ -3510,8 +3515,11 @@ object LiveToolbox {
      * than an observed connection must come back false - otherwise the lie is simply moved one
      * layer up into what it says out loud.
      */
-    private suspend fun answerCallTool(context: Context): JSONObject {
-        val outcome = CallActions.answer(context)
+    private suspend fun answerCallTool(context: Context, args: JSONObject): JSONObject {
+        val outcome = CallActions.answer(context, speaker = args.optBoolean("speaker", false))
+        // A refused SPEAKER does not make a connected call a failure - the call is answered either
+        // way, and describe() states the route separately. Reporting success=false here would make
+        // the assistant say it failed to answer a call it had just answered.
         return result(outcome is CallActions.Outcome.Answered, CallActions.describe(outcome))
     }
 
