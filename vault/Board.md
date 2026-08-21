@@ -24,8 +24,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[05-comms\|05]] | grilling | Comms: place a call, send a text |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[07-wrench-mode-shape\|07]] | grilling | Wrench mode: live stream or snap-and-ask, and how the car's history gets in the room |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[08-morning-brief\|08]] | grilling | Morning brief: a configurable skill, not a feed |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[15-location-intelligence\|15]] | grilling | Location intelligence: what LEGION knows about where you are, and when it speaks first |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[17-document-vault\|17]] | grilling | The document vault: LEGION reads the papers that run your life |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[18-inbox-intelligence\|18]] | grilling | Inbox intelligence: packages and travel, from mail LEGION can already read |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[19-people-dates\|19]] | grilling | The people in Kevin's life: dates and facts he tells it |
@@ -107,7 +105,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | 8 | 7 | [[.scratch/goal-keeping/goal-keeping.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 1 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 22 | 10 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 22 | 8 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |

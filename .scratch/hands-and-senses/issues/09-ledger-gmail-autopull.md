@@ -22,7 +22,7 @@ fetch the PDF attachment, hand it to `StatementDispatcher`, gate does the rest, 
 dedups. Decide:
 
 1. **Trigger.** Pull-only ("check my mail for statements") keeps the no-background-fetch rule
-   pristine. Is that enough, or does the morning brief's statement module (if any) get to run the
+   pristine. Is that enough, or does the sitrep's statement module (if any) get to run the
    same search? Nothing here should invent a poller.
 2. **The search.** App-owned query like the briefing precedent (`from:(bank senders)
    has:attachment filename:pdf newer_than:35d`), sender list curated by Kevin - or model-owned?
@@ -58,7 +58,7 @@ It was a correct plan for a mailbox Kevin does not have.
 
 **Consequence for two other tickets, flagged not decided:**
 
-- Map settled decision 4 puts the **morning brief's news module** on "Kevin's newsletters via the
+- Map settled decision 4 puts the **sitrep's news module** on "Kevin's newsletters via the
   existing Gmail tool". That assumes his Gmail carries newsletters worth reading. **Unverified** -
   it is the same class of assumption that just killed this ticket.
 - [Inbox intelligence](18-inbox-intelligence.md) is entirely mail-derived (package tracking,

@@ -67,7 +67,7 @@ Decide:
    | **Timing** | "leave now" departure, calendar-anchored nudges | [location intelligence](15-location-intelligence.md) |
    | **Wellbeing** | goal nudges, health, the past-10pm rest line | [health](11-health-connect-scope.md), `goals/` |
    | **Fleet** | maintenance due, open DTCs, recalls | fleet aspect, [clear DTC](01-clear-dtc.md) |
-   | **Digest** | morning brief, birthdays and dates | [brief](08-morning-brief.md), [people dates](19-people-dates.md) |
+   | **Digest** | sitrep, birthdays and dates | [sitrep](08-morning-brief.md), [people dates](19-people-dates.md) |
 
    - **Two states per category, not three.** On or off. No inherit state, no override flag - a
      category is a plain boolean and the master ANDs over all of them. Simple first.

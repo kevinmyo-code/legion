@@ -43,7 +43,7 @@ Both are read-only, pull-shaped, and need no new auth. Decide:
    or does Alfred answer questions one at a time from live reads? An object means storage, which
    means the read-through rule bends - argue it or drop it.
 5. **Morning brief overlap.** "Package arriving today", "flight tomorrow" are brief modules. Does
-   this ticket define them, or does [the brief](08-morning-brief.md) own delivery and this ticket
+   this ticket define them, or does [the sitrep](08-morning-brief.md) own delivery and this ticket
    only own extraction? Do not build two paths.
 6. **Tool budget.** One tool, two, or a parameter on the existing Gmail search tool? Write the
    descriptions.

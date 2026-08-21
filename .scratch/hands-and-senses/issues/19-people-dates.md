@@ -40,7 +40,7 @@ Decide:
    database - so a people table rides to Drive with everything else.
 4. **How it surfaces.** Pull ("when is Mom's birthday") is obvious. Proactive ("Mom's birthday is
    Thursday") is a raise - and a WELCOME one, unlike a re-engagement ping. Where does it sit
-   against the compulsion ban, and does it belong in [the morning brief](08-morning-brief.md)
+   against the compulsion ban, and does it belong in [the sitrep](08-morning-brief.md)
    rather than as its own alert path?
 5. **Capture.** How does a fact get in - only by Kevin saying "remember that Mom's birthday is the
    14th", or may the assistant offer to save something it heard in conversation? The second is a

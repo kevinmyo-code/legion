@@ -15,7 +15,7 @@ tags: [map]
 
 **LEGION stops being read-only. Decisions locked for the write surfaces (clear DTCs, home control,
 place calls and send texts) and the new senses (notification listener, wrench-mode camera, Health
-Connect), plus the assistant's actual voice and a configurable morning brief.**
+Connect), plus the assistant's actual voice and a configurable sitrep.**
 
 Destination is DECISIONS, not shipped - same shape as `.scratch/android-auto/`. Each surface
 graduates its own build tickets once its decisions land. Exception: Clear DTC is small enough that
