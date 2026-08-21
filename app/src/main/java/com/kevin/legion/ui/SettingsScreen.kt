@@ -54,6 +54,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.kevin.legion.service.ProactiveCategory
 import com.kevin.legion.service.ProactiveSettings
+import com.kevin.legion.service.CallActions
+import com.kevin.legion.service.CallerId
 
 /**
  * `settings` tab. Owns the assistant ignition toggle (ticket 07 resolution
@@ -124,6 +126,8 @@ fun SettingsScreen(
     // `.scratch/wake-word/issues/02-the-settings-toggle.md`: WakeWordPreferences.setEnabled had
     // zero callers, so the engine could never start. This row's handler is now its only writer.
     var wakeWordOn by remember { mutableStateOf(WakeWordPreferences.isEnabled(context)) }
+    var canSeeCaller by remember { mutableStateOf(false) }
+    var canAnswerCalls by remember { mutableStateOf(false) }
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
     var hasKey by remember { mutableStateOf(GeminiKeyProvider.hasKey()) }
     var driveConnected by remember { mutableStateOf(SyncCapability.syncAvailable(context)) }
@@ -193,6 +197,22 @@ fun SettingsScreen(
             proactiveCategories = ProactiveSettings.categories.value
         }
         wakeWordOn = WakeWordPreferences.isEnabled(context)
+        // Both halves of call handling are re-read on every resume rather than cached: the
+        // user may have changed either one in system Settings while away.
+        canSeeCaller = CallerId.hasCallLogPermission(context) &&
+            CallerId.hasContactsPermission(context)
+        canAnswerCalls = CallActions.hasPermission(context)
+    }
+
+    // Caller ID + voice answer/decline. Asked for as ONE dialog rather than three: they are one
+    // feature to a human, and Android groups READ_PHONE_STATE/READ_CALL_LOG/ANSWER_PHONE_CALLS
+    // under PHONE anyway. The callback ignores its own granted flags and re-reads the real state -
+    // a single source of truth, same shape as TodayScreen's calendar request.
+    val requestCallPermissions = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        canSeeCaller = CallerId.hasCallLogPermission(context) && CallerId.hasContactsPermission(context)
+        canAnswerCalls = CallActions.hasPermission(context)
     }
 
     // Step 2 of the chain: RECORD_AUDIO. Only reached once POST_NOTIFICATIONS
@@ -385,6 +405,21 @@ fun SettingsScreen(
             // to catch. start() is idempotent (`if (scope != null) return`) and reads the
             // preference itself, so it is safe from here.
             Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp))
+            CallHandlingRow(
+                canSeeCaller = canSeeCaller,
+                canAnswer = canAnswerCalls,
+                onGrant = {
+                    requestCallPermissions.launch(
+                        arrayOf(
+                            Manifest.permission.READ_CALL_LOG,
+                            Manifest.permission.READ_CONTACTS,
+                            Manifest.permission.ANSWER_PHONE_CALLS,
+                        )
+                    )
+                },
+            )
+
             WakeWordRow(
                 enabled = wakeWordOn,
                 companionName = activeName,

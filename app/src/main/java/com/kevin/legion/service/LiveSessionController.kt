@@ -257,6 +257,10 @@ class LiveSessionController(context: Context) {
         consecutivePrewarmFailures = 0
 
         // Fast-fail with a visible reason instead of a silent 15s connect attempt.
+        // Connected calls block a turn - the call owns the speakers. A RINGING phone does NOT
+        // (2026-08-21): isInCall used to be set true on RINGING, so the one moment Kevin wants to
+        // say "answer it" was the moment this returned early and showed "ON A CALL". Answering by
+        // voice is impossible without this distinction.
         if (TelephonyController.isInCall) { CompanionPhase.showNotice("ON A CALL"); return }
         // BYO-key only, no tiers (commercial model retired 2026-07-31).
         if (!GeminiKeyProvider.hasKey()) {

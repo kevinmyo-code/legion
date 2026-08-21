@@ -1430,6 +1430,35 @@ object LiveToolbox {
         // what was on his calendar and Alfred correctly said he couldn't check. Net +1 against a
         // budget of 71 (-> 72); see that ticket for why a domain the assistant can write to but
         // not read from is worse than either alone.
+        // Answering and declining a ringing call by voice (2026-08-21, Kevin: "can i also pick it
+        // up or decline via voice?"). Two tools rather than one with a boolean: the live model
+        // picks a tool far more reliably than it fills a parameter, and mixing up "answer" and
+        // "decline" behind one argument is the one mistake here with a real cost.
+        //
+        // Both descriptions name the SELF-MANAGED limit outright. Telecom silently ignores
+        // WhatsApp/Signal/Teams calls for a non-dialer app, so a tool that promised to answer
+        // "a call" would be lying about a whole class of them.
+        fns.put(fn(
+            name = "answer_call",
+            description = "Answer the phone call that is RINGING right now. Use when the user says " +
+                "to pick it up, take it, or answer. Only works while a call is actually ringing, " +
+                "and only for normal phone calls - Android does not let this app answer WhatsApp, " +
+                "Signal, Teams or other in-app calls, and the result will say so if that happens. " +
+                "The result tells you what actually happened; never say the call was answered " +
+                "unless it says so.",
+            params = obj(),
+            required = emptyList(),
+        ))
+        fns.put(fn(
+            name = "decline_call",
+            description = "Decline or reject the phone call that is RINGING right now. Use when the " +
+                "user says to decline, reject, hang up on it, or ignore it. Only works while a call " +
+                "is actually ringing, and not for WhatsApp, Signal, Teams or other in-app calls. " +
+                "Cannot end an emergency call. The result tells you what actually happened.",
+            params = obj(),
+            required = emptyList(),
+        ))
+
         fns.put(fn(
             name = "read_calendar",
             description = "Read events from Kevin's GOOGLE CALENDAR over a date range - the same " +
@@ -2149,6 +2178,8 @@ object LiveToolbox {
             "search_mail" -> searchMail(context, args)
             "read_mail" -> readMail(context, args)
             "read_calendar" -> readCalendar(context, args)
+            "answer_call" -> answerCallTool(context)
+            "decline_call" -> declineCallTool(context)
             "set_goal" -> setGoalTool(context, args)
             "list_goals" -> listGoalsTool(context, args)
             "close_goal" -> closeGoalTool(context, args)
@@ -3468,6 +3499,26 @@ object LiveToolbox {
      * rather than silently narrowed to something the ticket didn't ask for.
      */
     private const val PROPOSAL_TTL_MS = 24L * 60 * 60 * 1000
+
+    /**
+     * `answer_call` / `decline_call`.
+     *
+     * **The `success` flag is the load-bearing part.** `TelecomManager.acceptRingingCall()` returns
+     * `void`, so [CallActions] confirms by watching the phone's own call state instead of assuming;
+     * only an observed RINGING -> OFFHOOK transition reports success here. CLAUDE.md §7 lets the
+     * assistant say "answered" only after a tool result that came back successful, so anything less
+     * than an observed connection must come back false - otherwise the lie is simply moved one
+     * layer up into what it says out loud.
+     */
+    private suspend fun answerCallTool(context: Context): JSONObject {
+        val outcome = CallActions.answer(context)
+        return result(outcome is CallActions.Outcome.Answered, CallActions.describe(outcome))
+    }
+
+    private suspend fun declineCallTool(context: Context): JSONObject {
+        val outcome = CallActions.reject(context)
+        return result(outcome is CallActions.Outcome.Rejected, CallActions.describe(outcome))
+    }
 
     /** `ask_advisor`. Resolves `aspect` to its [AdvisorBriefs] entry and runs one [AdvisorAgent]
      * exchange. The tool response always carries `adviceId` on a [AdvisorResult.Success] (even a

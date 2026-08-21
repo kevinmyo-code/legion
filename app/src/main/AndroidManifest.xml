@@ -14,6 +14,40 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+
+    <!-- Caller ID and voice call control (2026-08-21, Kevin: "i wanna know whos calling ... can i
+         also pick it up or decline via voice?"). All three are runtime-granted and asked for
+         together on the Setup screen, because they are one feature to a human.
+
+         READ_CALL_LOG is the ONLY thing that populates the caller number. Verified against AOSP
+         rather than assumed: TelephonyRegistry computes
+         `String phoneNumberOrEmpty = r.canReadCallLog() ? phoneNumber : ""` per callback delivery,
+         so without it PhoneStateListener hands us an EMPTY STRING, not null - which is why the old
+         announcement could only ever say "a call is ringing". READ_PHONE_NUMBERS does NOT help; it
+         is the local SIM's own number, not the caller's.
+
+         It is a HARD RESTRICTED permission (permissionFlags="hardRestricted" in the platform
+         manifest), so the installer must allowlist it. `adb install` and Android Studio do by
+         default (PackageManagerShellCommand passes INSTALL_ALL_WHITELIST_RESTRICTED_PERMISSIONS).
+         **This is the one line here that would block a Play listing** - Play requires default-dialer
+         status for call-log permissions - and LEGION is sideloaded and never listed, so it does not
+         bite. If that ever changes, CallScreeningService is the documented alternative, at the cost
+         of taking an exclusive system role off Samsung's Smart Call.
+
+         DO NOT "modernise" TelephonyController to TelephonyCallback.CallStateListener. Its
+         onCallStateChanged has no number parameter at all - AOSP's own dispatch comment says "The
+         new callback does NOT provide the phone number" - so the migration would silently delete
+         this feature. PhoneStateListener is deprecated and still works.
+
+         READ_CONTACTS turns that number into a name via ContactsContract.PhoneLookup.
+         ANSWER_PHONE_CALLS is an ordinary dangerous permission - no role, no default-dialer
+         requirement - and is all TelecomManager.acceptRingingCall/endCall need. Both are deprecated
+         since API 29 and both still work. Neither can touch a SELF-MANAGED call (WhatsApp, Signal,
+         Teams): Telecom silently ignores those for a non-privileged caller, and the tool
+         descriptions say so rather than failing mysteriously. -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />

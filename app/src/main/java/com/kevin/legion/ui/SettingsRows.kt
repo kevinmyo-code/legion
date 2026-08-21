@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -265,6 +266,67 @@ fun ProactiveCategoryRow(
                 )
             }
             DeckSwitch(checked = enabled, onCheckedChange = onToggle)
+        }
+    }
+}
+
+/**
+ * Caller ID and voice call control (2026-08-21, Kevin: *"i wanna know whos calling ... can i also
+ * pick it up or decline via voice?"*).
+ *
+ * **Three permissions, asked for together, because they are one feature to a human** - and the row
+ * says what each buys rather than listing Android constants at someone. `READ_CALL_LOG` is what
+ * actually delivers the caller's number (without it the platform substitutes an empty string, which
+ * is why the announcement could only ever say "a call is ringing"); `READ_CONTACTS` turns that
+ * number into a name; `ANSWER_PHONE_CALLS` is what lets "answer it" and "decline it" do anything.
+ *
+ * **The status line degrades honestly**, in the same three states the feature itself has: fully on,
+ * partly on (it can name the caller but not act, or the reverse), and off. A row claiming "on" while
+ * half the feature is refused would be the same lie the proactive kill-switch copy was fixed for.
+ *
+ * Kept deliberately quiet about one thing: the app cannot answer WhatsApp, Signal or Teams calls
+ * whatever is granted here, because Android silently ignores those for a non-dialer app. That
+ * belongs in the moment it happens - the tool result says it - not as fine print on a switch.
+ */
+@Composable
+fun CallHandlingRow(
+    canSeeCaller: Boolean,
+    canAnswer: Boolean,
+    onGrant: () -> Unit,
+) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Calls",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    when {
+                        canSeeCaller && canAnswer ->
+                            "On - says who is calling, and you can answer or decline by voice."
+                        canSeeCaller ->
+                            "Partly on - says who is calling, but cannot answer or decline for you."
+                        canAnswer ->
+                            "Partly on - you can answer or decline by voice, but it cannot see who " +
+                                "is calling."
+                        else ->
+                            "Off - announces that a call is ringing, but not who, and cannot pick " +
+                                "it up for you."
+                    },
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                )
+            }
+            if (!canSeeCaller || !canAnswer) {
+                TextButton(onClick = onGrant) { Text("GRANT") }
+            }
         }
     }
 }

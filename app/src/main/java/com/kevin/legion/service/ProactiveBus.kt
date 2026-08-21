@@ -171,7 +171,10 @@ object ProactiveBus {
         // tests cover these branches without Room - see [decideOnHistory]'s doc.
         if (!OnboardingState.isComplete(context)) return RaiseOutcome.NotNow
         if (ConversationState.isBusy) return RaiseOutcome.NotNow
-        if (TelephonyController.isInCall) return RaiseOutcome.NotNow
+        // Ringing counts too: an unsolicited line over a ringing phone is the same intrusion as
+        // one over a connected call. The VOICE path deliberately differs - see
+        // LiveSessionController - because a ringing phone is exactly when Kevin may want to speak.
+        if (TelephonyController.isInCall || TelephonyController.isRinging) return RaiseOutcome.NotNow
 
         // The switches. Master first, for everything, with no branch around it.
         ProactiveSettings.load(context)
