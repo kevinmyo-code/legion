@@ -161,6 +161,16 @@
       "color": "4"
     },
     {
+      "id": "854082f577469617",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/23-conversation-audit-trail.md",
+      "x": 0,
+      "y": 2400,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "5e3558b6fd0ef25d",
       "type": "file",
       "file": ".scratch/hands-and-senses/issues/03-home-control-scope.md",
