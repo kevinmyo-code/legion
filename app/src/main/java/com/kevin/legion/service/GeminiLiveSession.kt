@@ -1414,6 +1414,11 @@ class GeminiLiveSession(
         var record = recordBuilder.build()
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             Log.w(TAG, "AudioRecord init failed")
+            // Coordinator note (deaf-mic capture, 2026-08-22): this instance never reached
+            // STATE_INITIALIZED, so it never got an "AudioRecord opened" line to pair against -
+            // logging the release here anyway keeps every release site consistently paired-or-
+            // orphaned by sessionId, rather than three logged sites and one silent one.
+            Log.d(TAG, "AudioRecord released: sessionId=${record.audioSessionId} (init failed)")
             record.release()
             closeSession("microphone unavailable")
             return
@@ -1499,6 +1504,30 @@ class GeminiLiveSession(
         // retry alike.
         var recordingStartedAtMs = 0L
         var bytesSinceOpen = 0L
+        // Ticket 15 (.scratch/wake-word/issues/15-see-a-deaf-mic.md): the loudest sample seen
+        // since the CURRENT record.startRecording() call - the deaf-mic watchdog's whole
+        // input. Resets in lockstep with [bytesSinceOpen] everywhere that resets, because the
+        // watchdog's question ("has this open window stayed pathologically silent") only means
+        // anything measured against the SAME open window bytesSinceOpen is already scoped to.
+        var peakSinceOpen = 0
+        // Separate accumulator for the periodic level LOG (about once a second, per the
+        // ticket) - deliberately not the same number as [peakSinceOpen]. The watchdog needs
+        // "loudest sample in the whole window so far" (never reset until reopen, or one silent
+        // half-second between words would falsely look identical to a dead mic). The log line
+        // needs "how loud has it been lately" so a human reading it can see the mic is alive in
+        // real time rather than waiting for the window's all-time peak to update. Reset after
+        // each emission.
+        var intervalPeak = 0
+        var lastLevelLogAtMs = 0L
+        // Fires the watchdog at most once per open window (not once per read - the fault
+        // condition, once true, stays true on every subsequent read until the window resets,
+        // and re-logging/re-reopening on every single buffer would flood the log and violate
+        // the ticket's "one reopen" recovery scope). Resets alongside [peakSinceOpen].
+        var deafMicHandledThisOpen = false
+        // Caps the deaf-mic watchdog's reopen at once per SESSION, same shape and same
+        // reasoning as [recreatedRecordOnce] just below: the ticket is explicit that recovery
+        // stops at one reopen, not a retry loop.
+        var deafMicRecoveredOnce = false
         // Caps the ERROR_DEAD_OBJECT recreation below at once per SESSION (not per turn,
         // unlike [retriedThisTurn] above) - a dead AudioRecord is a hardware/driver-level
         // failure, not a VAD hiccup, and micLoop itself only runs once per session (see
@@ -1557,6 +1586,8 @@ class GeminiLiveSession(
                             capturing = true
                             recordingStartedAtMs = System.currentTimeMillis()
                             bytesSinceOpen = 0L
+                            peakSinceOpen = 0
+                            deafMicHandledThisOpen = false
                             continue // recording is still true; skip straight to reading
                         }
                         if (short && retriedThisTurn) {
@@ -1608,6 +1639,8 @@ class GeminiLiveSession(
                         recording = true
                         recordingStartedAtMs = System.currentTimeMillis()
                         bytesSinceOpen = 0L
+                        peakSinceOpen = 0
+                        deafMicHandledThisOpen = false
                         // Physical open, fired AFTER startRecording() actually returns - the
                         // whole point of this event is that it lags the capturing=true intent
                         // flip by however long the awaitPlaybackDrained() wait above just took.
@@ -1658,7 +1691,14 @@ class GeminiLiveSession(
                         if (recording) emit(LiveEvent.MicClosed("AudioRecord dead, recreating"))
                         recording = false
                         runCatching { record.stop() }
+                        // Coordinator note (deaf-mic capture, 2026-08-22): sessionId read BEFORE
+                        // release() - open is already logged by sessionId elsewhere in this file,
+                        // and this line is what lets a capture PAIR the two rather than leaving a
+                        // leak unanswerable. Nothing here changes teardown ordering, only adds a
+                        // log line to it.
+                        val deadSessionId = record.audioSessionId
                         runCatching { record.release() }
+                        Log.d(TAG, "AudioRecord released: sessionId=$deadSessionId (dead object)")
                         effects.forEach { runCatching { it.release() } }
                         val fresh = recordBuilder.build()
                         if (fresh.state == AudioRecord.STATE_INITIALIZED) {
@@ -1671,6 +1711,7 @@ class GeminiLiveSession(
                             // from.
                         } else {
                             Log.w(TAG, "micLoop: AudioRecord recreation also failed, closing session")
+                            Log.d(TAG, "AudioRecord released: sessionId=${fresh.audioSessionId} (recreation failed)")
                             fresh.release()
                             closeSession("microphone unavailable")
                             break
@@ -1680,6 +1721,96 @@ class GeminiLiveSession(
                     continue
                 }
                 if (n == 0) continue
+
+                // Ticket 15 (.scratch/wake-word/issues/15-see-a-deaf-mic.md): signal level and
+                // the deaf-mic watchdog. The evidence this exists for is a mic that opened
+                // cleanly, threw no error, and never forwarded a single real sample for 17
+                // seconds - completely invisible to every check already in this loop, because
+                // none of them look AT the audio, only at whether reads and callbacks happened.
+                //
+                // MicSignal.peakAmplitude is O(n) over the buffer already in hand, zero
+                // allocation - safe to call on every read in a realtime loop. Only the LOG line
+                // is throttled to about once a second; the watchdog's own peakSinceOpen still
+                // accumulates every read; see [peakSinceOpen]'s declaration above for why the two
+                // accumulators are deliberately separate.
+                val level = MicSignal.peakAmplitude(buffer, n)
+                if (level > peakSinceOpen) peakSinceOpen = level
+                if (level > intervalPeak) intervalPeak = level
+                val nowMs = System.currentTimeMillis()
+                if (recording && nowMs - lastLevelLogAtMs >= LEVEL_LOG_INTERVAL_MS) {
+                    Log.d(TAG, "mic level: peak=$intervalPeak forwardedSinceOpen=$bytesSinceOpen " +
+                        "openMs=${nowMs - recordingStartedAtMs}")
+                    lastLevelLogAtMs = nowMs
+                    intervalPeak = 0
+                }
+
+                // THE TRAP (ticket 15): "no bytes forwarded" looks like the obvious trigger for
+                // "the mic is broken" and it is the WRONG one - a user who triggers the wake word
+                // and then says nothing produces exactly that signature, and firing on it would
+                // nag someone for being quiet. That is not a diagnostic, it is a compulsion-shaped
+                // notification wearing a diagnostic's clothes (CLAUDE.md §7). The honest
+                // discriminator is the LEVEL, not the byte count: a working mic in a silent room
+                // still returns room noise - some small non-zero peak - while a deaf mic returns
+                // digital silence at or near exactly zero, regardless of how long it has been
+                // open. [MicSignal.isDeafMic] is that whole decision, extracted to a pure function
+                // precisely so this reasoning cannot quietly get "simplified" back into a
+                // byte-count check by someone who only reads the effect (no bytes forwarded) and
+                // not the cause.
+                if (recording && capturing && !deafMicHandledThisOpen) {
+                    val heldMs = nowMs - recordingStartedAtMs
+                    if (MicSignal.isDeafMic(heldMs, peakSinceOpen)) {
+                        deafMicHandledThisOpen = true
+                        // AudioRecord.recordingState is logged alongside the fault deliberately -
+                        // a STOPPED recorder and a genuinely DEAF one look identical from every
+                        // signal this loop already had (no read error, no exception, no silenced
+                        // callback), and only this field can tell the two apart after the fact.
+                        Log.w(TAG, "micLoop: deaf mic watchdog fired heldMs=$heldMs " +
+                            "peak=$peakSinceOpen recordingState=${record.recordingState}")
+                        MidnightEvents.deafMicWatchdog(heldMs, peakSinceOpen, record.recordingState)
+                        if (!deafMicRecoveredOnce) {
+                            deafMicRecoveredOnce = true
+                            Log.w(TAG, "micLoop: deaf mic watchdog reopening AudioRecord once")
+                            // Recovery is deliberately scoped to exactly this: reopen the
+                            // AudioRecord once, log the level afterward, say nothing further.
+                            // CLAUDE.md §7's outcome-verb rule applies here exactly - whether the
+                            // reopen actually fixed anything is only knowable from what the NEXT
+                            // capture window measures, not from having attempted the reopen, so
+                            // nothing here or anywhere downstream may claim the mic was "fixed".
+                            // Same shape as the ERROR_DEAD_OBJECT recreation below on purpose: a
+                            // stop/start of the SAME instance won't help if the instance itself is
+                            // the problem, capped at one attempt for the same reason, and the
+                            // MicClosed emit fires BEFORE teardown so MicOpened/MicClosed stay
+                            // balanced.
+                            if (recording) emit(LiveEvent.MicClosed("deaf mic watchdog, reopening"))
+                            recording = false
+                            runCatching { record.stop() }
+                            // Coordinator note (deaf-mic capture, 2026-08-22): sessionId read
+                            // before release() so a capture can pair this line against the
+                            // matching "AudioRecord opened" one by number.
+                            val deafSessionId = record.audioSessionId
+                            runCatching { record.release() }
+                            Log.d(TAG, "AudioRecord released: sessionId=$deafSessionId (deaf mic watchdog)")
+                            effects.forEach { runCatching { it.release() } }
+                            val fresh = recordBuilder.build()
+                            if (fresh.state == AudioRecord.STATE_INITIALIZED) {
+                                record = fresh
+                                effects = if (isEmulator) emptyList() else attachVoiceEffects(record.audioSessionId)
+                                // recording stays false here; the top of the loop's
+                                // `if (!recording || flushCapture)` block reopens it on the next
+                                // iteration through the normal path, with its own
+                                // awaitPlaybackDrained() settle, its own MicOpened emit, and its
+                                // own reset of bytesSinceOpen/peakSinceOpen/deafMicHandledThisOpen.
+                            } else {
+                                Log.w(TAG, "micLoop: deaf mic reopen failed, closing session")
+                                Log.d(TAG, "AudioRecord released: sessionId=${fresh.audioSessionId} (reopen failed)")
+                                fresh.release()
+                                closeSession("microphone unavailable")
+                                break
+                            }
+                        }
+                    }
+                }
+
                 // capturing may have flipped false during the blocking read; only
                 // forward audio that belongs to an active turn.
                 if (!capturing) continue
@@ -1707,7 +1838,17 @@ class GeminiLiveSession(
                 if (recording) record.stop()
             } catch (_: Exception) {
             }
+            // Coordinator note (deaf-mic capture, 2026-08-22): sessionId read before release()
+            // so this line pairs against its own "AudioRecord opened" line by number. This is
+            // the loop's terminal teardown - reached on cancellation too, since `finally` runs
+            // on a cancelled coroutine unless it hits a suspend call inside a non-cancellable
+            // context, which nothing here does - so a leak that instead traces back to a NEW
+            // session opening before an OLD one's teardown finished would show up as a
+            // sessionId with an open line and no matching release anywhere in the capture,
+            // rather than as a missing line here.
+            val finalSessionId = record.audioSessionId
             record.release()
+            Log.d(TAG, "AudioRecord released: sessionId=$finalSessionId (mic loop ending)")
             effects.forEach { it.release() }
         }
     }
@@ -2329,5 +2470,12 @@ class GeminiLiveSession(
         // delay exists, so a persistently failing AudioRecord can't busy-loop the thread;
         // it does not need to be tuned separately from that value.
         private const val RECORD_READ_ERROR_BACKOFF_MS = 20L
+        // Ticket 15: how often the mic-loop's signal-level line is logged. "About once a
+        // second, not per buffer" per the ticket - CHUNK_BYTES is ~100ms of audio, so logging
+        // every buffer would be ten lines a second of pure noise. The level itself is still
+        // accumulated on every buffer (see [peakSinceOpen]/[intervalPeak] in micLoop); this
+        // constant only throttles the LOG line and the watchdog's own decision cadence, not the
+        // underlying computation.
+        private const val LEVEL_LOG_INTERVAL_MS = 1_000L
     }
 }

@@ -336,6 +336,10 @@ object WakeWordEngine {
         if (r.state != AudioRecord.STATE_INITIALIZED) {
             Log.e(TAG, "AudioRecord not initialized - microphone may be in use")
             recordEvent("(microphone unavailable)", isFinal = true, hit = false)
+            // Ticket 15 (.scratch/wake-word/issues/15-see-a-deaf-mic.md): pair every release
+            // with its own "AudioRecord opened" line by sessionId, same as GeminiLiveSession -
+            // this engine already logs the open, it just never logged the release.
+            Log.d(TAG, "AudioRecord released: sessionId=" + r.audioSessionId + " (init failed)")
             r.release()
             return
         }
@@ -521,7 +525,12 @@ object WakeWordEngine {
         runCatching {
             runBlocking { withTimeoutOrNull(CAPTURE_JOIN_TIMEOUT_MS) { job?.cancelAndJoin() } }
         }
-        record?.let { r -> runCatching { r.release() } }
+        // Ticket 15: same pairing as the init-failed release just above - sessionId read before
+        // release() so a capture can match this line against its own open.
+        record?.let { r ->
+            Log.d(TAG, "AudioRecord released: sessionId=" + r.audioSessionId + " (releaseSpeechService)")
+            runCatching { r.release() }
+        }
         record = null
 
         effects.forEach { runCatching { it.release() } }

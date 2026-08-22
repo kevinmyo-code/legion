@@ -27,7 +27,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
 | [[.scratch/wake-word/map\|wake-word]] | [[13-weak-pickup-on-a-drive\|13]] | bug | The wake word sometimes does not hear him on a drive |
-| [[.scratch/wake-word/map\|wake-word]] | [[15-see-a-deaf-mic\|15]] | build | Make a deaf microphone visible |
 
 ## Built, owing a run on hardware
 
@@ -49,6 +48,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/wake-word/map\|wake-word]] | [[05-mic-ownership\|05]] | grilling | Who owns the microphone, and what yields to what? |
 | [[.scratch/wake-word/map\|wake-word]] | [[12-deaf-in-the-jeep\|12]] | task | Deaf in the Jeep, fine outside it |
 | [[.scratch/wake-word/map\|wake-word]] | [[14-service-refused-to-start\|14]] | bug | The assistant silently stops running, and every surface still says On |
+| [[.scratch/wake-word/map\|wake-word]] | [[15-see-a-deaf-mic\|15]] | build | Make a deaf microphone visible |
 
 ## Blocked
 

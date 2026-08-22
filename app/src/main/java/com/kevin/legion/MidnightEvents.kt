@@ -139,6 +139,21 @@ object MidnightEvents {
     fun micState(open: Boolean, why: String) = safe { Log.d(TAG, "mic_${if (open) "open" else "closed"}: $why") }
 
     /**
+     * Ticket 15 (`.scratch/wake-word/issues/15-see-a-deaf-mic.md`): the mic has been open,
+     * actively capturing a turn, for [heldMs] with a peak signal level of [peak] that never
+     * rose above [com.kevin.legion.service.MicSignal.SILENCE_PEAK_THRESHOLD] - digital silence,
+     * not a quiet room. This is a WARN-level forced report (not a debug breadcrumb) because the
+     * whole point of this ticket is a failure that otherwise leaves no trace at all: it opens
+     * cleanly, throws nothing, and the server-VAD turn simply never completes. [recordingState]
+     * is `AudioRecord.recordingState` at the moment this fired - logged alongside the fault
+     * because a STOPPED recorder and a genuinely DEAF one look identical from every other signal
+     * available here, and only this field can tell them apart afterward.
+     */
+    fun deafMicWatchdog(heldMs: Long, peak: Int, recordingState: Int) = safe {
+        Log.w(TAG, "deaf_mic_watchdog: heldMs=$heldMs peak=$peak recordingState=$recordingState")
+    }
+
+    /**
      * A synced or imported row carried columns this device's schema does not have,
      * and they were dropped so the rest of the row could still be written. Warn,
      * not debug: this is data arriving that we chose not to store, and the only

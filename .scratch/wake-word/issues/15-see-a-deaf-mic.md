@@ -3,12 +3,12 @@ map: wake-word
 ticket: 15
 title: "Make a deaf microphone visible"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Levels, watchdog and paired open/release logging all in. Thresholds are GUESSED - the first real capture is what calibrates them."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Make a deaf microphone visible
@@ -85,3 +85,28 @@ that it was attempted and log the level afterwards, so the NEXT capture answers 
   These two tests are the ticket.
 - On the phone: trigger the wake word and speak, confirm levels appear and the watchdog stays quiet.
   Then reproduce the failure if it recurs and confirm it is now visible in the log.
+
+---
+
+## Built 2026-08-22, and the thresholds are guesses
+
+`service/MicSignal.kt` holds both pure functions. `SILENCE_PEAK_THRESHOLD = 50` (of 32767) and
+`DEAF_MIC_ELAPSED_MS = 5000` are **guessed, not measured** - no capture with raw levels existed when
+they were chosen, because raw levels are the thing this ticket adds. The elapsed value at least sits
+clear of the measured 1200ms short-capture retry window so the two mitigations do not compete.
+
+**The first real capture is what calibrates them**, and until then the numbers are a starting point
+rather than a finding. Said here so a later reader does not mistake them for measurements.
+
+## The release-logging addendum
+
+Every `AudioRecord` release in `GeminiLiveSession.kt` (four sites) and `WakeWordEngine.kt` (two)
+now logs its `sessionId`, read before the release. Opens were already logged. **A leaked or
+overlapping capture across a session boundary was structurally invisible before this** - now an
+unpaired open is a missing line rather than a mystery.
+
+This came from a capture at 12:57:19: the session opened a NEW recorder (`sessionId=43233`) 76ms
+after its own mic loop was cancelled and 50ms after the socket closed, and the wake word opened
+another 400ms later. Whether 43233 was ever released was unanswerable. **The missing guard in
+`openMicForUser` was deliberately NOT fixed** - it is a plausible story, and this bug has already
+survived one of those. Prove it with a capture first.
