@@ -201,6 +201,15 @@ import androidx.room.RoomDatabase
  * comment for why this is a genuinely different table from Spotify's own recently-played read
  * ([com.kevin.legion.media.RecentlyPlayedTrack]) and not the retired music-taste ledger back
  * under a new name.
+ *
+ * v29: (v27 `memory_audit`, v28 `proactive_settings`/`proactive_raises`, both undocumented here -
+ * see `data/local/Migrations.kt` for their real shape) `sitrep_modules` + `sitrep_schedule`
+ * (ticket 22).
+ *
+ * v30: `conversation_audit` (ticket 23, hands-and-senses map, "an audit trail of every
+ * conversation and every tool call"). One additive `CREATE TABLE`, nothing existing touched. See
+ * [ConversationAudit]'s own doc comment for why this is a NEW table rather than an extension of
+ * [MemoryAudit] (v27) despite both being flat trimmed audit logs.
  */
 @Database(
     entities = [
@@ -229,8 +238,9 @@ import androidx.room.RoomDatabase
         MusicPlayHistoryEntry::class, MemoryAudit::class,
         ProactiveSetting::class, ProactiveRaiseRow::class,
         SitrepModuleSetting::class, SitrepSchedule::class,
+        ConversationAudit::class,
     ],
-    version = 29,
+    version = 30,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -293,6 +303,9 @@ abstract class CarDatabase : RoomDatabase() {
     /** The sitrep's schedule time and newsletter sender list - one row, see [SitrepSchedule]. */
     abstract fun sitrepScheduleDao(): SitrepScheduleDao
 
+    /** The conversation-and-tool-call audit trail (ticket 23) - see [ConversationAudit]. */
+    abstract fun conversationAuditDao(): ConversationAuditDao
+
     companion object {
         @Volatile
         private var INSTANCE: CarDatabase? = null
@@ -323,7 +336,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 29
+        const val SCHEMA_VERSION = 30
         // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
         // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
@@ -332,6 +345,8 @@ abstract class CarDatabase : RoomDatabase() {
         // 2026-08-21: bumped to 29 alongside `@Database(version=)` in the SAME edit this time
         // (`sitrep_modules`/`sitrep_schedule`, ticket 22) - the two constants staying in sync is
         // the whole point of this comment existing at all.
+        // 2026-08-21: bumped to 30 alongside `@Database(version=)` in the same edit again
+        // (`conversation_audit`, ticket 23).
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -353,7 +368,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
                         MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
                         MIGRATION_25_26,
-                        MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29,
+                        MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

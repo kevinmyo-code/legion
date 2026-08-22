@@ -24,8 +24,10 @@ import com.kevin.legion.ai.CrisisDetector
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.car.CarProbeLog
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.ConversationAudit
 import com.kevin.legion.data.local.EpisodicTurn
 import com.kevin.legion.data.local.MemoryAudit
+import com.kevin.legion.data.local.auditContent
 import com.kevin.legion.data.local.record
 import com.kevin.legion.media.MusicController
 import com.kevin.legion.media.NowPlayingController
@@ -455,6 +457,19 @@ class GeminiLiveSession(
     // turnComplete alongside every other per-turn accumulator.
     @Volatile private var mailToolCalledThisTurn = false
 
+    // Ticket 23 (hands-and-senses, "an audit trail of every conversation and every tool call"):
+    // groups every [com.kevin.legion.data.local.ConversationAudit] row minted from one exchange -
+    // the driver's line, the companion's reply, and every tool call in between - without a
+    // foreign key. [LiveSessionController.handleToolCall] reads the CURRENT value (via
+    // [currentTurnSeq]) at the moment each tool call resolves, which always lands BEFORE this
+    // turn's own turnComplete runs (a tool call is mid-generation; turnComplete is the round's own
+    // end), so every tool row and this turn's USER/COMPANION rows share one number.
+    // [auditConversationTurn] captures the CURRENT value with `getAndIncrement()` exactly once per
+    // turnComplete - the capture happens before the increment, so this turn's own rows use the same
+    // number a same-turn tool call already read via [currentTurnSeq], and the NEXT turn's tool
+    // calls (which cannot start until this turn's turnComplete has fired) see the bumped value.
+    private val turnSeq = java.util.concurrent.atomic.AtomicLong(0)
+
     // Zero's own speech this turn, from outputAudioTranscription - only requested
     // when the debug subtitle toggle is on, and emitted as LiveEvent.Subtitle.
     @Volatile private var subtitles = false
@@ -758,6 +773,16 @@ class GeminiLiveSession(
     fun readThroughToolTouchedThisTurn(): Boolean = mailToolCalledThisTurn
 
     /**
+     * Ticket 23: the turn number [LiveSessionController.handleToolCall] tags a tool call's
+     * [com.kevin.legion.data.local.ConversationAudit] row with, so it lands in the same group as
+     * the USER/COMPANION rows [auditConversationTurn] writes when this turn completes. Read-only
+     * for the same reason [readThroughToolTouchedThisTurn] is: the write itself belongs to the
+     * caller that already has the tool's name/args/result in hand, not to this class reaching back
+     * out for them.
+     */
+    fun currentTurnSeq(): Long = turnSeq.get()
+
+    /**
      * Marks this turn as carrying read-through content, so [captureEpisodicTurn] skips it and
      * `remember` refuses - the same protection a mail TOOL call gets, for speech that never called
      * a tool.
@@ -1022,17 +1047,71 @@ class GeminiLiveSession(
      * `companionTurnText` is the whole line, and this is the moment before it is cleared.
      *
      * A record ABOUT the work, never an input to it - nothing reads it back into a prompt.
+     *
+     * **Ticket 23 fix: this used to store the full line even when [mailToolCalledThisTurn] was
+     * set.** `captureEpisodicTurn` right below already drops a mail-touched turn entirely, on the
+     * reasoning that a spoken reply can itself BE a subject line read out loud - that same reply
+     * was landing here in full regardless, because this function never checked the flag at all.
+     * Found while wiring the same redaction into [ConversationAudit] and fixed here too rather
+     * than left leaking beside a properly-redacted twin.
      */
     private fun auditSpokenTurn(companionText: String) {
         if (companionText.isBlank()) return
+        val redacted = mailToolCalledThisTurn
+        val stored = com.kevin.legion.data.local.auditContent(companionText, redacted)
         io.launch {
             runCatching {
                 CarDatabase.getDatabase(appContext).memoryAuditDao().record(
                     MemoryAudit.Event.SPOKEN,
                     MemoryAudit.Store.SPEECH,
-                    companionText,
+                    stored,
                     vehicleId = ActiveVehicle.current(appContext),
                 )
+            }
+        }
+    }
+
+    /**
+     * Ticket 23: writes this turn's USER and COMPANION rows to [ConversationAudit], sharing
+     * [currentTurnSeq] with whatever [LiveSessionController.handleToolCall] already wrote for the
+     * tool calls this turn made (see [turnSeq]'s own doc comment for why the ordering guarantees
+     * that).
+     *
+     * **Runs on every turnComplete, unlike [captureEpisodicTurn].** That function returns early on
+     * a blank driver line specifically to keep proactive/greeting lines out of long-term memory -
+     * ticket 20's own postmortem names that early-return as the reason the greeting bug had no
+     * record anywhere. This audit exists to catch exactly that class of gap, so it does not
+     * inherit the same skip: a blank driver line (a proactive raise) still gets a COMPANION row.
+     *
+     * **Driver text is never redacted.** The driver's own words cannot themselves be fetched
+     * read-through content - see [ConversationAudit]'s class doc for why tool RESULTS get redacted
+     * per-call but this turn's free text is redacted as a whole when flagged.
+     */
+    private fun auditConversationTurn(driverText: String, companionText: String) {
+        if (driverText.isBlank() && companionText.isBlank()) return
+        val seq = turnSeq.getAndIncrement()
+        val redacted = mailToolCalledThisTurn
+        val vehicleId = ActiveVehicle.current(appContext)
+        io.launch {
+            runCatching {
+                val dao = CarDatabase.getDatabase(appContext).conversationAuditDao()
+                if (driverText.isNotBlank()) {
+                    dao.record(
+                        turnSeq = seq,
+                        kind = ConversationAudit.Kind.USER,
+                        content = driverText,
+                        vehicleId = vehicleId,
+                    )
+                }
+                if (companionText.isNotBlank()) {
+                    dao.record(
+                        turnSeq = seq,
+                        kind = ConversationAudit.Kind.COMPANION,
+                        content = auditContent(companionText, redacted),
+                        redacted = redacted,
+                        vehicleId = vehicleId,
+                    )
+                }
             }
         }
     }
@@ -1174,6 +1253,7 @@ class GeminiLiveSession(
             // none is. Deterministic and free - no model round trip to ask "was that a no?".
             io.launch { runCatching { ProactiveBus.noteReply(appContext, heard) } }
             auditSpokenTurn(companionTurnText.toString().trim())
+            auditConversationTurn(heard, companionTurnText.toString().trim())
             mailToolCalledThisTurn = false
             userTurnText.setLength(0)
             companionTurnText.setLength(0)

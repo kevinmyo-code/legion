@@ -10,8 +10,13 @@ import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.KeyHealth
 import com.kevin.legion.ai.firstGreetingOpener
 import com.kevin.legion.car.CarProbeLog
+import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.ConversationAudit
+import com.kevin.legion.data.local.record
+import com.kevin.legion.data.local.auditContent
 import com.kevin.legion.ui.LegionRoute
 import com.kevin.legion.ui.MainActivity
+import com.kevin.legion.vehicle.ActiveVehicle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -849,6 +854,44 @@ class LiveSessionController(context: Context) {
                         .put("message", "That took too long and timed out.")
                 } catch (e: Exception) {
                     JSONObject().put("success", false).put("message", "Something went wrong running that.")
+                }
+                // Ticket 23 (hands-and-senses, "an audit trail of every conversation and every
+                // tool call"): every tool call gets its own [ConversationAudit] row - name,
+                // arguments, and the result that actually came back, tagged with THIS turn's
+                // number so it regroups with the USER/COMPANION rows
+                // [GeminiLiveSession.auditConversationTurn] writes when the turn completes.
+                //
+                // **Per-call redaction, not whole-turn**, and that split is deliberate: unlike the
+                // free-text COMPANION row (which cannot be reliably attributed back to one tool
+                // call among several, so it is redacted whole whenever ANY tool this turn was
+                // excluded), a TOOL_RESULT row already carries its own [call.name] - a
+                // `list_vehicles` result sitting in the same turn as `ask_mail` can be told apart
+                // precisely and does not need to be sacrificed to protect the call beside it. See
+                // [com.kevin.legion.data.local.ConversationAudit]'s class doc for the full
+                // reasoning. Reuses [GeminiLiveSession.isEpisodicExcludedTool] - the exact
+                // production membership test against [LiveToolbox.EPISODIC_EXCLUDED_TOOLS] - so
+                // this never drifts into a second notion of read-through (ticket 23 decision 2).
+                //
+                // Best-effort and fire-and-forget: an audit write must never delay or fail a real
+                // tool response, which is why this is its own `scope.launch` rather than inline
+                // in the try/catch above that owns `response`.
+                run {
+                    val toolRedacted = GeminiLiveSession.isEpisodicExcludedTool(call.name)
+                    val turnSeqForRow = s.currentTurnSeq()
+                    val vehicleId = ActiveVehicle.current(appContext)
+                    scope.launch {
+                        runCatching {
+                            CarDatabase.getDatabase(appContext).conversationAuditDao().record(
+                                turnSeq = turnSeqForRow,
+                                kind = ConversationAudit.Kind.TOOL_RESULT,
+                                content = auditContent(response.toString(), toolRedacted),
+                                toolName = call.name,
+                                args = call.args.toString(),
+                                redacted = toolRedacted,
+                                vehicleId = vehicleId,
+                            )
+                        }
+                    }
                 }
                 // Sending can throw if the socket died mid-tool; the close path handles
                 // recovery, so don't let it crash this scope. A THROWN exception isn't the

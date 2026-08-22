@@ -1199,3 +1199,29 @@ val MIGRATION_28_29 = object : Migration(28, 29) {
         )
     }
 }
+
+/**
+ * v29 -> v30: `conversation_audit` (ticket 23, hands-and-senses map). One additive `CREATE TABLE`,
+ * nothing existing touched - see [com.kevin.legion.data.local.ConversationAudit]'s own doc for the
+ * schema's shape and why it is a sibling of [MemoryAudit] rather than an extension of it.
+ *
+ * SQL below is copied VERBATIM from the generated `app/schemas/.../30.json`'s own `createSql`
+ * (confirmed by a real `compileDebugKotlin -Pnokey` run, not hand-derived) - same discipline
+ * [MIGRATION_28_29] documents.
+ */
+val MIGRATION_29_30 = object : Migration(29, 30) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `conversation_audit` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`turnSeq` INTEGER NOT NULL, " +
+                "`kind` TEXT NOT NULL, " +
+                "`toolName` TEXT NOT NULL DEFAULT '', " +
+                "`args` TEXT NOT NULL DEFAULT '', " +
+                "`content` TEXT NOT NULL, " +
+                "`redacted` INTEGER NOT NULL DEFAULT 0, " +
+                "`vehicleId` TEXT NOT NULL DEFAULT '', " +
+                "`at` INTEGER NOT NULL)"
+        )
+    }
+}

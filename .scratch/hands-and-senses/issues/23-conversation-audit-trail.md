@@ -3,8 +3,8 @@ map: hands-and-senses
 ticket: 23
 title: "An audit trail of every conversation and every tool call"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Table, redaction, tool rows and export all in; owes a read off the phone after a real drive."
 blockers: []
 blocked-by: []
 open-blockers: 0
