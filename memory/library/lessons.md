@@ -765,3 +765,40 @@ without an AOSP or official-docs citation for what the field means.
 **Status:** CLOSED. Ticket 09 resolved as a misreading, no code changed. Rule recorded here.
 Related to L10 (a grep-clean result is not a done result) - both are "the cheap check you did is not
 the check you needed". See [[decisions]] 2026-08-21.
+
+## L32 - Two agents in one checkout corrupt more than the code (2026-08-21)
+
+**Context:** Kevin's standing rule as of this day is that anything ready gets built, and that
+building may run in PARALLEL with grilling another effort. Two coding subagents were dispatched into
+the same working tree - one on `area_info`, one on geofences.
+
+**Three separate failures, none of them a code defect:**
+
+1. **A commit described less than it contained, twice.** `git add -A` while an agent was mid-build
+   swept its in-progress files into a commit about something else. Corrected in place both times
+   (see `4750d90`, `503b2fb` and their follow-ups), but git log is now unreliable in two places.
+   Staging a DIRECTORY (`app/src/main/java/com/kevin/legion/location`) has the same failure mode and
+   caught the other agent's files a third time - that one was caught before committing.
+2. **The generated docs described code that was not committed.** The pre-commit hook regenerates
+   `docs/voice.html` and `README.md` from the **working tree**, not from git state. Committing one
+   agent's work while another's `voice_guide_copy.py` edits sat uncommitted on disk published a page
+   documenting two tools whose source did not exist in the repo. Nothing failed; the page was simply
+   ahead of the code.
+3. **Two spurious Gradle failures.** `Daemon is stopping immediately: stop command received`, and
+   `NoSuchFileException: in-progress-results-*.bin`. Both were one agent's `./gradlew --stop` or
+   build deleting state out from under the other. **Both look exactly like a real test failure** and
+   cost a diagnosis each.
+
+**Root class:** shared mutable workspace. The agents were correct; the concurrency was not.
+
+**Rule:** when dispatching more than one building agent, either (a) give each an isolated git
+worktree, or (b) accept ONE build/doc-generation process against the checkout at a time and
+serialise the Gradle runs. When committing while any agent is live, stage **file paths, never `-A`
+and never a directory**, and re-read `git status` before the commit rather than after.
+
+**Regression check:** a commit whose diff contains files its message does not mention; a generated
+page in git referencing a symbol that does not exist in committed source; a Gradle failure naming a
+file under `build/` rather than a test.
+
+**Status:** CLOSED. Rule recorded here. Not yet graduated into an agent definition - the natural home
+is a line in `TEAM.md`'s dispatch cadence, which the next session that edits it should add.
