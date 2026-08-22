@@ -491,7 +491,13 @@ object LiveToolbox {
             name = "end_conversation",
             description = "End the conversation because the user has signalled they are DONE " +
                 "talking to you - 'never mind', 'nothing', 'I'm good', 'that's all', 'go away', " +
-                "'I don't need you right now'. Say a short in-character sign-off in the same turn; " +
+                "'I don't need you right now'. " +
+                "**'Go to sleep', 'sleep', 'go dormant' and 'stand down' mean exactly this too: " +
+                "stop listening and go quiet.** They are about YOU going dormant, not about the " +
+                "user going to bed - do not wish them goodnight, do not comment on the hour, and " +
+                "do not treat it as a bedtime remark. It may well be the middle of the day. " +
+                "Acknowledge in two or three words and stop. " +
+                "Say a short in-character sign-off in the same turn; " +
                 "the conversation closes once you finish speaking, and the user can always call " +
                 "you again. Do NOT call this when the user is merely answering 'no' to something " +
                 "you asked, declining one suggestion, or pausing to think - those are ordinary " +

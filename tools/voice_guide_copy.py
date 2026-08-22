@@ -40,7 +40,7 @@ COPY = {
     "get_current_time": ("What time is it?", "The time and date where you are."),
     "get_current_location": ("Where am I?", "Your current location. Says it does not know rather than guessing when there is no GPS fix."),
     "show_app": ("Open the ledger", "Opens a screen in the app for you."),
-    "end_conversation": ("That's all, thanks", "Ends the conversation and closes the mic."),
+    "end_conversation": ("Go to sleep", "Stops listening and goes quiet. \"That's all\", \"never mind\" and \"stand down\" do the same. It reads this as YOU going dormant, not as your bedtime - no goodnight."),
     "finish_intro": ("I'm done setting up", "Finishes first-run setup."),
 
     # --- Your day ---
