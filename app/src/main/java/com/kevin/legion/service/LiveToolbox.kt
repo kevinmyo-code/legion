@@ -3883,11 +3883,11 @@ object LiveToolbox {
      * not a broken one (see [GoalPlanAgent.accept]'s own doc comment).
      *
      * **This is also the one place ticket 04's daily checklist gets (re)built**
-     * ([GoalChecklistSync.sync]). This call is the whole flow's single reliable "the user has now
+     * ([GoalChecklistSync.materializeToday]). This call is the whole flow's single reliable "the user has now
      * said yes" signal - `generate_goal_plan`'s own tool description has the model call
      * `set_meal_target`/`set_sleep_target`/`set_goal` first and `accept_goal_plan` last,
      * regardless of whether this particular plan had a workout piece - so by the time either
-     * branch below runs [GoalChecklistSync.sync], every write the plan is going to make has
+     * branch below runs [GoalChecklistSync.materializeToday], every write the plan is going to make has
      * already landed and reading Room fresh sees the whole thing, including the workout piece
      * this same call may have just written.
      */
@@ -3896,7 +3896,7 @@ object LiveToolbox {
         if (workoutGoal == null) {
             // A nutrition/sleep-only plan is still a complete, accepted plan - its checklist lines
             // are synced here rather than only on the branch below.
-            GoalChecklistSync.sync(context)
+            GoalChecklistSync.materializeToday(context)
             return result(true, "This plan had no workout piece to set up.")
         }
 
@@ -3907,9 +3907,9 @@ object LiveToolbox {
         val message = accepted.workoutPlanMessage ?: "I couldn't put a workout plan together just now - try again in a sec."
         // Synced AFTER the workout write above, so a workout-derived checklist line is included
         // even though it did not exist yet when this function started. Harmless to call even when
-        // the workout write itself failed - GoalChecklistSync.sync just re-derives from whatever
+        // the workout write itself failed - GoalChecklistSync.materializeToday just re-derives from whatever
         // Room currently holds, which in that case is unchanged from before this call.
-        GoalChecklistSync.sync(context)
+        GoalChecklistSync.materializeToday(context)
         // WorkoutController.generatePlan (which accept() calls) returns a plain message string
         // either way, never a structured outcome - the same "I couldn't ..." prefix
         // create_workout_plan's own dispatch already treats as its one failure signature, mirrored

@@ -17,6 +17,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.advisor.GoalChecklistSync
 import com.kevin.legion.advisor.GoalChecklistSync.GoalChecklistItemView
+import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.common.DeckTag
@@ -28,33 +29,36 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.shortDate
 
 /**
- * The BIO daily checklist panel (ticket 04, `goal-plans`) - "today's items", derived from
- * whatever `generate_goal_plan`/`accept_goal_plan` last wrote, self-contained the same way
- * [GoalsPanel] is (its own doc comment explains why: not part of [com.kevin.legion.ui.BodyScreen]'s
- * batched load, and a screen this reads from can change out from under it between visits with no
- * event this panel is otherwise told about).
+ * The BIO daily checklist panel (ticket 04, `goal-plans`, adherence reworked by ticket 06) -
+ * "today's items", derived from whatever `generate_goal_plan`/`accept_goal_plan` last wrote,
+ * self-contained the same way [GoalsPanel] is (its own doc comment explains why: not part of
+ * [com.kevin.legion.ui.BodyScreen]'s batched load, and a screen this reads from can change out
+ * from under it between visits with no event this panel is otherwise told about).
  *
  * [compact] switches between the full [com.kevin.legion.ui.BodyScreen] rendering (every line, plus
- * this ticket's recent-skip record) and the HOME section's "at a glance" rendering (item text
- * only, capped, no skip detail) - one panel, two call sites, rather than two composables that could
- * quietly drift on what "today's items" means.
+ * this ticket's recent-completion record) and the HOME section's "at a glance" rendering (item
+ * text only, capped, no completion detail) - one panel, two call sites, rather than two composables
+ * that could quietly drift on what "today's items" means.
  *
  * **Read-only, matching every other panel on these screens except [GoalsPanel] itself.** There is
- * deliberately no on-screen tick or skip affordance here - see [GoalChecklistSync.sync]'s own doc
- * comment for why a recurring item cannot be ticked at all, and CLAUDE.md's own "voice is how X
- * gets written" posture for why this screen does not grow a tap-to-skip control just to route
- * around that; `manage_item`'s `skip` action is the one path, unchanged.
+ * deliberately no on-screen tick affordance here - `manage_item`'s `tick`/`untick` actions are the
+ * one path, unchanged, per CLAUDE.md's "voice is how X gets written" posture and this map's own
+ * "do not build a second ticking path" rule. Ticket 06 made ticking a plan line actually WORK
+ * (each line is now an ordinary one-off [com.kevin.legion.data.local.ListItem], so
+ * [com.kevin.legion.notes.NotesController.tick] no longer refuses it) - see [GoalChecklistSync]'s
+ * own class doc for the full account of why ticket 04's original recurring-item design could never
+ * be ticked at all.
  *
- * **No score, no streak, no percentage** (ticket 04's own binding rule, CLAUDE.md §7). What this
- * panel shows is EXACTLY what [GoalChecklistSync.currentItems] returns and nothing derived from
- * it: today's lines, and - full mode only - which explicit skip dates exist in the last
- * [GoalChecklistSync.RECENT_SKIP_WINDOW_DAYS] days. **The gap this panel does NOT paper over**: a
- * line with no skip recorded could mean it was done, or it could mean nobody looked at it - this
- * schema has no per-occurrence completion state for a recurring item (only skip, an opt-OUT), so a
- * genuine "days completed" adherence view is not buildable from what is actually stored. The caption
- * under each recent-skip line says so in words rather than a caller having to infer it from an
- * empty list, matching CLAUDE.md §4's "unreadable and empty are different sentences" posture
- * carried over from ledger/pantry to this domain.
+ * **No score, no streak, no percentage** (ticket 04's own binding rule, CLAUDE.md §7, restated by
+ * ticket 06: "adherence becomes truthful... still shown, never scored"). What this panel shows is
+ * EXACTLY what [GoalChecklistSync.currentItems] returns and nothing derived from it: today's lines,
+ * whether each is done, and - full mode only - the [ListItem.doneAt] timestamps of the same line's
+ * completions on OTHER days within [GoalChecklistSync.RECENT_COMPLETION_WINDOW_DAYS]. Unlike ticket
+ * 04's shipped version, this is a genuine completion record now, not an explicit-skip proxy for
+ * one - a real `doneAt` exists because ticket 06 made every plan line a tickable one-off item. An
+ * empty completion list still gets a worded caption rather than silently reading as "done every
+ * day", matching CLAUDE.md §4's "unreadable and empty are different sentences" posture carried over
+ * from ledger/pantry to this domain.
  */
 @Composable
 fun GoalChecklistPanel(compact: Boolean = false, modifier: Modifier = Modifier) {
@@ -81,7 +85,7 @@ fun GoalChecklistPanel(compact: Boolean = false, modifier: Modifier = Modifier) 
             )
             else -> {
                 val shown = if (compact) items.take(HOME_ITEM_CAP) else items
-                shown.forEach { item -> GoalChecklistItemRow(item, showSkipHistory = !compact) }
+                shown.forEach { item -> GoalChecklistItemRow(item, showCompletionHistory = !compact) }
                 if (compact && items.size > HOME_ITEM_CAP) {
                     Text(
                         "+${items.size - HOME_ITEM_CAP} more on Body",
@@ -101,20 +105,24 @@ fun GoalChecklistPanel(compact: Boolean = false, modifier: Modifier = Modifier) 
 private const val HOME_ITEM_CAP = 3
 
 @Composable
-private fun GoalChecklistItemRow(item: GoalChecklistItemView, showSkipHistory: Boolean) {
+private fun GoalChecklistItemRow(item: GoalChecklistItemView, showCompletionHistory: Boolean) {
     val sem = LocalLegionSemantics.current
     Column(Modifier.padding(bottom = 2.dp)) {
         DeckRow(
             label = item.text,
-            value = if (item.skippedToday) "SKIPPED TODAY" else "",
-            tag = if (item.skippedToday) { { DeckTag("SKIPPED", DeckTagStyle.OUTLINE_MUTED) } } else null,
+            value = if (item.done) "DONE" else "",
+            tag = if (item.done) { { DeckTag("DONE", DeckTagStyle.INVERTED_GREEN) } } else null,
         )
-        if (showSkipHistory) {
-            val caption = if (item.recentSkipDates.isEmpty()) {
-                "No skip recorded in the last week - this only tracks explicit skips, not " +
-                    "completion, so that is not the same as having done it every day."
+        if (showCompletionHistory) {
+            // A genuine record now (ticket 06) - [item.recentCompletionDates] is real `doneAt`
+            // history, not the explicit-skip proxy ticket 04 shipped. Still worded as a plain
+            // fact, never a grade: no "X of Y days", no percentage - CLAUDE.md §7's compulsion
+            // ban applies to a screen just as much as it applies to a spoken raise.
+            val caption = if (item.recentCompletionDates.isEmpty()) {
+                "Nothing marked done in the last week for this line - an empty history here " +
+                    "just means it hasn't been ticked yet, not that it was missed."
             } else {
-                "Skipped: " + item.recentSkipDates.joinToString(", ") { shortDate(it) }
+                "Done: " + item.recentCompletionDates.joinToString(", ") { shortDate(it) }
             }
             Text(
                 caption,
@@ -139,16 +147,23 @@ private fun GoalChecklistPreviewContent() {
         Column {
             DeckPane(header = "Checklist", headerAccent = "3 TODAY") {
                 GoalChecklistItemRow(
-                    GoalChecklistItemView("Hit 2,300 kcal / 180g protein", skippedToday = false, recentSkipDates = emptyList()),
-                    showSkipHistory = true,
+                    GoalChecklistItemView(
+                        "Hit 2,300 kcal / 180g protein", done = false, doneAt = null, recentCompletionDates = emptyList(),
+                    ),
+                    showCompletionHistory = true,
                 )
                 GoalChecklistItemRow(
-                    GoalChecklistItemView("Sleep 8h", skippedToday = true, recentSkipDates = listOf(System.currentTimeMillis())),
-                    showSkipHistory = true,
+                    GoalChecklistItemView(
+                        "Sleep 8h", done = true, doneAt = System.currentTimeMillis(),
+                        recentCompletionDates = listOf(System.currentTimeMillis() - 86_400_000L),
+                    ),
+                    showCompletionHistory = true,
                 )
                 GoalChecklistItemRow(
-                    GoalChecklistItemView("Squat: 9 sets this week", skippedToday = false, recentSkipDates = emptyList()),
-                    showSkipHistory = true,
+                    GoalChecklistItemView(
+                        "Squat: 9 sets this week", done = false, doneAt = null, recentCompletionDates = emptyList(),
+                    ),
+                    showCompletionHistory = true,
                 )
             }
         }

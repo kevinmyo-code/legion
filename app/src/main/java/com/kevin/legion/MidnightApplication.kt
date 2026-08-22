@@ -156,6 +156,22 @@ class MidnightApplication : Application() {
                 }.onFailure { MidnightEvents.appStartWorkFailed("clear_this_car_sentinel", it) }
             }
 
+            // goal-plans ticket 06: "a materializer that runs on app open, and for the current day
+            // at acceptance". `accept_goal_plan` (`service/LiveToolbox.kt`) covers the second half;
+            // this is the first - the BIO checklist's plan lines are now ordinary ONE-OFF list
+            // items materialized fresh per day (ticket 06 replaced ticket 04's recurring-item
+            // design after finding a recurring item can never be ticked), so a day that turns over
+            // while the app is closed needs today's rows created the next time the app is opened,
+            // not just the next time a plan is accepted. Idempotent (see
+            // GoalChecklistSync.materializeToday's own doc comment for how), same L12 reasoning as
+            // every other block in this gated section: it must run unconditionally on process
+            // start, not from a service that might not be running.
+            appScope.launch {
+                runCatching {
+                    com.kevin.legion.advisor.GoalChecklistSync.materializeToday(this@MidnightApplication)
+                }.onFailure { MidnightEvents.appStartWorkFailed("materialize_goal_checklist", it) }
+            }
+
             // Reconcile the assistant's on/off flag to reality (measured defect, 2026-08-17):
             // AssistantIgnition's persisted flag can read true - and every UI surface built on it
             // agree - while AriaForegroundService is not actually running, because the ONLY

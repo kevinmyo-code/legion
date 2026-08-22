@@ -3,8 +3,8 @@ map: goal-plans
 ticket: 06
 title: "A day's items you can actually tick"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "One-off items, idempotent materializer, 14-day window, real completion record. Owes the on-phone run: tick by voice, tick by hand, survive a restart."
 blockers: ["04"]
 blocked-by: ["[[04-checklist-and-surfaces]]"]
 open-blockers: 1
