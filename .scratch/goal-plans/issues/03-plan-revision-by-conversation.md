@@ -3,8 +3,8 @@ map: goal-plans
 ticket: 03
 title: "Arguing with the plan"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Revision by regeneration, constraint memory and the two voice tools all in. Owes the on-phone run: state a constraint, regenerate, confirm it survived."
 blockers: ["02"]
 blocked-by: ["[[02-recommender-and-playbook]]"]
 open-blockers: 1

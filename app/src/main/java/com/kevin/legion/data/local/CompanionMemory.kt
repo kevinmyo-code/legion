@@ -72,5 +72,20 @@ data class CompanionMemory(
         const val CONSOLIDATED = "consolidated"
         /** Synthesized from clusters of other memories (ticket 05). */
         const val REFLECTION = "reflection"
+        /**
+         * Written directly by a tool call, from something the user said in THAT SAME turn - never
+         * distilled from a transcript later, never something the model concluded on its own
+         * (goal-plans ticket 03). No schema change: [Source] is a TEXT column with no CHECK
+         * constraint, so a new constant here is the same "widening an enum stored as TEXT is not a
+         * migration" case CLAUDE.md sec 5 already documents for `IngestMethod`. The only current
+         * writer is `generate_goal_plan`'s stated-constraint persistence
+         * (`service/LiveToolbox.kt`) - a fitness constraint the user states out loud ("no gym
+         * access") is exactly the kind of externally falsifiable fact CLAUDE.md sec 7 requires
+         * memory to stay anchored to, and this tag is what lets a reader of the memory screen or
+         * the audit trail tell "the app inferred this" from "the user said this," which
+         * [CONSOLIDATED] and [REFLECTION] cannot - both describe an unattended pass reading a
+         * transcript, not a tool call acting on the current turn.
+         */
+        const val STATED = "stated"
     }
 }

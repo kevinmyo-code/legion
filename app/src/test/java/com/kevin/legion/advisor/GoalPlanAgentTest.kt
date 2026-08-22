@@ -304,4 +304,69 @@ class GoalPlanAgentTest {
     fun `SYSTEM_INSTRUCTION embeds the RESPONSE_SCHEMA prose contract`() {
         assertTrue(GoalPlanAgent.SYSTEM_INSTRUCTION.contains(GoalPlanAgent.RESPONSE_SCHEMA.trim()))
     }
+
+    // --- withConstraints (ticket 03, `goal-plans`: "he should not have to say it again") --------
+
+    @Test
+    fun `withConstraints returns goalText byte-for-byte unchanged when nothing is stored`() {
+        assertEquals(
+            "lose fat, gain muscle",
+            GoalPlanAgent.withConstraints("lose fat, gain muscle", emptyList()),
+        )
+    }
+
+    @Test
+    fun `withConstraints folds every stored constraint into the goal text`() {
+        val combined = GoalPlanAgent.withConstraints(
+            "lose fat, gain muscle",
+            listOf("no gym access", "only free on weeknights after 8pm"),
+        )
+        assertTrue(combined.contains("lose fat, gain muscle"))
+        assertTrue(combined.contains("no gym access"))
+        assertTrue(combined.contains("only free on weeknights after 8pm"))
+    }
+
+    @Test
+    fun `withConstraints preserves the order constraints were stated in`() {
+        val combined = GoalPlanAgent.withConstraints("x", listOf("first stated", "second stated"))
+        assertTrue(combined.indexOf("first stated") < combined.indexOf("second stated"))
+    }
+
+    @Test
+    fun `the constraint marker never leaks into the shared instruction or schema`() {
+        // GoalPlanAgent.CONSTRAINT_PREFIX is an internal storage/filter marker
+        // (service/LiveToolbox.kt strips it before anything reaches this class) - it must never
+        // appear in text the model actually reads.
+        assertFalse(GoalPlanAgent.SYSTEM_INSTRUCTION.contains(GoalPlanAgent.CONSTRAINT_PREFIX))
+    }
+
+    // --- a revision that contradicts the doctrine refuses ONLY that field, never the rest of the
+    // SAME regenerated plan (ticket 03 settled call 3: "keep the existing plan, refuse that one
+    // change") - ticket 03 stores no plan to diff against, so "the existing plan" is the other
+    // fields the SAME model response still carries when only one target crosses a boundary. -----
+
+    @Test
+    fun `a revision asking to cut below the hard floor is refused alone - the sleep and workout pieces from the same response survive`() {
+        val raw = """
+            {
+              "rationale": "700 kcal/day is below what I can propose - keeping the rest of your plan as it was.",
+              "mealTarget": {"caloriesKcal": 700, "proteinG": 150.0, "carbsG": 60.0, "fatG": 40.0},
+              "sleepTarget": {"hours": 8.0},
+              "workoutGoal": "Build strength three days a week, kettlebells only."
+            }
+        """.trimIndent()
+
+        val plan = GoalPlanAgent.parse(raw)
+
+        assertNotNull("a revision refusing one target must still be a valid plan", plan)
+        assertNull("700 kcal/day is refused on its own", plan!!.mealTarget)
+        assertEquals("the sleep target from the same revision survives untouched", 8.0, plan.sleepTarget!!.hours, 0.0)
+        assertEquals(
+            "the workout piece from the same revision survives untouched",
+            "Build strength three days a week, kettlebells only.",
+            plan.pendingWorkoutGoal,
+        )
+        assertEquals(1, plan.refusals.size)
+        assertTrue(plan.refusals[0].contains("700"))
+    }
 }

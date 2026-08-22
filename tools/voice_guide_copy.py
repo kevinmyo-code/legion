@@ -133,6 +133,8 @@ COPY = {
     "ask_goals": ("How am I doing on my goals?", "Sends a goals question to the specialist."),
     "ask_advisor": ("How am I doing overall?", "Asks one of the five advisors - body, notes, fleet, money, or overall."),
     "accept_proposal": ("Yes, do that", "Accepts something an advisor proposed."),
+    "generate_goal_plan": ("Lose fat, gain muscle - build me a plan", "Turns a fitness/nutrition goal into a rough calorie, sleep, and workout plan to look over - a proposal, not something set up yet. Say a constraint once (\"I don't have gym access\") and it's remembered for next time."),
+    "accept_goal_plan": ("Yes, set that up", "Sets up the workout part of a plan once you've agreed to the whole thing."),
     "undo_last_log": ("Undo that", "Undoes the last thing you logged."),
 
     # --- Music ---
@@ -169,7 +171,7 @@ GROUPS = {
     "Money": ["import_statement", "get_balance", "get_spend", "get_monthly_spend", "list_recent_transactions", "categorize_transactions", "set_category", "set_budget", "list_budget_categories", "log_pending_transaction", "list_pending_transactions", "clear_pending_transaction"],
     "Food and shopping": ["import_receipt", "manage_grocery", "list_recent_groceries", "get_grocery_spend", "log_meal", "list_recent_meals", "get_meal_gap", "set_meal_target", "ask_pantry"],
     "Training and sleep": ["log_workout_set", "list_recent_workouts", "get_workout_gap", "create_workout_plan", "log_bodyweight", "log_sleep", "list_recent_sleep", "get_sleep_gap", "set_sleep_target", "ask_body"],
-    "Goals and advice": ["set_goal", "list_goals", "close_goal", "ask_goals", "ask_advisor", "accept_proposal", "undo_last_log"],
+    "Goals and advice": ["set_goal", "list_goals", "close_goal", "ask_goals", "ask_advisor", "accept_proposal", "generate_goal_plan", "accept_goal_plan", "undo_last_log"],
     "Music": ["play_music", "control_music", "get_music_queue", "browse_my_music"],
     "Mail and calendar": ["search_mail", "read_mail", "ask_mail"],
     "Phone calls": ["answer_call", "decline_call"],

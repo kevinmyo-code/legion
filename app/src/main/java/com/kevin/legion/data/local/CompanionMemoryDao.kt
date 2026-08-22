@@ -42,6 +42,26 @@ interface CompanionMemoryDao {
     suspend fun bySource(vehicleId: String, source: String): List<CompanionMemory>
 
     /**
+     * Every row of [category] whose text starts with [prefix], oldest first - the goal-plans
+     * ticket 03 read behind "having said once that he has no gym, he should not have to say it
+     * again." A plan revision needs exactly the SUBSET of `driver`-category rows that are stated
+     * fitness constraints, not every driver fact this category also holds (music taste, a work
+     * address, a nickname) - [prefix] is that subset marker
+     * ([com.kevin.legion.advisor.GoalPlanAgent.CONSTRAINT_PREFIX], the only value in practice),
+     * applied by the writer rather than a second category, because a stated constraint is still
+     * exactly the kind of durable, cross-vehicle fact about the person [Category.DRIVER] already
+     * means - see [CompanionMemoryRecallScopeTest] for why that category is never scoped to
+     * whichever car happens to be connected. No new table, no new category: only a text
+     * convention on top of a column this DAO already has.
+     *
+     * Oldest first (unlike [getRecallScan]/[getRecent]'s newest-first) because a caller folding
+     * these into a prompt wants them in the order they were actually said, not reverse-
+     * chronological - a plan reads more sensibly built up in the sequence a person stated things.
+     */
+    @Query("SELECT * FROM companion_memories WHERE category = :category AND text LIKE :prefix || '%' ORDER BY createdAt ASC")
+    suspend fun byCategoryPrefixed(category: String, prefix: String): List<CompanionMemory>
+
+    /**
      * Every consolidated/reflected memory, newest first, across ALL cars - the read behind the
      * driver-facing memory screen (2026-08-18). Deliberately not scoped to the active car the way
      * [getRecent] is: the screen exists so the driver can find and delete a wrong memory, and a

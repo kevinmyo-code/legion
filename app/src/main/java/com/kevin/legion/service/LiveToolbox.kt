@@ -18,6 +18,12 @@ import com.kevin.legion.advisor.AdvisorProposalExecutor
 import com.kevin.legion.advisor.AdvisorResult
 import com.kevin.legion.advisor.HarnessPrompt
 import com.kevin.legion.advisor.Priming
+import com.kevin.legion.advisor.GoalPlan
+import com.kevin.legion.advisor.GoalPlanAgent
+import com.kevin.legion.advisor.GoalPlanResult
+import com.kevin.legion.data.local.CompanionMemory
+import com.kevin.legion.data.local.MemoryAudit
+import com.kevin.legion.data.local.record
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ledger.LedgerEntity
@@ -1669,6 +1675,83 @@ object LiveToolbox {
             required = listOf("aspect", "statement"),
         ))
 
+        // --- Goal plans (ticket 03, `goal-plans`: "revision by conversation") -------------------
+        //
+        // Two tools, matching GoalPlanAgent's own generate()/accept() split (ticket 02) rather
+        // than collapsing them into one: generate_goal_plan NEVER writes anything (a plan is a
+        // PROPOSAL until the user gives one plain yes to the whole thing - settled decision 14),
+        // and accept_goal_plan is the only place the workout piece is actually written. The meal
+        // target, sleep target, and any long-term goals a plan proposes are deliberately NOT
+        // applied by either of these - the model calls set_meal_target/set_sleep_target/set_goal
+        // itself with the values generate_goal_plan handed back, the same tools direct voice
+        // dictation already uses (settled decision 9: nothing new gets write access).
+        //
+        // Revision has NO separate tool. "I don't have gym access, mix in kettlebells" calls
+        // generate_goal_plan again - a revision is a NEW PLAN, regenerated from the original goal
+        // prose plus every constraint stated so far (ticket 03's own settled call 1), never a diff
+        // against something stored, because nothing is stored: ticket 02 deliberately built no
+        // plan persistence, and ticket 04 owns that. new_constraint is what makes a stated fact
+        // survive to the NEXT regeneration, even in a later session, without the user repeating
+        // it - see GoalPlanAgent.CONSTRAINT_PREFIX's doc comment for where it actually lives.
+        fns.put(fn(
+            name = "generate_goal_plan",
+            description = "Turn a BIO goal, in the user's own words, into a rough, loosely-" +
+                "followable plan - a daily calorie/macro target, a nightly sleep target, a " +
+                "workout goal sentence, and one or more long-term goals. This does not need to " +
+                "be precise, and never presents a number as more exact than it is. Use it for a " +
+                "BRAND-NEW goal ('lose fat, gain muscle') and for REVISING one already discussed " +
+                "('I don't have gym access, can we mix in kettlebells') - for a revision, restate " +
+                "the ORIGINAL goal in full in goal_text, never just the change being asked for; " +
+                "this always regenerates the whole plan rather than editing one field in place, " +
+                "so a revised calorie target never ends up paired with a workout piece it no " +
+                "longer matches. If the user is stating a new fact or limit that should keep " +
+                "applying going forward - no gym access, a dietary restriction, only free on " +
+                "weekends - pass it in new_constraint so it is remembered and folded into every " +
+                "future plan without them repeating it; leave new_constraint out entirely when " +
+                "there is nothing new to remember. This call NEVER writes anything - it only " +
+                "proposes. Speak the rationale and every field returned, get ONE plain yes for " +
+                "the WHOLE plan, and only then call set_meal_target, set_sleep_target, and " +
+                "set_goal for the matching fields plus accept_goal_plan for the workout piece - " +
+                "never say a target is set, in effect, or being tracked before those calls have " +
+                "actually run. Any target that would cross a safety boundary comes back in " +
+                "refusals instead of as a field - say plainly which target was refused and why, " +
+                "and still offer everything else the plan proposed.",
+            params = obj(
+                "goal_text" to schema(
+                    "string",
+                    "The BIO goal in the user's own words - the full goal, every time, even on a " +
+                        "revision.",
+                ),
+                "new_constraint" to schema(
+                    "string",
+                    "A new fact or limit the user just stated that should keep applying to " +
+                        "future plans, e.g. 'no gym access' or 'vegetarian'. Omit entirely when " +
+                        "nothing new was said.",
+                ),
+            ),
+            required = listOf("goal_text"),
+        ))
+
+        fns.put(fn(
+            name = "accept_goal_plan",
+            description = "Applies the WORKOUT piece of a plan generate_goal_plan already " +
+                "proposed - call this ONLY after the user has given one plain yes to that whole " +
+                "plan, never before. Pass workout_goal exactly as generate_goal_plan returned it " +
+                "in the plan's own workoutGoal field; omit workout_goal entirely when that plan " +
+                "had no workout piece, which is a normal, complete plan, not an error. The meal " +
+                "target, sleep target, and any long-term goals from the same plan are NOT applied " +
+                "here - call set_meal_target, set_sleep_target, and set_goal directly with the " +
+                "values generate_goal_plan returned, exactly as for any other write.",
+            params = obj(
+                "workout_goal" to schema(
+                    "string",
+                    "The workoutGoal sentence generate_goal_plan returned for this plan. Omit if " +
+                        "that plan proposed no workout piece.",
+                ),
+            ),
+            required = listOf(),
+        ))
+
         // --- Advisors (ticket 18, `.scratch/aspect-advisors/issues/18-build-ask-advisor-and-
         // accept.md`) -------------------------------------------------------------------------
         //
@@ -2303,6 +2386,8 @@ object LiveToolbox {
             "set_goal" -> setGoalTool(context, args)
             "list_goals" -> listGoalsTool(context, args)
             "close_goal" -> closeGoalTool(context, args)
+            "generate_goal_plan" -> generateGoalPlanTool(context, args)
+            "accept_goal_plan" -> acceptGoalPlanTool(context, args)
             "ask_advisor" -> askAdvisorTool(context, args)
             "accept_proposal" -> acceptProposalTool(context, args)
             // Session-scoped tools the owning controller handles (it has the live
@@ -2351,6 +2436,11 @@ object LiveToolbox {
         "clear_pending_transaction", "create_workout_plan", "log_workout_set", "log_bodyweight",
         "log_meal", "set_meal_target", "set_budget", "log_sleep", "set_sleep_target",
         "undo_last_log", "manage_vehicle", "set_goal", "close_goal", "accept_proposal",
+        // goal-plans ticket 03: generate_goal_plan writes NOTHING about the plan itself (it is a
+        // proposal - see its own declaration), but DOES write a CompanionMemory row when
+        // new_constraint is given, the same reason "remember" is in this set above.
+        // accept_goal_plan is a real write - the workout piece of an accepted plan.
+        "generate_goal_plan", "accept_goal_plan",
     )
 
     /**
@@ -3616,6 +3706,195 @@ object LiveToolbox {
                 "More than one goal matches: ${outcome.matches.joinToString("; ") { it.statement }}. Which one?",
             )
         }
+    }
+
+    // --- Goal plans (ticket 03, `goal-plans`) -----------------------------------------------------
+
+    /**
+     * Every stated goal-plan constraint on file, plain text, prefix stripped, oldest first - what
+     * [GoalPlanAgent.withConstraints] folds into a plan's own goal text so a stated fact survives
+     * a regeneration without the user repeating it. See [CompanionMemoryDao.byCategoryPrefixed]'s
+     * doc comment for why this is a filtered read over the ordinary `driver` category rather than
+     * a new store.
+     */
+    private suspend fun goalPlanConstraints(context: Context): List<String> =
+        CarDatabase.getDatabase(context).companionMemoryDao()
+            .byCategoryPrefixed(CompanionMemory.Category.DRIVER, GoalPlanAgent.CONSTRAINT_PREFIX)
+            .map { it.text.removePrefix(GoalPlanAgent.CONSTRAINT_PREFIX).trim() }
+
+    /**
+     * Persists [text] as a stated goal-plan constraint, unless an existing one already says the
+     * same thing (trimmed, case-insensitive exact match) - the same dedup posture
+     * [AriaBrain.remember] already takes for the older memory table, so restating an
+     * already-known constraint refreshes nothing and does not grow the recall pool with a
+     * near-duplicate row. Category [CompanionMemory.Category.DRIVER], source
+     * [CompanionMemory.Source.STATED] - written directly from THIS turn, never from a later
+     * unattended consolidation pass. Audited the same way [MemoryConsolidator] audits its own
+     * writes, for the same reason: this pass runs from a voice call with no screen to show its
+     * work, so the audit trail is the only place a wrong constraint is ever traceable back to the
+     * turn that wrote it.
+     */
+    private suspend fun rememberGoalPlanConstraint(context: Context, text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return
+        if (goalPlanConstraints(context).any { it.equals(trimmed, ignoreCase = true) }) return
+
+        val vehicleId = ActiveVehicle.current(context)
+        val db = CarDatabase.getDatabase(context)
+        val id = db.companionMemoryDao().insert(
+            CompanionMemory(
+                vehicleId = vehicleId,
+                text = GoalPlanAgent.CONSTRAINT_PREFIX + trimmed,
+                category = CompanionMemory.Category.DRIVER,
+                source = CompanionMemory.Source.STATED,
+                createdAt = System.currentTimeMillis(),
+            ),
+        )
+        db.memoryAuditDao().record(
+            MemoryAudit.Event.WRITTEN,
+            MemoryAudit.Store.COMPANION,
+            // Not "[${CompanionMemory.Category.DRIVER}/...]" - that interpolation's SOURCE TEXT
+            // contains the literal word "DRIVER" inside the string span PromptRoleNamingTest
+            // scans, even though the emitted value is fine at runtime. A stand-alone tag sidesteps
+            // it entirely rather than special-casing this file into that test's allowlist.
+            "[goal-plan constraint, stated] ${GoalPlanAgent.CONSTRAINT_PREFIX}$trimmed",
+            refId = id,
+            vehicleId = vehicleId,
+        )
+    }
+
+    /**
+     * `generate_goal_plan`. Persists [args]' `new_constraint` (if any) BEFORE generating, so the
+     * very plan this call returns already reflects it - a driver who states a constraint and asks
+     * for a plan in the same breath should not need to ask again to see it applied. Folds every
+     * constraint on file (including the one just added) into the goal text via
+     * [GoalPlanAgent.withConstraints] before calling [GoalPlanAgent.generate]. Writes nothing else
+     * - see the tool's own declaration for why a plan is a proposal, not an action.
+     */
+    private suspend fun generateGoalPlanTool(context: Context, args: JSONObject): JSONObject {
+        val goalText = args.optString("goal_text").trim()
+        if (goalText.isBlank()) return result(false, "What's the goal?")
+
+        // Persisted BEFORE the key check, deliberately: a stated fact ("no gym access") is real
+        // regardless of whether a plan can be generated from it right now, and a missing/invalid
+        // key must not cost the user having to say it again once the key is fixed.
+        val newConstraint = args.optString("new_constraint").trim()
+        if (newConstraint.isNotBlank()) rememberGoalPlanConstraint(context, newConstraint)
+
+        if (!GeminiKeyProvider.hasKey()) {
+            return result(false, "I need a Gemini key to do that - add your own in Setup to keep going.")
+        }
+
+        val combinedGoalText = GoalPlanAgent.withConstraints(goalText, goalPlanConstraints(context))
+        return mapGoalPlanResult(GoalPlanAgent().generate(context, combinedGoalText))
+    }
+
+    /**
+     * Maps one [GoalPlanResult] to the tool-response JSON `generate_goal_plan` hands back to the
+     * live model - the same split-for-testability shape [mapAdvisorResult] already uses for
+     * `ask_advisor`, `internal` for the same reason. A [GoalPlanResult.Success] serialises every
+     * present field of [GoalPlan] flat onto the result object (never nested under a generic
+     * "plan" key) so the model can read `mealTarget`/`sleepTarget`/`workoutGoal`/`goals`/
+     * `refusals` directly and hand the matching values straight to `set_meal_target`/
+     * `set_sleep_target`/`accept_goal_plan`/`set_goal` once the user consents - no re-parsing of
+     * prose on the way back in. Absent fields (refused, or never called for) are simply omitted,
+     * matching [GoalPlan] itself.
+     */
+    internal fun mapGoalPlanResult(outcome: GoalPlanResult): JSONObject = when (outcome) {
+        is GoalPlanResult.Success -> {
+            KeyHealth.noteOk()
+            val plan = outcome.plan
+            result(true, plan.rationale).apply {
+                plan.mealTarget?.let {
+                    put(
+                        "mealTarget",
+                        JSONObject()
+                            .put("caloriesKcal", it.caloriesKcal)
+                            .put("proteinG", it.proteinG)
+                            .put("carbsG", it.carbsG)
+                            .put("fatG", it.fatG),
+                    )
+                }
+                plan.sleepTarget?.let { put("sleepTarget", JSONObject().put("hours", it.hours)) }
+                plan.pendingWorkoutGoal?.let { put("workoutGoal", it) }
+                if (plan.goals.isNotEmpty()) {
+                    put(
+                        "goals",
+                        JSONArray(
+                            plan.goals.map { g ->
+                                JSONObject().apply {
+                                    put("aspect", g.aspect)
+                                    put("statement", g.statement)
+                                    g.targetValue?.let { put("targetValue", it) }
+                                    g.unit?.let { put("unit", it) }
+                                    g.metricKey?.let { put("metricKey", it) }
+                                    g.deadline?.let { put("deadline", it) }
+                                }
+                            },
+                        ),
+                    )
+                }
+                if (plan.refusals.isNotEmpty()) put("refusals", JSONArray(plan.refusals))
+            }
+        }
+        GoalPlanResult.RateLimited -> {
+            KeyHealth.noteRateLimited()
+            result(false, "The Gemini key just hit its rate limit - give it a minute and ask me again.")
+        }
+        GoalPlanResult.KeyInvalid -> {
+            KeyHealth.noteInvalid()
+            result(false, "Something's wrong with the Gemini key - worth checking it in Setup when you get a chance.")
+        }
+        GoalPlanResult.Overloaded -> result(false, "The planner's overloaded right now - try again in a sec.")
+        GoalPlanResult.Offline -> result(false, "No data signal right now - ask me again when we're back in coverage.")
+        GoalPlanResult.Failed -> result(false, "I couldn't put a plan together just now - try again in a sec.")
+        is GoalPlanResult.ParseFailed -> {
+            KeyHealth.noteOk()
+            val prose = outcome.rawText.trim()
+            if (prose.isEmpty()) {
+                result(
+                    true,
+                    "I've got some thoughts but couldn't put together a clean plan from them just " +
+                        "now - ask me again for another pass.",
+                )
+            } else {
+                result(
+                    true,
+                    prose + "\n\n(Say this as a rough idea only - I couldn't put a clean plan " +
+                        "together from it, so there's nothing to accept yet.)",
+                )
+            }
+        }
+    }
+
+    /**
+     * `accept_goal_plan`. The far side of the one-consent split [GoalPlanAgent.generate]'s doc
+     * comment describes: the user has now said one plain yes to the whole plan, so the workout
+     * piece - the one write this recommender is allowed to make - may actually run, via
+     * [GoalPlanAgent.accept]. Constructing a bare [GoalPlan] here rather than holding the one
+     * `generate_goal_plan` returned is deliberate: [dispatch] is a stateless per-call function
+     * with nothing to hold a plan across two tool calls, and [GoalPlanAgent.accept] itself reads
+     * only [GoalPlan.pendingWorkoutGoal] - the model already has the exact `workoutGoal` string
+     * from the generate call and is simply asked to hand it back, the same shape every other
+     * multi-field write tool in this file already uses.
+     *
+     * A blank/omitted `workout_goal` is not an error - a nutrition-only plan is a complete plan,
+     * not a broken one (see [GoalPlanAgent.accept]'s own doc comment).
+     */
+    private suspend fun acceptGoalPlanTool(context: Context, args: JSONObject): JSONObject {
+        val workoutGoal = args.optString("workout_goal").trim().takeIf { it.isNotBlank() }
+            ?: return result(true, "This plan had no workout piece to set up.")
+
+        val accepted = GoalPlanAgent().accept(
+            context,
+            GoalPlan(rationale = "", pendingWorkoutGoal = workoutGoal),
+        )
+        val message = accepted.workoutPlanMessage ?: "I couldn't put a workout plan together just now - try again in a sec."
+        // WorkoutController.generatePlan (which accept() calls) returns a plain message string
+        // either way, never a structured outcome - the same "I couldn't ..." prefix
+        // create_workout_plan's own dispatch already treats as its one failure signature, mirrored
+        // here rather than inventing a second convention for the identical underlying call.
+        return result(success = !message.startsWith("I couldn't"), message = message)
     }
 
     // --- Advisors (ticket 18) -------------------------------------------------------------------
