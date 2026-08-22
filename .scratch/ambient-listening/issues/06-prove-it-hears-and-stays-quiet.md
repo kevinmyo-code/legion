@@ -3,11 +3,11 @@ map: ambient-listening
 ticket: "06"
 title: "Prove it hears, it indicates, and it mostly stays quiet"
 type: task
-status: open
-status-detail: ""
+status: closed
+status-detail: "Out of scope 2026-08-21 - ambient listening retired"
 blockers: ["02", "03"]
 blocked-by: ["[[02-the-toggle-and-its-words]]", "[[03-what-is-worth-speaking-into]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---

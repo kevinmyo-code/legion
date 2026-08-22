@@ -1,6 +1,6 @@
 ---
 map: wake-word
-ticket: 10
+ticket: 13
 title: "The wake word sometimes does not hear him on a drive"
 type: bug
 status: open

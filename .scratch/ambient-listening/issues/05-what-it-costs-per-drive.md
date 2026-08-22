@@ -3,11 +3,11 @@ map: ambient-listening
 ticket: "05"
 title: "What the reaction pass costs on Kevin's own key"
 type: task
-status: open
-status-detail: ""
+status: closed
+status-detail: "Out of scope 2026-08-21 - ambient listening retired"
 blockers: ["02"]
 blocked-by: ["[[02-the-toggle-and-its-words]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---

@@ -5,8 +5,8 @@ title: "Let him call it off with his voice"
 type: task
 status: resolved
 status-detail: "RESOLVED 2026-08-20, verified by voice on the A25 including the guardrail: dismissal ends the chat and an ordinary no does not."
-blockers: ["10"]
-blocked-by: ["[[10-weak-pickup-on-a-drive]]"]
+blockers: ["13"]
+blocked-by: ["[[13-weak-pickup-on-a-drive]]"]
 open-blockers: 1
 ready: false
 tags: [ticket]

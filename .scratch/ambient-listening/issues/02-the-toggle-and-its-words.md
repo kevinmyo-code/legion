@@ -3,12 +3,12 @@ map: ambient-listening
 ticket: "02"
 title: "The toggle, and the words next to it"
 type: task
-status: open
-status-detail: ""
+status: closed
+status-detail: "Out of scope 2026-08-21 - ambient listening retired"
 blockers: ["01"]
 blocked-by: ["[[01-the-listening-indicator]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The toggle, and the words next to it

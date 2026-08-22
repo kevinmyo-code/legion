@@ -13,8 +13,6 @@ Open tickets whose blockers are all resolved.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
-| [[.scratch/ambient-listening/map\|ambient-listening]] | [[02-the-toggle-and-its-words\|02]] | task | The toggle, and the words next to it |
-| [[.scratch/ambient-listening/map\|ambient-listening]] | [[07-passengers-who-did-not-consent\|07]] | grilling | What does LEGION owe a passenger who never agreed to any of this? |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | [[20-ship-pass\|20]] | task | Ship pass: advisors answering on the phone |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[08-layout\|08]] | prototype | Layout for a phone that is 384 x 832, not a head unit |
@@ -27,7 +25,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
-| [[.scratch/wake-word/map\|wake-word]] | [[10-weak-pickup-on-a-drive\|10]] | bug | The wake word sometimes does not hear him on a drive |
+| [[.scratch/wake-word/map\|wake-word]] | [[13-weak-pickup-on-a-drive\|13]] | bug | The wake word sometimes does not hear him on a drive |
 
 ## Built, owing a run on hardware
 
@@ -47,15 +45,13 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[02-app-remote-spine\|02]] | task | App Remote is the spine, and it creates the device rather than needing one |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[03-tool-surface\|03]] | task | Fold ten capabilities into the tools that already exist |
 | [[.scratch/wake-word/map\|wake-word]] | [[05-mic-ownership\|05]] | grilling | Who owns the microphone, and what yields to what? |
-| [[.scratch/wake-word/map\|wake-word]] | [[11-service-refused-to-start\|11]] | bug | The assistant silently stops running, and every surface still says On |
 | [[.scratch/wake-word/map\|wake-word]] | [[12-deaf-in-the-jeep\|12]] | task | Deaf in the Jeep, fine outside it |
+| [[.scratch/wake-word/map\|wake-word]] | [[14-service-refused-to-start\|14]] | bug | The assistant silently stops running, and every surface still says On |
 
 ## Blocked
 
 | Map | Ticket | Type | What | Waiting on |
 |---|---|---|---|---|
-| [[.scratch/ambient-listening/map\|ambient-listening]] | [[05-what-it-costs-per-drive\|05]] | task | What the reaction pass costs on Kevin's own key  waiting on [[02-the-toggle-and-its-words\|02]] |
-| [[.scratch/ambient-listening/map\|ambient-listening]] | [[06-prove-it-hears-and-stays-quiet\|06]] | task | Prove it hears, it indicates, and it mostly stays quiet  waiting on [[02-the-toggle-and-its-words\|02]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[04-when-a-moment-is-worth-it\|04]] | grilling | What makes a moment worth interrupting  waiting on [[03-the-check-in-record\|03]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[05-revision-and-retirement\|05]] | grilling | What prompts a revision, and what an abandoned goal costs  waiting on [[03-the-check-in-record\|03]] |
@@ -104,7 +100,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 
 | Map | Tickets | Open | Canvas |
 |---|---|---|---|
-| [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 4 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
+| [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 9 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 1 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |

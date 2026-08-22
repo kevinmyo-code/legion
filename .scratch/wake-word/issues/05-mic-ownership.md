@@ -80,7 +80,7 @@ contradict a decision made hours earlier.
 
 ### This is a refactor, and it should be sequenced honestly
 
-**[Ticket 10](10-weak-pickup-on-a-drive.md) has a symptom and no cause**, and mic contention is one
+**[Ticket 13](13-weak-pickup-on-a-drive.md) has a symptom and no cause**, and mic contention is one
 of its four candidates. The arbiter is worth building regardless - the focus bug alone justifies it -
 but **do not claim it fixed the weak wake word** unless a log pull shows contention was implicated.
 An output fix was already nearly credited with an input improvement once today.
@@ -113,7 +113,7 @@ called back into `request`/`release` while the lock was held would deadlock.
 
 ### Not claimed: this does not fix the weak wake word
 
-[Ticket 10](10-weak-pickup-on-a-drive.md) still has a symptom and no diagnosis. Mic contention is one
+[Ticket 13](13-weak-pickup-on-a-drive.md) still has a symptom and no diagnosis. Mic contention is one
 of four candidates and nothing here establishes it was implicated. An output fix was nearly credited
 with an input improvement once already today; this is not a repeat of that.
 

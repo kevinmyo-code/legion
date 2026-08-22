@@ -1,6 +1,6 @@
 ---
 map: wake-word
-ticket: 11
+ticket: 14
 title: "The assistant silently stops running, and every surface still says On"
 type: bug
 status: built

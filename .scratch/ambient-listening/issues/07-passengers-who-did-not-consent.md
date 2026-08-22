@@ -3,12 +3,12 @@ map: ambient-listening
 ticket: "07"
 title: "What does LEGION owe a passenger who never agreed to any of this?"
 type: grilling
-status: open
-status-detail: ""
+status: closed
+status-detail: "Out of scope 2026-08-21 - ambient listening retired"
 blockers: ["01"]
 blocked-by: ["[[01-the-listening-indicator]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # What does LEGION owe a passenger who never agreed to any of this?
