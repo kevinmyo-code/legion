@@ -2,7 +2,9 @@ package com.kevin.legion.service
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.core.content.ContextCompat
+import com.kevin.legion.MidnightEvents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,6 +42,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * same as the rest of ticket 07's "minimal host, not a redesign" posture.
  */
 object AssistantIgnition {
+    private const val TAG = "AssistantIgnition"
     private const val PREFS = "assistant_ignition"
     private const val KEY_ENABLED = "enabled"
 
@@ -83,6 +86,18 @@ object AssistantIgnition {
      * function does not request permissions itself, since permission
      * launchers are Activity-scoped and this object is not.
      */
+    /**
+     * True when the last [resumeIfEnabled] was REFUSED by Android's background-start restriction -
+     * so [isEnabled] says on, and nothing is actually running.
+     *
+     * Read by the settings ignition row so it can say that out loud instead of repeating the flag.
+     * Cleared by the next successful start, which in practice is the user opening the app
+     * ([com.kevin.legion.ui.MainActivity] calls [resumeIfEnabled] on resume, and a launch is a
+     * genuine foreground start that Android permits).
+     */
+    @Volatile var startRefused: Boolean = false
+        private set
+
     fun start(context: Context) {
         setEnabled(context, true)
         ContextCompat.startForegroundService(
@@ -123,10 +138,30 @@ object AssistantIgnition {
      */
     fun resumeIfEnabled(context: Context): Boolean {
         if (!isEnabled(context)) return false
-        ContextCompat.startForegroundService(
-            context,
-            Intent(context, AriaForegroundService::class.java),
-        )
-        return true
+        return try {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, AriaForegroundService::class.java),
+            )
+            startRefused = false
+            true
+        } catch (t: Throwable) {
+            // ForegroundServiceStartNotAllowedException on API 31+, and this is NOT an edge case.
+            // Measured on the A25, 2026-08-21: `code:DENIED`, `startForegroundCount=0`. The comment
+            // at the MidnightApplication call site claimed the app "is starting because the user
+            // opened it - no background-start restriction applies". **That assumption is false.**
+            // Application.onCreate runs whenever the PROCESS starts, for any reason - a broadcast, a
+            // job, a package replace - and Android refuses a foreground-service start from the
+            // background whatever the app thinks it is doing.
+            //
+            // Swallowed rather than rethrown because there is nothing to do about it here: Android
+            // will not be argued out of this. What matters is that it stops being INVISIBLE, which
+            // is what [startRefused] is for - the flag said "On" for 45 minutes while nothing ran,
+            // a call came in, and nobody found out until the log was read.
+            startRefused = true
+            Log.w(TAG, "foreground service start refused: ${t::class.simpleName}: ${t.message}")
+            MidnightEvents.appStartWorkFailed("assistant_ignition_refused", t)
+            false
+        }
     }
 }

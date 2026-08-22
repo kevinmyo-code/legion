@@ -131,6 +131,7 @@ class AriaForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         Log.d(TAG, "Service Created")
         createNotificationChannel()
         startForegroundCompat()
@@ -911,6 +912,7 @@ class AriaForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        isRunning = false
         Log.d(TAG, "Service Destroyed")
         debugTextReceiver?.let { runCatching { unregisterReceiver(it) } }
         WakeWordEngine.stop()
@@ -1095,6 +1097,22 @@ class AriaForegroundService : Service() {
 
         // Settle time after start before the opener, so it doesn't talk over
         // the engine cranking / the driver getting situated.
+        /**
+         * Whether this service is actually alive right now - **not** whether
+         * [com.kevin.legion.service.AssistantIgnition.isEnabled] says it should be.
+         *
+         * Those two came apart on the A25 on 2026-08-21 and nothing noticed: the process restarted
+         * in the background, `startForegroundService` was refused with
+         * `ForegroundServiceStartNotAllowedException`, and every surface kept reading the persisted
+         * flag and saying "On" while nothing was running. A call came in and there was no
+         * announcement, because there was no service to announce it.
+         *
+         * Process-scoped by construction, which is correct here: if the process died, the service
+         * died with it, and a fresh process starts this at false.
+         */
+        @Volatile var isRunning: Boolean = false
+            private set
+
         private const val OPENER_DELAY_MS = 1500L
 
         // Wait past the opener before the (opt-in) recall heads-up, so the two

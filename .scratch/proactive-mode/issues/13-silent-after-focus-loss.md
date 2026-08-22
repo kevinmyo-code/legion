@@ -75,3 +75,28 @@ evidence. Both halves mattered.
 **The wake word is sometimes weak** - same drive, same report, different subsystem. Filed separately
 rather than folded in here, because a focus fix must not be credited with a microphone improvement
 it did not make.
+
+## A SECOND, larger bug found while diagnosing "no announcement on an incoming call"
+
+2026-08-21, same evening. A call came in and nothing was announced. The raise history had **no
+`incoming_call` row at all** - and a row is only written once a raise passes the gate, so it never
+got that far.
+
+It was not the call code. `dumpsys` on the service:
+
+```
+startForegroundCount=0
+infoAllowStartForeground=[... code:DENIED ...]
+```
+
+and in the log, twice:
+
+```
+ForegroundServiceStartNotAllowedException: startForegroundService() not allowed
+  due to mAllowStartForeground false
+MidnightEvents: app_start_failed stage=resume_assistant_ignition
+```
+
+**The assistant service was not running, and had not been for 45 minutes.** Nothing could announce
+a call because nothing was listening. Filed and fixed as
+[wake-word ticket 11](../../wake-word/issues/11-service-refused-to-start.md).

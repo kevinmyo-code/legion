@@ -31,6 +31,8 @@ import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.TempUnit
 import com.kevin.legion.service.ProactiveCategory
+import com.kevin.legion.service.AriaForegroundService
+import com.kevin.legion.service.AssistantIgnition
 
 /**
  * Plain UI half of [SettingsScreen] (the state-holder/UI split,
@@ -108,7 +110,21 @@ fun IgnitionRow(
                 Column(Modifier.weight(1f)) {
                     Text("Assistant", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
                     Text(
-                        if (enabled) "On - tap to talk strip is showing" else "Off",
+                        // Report REALITY, not the flag. Those two came apart on the A25 on
+                        // 2026-08-21: the process restarted in the background, Android refused the
+                        // foreground-service start, and this row said "On" for 45 minutes while
+                        // nothing ran - a call came in with no announcement and nobody found out
+                        // until the log was read. A switch that describes a stored boolean rather
+                        // than the running system is the same class of lie as a kill switch that
+                        // does not silence.
+                        when {
+                            !enabled -> "Off"
+                            AriaForegroundService.isRunning -> "On - tap to talk strip is showing"
+                            AssistantIgnition.startRefused ->
+                                "On, but NOT running - Android blocked it from starting in the " +
+                                    "background. Reopening the app fixes it."
+                            else -> "On - starting..."
+                        },
                         style = LegionType.stamp,
                         color = sem.faint,
                     )

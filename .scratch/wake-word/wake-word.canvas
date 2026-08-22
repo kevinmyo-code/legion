@@ -61,11 +61,31 @@
       "color": "1"
     },
     {
+      "id": "4dd57d5aa9688889",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/11-let-him-say-never-mind.md",
+      "x": 0,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
+      "id": "dc5b8de5042ec036",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/11-service-refused-to-start.md",
+      "x": 0,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "7cbdd62d9d24ada6",
       "type": "file",
       "file": ".scratch/wake-word/issues/12-deaf-in-the-jeep.md",
       "x": 0,
-      "y": 900,
+      "y": 1200,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -89,16 +109,6 @@
       "width": 320,
       "height": 110,
       "color": "5"
-    },
-    {
-      "id": "4dd57d5aa9688889",
-      "type": "file",
-      "file": ".scratch/wake-word/issues/11-let-him-say-never-mind.md",
-      "x": 520,
-      "y": 300,
-      "width": 320,
-      "height": 110,
-      "color": "4"
     },
     {
       "id": "7a3c9183aaf64e84",
