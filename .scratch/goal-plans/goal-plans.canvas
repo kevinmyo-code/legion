@@ -49,6 +49,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "8ca5e0fadd9b9f2c",
+      "type": "file",
+      "file": ".scratch/goal-plans/issues/06-daily-items-not-repeats.md",
+      "x": 1560,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -78,6 +88,13 @@
       "fromNode": "b9d69bfdf12e782c",
       "fromSide": "right",
       "toNode": "0d4276e8b879f639",
+      "toSide": "left"
+    },
+    {
+      "id": "4e0d8b64f2818907",
+      "fromNode": "b9d69bfdf12e782c",
+      "fromSide": "right",
+      "toNode": "8ca5e0fadd9b9f2c",
       "toSide": "left"
     }
   ]

@@ -60,6 +60,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/goal-plans/map\|goal-plans]] | [[03-plan-revision-by-conversation\|03]] | build | Arguing with the plan  waiting on [[02-recommender-and-playbook\|02]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[04-checklist-and-surfaces\|04]] | build | The daily checklist, on Body and Home  waiting on [[02-recommender-and-playbook\|02]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[05-wellbeing-digest\|05]] | build | The Wellbeing switch finally gets content  waiting on [[04-checklist-and-surfaces\|04]] |
+| [[.scratch/goal-plans/map\|goal-plans]] | [[06-daily-items-not-repeats\|06]] | build | A day's items you can actually tick  waiting on [[04-checklist-and-surfaces\|04]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[02-area-info-tool\|02]] | build | The area_info tool, with attribution baked in  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[04-hazard-raises\|04]] | build | Hazard alerts that speak first  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
@@ -109,7 +110,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | 8 | 6 | [[.scratch/goal-keeping/goal-keeping.canvas\|open]] |
-| [[.scratch/goal-plans/map\|goal-plans]] | 5 | 4 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
+| [[.scratch/goal-plans/map\|goal-plans]] | 6 | 5 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 1 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 24 | 6 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
