@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["01"]
 blocked-by: ["[[01-training-nutrition-doctrine]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # The recommender, and its editable doctrine

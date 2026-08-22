@@ -791,8 +791,19 @@ the same working tree - one on `area_info`, one on geofences.
 
 **Root class:** shared mutable workspace. The agents were correct; the concurrency was not.
 
+**UPDATE 2026-08-21, same evening: worktree isolation was tried and it FAILED, for a reason worth
+knowing.** Two agents were dispatched with `isolation: "worktree"` per this very rule. Both stalled
+at the 600-second watchdog with substantial work done and neither able to verify any of it - because
+**a fresh worktree has no `local.properties`**, that file is gitignored, and it holds `sdk.dir`. So
+`./gradlew` cannot resolve the Android SDK there at all. Every build either agent attempted failed on
+`SDK location not found`, and they burned their time fighting it.
+
+Their code was fine. Both worktrees held compiling work that dropped straight into the main tree
+once copied. **Copy `local.properties` into any worktree before dispatching an agent that must
+build**, or the isolation that prevents one failure guarantees another.
+
 **Rule:** when dispatching more than one building agent, either (a) give each an isolated git
-worktree, or (b) accept ONE build/doc-generation process against the checkout at a time and
+worktree **with `local.properties` copied in**, or (b) accept ONE build/doc-generation process against the checkout at a time and
 serialise the Gradle runs. When committing while any agent is live, stage **file paths, never `-A`
 and never a directory**, and re-read `git status` before the commit rather than after.
 

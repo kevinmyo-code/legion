@@ -3,12 +3,12 @@ map: goal-plans
 ticket: 01
 title: "The doctrine the recommender reasons from"
 type: research
-status: open
-status-detail: ""
+status: resolved
+status-detail: "2026-08-21 - findings + draft playbook; two numbers are genuinely contested"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The doctrine the recommender reasons from
@@ -53,3 +53,49 @@ and honest about uncertainty - the existing four playbooks are the model for ton
 **Where the evidence is genuinely contested, say so in the playbook itself** rather than picking a
 side. A recommender that states a contested number as settled is the failure this whole map's
 honesty rules exist to prevent.
+
+## Answer - 2026-08-21
+
+Full findings with per-claim citations: [`research/01-doctrine.md`](../research/01-doctrine.md).
+The draft playbook is there to be lifted into a `PrimingTopic` by
+[ticket 02](02-recommender-and-playbook.md).
+
+### The finding that shapes the whole map
+
+**Two of the numbers a recommender most wants to state confidently are genuinely contested**, and
+neither is a rounding detail:
+
+1. **The protein denominator.** The ISSN's 2.3-3.1 g/kg for hypocaloric periods traces back to a
+   source that states it **per kg of LEAN mass**, inside a document whose other positions use total
+   bodyweight. For a lean person the two are close; **at ~35% body fat they differ by about a
+   third** - the gap between a sane target and an unreachable one.
+2. **The rate of loss.** 0.5-1.0%/week is the recommended band, but the evidence for its top end
+   comes from lean, resistance-trained athletes. Whether someone carrying more fat can safely lose
+   faster is `[not-established]`.
+
+Settled decision 5 said say-it-once rather than hedge forever. **These two are the exception**: they
+are contested in the literature, not merely estimated, and the playbook states the disagreement
+rather than picking a side.
+
+### Two things it refuses to invent
+
+- **There is no established point where added volume REVERSES hypertrophy.** The meta-regressions
+  show flattening, not a downturn. Any specific "junk volume" number is secondary-source folklore,
+  and the playbook says not to invent one.
+- **Kettlebells have never been equated against barbell training for hypertrophy.** Kevin's own
+  example turns out to have the weakest evidence base of anything asked about - so the playbook
+  recommends them as reasonable and says plainly that no meta-analysis backs the equivalence.
+
+### The substitution gaps are reasoned, not tested
+
+Loaded knee flexion, vertical pull without an anchor, heavy hinge past the point bodyweight reaches
+failure inside ~30 reps, and loaded calf/hip abduction. **Derived from the load-independence
+finding's own precondition rather than from a trial that tested them**, and tagged that way in both
+the findings and the playbook. A recommender claiming a home gym has no gaps would be overclaiming.
+
+### The refusals have real sources behind them
+
+The kidney one is the sharpest: **CKD guidance is 0.55-0.80 g/kg/day, which directly contradicts
+every protein recommendation in the doctrine.** That is why it must be a refusal and a referral
+rather than an adjusted number - the recommender has no business quietly halving a target it does
+not understand the reason for.
