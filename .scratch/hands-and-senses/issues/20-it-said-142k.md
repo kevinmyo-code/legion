@@ -91,3 +91,42 @@ row next to the `recalled` rows around it.
 turn was observed that evening speaking audio with none - it missed the greeting Kevin had just
 approved. So an absent `spoken` row does NOT prove the assistant said nothing, and treating it that
 way would be the same "absence of evidence as evidence" mistake this map keeps running into.
+
+## Update 2026-08-21: the audit works, and the figure was RIGHT this time
+
+First read of `memory_audit` off the A25 since it landed. **83 rows, 71 of them `spoken`** - the
+record this ticket said was missing now exists and is populated.
+
+**No 142k-shaped figure appears anywhere in it.** Searched every row for `14x,xxx` and `142k`: zero
+hits.
+
+What it did say, verbatim, in a sitrep on 08-21 at 19:27:
+
+> "The Jeep's odometer is **estimated to be around 227,620 miles**. No maintenance is due, though
+> there are several items with no last done date. There are five unresolved trouble codes..."
+
+That is correct against the database (227,612 at the time of the earlier pull), **and it carried the
+estimate caveat** - `VehicleController.mileageLabel` attaches that as a string precisely so the model
+cannot restate an estimate as a bare fact, and the model kept it.
+
+### What this does and does not establish
+
+**Establishes:** the audit is real, it captures spoken lines, and the tool chain plus prompt produce
+the right figure with its caveat intact on this path. This is the first recorded instance of the
+assistant getting the mileage right rather than an anecdote about it getting it wrong.
+
+**Does NOT establish that the bug is fixed.** One correct answer is not a fix for an intermittent
+fabrication, nothing was changed to address it, and this reading came from a sitrep - a
+deterministic FLEET section - not from the `ask_fleet` conversational path where the original
+claim happened. **The ticket stays open.**
+
+The honest limit recorded on 2026-08-20 also still stands: a `spoken` row exists only when the API
+returns `outputTranscription`, so an absent row never proves silence.
+
+### Two other things the same read confirmed
+
+- **The sitrep works end to end on the phone** - calendar, weather and fleet in one spoken line,
+  matching Kevin's own report.
+- **"Very well, sir. Goodnight."** at 19:28, one minute later - the go-to-sleep bug, captured in the
+  record rather than reported from memory. The fix for that shipped afterwards, so the audit now has
+  a before-line to compare the next one against.
