@@ -1,0 +1,172 @@
+{
+  "nodes": [
+    {
+      "id": "e56ce5ee7c4b4286",
+      "type": "file",
+      "file": ".scratch/command-center/issues/02-settings-submenus.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "67afc577b194db60",
+      "type": "file",
+      "file": ".scratch/command-center/issues/03-body-writes-by-hand.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "a124cce0f27682cd",
+      "type": "file",
+      "file": ".scratch/command-center/issues/04-media-panel.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "945e6ea273e46d5d",
+      "type": "file",
+      "file": ".scratch/command-center/issues/05-phone-surface.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c662840a3fd6bb9d",
+      "type": "file",
+      "file": ".scratch/command-center/issues/06-places-by-hand.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "34116d07afc18427",
+      "type": "file",
+      "file": ".scratch/command-center/issues/07-build-sheet-screen.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "1d17f40451f01ab9",
+      "type": "file",
+      "file": ".scratch/command-center/issues/08-outside-world-cards.md",
+      "x": 0,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "5cf5f6390d3b1a30",
+      "type": "file",
+      "file": ".scratch/command-center/issues/11-small-writes.md",
+      "x": 0,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "cb3a0a3bb8bb98b8",
+      "type": "file",
+      "file": ".scratch/command-center/issues/01-home-command-center.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "2dfb33efce929739",
+      "type": "file",
+      "file": ".scratch/command-center/issues/09-discovery-and-wiki.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "95430a7be9e08e46",
+      "type": "file",
+      "file": ".scratch/command-center/issues/10-page-audits.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "5c9cbb0d01fc4aa9",
+      "fromNode": "67afc577b194db60",
+      "fromSide": "right",
+      "toNode": "cb3a0a3bb8bb98b8",
+      "toSide": "left"
+    },
+    {
+      "id": "eba2389cab3fb292",
+      "fromNode": "a124cce0f27682cd",
+      "fromSide": "right",
+      "toNode": "cb3a0a3bb8bb98b8",
+      "toSide": "left"
+    },
+    {
+      "id": "7ee61329ac88fc77",
+      "fromNode": "c662840a3fd6bb9d",
+      "fromSide": "right",
+      "toNode": "cb3a0a3bb8bb98b8",
+      "toSide": "left"
+    },
+    {
+      "id": "86f9bb709c1ecb3a",
+      "fromNode": "34116d07afc18427",
+      "fromSide": "right",
+      "toNode": "cb3a0a3bb8bb98b8",
+      "toSide": "left"
+    },
+    {
+      "id": "8e435fc54b3706e0",
+      "fromNode": "1d17f40451f01ab9",
+      "fromSide": "right",
+      "toNode": "cb3a0a3bb8bb98b8",
+      "toSide": "left"
+    },
+    {
+      "id": "f7d7e7152610b239",
+      "fromNode": "cb3a0a3bb8bb98b8",
+      "fromSide": "right",
+      "toNode": "2dfb33efce929739",
+      "toSide": "left"
+    },
+    {
+      "id": "db452779a7ff846f",
+      "fromNode": "cb3a0a3bb8bb98b8",
+      "fromSide": "right",
+      "toNode": "95430a7be9e08e46",
+      "toSide": "left"
+    },
+    {
+      "id": "95beccae26f6c431",
+      "fromNode": "e56ce5ee7c4b4286",
+      "fromSide": "right",
+      "toNode": "95430a7be9e08e46",
+      "toSide": "left"
+    }
+  ]
+}
