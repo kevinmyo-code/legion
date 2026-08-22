@@ -287,7 +287,8 @@ doc = (
     # Link to the user-facing guide. This page is for whoever is BUILDING LEGION; voice.html is
     # for whoever is using it, and a visitor landing on a wall of tickets has no other way to
     # find out what the app actually does.
-    '<p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a></p>' + NL +
+    '<p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a>'
+    ' &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>' + NL +
     '<p class="lede">Across ' + str(len(d)) + ' maps. <b>' + str(dec) + ' of them are decisions</b>, '
     'not code &mdash; they need an answer from you before anyone can build. '
     + str(blocked_n) + ' are waiting on another ticket first. <b>' + str(test_n) + ' are already '
