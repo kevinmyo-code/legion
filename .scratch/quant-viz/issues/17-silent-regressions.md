@@ -3,12 +3,12 @@ map: quant-viz
 ticket: 17
 title: "Two shipped visualisations vanished in a later rebuild, and nothing noticed"
 type: grilling
-status: resolved
-status-detail: "2026-08-21, Kevin - a presence test, not a screenshot suite"
+status: built
+status-detail: "2026-08-21 - guard built; the two charts themselves are still missing"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: false
+ready: true
 tags: [ticket]
 ---
 # Two shipped visualisations vanished in a later rebuild, and nothing noticed
@@ -113,3 +113,34 @@ disabled, and a disabled guard is worse than none because it still looks like co
 **What it cannot catch, stated plainly:** a chart that is present but rendering nothing, or bound to
 the wrong data. Presence is the cheap half. The regression that prompted this ticket was two charts
 **vanishing entirely**, which is exactly what presence catches.
+
+## Built - 2026-08-21
+
+`ui/ShippedVisualisationsTest.kt`. A registry of shipped visualisations - screen file plus the
+symbol that proves it renders - scanned from SOURCE, because a unit test cannot render Compose. Same
+shape as `PromptRoleNamingTest`, which caught 183 real leaks by reading files rather than running
+them.
+
+**Verified by planting a loss**, not by assuming: renamed `TodayScreen`'s expected symbol and watched
+the guard fail, then reverted. A guard nobody has seen fail is not a guard.
+
+### The two charts are STILL MISSING, and the test says so out loud
+
+This built the alarm, not the repair. `FleetScreen` has zero `DeckMeter` calls and `milesSparkline`
+still has no reader.
+
+Rather than pretend otherwise, they sit in the registry flagged `knownMissing`, and a second test
+asserts **they are still missing**. When someone restores one, that test FAILS and forces the flag to
+be flipped. A known gap that quietly heals is a gap nobody records closing.
+
+### A stale path found on the way
+
+This ticket's own text says the meter lives in `ui/fleet/FleetScreen.kt`. **It is `ui/FleetScreen.kt`**
+- there is no `ui/fleet/` directory. The registry copied the ticket, the test failed on a missing
+file, and that is how it surfaced. Worth noting because the ticket is otherwise precise, right down
+to the commit SHAs.
+
+### What it cannot catch, stated rather than implied
+
+A chart that renders but is bound to the wrong data, or renders nothing because its input is empty.
+**Presence is the cheap half** - and it is the half that failed here, twice.
