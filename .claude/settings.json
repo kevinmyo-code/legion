@@ -7,7 +7,7 @@
           {
             "type": "command",
             "if": "Bash(git commit*)",
-            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; if [ ! -f tools/pending_wiki.py ]; then echo '{\"systemMessage\":\"wiki hook: tools/ not found, page NOT regenerated\"}'; exit 0; fi; python tools/obsidian_sync.py >/dev/null 2>&1 || echo '{\"systemMessage\":\"wiki hook: obsidian_sync.py FAILED\"}'; python tools/pending_wiki.py >/dev/null 2>&1 || echo '{\"systemMessage\":\"wiki hook: pending_wiki.py FAILED\"}'; python tools/voice_guide.py >/dev/null 2>&1 || echo '{\"systemMessage\":\"wiki hook: voice_guide.py FAILED - a voice tool is missing user-facing copy\"}'; git add -- docs/index.html docs/voice.html docs/adr/adr-index.md vault/Board.md '.scratch/*/map.md' '.scratch/*/issues/*.md' >/dev/null 2>&1; exit 0",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; if [ ! -f tools/pending_wiki.py ]; then echo '{\"systemMessage\":\"wiki hook: tools/ not found, page NOT regenerated\"}'; exit 0; fi; python tools/obsidian_sync.py >/dev/null 2>&1 || echo '{\"systemMessage\":\"wiki hook: obsidian_sync.py FAILED\"}'; python tools/pending_wiki.py >/dev/null 2>&1 || echo '{\"systemMessage\":\"wiki hook: pending_wiki.py FAILED\"}'; python tools/voice_guide.py >/dev/null 2>&1 || echo '{\"systemMessage\":\"wiki hook: voice_guide.py FAILED - a voice tool is missing user-facing copy\"}'; git add -- docs/index.html docs/voice.html README.md docs/adr/adr-index.md vault/Board.md '.scratch/*/map.md' '.scratch/*/issues/*.md' >/dev/null 2>&1; exit 0",
             "timeout": 60,
             "statusMessage": "Regenerating the pending wiki and board"
           }

@@ -24,6 +24,35 @@ portfolio piece, not a product.
 
 Six life domains plus music control, one voice loop. Tabs: Today, Money, Body, Fleet, Notes, Setup.
 
+## What you can actually say to it
+
+<!-- VOICE-SURFACE:START -->
+
+**97 voice tools across 13 domains**, dispatched from one Gemini Live
+socket. Every one is declared with a schema and a description written to constrain the
+model rather than to sell the feature.
+
+| Domain | Tools | Something you would say |
+|---|---|---|
+| Getting started | 6 | &ldquo;Give me a sitrep&rdquo; |
+| Your day | 8 | &ldquo;Add milk to the shopping list&rdquo; |
+| The cars | 28 | &ldquo;Any trouble codes?&rdquo; |
+| Driving | 2 | &ldquo;Open the garage&rdquo; |
+| Money | 12 | &ldquo;Import my bank statement&rdquo; |
+| Food and shopping | 9 | &ldquo;Scan this receipt&rdquo; |
+| Training and sleep | 10 | &ldquo;Squats, five at a hundred kilos&rdquo; |
+| Goals and advice | 7 | &ldquo;I want to save five grand by December&rdquo; |
+| Music | 4 | &ldquo;Play the Roadtrip playlist&rdquo; |
+| Mail and calendar | 3 | &ldquo;Any mail from the garage?&rdquo; |
+| Phone calls | 2 | &ldquo;Answer it&rdquo; |
+| Memory | 3 | &ldquo;Remember that the XJ takes 5W-30&rdquo; |
+| Settings and control | 3 | &ldquo;Call yourself Alfred&rdquo; |
+
+Full list with plain-language descriptions: **[docs/voice.html](docs/voice.html)** -
+generated from `LiveToolbox.kt`, so a tool that exists is on the page or the build fails.
+
+<!-- VOICE-SURFACE:END -->
+
 ## The trust architecture
 
 The reconciliation gate is the core rule (full text: `CLAUDE.md` §4). It is what makes LLM

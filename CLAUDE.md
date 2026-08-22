@@ -612,6 +612,12 @@ documentation surface and the boundaries matter:
   and names it** - the same posture as `docs_check.py`. Do not paste the Kotlin `description` into
   the copy file: those are written to steer a model, are full of "never say X unless" caveats, and
   read badly to a human.
+  **The same script also rewrites a condensed block in `README.md`** between
+  `<!-- VOICE-SURFACE:START/END -->` - a domain/count/example table for whoever is assessing the
+  ENGINEERING rather than learning to use the app (Kevin, 2026-08-21: "a condensed version that
+  potential recruiters and technical interviewers can look at"). Generated for the same reason: a
+  capability table in a README is exactly the kind of thing that quietly rots into a lie about the
+  project. Do not hand-edit inside those markers.
 - **Pages serves `docs/` from `dev`**, so the wiki is live at the repo's Pages URL and updates on
   every push. `docs/.nojekyll` stops Jekyll rewriting the Markdown docs alongside it. **The repo is
   public, so the wiki is public** - ticket titles and status details included. That was already true

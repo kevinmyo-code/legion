@@ -121,6 +121,58 @@ in the app it is on this page, because the build fails otherwise.</p>
 </footer>"""
 
 
+README = ROOT / 'README.md'
+README_START = '<!-- VOICE-SURFACE:START -->'
+README_END = '<!-- VOICE-SURFACE:END -->'
+NL = chr(10)
+
+
+def readme_block(tools):
+    """The condensed table for README.md - a different audience from docs/voice.html.
+
+    That page teaches someone how to USE the app. This block is read by someone assessing the
+    ENGINEERING: a recruiter or an interviewer skimming for scope and judgement. So it leads with
+    shape and volume rather than instructions, and links out for the full list.
+
+    Generated from the same source for the same reason: a capability table in a README is exactly
+    the kind of thing that quietly rots into a lie about the project.
+    """
+    rows = []
+    for group, names in GROUPS.items():
+        live = [n for n in names if n in tools]
+        if not live:
+            continue
+        example = COPY[live[0]][0]
+        rows.append(f'| {group} | {len(live)} | &ldquo;{example}&rdquo; |')
+    return NL.join([
+        README_START,
+        '',
+        f'**{len(tools)} voice tools across {len(rows)} domains**, dispatched from one Gemini Live',
+        'socket. Every one is declared with a schema and a description written to constrain the',
+        'model rather than to sell the feature.',
+        '',
+        '| Domain | Tools | Something you would say |',
+        '|---|---|---|',
+        *rows,
+        '',
+        'Full list with plain-language descriptions: **[docs/voice.html](docs/voice.html)** -',
+        'generated from `LiveToolbox.kt`, so a tool that exists is on the page or the build fails.',
+        '',
+        README_END,
+    ])
+
+
+def write_readme(tools):
+    text = README.read_text(encoding='utf-8')
+    block = readme_block(tools)
+    if README_START in text and README_END in text:
+        pre = text.split(README_START)[0]
+        post = text.split(README_END)[1]
+        README.write_text(pre + block + post, encoding='utf-8')
+        return 'updated'
+    return 'markers-missing'
+
+
 def main():
     tools = declared_tools()
     problems = check(tools)
@@ -133,7 +185,12 @@ def main():
         print(f'voice_guide: {len(tools)} tools, copy complete, no drift')
         return 0
     OUT.write_text(render(tools), encoding='utf-8')
+    status = write_readme(tools)
     print(f'{OUT.relative_to(ROOT)}: {len(tools)} tools across {len(GROUPS)} groups')
+    print(f'README.md: {status}')
+    if status == 'markers-missing':
+        print('  add <!-- VOICE-SURFACE:START --> and <!-- VOICE-SURFACE:END --> to README.md')
+        return 1
     return 0
 
 
