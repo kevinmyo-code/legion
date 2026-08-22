@@ -3,11 +3,11 @@ map: spotify-voice
 ticket: 13
 title: "More from this artist, and what else they have"
 type: task
-status: built
-status-detail: "Built (8fc0ee0). /artists/{id}/albums availability is traced but NOT tested - it may 403. NOT installed, NOT verified on the phone."
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): verified on a real drive - all Spotify functions work."
 blockers: ["02", "03"]
 blocked-by: ["[[02-app-remote-spine]]", "[[03-tool-surface]]"]
-open-blockers: 2
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---

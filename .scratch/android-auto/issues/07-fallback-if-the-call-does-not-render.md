@@ -3,8 +3,8 @@ map: android-auto
 ticket: 07
 title: "What if Android Auto will not render the call?"
 type: grilling
-status: kiv
-status-detail: ""
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): Android Auto not needed. The app is reached by voice, so it needs no head-unit interface."
 blockers: []
 blocked-by: []
 open-blockers: 0

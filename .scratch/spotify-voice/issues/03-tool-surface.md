@@ -3,8 +3,8 @@ map: spotify-voice
 ticket: 03
 title: "Fold ten capabilities into the tools that already exist"
 type: task
-status: built
-status-detail: "Built (0f94dee). MusicAction enum, 20 actions, all implemented, count pinned by a test. NOT installed, NOT verified on the phone."
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): verified on a real drive - all Spotify functions work."
 blockers: []
 blocked-by: []
 open-blockers: 0

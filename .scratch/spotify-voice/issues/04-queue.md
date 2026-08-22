@@ -3,11 +3,11 @@ map: spotify-voice
 ticket: 04
 title: "Add this to the queue, and play this next"
 type: task
-status: built
-status-detail: "Built (d56381a). queue + get_music_queue, the one net-new declaration on this map. NOT installed, NOT verified on the phone."
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): verified on a real drive - all Spotify functions work."
 blockers: ["02", "03"]
 blocked-by: ["[[02-app-remote-spine]]", "[[03-tool-surface]]"]
-open-blockers: 2
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---

@@ -3,11 +3,11 @@ map: spotify-voice
 ticket: 12
 title: "Ship pass: installed on the A25 and drivable"
 type: task
-status: open
-status-detail: ""
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): verified on a real drive - all Spotify functions work."
 blockers: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "11"]
 blocked-by: ["[[01-scopes-and-one-reapproval]]", "[[02-app-remote-spine]]", "[[03-tool-surface]]", "[[04-queue]]", "[[05-library-writes]]", "[[06-shuffle-repeat-seek]]", "[[07-now-playing-truth]]", "[[08-playlists-by-name]]", "[[09-history-uri]]", "[[11-rec-engine]]"]
-open-blockers: 10
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

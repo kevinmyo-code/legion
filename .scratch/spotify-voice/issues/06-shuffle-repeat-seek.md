@@ -3,11 +3,11 @@ map: spotify-voice
 ticket: 06
 title: "Shuffle, repeat, and moving inside a track"
 type: task
-status: built
-status-detail: "Built (25aa6c2). Every write reads its result back rather than assuming it. NOT installed, NOT verified on the phone."
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): verified on a real drive - all Spotify functions work."
 blockers: ["02", "03"]
 blocked-by: ["[[02-app-remote-spine]]", "[[03-tool-surface]]"]
-open-blockers: 2
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---

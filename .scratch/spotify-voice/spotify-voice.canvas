@@ -8,7 +8,7 @@
       "y": 0,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "4d506b1a1d87f1c5",
@@ -18,7 +18,7 @@
       "y": 150,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "43e93a2007f508a3",
@@ -28,7 +28,7 @@
       "y": 300,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "543712f18657e907",
@@ -48,7 +48,7 @@
       "y": 0,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "8419a4fa41f3e067",
@@ -58,7 +58,7 @@
       "y": 150,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "90e7f075e6d6bd60",
@@ -68,7 +68,7 @@
       "y": 300,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "0b4728655a9c7ad7",
@@ -78,7 +78,7 @@
       "y": 450,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "8fdc730424b9b8e1",
@@ -88,7 +88,7 @@
       "y": 600,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "d7e9f0830d83a29c",
@@ -98,7 +98,7 @@
       "y": 750,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "913e568c305e17d5",
@@ -118,7 +118,7 @@
       "y": 1050,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "f63ee8e58fe4d26a",
@@ -128,7 +128,7 @@
       "y": 0,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     }
   ],
   "edges": [

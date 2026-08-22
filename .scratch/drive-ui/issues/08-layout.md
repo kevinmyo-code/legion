@@ -3,12 +3,12 @@ map: drive-ui
 ticket: 08
 title: "Layout for a phone that is 384 x 832, not a head unit"
 type: prototype
-status: open
-status-detail: "Q26/Q27/Q28 built (8123f4e, 8386ec5); Q29 portrait lock and ticket 05's post-drive summary still open"
+status: closed
+status-detail: "Superseded 2026-08-22 (Kevin): the driving screen is being re-scoped away from live gauges. See the new pass ticket."
 blockers: ["04", "05"]
 blocked-by: ["[[04-gauge-design]]", "[[05-trip-content]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Layout for a phone that is 384 x 832, not a head unit
@@ -112,3 +112,14 @@ below), but nobody has run it on the A25 since the rebuild.
 
 All rows above `traced`.
 
+
+---
+
+## Superseded 2026-08-22
+
+Kevin: *"drive ui needs a new pass. we dont need rpm and sped live, since car gauges does that. its
+more of status monitoring. sensors etc."*
+
+This ticket was laying out a screen whose central content is a live speed and rpm gauge. **The car
+already has both, six inches away, and they are better.** So the layout question this ticket asks is
+the wrong question, not a stale answer to the right one.

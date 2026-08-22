@@ -3,8 +3,8 @@ map: spotify-voice
 ticket: 02
 title: "App Remote is the spine, and it creates the device rather than needing one"
 type: task
-status: built
-status-detail: "Built (66d1d4c). PlayOutcome + switch-to-local + held connection. The cold case has never been run. NOT installed, NOT verified on the phone."
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): verified on a real drive - all Spotify functions work."
 blockers: []
 blocked-by: []
 open-blockers: 0

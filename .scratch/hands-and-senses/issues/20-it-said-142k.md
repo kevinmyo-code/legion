@@ -3,12 +3,12 @@ map: hands-and-senses
 ticket: "20"
 title: "It said the Jeep was at 142k when the record says 227k"
 type: task
-status: open
-status-detail: "Reported 2026-08-20, NOT explained. The deeper problem it named is fixed: memory_audit (Room v27) now records recalls and the lines the assistant speaks. The mileage claim itself remains unreproduced."
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): mileage is reported correctly now."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # It said the Jeep was at 142k when the record says 227k

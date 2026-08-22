@@ -3,8 +3,8 @@ map: android-auto
 ticket: 13
 title: Prove or kill the OBD silent-stall claim
 type: task
-status: kiv
-status-detail: ""
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): Android Auto not needed. The app is reached by voice, so it needs no head-unit interface."
 blockers: []
 blocked-by: []
 open-blockers: 0

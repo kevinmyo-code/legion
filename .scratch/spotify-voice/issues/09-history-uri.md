@@ -3,11 +3,11 @@ map: spotify-voice
 ticket: 09
 title: "legion_history can name a track it can never replay"
 type: task
-status: built
-status-detail: "Built. spotifyUri filled from player state; old rows stay null and say so. NOT installed, NOT verified on the phone."
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): verified on a real drive - all Spotify functions work."
 blockers: ["02"]
 blocked-by: ["[[02-app-remote-spine]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---

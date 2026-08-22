@@ -3,8 +3,8 @@ map: android-auto
 ticket: 15
 title: The live session can be silenced with no error
 type: task
-status: kiv
-status-detail: "driver-facing surface built 2026-08-18; item 1 (device experiment) and item 5 (dataSync cap) still unmet"
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): Android Auto not needed. The app is reached by voice, so it needs no head-unit interface."
 blockers: []
 blocked-by: []
 open-blockers: 0

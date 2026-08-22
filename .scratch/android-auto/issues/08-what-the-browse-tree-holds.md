@@ -3,8 +3,8 @@ map: android-auto
 ticket: 08
 title: "What is in the browse tree, and who writes the briefings?"
 type: grilling
-status: kiv
-status-detail: "points 1-5, 7 and 8 answered on the head unit 2026-08-18; only point 6 (onPlayFromSearch) is still open"
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): Android Auto not needed. The app is reached by voice, so it needs no head-unit interface."
 blockers: ["02", "03"]
 blocked-by: ["[[02-what-a-sideloaded-media-app-needs]]", "[[03-does-voice-search-still-deliver-a-raw-query]]"]
 open-blockers: 0

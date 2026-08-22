@@ -13,10 +13,8 @@ Open tickets whose blockers are all resolved.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
-| [[.scratch/aspect-advisors/map\|aspect-advisors]] | [[20-ship-pass\|20]] | task | Ship pass: advisors answering on the phone |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
-| [[.scratch/drive-ui/map\|drive-ui]] | [[08-layout\|08]] | prototype | Layout for a phone that is 384 x 832, not a head unit |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-it-said-142k\|20]] | task | It said the Jeep was at 142k when the record says 227k |
+| [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[25-build-inbox-intelligence\|25]] | build | BUILD: where is my package, when is my flight |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
@@ -38,9 +36,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[13-silent-after-focus-loss\|13]] | bug | It speaks and you hear nothing, once Spotify takes audio focus |
 | [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[01-scopes-and-one-reapproval\|01]] | task | Every scope this map needs, taken in one re-approval |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[02-app-remote-spine\|02]] | task | App Remote is the spine, and it creates the device rather than needing one |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[03-tool-surface\|03]] | task | Fold ten capabilities into the tools that already exist |
 | [[.scratch/wake-word/map\|wake-word]] | [[05-mic-ownership\|05]] | grilling | Who owns the microphone, and what yields to what? |
 | [[.scratch/wake-word/map\|wake-word]] | [[12-deaf-in-the-jeep\|12]] | task | Deaf in the Jeep, fine outside it |
 | [[.scratch/wake-word/map\|wake-word]] | [[14-service-refused-to-start\|14]] | bug | The assistant silently stops running, and every surface still says On |
@@ -60,14 +55,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[06-departure-advisor\|06]] | build | The departure advisor  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[08-garage-on-approach\|08]] | build | Garage on approach, as an offer  waiting on [[05-geofences\|05]] |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[04-queue\|04]] | task | Add this to the queue, and play this next  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[05-library-writes\|05]] | task | Like this, and follow them, without touching the phone  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[06-shuffle-repeat-seek\|06]] | task | Shuffle, repeat, and moving inside a track  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[07-now-playing-truth\|07]] | task | What's this, and naming what it picked  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[08-playlists-by-name\|08]] | task | My playlists, and the ones friends shared with me  waiting on [[01-scopes-and-one-reapproval\|01]], [[03-tool-surface\|03]] |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[09-history-uri\|09]] | task | legion_history can name a track it can never replay  waiting on [[02-app-remote-spine\|02]] |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[12-ship-pass\|12]] | task | Ship pass: installed on the A25 and drivable  waiting on [[01-scopes-and-one-reapproval\|01]], [[02-app-remote-spine\|02]], [[03-tool-surface\|03]], [[04-queue\|04]], [[05-library-writes\|05]], [[06-shuffle-repeat-seek\|06]], [[07-now-playing-truth\|07]], [[08-playlists-by-name\|08]], [[09-history-uri\|09]], [[11-rec-engine\|11]] |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | [[13-more-from-this-artist\|13]] | task | More from this artist, and what else they have  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[04-what-drain-is-acceptable\|04]] | grilling | What drain is acceptable, and what happens when it is not met?  waiting on [[03-measure-the-battery-cost\|03]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery  waiting on [[05-mic-ownership\|05]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[07-false-triggers\|07]] | grilling | How many false triggers is too many, and how would Kevin ever know?  waiting on [[06-prove-it-on-the-phone\|06]] |
@@ -78,15 +65,6 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
-| [[.scratch/android-auto/map\|android-auto]] | [[07-fallback-if-the-call-does-not-render\|07]] | grilling | What if Android Auto will not render the call? |
-| [[.scratch/android-auto/map\|android-auto]] | [[08-what-the-browse-tree-holds\|08]] | grilling | What is in the browse tree, and who writes the briefings? |
-| [[.scratch/android-auto/map\|android-auto]] | [[09-what-the-car-aware-prompt-changes\|09]] | grilling | What does the car-aware prompt actually change? |
-| [[.scratch/android-auto/map\|android-auto]] | [[10-session-lifecycle-and-cost\|10]] | grilling | How long does the call stay open, and what does that cost? |
-| [[.scratch/android-auto/map\|android-auto]] | [[11-duck-or-pause-the-music\|11]] | grilling | Duck the music, or pause it? |
-| [[.scratch/android-auto/map\|android-auto]] | [[12-clone-and-run-with-two-manual-toggles\|12]] | grilling | Does clone-and-run survive two manual toggles? |
-| [[.scratch/android-auto/map\|android-auto]] | [[13-prove-the-obd-silent-stall\|13]] | task | Prove or kill the OBD silent-stall claim |
-| [[.scratch/android-auto/map\|android-auto]] | [[14-does-gearhead-draw-the-call\|14]] | task | Does gearhead actually draw the call? |
-| [[.scratch/android-auto/map\|android-auto]] | [[15-the-live-session-can-be-silenced\|15]] | task | The live session can be silenced with no error |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[09-tomtom-surface-area\|09]] | grilling | The rest of the TomTom surface area |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[11-rec-engine\|11]] | task | The recommendation engine LEGION has to build itself |
@@ -96,17 +74,17 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | Map | Tickets | Open | Canvas |
 |---|---|---|---|
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
-| [[.scratch/android-auto/map\|android-auto]] | 16 | 9 | [[.scratch/android-auto/android-auto.canvas\|open]] |
-| [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 1 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
+| [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
+| [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
-| [[.scratch/drive-ui/map\|drive-ui]] | 9 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
+| [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | 8 | 0 | [[.scratch/goal-keeping/goal-keeping.canvas\|open]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | 6 | 5 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 26 | 6 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 26 | 5 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |
@@ -116,5 +94,5 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
-| [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 12 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
+| [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 1 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
 | [[.scratch/wake-word/map\|wake-word]] | 15 | 9 | [[.scratch/wake-word/wake-word.canvas\|open]] |

@@ -3,8 +3,8 @@ map: android-auto
 ticket: 14
 title: "Does gearhead actually draw the call?"
 type: task
-status: kiv
-status-detail: ""
+status: closed
+status-detail: "Closed 2026-08-22 (Kevin): Android Auto not needed. The app is reached by voice, so it needs no head-unit interface."
 blockers: ["06"]
 blocked-by: ["[[06-get-a-sideloaded-build-visible-in-android-auto]]"]
 open-blockers: 0
