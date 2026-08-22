@@ -15,7 +15,6 @@ Open tickets whose blockers are all resolved.
 |---|---|---|---|
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[27-the-hands-path-gap\|27]] | task | Measure which voice capabilities have no hands path |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
@@ -87,7 +86,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/goal-keeping/map\|goal-keeping]] | 8 | 0 | [[.scratch/goal-keeping/goal-keeping.canvas\|open]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | 7 | 6 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 28 | 7 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 28 | 6 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |
