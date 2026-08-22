@@ -26,6 +26,11 @@ agent - hey i dont have access to a gym, can we mix in kettlebell workouts etc."
 **That second sentence is half the destination.** A plan you can only accept or reject is a
 generator; a plan you can talk to is a coach. Revision by conversation is not a later nicety here.
 
+**The accuracy bar, Kevin 2026-08-21:** *"it doesnt need to be very accurate. just a check list of
+recommended workouts to loosely follow etc."* Where a choice is between more accurate and simpler,
+simpler wins. **This does not loosen the safety boundaries** - a loose plan has more room to be
+wrong, not less.
+
 **This map carries the BUILD.** Kevin's standing rule as of today: anything ready with no decisions
 left gets built.
 
@@ -78,7 +83,9 @@ this yet" since the proactive build.
   what revision needs to mutate.
 - **How revision interacts with acceptance.** If Kevin changes the plan by talking, is that a new
   plan, a diff, or an edit? Only sharp once the storage shape is chosen.
-- **The other aspects.** Kevin said "each aspect" and gave a BIO example. Whether a ledger goal or a
+- **The other aspects. RULED 2026-08-21: BIO-only, and this is now a decision rather than an open
+  question** (ticket 02, settled). Kevin said "each aspect" and gave a BIO example. Whether a ledger
+  goal or a
   fleet goal generates a checklist at all is genuinely unclear, and BIO is the one with real
   doctrine behind it. Start there; the rest graduates when the shape is proven.
 - **What "on track" means**, inherited from `goal-keeping` ticket 01 and still unanswered. It gets
