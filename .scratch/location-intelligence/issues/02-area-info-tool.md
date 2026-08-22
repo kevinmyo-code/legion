@@ -3,8 +3,8 @@ map: location-intelligence
 ticket: 2
 title: "The area_info tool, with attribution baked in"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "2026-08-21 - built against live endpoints; owes a run on the phone"
 blockers: ["01"]
 blocked-by: ["[[01-background-location]]"]
 open-blockers: 1
@@ -58,3 +58,46 @@ then offers the figure. **The refusal is the feature.**
 - Unit tests on the formatting: every category's string carries its source name, and an empty result
   reads as "nothing reported", never as a blank.
 - Live calls to each keyless endpoint from the phone.
+
+## Built - 2026-08-21
+
+`AreaInfo` (WEATHER/QUAKE/FIRE/DISASTER), `CrimeHistory`, `UsStates`, both tools in `LiveToolbox`,
+24 tests. 99 voice tools now, guide regenerated with no drift.
+
+**Every endpoint was exercised live with curl, not coded against docs.** The response shapes drove
+the parser rather than being inferred - which is the difference between this and the AirNow client
+we deliberately did NOT write.
+
+### Findings that only came from hitting the real services
+
+- **USGS puts coordinates as `[lon, lat, depth]`** (GeoJSON order) and its free-text `place` is not
+  reliable for a consistent spoken distance - so bearing and distance are computed from
+  `geometry.coordinates` instead of read from prose.
+- **NIFC needed `IncidentTypeCategory='WF'`** or prescribed burns (`RX`) come back as fires. The
+  field carries **no published domain** - the code set is empirically observed, and the comment says
+  so rather than implying it is documented.
+- **FBI CDE keys its monthly series by `"<Agency Name> Offenses"`** - a dynamic key per agency, found
+  by its `" Offenses"` suffix, never hardcoded. And **the latest year present is very often
+  incomplete** (trailing nulls), so "most recent complete year" is computed, never assumed. That is
+  the ticket's honesty requirement surviving contact with the actual data.
+- **`Geocoder.adminArea` returns "Texas", not "TX"**, and both FEMA and FBI filter on the
+  abbreviation. Hence `UsStates` - there is no Android API for that conversion.
+
+### Honest simplifications, stated rather than hidden
+
+- **FEMA is filtered by STATE, not county.** Resolving a county to FEMA's numeric `fipsCountyCode`
+  needs a lookup table this ticket did not scope. The output names the actual `designatedArea`, so
+  nothing is overclaimed as more local than it is.
+- Quake radius 200mi / 5 results, fire radius 100mi. Defaults, not findings, and commented as such.
+- A named place matching no agency returns **null rather than silently falling back to nearest** -
+  answering about the wrong jurisdiction would be worse than not answering.
+
+### AIR is deliberately absent
+
+Not forgotten. AirNow is blocked on [ticket 10](10-airnow-account.md)'s login visit, and the gap is
+commented in `AreaInfo` so it reads as a decision.
+
+### Owed on the phone
+
+Real GPS acquisition, actual Gemini tool-calling against these declarations, and whether spoken
+output ("6:15pm", agency names) reads sensibly aloud. None of that is testable from here.

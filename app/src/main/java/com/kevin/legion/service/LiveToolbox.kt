@@ -29,6 +29,8 @@ import com.kevin.legion.ledger.uncategorizedExcludedSentence
 import com.kevin.legion.pantry.PantryController
 import com.kevin.legion.meals.MealController
 import com.kevin.legion.workouts.WorkoutController
+import com.kevin.legion.location.AreaInfo
+import com.kevin.legion.location.CrimeHistory
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.NavigationController
 import com.kevin.legion.location.PlaceController
@@ -1350,6 +1352,60 @@ object LiveToolbox {
             required = listOf(),
         ))
 
+        // area_info (location-intelligence ticket 02): ONE tool with a category parameter rather
+        // than four - four separate tools would spend four prompt-budget slots on a single idea
+        // (map decision 1). Every category's result NAMES its source inside the returned string
+        // ("NWS: ...", "USGS: ...", "NIFC: ...", "FEMA: ...") - see AreaInfo's own doc for why that
+        // is structural rather than left to a prompt instruction. Location is the LIVE GPS fix with
+        // no fallback (map decision 14) - never a saved place or a last-known position - so this
+        // reuses get_current_location's exact "no permission / services off / no fix yet" branching
+        // rather than inventing a fourth silent behaviour.
+        fns.put(fn(
+            name = "area_info",
+            description = "Check what a government or agency source is reporting around the " +
+                "user's CURRENT location right now: active severe weather alerts (category " +
+                "'weather', from the National Weather Service), nearby earthquakes (category " +
+                "'quake', from the USGS), nearby active wildfires (category 'fire', from the " +
+                "National Interagency Fire Center - named incidents only, never a raw satellite " +
+                "heat detection), or recent federal disaster declarations for the user's state " +
+                "(category 'disaster', from FEMA - these are administrative declarations, not " +
+                "live hazards, and must never be spoken as a warning or an alert). Requires a live " +
+                "GPS fix; if there isn't one yet, say so rather than guessing a location. Every " +
+                "result already names its own source - never restate or paraphrase away that " +
+                "attribution when repeating it back.",
+            params = obj(
+                "category" to schema("string", "Which source to check.",
+                    enum = listOf("weather", "quake", "fire", "disaster")),
+            ),
+            required = listOf("category"),
+        ))
+
+        // get_reported_crime_history (map decision 7): a SEPARATE tool from area_info, not a fifth
+        // category, because it answers a fundamentally different shape of question - a historical
+        // count bound to one named reporting agency and one calendar year, not a live condition.
+        // is_area_safe is deliberately never built (CrimeHistory's own doc has the full honesty
+        // case) - this description exists specifically so the model reaches for THIS tool and this
+        // caveated framing instead of inventing a safety verdict on its own.
+        fns.put(fn(
+            name = "get_reported_crime_history",
+            description = "Look up how many offenses a police/sheriff's agency near the user's " +
+                "current location reported to the FBI, for the most recent complete calendar year " +
+                "on file. THIS DOES NOT ANSWER 'is this area safe' - the data is agency-level " +
+                "(a whole jurisdiction, never a neighborhood or block), roughly a year stale, and " +
+                "voluntarily reported so it is incomplete by construction. If the user asks " +
+                "whether somewhere is safe, say plainly that this can't answer that, THEN offer " +
+                "to pull the historical figure if they still want it - never answer the safety " +
+                "question from this number. Requires a live GPS fix.",
+            params = obj(
+                "place" to schema("string", "Optional - a specific place/agency the user named " +
+                    "(e.g. 'Houston' or 'Harris County'). Leave blank to use the nearest agency " +
+                    "to the current location."),
+                "offense_type" to schema("string", "Which offense family to report.",
+                    enum = listOf("violent", "property")),
+            ),
+            required = listOf(),
+        ))
+
         // Fleet-wide voice (ticket 01): this is what makes the fleet knowable at
         // all. Every other stored-data tool CAN take a `vehicle` argument, but
         // nothing tells the model a second car exists to ask about unless it
@@ -2113,6 +2169,8 @@ object LiveToolbox {
             "control_music" -> controlMusic(context, args)
             "control_volume" -> controlVolume(context, args)
             "get_current_location" -> getCurrentLocation(context)
+            "area_info" -> areaInfo(context, args)
+            "get_reported_crime_history" -> getReportedCrimeHistory(context, args)
             "play_music" -> playMusic(
                 context,
                 args.optString("query"),
@@ -5660,6 +5718,68 @@ object LiveToolbox {
         }
         return if (label != null) result(success = true, message = "Current location: $label $coords")
         else result(success = true, message = "Current location: $coords (couldn't resolve an address)")
+    }
+
+    /**
+     * The single "do we have an actual live GPS fix, with NO fallback" gate (location-intelligence
+     * map decision 14) - shared by [areaInfo] and [getReportedCrimeHistory] so both tools' failure
+     * sentences say exactly what [getCurrentLocation] already says for the same three cases, rather
+     * than drifting into a slightly different wording per call site. Never touches a saved place or
+     * a last-known position - a null [android.location.Location] here means "say so and check
+     * nothing", not "guess".
+     */
+    private fun requireLiveFix(context: Context): Pair<android.location.Location?, JSONObject?> {
+        LocationController.init(context)
+        val loc = LocationController.state.value
+        if (loc != null) return loc to null
+        val failure = when {
+            !LocationController.hasPermission(context) -> result(success = false,
+                message = "LEGION doesn't have location permission. Grant it in Android's " +
+                    "app settings for LEGION and try again.")
+            !LocationController.anyProviderEnabled(context) -> result(success = false,
+                message = "Location services are switched off on the phone. Turn on GPS or " +
+                    "network location and try again.")
+            else -> result(success = false, message = "I don't have a GPS fix yet.")
+        }
+        return null to failure
+    }
+
+    /**
+     * `area_info` (location-intelligence ticket 02 §D): dispatches to [AreaInfo.fetch] for whatever
+     * `category` the model asked for, after the shared [requireLiveFix] gate. An unrecognized
+     * category string (a model hallucinating a fifth value outside the enum) fails in words rather
+     * than silently defaulting to one of the four real ones.
+     */
+    private suspend fun areaInfo(context: Context, args: JSONObject): JSONObject {
+        val category = when (args.optString("category").lowercase(java.util.Locale.US)) {
+            "weather" -> AreaInfo.Category.WEATHER
+            "quake" -> AreaInfo.Category.QUAKE
+            "fire" -> AreaInfo.Category.FIRE
+            "disaster" -> AreaInfo.Category.DISASTER
+            else -> return result(success = false, message = "I don't know that area_info category.")
+        }
+        val (loc, failure) = requireLiveFix(context)
+        if (loc == null) return failure!!
+        val message = AreaInfo.fetch(context, category, loc.latitude, loc.longitude)
+        return result(success = true, message = message)
+    }
+
+    /**
+     * `get_reported_crime_history` (location-intelligence ticket 02 §E, map decision 7): dispatches
+     * to [CrimeHistory.historyNear] after the same [requireLiveFix] gate `area_info` uses. Defaults
+     * to violent-crime when the model omits `offense_type` - the more commonly asked-about family -
+     * never to `is_area_safe`-shaped behaviour, which [CrimeHistory] does not implement at all.
+     */
+    private suspend fun getReportedCrimeHistory(context: Context, args: JSONObject): JSONObject {
+        val (loc, failure) = requireLiveFix(context)
+        if (loc == null) return failure!!
+        val offenseType = when (args.optString("offense_type", "violent")) {
+            "property" -> CrimeHistory.OffenseType.PROPERTY
+            else -> CrimeHistory.OffenseType.VIOLENT
+        }
+        val place = args.optString("place").ifBlank { null }
+        val message = CrimeHistory.historyNear(context, loc.latitude, loc.longitude, place, offenseType)
+        return result(success = true, message = message)
     }
 
     /**

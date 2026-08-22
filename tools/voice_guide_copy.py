@@ -39,6 +39,8 @@ COPY = {
     "get_sitrep": ("Give me a sitrep", "A status report: calendar, weather, car and a newsletter summary - whichever you have switched on."),
     "get_current_time": ("What time is it?", "The time and date where you are."),
     "get_current_location": ("Where am I?", "Your current location. Says it does not know rather than guessing when there is no GPS fix."),
+    "area_info": ("Any severe weather nearby?", "Checks a live source for where you are now: severe weather (National Weather Service), earthquakes (USGS), wildfires (National Interagency Fire Center), or federal disaster declarations (FEMA). Always names its source, and needs a live GPS fix."),
+    "get_reported_crime_history": ("What's the crime history around here?", "Reported offenses for the nearest police or sheriff's agency, from the FBI's Crime Data Explorer - agency-wide, roughly a year old, and voluntarily reported. It will not tell you whether somewhere is \"safe\"; nothing can answer that honestly from this data."),
     "show_app": ("Open the ledger", "Opens a screen in the app for you."),
     "end_conversation": ("Go to sleep", "Stops listening and goes quiet. \"That's all\", \"never mind\" and \"stand down\" do the same. It reads this as YOU going dormant, not as your bedtime - no goodnight."),
     "finish_intro": ("I'm done setting up", "Finishes first-run setup."),
@@ -160,7 +162,7 @@ COPY = {
 }
 
 GROUPS = {
-    "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "show_app", "finish_intro", "end_conversation"],
+    "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "area_info", "get_reported_crime_history", "show_app", "finish_intro", "end_conversation"],
     "Your day": ["manage_item", "read_list", "set_reminder", "read_calendar", "tag_place", "forget_place", "show_saved_places", "open_navigation"],
     "The cars": ["get_codes", "diagnose_codes", "clear_codes", "get_code_history", "triage_symptom", "check_readiness", "check_cold_start", "get_vehicle_data", "read_vehicle_sensor", "get_health", "get_mpg", "get_trend", "get_specs", "lookup_vin", "check_recalls", "get_next_service", "ask_maintenance", "log_service", "log_past_service", "set_maintenance_interval", "set_odometer", "log_build_entry", "list_build_history", "register_car", "register_vehicle", "manage_vehicle", "list_vehicles", "ask_fleet"],
     "Driving": ["activate_garage", "control_volume"],
