@@ -26,6 +26,9 @@ navigationCompose = "2.8.0"
 # every configuration at once. See app/build.gradle.kts.
 kotlinxSerialization = "1.8.1"
 playServicesAuth = "21.2.0"
+# Geofencing (location-intelligence map, ticket 05): GeofencingClient lives in play-services-location,
+# not play-services-auth (that one is Drive sign-in only) - a separate artifact, same GMS group.
+playServicesLocation = "21.3.0"
 # Vosk (custom wake word, ported from Midnight AI's 2026-07-19 reopen):
 # published directly to Maven Central, no JitPack needed.
 vosk = "0.3.47"
@@ -82,6 +85,10 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 # by the BYO-cloud cross-device sync. The app talks straight to the user's
 # Drive - no Kevin-hosted backend.
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+# GeofencingClient (location-intelligence ticket 05): registers real OS geofences for
+# TaggedPlace rows so arrival reminders fire event-driven, with the app closed, instead of
+# depending on a GPS poll happening to land near the place.
+play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 # Custom wake word ("hey <name>"), ported from Midnight AI.
 vosk-android = { group = "com.alphacephei", name = "vosk-android", version.ref = "vosk" }
 pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }

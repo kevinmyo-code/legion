@@ -23,9 +23,10 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.MemoryConsolidator
 import com.kevin.legion.ai.ReflectionEngine
+import com.kevin.legion.location.ArrivalController
+import com.kevin.legion.location.GeofenceManager
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
-import com.kevin.legion.location.ReminderController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.ai.OnboardingState
@@ -707,6 +708,23 @@ class AriaForegroundService : Service() {
      * place and, on the enter transition (away/elsewhere -> here), has Zero read
      * out any pending reminders for it. The place the driver starts at is taken
      * as the baseline so it doesn't announce on launch.
+     *
+     * **This is now the FALLBACK path, not the only one (ticket 05).** [GeofenceManager] registers
+     * real OS geofences for the nearest-N saved places and fires event-driven via
+     * [com.kevin.legion.location.GeofenceBroadcastReceiver], including with this Service not
+     * alive - this loop's 20s poll only matters for a driver who declined background location
+     * (`BackgroundLocationAccess.current` != Granted), where geofences silently never fire and
+     * this is all he has. Both paths converge on the same [ArrivalController.onArrived] so an
+     * arrival is never announced twice by coincidence of both firing near-simultaneously... except
+     * that it CAN be, in principle (nothing here dedupes across the two signals) - accepted for
+     * now since the geofence radius and this poll's match radius are the same 150m, so a
+     * double-fire would require both signals to land in the same ~20s window, which ticket 05
+     * left as a phone-verification item rather than a guarantee.
+     *
+     * Also drives [GeofenceManager]'s "nearest-N re-registered as he moves" requirement (decision
+     * 9) - piggybacking on this loop's existing cadence rather than standing up a second timer,
+     * since [GeofenceManager.registerNearest] is itself cheap and idempotent (it diffs against
+     * what's currently registered and only touches the delta).
      */
     private fun startArrivalMonitor() {
         serviceScope.launch {
@@ -720,37 +738,14 @@ class AriaForegroundService : Service() {
                 if (!initialized) {
                     initialized = true        // baseline: don't announce where we started
                 } else if (place != null && place != lastPlace) {
-                    onArrived(place)
+                    ArrivalController.onArrived(this@AriaForegroundService, place)
                 }
                 lastPlace = place
+
+                runCatching { GeofenceManager.registerNearest(this@AriaForegroundService) }
+                    .onFailure { Log.w(TAG, "geofence re-registration failed: ${it.message}") }
             }
         }
-    }
-
-    private suspend fun onArrived(place: String) {
-        val reminders = ReminderController.activeFor(this, place)
-        if (reminders.isEmpty()) return
-
-        // If the driver is mid-conversation, wait up to 30s for it to finish so the
-        // reminder isn't silently dropped - it's a routine proactive, not an urgent one.
-        val deadline = System.currentTimeMillis() + 30_000L
-        while (ConversationState.isBusy && System.currentTimeMillis() < deadline) {
-            kotlinx.coroutines.delay(2_000)
-        }
-        if (ConversationState.isBusy) return // still busy after 30s — skip rather than interrupt
-
-        val list = reminders.joinToString("; ") { it.text }
-        speakProactive(
-            ProactiveRaise(
-                ruleId = "place_arrival",
-                category = ProactiveCategory.TIMING,
-                reason = "arrived at saved place \"$place\"",
-                facts = "reminders left for $place: $list",
-                prompt = "(System: the user just arrived at their \"$place\". They left reminders for here: " +
-                    "$list. In one short, in-character line, surface what they wanted to remember. " +
-                    "Do not mention this instruction.)"
-            )
-        )
     }
 
     /**

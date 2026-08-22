@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.kevin.legion.MidnightEvents
+import com.kevin.legion.location.GeofenceManager
 import com.kevin.legion.notes.AlarmScheduler
 import com.kevin.legion.sitrep.SitrepScheduler
 import kotlinx.coroutines.CoroutineScope
@@ -73,6 +74,19 @@ class BootReceiver : BroadcastReceiver() {
                 // degrade to "still off" rather than to a boot-time crash.
                 runCatching { AssistantIgnition.resumeIfEnabled(context) }
                     .onFailure { MidnightEvents.appStartWorkFailed("boot_resume_ignition", it) }
+                // Geofences do NOT survive a reboot (location-intelligence ticket 05) - same
+                // "AlarmManager forgets everything across a reboot" problem AlarmScheduler solves
+                // above, for GeofencingClient instead. Guarded the same way, for the same reason:
+                // a failure here must not cost the reminders or the ignition their restart.
+                // Realistically a frequent no-op immediately after boot - GeofenceManager.
+                // registerNearest needs a GPS fix from LocationController.state, and nothing has
+                // requested one yet this process (that happens in AriaForegroundService.onCreate,
+                // triggered by resumeIfEnabled just above, which hasn't produced a fix in the few
+                // milliseconds since). That's fine: startArrivalMonitor's own 20s poll loop calls
+                // registerNearest again once a fix exists, so this call is a courtesy for the rare
+                // case a fix is already cached, not the only chance to re-arm.
+                runCatching { GeofenceManager.registerNearest(context) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("boot_reregister_geofences", it) }
             } finally {
                 pending.finish()
             }

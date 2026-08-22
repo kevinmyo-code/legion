@@ -198,6 +198,10 @@ dependencies {
     // driver's OWN Google Drive appDataFolder for BYO-cloud cross-device sync.
     implementation(libs.play.services.auth)
 
+    // Geofencing (location-intelligence ticket 05): GeofencingClient, separate artifact from
+    // play-services-auth above (that one is Drive sign-in only).
+    implementation(libs.play.services.location)
+
     // Ledger aspect (.claude/plans/wiggly-beaming-quasar.md): PDF text/coordinate
     // extraction for bank-statement parsing. Android has no built-in equivalent
     // to Python's pdfplumber word-position extraction the DBS parser depends on.

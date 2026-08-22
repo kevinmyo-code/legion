@@ -314,6 +314,14 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Fired only by GeofencingClient delivering to GeofenceManager's own PendingIntent
+             (location-intelligence ticket 05) - never by the system directly, so exported=false,
+             same reasoning as ReminderAlarmReceiver above. -->
+        <receiver
+            android:name=".location.GeofenceBroadcastReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- FileProvider for CameraCapture's camera-app handoff URI (pantry
              receipt photos). Authority = packageName + ".provider". Not
              exported; the OS broker grants read-URI permission to the
