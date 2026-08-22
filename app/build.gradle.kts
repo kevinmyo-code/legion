@@ -148,6 +148,21 @@ android {
             // test's classpath. Robolectric (below) needs this to shadow that
             // AssetManager with the real merged assets instead of a stub.
             isIncludeAndroidResources = true
+
+            // Android framework stubs throw "not mocked" by default, so ANY class that calls
+            // android.util.Log is untestable in a plain JVM test - the logic under test never even
+            // runs. Added 2026-08-21 when MicArbiter's priority tests all failed on Log.d rather
+            // than on anything they were asserting.
+            //
+            // Returning defaults instead is the standard fix and the right trade here: this repo
+            // logs the WHY of decisions heavily, and a rule that says "do not log in anything you
+            // want to unit test" would push logging out of exactly the code most worth explaining.
+            //
+            // The cost, stated: a test can no longer distinguish a stubbed framework call from a
+            // real one. Nothing here asserts on framework behaviour - the pure-logic seams
+            // (decideOnHistory, claimAnnouncement, nearest, MicArbiter) are pure by design and take
+            // their inputs as parameters - so there is nothing to mask.
+            isReturnDefaultValues = true
         }
     }
 }

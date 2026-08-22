@@ -104,6 +104,24 @@ object WakeWordEngine {
     private var effects: List<AudioEffect> = emptyList()
     private var recordingCallback: AudioManager.AudioRecordingCallback? = null
 
+    // Ticket 05 (`.scratch/wake-word/issues/05-mic-ownership.md`): this engine now goes through
+    // MicArbiter for the mic instead of polling ConversationState.isBusy itself. This is the
+    // watchdog's OWN belief about whether it currently holds the mic - lifted out of what used
+    // to be a local var inside [startWatchdog]'s loop so [micPreemptionListener] can flip it the
+    // instant a preemption happens, rather than the watchdog only finding out up to
+    // WATCHDOG_INTERVAL_MS later on its next poll. Starts true: nothing has asked yet.
+    @Volatile private var pausedForMic = true
+
+    // Ticket 05: MicArbiter tells us we lost the mic via this, synchronously, on whichever
+    // thread preempted us (a live conversation starting, or a ring-listening window opening).
+    // MicArbiter's own doc explains why this must not block that thread - so the actual capture
+    // teardown is dispatched onto our own [scope] rather than run inline here.
+    private val micPreemptionListener = MicArbiter.Listener {
+        Log.w(TAG, "preempted by a higher-priority MicArbiter claimant - releasing the microphone")
+        pausedForMic = true
+        scope?.launch { releaseSpeechService() }
+    }
+
     private val _silenced = MutableStateFlow(false)
     /**
      * Ticket 08: true when the platform is handing this engine silence with no error and no state
@@ -157,7 +175,13 @@ object WakeWordEngine {
                 }
                 val loadedModel = loadModel(appContext)
                 model = loadedModel
-                beginListening(loadedModel, appContext)
+                // Ticket 05: ask before opening the mic, rather than opening it unconditionally
+                // and only finding out about contention on the watchdog's next poll. A refusal
+                // here means a live turn or a ring-listening window already holds the mic at
+                // this exact moment (rare at a cold start, but possible) - the watchdog's loop
+                // below keeps retrying, same as it does after any later preemption.
+                pausedForMic = !MicArbiter.request(MicArbiter.Claimant.WAKE_WORD, micPreemptionListener)
+                if (!pausedForMic) beginListening(loadedModel, appContext)
                 startWatchdog(loadedModel, appContext)
             } catch (e: Exception) {
                 Log.e(TAG, "Vosk init failed: ${e.message}", e)
@@ -200,6 +224,10 @@ object WakeWordEngine {
         watchdogJob?.cancel()
         watchdogJob = null
         releaseSpeechService()
+        // Idempotent no-op if we'd already been preempted (MicArbiter.release only clears the
+        // claim when it's still ours) - safe to call unconditionally on every teardown path.
+        MicArbiter.release(MicArbiter.Claimant.WAKE_WORD)
+        pausedForMic = true
         model = null
         scope?.cancel()
         scope = null
@@ -432,6 +460,13 @@ object WakeWordEngine {
         // are open on the same mic and the new conversation captures silence. The watchdog's own
         // release call on its next tick is a harmless no-op once this has already run.
         releaseSpeechService()
+        // Ticket 05: yield the claim ourselves rather than waiting to be preempted - the
+        // conversation this triggers is about to become the LIVE_TURN holder anyway, and
+        // releasing here (not just below in releaseSpeechService's caller) means MicArbiter's
+        // state agrees with reality in the same synchronous window the mic handoff already
+        // depends on, instead of lagging behind it until GeminiLiveSession's own request() runs.
+        MicArbiter.release(MicArbiter.Claimant.WAKE_WORD)
+        pausedForMic = true
         val intent = Intent(context, AriaForegroundService::class.java)
             .setAction(AriaForegroundService.ACTION_TALK)
             // Ticket 10: mark this turn as voice-opened so it gets spoken back to. A tap does not
@@ -500,29 +535,33 @@ object WakeWordEngine {
     }
 
     /**
-     * Polls [ConversationState.isBusy] and fully tears down / rebuilds the recognizer
-     * around real conversations, so this engine never holds the mic while Gemini Live
-     * needs it - same busy-gate signal [AriaForegroundService]'s proactive engine and
-     * [com.kevin.legion.vehicle.TelemetryRecorder] already use (CLAUDE.md sec 4.4).
+     * Ticket 05: no longer polls [ConversationState.isBusy] to decide when to pause - that was
+     * the last written-down-precedence call site this engine had, and it is exactly the shape
+     * ticket 05 replaced (see [MicArbiter]'s class doc). Pausing is now pushed to us immediately
+     * by [micPreemptionListener] the instant a higher-priority claimant takes the mic, instead of
+     * waiting up to [WATCHDOG_INTERVAL_MS] for the next poll to notice.
+     *
+     * What THIS loop still does, on a poll, because nothing pushes either of these to us:
+     *  - **Retries acquiring the mic** while [pausedForMic] is true. MicArbiter has no "notify me
+     *    when it's free again" mechanism - deliberately (see its class doc) - because this is the
+     *    only claimant that ever needs one, so the retry loop lives here instead.
+     *  - **Re-acquires after platform-level silencing** (ticket 08/12) - a DIFFERENT app winning
+     *    OS-level capture arbitration, which MicArbiter cannot see or arbitrate at all: it only
+     *    coordinates claimants inside this process.
      */
     private fun startWatchdog(loadedModel: Model, context: Context) {
         watchdogJob = scope?.launch {
-            var pausedForConversation = false
             var silencedTicks = 0
             while (isActive) {
                 delay(WATCHDOG_INTERVAL_MS)
-                val busy = ConversationState.isBusy
-                if (busy && !pausedForConversation) {
-                    pausedForConversation = true
-                    Log.d(TAG, "watchdog: pausing for conversation")
-                    releaseSpeechService()
-                    silencedTicks = 0
-                } else if (!busy && pausedForConversation) {
-                    pausedForConversation = false
-                    Log.d(TAG, "watchdog: resuming after conversation")
-                    beginListening(loadedModel, context)
-                    silencedTicks = 0
-                } else if (!busy && record != null && _silenced.value) {
+                if (pausedForMic) {
+                    if (MicArbiter.request(MicArbiter.Claimant.WAKE_WORD, micPreemptionListener)) {
+                        pausedForMic = false
+                        Log.d(TAG, "watchdog: mic granted - resuming")
+                        beginListening(loadedModel, context)
+                        silencedTicks = 0
+                    }
+                } else if (record != null && _silenced.value) {
                     // Found on the A25, 2026-08-20, and only visible because the silence detector
                     // existed to report it: resuming here reopened the microphone while the live
                     // session was STILL holding it, and the fresh capture came up silenced and

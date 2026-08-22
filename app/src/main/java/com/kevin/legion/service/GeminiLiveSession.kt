@@ -208,6 +208,26 @@ class GeminiLiveSession(
     @Volatile private var conversationActive = false
     private var warmHoldJob: Job? = null
 
+    // Ticket 05 (`.scratch/wake-word/issues/05-mic-ownership.md`): which MicArbiter claimant
+    // this session speaks for. Set from [start]'s parameter of the same name. A session opened
+    // by an ordinary tap/wake trigger is a LIVE_TURN (top priority, nothing preempts it); the
+    // ring-listening window [LiveSessionController.speakAndListen] opens is a RING_LISTENING
+    // (yields to a live turn). Everything below that touches MicArbiter reads THIS field rather
+    // than deciding for itself, so one session never claims two different ranks.
+    @Volatile private var micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN
+
+    // Ticket 05: MicArbiter tells us we lost the mic via this, synchronously, on whichever
+    // thread preempted us (see [MicArbiter.Listener]'s own doc for why it must not block that
+    // caller). In practice this almost never fires - LIVE_TURN cannot be outranked, and a
+    // RING_LISTENING session is normally already torn down (silentDestroy) before whatever
+    // replaces it ever requests the mic - but it exists for the same reason a seatbelt exists
+    // for the crash that is not supposed to happen: dispatched onto [io] rather than calling
+    // stop() inline, so a preemption notice can never block the very claimant that just won.
+    private val micPreemptionListener = MicArbiter.Listener {
+        Log.w(TAG, "preempted by a higher-priority MicArbiter claimant - stopping")
+        io.launch { stop() }
+    }
+
     // One-shot: the next completed turn parks warm instead of opening the mic.
     // Set when a proactive line is spoken on a warm socket, so the opener/alert is
     // voiced without turning into a listening conversation.
@@ -493,9 +513,15 @@ class GeminiLiveSession(
         // buildSetup still opts into resumption either way, just without a handle to resume
         // FROM, so this connection itself becomes resumable going forward.
         resumeHandle: String? = null,
+        // Ticket 05: which MicArbiter rank this session's mic claim registers as. Defaults to
+        // an ordinary user conversation; [LiveSessionController.speakAndListen] is the one
+        // caller that passes RING_LISTENING, for the few-second window opened while a call
+        // rings. See [micClaimant]'s own doc.
+        micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
     ) {
         if (!running.compareAndSet(false, true)) return
         closed.set(false)
+        this.micClaimant = micClaimant
         requestedResumeHandle = resumeHandle
         lastResumableHandle = resumeHandle
         // Companion-memory ticket 01 (2026-07-22): one id per real connection,
@@ -522,7 +548,16 @@ class GeminiLiveSession(
         // A pre-connect (no conversation yet) must NOT mark the app busy - the
         // proactive engine may still speak on the warm socket. A cold session that
         // will speak/listen right away marks busy so proactive stays quiet for it.
-        if (!prewarmOnly) ConversationState.setBusy(true)
+        // Ticket 05: MicArbiter's claim is registered at the exact same moment as
+        // ConversationState.setBusy(true) here, in beginConversation(), and in speakOnWarm() -
+        // mirroring that flag's own timing (not just the literal AudioRecord-open window) is
+        // deliberate: it is what already stopped the wake word from listening while Zero speaks
+        // a proactive line with no mic involved, and ticket 05 changes how that yield is
+        // signalled, not when it happens.
+        if (!prewarmOnly) {
+            ConversationState.setBusy(true)
+            MicArbiter.request(micClaimant, micPreemptionListener)
+        }
         // Build the playback track up front so the first audio chunk plays without
         // paying AudioTrack setup latency mid-reply (pre-warming the output path).
         // Undo any previous teardown's latch before the consumer starts pulling chunks, then
@@ -577,6 +612,7 @@ class GeminiLiveSession(
         vadMode = true
         suppressMicNextTurn = false
         ConversationState.setBusy(true)
+        MicArbiter.request(micClaimant, micPreemptionListener)
         return if (opener != null) {
             sendText(opener)
         } else {
@@ -607,6 +643,7 @@ class GeminiLiveSession(
         warmHoldJob?.cancel()
         suppressMicNextTurn = true
         ConversationState.setBusy(true)
+        MicArbiter.request(micClaimant, micPreemptionListener)
         sendText(text)
     }
 
@@ -1910,6 +1947,7 @@ class GeminiLiveSession(
         suppressMicNextTurn = false
         restoreAudio()
         ConversationState.setBusy(false)
+        MicArbiter.release(micClaimant)
         warm.set(true)
         emit(LiveEvent.Idle(backstop))
         warmHoldJob?.cancel()
@@ -2033,6 +2071,7 @@ class GeminiLiveSession(
         releaseTrack()
         restoreAudio()
         ConversationState.setBusy(false)
+        MicArbiter.release(micClaimant)
         emit(LiveEvent.Closed(reason))
     }
 
@@ -2069,6 +2108,7 @@ class GeminiLiveSession(
         releaseTrack()
         restoreAudio()
         ConversationState.setBusy(false)
+        MicArbiter.release(micClaimant)
         io.cancel()
         main.cancel()
     }

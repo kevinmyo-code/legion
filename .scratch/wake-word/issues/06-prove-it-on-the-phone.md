@@ -7,8 +7,8 @@ status: open
 status-detail: "Step 1 CONFIRMED on the A25 2026-08-20 by Kevin: he said hey alfred, it went to listening. Steps 2-4 (screen off on battery, survives a call/Spotify/live turn, name follows the profile) are untouched."
 blockers: ["01", "02", "05"]
 blocked-by: ["[[01-mic-under-doze]]", "[[02-the-settings-toggle]]", "[[05-mic-ownership]]"]
-open-blockers: 0
-ready: true
+open-blockers: 1
+ready: false
 tags: [ticket]
 ---
 # Prove hey-name fires on the A25, screen off, on battery

@@ -540,6 +540,11 @@ class LiveSessionController(context: Context) {
                 vad = true, voiceName = CompanionProfile.voice(appContext),
                 keepWarm = true, connectionMode = connectionMode,
                 resumeHandle = sessionResumeHandle,
+                // Ticket 05 (`.scratch/wake-word/issues/05-mic-ownership.md`): this window is
+                // the RING_LISTENING claimant, not an ordinary LIVE_TURN - it can be preempted
+                // by a real conversation the user starts, and it should never itself refuse to
+                // yield the way a tapped conversation must.
+                micClaimant = MicArbiter.Claimant.RING_LISTENING,
             )
         }
     }
