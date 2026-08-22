@@ -97,4 +97,40 @@ object Priming {
         val topic = topicForDispatchDomain(domain) ?: return ""
         return BASIS_CLAUSE + "\n\nPLAYBOOK:\n" + PlaybookStore.text(context, topic).trim()
     }
+
+    /**
+     * Multiple topics' doctrine concatenated for ONE sub-agent call, each under its own labelled
+     * header (`"BIO:\n..."`) - added for [GoalPlanAgent] (ticket 02, `goal-plans`), which needs
+     * BIO's numeric bands AND PLAN's shape doctrine in the same prompt rather than either alone
+     * (Kevin, 2026-08-21: "Two copies that can be edited apart is the failure mode").
+     *
+     * **The ceiling is [PrimingTopic.MAX_CHARS] PER TOPIC, not applied to the sum**, and getting
+     * that wrong here is a live trap rather than a style question. [PlaybookStore.save] holds each
+     * topic's edit to [PrimingTopic.MAX_CHARS] independently, so two topics that are each
+     * perfectly legal to save can sum to twice it. An earlier cut of this function held the SUM to
+     * the single-topic constant, which the shipped BIO and PLAN texts passed with 26 characters to
+     * spare - meaning any edit the driver was fully entitled to make to either playbook would push
+     * the pair over, this function would return null, and [GoalPlanAgent.generate] would return
+     * [GoalPlanResult.Failed] forever after with nothing anywhere explaining why. Editing your own
+     * doctrine is a supported action; it must not be able to silently kill the feature that reads
+     * it. Scaling the ceiling with `topics.size` makes the limit exactly the sum of the limits the
+     * store already enforces on the way in, so a combination assembled from saveable parts is
+     * always itself assemblable.
+     *
+     * The cost concern behind [PrimingTopic.MAX_CHARS] is unchanged and is simply paid per topic:
+     * asking for two playbooks in one prompt genuinely costs two playbooks' worth of tokens, and
+     * that is the caller's deliberate choice, not an overrun to catch here.
+     *
+     * Returns null, never a silently-truncated block, if a caller ever does exceed it. **Never
+     * trims to fit** - Kevin, 2026-08-21: "If concatenating both would blow the ceiling, STOP and
+     * report rather than trimming a boundary to fit." The professional-referral boundaries are
+     * exactly the paragraphs a blind trim would be most likely to reach first.
+     */
+    fun combinedText(context: Context, topics: List<PrimingTopic>): String? {
+        if (topics.isEmpty()) return null
+        val combined = topics.joinToString("\n\n") { topic ->
+            "${topic.key.uppercase()}:\n" + PlaybookStore.text(context, topic).trim()
+        }
+        return combined.takeIf { it.length <= topics.size * PrimingTopic.MAX_CHARS }
+    }
 }

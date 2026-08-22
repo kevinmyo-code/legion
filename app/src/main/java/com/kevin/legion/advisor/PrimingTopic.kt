@@ -4,6 +4,7 @@ import com.kevin.legion.advisor.playbooks.BioPlaybook
 import com.kevin.legion.advisor.playbooks.CredPlaybook
 import com.kevin.legion.advisor.playbooks.FleetPlaybook
 import com.kevin.legion.advisor.playbooks.LogPlaybook
+import com.kevin.legion.advisor.playbooks.PlanPlaybook
 
 /**
  * One body of doctrine the driver can prime a sub-agent with, and the unit [PlaybookStore] stores
@@ -80,6 +81,22 @@ enum class PrimingTopic(
             "estimate", "Tax:", "Investment selection", "Insurance:", "restructuring",
         ),
     ),
+    /**
+     * Ticket 02 (`goal-plans`): doctrine for [com.kevin.legion.advisor.GoalPlanAgent], the
+     * one-shot recommender that turns a prose goal into a concrete BIO plan. Deliberately its own
+     * topic rather than reusing [BIO] - the recommender is a narrower, one-shot task (pick a
+     * starting number) with its own tone constraints (say "starting point" once, never re-hedge),
+     * where [BIO] is an ongoing coaching conversation. `requiredPhrases` below is worded to MATCH
+     * [BIO]'s boundary phrasing on purpose (settled in ticket 02's brief) rather than invent a
+     * second phrasing of the same professional-referral rule.
+     */
+    PLAN(
+        "plan", "Goal plans",
+        "How the recommender turns a prose goal into calorie, sleep, and workout targets.",
+        requiredPhrases = listOf(
+            "estimate", "Pain or injury", "Medical conditions", "Disordered-eating", "Minors", "SARMs",
+        ),
+    ),
     ;
 
     /** The shipped playbook this topic falls back to - see the class doc: seed, not value. */
@@ -89,6 +106,7 @@ enum class PrimingTopic(
             LOG -> LogPlaybook.TEXT
             FLEET -> FleetPlaybook.TEXT
             CRED -> CredPlaybook.TEXT
+            PLAN -> PlanPlaybook.TEXT
         }
 
     /** Phrases from [requiredPhrases] that [candidate] is missing, case-insensitively. Empty when

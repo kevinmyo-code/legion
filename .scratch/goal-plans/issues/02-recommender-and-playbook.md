@@ -3,8 +3,8 @@ map: goal-plans
 ticket: 02
 title: "The recommender, and its editable doctrine"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Recommender, PLAN playbook and the 800 kcal code floor all in, 1932 tests green. No surface yet (tickets 03/04), so nothing on the phone reaches it."
 blockers: ["01"]
 blocked-by: ["[[01-training-nutrition-doctrine]]"]
 open-blockers: 0

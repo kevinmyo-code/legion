@@ -202,6 +202,67 @@ class PrimingTest {
         assertNull(PrimingTopic.fromKey("home"))
     }
 
+    // --- combinedText (ticket 02, goal-plans: GoalPlanAgent needs BIO's numbers AND PLAN's shape) --
+
+    @Test
+    fun `combinedText concatenates both topics under labelled headers, under the ceiling`() {
+        val combined = Priming.combinedText(context, listOf(PrimingTopic.BIO, PrimingTopic.PLAN))
+
+        assertNotNull("the shipped BIO+PLAN doctrine must fit the ceiling together", combined)
+        assertTrue(combined!!.startsWith("BIO:\n"))
+        assertTrue(combined.contains("PLAN:\n"))
+        assertTrue(combined.contains(PrimingTopic.BIO.defaultText.trim()))
+        assertTrue(combined.contains(PrimingTopic.PLAN.defaultText.trim()))
+        assertTrue(
+            "two topics are held to two topics' worth of ceiling, not one topic's",
+            combined.length <= 2 * PrimingTopic.MAX_CHARS,
+        )
+    }
+
+    @Test
+    fun `combinedText reflects a driver's own edit of either topic, not just the shipped default`() {
+        PlaybookStore.save(context, PrimingTopic.PLAN, edited(PrimingTopic.PLAN))
+        val combined = Priming.combinedText(context, listOf(PrimingTopic.BIO, PrimingTopic.PLAN))
+        assertNotNull(combined)
+        assertTrue(combined!!.contains("MARKER-plan"))
+    }
+
+    @Test
+    fun `an edit the store accepts can never make the combination unassemblable`() {
+        // The trap this pins shut. PlaybookStore.save holds EACH topic to MAX_CHARS on its own, so
+        // two independently legal edits can sum to twice it. An earlier cut of combinedText held
+        // the SUM to the single-topic constant, which the shipped texts passed with 26 characters
+        // to spare - so an edit Kevin was fully entitled to make would have pushed the pair over,
+        // combinedText would have returned null, and GoalPlanAgent.generate would have returned
+        // Failed forever after with nothing explaining why. Editing your own doctrine is a
+        // supported action; it must not be able to silently kill the feature that reads it.
+        val maxedBio = edited(PrimingTopic.BIO) + "x".repeat(PrimingTopic.MAX_CHARS - edited(PrimingTopic.BIO).length)
+        assertEquals(PrimingTopic.MAX_CHARS, maxedBio.length)
+        assertEquals(PlaybookSaveResult.Saved, PlaybookStore.save(context, PrimingTopic.BIO, maxedBio))
+
+        val combined = Priming.combinedText(context, listOf(PrimingTopic.BIO, PrimingTopic.PLAN))
+
+        assertNotNull("a combination of parts the store accepted must itself assemble", combined)
+        assertTrue(combined!!.contains("MARKER-bio"))
+        assertTrue("PLAN's doctrine is still present, not trimmed away to fit BIO",
+            combined.contains(PrimingTopic.PLAN.defaultText.trim()))
+    }
+
+    @Test
+    fun `combinedText still refuses rather than trimming when a caller does exceed the ceiling`() {
+        // The guard is not dead, only correctly scaled - Kevin, 2026-08-21: "If concatenating both
+        // would blow the ceiling, STOP and report rather than trimming a boundary to fit." Asking
+        // for a topic twice is the cheapest way to demand more than the topics' own budgets allow.
+        val maxedBio = edited(PrimingTopic.BIO) + "x".repeat(PrimingTopic.MAX_CHARS - edited(PrimingTopic.BIO).length)
+        assertEquals(PlaybookSaveResult.Saved, PlaybookStore.save(context, PrimingTopic.BIO, maxedBio))
+
+        // One topic's worth of ceiling, two topics' worth of text: the header bytes alone put this
+        // over, and a trim to fit would be free to cut a referral boundary.
+        val combined = Priming.combinedText(context, listOf(PrimingTopic.BIO))
+
+        assertNull("must refuse rather than quietly trim a paragraph, which could be a boundary", combined)
+    }
+
     // --- The two guards on a driver's edit -------------------------------------------------
 
     @Test
@@ -218,6 +279,27 @@ class PrimingTest {
         // Nothing was stored - the advisor still reads the shipped doctrine.
         assertEquals(PrimingTopic.BIO.defaultText, PlaybookStore.text(context, PrimingTopic.BIO))
         assertFalse(PlaybookStore.isCustomised(context, PrimingTopic.BIO))
+    }
+
+    @Test
+    fun `PLAN's edit guard is real, not inherited by assumption - dropping its boundaries is refused too`() {
+        // Ticket 02 is explicit: do not assume PlaybookStore's boundary guard covers a brand-new
+        // topic just because it covers BIO/FLEET/CRED - prove it fires for PLAN specifically. A
+        // short replacement with none of PLAN.requiredPhrases in it must be refused, and the
+        // shipped PLAN doctrine (with its safety boundaries) must still be what rides the prompt.
+        val result = PlaybookStore.save(context, PrimingTopic.PLAN, "Just cut hard and lift heavy.")
+
+        assertTrue(result is PlaybookSaveResult.MissingBoundaries)
+        val missing = (result as PlaybookSaveResult.MissingBoundaries).missing
+        assertTrue(missing.contains("Pain or injury"))
+        assertTrue(missing.contains("Medical conditions"))
+        assertTrue(missing.contains("Disordered-eating"))
+        assertTrue(missing.contains("Minors"))
+        assertTrue(missing.contains("SARMs"))
+        // Nothing was stored - the recommender still reads the shipped doctrine with its
+        // professional-referral boundaries intact.
+        assertEquals(PrimingTopic.PLAN.defaultText, PlaybookStore.text(context, PrimingTopic.PLAN))
+        assertFalse(PlaybookStore.isCustomised(context, PrimingTopic.PLAN))
     }
 
     @Test

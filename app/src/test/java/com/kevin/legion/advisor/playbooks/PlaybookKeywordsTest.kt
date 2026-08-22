@@ -89,6 +89,49 @@ class PlaybookKeywordsTest {
     }
 
     @Test
+    fun `plan playbook is non-blank and carries the same referral boundary wording as bio`() {
+        // Ticket 02: PLAN's requiredPhrases are worded to MATCH BioPlaybook's, not invent a
+        // second phrasing of the same professional-referral rule - so this test asserts the exact
+        // same substrings BioPlaybook's test above does.
+        val text = PlanPlaybook.TEXT
+        assertFalse(text.isBlank())
+        assertTrue("estimate phrasing requirement", text.contains("estimate", ignoreCase = true))
+        assertTrue("pain/injury boundary", text.contains("Pain or injury", ignoreCase = true))
+        assertTrue(
+            "medical conditions boundary",
+            text.contains("Medical conditions", ignoreCase = true),
+        )
+        assertTrue(
+            "disordered-eating boundary",
+            text.contains("Disordered-eating", ignoreCase = true),
+        )
+        assertTrue("minors boundary", text.contains("Minors", ignoreCase = true))
+        assertTrue("PEDs/supplement boundary", text.contains("SARMs", ignoreCase = true))
+    }
+
+    @Test
+    fun `plan playbook defers all numeric doctrine to bio rather than duplicating it`() {
+        // Kevin, 2026-08-21: numbers live in ONE place only - BIO. PLAN owns the SHAPE of turning
+        // a goal into targets (how to estimate, how to hedge, when to refuse), never the bands
+        // themselves. This guards against a future edit quietly re-introducing a second, driftable
+        // copy of BIO's protein/calorie numbers here.
+        val text = PlanPlaybook.TEXT
+        assertTrue("says the numbers live in BIO", text.contains("Numeric doctrine lives in BIO"))
+        assertTrue("names total bodyweight as the protein denominator", text.contains("TOTAL BODYWEIGHT"))
+        assertTrue("never asks for or estimates body fat", text.contains("never ask for or estimate body fat", ignoreCase = true))
+        assertTrue("states the honesty hedge fires once", text.contains("ONCE"))
+        assertTrue(
+            "the hedge invites revisiting rather than promising an adjustment",
+            text.contains("worth revisiting"),
+        )
+        assertTrue("names the per-target refusal rule", text.contains("REFUSAL"))
+        assertTrue(
+            "states the 800 kcal/day floor in prose, backed by the code-level guard",
+            text.contains("800 kcal/day"),
+        )
+    }
+
+    @Test
     fun `every playbook stays under the 2500 token ceiling by the chars-per-4 fallback`() {
         // Fallback heuristic only (chars/4, per ticket 15's instructions) - the binding
         // measurement is countTokens against gemini-3.5-flash-lite, done by hand and recorded in
@@ -102,6 +145,7 @@ class PlaybookKeywordsTest {
             "LOG" to LogPlaybook.TEXT,
             "FLEET" to FleetPlaybook.TEXT,
             "CRED" to CredPlaybook.TEXT,
+            "PLAN" to PlanPlaybook.TEXT,
         ).forEach { (name, text) ->
             assertTrue(
                 "$name playbook is $ceilingChars chars or fewer (chars/4 sanity check)",
@@ -119,6 +163,7 @@ class PlaybookKeywordsTest {
             LogPlaybook.TEXT,
             FleetPlaybook.TEXT,
             CredPlaybook.TEXT,
+            PlanPlaybook.TEXT,
         ).forEach { text ->
             assertFalse(text.contains("## Sources"))
         }

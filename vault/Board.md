@@ -20,7 +20,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/drive-ui/map\|drive-ui]] | [[08-layout\|08]] | prototype | Layout for a phone that is 384 x 832, not a head unit |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[02-what-makes-a-goal-trackable\|02]] | grilling | What makes a goal trackable, and how set_goal captures it |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[03-the-check-in-record\|03]] | grilling | The check-in record: how a spoken answer becomes a falsifiable fact |
-| [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | [[16-ship-pass\|16]] | task | BUILD: ship pass - the destination gate |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[07-wrench-mode-shape\|07]] | grilling | Wrench mode: live stream or snap-and-ask, and how the car's history gets in the room |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[18-inbox-intelligence\|18]] | grilling | Inbox intelligence: packages and travel, from mail LEGION can already read |
@@ -36,6 +35,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
+| [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[22-build-the-sitrep\|22]] | build | Build the sitrep |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[23-conversation-audit-trail\|23]] | build | An audit trail of every conversation and every tool call |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
