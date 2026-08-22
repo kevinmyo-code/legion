@@ -4,6 +4,9 @@ import android.content.Context
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.ai.StructuredOutputRequest
 import com.kevin.legion.ai.SubAgent
+import com.kevin.legion.goals.GoalController
+import com.kevin.legion.meals.MealController
+import com.kevin.legion.sleep.SleepController
 import com.kevin.legion.workouts.WorkoutController
 import org.json.JSONArray
 import org.json.JSONObject
@@ -203,6 +206,46 @@ class GoalPlanAgent(
         return plan.copy(workoutPlanMessage = message, pendingWorkoutGoal = null)
     }
 
+    /**
+     * Applies EVERY writable piece of an accepted [plan] in one call - ticket 07's "generate a plan
+     * from a goal" button, the one place a hands path needs to do in a single tap what the voice
+     * path does across several tool calls (`generate_goal_plan`'s own description has the model
+     * call `set_meal_target`/`set_sleep_target`/`set_goal` itself, then `accept_goal_plan` last, all
+     * driven by the model reading the plan back). A screen has no model to drive that sequence, so
+     * this function drives it in code instead - **calling the exact same underlying writers, never
+     * a UI copy of them**: [MealController.setTarget], [SleepController.setTarget],
+     * [GoalController.setGoal] are the same functions `service/LiveToolbox.kt`'s `set_meal_target`/
+     * `set_sleep_target`/`set_goal` dispatch calls, and [accept] is the same function
+     * `accept_goal_plan`'s dispatch calls for the workout piece. ADR 0035's "not a second
+     * implementation" clause is what rules out reimplementing any of those four writes here.
+     *
+     * **Acceptance stays ONE consent over the whole plan (settled decision 14).** This is that one
+     * consent's one call - a caller does not tap four buttons for four writes, it taps one and this
+     * function makes every write the plan proposed. A field the plan never proposed (mealTarget
+     * null, say) is simply skipped, matching every voice-side tool's own "omit what the goal does
+     * not call for" contract.
+     *
+     * Also materializes today's checklist afterward, via [GoalChecklistSync.materializeToday] - the
+     * same call `acceptGoalPlanTool`'s dispatch makes once every write has landed, so a plan
+     * accepted from the screen shows up on the checklist immediately, not only after the next app
+     * open.
+     */
+    suspend fun acceptWholePlan(context: Context, plan: GoalPlan): GoalPlan {
+        plan.mealTarget?.let {
+            MealController.setTarget(context, it.caloriesKcal, it.proteinG, it.carbsG, it.fatG)
+        }
+        plan.sleepTarget?.let { SleepController.setTarget(context, it.hours) }
+        plan.goals.forEach { g ->
+            GoalController.setGoal(
+                context, aspect = g.aspect, statement = g.statement, targetValue = g.targetValue,
+                unit = g.unit, metricKey = g.metricKey, deadlineEpoch = parseDeadline(g.deadline),
+            )
+        }
+        val accepted = accept(context, plan)
+        GoalChecklistSync.materializeToday(context)
+        return accepted
+    }
+
     companion object {
         /**
          * A calorie target this recommender may never propose, enforced in Kotlin rather than
@@ -340,6 +383,25 @@ mealTarget/sleepTarget/workoutGoal/goals/refusals must be present.
          */
         internal fun composeContext(combinedDoctrine: String): String =
             "PLAYBOOK:\n" + combinedDoctrine.trim()
+
+        /**
+         * Parses a [GoalPlanGoal.deadline] string (`MM/dd/yyyy`, the same convention
+         * `service/LiveToolbox.kt`'s own `PENDING_DATE_FORMAT` parses for `set_goal`'s voice
+         * argument) into device-zone epoch millis for [acceptWholePlan]'s direct
+         * [GoalController.setGoal] call. Returns null for a blank/missing/unparseable deadline
+         * rather than throwing - an unreadable deadline on an otherwise-good plan should not fail
+         * every other field this call is about to write; [GoalController.setGoal] already treats a
+         * null `deadlineEpoch` as "no deadline", not an error.
+         */
+        internal fun parseDeadline(raw: String?): Long? {
+            if (raw.isNullOrBlank()) return null
+            return try {
+                java.time.LocalDate.parse(raw.trim(), java.time.format.DateTimeFormatter.ofPattern("MM/dd/yyyy"))
+                    .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+            } catch (e: Exception) {
+                null
+            }
+        }
 
         /**
          * [RESPONSE_SCHEMA]'s prose contract translated into the Gemini `responseSchema` object -

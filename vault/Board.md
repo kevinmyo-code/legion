@@ -15,7 +15,6 @@ Open tickets whose blockers are all resolved.
 |---|---|---|---|
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
-| [[.scratch/goal-plans/map\|goal-plans]] | [[07-a-checklist-you-can-tick\|07]] | build | A checklist you can actually tick, and one fewer workout section |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[27-the-hands-path-gap\|27]] | task | Measure which voice capabilities have no hands path |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
@@ -29,6 +28,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | Map | Ticket | Type | What |
 |---|---|---|---|
 | [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
+| [[.scratch/goal-plans/map\|goal-plans]] | [[07-a-checklist-you-can-tick\|07]] | build | A checklist you can actually tick, and one fewer workout section |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[22-build-the-sitrep\|22]] | build | Build the sitrep |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[23-conversation-audit-trail\|23]] | build | An audit trail of every conversation and every tool call |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[24-the-socket-that-never-rests\|24]] | build | The socket restarts every 2.5 minutes, all day |

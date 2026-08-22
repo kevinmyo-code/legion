@@ -89,7 +89,13 @@ object GoalChecklistSync {
         val sleepTarget = db.sleepTargetDao().currentTarget(dayStartEpoch(now))
         val workoutItems = db.workoutPlanItemDao().currentItems(weekStartEpoch(now))
 
-        val derived = GoalChecklist.forToday(mealTarget, sleepTarget, workoutItems)
+        // The device-local calendar day, not a UTC one (ticket 07) - the same "a timestamp
+        // captured from a clock belongs to the day the user was living when it was captured"
+        // reasoning `workouts/WorkoutGap.kt`'s own weekStartEpoch doc comment gives, applied to
+        // picking which of the week's sessions today actually is.
+        val today = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault()).dayOfWeek
+
+        val derived = GoalChecklist.forToday(mealTarget, sleepTarget, workoutItems, today)
         val wantedTexts = derived.items.map { ITEM_PREFIX + it }.toSet()
 
         val list = NotesController.theList(context)
@@ -157,6 +163,10 @@ object GoalChecklistSync {
         /** Most recent first, `doneAt` timestamps from other days' materializations of this same
          * line within the last [RECENT_COMPLETION_WINDOW_DAYS] days - see the class doc. */
         val recentCompletionDates: List<Long>,
+        /** The underlying [ListItem.id] - ticket 07's tick box needs it to call [toggle], the same
+         * `manage_item`/[NotesController.tick] path a spoken tick already goes through. Not shown
+         * to the user; a screen-plumbing detail only. */
+        val id: Long = 0L,
     )
 
     /** How far back [currentItems]' [GoalChecklistItemView.recentCompletionDates] looks - a week,
@@ -167,12 +177,15 @@ object GoalChecklistSync {
 
     /**
      * Today's checklist lines, read-only, for [com.kevin.legion.ui.BodyScreen] and the HOME
-     * checklist section - never called from a write path. An empty result means no BIO plan has
-     * ever been accepted (or every target it produced has since been cleared): [materializeToday]
-     * never leaves today's window non-empty for a [GoalChecklistDay] whose
-     * [GoalChecklistDay.hasPlan] is false, so a caller here can read "no rows" as "no plan yet"
-     * directly - see [GoalChecklist.forToday]'s doc comment for why `hasPlan` true always implies
-     * at least one item.
+     * checklist section - never called from a write path. An empty result almost always means no
+     * BIO plan has ever been accepted (or every target it produced has since been cleared).
+     *
+     * **One narrow exception since ticket 07's day slotting.** [GoalChecklistDay.hasPlan] no longer
+     * implies at least one item: a workout-ONLY plan, on a day the deterministic spread assigns no
+     * session to, is a real accepted plan whose today-window is genuinely empty too. A caller
+     * rendering "no plan yet" for that case is a rare cosmetic wrong sentence, not a data-loss bug -
+     * the accepted plan is still on file and still governs every OTHER day of the week - so it is
+     * accepted here rather than threading `hasPlan` through every screen that reads this list.
      *
      * **Does not call [materializeToday] itself.** This stays a plain read, matching ticket 04's
      * original split of "the write happens at acceptance/app-open, this function only reads back
@@ -200,7 +213,29 @@ object GoalChecklistSync {
                 done = item.done,
                 doneAt = item.doneAt,
                 recentCompletionDates = completions,
+                id = item.id,
             )
         }
+    }
+
+    /**
+     * Ticks or unticks the plan line at [id] - ticket 07's tick box, and the reason it can exist
+     * at all: this is [NotesController.tick]/[NotesController.untick] called DIRECTLY, the exact
+     * pair `service/LiveToolbox.kt`'s `manage_item` dispatch calls for a spoken `tick`/`untick`
+     * (see that file's `"tick" ->`/`"untick" ->` branches). Ticket 04's "do not build a second
+     * ticking path" rule forbids a second MECHANISM - a parallel store, a different notion of
+     * done - not a second caller of the one mechanism that already exists; a checkbox that reaches
+     * this function is the same path with a finger on it, which ADR 0035 now makes mandatory
+     * rather than merely permitted: a checklist tickable only by voice fails in exactly the moment
+     * a checklist gets used, at the gym, with no wake word available.
+     *
+     * A missing or already-removed [id] is a silent no-op - [currentItems] only ever shows ids
+     * that existed at load time, and a screen reloading after this call sees whatever is actually
+     * on Room now, never a value this function invented.
+     */
+    suspend fun toggle(context: Context, id: Long) {
+        val item = NotesController.itemById(context, id) ?: return
+        if (item.listId != NotesController.theList(context).id) return
+        if (item.done) NotesController.untick(context, item) else NotesController.tick(context, item)
     }
 }

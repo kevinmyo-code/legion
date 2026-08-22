@@ -124,6 +124,12 @@ fun GoalsPanel(aspect: String, modifier: Modifier = Modifier) {
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.End,
         ) {
+            // GENERATE PLAN is BIO-only (ticket 07) - GoalPlanAgent itself refuses every other
+            // aspect (settled decision 12, "goals may only carry aspect = bio for now"), so
+            // offering the button on cred/log/fleet would open a dialog that can only ever fail.
+            if (aspect == "bio") {
+                GoalPlanButton(modifier = Modifier.padding(end = 16.dp))
+            }
             Text(
                 "+ ADD GOAL",
                 style = LegionType.stamp,

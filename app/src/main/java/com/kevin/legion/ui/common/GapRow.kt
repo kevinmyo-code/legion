@@ -50,9 +50,9 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
  *
  * [GapRowData.sign]/[GapRowData.tier] are resolved into an actual [androidx.compose.ui.graphics.Color]
  * only inside [GapRow] itself, via [LocalLegionSemantics] - never baked into [GapRowData] - because
- * [GapRowData] is built by plain, Compose-free resolver functions (`buildMealGapRowData`,
- * `buildWeeklyWorkoutGapRowData`, ledger's own budget-line mapper, fleet's maintenance-row mapper)
- * so those stay unit-testable JVM code, the same "pure builder, thin Composable wrapper" split
+ * [GapRowData] is built by plain, Compose-free resolver functions (`buildDailyMealGapRowData`,
+ * ledger's own budget-line mapper, fleet's maintenance-row mapper) so those stay unit-testable JVM
+ * code, the same "pure builder, thin Composable wrapper" split
  * [com.kevin.legion.ledger.buildBudgetVsActual]/[com.kevin.legion.workouts.buildWeeklyWorkoutGap]
  * already established.
  *
@@ -168,24 +168,6 @@ private fun PreviewGapRowMoneyBad() = LegionTheme {
                 gapCaption = "over",
                 sign = GapSign.BAD,
                 tier = TrustTier.PROVEN,
-            ),
-        )
-    }
-}
-
-@Preview(name = "GapRow: sets, workouts this week (REPORTED)", widthDp = 360)
-@Composable
-private fun PreviewGapRowSets() = LegionTheme {
-    Surface {
-        GapRow(
-            GapRowData(
-                label = "Workouts this week",
-                actualOverTarget = "2 of 4 sessions",
-                gapValue = "2",
-                gapCaption = "sessions behind",
-                sign = GapSign.BAD,
-                tier = TrustTier.REPORTED,
-                tierNote = "you logged these, not independently verified",
             ),
         )
     }

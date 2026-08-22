@@ -94,27 +94,6 @@ class TodayGapResolversTest {
         assertEquals("includes pending transactions not yet on a statement", data.tierNote)
     }
 
-    // ---------------------------------------------------------------- workouts
-
-    @Test
-    fun `behind on workouts this week is BAD`() {
-        val gap = PlanGap(target = 4, actual = 2, gap = 2, tier = TrustTier.REPORTED)
-        val data = buildWeeklyWorkoutGapRowData(gap)
-        assertEquals("2", data.gapValue)
-        assertEquals("sessions behind", data.gapCaption)
-        assertEquals(GapSign.BAD, data.sign)
-        assertEquals("you logged these, not independently verified", data.tierNote)
-    }
-
-    @Test
-    fun `caught up or ahead on workouts this week is GOOD`() {
-        val gap = PlanGap(target = 3, actual = 3, gap = 0, tier = TrustTier.PROVEN)
-        val data = buildWeeklyWorkoutGapRowData(gap)
-        assertEquals("sessions ahead", data.gapCaption)
-        assertEquals(GapSign.GOOD, data.sign)
-        assertNull(data.tierNote)
-    }
-
     // -------------------------------------------------------------------- meals
 
     @Test

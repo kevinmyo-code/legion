@@ -8,6 +8,7 @@ import com.kevin.legion.notes.NotesController
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -136,6 +137,92 @@ class GoalChecklistSyncTest {
 
         assertTrue(planItems().isEmpty())
         assertTrue(GoalChecklistSync.currentItems(context, now).isEmpty())
+    }
+
+    // --- ticket 07: the UI tick path (GoalChecklistSync.toggle) and the voice tick path
+    // (NotesController.tick, called directly by manage_item) reach the SAME function -------------
+
+    @Test
+    fun `toggle refuses a recurring item exactly like NotesController tick does`() = runBlocking {
+        // A second, duplicate ticking implementation could easily skip NotesController.tick's
+        // recurring-item guard. This only stays refused if GoalChecklistSync.toggle really calls
+        // NotesController.tick itself rather than reimplementing "flip done" on its own - proof
+        // the UI path and the voice path are the SAME function, not two that happen to agree today.
+        val now = System.currentTimeMillis()
+        val list = NotesController.theList(context)
+        val recurringId = CarDatabase.getDatabase(context).listItemDao().insert(
+            ListItem(
+                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "Recurring artifact",
+                repeatKind = "WEEKLY", sortOrder = 0, createdAt = now,
+            ),
+        )
+
+        GoalChecklistSync.toggle(context, recurringId)
+
+        val after = CarDatabase.getDatabase(context).listItemDao().getById(recurringId)
+        assertNotNull(after)
+        assertFalse("a recurring item must stay un-ticked - NotesController.tick's own guard, not a checkbox-side one", after!!.done)
+    }
+
+    @Test
+    fun `toggle ticks then unticks a one-off plan item, a real round trip through NotesController`() = runBlocking {
+        val now = System.currentTimeMillis()
+        givenAMealTarget(now)
+        GoalChecklistSync.materializeToday(context, now)
+        val item = planItems().single()
+
+        GoalChecklistSync.toggle(context, item.id)
+        val ticked = CarDatabase.getDatabase(context).listItemDao().getById(item.id)
+        assertNotNull(ticked)
+        assertTrue(ticked!!.done)
+        assertNotNull("a real doneAt, matching what NotesController.tick itself stamps", ticked.doneAt)
+
+        GoalChecklistSync.toggle(context, item.id)
+        val unticked = CarDatabase.getDatabase(context).listItemDao().getById(item.id)
+        assertNotNull(unticked)
+        assertFalse(unticked!!.done)
+    }
+
+    @Test
+    fun `toggle on an id that does not exist is a silent no-op, not a crash`() = runBlocking {
+        GoalChecklistSync.toggle(context, 999_999L)
+    }
+
+    // --- ticket 07: a plan change made TODAY never reaches back and untick a PAST day's item ------
+
+    @Test
+    fun `a plan change today does not touch or untick an already-ticked plan item from a past day`() = runBlocking {
+        val now = System.currentTimeMillis()
+        val yesterday = now - 24 * 60 * 60 * 1000
+        val list = NotesController.theList(context)
+
+        // A row materialized "yesterday" and ticked that day, under whatever plan was in effect
+        // then - inserted directly with a backdated createdAt, the same pattern the retention
+        // tests above use to look like a row that genuinely aged out of today's window, since
+        // NotesController.addItem always stamps the real wall-clock "now" and cannot itself be
+        // backdated.
+        val db = CarDatabase.getDatabase(context)
+        val yesterdayItemId = db.listItemDao().insert(
+            ListItem(
+                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "Squat: 9 sets this week",
+                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
+            ),
+        )
+
+        // Today: the plan changes (a meal target now exists where none did before) and
+        // materializeToday runs for TODAY only.
+        givenAMealTarget(now)
+        GoalChecklistSync.materializeToday(context, now)
+
+        val reread = db.listItemDao().getById(yesterdayItemId)
+        assertNotNull(reread)
+        assertTrue(
+            "a past day's ticked item must survive a plan change made today - materializeToday's " +
+                "own \"already materialized today\" scoping never reads or writes a row outside " +
+                "today's createdAt window, so a completed session is a fact about the past a later " +
+                "plan change has no way to reach back and un-happen",
+            reread!!.done,
+        )
     }
 
     // --- retention: ticked and un-ticked plan items are removed TOGETHER outside the window -------

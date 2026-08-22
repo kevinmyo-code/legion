@@ -3,6 +3,7 @@ package com.kevin.legion.advisor
 import com.kevin.legion.data.local.MealTarget
 import com.kevin.legion.data.local.SleepTarget
 import com.kevin.legion.data.local.WorkoutPlanItem
+import java.time.DayOfWeek
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -54,6 +55,8 @@ class GoalChecklistTest {
 
     @Test
     fun `workout items alone are still a plan`() {
+        // A single session always lands on index 0 - Monday, whatever the total - so this stays
+        // true against the default `today` (Monday) with no explicit day needed.
         val day = GoalChecklist.forToday(mealTarget = null, sleepTarget = null, workoutItems = listOf(workoutItem("Squat")))
         assertTrue(day.hasPlan)
         assertEquals(1, day.items.size)
@@ -62,20 +65,77 @@ class GoalChecklistTest {
     // --- the full plan: every line present, workouts sorted for a stable diff -------------------
 
     @Test
-    fun `a full plan produces one line per target plus one per exercise, exercises sorted`() {
+    fun `a full plan, on the day its one scheduled exercise falls, shows meal, sleep, and that exercise`() {
+        // Two exercises sort to Bench Press, Squat (case-insensitive alphabetical) - index 0
+        // (Bench Press) lands on Monday, index 1 (Squat) lands on Thursday (dayForIndex(1, 2)).
         val day = GoalChecklist.forToday(
             mealTarget = mealTarget(kcal = 2300, protein = 180.0),
             sleepTarget = sleepTarget(minutes = 480),
             workoutItems = listOf(workoutItem("Squat", 9), workoutItem("Bench Press", 9)),
+            today = DayOfWeek.MONDAY,
         )
 
         assertTrue(day.hasPlan)
-        assertEquals(4, day.items.size)
+        assertEquals(3, day.items.size)
         assertEquals("Hit 2300 kcal / 180g protein", day.items[0])
         assertEquals("Sleep 8h", day.items[1])
-        // sorted case-insensitively - "Bench Press" before "Squat" regardless of input order
         assertEquals("Bench Press: 9 sets this week", day.items[2])
-        assertEquals("Squat: 9 sets this week", day.items[3])
+    }
+
+    // --- ticket 07: a rest day shows no workout line at all, but nutrition/sleep still stand ----
+
+    @Test
+    fun `the same two-exercise plan on a day neither exercise is assigned shows no workout line`() {
+        val day = GoalChecklist.forToday(
+            mealTarget = mealTarget(kcal = 2300, protein = 180.0),
+            sleepTarget = sleepTarget(minutes = 480),
+            workoutItems = listOf(workoutItem("Squat", 9), workoutItem("Bench Press", 9)),
+            today = DayOfWeek.TUESDAY, // neither Monday (Bench Press) nor Thursday (Squat)
+        )
+
+        assertEquals(2, day.items.size)
+        assertTrue("a rest day must not print a 'rest' line either - nutrition/sleep stand alone", day.items.none { it.contains("sets this week") })
+    }
+
+    // --- ticket 07's own worked example: three sessions become Mon/Wed/Fri -----------------------
+
+    @Test
+    fun `three sessions spread across three distinct days - Monday, Wednesday, Friday`() {
+        val items = listOf(workoutItem("Bench Press"), workoutItem("Row"), workoutItem("Squat"))
+
+        val daysWithASession = DayOfWeek.values().filter { day ->
+            GoalChecklist.forToday(null, null, items, today = day).items.isNotEmpty()
+        }
+
+        assertEquals(listOf(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY, DayOfWeek.FRIDAY), daysWithASession)
+        // and each of those days carries exactly one session, never two stacked on the same day
+        daysWithASession.forEach { day ->
+            assertEquals(1, GoalChecklist.forToday(null, null, items, today = day).items.size)
+        }
+    }
+
+    // --- ticket 07: a plan change reassigns days for the NEXT read, but this function has no way
+    // to reach into the past - already-ticked history lives in GoalChecklistSync/NotesController,
+    // never here. See GoalChecklistSyncTest for the Room-level proof that a past day's ticked item
+    // survives a re-materialization under a changed plan. --------------------------------------
+
+    @Test
+    fun `a mid-week plan change reassigns which day an exercise falls on`() {
+        // Squat is the last exercise alphabetically in both plans, but the SAME exercise lands on
+        // a different day once the plan around it changes - a revision is a new spread, not an
+        // edit of one line in place.
+        val twoExercisePlan = listOf(workoutItem("Bench Press"), workoutItem("Squat"))
+        val fourExercisePlan = listOf(workoutItem("Bench Press"), workoutItem("Pushups"), workoutItem("Row"), workoutItem("Squat"))
+
+        fun squatsDay(plan: List<WorkoutPlanItem>): DayOfWeek =
+            DayOfWeek.values().first { day -> GoalChecklist.forToday(null, null, plan, today = day).items.any { it.startsWith("Squat") } }
+
+        val squatDayUnderTwoExercises = squatsDay(twoExercisePlan)
+        val squatDayUnderFourExercises = squatsDay(fourExercisePlan)
+
+        assertEquals(DayOfWeek.THURSDAY, squatDayUnderTwoExercises)
+        assertEquals(DayOfWeek.SATURDAY, squatDayUnderFourExercises)
+        assertTrue("the plan change must actually move the day, not coincidentally reuse it", squatDayUnderTwoExercises != squatDayUnderFourExercises)
     }
 
     // --- number formatting: whole numbers print clean, fractional ones keep one decimal --------

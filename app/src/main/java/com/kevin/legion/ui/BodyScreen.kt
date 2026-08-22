@@ -50,7 +50,6 @@ import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.common.DeckSparkline
 import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.GapEmptyRow
-import com.kevin.legion.ui.common.GapRow
 import com.kevin.legion.ui.common.HalfTile
 import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.ReadingRow
@@ -110,7 +109,6 @@ import com.kevin.legion.workouts.WorkoutController
  */
 data class BodyUiState(
     val loading: Boolean = true,
-    val workoutGap: PlanGap<Int>? = null,
     val recentSets: List<WorkoutSetLog> = emptyList(),
     val mealGap: DailyMealGap = DailyMealGap.NotLogged,
     val hasMealTarget: Boolean = false,
@@ -178,7 +176,6 @@ fun BodyScreen() {
 
         state = BodyUiState(
             loading = false,
-            workoutGap = WorkoutController.weekGap(context, now),
             recentSets = WorkoutController.recentSets(context),
             mealGap = MealController.dayGap(context, now),
             hasMealTarget = mealTarget != null,
@@ -445,14 +442,14 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
         item(key = "pane-spacer-3") { Spacer(Modifier.height(10.dp)) }
 
         // ------------------------------------------------------------ TRAINING
+        //
+        // No "Workouts this week" gap row here any more (ticket 07, `goal-plans`, Kevin
+        // 2026-08-22: "retire workouts this week. redundant.") - the daily checklist below already
+        // states today's session, and two sections both answering "what training am I doing" is
+        // exactly how they end up disagreeing (one derived from the plan, the other from logged
+        // sets). This pane is now the logged-sets record only.
         item(key = "pane-training") {
             DeckPane(header = "TRAINING", modifier = Modifier.clickable { onOpenPane(BodyDrilldown.TrainingExercises) }) {
-                val gap = state.workoutGap
-                if (gap != null) {
-                    GapRow(buildWeeklyWorkoutGapRowData(gap))
-                } else {
-                    GapEmptyRow(label = "Workouts this week", message = "No workout plan yet - say \"make me a workout plan\" to start one.")
-                }
                 if (state.recentSets.isEmpty()) {
                     Text("NOT LOGGED", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
                 } else {
@@ -700,7 +697,6 @@ private fun PreviewBodyPopulated() = LegionTheme {
     BodyContent(
         BodyUiState(
             loading = false,
-            workoutGap = PlanGap(target = 4, actual = 3, gap = 1, tier = TrustTier.REPORTED),
             recentSets = listOf(
                 WorkoutSetLog(id = 1, exercise = "Squat", sets = 3, reps = 5, weightValue = 225.0, weightUnit = "lbs", loggedAt = now, trustTier = TrustTier.REPORTED),
                 WorkoutSetLog(id = 2, exercise = "Pushups", sets = 3, reps = 15, weightValue = null, weightUnit = null, loggedAt = now, trustTier = TrustTier.REPORTED),

@@ -81,20 +81,6 @@ fun buildUncategorizedGapRowData(uncategorized: UncategorizedSpend, currency: Le
         tierNote = if (uncategorized.hasProvisionalRows) "includes pending transactions not yet on a statement" else null,
     )
 
-/** D24: sessions done versus sessions planned, this week. `gap.gap` positive means behind, negative/zero means caught up or ahead. */
-fun buildWeeklyWorkoutGapRowData(gap: PlanGap<Int>): GapRowData {
-    val behind = gap.gap > 0
-    return GapRowData(
-        label = "Workouts this week",
-        actualOverTarget = "${gap.actual} of ${gap.target} sessions",
-        gapValue = abs(gap.gap).toString(),
-        gapCaption = if (behind) "sessions behind" else "sessions ahead",
-        sign = if (behind) GapSign.BAD else GapSign.GOOD,
-        tier = gap.tier,
-        tierNote = if (gap.tier == TrustTier.REPORTED) "you logged these, not independently verified" else null,
-    )
-}
-
 /**
  * D27/D28: only ever called for a LOGGED day - [com.kevin.legion.meals.DailyMealGap.NotLogged]
  * is a completely separate render path ([TodayScreen]'s [com.kevin.legion.ui.common.GapEmptyRow])
@@ -119,9 +105,12 @@ fun buildDailyMealGapRowData(gap: PlanGap<MacroTotals>): GapRowData {
 
 /**
  * Sleep (Kevin, 2026-08-07): last night's minutes against the nightly target, `gap.gap` positive
- * means short of target, negative/zero means met or exceeded it. Mirrors [buildWeeklyWorkoutGapRowData]'s
- * shape exactly - same REPORTED-always tier note, since nothing external ever verifies sleep (see
- * [com.kevin.legion.sleep.SleepGap]'s own doc comment).
+ * means short of target, negative/zero means met or exceeded it. Same REPORTED-always tier note
+ * shape [buildDailyMealGapRowData] uses, since nothing external ever verifies sleep (see
+ * [com.kevin.legion.sleep.SleepGap]'s own doc comment). **The weekly workouts equivalent of this
+ * function was retired (ticket 07, `goal-plans`)** - see [BodyScreen]'s TRAINING pane comment for
+ * why: the daily checklist already states today's session, and two sections both answering "what
+ * training am I doing" is how they end up disagreeing.
  */
 fun buildSleepGapRowData(gap: PlanGap<Int>): GapRowData {
     val short = gap.gap > 0

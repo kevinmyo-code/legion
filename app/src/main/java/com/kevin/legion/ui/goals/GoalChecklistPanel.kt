@@ -1,7 +1,9 @@
 package com.kevin.legion.ui.goals
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -10,7 +12,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
@@ -27,6 +31,7 @@ import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.shortDate
+import kotlinx.coroutines.launch
 
 /**
  * The BIO daily checklist panel (ticket 04, `goal-plans`, adherence reworked by ticket 06) -
@@ -40,12 +45,19 @@ import com.kevin.legion.util.shortDate
  * text only, capped, no completion detail) - one panel, two call sites, rather than two composables
  * that could quietly drift on what "today's items" means.
  *
- * **Read-only, matching every other panel on these screens except [GoalsPanel] itself.** There is
- * deliberately no on-screen tick affordance here - `manage_item`'s `tick`/`untick` actions are the
- * one path, unchanged, per CLAUDE.md's "voice is how X gets written" posture and this map's own
- * "do not build a second ticking path" rule. Ticket 06 made ticking a plan line actually WORK
- * (each line is now an ordinary one-off [com.kevin.legion.data.local.ListItem], so
- * [com.kevin.legion.notes.NotesController.tick] no longer refuses it) - see [GoalChecklistSync]'s
+ * **Has a real tick box now (ticket 07), correcting an earlier reading of ticket 04's "do not build
+ * a second ticking path" rule.** An earlier version of this doc comment read that rule as "no
+ * on-screen tick affordance at all" - that reading was wrong. The rule forbids a second ticking
+ * MECHANISM (a parallel store, a different notion of "done"), not a second CALLER of the one
+ * mechanism that already exists. The [Checkbox] below calls [GoalChecklistSync.toggle], which calls
+ * [com.kevin.legion.notes.NotesController.tick]/`untick` directly - the exact functions
+ * `service/LiveToolbox.kt`'s `manage_item` dispatch already calls for a spoken tick. Same path, a
+ * finger on it instead of a voice. **ADR 0035 now makes this mandatory, not merely permitted:**
+ * every voice capability needs a non-voice path, and a checklist tickable only by voice fails in
+ * exactly the moment it gets used - at the gym, in a kitchen, next to someone asleep, none of which
+ * are good places to expect the wake word to land. Ticket 06 is what made ticking a plan line
+ * actually WORK at all (each line is now an ordinary one-off [com.kevin.legion.data.local.ListItem],
+ * so [com.kevin.legion.notes.NotesController.tick] no longer refuses it) - see [GoalChecklistSync]'s
  * own class doc for the full account of why ticket 04's original recurring-item design could never
  * be ticked at all.
  *
@@ -63,13 +75,21 @@ import com.kevin.legion.util.shortDate
 @Composable
 fun GoalChecklistPanel(compact: Boolean = false, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<GoalChecklistItemView>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    // Shared by the initial load and every tap - a tick/untick writes through
+    // GoalChecklistSync.toggle and then re-reads exactly the same way a fresh compose would, so
+    // this panel never guesses what the new state is from the tap alone (a second write landing
+    // between the tap and the reload - e.g. a spoken tick from the SAME plan line - would leave a
+    // guessed state wrong; a re-read cannot be).
+    suspend fun reload() {
         items = GoalChecklistSync.currentItems(context)
         loaded = true
     }
+
+    LaunchedEffect(Unit) { reload() }
 
     val sem = LocalLegionSemantics.current
     DeckPane(
@@ -85,7 +105,13 @@ fun GoalChecklistPanel(compact: Boolean = false, modifier: Modifier = Modifier) 
             )
             else -> {
                 val shown = if (compact) items.take(HOME_ITEM_CAP) else items
-                shown.forEach { item -> GoalChecklistItemRow(item, showCompletionHistory = !compact) }
+                shown.forEach { item ->
+                    GoalChecklistItemRow(
+                        item,
+                        showCompletionHistory = !compact,
+                        onToggle = { scope.launch { GoalChecklistSync.toggle(context, item.id); reload() } },
+                    )
+                }
                 if (compact && items.size > HOME_ITEM_CAP) {
                     Text(
                         "+${items.size - HOME_ITEM_CAP} more on Body",
@@ -105,14 +131,26 @@ fun GoalChecklistPanel(compact: Boolean = false, modifier: Modifier = Modifier) 
 private const val HOME_ITEM_CAP = 3
 
 @Composable
-private fun GoalChecklistItemRow(item: GoalChecklistItemView, showCompletionHistory: Boolean) {
+private fun GoalChecklistItemRow(
+    item: GoalChecklistItemView,
+    showCompletionHistory: Boolean,
+    onToggle: () -> Unit = {},
+) {
     val sem = LocalLegionSemantics.current
     Column(Modifier.padding(bottom = 2.dp)) {
-        DeckRow(
-            label = item.text,
-            value = if (item.done) "DONE" else "",
-            tag = if (item.done) { { DeckTag("DONE", DeckTagStyle.INVERTED_GREEN) } } else null,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Tapping ticks; tapping again unticks - both through GoalChecklistSync.toggle, which
+            // is NotesController.tick/untick called directly (see the class doc above). No new
+            // write path, no local "optimistic" flip of `done` here - the checkbox always shows
+            // whatever GoalChecklistSync.currentItems last read back, never a guess.
+            Checkbox(checked = item.done, onCheckedChange = { onToggle() })
+            DeckRow(
+                label = item.text,
+                value = if (item.done) "DONE" else "",
+                tag = if (item.done) { { DeckTag("DONE", DeckTagStyle.INVERTED_GREEN) } } else null,
+                modifier = Modifier.weight(1f),
+            )
+        }
         if (showCompletionHistory) {
             // A genuine record now (ticket 06) - [item.recentCompletionDates] is real `doneAt`
             // history, not the explicit-skip proxy ticket 04 shipped. Still worded as a plain

@@ -3,12 +3,12 @@ map: goal-plans
 ticket: 07
 title: "A checklist you can actually tick, and one fewer workout section"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "All four parts in, no migration needed - the day is derived, never stored. Owes the on-phone run: tick by hand, restart, tick by voice, generate a plan from the button."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # A checklist you can actually tick, and one fewer workout section
@@ -90,6 +90,23 @@ Decide while building, and write the choice into this ticket:
 **Do not add a day column to `WorkoutPlanItem` without checking what already exists first.** If a
 day can be derived from the plan's own shape at materialisation time, no schema change is needed,
 and a migration added out of habit is worse than one avoided by reading.
+
+**Built as: deterministic, no schema change.** `advisor/GoalChecklist.kt`'s `dayForIndex(index,
+total)` spreads exercises evenly across Monday-Sunday from plain integer division
+(`floor(index * 7 / total)`) over the SAME sorted-by-name exercise list `forToday` already builds -
+three sessions land on Monday/Wednesday/Friday exactly as the "loosely follow" example above
+describes. Nothing is stored: the day a session falls on is recomputed fresh from
+`WorkoutPlanItemDao.currentItems` on every call, so `WorkoutPlanItem` and Room's schema are
+untouched (still v31) and a plan revision reassigns days automatically, for free, the next time
+`forToday` runs - no migration of old assignments needed. A rest day (no exercise assigned today)
+produces zero workout lines, never a "rest" line; meal/sleep lines are unaffected since they are
+never day-gated. Already-ticked history is untouched by construction, not by extra logic:
+`GoalChecklistSync.materializeToday` only ever reads/writes items whose `createdAt` falls in
+TODAY's window, so a plan change made today has no path back to a `ListItem` created (and possibly
+ticked) on an earlier day, regardless of what today's derivation now says. Tests: `GoalChecklistTest`
+(pure, three-session spread, rest day, mid-week reassignment) and
+`GoalChecklistSyncTest` (Room-level proof that a past day's ticked item survives a same-day plan
+change).
 
 ## 4. A button that generates the plan from a goal
 
