@@ -3,12 +3,12 @@ map: goal-keeping
 ticket: 01
 title: "What \"on track\" actually means, per shape of goal"
 type: grilling
-status: open
-status-detail: ""
+status: closed
+status-detail: "Superseded 2026-08-21 by the goal-plans map"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # What "on track" actually means, per shape of goal
@@ -49,3 +49,15 @@ Decide:
    A driver who moved the target from 175 to 185 is on track against the current row and not against
    the one he set in January. Which is the truth the app reports, and does it say the other one
    exists?
+
+## Superseded - 2026-08-21
+
+Kevin answered this question by redrawing it: *"we need to revamp goals the entire effort. I want the
+ai to generate a list of todos or habits for each aspect based on my goals."*
+
+**"What does on track mean" is the wrong question once a plan exists**, because the plan states the
+target rather than the goal implying one. It is carried forward as fog on the new map rather than
+resolved here.
+
+See `.scratch/goal-plans/map.md`. Closed as superseded, not resolved - no decision was made about
+what on-track means, and pretending otherwise would leave a phantom answer for someone to find.

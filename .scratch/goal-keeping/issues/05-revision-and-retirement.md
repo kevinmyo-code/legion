@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["01", "03"]
 blocked-by: ["[[01-what-on-track-means]]", "[[03-the-check-in-record]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

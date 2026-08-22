@@ -1,0 +1,84 @@
+{
+  "nodes": [
+    {
+      "id": "0546f4a7bda51468",
+      "type": "file",
+      "file": ".scratch/goal-plans/issues/01-training-nutrition-doctrine.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "e9c09b5d47687baf",
+      "type": "file",
+      "file": ".scratch/goal-plans/issues/02-recommender-and-playbook.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "95fc5fc8831fe875",
+      "type": "file",
+      "file": ".scratch/goal-plans/issues/03-plan-revision-by-conversation.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b9d69bfdf12e782c",
+      "type": "file",
+      "file": ".scratch/goal-plans/issues/04-checklist-and-surfaces.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0d4276e8b879f639",
+      "type": "file",
+      "file": ".scratch/goal-plans/issues/05-wellbeing-digest.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e5734a7457dc81cd",
+      "fromNode": "0546f4a7bda51468",
+      "fromSide": "right",
+      "toNode": "e9c09b5d47687baf",
+      "toSide": "left"
+    },
+    {
+      "id": "6cc5b909c2be3ea1",
+      "fromNode": "e9c09b5d47687baf",
+      "fromSide": "right",
+      "toNode": "95fc5fc8831fe875",
+      "toSide": "left"
+    },
+    {
+      "id": "65bba17c72055a76",
+      "fromNode": "e9c09b5d47687baf",
+      "fromSide": "right",
+      "toNode": "b9d69bfdf12e782c",
+      "toSide": "left"
+    },
+    {
+      "id": "868573c8baae8c37",
+      "fromNode": "b9d69bfdf12e782c",
+      "fromSide": "right",
+      "toNode": "0d4276e8b879f639",
+      "toSide": "left"
+    }
+  ]
+}

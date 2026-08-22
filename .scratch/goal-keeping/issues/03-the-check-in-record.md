@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["01"]
 blocked-by: ["[[01-what-on-track-means]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # The check-in record: how a spoken answer becomes a falsifiable fact
