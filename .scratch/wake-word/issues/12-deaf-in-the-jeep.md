@@ -8,7 +8,7 @@ status-detail: "Built 2026-08-20 together with ticket 08. The engine now opens V
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Deaf in the Jeep, fine outside it

@@ -8,7 +8,7 @@ status-detail: "2026-08-21 - built; owes a run on the phone"
 blockers: ["08"]
 blocked-by: ["[[08-morning-brief]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Build the sitrep

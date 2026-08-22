@@ -8,7 +8,7 @@ status-detail: "Built (ad353a2). SCOPES 4 -> 13. THE GRANT IS NOW STALE - re-app
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Every scope this map needs, taken in one re-approval

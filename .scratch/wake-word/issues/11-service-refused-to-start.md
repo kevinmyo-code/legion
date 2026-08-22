@@ -8,7 +8,7 @@ status-detail: "2026-08-21 - made visible rather than defeated; owes a run on th
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The assistant silently stops running, and every surface still says On

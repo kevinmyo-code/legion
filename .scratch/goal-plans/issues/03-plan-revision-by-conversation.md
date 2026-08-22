@@ -45,3 +45,27 @@ should not have to say it again on the next regeneration.
 - Suite green on the pure parts.
 - On the phone: state a constraint, get an amended plan, regenerate, and confirm the constraint
   survived.
+
+---
+
+## Settled at build time (2026-08-21)
+
+The three calls this ticket left to "decide while building", decided.
+
+| Question | Ruling | Why |
+|---|---|---|
+| Is a revision a new plan, a diff, or an edit in place? | **A new plan**, regenerated from the original goal prose plus every constraint stated so far. | There is nothing to diff against - ticket 02 deliberately built no plan storage, and inventing one here would pre-empt ticket 04. Regeneration also keeps a revised plan internally consistent: editing "no gym" by hand would leave a calorie target reasoned from a workout plan that no longer exists. |
+| Where does a stated constraint live? | **`CompanionMemory`, category `DRIVER`** (the existing allowlisted stored value). No new table. | "No gym access" is a durable fact about Kevin that outlives any one plan, and recall is already cross-vehicle. A second store of facts about him is the same failure as a second playbook. **Only what he actually SAID is persisted** - an inferred constraint is unfalsifiable memory, which CLAUDE.md §7 forbids. |
+| A revision that contradicts the doctrine? | **Refused individually.** The existing plan survives, the one change is refused, it says what it will not do and why, then offers what it can. | Identical to settled decision 9. `HARD_FLOOR_CALORIES_KCAL` in `GoalPlanAgent.parse` is unconditional and keeps applying to a revised plan for free. |
+
+## Scope added deliberately: the voice reach
+
+**This ticket's own verification is impossible without it.** It says *"On the phone: state a
+constraint, get an amended plan, regenerate, and confirm the constraint survived"* - and ticket 02
+built no surface whatsoever, so nothing on the phone can reach a plan at all. CLAUDE.md §8 L11
+makes a ticket's verification steps gates rather than notes, so the choice was to build the reach or
+to declare the step deferred on day one.
+
+So ticket 03 adds the **voice tools** for generating and revising a plan. **UI screens stay in
+ticket 04.** Acceptance remains ONE consent over the whole plan (settled decision 14), and
+`GoalPlanAgent.accept()` stays the only thing that writes.

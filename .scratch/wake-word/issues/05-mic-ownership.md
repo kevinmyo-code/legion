@@ -8,7 +8,7 @@ status-detail: "2026-08-21 - built; owes a run on the phone"
 blockers: ["01"]
 blocked-by: ["[[01-mic-under-doze]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Who owns the microphone, and what yields to what?

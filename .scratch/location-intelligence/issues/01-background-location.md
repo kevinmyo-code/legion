@@ -8,7 +8,7 @@ status-detail: "2026-08-21 - built; owes a run on the phone"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Background location, asked for honestly

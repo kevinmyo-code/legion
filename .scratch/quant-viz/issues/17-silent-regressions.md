@@ -8,7 +8,7 @@ status-detail: "2026-08-21 - guard built; the two charts themselves are still mi
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Two shipped visualisations vanished in a later rebuild, and nothing noticed

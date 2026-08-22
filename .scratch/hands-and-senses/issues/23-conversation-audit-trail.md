@@ -8,7 +8,7 @@ status-detail: "Table, redaction, tool rows and export all in; owes a read off t
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # An audit trail of every conversation and every tool call

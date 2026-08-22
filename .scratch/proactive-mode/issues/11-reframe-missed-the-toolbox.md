@@ -8,7 +8,7 @@ status-detail: "2026-08-21 - 236 literals renamed across 15 files, guard test ad
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The concierge reframe missed the largest prompt surface

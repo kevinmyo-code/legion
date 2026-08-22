@@ -8,7 +8,7 @@ status-detail: "Built (66d1d4c). PlayOutcome + switch-to-local + held connection
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # App Remote is the spine, and it creates the device rather than needing one

@@ -8,7 +8,7 @@ status-detail: "2026-08-21 - root-caused from a real drive log and fixed; owes a
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # It speaks and you hear nothing, once Spotify takes audio focus

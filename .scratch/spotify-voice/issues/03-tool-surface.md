@@ -8,7 +8,7 @@ status-detail: "Built (0f94dee). MusicAction enum, 20 actions, all implemented, 
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Fold ten capabilities into the tools that already exist

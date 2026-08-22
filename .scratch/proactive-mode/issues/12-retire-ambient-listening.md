@@ -8,7 +8,7 @@ status-detail: "2026-08-21, Kevin - retired; owes a run on the phone to confirm 
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Retire ambient cabin listening

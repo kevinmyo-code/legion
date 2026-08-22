@@ -8,7 +8,7 @@ status-detail: "Recommender, PLAN playbook and the 800 kcal code floor all in, 1
 blockers: ["01"]
 blocked-by: ["[[01-training-nutrition-doctrine]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The recommender, and its editable doctrine

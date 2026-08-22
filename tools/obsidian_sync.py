@@ -40,6 +40,12 @@ PARKED_STATES = {"kiv"}
 # Named for what the ticket IS, not what it owes: the page says BUILT and the state line says what
 # is left to do. Kevin, 2026-08-20: "i want it to say built when its already built."
 TEST_STATES = {"built"}
+# A built ticket is OPEN but NOT ready: the code exists and the suite is green, so what it
+# owes is a run on the phone, not a build. `ready` must exclude these or the four buckets stop
+# being disjoint and a built ticket is counted twice - once as ready, once as built - which is
+# exactly the bug CLAUDE.md sec 12 records from the first cut of this script. The Board tables
+# already routed `built` correctly; the frontmatter field did not, so the Bases that filter on
+# `ready == true` disagreed with the board they sit beside.
 NO_BLOCKER = {"-", "none", "(none)", "n/a", "", "--"}
 # Free-text first words that are not really their own state.
 STATE_ALIAS = {"mostly": "open", "in": "open", "partially": "open", "superseded": "closed"}
@@ -215,7 +221,7 @@ def refresh_computed_fields(t: "Ticket", by_num: dict, check: bool) -> bool:
     wanted = {
         "blocked-by": f"[{', '.join(links)}]",
         "open-blockers": str(open_blockers),
-        "ready": str(not t.done and not t.parked and open_blockers == 0).lower(),
+        "ready": str(not t.done and not t.parked and t.state not in TEST_STATES and open_blockers == 0).lower(),
     }
     out, changed = [], False
     for line in fm.split(chr(10)):
@@ -262,7 +268,7 @@ def render_ticket(t: Ticket, all_by_num: dict[str, Ticket]) -> str:
         f"blockers: [{', '.join(f'{chr(34)}{n}{chr(34)}' for n in t.blockers)}]",
         f"blocked-by: [{', '.join(blocker_links)}]",
         f"open-blockers: {open_blockers}",
-        f"ready: {str(not t.done and not t.parked and open_blockers == 0).lower()}",
+        f"ready: {str(not t.done and not t.parked and t.state not in TEST_STATES and open_blockers == 0).lower()}",
         "tags: [ticket]",
         "---",
         "",
