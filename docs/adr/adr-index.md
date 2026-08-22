@@ -48,6 +48,7 @@ Format and the test for whether something deserves an ADR:
 | 0032 | [[0032-spotify-app-remote-spine\|Spotify App Remote is the spine, and its connection is held]] | accepted | 2026-08-19 | - |
 | 0033 | [[0033-byo-spotify-client-id\|BYO Spotify client ID satisfies clone-and-run]] | accepted | 2026-08-19 | - |
 | 0034 | [[0034-own-recommendation-engine\|Music discovery is built in-house; Spotify's is unavailable]] | accepted | 2026-08-19 | - |
+| 0035 | [[0035-every-voice-capability-has-a-hands-path\|Every voice capability has a non-voice path]] | accepted | 2026-08-22 | - |
 
 ## Superseded
 

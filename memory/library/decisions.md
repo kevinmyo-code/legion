@@ -4389,3 +4389,23 @@ post-ticket-04, not the falsified claim, so neither needed a change.
 `WRITE_CALENDAR` and Drive-revoke on-device checks above, and Q5 of the remember-leak ticket (audit
 whatever may already be sitting in `CompanionMemory` from before the fix landed) - none of it code,
 all of it either Kevin's own call or an on-device run this session cannot perform.
+
+## 2026-08-22 - every voice capability must also be reachable by hand
+
+Kevin, unprompted, as a standing rule: *"all voice capabilities also must have a non voice UI
+capability."*
+
+Voice is the fastest way in and it is the way that FAILS. In the last week alone, on the real
+phone: a wake word that did not fire, a mic that opened deaf for seventeen seconds, a socket that
+was closed, audio focus lost so nothing was audible. When voice is the only path to a capability,
+every one of those failures becomes total - `answer_call` is the sharp case, because a misheard
+"answer it" with no button means the call is simply gone.
+
+Narrowed on purpose so it stays buildable: it is NOT screen parity for every parameter, and NOT a
+second implementation. Both paths call the same controller, because two implementations of one
+capability drift into disagreeing, which is worse than one path.
+
+Became `CLAUDE.md` §7, a feature-add checklist line, and ADR 0035. The existing surface does not
+comply and the size of the gap is unmeasured, so ticket 27 measures it before anything is built -
+the same order the socket ticket proved right when its guess of 101 declarations turned out to be
+66.

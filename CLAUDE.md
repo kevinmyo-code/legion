@@ -305,6 +305,14 @@ the wrong JDK and Gradle picks it up if `JAVA_HOME` is unset. `adb` lives at
   exclusion lives in `LiveToolbox.EPISODIC_EXCLUDED_TOOLS` and is applied at the write sites rather
   than being a habit each new feature has to remember. Proposed in
   `.scratch/google-account-integration/issues/07-*.md` point 6 and accepted verbatim.
+- **Every voice capability has a non-voice path (2026-08-22, Kevin).** *"all voice capabilities
+  also must have a non voice UI capability."* Anything LEGION can do by voice must also be doable
+  by hand. Voice is the fastest way in and it is the way that FAILS - a loud car, a sleeping
+  person, a wake word that does not fire, a mic that opens deaf, a closed socket, a misheard
+  name, all observed on the real phone. When voice is the only path, every one of those failures
+  becomes total. It does NOT mean screen parity for every parameter, and it does NOT mean a
+  second implementation - both paths call the same controller, because two implementations of
+  one capability drift into disagreeing. `docs/adr/0035-every-voice-capability-has-a-hands-path.md`.
 - **No comparative or anonymized fleet data**, ever.
 - **Network calls degrade gracefully offline.**
 - **Assets are bundled** in `assets/` or `res/`, never fetched at runtime.
@@ -369,6 +377,8 @@ the wrong JDK and Gradle picks it up if `JAVA_HOME` is unset. `adb` lives at
       unless the underlying action ran. §7's outcome-verb rule needs a real result to stand on.
 - [ ] Reads anything other people wrote to Kevin? Read-through only: used to answer, then
       dropped. Nothing to Room, nothing synced, nothing remembered, not even a summary.
+- [ ] New voice tool? It has a hands path to the same capability, calling the same controller.
+      A capability reachable only by voice is not finished (ADR 0035).
 - [ ] Safety: no sentience claims, no compulsion mechanic, no unfalsifiable memory about the user.
 - [ ] Built from a resolved ticket? Every verification step in that resolution accounted for as
       done / deferred-with-a-follow-up / impossible-and-why. See §8 (L11).
