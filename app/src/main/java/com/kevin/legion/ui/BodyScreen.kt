@@ -464,6 +464,18 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
         }
         item(key = "pane-spacer-4") { Spacer(Modifier.height(14.dp)) }
 
+        // ---------------------------------------------------------------- CHECKLIST
+        // Ticket 04, `goal-plans` (Kevin: "revamp of BIO/body tab..."). Full mode - every line,
+        // plus the recent-skip record - self-contained the same way GOALS below is (its own
+        // LaunchedEffect; not part of BodyUiState's batched load). Placed after TRAINING and
+        // before GOALS: the checklist is the day-to-day habit surface derived FROM the targets and
+        // goals above it, read top-to-bottom as "here's where you stand, here's today's list,
+        // here's the standing goal it all points at".
+        item(key = "pane-checklist") {
+            com.kevin.legion.ui.goals.GoalChecklistPanel(compact = false)
+        }
+        item(key = "pane-spacer-4b") { Spacer(Modifier.height(14.dp)) }
+
         // ---------------------------------------------------------------- GOALS
         // Ticket 19: the one panel on this screen that is read-AND-edit, by design - see
         // GoalsPanel's own doc comment for why it breaks this file's "voice writes, screen reads"

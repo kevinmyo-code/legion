@@ -70,7 +70,7 @@ import java.time.ZoneId
 /**
  * `today` tab, the deck's HOME surface. **Rebuilt mission-control ticket 16** to ticket 11's
  * corrected inventory, on ticket 05's tiling grammar: hero, then tiles, then full-width lists,
- * inside the two-column grid (328dp interior, 9dp gutter, 159dp half tile). Six panes, FIXED
+ * inside the two-column grid (328dp interior, 9dp gutter, 159dp half tile). Seven panes, FIXED
  * order, always -
  *  - **INTAKE** (FULL, hero) - today's calorie gap ([MealController.dayGap]), unchanged from the
  *    pre-tiling screen: still the thing checked most often.
@@ -81,6 +81,9 @@ import java.time.ZoneId
  *    `TodayGapResolvers.kt`'s "mission-control ticket 16: HALF tiles" section for exactly what
  *    each tile shows and why SLEEP/TRAINING WK are gone from HOME entirely (still live in
  *    [BodyScreen]'s own drilldown).
+ *  - **CHECKLIST** (FULL) - ticket 04, `goal-plans`: today's BIO checklist lines, at a glance,
+ *    capped and self-loading - see [com.kevin.legion.ui.goals.GoalChecklistPanel]'s own doc
+ *    comment for why it is not part of this file's own batched [TodayUiState] load.
  *  - **AGENDA** (FULL) - today's timed items, one-off and recurring, unchanged in content from the
  *    pre-tiling screen.
  *  - **ALERTS** (FULL) - **"everything needing you"** (ticket 11 section 3): ALARM items
@@ -459,6 +462,20 @@ private fun TodayListing(
                     modifier = Modifier.clickable(onClick = onOpenNotes),
                 )
             }
+        }
+
+        // ------------------------------------------------------------ CHECKLIST (FULL, "at a glance")
+        // Ticket 04, `goal-plans` (Kevin: "revamp of BIO/body tab + revamped section in home
+        // tab"). `compact = true` caps it at three lines with a worded overflow rather than
+        // reprinting BodyScreen's own full skip history here - see GoalChecklistPanel's own doc
+        // comment for the shared-panel reasoning. Self-contained (its own LaunchedEffect), so it
+        // is not part of TodayUiState's batched load - same posture GoalsPanel already established
+        // on this tab's sibling screens.
+        item(key = "checklist-pane") {
+            com.kevin.legion.ui.goals.GoalChecklistPanel(
+                compact = true,
+                modifier = Modifier.padding(top = 9.dp).clickable(onClick = onOpenBody),
+            )
         }
 
         // ------------------------------------------------------------ AGENDA (FULL)
