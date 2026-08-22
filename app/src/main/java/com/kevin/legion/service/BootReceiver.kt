@@ -7,6 +7,7 @@ import com.kevin.legion.MidnightEvents
 import com.kevin.legion.location.GeofenceManager
 import com.kevin.legion.notes.AlarmScheduler
 import com.kevin.legion.sitrep.SitrepScheduler
+import com.kevin.legion.wellbeing.WellbeingDigestScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -64,6 +65,13 @@ class BootReceiver : BroadcastReceiver() {
                 // restart, or the ignition its resume.
                 runCatching { SitrepScheduler.rescheduleFromSettings(context) }
                     .onFailure { MidnightEvents.appStartWorkFailed("boot_reschedule_sitrep", it) }
+                // The wellbeing digest's own single alarm (goal-plans ticket 05) - same
+                // AlarmManager-forgets-everything-across-a-reboot problem as the sitrep's alarm
+                // above, and the same no-op-when-never-set behaviour. Guarded separately for the
+                // same reason every guard in this receiver is separate: one missed re-arm must
+                // not cost any of the others theirs.
+                runCatching { WellbeingDigestScheduler.rescheduleFromSettings(context) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("boot_reschedule_wellbeing_digest", it) }
                 // resumeIfEnabled is a plain (non-suspend) SharedPreferences read plus a
                 // startForegroundService IPC call - safe to fire from this receiver's IO scope
                 // same as rescheduleAll above; nothing about starting a Service requires the

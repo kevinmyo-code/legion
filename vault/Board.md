@@ -15,8 +15,7 @@ Open tickets whose blockers are all resolved.
 |---|---|---|---|
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[25-build-inbox-intelligence\|25]] | build | BUILD: where is my package, when is my flight |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[26-build-place-a-call\|26]] | build | BUILD: place a call by name or by number |
+| [[.scratch/goal-plans/map\|goal-plans]] | [[07-a-checklist-you-can-tick\|07]] | build | A checklist you can actually tick, and one fewer workout section |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[27-the-hands-path-gap\|27]] | task | Measure which voice capabilities have no hands path |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
@@ -33,6 +32,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[22-build-the-sitrep\|22]] | build | Build the sitrep |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[23-conversation-audit-trail\|23]] | build | An audit trail of every conversation and every tool call |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[24-the-socket-that-never-rests\|24]] | build | The socket restarts every 2.5 minutes, all day |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[25-build-inbox-intelligence\|25]] | build | BUILD: where is my package, when is my flight |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[26-build-place-a-call\|26]] | build | BUILD: place a call by name or by number |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[11-reframe-missed-the-toolbox\|11]] | bug | The concierge reframe missed the largest prompt surface |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |
@@ -84,7 +85,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | 8 | 0 | [[.scratch/goal-keeping/goal-keeping.canvas\|open]] |
-| [[.scratch/goal-plans/map\|goal-plans]] | 6 | 5 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
+| [[.scratch/goal-plans/map\|goal-plans]] | 7 | 6 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 28 | 7 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |

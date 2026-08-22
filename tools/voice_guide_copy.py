@@ -147,10 +147,13 @@ COPY = {
     "search_mail": ("Any mail from the garage?", "Searches your Gmail. Mail is read and used, never stored."),
     "read_mail": ("Read me that one", "Reads an email out."),
     "ask_mail": ("What did the insurance email say?", "Digs through your mail to answer a question."),
+    "track_package": ("Where's my package?", "Reads your most recent shipping email for the carrier, tracking number and delivery status. Always says which email and when it was sent, and that it's an estimate from the email text, not a live carrier lookup."),
+    "flight_status": ("When's my flight?", "Checks your calendar first, since airlines usually put flights there automatically and that's exact. Falls back to your travel-confirmation email for anything the calendar doesn't have, and says plainly that's an estimate from the email, not a confirmed schedule."),
 
     # --- Phone calls ---
     "answer_call": ("Answer it", "Picks up a ringing call. Add “and put it on speaker” and it does both. Cannot answer WhatsApp, Signal or Teams calls - Android does not allow it."),
     "decline_call": ("Decline it", "Rejects a ringing call."),
+    "place_call": ("Call Mom", "Places an outbound call - by contact name or a number you say. Always reads the target back first (the name, or the digits) and waits for a yes before dialling, so a misheard digit never dials a stranger. Asks rather than guesses if a name matches nobody or several people. Refuses emergency numbers outright and tells you to dial them yourself. Cannot send texts - that was ruled out on purpose."),
 
     # --- Memory ---
     "remember": ("Remember that the XJ takes 5W-30", "Stores something for later."),
@@ -173,8 +176,8 @@ GROUPS = {
     "Training and sleep": ["log_workout_set", "list_recent_workouts", "get_workout_gap", "create_workout_plan", "log_bodyweight", "log_sleep", "list_recent_sleep", "get_sleep_gap", "set_sleep_target", "ask_body"],
     "Goals and advice": ["set_goal", "list_goals", "close_goal", "ask_goals", "ask_advisor", "accept_proposal", "generate_goal_plan", "accept_goal_plan", "undo_last_log"],
     "Music": ["play_music", "control_music", "get_music_queue", "browse_my_music"],
-    "Mail and calendar": ["search_mail", "read_mail", "ask_mail"],
-    "Phone calls": ["answer_call", "decline_call"],
+    "Mail and calendar": ["search_mail", "read_mail", "ask_mail", "track_package", "flight_status"],
+    "Phone calls": ["answer_call", "decline_call", "place_call"],
     "Memory": ["remember", "recall_memory", "why_did_you_say_that"],
     "Settings and control": ["set_companion_name", "set_personality", "set_driver"],
 }

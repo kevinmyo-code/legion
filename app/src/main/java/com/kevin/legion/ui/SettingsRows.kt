@@ -241,15 +241,17 @@ fun ProactiveSpeechRow(proactiveOn: Boolean, companionName: String?, onToggle: (
  * `.scratch/proactive-mode/issues/04-categories-storage-and-surface.md`). Governed by
  * [ProactiveSpeechRow]'s master, which ANDs over all of them.
  *
- * **A switch that governs nothing must not imply it does.** Wellbeing and Digest have no raises
- * today ([com.kevin.legion.service.ProactiveCategory.hasContent]), and this row **says so in
+ * **A switch that governs nothing must not imply it does.** Any category with no raise wired to it
+ * ([com.kevin.legion.service.ProactiveCategory.hasContent] false) gets this row **saying so in
  * words** - not by hiding, not by greying out, not by silence. Hiding it would cost the map of what
  * is coming; a greyed control with no explanation is its own kind of confusing. Same posture as the
- * digest builders' "not logged, never 0" and as the master row's own status line.
+ * digest builders' "not logged, never 0" and as the master row's own status line. All five
+ * categories carry content as of goal-plans ticket 05 (Wellbeing's own scheduled digest), but the
+ * next category anyone adds will land here empty first, same as every one before it did.
  *
  * It stays TOGGLEABLE while empty, deliberately: the setting is real and persists, so a user who
- * turns Wellbeing on today gets its first nudge the day one is written, rather than having to come
- * back and find a switch that has quietly become live.
+ * turns an empty category on today gets its first nudge the day one is written, rather than having
+ * to come back and find a switch that has quietly become live.
  */
 @Composable
 fun ProactiveCategoryRow(
@@ -368,18 +370,65 @@ fun SitrepScheduleRow(
 }
 
 /**
- * Caller ID and voice call control (2026-08-21, Kevin: *"i wanna know whos calling ... can i also
- * pick it up or decline via voice?"*).
+ * The wellbeing digest's schedule time (goal-plans ticket 05,
+ * `.scratch/goal-plans/issues/05-wellbeing-digest.md`) - shape lifted directly from
+ * [SitrepScheduleRow] above, minus the newsletter-sender field that domain has and this one does
+ * not. Same typed-digit reasoning: this app's clean-slate `ui/` has no time-picker component yet,
+ * and CLAUDE.md says to STOP and surface a missing design primitive rather than improvise a new
+ * one.
  *
- * **Three permissions, asked for together, because they are one feature to a human** - and the row
+ * **No enable switch here** - the real kill switch is [ProactiveCategoryRow]'s own WELLBEING row,
+ * which sits above this one on the settings screen. This row only configures WHEN the digest
+ * fires, matching [SitrepScheduleRow]'s own "these rows configure WHAT it says, not WHETHER it
+ * may" split for the sitrep's schedule under DIGEST.
+ */
+@Composable
+fun WellbeingDigestScheduleRow(
+    hourText: String,
+    minuteText: String,
+    onHourChange: (String) -> Unit,
+    onMinuteChange: (String) -> Unit,
+    onSave: () -> Unit,
+    statusLine: String,
+) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text("Wellbeing digest schedule", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(statusLine, style = LegionType.stamp, color = sem.faint)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.kevin.legion.ui.common.DeckTextField(
+                    value = hourText, onValueChange = onHourChange, label = "Hour (0-23)",
+                    modifier = Modifier.weight(1f),
+                )
+                com.kevin.legion.ui.common.DeckTextField(
+                    value = minuteText, onValueChange = onMinuteChange, label = "Minute (0-59)",
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            DeckButton(text = "Save schedule", onClick = onSave)
+        }
+    }
+}
+
+/**
+ * Caller ID and voice call control (2026-08-21, Kevin: *"i wanna know whos calling ... can i also
+ * pick it up or decline via voice?"*; `CALL_PHONE` joined 2026-08-22 for `place_call`, ticket 26).
+ *
+ * **Four permissions, asked for together, because they are one feature to a human** - and the row
  * says what each buys rather than listing Android constants at someone. `READ_CALL_LOG` is what
  * actually delivers the caller's number (without it the platform substitutes an empty string, which
  * is why the announcement could only ever say "a call is ringing"); `READ_CONTACTS` turns that
- * number into a name; `ANSWER_PHONE_CALLS` is what lets "answer it" and "decline it" do anything.
+ * number into a name (both ways - naming an incoming caller, and resolving a contact to dial);
+ * `ANSWER_PHONE_CALLS` is what lets "answer it" and "decline it" do anything; `CALL_PHONE` is what
+ * lets "call Mom" dial directly instead of only opening the dialer.
  *
- * **The status line degrades honestly**, in the same three states the feature itself has: fully on,
- * partly on (it can name the caller but not act, or the reverse), and off. A row claiming "on" while
- * half the feature is refused would be the same lie the proactive kill-switch copy was fixed for.
+ * **The status line degrades honestly**, listing exactly which of the three capabilities
+ * (see-who's-calling, answer/decline, place a call) are actually on rather than collapsing to a
+ * single on/off. A row claiming "on" while part of the feature is refused would be the same lie the
+ * proactive kill-switch copy was fixed for.
  *
  * Kept deliberately quiet about one thing: the app cannot answer WhatsApp, Signal or Teams calls
  * whatever is granted here, because Android silently ignores those for a non-dialer app. That
@@ -389,6 +438,7 @@ fun SitrepScheduleRow(
 fun CallHandlingRow(
     canSeeCaller: Boolean,
     canAnswer: Boolean,
+    canPlace: Boolean,
     onGrant: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
@@ -406,22 +456,31 @@ fun CallHandlingRow(
                 )
                 Text(
                     when {
-                        canSeeCaller && canAnswer ->
-                            "On - says who is calling, and you can answer or decline by voice."
-                        canSeeCaller ->
-                            "Partly on - says who is calling, but cannot answer or decline for you."
-                        canAnswer ->
-                            "Partly on - you can answer or decline by voice, but it cannot see who " +
-                                "is calling."
-                        else ->
+                        canSeeCaller && canAnswer && canPlace ->
+                            "On - says who is calling, you can answer or decline by voice, and " +
+                                "place calls by voice."
+                        !canSeeCaller && !canAnswer && !canPlace ->
                             "Off - announces that a call is ringing, but not who, and cannot pick " +
-                                "it up for you."
+                                "it up or place one for you."
+                        else -> {
+                            val on = buildList {
+                                if (canSeeCaller) add("see who's calling")
+                                if (canAnswer) add("answer or decline")
+                                if (canPlace) add("place calls")
+                            }
+                            val off = buildList {
+                                if (!canSeeCaller) add("see who's calling")
+                                if (!canAnswer) add("answer or decline")
+                                if (!canPlace) add("place calls")
+                            }
+                            "Partly on - can ${on.joinToString(", ")}, but not ${off.joinToString(", ")}."
+                        }
                     },
                     style = LegionType.stamp,
                     color = sem.faint,
                 )
             }
-            if (!canSeeCaller || !canAnswer) {
+            if (!canSeeCaller || !canAnswer || !canPlace) {
                 TextButton(onClick = onGrant) { Text("GRANT") }
             }
         }

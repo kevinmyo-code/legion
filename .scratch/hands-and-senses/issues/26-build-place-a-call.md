@@ -3,12 +3,12 @@ map: hands-and-senses
 ticket: 26
 title: "BUILD: place a call by name or by number"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built. Owes the on-phone run: call a contact by name, call a number by voice, confirm the read-back precedes the dial."
 blockers: ["05"]
 blocked-by: ["[[05-comms]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # BUILD: place a call by name or by number

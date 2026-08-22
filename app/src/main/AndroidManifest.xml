@@ -71,6 +71,10 @@
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <!-- place_call (ticket 26): CALL_PHONE is what lets ACTION_CALL dial directly instead of
+         only opening the dialer for the user to press call themselves. Runtime-requested, same
+         as the three above; PlaceCallAction treats it missing as its own honest failure. -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
@@ -311,6 +315,13 @@
              exported=false. Ticket 22's one alarm for the scheduled sitrep. -->
         <receiver
             android:name=".sitrep.SitrepAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Fired only by WellbeingDigestScheduler's own PendingIntent - never by the system, so
+             exported=false. goal-plans ticket 05's one alarm for the scheduled wellbeing digest. -->
+        <receiver
+            android:name=".wellbeing.WellbeingDigestAlarmReceiver"
             android:enabled="true"
             android:exported="false" />
 

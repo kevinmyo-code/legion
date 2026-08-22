@@ -3,12 +3,12 @@ map: hands-and-senses
 ticket: 25
 title: "BUILD: where is my package, when is my flight"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built. Owes the on-phone run: ask both questions, confirm the answer names the mail and says estimate, confirm nothing lands in memory."
 blockers: ["18"]
 blocked-by: ["[[18-inbox-intelligence]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # BUILD: where is my package, when is my flight

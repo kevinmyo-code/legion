@@ -181,6 +181,16 @@
       "color": "1"
     },
     {
+      "id": "9f83715c0df398b6",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/27-the-hands-path-gap.md",
+      "x": 0,
+      "y": 2700,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "5e3558b6fd0ef25d",
       "type": "file",
       "file": ".scratch/hands-and-senses/issues/03-home-control-scope.md",
@@ -259,6 +269,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "ff864f43a16ea918",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/26-build-place-a-call.md",
+      "x": 520,
+      "y": 1200,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -316,6 +336,13 @@
       "fromNode": "73348ad476a50d7c",
       "fromSide": "right",
       "toNode": "f210824264c5bbf7",
+      "toSide": "left"
+    },
+    {
+      "id": "548ed88c4f5df6d3",
+      "fromNode": "b8b0d2cb73459c9a",
+      "fromSide": "right",
+      "toNode": "ff864f43a16ea918",
       "toSide": "left"
     }
   ]

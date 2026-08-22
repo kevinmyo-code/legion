@@ -1225,3 +1225,26 @@ val MIGRATION_29_30 = object : Migration(29, 30) {
         )
     }
 }
+
+/**
+ * v30 -> v31: `wellbeing_digest_schedule` (goal-plans ticket 05,
+ * `.scratch/goal-plans/issues/05-wellbeing-digest.md` - the Wellbeing switch's first content). One
+ * additive `CREATE TABLE`, nothing existing touched - see
+ * [com.kevin.legion.data.local.WellbeingDigestSchedule]'s own doc for the schema's shape and why it
+ * is a sibling of [SitrepSchedule] rather than columns added to it.
+ *
+ * SQL below is copied VERBATIM from the generated `app/schemas/.../31.json`'s own `createSql`
+ * (confirmed by a real `compileDebugKotlin -Pnokey` run, not hand-derived) - same discipline
+ * [MIGRATION_29_30] documents.
+ */
+val MIGRATION_30_31 = object : Migration(30, 31) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `wellbeing_digest_schedule` (" +
+                "`id` INTEGER NOT NULL, " +
+                "`hour` INTEGER NOT NULL, " +
+                "`minute` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`))"
+        )
+    }
+}

@@ -42,6 +42,22 @@ class GeminiLiveSessionEpisodicExclusionTest {
         assertTrue(GeminiLiveSession.isEpisodicExcludedTool("ask_mail"))
     }
 
+    /**
+     * 2026-08-22 (ticket 25, hands-and-senses map): `track_package`/`flight_status` read Gmail
+     * directly and are declared straight to the live session, never behind `ask_mail` - see
+     * [LiveToolbox.EPISODIC_EXCLUDED_TOOLS]'s own doc comment for why that makes this line, not a
+     * habit inside the tool's implementation, the thing that has to be right.
+     */
+    @Test
+    fun `track_package is excluded from episodic persistence`() {
+        assertTrue(GeminiLiveSession.isEpisodicExcludedTool("track_package"))
+    }
+
+    @Test
+    fun `flight_status is excluded from episodic persistence`() {
+        assertTrue(GeminiLiveSession.isEpisodicExcludedTool("flight_status"))
+    }
+
     @Test
     fun `an ordinary tool is NOT excluded - the flag must not swallow unrelated turns`() {
         assertFalse(GeminiLiveSession.isEpisodicExcludedTool("get_vehicle_data"))
@@ -56,7 +72,7 @@ class GeminiLiveSessionEpisodicExclusionTest {
     }
 
     @Test
-    fun `the excluded set is exactly these four names - guards against silent drift`() {
+    fun `the excluded set is exactly these six names - guards against silent drift`() {
         // Three, not two, since 2026-08-17: the original two names stay (dispatch still runs them
         // internally inside ask_mail's own investigate loop, and a future direct caller of either
         // should still be caught), and "ask_mail" joined them - see the doc comment above.
@@ -67,8 +83,14 @@ class GeminiLiveSessionEpisodicExclusionTest {
         // drop the bodies" in those words. This guard did its job: adding the name failed this
         // assertion and forced the decision to be made here rather than absorbed silently, which
         // is the whole reason the test is written as an exact-set comparison.
+        //
+        // SIX since 2026-08-22 (ticket 25): `track_package`/`flight_status` joined, each declared
+        // straight to the live session rather than behind `ask_mail` - see those two tests above.
         assertEquals(
-            setOf("search_mail", "read_mail", "ask_mail", "get_sitrep"),
+            setOf(
+                "search_mail", "read_mail", "ask_mail", "get_sitrep",
+                "track_package", "flight_status",
+            ),
             LiveToolbox.EPISODIC_EXCLUDED_TOOLS,
         )
     }

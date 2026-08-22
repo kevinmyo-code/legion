@@ -63,6 +63,7 @@ import com.kevin.legion.service.ProactiveCategory
 import com.kevin.legion.service.ProactiveSettings
 import com.kevin.legion.service.CallActions
 import com.kevin.legion.service.CallerId
+import com.kevin.legion.service.PlaceCallAction
 import com.kevin.legion.sitrep.SitrepModule
 import com.kevin.legion.sitrep.SitrepScheduler
 import com.kevin.legion.sitrep.SitrepSettings
@@ -143,8 +144,15 @@ fun SettingsScreen(
     var sitrepMinuteText by remember { mutableStateOf("") }
     var sitrepSendersText by remember { mutableStateOf("") }
     var sitrepScheduleStatus by remember { mutableStateOf("No schedule set - the sitrep is askable any time, but never fires on its own.") }
+    // goal-plans ticket 05 - same seeded-blank-until-loaded shape as the sitrep schedule fields
+    // above, and the same reason: an empty field is what tells Kevin nothing has been saved yet,
+    // rather than a fake default time.
+    var wellbeingHourText by remember { mutableStateOf("") }
+    var wellbeingMinuteText by remember { mutableStateOf("") }
+    var wellbeingScheduleStatus by remember { mutableStateOf("No schedule set - the wellbeing digest never fires on its own.") }
     var canSeeCaller by remember { mutableStateOf(false) }
     var canAnswerCalls by remember { mutableStateOf(false) }
+    var canPlaceCalls by remember { mutableStateOf(false) }
     // Background location (`.scratch/location-intelligence/issues/01-background-location.md`,
     // settled decision 11) - three-state resolution, re-read on every resume same as the call
     // permissions above, because the fix for a permanently-denied background grant is a trip to
@@ -220,10 +228,24 @@ fun SettingsScreen(
         }
     }
 
+    // goal-plans ticket 05 - same shape as [reloadSitrepSettings] above, minus the module switches
+    // that domain has and this one does not.
+    suspend fun reloadWellbeingDigestSettings() {
+        val schedule = com.kevin.legion.wellbeing.WellbeingDigestSettings.schedule(context)
+        if (schedule != null) {
+            wellbeingHourText = schedule.hour.toString()
+            wellbeingMinuteText = schedule.minute.toString()
+            wellbeingScheduleStatus = "Fires daily at %02d:%02d".format(schedule.hour, schedule.minute)
+        } else {
+            wellbeingScheduleStatus = "No schedule set - the wellbeing digest never fires on its own."
+        }
+    }
+
     LaunchedEffect(reloadNonce) {
         reloadActiveProfile()
         reloadPlaybookAndMemoryStatus()
         reloadSitrepSettings()
+        reloadWellbeingDigestSettings()
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         reloadNonce++
@@ -249,6 +271,7 @@ fun SettingsScreen(
         canSeeCaller = CallerId.hasCallLogPermission(context) &&
             CallerId.hasContactsPermission(context)
         canAnswerCalls = CallActions.hasPermission(context)
+        canPlaceCalls = PlaceCallAction.hasCallPermission(context)
         val newLocationAccess = BackgroundLocationAccess.current(context)
         // Granted wipes the "offer Settings" flag - a driver who fixed it in system Settings and
         // came back should see a clean GRANT-less row, not a stale settings shortcut.
@@ -256,15 +279,18 @@ fun SettingsScreen(
         locationAccess = newLocationAccess
     }
 
-    // Caller ID + voice answer/decline. Asked for as ONE dialog rather than three: they are one
-    // feature to a human, and Android groups READ_PHONE_STATE/READ_CALL_LOG/ANSWER_PHONE_CALLS
-    // under PHONE anyway. The callback ignores its own granted flags and re-reads the real state -
+    // Caller ID + voice answer/decline + place_call. Asked for as ONE dialog rather than four:
+    // they are one feature to a human, and Android groups READ_PHONE_STATE/READ_CALL_LOG/
+    // ANSWER_PHONE_CALLS/CALL_PHONE under PHONE anyway. CALL_PHONE joined this group 2026-08-22
+    // (ticket 26) for place_call - it is what lets ACTION_CALL dial directly rather than only
+    // opening the dialer. The callback ignores its own granted flags and re-reads the real state -
     // a single source of truth, same shape as TodayScreen's calendar request.
     val requestCallPermissions = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
         canSeeCaller = CallerId.hasCallLogPermission(context) && CallerId.hasContactsPermission(context)
         canAnswerCalls = CallActions.hasPermission(context)
+        canPlaceCalls = PlaceCallAction.hasCallPermission(context)
     }
 
     // Background location, second half of the two-step chain (ticket 01's rule 1: foreground must
@@ -533,6 +559,34 @@ fun SettingsScreen(
                 },
             )
 
+            // goal-plans ticket 05: the wellbeing digest's own schedule. Sits right below the
+            // WELLBEING category row above, same "configures WHEN, not WHETHER" split
+            // SitrepScheduleRow's own doc states for DIGEST.
+            Spacer(Modifier.height(4.dp))
+            com.kevin.legion.ui.WellbeingDigestScheduleRow(
+                hourText = wellbeingHourText,
+                minuteText = wellbeingMinuteText,
+                onHourChange = { wellbeingHourText = it.filter(Char::isDigit).take(2) },
+                onMinuteChange = { wellbeingMinuteText = it.filter(Char::isDigit).take(2) },
+                statusLine = wellbeingScheduleStatus,
+                onSave = {
+                    val hour = wellbeingHourText.toIntOrNull()?.coerceIn(0, 23)
+                    val minute = wellbeingMinuteText.toIntOrNull()?.coerceIn(0, 59)
+                    if (hour == null || minute == null) {
+                        wellbeingScheduleStatus = "Enter a valid hour (0-23) and minute (0-59) first."
+                        return@WellbeingDigestScheduleRow
+                    }
+                    scope.launch {
+                        com.kevin.legion.wellbeing.WellbeingDigestSettings.setSchedule(context, hour, minute)
+                        // Re-arms immediately, same reasoning as the sitrep schedule save above -
+                        // a saved schedule with no armed alarm until the next reboot would be a
+                        // setting that lies about being live.
+                        com.kevin.legion.wellbeing.WellbeingDigestScheduler.schedule(context, hour, minute)
+                        wellbeingScheduleStatus = "Fires daily at %02d:%02d".format(hour, minute)
+                    }
+                },
+            )
+
             // `.scratch/wake-word/issues/02-the-settings-toggle.md`. The handler is the ONLY writer
             // of WakeWordPreferences, matching AssistantIgnition's single-writer discipline.
             //
@@ -548,12 +602,14 @@ fun SettingsScreen(
             CallHandlingRow(
                 canSeeCaller = canSeeCaller,
                 canAnswer = canAnswerCalls,
+                canPlace = canPlaceCalls,
                 onGrant = {
                     requestCallPermissions.launch(
                         arrayOf(
                             Manifest.permission.READ_CALL_LOG,
                             Manifest.permission.READ_CONTACTS,
                             Manifest.permission.ANSWER_PHONE_CALLS,
+                            Manifest.permission.CALL_PHONE,
                         )
                     )
                 },

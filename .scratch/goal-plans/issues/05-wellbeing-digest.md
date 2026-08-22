@@ -3,8 +3,8 @@ map: goal-plans
 ticket: 05
 title: "The Wellbeing switch finally gets content"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built at Room v31, hasContent flipped. Owes the on-phone run: fires at the chosen time, silenced by the master switch."
 blockers: ["04"]
 blocked-by: ["[[04-checklist-and-surfaces]]"]
 open-blockers: 1

@@ -358,12 +358,16 @@ class ProactiveGateRulesTest {
     }
 
     @Test
-    fun `a category with no content says so, and WELLBEING is the one still empty`() {
+    fun `every category now has content, and each flag flipped in the commit that earned it`() {
         // Ticket 22: DIGEST got its first content (the scheduled sitrep) and its own hasContent
-        // flipped to true in that same commit - WELLBEING is the only category left with nothing
-        // raising into it.
+        // flipped to true in that same commit. goal-plans ticket 05: WELLBEING got its first
+        // content (the scheduled wellbeing digest,
+        // com.kevin.legion.wellbeing.WellbeingDigestAlarmReceiver) and its own hasContent flipped
+        // to true in that same commit - the last category with nothing raising into it is now
+        // gone, and a future sixth category must repeat the same discipline: flag flips WITH the
+        // first raise, never before.
         val empty = ProactiveCategory.entries.filter { !it.hasContent }.toSet()
-        assertEquals(setOf(ProactiveCategory.WELLBEING), empty)
+        assertEquals(emptySet<ProactiveCategory>(), empty)
     }
 
     @Test

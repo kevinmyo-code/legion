@@ -1497,6 +1497,44 @@ object LiveToolbox {
             required = listOf("id"),
         ))
 
+        // Ticket 25 (hands-and-senses, building ticket 18's resolution): "where's my package" /
+        // "when's my flight", answered from mail LEGION can already read. Declared DIRECTLY here
+        // rather than folded into `search_mail`/`read_mail` or routed through `ask_mail`'s generic
+        // dispatcher - see `mailExtraction`'s own doc comment (this file, mail-tools section) for
+        // why letting a free-form sub-agent compose the whole answer was the wrong shape for a §4
+        // rule 5 extraction with no printed total to check it against. The four rules from ticket
+        // 18's resolution are spelled out below IN the description because this is the one place
+        // the live model actually reads before deciding whether to call the tool at all - a rule
+        // that only lived in code the model never sees is not a rule the model can obey.
+        fns.put(fn(
+            name = "track_package",
+            description = "Where's my package? Reads Kevin's most recent shipping/order-confirmation " +
+                "email for carrier, tracking number, and delivery status EXACTLY as that email " +
+                "states them - mail only, never a live carrier lookup, so it can be stale. The " +
+                "result always names which email it read and when it was sent, and always says " +
+                "the answer is an ESTIMATE of what the mail says, never a confirmed live status - " +
+                "say both of those things out loud, do not drop them. If no shipping mail is " +
+                "found, or mail cannot be reached, the result says which of those happened.",
+            params = obj(),
+            required = emptyList(),
+        ))
+        fns.put(fn(
+            name = "flight_status",
+            description = "When's my flight? CHECK `read_calendar` FIRST for the trip - airlines " +
+                "already push flights onto Google Calendar, and `read_calendar` answers exactly, " +
+                "with no guessing. Only call this tool when `read_calendar` has nothing for the " +
+                "trip, or Kevin is asking about a hotel/flight that was never added to a calendar. " +
+                "Reads Kevin's most recent travel-confirmation email for the airline/hotel, flight " +
+                "or confirmation number, and date/time EXACTLY as that email states them - mail " +
+                "only, so it can be stale or wrong if the trip changed since. The result always " +
+                "names which email it read and when it was sent, and always says the answer is an " +
+                "ESTIMATE of what the mail says, never a confirmed schedule - say both of those " +
+                "things out loud, do not drop them. If no travel mail is found, or mail cannot be " +
+                "reached, the result says which of those happened.",
+            params = obj(),
+            required = emptyList(),
+        ))
+
         // Ticket 19 (google-account-integration): the write half of calendar has existed since
         // ticket 14 (manage_item's appointment path) and the read half never did - Kevin asked
         // what was on his calendar and Alfred correctly said he couldn't check. Net +1 against a
@@ -1580,6 +1618,38 @@ object LiveToolbox {
                 "Cannot end an emergency call. The result tells you what actually happened.",
             params = obj(),
             required = emptyList(),
+        ))
+
+        // place_call (ticket 26, resolved at 05-comms.md): outbound calls only, texts ruled out
+        // permanently. ONE tool covers both targets (a contact name or spoken digits) rather than
+        // two, because the confirm shape and the failure handling are identical either way and the
+        // description below tells the model which argument to fill. The confirmed boolean is the
+        // SAME shape as activate_garage/clear_codes: confirmed=false resolves the target and
+        // returns the exact sentence to read back - never dials - and only confirmed=true, after
+        // the user says yes to that read-back, actually places the call. This is not optional
+        // politeness: spoken digits are misheard often enough that the read-back is the only thing
+        // standing between a wrong number and a stranger's phone ringing.
+        fns.put(fn(
+            name = "place_call",
+            description = "Place an OUTBOUND phone call, by contact name or by a number the user " +
+                "dictates. NEVER for texts or messages - this app cannot send one, say so if asked. " +
+                "NEVER for emergency services (911, 112, 999, or any local equivalent) - refuse and " +
+                "tell the user to dial it themselves; do not call this tool for one. Pass exactly " +
+                "one of 'contact' or 'number'. ALWAYS call this first with confirmed=false: the " +
+                "result gives you the exact sentence to read back to the user (the contact's name, " +
+                "or the number's digits grouped for speech) - say that sentence, wait for a yes, " +
+                "then call this again with confirmed=true. Never skip the read-back or say the call " +
+                "was placed unless the result says so. If the name matches nobody, or matches more " +
+                "than one person, the result says so and you should ask which one - never guess.",
+            params = obj(
+                "contact" to schema("string", "A contact name the user asked to call, e.g. \"Mom\" " +
+                    "or \"Sam\". Omit if they gave a number instead."),
+                "number" to schema("string", "A phone number the user dictated, digits only (e.g. " +
+                    "\"5551234567\"). Omit if they named a contact instead."),
+                "confirmed" to schema("boolean", "False on the first call to resolve the target and " +
+                    "get the read-back sentence. True only after the user has just confirmed it."),
+            ),
+            required = listOf("confirmed"),
         ))
 
         fns.put(fn(
@@ -2379,11 +2449,14 @@ object LiveToolbox {
             "manage_vehicle" -> manageVehicle(context, args)
             "search_mail" -> searchMail(context, args)
             "read_mail" -> readMail(context, args)
+            "track_package" -> trackPackage(context)
+            "flight_status" -> flightStatus(context)
             "read_calendar" -> readCalendar(context, args)
             "why_did_you_say_that" -> whyDidYouSayThatTool(context)
             "get_sitrep" -> getSitrepTool(context, args)
             "answer_call" -> answerCallTool(context, args)
             "decline_call" -> declineCallTool(context)
+            "place_call" -> placeCallTool(context, args)
             "set_goal" -> setGoalTool(context, args)
             "list_goals" -> listGoalsTool(context, args)
             "close_goal" -> closeGoalTool(context, args)
@@ -2475,7 +2548,16 @@ object LiveToolbox {
     // **Excluded unconditionally, not only when NEWS ran.** A conditional exclusion would depend on
     // which modules were enabled at the moment of the call, which is exactly the kind of "safe most
     // of the time" gate this set exists to avoid.
-    val EPISODIC_EXCLUDED_TOOLS = setOf("search_mail", "read_mail", "ask_mail", "get_sitrep")
+    // "track_package"/"flight_status" (ticket 25) read Gmail directly - see [mailExtraction]'s own
+    // doc comment - and are declared straight to the live session, never behind `ask_mail`, so
+    // unlike "search_mail"/"read_mail" (excluded only because a future direct caller might still
+    // reach them despite living behind a dispatcher today) these two are excluded because the LIVE
+    // model itself calls them by name every time. CLAUDE.md's read-through rule (§7, "the guarantee
+    // is that it was never stored, not that something remembered to exclude it") is exactly why
+    // this line, not a habit in `mailExtraction` itself, is what has to be right.
+    val EPISODIC_EXCLUDED_TOOLS = setOf(
+        "search_mail", "read_mail", "ask_mail", "get_sitrep", "track_package", "flight_status",
+    )
 
     /**
      * Ticket 21 (google-account-integration, "close the remember leak"): the gate `remember`'s
@@ -2763,6 +2845,170 @@ object LiveToolbox {
     /** One of ticket 10's four failure messages, never a collapsed generic one. */
     private fun mailFailure(cause: GmailToolLogic.Cause): JSONObject =
         JSONObject().put("success", false).put("message", GmailToolLogic.message(cause))
+
+    // --- Inbox intelligence: packages and flights (ticket 25, hands-and-senses map) ------
+    //
+    // Two read-through answers over the SAME mail search_mail/read_mail already reach (ticket 18's
+    // resolution table, `.scratch/hands-and-senses/issues/18-inbox-intelligence.md`). Deliberately
+    // NOT routed through `ask_mail`'s generic dispatcher: that dispatcher hands its sub-agent a
+    // free-form question and trusts IT to compose the whole spoken answer, which is exactly the
+    // wrong shape here - §4 rule 5 (no printed total to reconcile against, so it's an estimate,
+    // never a fact) and ticket 18's rule 2 (naming the source mail is MANDATORY, not a nicety) both
+    // have to hold even when the model drifts off-prompt. [mailExtraction] instead composes the
+    // answer in two halves that never trust the model with either: [buildMailSourceLine] and
+    // [ESTIMATE_SUFFIX] are built in plain Kotlin from fields [GmailClient] already parses, and a
+    // one-shot, search-DISABLED [SubAgent] only ever supplies the middle sentence - what the one
+    // email it was handed actually says. `useSearch = false` is load-bearing, not a default left
+    // alone: ticket 18 rule 1 is "mail only", and the default `SubAgent` constructor leaves
+    // `google_search` grounding ON, which would let the model answer from the live web instead of
+    // the email it was asked to read.
+
+    /** Package/order mail search terms - deliberately broad (an OR of the words a shipping
+     * notification actually uses) since the model never writes this query; unlike `search_mail`,
+     * nothing here is user-facing Gmail syntax a driver could get wrong. */
+    private const val PACKAGE_MAIL_QUERY =
+        "(tracking OR shipped OR \"has shipped\" OR \"out for delivery\" OR delivery OR " +
+            "shipment OR package OR order) newer_than:30d"
+
+    /** Travel-confirmation mail search terms - a year's window, since a booked trip is often
+     * confirmed months ahead of the date being asked about. */
+    private const val FLIGHT_MAIL_QUERY =
+        "(flight OR itinerary OR \"boarding pass\" OR \"confirmation number\" OR reservation OR " +
+            "check-in OR e-ticket) newer_than:365d"
+
+    /** Exact literal `track_package` returns when the search ran fine and simply found nothing -
+     * `internal` (not private), same reasoning as [buildMailSourceLine], so a plain-JVM test can
+     * pin the wording and its distinctness from [FLIGHT_NO_MATCH_MESSAGE] and every
+     * [GmailToolLogic.Cause] message without a real Gmail account or network call. */
+    internal const val PACKAGE_NO_MATCH_MESSAGE =
+        "I didn't find any shipping or tracking email in your inbox recently."
+
+    /** `flight_status`'s equivalent of [PACKAGE_NO_MATCH_MESSAGE]. */
+    internal const val FLIGHT_NO_MATCH_MESSAGE =
+        "I didn't find any flight or travel confirmation email in your inbox."
+
+    /** The extraction-side failure [mailExtraction] hands [agentResult] - a Gemini-reachability
+     * problem AFTER the mail itself was already found and read, distinct in wording from both
+     * [PACKAGE_NO_MATCH_MESSAGE]/[FLIGHT_NO_MATCH_MESSAGE] (no matching mail at all) and every
+     * [GmailToolLogic.Cause] message (a Gmail-side problem, before any mail was ever found). */
+    internal const val MAIL_EXTRACTION_FAILED_MESSAGE =
+        "I found the mail but couldn't read it through just now - try again in a sec."
+
+    /** `track_package`. See this section's header comment for why the answer is composed the way
+     * it is; this function only supplies the domain-specific query and extraction prompt. */
+    private suspend fun trackPackage(context: Context): JSONObject = mailExtraction(
+        context = context,
+        query = PACKAGE_MAIL_QUERY,
+        noMatchMessage = PACKAGE_NO_MATCH_MESSAGE,
+        extractionPrompt = "You are reading ONE shipping or order-confirmation email on behalf " +
+            "of a voice assistant. In one or two plain sentences, state the carrier if it is " +
+            "named, the tracking number if one is given, and the most recent delivery status or " +
+            "estimate the email itself states - a ship date, an \"out for delivery\" notice, or " +
+            "an expected delivery window. State ONLY what THIS email says. If it does not mention " +
+            "something (no tracking number, no delivery date), say plainly that the email does " +
+            "not give one - never guess, never invent a figure, never describe this as a live or " +
+            "current status. Plain text, no markdown.",
+    )
+
+    /** `flight_status`. See this section's header comment; the calendar-boundary instruction lives
+     * in the tool's own declared description, not here - a rule the live model never reads cannot
+     * steer it toward `read_calendar` first. */
+    private suspend fun flightStatus(context: Context): JSONObject = mailExtraction(
+        context = context,
+        query = FLIGHT_MAIL_QUERY,
+        noMatchMessage = FLIGHT_NO_MATCH_MESSAGE,
+        extractionPrompt = "You are reading ONE travel-confirmation email on behalf of a voice " +
+            "assistant. In one or two plain sentences, state the airline or hotel, the flight " +
+            "number or confirmation number if one is given, and the date and time the email " +
+            "itself states. State ONLY what THIS email says. If it does not mention something, " +
+            "say plainly that the email does not give one - never guess, never invent a figure, " +
+            "never describe this as a confirmed or current schedule. Plain text, no markdown.",
+    )
+
+    /**
+     * Shared shape behind [trackPackage]/[flightStatus] (ticket 25): find the single most recent
+     * mail matching [query], read its full body, and hand JUST that body to a one-shot,
+     * search-disabled [SubAgent] with [extractionPrompt]. Reuses [agentResult] for the extraction
+     * call's own typed offline/rate-limit/bad-key/overloaded mapping - the exact same phrasing
+     * every other specialist in this file already uses for a Gemini-side failure, so this domain
+     * doesn't invent a fifth wording for the same four outcomes.
+     *
+     * Three DIFFERENT sentences on the way in, on purpose (CLAUDE.md's "a failure result must say
+     * in words what did NOT happen" - `search_mail`/`read_mail` never mention a lack of match
+     * being a *different* thing from a lack of permission, but this domain has to, since a driver
+     * asking "where's my package" cannot tell from silence which one happened): a Gmail
+     * auth/permission problem ([mailFailure] via [GmailToolLogic]'s own four causes), no matching
+     * mail at all ([noMatchMessage], the one case that is not an error - the inbox was read fine
+     * and simply has nothing), and a Gemini-side failure reading the one message found
+     * ([agentResult]'s own generic phrasing).
+     */
+    private suspend fun mailExtraction(
+        context: Context,
+        query: String,
+        noMatchMessage: String,
+        extractionPrompt: String,
+    ): JSONObject {
+        val token = when (val tokenResult = GmailAuth.tokenOrReason(context)) {
+            is GmailAuth.TokenResult.Token -> tokenResult.accessToken
+            is GmailAuth.TokenResult.NeedsConsent ->
+                return mailFailure(GmailToolLogic.causeForNeedsConsent(CompanionProfile.isGmailEnabled(context)))
+            is GmailAuth.TokenResult.Failed ->
+                return mailFailure(GmailToolLogic.causeForFailure(GmailAuth.looksLikeNetworkFailure(tokenResult.error)))
+        }
+        return withContext(Dispatchers.IO) {
+            val client = GmailClient(token)
+            val hit = when (val page = client.search(query, GmailToolLogic.SEARCH_CAP)) {
+                is GmailClient.FetchResult.Ok -> page.value.messages.firstOrNull()
+                    ?: return@withContext result(false, noMatchMessage)
+                is GmailClient.FetchResult.Failed ->
+                    return@withContext mailFailure(GmailToolLogic.causeForFailure(page.networkFailure))
+            }
+            val body = when (val fetched = client.fetchFull(hit.id)) {
+                is GmailClient.FetchResult.Ok -> fetched.value
+                is GmailClient.FetchResult.Failed ->
+                    return@withContext mailFailure(GmailToolLogic.causeForFailure(fetched.networkFailure))
+            }
+            val sourceLine = buildMailSourceLine(
+                subject = body.subject,
+                from = body.from,
+                relativeDate = GmailToolLogic.relativeMailDate(body.timestampMs),
+            )
+            val extracted = agentResult(MAIL_EXTRACTION_FAILED_MESSAGE) {
+                SubAgent(systemInstruction = extractionPrompt, useSearch = false).askTyped(
+                    context = body.body,
+                    question = "Summarize what this email says, per your instructions.",
+                )
+            }
+            if (!extracted.optBoolean("success")) {
+                extracted
+            } else {
+                result(true, "$sourceLine ${extracted.optString("message")} $ESTIMATE_SUFFIX")
+            }
+        }
+    }
+
+    /**
+     * Ticket 18's rule 2, made structural rather than trusted to the model: the mandatory "Your X
+     * email from Y (Z) says:" clause, built entirely from fields [GmailClient] already parses off
+     * the message itself. `internal` (not private) so a plain-JVM test can pin its exact wording
+     * without a network call or a Robolectric context.
+     */
+    internal fun buildMailSourceLine(subject: String, from: String, relativeDate: String): String {
+        val subjectPart = subject.trim().ifBlank { "an" }
+        val senderPart = from.trim().ifBlank { "an unknown sender" }
+        return "Your \"$subjectPart\" email from $senderPart ($relativeDate) says:"
+    }
+
+    /**
+     * Ticket 18's rule 3, verbatim and unconditional (CLAUDE.md §4 rule 5): every mail-extracted
+     * answer here is an estimate of what the mail SAYS, never a fact, because nothing in this
+     * domain reconciles against a printed total the way ledger/pantry do - there is no gate to
+     * fall back on, only this sentence. A fixed literal, not model output, for the same reason
+     * [buildMailSourceLine] is: it must survive even when the model's own phrasing drifts.
+     */
+    internal const val ESTIMATE_SUFFIX =
+        "That's an estimate from reading the email text, not a live status - the calendar or the " +
+            "carrier or airline itself may say something different by now."
 
     /**
      * `read_calendar` (ticket 19). Never queries `CalendarContract` itself - reuses
@@ -3997,6 +4243,33 @@ object LiveToolbox {
     private suspend fun declineCallTool(context: Context): JSONObject {
         val outcome = CallActions.reject(context)
         return result(outcome is CallActions.Outcome.Rejected, CallActions.describe(outcome))
+    }
+
+    /**
+     * `place_call`. Thin Context/JSONObject wrapper around [PlaceCallAction.dispatchVoiceCall],
+     * which owns the whole confirm-gate + resolution + emergency-refusal logic and is
+     * unit-tested directly with injected fakes (see `PlaceCallActionTest`) - no Context needed
+     * there, matching the split [GarageController.dispatchVoiceActivate] already established.
+     *
+     * `success` is true only for [PlaceCallAction.VoiceCallResult.success] - the confirm-prompt
+     * turn itself, every failure sentence, and the emergency refusal all come back false, same
+     * convention `activate_garage`/`clear_codes` already use for a destructive real-world tool.
+     */
+    private suspend fun placeCallTool(context: Context, args: JSONObject): JSONObject {
+        val contact = args.optString("contact").takeIf { args.has("contact") }
+        val number = args.optString("number").takeIf { args.has("number") }
+        val confirmed = args.optBoolean("confirmed", false)
+        val r = PlaceCallAction.dispatchVoiceCall(
+            contactQuery = contact,
+            numberQuery = number,
+            confirmed = confirmed,
+            hasCallPermission = PlaceCallAction.hasCallPermission(context),
+            hasContactsPermission = CallerId.hasContactsPermission(context),
+            lookupContacts = { query -> PlaceCallAction.lookupContacts(context, query) },
+            isEmergencyNumber = { num -> PlaceCallAction.isEmergencyNumberOnDevice(context, num) },
+            dial = { num -> PlaceCallAction.dial(context, num) },
+        )
+        return result(r.success, r.message)
     }
 
     /** `ask_advisor`. Resolves `aspect` to its [AdvisorBriefs] entry and runs one [AdvisorAgent]
