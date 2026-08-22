@@ -16,13 +16,10 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | [[20-ship-pass\|20]] | task | Ship pass: advisors answering on the phone |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[08-layout\|08]] | prototype | Layout for a phone that is 384 x 832, not a head unit |
-| [[.scratch/goal-keeping/map\|goal-keeping]] | [[02-what-makes-a-goal-trackable\|02]] | grilling | What makes a goal trackable, and how set_goal captures it |
-| [[.scratch/goal-keeping/map\|goal-keeping]] | [[03-the-check-in-record\|03]] | grilling | The check-in record: how a spoken answer becomes a falsifiable fact |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | [[16-ship-pass\|16]] | task | BUILD: ship pass - the destination gate |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[07-wrench-mode-shape\|07]] | grilling | Wrench mode: live stream or snap-and-ask, and how the car's history gets in the room |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[18-inbox-intelligence\|18]] | grilling | Inbox intelligence: packages and travel, from mail LEGION can already read |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-it-said-142k\|20]] | task | It said the Jeep was at 142k when the record says 227k |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[24-the-socket-that-never-rests\|24]] | build | The socket restarts every 2.5 minutes, all day |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[25-build-inbox-intelligence\|25]] | build | BUILD: where is my package, when is my flight |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
@@ -55,10 +52,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | Map | Ticket | Type | What | Waiting on |
 |---|---|---|---|---|
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
-| [[.scratch/goal-keeping/map\|goal-keeping]] | [[04-when-a-moment-is-worth-it\|04]] | grilling | What makes a moment worth interrupting  waiting on [[03-the-check-in-record\|03]] |
-| [[.scratch/goal-keeping/map\|goal-keeping]] | [[05-revision-and-retirement\|05]] | grilling | What prompts a revision, and what an abandoned goal costs  waiting on [[03-the-check-in-record\|03]] |
-| [[.scratch/goal-keeping/map\|goal-keeping]] | [[06-advisor-with-an-opinion-about-time\|06]] | grilling | Where the advisor learns to hold an opinion about time  waiting on [[04-when-a-moment-is-worth-it\|04]] |
-| [[.scratch/goal-keeping/map\|goal-keeping]] | [[07-which-surface-says-it\|07]] | grilling | Which surface says it, and how it coordinates with the five categories  waiting on [[04-when-a-moment-is-worth-it\|04]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[03-plan-revision-by-conversation\|03]] | build | Arguing with the plan  waiting on [[02-recommender-and-playbook\|02]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[04-checklist-and-surfaces\|04]] | build | The daily checklist, on Body and Home  waiting on [[02-recommender-and-playbook\|02]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[05-wellbeing-digest\|05]] | build | The Wellbeing switch finally gets content  waiting on [[04-checklist-and-surfaces\|04]] |
@@ -111,10 +104,10 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/drive-ui/map\|drive-ui]] | 9 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
-| [[.scratch/goal-keeping/map\|goal-keeping]] | 8 | 6 | [[.scratch/goal-keeping/goal-keeping.canvas\|open]] |
+| [[.scratch/goal-keeping/map\|goal-keeping]] | 8 | 0 | [[.scratch/goal-keeping/goal-keeping.canvas\|open]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | 6 | 5 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 1 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 25 | 7 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 26 | 6 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |

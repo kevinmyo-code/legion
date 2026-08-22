@@ -3,11 +3,11 @@ map: goal-keeping
 ticket: 05
 title: "What prompts a revision, and what an abandoned goal costs"
 type: grilling
-status: open
-status-detail: ""
+status: closed
+status-detail: "Archived 2026-08-22 (Kevin): superseded by the goal-plans checklist. Not dead, not queued."
 blockers: ["01", "03"]
 blocked-by: ["[[01-what-on-track-means]]", "[[03-the-check-in-record]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---

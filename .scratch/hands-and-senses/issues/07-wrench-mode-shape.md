@@ -3,12 +3,12 @@ map: hands-and-senses
 ticket: 07
 title: "Wrench mode: live stream or snap-and-ask, and how the car's history gets in the room"
 type: grilling
-status: open
-status-detail: ""
+status: closed
+status-detail: "Archived 2026-08-22 (Kevin): wrench mode parked. The research in ticket 06 stands for whenever it is revived."
 blockers: ["06"]
 blocked-by: ["[[06-wrench-vision-research]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Wrench mode: live stream or snap-and-ask, and how the car's history gets in the room

@@ -118,7 +118,7 @@
       "y": 1650,
       "width": 320,
       "height": 110,
-      "color": "5"
+      "color": "4"
     },
     {
       "id": "69e8ead8212942d6",
@@ -198,7 +198,7 @@
       "y": 150,
       "width": 320,
       "height": 110,
-      "color": "5"
+      "color": "4"
     },
     {
       "id": "3ecfd207fba9887d",
@@ -246,6 +246,16 @@
       "file": ".scratch/hands-and-senses/issues/22-build-the-sitrep.md",
       "x": 520,
       "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f210824264c5bbf7",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/25-build-inbox-intelligence.md",
+      "x": 520,
+      "y": 1050,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -299,6 +309,13 @@
       "fromNode": "f0c0f061b206e930",
       "fromSide": "right",
       "toNode": "ad4940ad7bc2bb27",
+      "toSide": "left"
+    },
+    {
+      "id": "448f53818f999541",
+      "fromNode": "73348ad476a50d7c",
+      "fromSide": "right",
+      "toNode": "f210824264c5bbf7",
       "toSide": "left"
     }
   ]

@@ -3,11 +3,11 @@ map: goal-keeping
 ticket: 06
 title: Where the advisor learns to hold an opinion about time
 type: grilling
-status: open
-status-detail: ""
+status: closed
+status-detail: "Archived 2026-08-22 (Kevin): superseded by the goal-plans checklist. Not dead, not queued."
 blockers: ["04"]
 blocked-by: ["[[04-when-a-moment-is-worth-it]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---

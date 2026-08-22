@@ -3,12 +3,12 @@ map: goal-keeping
 ticket: 02
 title: "What makes a goal trackable, and how set_goal captures it"
 type: grilling
-status: open
-status-detail: ""
+status: closed
+status-detail: "Archived 2026-08-22 (Kevin): superseded by the goal-plans checklist. Not dead, not queued."
 blockers: ["01"]
 blocked-by: ["[[01-what-on-track-means]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # What makes a goal trackable, and how set_goal captures it

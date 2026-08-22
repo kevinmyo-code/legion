@@ -3,12 +3,12 @@ map: goal-keeping
 ticket: 03
 title: "The check-in record: how a spoken answer becomes a falsifiable fact"
 type: grilling
-status: open
-status-detail: ""
+status: closed
+status-detail: "Archived 2026-08-22 (Kevin): superseded by the goal-plans checklist. Not dead, not queued."
 blockers: ["01"]
 blocked-by: ["[[01-what-on-track-means]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The check-in record: how a spoken answer becomes a falsifiable fact
