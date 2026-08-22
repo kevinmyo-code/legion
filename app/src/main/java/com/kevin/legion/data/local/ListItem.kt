@@ -7,8 +7,12 @@ import androidx.room.PrimaryKey
 
 /**
  * One line in an [ItemList]: a checklist entry, a note line (its list's `tickable == false`), or
- * - when [startsAt] is set - a calendar event (ticket 01, charting decision 6: "a calendar event
- * is the same entity as a list item, with optional startsAt/endsAt").
+ * - when [startsAt] is set - a **reminder** (fire a local alert at T). Charting decision 6
+ * ("a calendar event is the same entity as a list item") held only until
+ * `.scratch/google-account-integration/issues/04-what-happens-to-local-timed-items.md` reversed
+ * it: **Google owns appointments now.** [startsAt] means "remind me at T", never "this is a
+ * calendar event" - an actual appointment lives in `CalendarContract` and nowhere in this table,
+ * there is no mirror row, and nothing here is ever synced against Google Calendar.
  *
  * **At most one trigger per item** ([startsAt] or [triggerPlaceLabel], never both - charting
  * decision 4). Enforced in `notes/NotesController.kt`, not a CHECK constraint, matching this
@@ -53,7 +57,7 @@ data class ListItem(
     @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 
-    // ---- optional time trigger: an item with startsAt is a calendar event ----
+    // ---- optional time trigger: an item with startsAt is a reminder, not a calendar event ----
     // Indexed - ticket 08's calendar query must never scan the untimed camping-gear rows
     // sharing this table.
     val startsAt: Long? = null,

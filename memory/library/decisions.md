@@ -4346,3 +4346,46 @@ the greeting, the thing being reported - were captured nowhere. The full line li
 **Known gap, unresolved:** that text only exists when the API returns `outputTranscription`, and a
 turn was observed speaking audio with none. The trail can still miss a line, and it missed the
 greeting Kevin approved.
+
+---
+
+## 2026-08-22 - Ship-pass bookkeeping for google-account-integration ticket 16 (partial, gated)
+
+**Ticket:** `.scratch/google-account-integration/issues/16-ship-pass.md`. Dispatched to correct the
+comments ticket 04 falsified and to account for every named verification step from tickets 12-15 as
+done / deferred-with-a-follow-up / impossible-and-why, per CLAUDE.md §8 (L11). **Item 2 of the
+ticket - proposing a new CLAUDE.md §7 guardrail ("third-party content is read-through only") -
+explicitly needs Kevin's own wording before it can be written, and no agent message is his consent.
+It was NOT put to him in this session, so it stays open and the checklist line (item 3, contingent
+on it) is untouched.** Everything else the ticket asked for is done.
+
+**Item 1 - falsified comments corrected.** `data/local/ListItem.kt`'s class doc and its
+`startsAt` field comment, and `data/local/ItemList.kt`'s class doc, all still claimed "a calendar
+event is the same entity as a list item" (charting decision 6, reversed by ticket 04 on 2026-08-13).
+Reworded to state the current rule: `startsAt` means "remind me at T", an appointment lives only in
+`CalendarContract`, and nothing in this table is ever mirrored against Google Calendar.
+`notes/NotesController.kt` and `ui/notes/` were re-checked and are clean, as ticket 16's own
+verification note already found - `InboxScreen.kt`'s "Edit calendar event" dialog title and
+`ScheduleIntentResolver.kt`'s doc comment both describe a real Google Calendar appointment
+post-ticket-04, not the falsified claim, so neither needed a change.
+
+**Item 4 - `memory/MEMORY.md`.** Already current: it records tickets 09 and 11 as resolved (not
+"still needing Kevin") and already carries the remember-leak finding. No edit needed.
+
+**Item 5 - verification accounting for tickets 12-15, restated from the ticket verbatim:**
+
+| Step | Status |
+|---|---|
+| Ticket 14's spike (provider-inserted event reaches Google) | **done, on-device** - run 2026-08-13 on the OnePlus CPH2471: `adb shell content insert` into a `com.google` calendar went `dirty=1, _sync_id=NULL` then `dirty=0` with a real Google server-side sync id inside 10 seconds |
+| Ticket 14: Alfred says which store he used, from a real voice call | **deferred, on-device** - not yet run |
+| Ticket 14: ambiguous phrasing becomes a reminder, from a real model call | **deferred, on-device** - not yet run |
+| Ticket 14: no double notification for a Google event | **traced only** - `AlarmScheduler` untouched, `addAppointment` never calls `NotesController.addItemDue`; not observed on-device |
+| Ticket 13's render (Google event + overdue local reminder in the same window) | **partially done, on-device** - the agenda and Notes stream were verified live with real Google events (four, tagged `CAL`) and the never-an-empty-day notice was confirmed both before and after granting `READ_CALENDAR`; the exact combination named in the ticket - a Google event AND an overdue local reminder together in one window - was not the specific case observed (Today read zero instances that day). Left open as a named gap, not claimed. |
+| Ticket 15's test (nothing mail-shaped reaches the episodic log) | **done, tested** - `GeminiLiveSessionEpisodicExclusionTest.kt` exists and pins the drop-the-whole-turn behaviour; `GmailToolLogicTest.kt` covers the four distinct failure messages |
+| Ticket 12's device check (revoke Drive access, confirm the app says so) | **deferred, on-device** - the ticket's own record already carries this as unrun; nothing changed this session |
+| Install by hash | **N/A this session** - no APK was built or installed; the rule was already exercised during ticket 13's original device pass (sha256 confirmed byte-identical) |
+
+**What remains open on this map:** item 2 (Kevin's wording for the read-through guardrail), the
+`WRITE_CALENDAR` and Drive-revoke on-device checks above, and Q5 of the remember-leak ticket (audit
+whatever may already be sitting in `CompanionMemory` from before the fix landed) - none of it code,
+all of it either Kevin's own call or an on-device run this session cannot perform.

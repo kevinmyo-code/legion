@@ -4,7 +4,7 @@ ticket: 16
 title: "BUILD: ship pass - the destination gate"
 type: task
 status: open
-status-detail: ""
+status-detail: "2026-08-22, items 1/4/5 done, item 2 still needs Kevin's wording, item 3 blocked on it"
 blockers: ["13", "14", "15"]
 blocked-by: ["[[13-calendar-read]]", "[[14-calendar-write]]", "[[15-gmail-tools]]"]
 open-blockers: 0
@@ -67,3 +67,27 @@ built and closed the same day.
 
 **Item 2 is the gate.** It needs a decision from Kevin, not code, and the rest is bookkeeping that
 should not be done piecemeal around it.
+
+## Verification 2026-08-22 - items 1, 4, 5 done. Item 2 still needs Kevin; item 3 still blocked on it
+
+Dispatched to build this ticket. **Item 2 was NOT actioned** - a build brief is not Kevin's own
+consent to write wording into CLAUDE.md, and his wording for the read-through guardrail has still
+not been asked for or given. Everything gated behind it (item 3, the checklist line) stays open.
+
+1. **Done.** `data/local/ListItem.kt` (class doc + `startsAt` field comment) and
+   `data/local/ItemList.kt` (class doc) corrected to state ticket 04's actual rule - `startsAt` is
+   a reminder, never a mirrored calendar event. `notes/NotesController.kt` and `ui/notes/` re-checked
+   clean, as this ticket's own 2026-08-16 pass already found.
+4. **Already current**, no edit needed - `MEMORY.md` already records tickets 09/11 resolved and
+   already carries the remember-leak finding.
+5. **Done.** Full accounting written to `memory/library/decisions.md` (2026-08-22 entry), table
+   form, every named step tagged done-on-device / deferred-on-device / traced-only / N/A. Two
+   genuine gaps surfaced rather than papered over: ticket 13's render never happened to catch the
+   EXACT combination named (Google event + overdue local reminder in the same window - the device
+   agenda was empty that day) and ticket 14's "no double notification" claim is `traced`, not
+   `on-device`.
+
+**Still open, unchanged by this pass:** item 2 (Kevin's wording), item 3 (contingent on 2), the
+`WRITE_CALENDAR` voice-confirmation checks, the Drive-revoke device check, and remember-leak's Q5
+(audit whatever may already be sitting in `CompanionMemory`). None of these are code this session
+can do.

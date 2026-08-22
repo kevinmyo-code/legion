@@ -6,7 +6,10 @@ import androidx.room.PrimaryKey
 
 /**
  * A named list - a checklist, a note, or (via items carrying [ListItem.startsAt]) a run of
- * calendar events. `tickable = false` makes every item in it a note line rather than something
+ * reminders (fire a local alert at T, never a Google Calendar event -
+ * `.scratch/google-account-integration/issues/04-what-happens-to-local-timed-items.md` reversed
+ * that claim: Google owns appointments, this table never mirrors them).
+ * `tickable = false` makes every item in it a note line rather than something
  * to check off (`.scratch/notes-lists-calendar/issues/01-entity-model-and-cartask-migration.md`,
  * "one model: a list owns items; a note is a list whose items do not tick").
  *
