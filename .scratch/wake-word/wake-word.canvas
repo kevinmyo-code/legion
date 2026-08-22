@@ -81,6 +81,16 @@
       "color": "1"
     },
     {
+      "id": "fb52256abf2c1c99",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/15-see-a-deaf-mic.md",
+      "x": 0,
+      "y": 1200,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "a8179692d607a640",
       "type": "file",
       "file": ".scratch/wake-word/issues/03-measure-the-battery-cost.md",
