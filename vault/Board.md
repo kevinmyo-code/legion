@@ -16,7 +16,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | [[20-ship-pass\|20]] | task | Ship pass: advisors answering on the phone |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[08-layout\|08]] | prototype | Layout for a phone that is 384 x 832, not a head unit |
-| [[.scratch/google-account-integration/map\|google-account-integration]] | [[16-ship-pass\|16]] | task | BUILD: ship pass - the destination gate |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-it-said-142k\|20]] | task | It said the Jeep was at 142k when the record says 227k |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[24-the-socket-that-never-rests\|24]] | build | The socket restarts every 2.5 minutes, all day |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[25-build-inbox-intelligence\|25]] | build | BUILD: where is my package, when is my flight |
@@ -106,7 +105,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | 8 | 0 | [[.scratch/goal-keeping/goal-keeping.canvas\|open]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | 6 | 5 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
-| [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 1 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
+| [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 26 | 6 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |

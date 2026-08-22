@@ -3,12 +3,12 @@ map: google-account-integration
 ticket: 16
 title: "BUILD: ship pass - the destination gate"
 type: task
-status: open
-status-detail: "2026-08-22, items 1/4/5 done, item 2 still needs Kevin's wording, item 3 blocked on it"
+status: resolved
+status-detail: "Resolved 2026-08-22. Item 2 accepted verbatim by Kevin and applied to CLAUDE.md sec 7 with its checklist line."
 blockers: ["13", "14", "15"]
 blocked-by: ["[[13-calendar-read]]", "[[14-calendar-write]]", "[[15-gmail-tools]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # BUILD: ship pass - the destination gate
@@ -91,3 +91,19 @@ not been asked for or given. Everything gated behind it (item 3, the checklist l
 `WRITE_CALENDAR` voice-confirmation checks, the Drive-revoke device check, and remember-leak's Q5
 (audit whatever may already be sitting in `CompanionMemory`). None of these are code this session
 can do.
+
+---
+
+## Item 2 applied 2026-08-22
+
+Kevin accepted the ticket 07 wording **verbatim**, asked for it as written, and chose the broad
+scope ("anything of that shape later") over narrowing it to mail. It is now `CLAUDE.md` §7, with the
+matching feature-add checklist line, so item 3 closes with it.
+
+The sentence that does the work is the last one: **the guarantee is that it was never stored, not
+that something remembered to exclude it.** That is why the exclusion lives in
+`LiveToolbox.EPISODIC_EXCLUDED_TOOLS` and is applied at the write sites, rather than being a habit
+every new feature has to remember on its own.
+
+Timely rather than theoretical: [[25-build-inbox-intelligence]] was written the same day and rests
+entirely on this rule, since package and flight answers come out of other people's mail.

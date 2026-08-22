@@ -297,6 +297,14 @@ the wrong JDK and Gradle picks it up if `JAVA_HOME` is unset. `adb` lives at
   verb whose outcome it could not verify. `docs/adr/0031-speech-honesty-clause.md`. **Nothing
   inspects the spoken audio, so this is a prompt rule and the only lever there is;
   `AriaBrainHonestyClauseTest` guards its presence, never its obedience.**
+- **Third-party content is read-through only (2026-08-22, Kevin).** Anything other people wrote
+  *to* Kevin rather than anything Kevin created or chose to import - mail first, and anything of
+  that shape later - may be read to answer a question and must then be dropped. Never persisted to
+  Room, never synced, never remembered, never used to form a durable memory. **The guarantee is
+  that it was never stored, not that something remembered to exclude it**, which is why the
+  exclusion lives in `LiveToolbox.EPISODIC_EXCLUDED_TOOLS` and is applied at the write sites rather
+  than being a habit each new feature has to remember. Proposed in
+  `.scratch/google-account-integration/issues/07-*.md` point 6 and accepted verbatim.
 - **No comparative or anonymized fleet data**, ever.
 - **Network calls degrade gracefully offline.**
 - **Assets are bundled** in `assets/` or `res/`, never fetched at runtime.
@@ -359,6 +367,8 @@ the wrong JDK and Gradle picks it up if `JAVA_HOME` is unset. `adb` lives at
 - [ ] Does it survive clone-and-run by a stranger with their own signing cert?
 - [ ] New tool? Its failure result says in words what did NOT happen, and nothing claims success
       unless the underlying action ran. §7's outcome-verb rule needs a real result to stand on.
+- [ ] Reads anything other people wrote to Kevin? Read-through only: used to answer, then
+      dropped. Nothing to Room, nothing synced, nothing remembered, not even a summary.
 - [ ] Safety: no sentience claims, no compulsion mechanic, no unfalsifiable memory about the user.
 - [ ] Built from a resolved ticket? Every verification step in that resolution accounted for as
       done / deferred-with-a-follow-up / impossible-and-why. See §8 (L11).
