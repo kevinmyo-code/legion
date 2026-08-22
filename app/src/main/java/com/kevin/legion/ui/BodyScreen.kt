@@ -39,6 +39,13 @@ import com.kevin.legion.plan.PlanGap
 import com.kevin.legion.plan.TrustTier
 import com.kevin.legion.sleep.SleepController
 import com.kevin.legion.sleep.SleepGap
+import com.kevin.legion.ui.body.DeleteLogDialog
+import com.kevin.legion.ui.body.LogBodyweightDialog
+import com.kevin.legion.ui.body.LogMealDialog
+import com.kevin.legion.ui.body.LogSleepDialog
+import com.kevin.legion.ui.body.LogWorkoutSetDialog
+import com.kevin.legion.ui.body.SetMealTargetDialog
+import com.kevin.legion.ui.body.SetSleepTargetDialog
 import com.kevin.legion.ui.common.DeckBar
 import com.kevin.legion.ui.common.DeckBarChart
 import com.kevin.legion.ui.common.DeckLineChart
@@ -94,10 +101,15 @@ import com.kevin.legion.workouts.WorkoutController
  * construction, never a zero-height mark. Empty panels/drilldowns are worded (`NOT LOGGED`,
  * `NO READINGS YET`), never a blank space.
  *
- * Read-only, same posture as [FleetScreen] and [PantryScreen] - voice is how workouts/meals/
- * bodyweight/sleep get WRITTEN (`log_workout_set`/`log_meal`/`log_sleep`/`create_workout_plan`/
- * `set_meal_target`/`set_sleep_target` in [com.kevin.legion.service.LiveToolbox]); this screen only
- * shows what already landed.
+ * **No longer read-only (ticket 03, `.scratch/command-center/issues/03-body-writes-by-hand.md`,
+ * ADR 0035).** Voice was the ONLY way to write any of these four streams until this ticket - a
+ * misheard log, a dead socket, or no key at all meant the capability simply did not exist for that
+ * moment. Every write affordance below (`+ LOG WEIGHT`/`+ LOG`/`+ LOG SET`/`EDIT TARGET`/`DEL`)
+ * calls the exact controller function `LiveToolbox`'s matching voice tool dispatches to - see
+ * `ui/body/BodyWriteDialogs.kt`'s own doc comment for the full trace. What is still true from the
+ * old posture: nothing here re-derives a score, a streak, or a percentage, and every macro figure
+ * a controller only estimates is spoken by the controller's own return string as an estimate, not
+ * re-labelled here.
  *
  * Split per the repo's vendored `compose-state-holder-ui-split` skill: [BodyScreen] is the ONLY
  * state holder in this file (owns every Context/Room read, including the drilldowns' own
@@ -113,6 +125,13 @@ data class BodyUiState(
     val mealGap: DailyMealGap = DailyMealGap.NotLogged,
     val hasMealTarget: Boolean = false,
     val mealTargetKcal: Int? = null,
+    // Ticket 03: SetMealTargetDialog needs the whole current target to pre-fill an edit, not just
+    // the calorie figure BodyPanelList's tile already read - kept as three plain fields (mirroring
+    // the entity) rather than threading MealTarget itself, so a preview/test can build BodyUiState
+    // without importing the Room entity.
+    val mealTargetProteinG: Double? = null,
+    val mealTargetCarbsG: Double? = null,
+    val mealTargetFatG: Double? = null,
     val recentMeals: List<MealLog> = emptyList(),
     val latestBodyweight: BodyweightLog? = null,
     /** For [bodyweightTrendText] - null when [latestBodyweight] is the only reading on file. */
@@ -151,7 +170,14 @@ fun BodyScreen() {
     val context = LocalContext.current
     var state by remember { mutableStateOf(BodyUiState()) }
 
-    LaunchedEffect(Unit) {
+    // Ticket 03: every write dialog below bumps this after a successful write/delete, and this
+    // effect (plus the drilldown-load effect further down, which also keys on it) re-reads Room -
+    // the same "one state holder, no local cache to go stale" shape LedgerScreen already uses.
+    // `Unit` was the original key; a plain Int works identically for the first composition (0) and
+    // additionally reruns on every bump.
+    var reloadKey by remember { mutableStateOf(0) }
+
+    LaunchedEffect(reloadKey) {
         val now = System.currentTimeMillis()
         val mealTarget = CarDatabase.getDatabase(context).mealTargetDao().currentTarget(dayStartEpoch(now))
         val sleepTarget = CarDatabase.getDatabase(context).sleepTargetDao().currentTarget(dayStartEpoch(now))
@@ -180,6 +206,9 @@ fun BodyScreen() {
             mealGap = MealController.dayGap(context, now),
             hasMealTarget = mealTarget != null,
             mealTargetKcal = mealTarget?.caloriesKcal,
+            mealTargetProteinG = mealTarget?.proteinG,
+            mealTargetCarbsG = mealTarget?.carbsG,
+            mealTargetFatG = mealTarget?.fatG,
             recentMeals = MealController.recentMeals(context),
             latestBodyweight = recentWeights.getOrNull(0),
             previousBodyweight = recentWeights.getOrNull(1),
@@ -225,7 +254,7 @@ fun BodyScreen() {
     // across effects) - the exact race commit 4fd241e fixed in LedgerScreen was two effects
     // racing to copy-write the SAME `state` var; keeping each drilldown's load in its own
     // `var`s here means there is nothing for a second effect to race against.
-    LaunchedEffect(drilldown, range) {
+    LaunchedEffect(drilldown, range, reloadKey) {
         val now = System.currentTimeMillis()
         val from = deckRangeStartMs(range, now)
         when (val current = drilldown) {
@@ -290,7 +319,7 @@ fun BodyScreen() {
     }
 
     when (val current = drilldown) {
-        null -> BodyContent(state, onOpenPane = { drilldown = it })
+        null -> BodyContent(state, onOpenPane = { drilldown = it }, onDataChanged = { reloadKey++ })
         BodyDrilldown.Mass -> BodyMassDrilldown(
             latest = state.latestBodyweight,
             series = massSeries,
@@ -299,6 +328,8 @@ fun BodyScreen() {
             loading = drilldownLoading,
             onRangeChange = { range = it },
             onBack = { drilldown = null },
+            onDelete = { log -> WorkoutController.deleteBodyweightLog(context, log) },
+            onDeleted = { reloadKey++ },
         )
         BodyDrilldown.Intake -> BodyIntakeDrilldown(
             bars = intakeBars,
@@ -307,6 +338,8 @@ fun BodyScreen() {
             loading = drilldownLoading,
             onRangeChange = { range = it },
             onBack = { drilldown = null },
+            onDelete = { log -> MealController.deleteMealLog(context, log) },
+            onDeleted = { reloadKey++ },
         )
         BodyDrilldown.Sleep -> BodySleepDrilldown(
             bars = sleepBars,
@@ -315,6 +348,8 @@ fun BodyScreen() {
             loading = drilldownLoading,
             onRangeChange = { range = it },
             onBack = { drilldown = null },
+            onDelete = { log -> SleepController.deleteSleepLog(context, log) },
+            onDeleted = { reloadKey++ },
         )
         BodyDrilldown.TrainingExercises -> BodyTrainingExerciseListDrilldown(
             exercises = trainingExercises,
@@ -330,6 +365,8 @@ fun BodyScreen() {
             loading = drilldownLoading,
             onRangeChange = { range = it },
             onBack = { drilldown = BodyDrilldown.TrainingExercises },
+            onDelete = { log -> WorkoutController.deleteSetLog(context, log) },
+            onDeleted = { reloadKey++ },
         )
     }
 }
@@ -345,7 +382,7 @@ fun BodyScreen() {
  * to be `public` in the first place.
  */
 @Composable
-internal fun BodyContent(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Unit = {}) {
+internal fun BodyContent(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Unit = {}, onDataChanged: () -> Unit = {}) {
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -368,15 +405,30 @@ internal fun BodyContent(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Unit
             if (state.loading) {
                 Text("Loading...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
             } else {
-                BodyPanelList(state, onOpenPane)
+                BodyPanelList(state, onOpenPane, onDataChanged)
             }
         }
     }
 }
 
+/**
+ * Ticket 03: the four `+ LOG ...`/`EDIT TARGET` affordances below are the ONLY place this file
+ * calls a controller write directly (each dialog does, from `ui/body/BodyWriteDialogs.kt`) -
+ * everything else in [BodyPanelList] stays the plain read this file's doc comment describes.
+ * [GoalsPanel]/[GoalChecklistPanel] already break that same "read-only" posture on purpose (see
+ * this file's own doc comment on why GOALS is "the one panel on this screen that is read-AND-edit"),
+ * so this is the second deliberate exception, not the first - both exist because ADR 0035 makes a
+ * voice-only write a defect, not a feature.
+ */
 @Composable
-private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Unit) {
+private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Unit, onDataChanged: () -> Unit) {
     val sem = LocalLegionSemantics.current
+    var showLogWeight by remember { mutableStateOf(false) }
+    var showLogMeal by remember { mutableStateOf(false) }
+    var showEditMealTarget by remember { mutableStateOf(false) }
+    var showLogSleep by remember { mutableStateOf(false) }
+    var showEditSleepTarget by remember { mutableStateOf(false) }
+    var showLogSet by remember { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize()) {
         // ---------------------------------------------------------------- MASS
         item(key = "pane-mass") {
@@ -402,6 +454,12 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
                         Text("NO READINGS YET", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
                     }
                 }
+                Text(
+                    "+ LOG WEIGHT",
+                    style = LegionType.stamp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp).clickable { showLogWeight = true },
+                )
             }
         }
         item(key = "pane-spacer-1") { Spacer(Modifier.height(10.dp)) }
@@ -426,6 +484,18 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
                     if (state.intakeSparkline.any { it != null }) {
                         DeckSparkline(state.intakeSparkline, modifier = Modifier.padding(horizontal = 12.dp))
                     }
+                    Text(
+                        "+ LOG",
+                        style = LegionType.stamp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).clickable { showLogMeal = true },
+                    )
+                    Text(
+                        "EDIT TARGET",
+                        style = LegionType.stamp,
+                        color = sem.faint,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).clickable { showEditMealTarget = true },
+                    )
                 }
                 HalfTile(
                     header = "Sleep",
@@ -436,6 +506,18 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
                     if (state.sleepSparkline.any { it != null }) {
                         DeckSparkline(state.sleepSparkline, modifier = Modifier.padding(horizontal = 12.dp))
                     }
+                    Text(
+                        "+ LOG",
+                        style = LegionType.stamp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).clickable { showLogSleep = true },
+                    )
+                    Text(
+                        "EDIT TARGET",
+                        style = LegionType.stamp,
+                        color = sem.faint,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).clickable { showEditSleepTarget = true },
+                    )
                 }
             }
         }
@@ -457,6 +539,12 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
                         DeckRow(label = log.exercise, value = workoutSetValueText(log))
                     }
                 }
+                Text(
+                    "+ LOG SET",
+                    style = LegionType.stamp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp).clickable { showLogSet = true },
+                )
             }
         }
         item(key = "pane-spacer-4") { Spacer(Modifier.height(14.dp)) }
@@ -482,6 +570,31 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
         }
         item(key = "pane-spacer-5") { Spacer(Modifier.height(14.dp)) }
     }
+
+    // Rendered as siblings of the LazyColumn, not list items - an AlertDialog paints into its own
+    // window regardless of where in the composition it is called from, so nesting these inside a
+    // scrolling `item {}` would only have made them scroll offscreen with the list for no benefit.
+    if (showLogWeight) LogBodyweightDialog(onDismiss = { showLogWeight = false }, onDone = { showLogWeight = false; onDataChanged() })
+    if (showLogMeal) LogMealDialog(onDismiss = { showLogMeal = false }, onDone = { showLogMeal = false; onDataChanged() })
+    if (showEditMealTarget) {
+        SetMealTargetDialog(
+            currentCalories = state.mealTargetKcal,
+            currentProteinG = state.mealTargetProteinG,
+            currentCarbsG = state.mealTargetCarbsG,
+            currentFatG = state.mealTargetFatG,
+            onDismiss = { showEditMealTarget = false },
+            onDone = { showEditMealTarget = false; onDataChanged() },
+        )
+    }
+    if (showLogSleep) LogSleepDialog(onDismiss = { showLogSleep = false }, onDone = { showLogSleep = false; onDataChanged() })
+    if (showEditSleepTarget) {
+        SetSleepTargetDialog(
+            currentHours = state.sleepTargetMinutes?.let { it / 60.0 },
+            onDismiss = { showEditSleepTarget = false },
+            onDone = { showEditSleepTarget = false; onDataChanged() },
+        )
+    }
+    if (showLogSet) LogWorkoutSetDialog(onDismiss = { showLogSet = false }, onDone = { showLogSet = false; onDataChanged() })
 }
 
 // ------------------------------------------------------------------- drilldowns
@@ -499,7 +612,12 @@ private fun DrilldownHeader(title: String, onBack: () -> Unit) {
     }
 }
 
-/** MASS drilldown: full-height [DeckLineChart] + [DeckRangeSelector] + the bodyweight history list (moved here from the module screen per ticket 07 answer #2). */
+/**
+ * MASS drilldown: full-height [DeckLineChart] + [DeckRangeSelector] + the bodyweight history list
+ * (moved here from the module screen per ticket 07 answer #2). Ticket 03 build item 3: [onDelete]
+ * is `WorkoutController.deleteBodyweightLog`, the SAME row-scoped delete `undo_last_log` reaches
+ * for a bodyweight log (see `service/LiveToolbox.kt`'s `undoLastLog`) - only the selection differs.
+ */
 @Composable
 private fun BodyMassDrilldown(
     latest: BodyweightLog?,
@@ -509,9 +627,12 @@ private fun BodyMassDrilldown(
     loading: Boolean,
     onRangeChange: (DeckRange) -> Unit,
     onBack: () -> Unit,
+    onDelete: suspend (BodyweightLog) -> String,
+    onDeleted: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     val unit = latest?.weightUnit ?: "lbs"
+    var pendingDelete by remember { mutableStateOf<BodyweightLog?>(null) }
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             DrilldownHeader(title = "MASS", onBack = onBack)
@@ -526,16 +647,31 @@ private fun BodyMassDrilldown(
                 history.isEmpty() -> GapEmptyRow(label = "History", message = "Nothing logged yet - say \"log my weight\" and a number.")
                 else -> LazyColumn(Modifier.fillMaxSize()) {
                     items(history, key = { "weight-${it.id}" }) { log ->
-                        ReadingRow(label = "Bodyweight", value = formatWeight(log.weightValue, log.weightUnit), sub = shortDate(log.loggedAt))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            ReadingRow(label = "Bodyweight", value = formatWeight(log.weightValue, log.weightUnit), sub = shortDate(log.loggedAt), modifier = Modifier.weight(1f))
+                            Text("DEL", style = LegionType.stamp, color = sem.quarantined, modifier = Modifier.padding(end = 12.dp).clickable { pendingDelete = log })
+                        }
                         Hairline()
                     }
                 }
             }
         }
     }
+    pendingDelete?.let { log ->
+        DeleteLogDialog(
+            subtitle = "Bodyweight ${formatWeight(log.weightValue, log.weightUnit)} logged ${shortDate(log.loggedAt)}.",
+            onDelete = { onDelete(log) },
+            onDismiss = { pendingDelete = null },
+            onDone = { pendingDelete = null; onDeleted() },
+        )
+    }
 }
 
-/** INTAKE drilldown: full-height [DeckBarChart] (daily kcal vs target) + range selector + the meal history list. */
+/**
+ * INTAKE drilldown: full-height [DeckBarChart] (daily kcal vs target) + range selector + the meal
+ * history list. Ticket 03 build item 3: [onDelete] is `MealController.deleteMealLog`, the SAME
+ * row-scoped delete `undo_last_log` reaches for a meal log.
+ */
 @Composable
 private fun BodyIntakeDrilldown(
     bars: List<DeckBar?>,
@@ -544,8 +680,11 @@ private fun BodyIntakeDrilldown(
     loading: Boolean,
     onRangeChange: (DeckRange) -> Unit,
     onBack: () -> Unit,
+    onDelete: suspend (MealLog) -> String,
+    onDeleted: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
+    var pendingDelete by remember { mutableStateOf<MealLog?>(null) }
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             DrilldownHeader(title = "INTAKE", onBack = onBack)
@@ -560,16 +699,31 @@ private fun BodyIntakeDrilldown(
                 history.isEmpty() -> GapEmptyRow(label = "History", message = "Nothing logged yet - say \"log a meal\" and describe what you ate.")
                 else -> LazyColumn(Modifier.fillMaxSize()) {
                     items(history, key = { "meal-${it.id}" }) { log ->
-                        ReadingRow(label = log.description, value = mealValueText(log), sub = shortDate(log.loggedAt))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            ReadingRow(label = log.description, value = mealValueText(log), sub = shortDate(log.loggedAt), modifier = Modifier.weight(1f))
+                            Text("DEL", style = LegionType.stamp, color = sem.quarantined, modifier = Modifier.padding(end = 12.dp).clickable { pendingDelete = log })
+                        }
                         Hairline()
                     }
                 }
             }
         }
     }
+    pendingDelete?.let { log ->
+        DeleteLogDialog(
+            subtitle = "${log.description}, logged ${shortDate(log.loggedAt)}.",
+            onDelete = { onDelete(log) },
+            onDismiss = { pendingDelete = null },
+            onDone = { pendingDelete = null; onDeleted() },
+        )
+    }
 }
 
-/** SLEEP drilldown: full-height [DeckBarChart] (nightly hours vs target) + range selector + the sleep history list. */
+/**
+ * SLEEP drilldown: full-height [DeckBarChart] (nightly hours vs target) + range selector + the
+ * sleep history list. Ticket 03 build item 3: [onDelete] is `SleepController.deleteSleepLog`, the
+ * SAME row-scoped delete `undo_last_log` reaches for a sleep log.
+ */
 @Composable
 private fun BodySleepDrilldown(
     bars: List<DeckBar?>,
@@ -578,8 +732,11 @@ private fun BodySleepDrilldown(
     loading: Boolean,
     onRangeChange: (DeckRange) -> Unit,
     onBack: () -> Unit,
+    onDelete: suspend (SleepLog) -> String,
+    onDeleted: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
+    var pendingDelete by remember { mutableStateOf<SleepLog?>(null) }
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             DrilldownHeader(title = "SLEEP", onBack = onBack)
@@ -594,12 +751,23 @@ private fun BodySleepDrilldown(
                 history.isEmpty() -> GapEmptyRow(label = "History", message = "Nothing logged yet - say \"I slept 7 hours\" (or however long).")
                 else -> LazyColumn(Modifier.fillMaxSize()) {
                     items(history, key = { "sleep-${it.id}" }) { log ->
-                        ReadingRow(label = "Sleep", value = sleepValueText(log), sub = shortDate(log.sleepDate))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            ReadingRow(label = "Sleep", value = sleepValueText(log), sub = shortDate(log.sleepDate), modifier = Modifier.weight(1f))
+                            Text("DEL", style = LegionType.stamp, color = sem.quarantined, modifier = Modifier.padding(end = 12.dp).clickable { pendingDelete = log })
+                        }
                         Hairline()
                     }
                 }
             }
         }
+    }
+    pendingDelete?.let { log ->
+        DeleteLogDialog(
+            subtitle = "Sleep ${sleepValueText(log)} logged ${shortDate(log.sleepDate)}.",
+            onDelete = { onDelete(log) },
+            onDismiss = { pendingDelete = null },
+            onDone = { pendingDelete = null; onDeleted() },
+        )
     }
 }
 
@@ -637,7 +805,13 @@ private fun BodyTrainingExerciseListDrilldown(
     }
 }
 
-/** TRAINING's second drilldown level: the per-exercise progression chart plus the raw set history (sets without a weight are listed here even though [series] excludes them from the plot - see [buildExerciseProgression]'s doc comment). */
+/**
+ * TRAINING's second drilldown level: the per-exercise progression chart plus the raw set history
+ * (sets without a weight are listed here even though [series] excludes them from the plot - see
+ * [buildExerciseProgression]'s doc comment). Ticket 03 build item 3: [onDelete] is
+ * `WorkoutController.deleteSetLog`, the SAME row-scoped delete `undo_last_log` reaches for a
+ * workout-set log.
+ */
 @Composable
 private fun BodyExerciseProgressionDrilldown(
     exercise: String,
@@ -647,9 +821,12 @@ private fun BodyExerciseProgressionDrilldown(
     loading: Boolean,
     onRangeChange: (DeckRange) -> Unit,
     onBack: () -> Unit,
+    onDelete: suspend (WorkoutSetLog) -> String,
+    onDeleted: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
     val unit = sets.firstOrNull { it.weightValue != null }?.weightUnit ?: "lbs"
+    var pendingDelete by remember { mutableStateOf<WorkoutSetLog?>(null) }
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             DrilldownHeader(title = exercise.uppercase(), onBack = onBack)
@@ -667,12 +844,23 @@ private fun BodyExerciseProgressionDrilldown(
                         // Ticket 16: "sets without weight excluded from the chart but listed" -
                         // this row is where a bodyweight/no-number set still shows up, even though
                         // buildExerciseProgression never plotted it above.
-                        ReadingRow(label = workoutSetValueText(log), value = shortDate(log.loggedAt))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            ReadingRow(label = workoutSetValueText(log), value = shortDate(log.loggedAt), modifier = Modifier.weight(1f))
+                            Text("DEL", style = LegionType.stamp, color = sem.quarantined, modifier = Modifier.padding(end = 12.dp).clickable { pendingDelete = log })
+                        }
                         Hairline()
                     }
                 }
             }
         }
+    }
+    pendingDelete?.let { log ->
+        DeleteLogDialog(
+            subtitle = "${workoutSetValueText(log)}, logged ${shortDate(log.loggedAt)}.",
+            onDelete = { onDelete(log) },
+            onDismiss = { pendingDelete = null },
+            onDone = { pendingDelete = null; onDeleted() },
+        )
     }
 }
 
@@ -740,6 +928,8 @@ private fun PreviewBodyMassDrilldown() = LegionTheme {
         loading = false,
         onRangeChange = {},
         onBack = {},
+        onDelete = { "" },
+        onDeleted = {},
     )
 }
 
@@ -774,5 +964,7 @@ private fun PreviewBodyExerciseProgression() = LegionTheme {
         loading = false,
         onRangeChange = {},
         onBack = {},
+        onDelete = { "" },
+        onDeleted = {},
     )
 }

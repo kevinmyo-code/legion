@@ -3,6 +3,7 @@ package com.kevin.legion.ui.fleet
 import android.content.Context
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MaintenanceItem
+import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.vehicle.VehicleController
 import com.kevin.legion.vehicle.VehicleController.WriteOutcome
 
@@ -43,10 +44,50 @@ suspend fun writeSetInterval(context: Context, vehicleId: String, serviceName: S
  * read-modify-write - both DAO queries touch only the anchor columns, so a concurrent interval edit
  * elsewhere on the same row can never be lost between a read here and this write (the exact defect
  * class ticket 05 exists to close). [written] is checked, never assumed, per ticket 05's law.
+ *
+ * **Ticket 07 (command-center) addendum: `costCents`, the optional cost step.** Before this
+ * addendum this function touched ONLY the anchor - the survey behind ticket 07 named that a bug
+ * ("`log_service` by hand moves the maintenance clock but never creates a `service_records` row, so
+ * cost never enters by hand"), and the fix was checked against this file's own doc comments first
+ * per that ticket's instruction. What was actually documented, on [writeDeleteItem] alone, is that
+ * a DELETE never touches `service_records` - correct, and unrelated: that is about not destroying
+ * existing history when an item is removed, not about whether marking an item DONE may add to it.
+ * [ItemDetailScreen]'s own doc comment additionally states its rendered service-history list is
+ * "read-only... ticket 11 owns the full history screen and cost" - but that sentence is about
+ * EDITING an already-shown record ([ServiceHistoryScreen]'s own edit dialog owns that, deliberately,
+ * so a record is never editable from two screens at once), not about CREATING a new one when a
+ * DONE_AT save happens. Neither comment reasons about creation at all; the omission was real, not a
+ * documented decision this addendum overrides.
+ *
+ * Only fires on [AnchorMode.DONE_AT] with a non-null [costCents] - "skipping cost stays legal"
+ * (ticket 07): [AnchorMode.NEVER_DONE]/[AnchorMode.DONT_KNOW] never did the work described by a
+ * cost, and a `null` cost on DONE_AT is the same "no figure logged" state every other cost field in
+ * this app already renders honestly rather than as `$0.00`. The record's `mileage`/`date` are the
+ * SAME values just written to the anchor - [mileage] falls back to the vehicle's own current live
+ * reading only when the driver left it blank (mirrors
+ * [VehicleController.logServiceDirect]'s own mileage capture for a record with no explicit one);
+ * [date] falls back to "now" for the same reason. This is a direct
+ * [com.kevin.legion.data.local.ServiceRecordDao.insert] - the exact write `log_service`'s own
+ * [VehicleController.logServiceDirect] performs for the record half of its own two-part write - not
+ * a call to [VehicleController.logServiceDirect] itself, because that function ALSO unconditionally
+ * resets the anchor to the vehicle's current mileage/now, which would silently discard a driver-typed
+ * historical mileage or date this picker explicitly supports and [writeSetAnchor] already wrote
+ * moments above. There is no `notes` field on [ServiceRecord] to carry a notes step into - see that
+ * entity's own file for its full column list - so this addendum is cost-only; widening the entity
+ * for notes is a schema change this ticket does not ask for and is not made here.
  */
-suspend fun writeSetAnchor(context: Context, vehicleId: String, serviceName: String, mode: AnchorMode, mileage: Int?, date: Long?): WriteOutcome {
+suspend fun writeSetAnchor(
+    context: Context,
+    vehicleId: String,
+    serviceName: String,
+    mode: AnchorMode,
+    mileage: Int?,
+    date: Long?,
+    costCents: Long? = null,
+): WriteOutcome {
     val now = System.currentTimeMillis()
-    val dao = CarDatabase.getDatabase(context).maintenanceItemDao()
+    val db = CarDatabase.getDatabase(context)
+    val dao = db.maintenanceItemDao()
     val written = when (mode) {
         AnchorMode.NEVER_DONE -> dao.setNeverDone(vehicleId, serviceName, now)
         // Both anchors null is the legitimate "I don't know" state setAnchor's own doc names -
@@ -54,11 +95,16 @@ suspend fun writeSetAnchor(context: Context, vehicleId: String, serviceName: Str
         AnchorMode.DONT_KNOW -> dao.setAnchor(vehicleId, serviceName, null, null, now)
         AnchorMode.DONE_AT -> dao.setAnchor(vehicleId, serviceName, mileage, date, now)
     }
-    return if (written == 0) {
-        WriteOutcome(false, "I found $serviceName a moment ago but couldn't write to it just now - it may have just been removed.")
-    } else {
-        WriteOutcome(true, "Updated $serviceName.")
+    if (written == 0) {
+        return WriteOutcome(false, "I found $serviceName a moment ago but couldn't write to it just now - it may have just been removed.")
     }
+    if (mode == AnchorMode.DONE_AT && costCents != null) {
+        val recordMileage = mileage ?: VehicleController.currentMileage(VehicleController.vehicleFor(context, vehicleId))
+        db.serviceRecordDao().insert(
+            ServiceRecord(vehicleId = vehicleId, serviceName = serviceName, mileage = recordMileage, date = date ?: now, costCents = costCents),
+        )
+    }
+    return WriteOutcome(true, "Updated $serviceName.")
 }
 
 /**

@@ -52,6 +52,7 @@ import com.kevin.legion.ui.common.DeckBezel
 import com.kevin.legion.ui.common.StatusLine
 import com.kevin.legion.ui.companions.MemoryScreen
 import com.kevin.legion.ui.companions.PlaybookScreen
+import com.kevin.legion.ui.media.MediaScreen
 import com.kevin.legion.ui.sync.GoogleAccessScreen
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -617,7 +618,14 @@ private fun LegionShell(
                     onBack = { navController.popBackStack() },
                     authOk = spotifyAuthOk,
                     authNonce = spotifyAuthNonce,
+                    onOpenMedia = { navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) },
                 )
+            }
+            // The media control panel (command-center ticket 04) - now-playing, transport,
+            // volume, queue, search-and-play, library browse. See LegionRoute.SETTINGS_SPOTIFY_MEDIA's
+            // own doc for why it lives here rather than as a tab.
+            composable(LegionRoute.SETTINGS_SPOTIFY_MEDIA) {
+                MediaScreen(onBack = { navController.popBackStack() })
             }
                 }
             }

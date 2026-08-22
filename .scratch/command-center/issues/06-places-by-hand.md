@@ -3,12 +3,12 @@ map: command-center
 ticket: "06"
 title: "Saved places you can manage"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built: rows, tag-here, confirm-delete, navigate, honest permission state. Owes the on-phone pass. Drift note: location readout restates a private LiveToolbox helper - wave 2 ticket 08 lifts it to shared."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Saved places you can manage

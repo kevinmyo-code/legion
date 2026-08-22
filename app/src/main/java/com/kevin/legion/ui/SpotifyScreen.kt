@@ -28,6 +28,7 @@ import com.kevin.legion.BuildConfig
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
+import com.kevin.legion.ui.common.DeckButton
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.spotify.SpotifyAuthorizeRow
 import com.kevin.legion.ui.spotify.SpotifyClientIdRow
@@ -79,6 +80,10 @@ fun SpotifyScreen(
     onBack: () -> Unit,
     authOk: Boolean? = null,
     authNonce: Int = 0,
+    // Command-center ticket 04's entry point: the media control panel is a drill-down from
+    // wherever a driver already goes to manage Spotify, per that ticket's own brief. Default
+    // no-op so this stays source-compatible with any preview/test caller that doesn't wire it.
+    onOpenMedia: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -270,6 +275,15 @@ fun SpotifyScreen(
                         "developer account, not mine.",
                     style = LegionType.stamp,
                     color = sem.faint,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+
+                Spacer(Modifier.height(8.dp))
+                // Now-playing/transport/volume need no Spotify connection at all - see
+                // MediaScreen's own doc - so this row is offered regardless of setup [stage].
+                DeckButton(
+                    text = "Media panel",
+                    onClick = onOpenMedia,
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
 

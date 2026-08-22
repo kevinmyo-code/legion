@@ -3,12 +3,12 @@ map: command-center
 ticket: "03"
 title: "The Body tab learns to write"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built: six dialogs and per-row delete, all same-function-tested against voice dispatch. Owes the tap-through on the phone."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The Body tab learns to write

@@ -123,6 +123,18 @@ object LegionRoute {
      */
     const val SETTINGS_SPOTIFY = "settings/spotify"
 
+    /**
+     * The media control panel (command-center ticket 04,
+     * `.scratch/command-center/issues/04-media-panel.md`) - the hands path for the five music
+     * voice tools (ADR 0035): now-playing, transport, volume, queue, search-and-play, and library
+     * browse. Nested under Spotify's own settings route rather than promoted to a tab of its own -
+     * `ui/media/MediaMiniBar.kt` (this ticket's other export) is what Home is meant to consume for
+     * at-a-glance transport (command-center ticket 01), and the full panel is a drill-down from
+     * wherever a driver already goes to manage Spotify - see [SETTINGS_SPOTIFY]'s own screen for
+     * the entry-point row.
+     */
+    const val SETTINGS_SPOTIFY_MEDIA = "settings/spotify/media"
+
     /** The six bottom-nav destinations, in display order (was five - Notes added 2026-08-07, ticket
      * 07). Assistant is NOT one of them - it's a mode, not a place (original resolution §5, still true). */
     val TOP_LEVEL = listOf(TODAY, MONEY, BODY, FLEET, NOTES, SETTINGS)

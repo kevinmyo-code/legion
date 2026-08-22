@@ -14,11 +14,7 @@ Open tickets whose blockers are all resolved.
 | Map | Ticket | Type | What |
 |---|---|---|---|
 | [[.scratch/command-center/map\|command-center]] | [[02-settings-submenus\|02]] | build | Settings stops being one long wall |
-| [[.scratch/command-center/map\|command-center]] | [[03-body-writes-by-hand\|03]] | build | The Body tab learns to write |
-| [[.scratch/command-center/map\|command-center]] | [[04-media-panel\|04]] | build | Music gets buttons |
 | [[.scratch/command-center/map\|command-center]] | [[05-phone-surface\|05]] | build | The phone gets buttons for its own calls |
-| [[.scratch/command-center/map\|command-center]] | [[06-places-by-hand\|06]] | build | Saved places you can manage |
-| [[.scratch/command-center/map\|command-center]] | [[07-build-sheet-screen\|07]] | build | The build sheet exists on screen |
 | [[.scratch/command-center/map\|command-center]] | [[08-outside-world-cards\|08]] | build | Packages, flights, and the area, on glass |
 | [[.scratch/command-center/map\|command-center]] | [[11-small-writes\|11]] | build | Three small writes: memory, proposals, pendings |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
@@ -34,6 +30,10 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
+| [[.scratch/command-center/map\|command-center]] | [[03-body-writes-by-hand\|03]] | build | The Body tab learns to write |
+| [[.scratch/command-center/map\|command-center]] | [[04-media-panel\|04]] | build | Music gets buttons |
+| [[.scratch/command-center/map\|command-center]] | [[06-places-by-hand\|06]] | build | Saved places you can manage |
+| [[.scratch/command-center/map\|command-center]] | [[07-build-sheet-screen\|07]] | build | The build sheet exists on screen |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[07-a-checklist-you-can-tick\|07]] | build | A checklist you can actually tick, and one fewer workout section |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[22-build-the-sitrep\|22]] | build | Build the sitrep |

@@ -561,7 +561,15 @@ fun ItemDetailScreen(
     serviceHistory: List<ServiceRecord>,
     checkDuplicate: (String) -> String?,
     onSetInterval: suspend (serviceName: String, miles: Int?, months: Int?) -> WriteOutcome,
-    onSetAnchor: suspend (serviceName: String, mode: AnchorMode, mileage: Int?, date: Long?) -> WriteOutcome,
+    /**
+     * Ticket 07 (command-center) addendum: [costCents] is the optional cost step - see
+     * `ui/fleet/MaintenanceWrites.kt`'s own updated doc on [writeSetAnchor] for the full reasoning
+     * (why this was anchor-only before, why that omission was never actually a documented decision,
+     * and why it writes a direct [com.kevin.legion.data.local.ServiceRecordDao.insert] rather than
+     * routing through [com.kevin.legion.vehicle.VehicleController.logServiceDirect]). `null` means
+     * "no cost logged" - skipping it stays legal on every anchor mode, DONE_AT included.
+     */
+    onSetAnchor: suspend (serviceName: String, mode: AnchorMode, mileage: Int?, date: Long?, costCents: Long?) -> WriteOutcome,
     onDelete: suspend (serviceName: String) -> WriteOutcome,
     onAddItem: suspend (name: String, miles: Int?, months: Int?, mode: AnchorMode, mileage: Int?, date: Long?) -> WriteOutcome,
     onBack: () -> Unit,
@@ -596,6 +604,10 @@ fun ItemDetailScreen(
     var anchorDateText by remember(item) {
         mutableStateOf(item?.lastDoneDate?.let { LocalDate.ofInstant(java.time.Instant.ofEpochMilli(it), ZoneId.systemDefault()).toString() }.orEmpty())
     }
+    // Ticket 07 (command-center) addendum: the optional cost step, DONE_AT only - always starts
+    // blank (never pre-filled from a PAST service_records row, which this screen does not search
+    // for; a blank field here means "not logging a cost with THIS save", not "no cost exists").
+    var anchorCostText by remember(item) { mutableStateOf("") }
 
     var statusText by remember { mutableStateOf<String?>(null) }
     var confirmingDelete by remember { mutableStateOf(false) }
@@ -720,6 +732,17 @@ fun ItemDetailScreen(
                     Spacer(Modifier.height(8.dp))
                     DeckTextField(value = anchorDateText, onValueChange = { anchorDateText = it }, label = "Date (YYYY-MM-DD)")
                     Spacer(Modifier.height(8.dp))
+                    // Ticket 07 (command-center) addendum: the optional cost step - "skipping cost
+                    // stays legal" (ticket's own words), so this field is never required to SAVE
+                    // ANCHOR; a blank field below writes no service_records row at all, same as
+                    // today. See MaintenanceWrites.kt's writeSetAnchor doc for the full reasoning.
+                    DeckTextField(
+                        value = anchorCostText,
+                        onValueChange = { anchorCostText = it },
+                        label = "Cost (dollars) - optional",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    )
+                    Spacer(Modifier.height(8.dp))
                 }
                 if (!isAdd) {
                     DeckButton(
@@ -728,10 +751,27 @@ fun ItemDetailScreen(
                             val target = current ?: return@DeckButton
                             val mileage = anchorMileageText.trim().toIntOrNull()
                             val date = parseAnchorDate(anchorDateText)
+                            // Cents first, precise, then handed straight through - CLAUDE.md §4
+                            // rule 3. A non-blank cost that fails to parse REFUSES the save with a
+                            // stated reason rather than silently saving the anchor with no cost -
+                            // same "a typo must never look like a deliberate skip" posture
+                            // EditServiceRecordDialog's own cost field already applies.
+                            val trimmedCost = anchorCostText.trim()
+                            val costCents: Long? = if (trimmedCost.isEmpty()) {
+                                null
+                            } else {
+                                val dollars = trimmedCost.toDoubleOrNull()
+                                if (dollars == null || dollars < 0.0) {
+                                    statusText = "Cost needs to be a number, e.g. 45.99 - leave it blank to skip it."
+                                    return@DeckButton
+                                }
+                                Math.round(dollars * 100.0)
+                            }
                             scope.launch {
-                                val outcome = onSetAnchor(target.serviceName, anchorMode, mileage, date)
+                                val outcome = onSetAnchor(target.serviceName, anchorMode, mileage, date, costCents)
                                 statusText = outcome.message
                                 if (outcome.success) {
+                                    if (anchorMode == AnchorMode.DONE_AT && costCents != null) anchorCostText = ""
                                     current = target.copy(
                                         neverDone = anchorMode == AnchorMode.NEVER_DONE,
                                         lastDoneMileage = if (anchorMode == AnchorMode.DONE_AT) mileage else null,
@@ -1496,7 +1536,7 @@ private fun PreviewItemDetailExisting() = LegionTheme {
         serviceHistory = listOf(ServiceRecord(vehicleId = "x", serviceName = "Oil Change", mileage = 100_000, date = 1_700_000_000_000L)),
         checkDuplicate = { null },
         onSetInterval = { _, _, _ -> WriteOutcome(true, "ok") },
-        onSetAnchor = { _, _, _, _ -> WriteOutcome(true, "ok") },
+        onSetAnchor = { _, _, _, _, _ -> WriteOutcome(true, "ok") },
         onDelete = { WriteOutcome(true, "ok") },
         onAddItem = { _, _, _, _, _, _ -> WriteOutcome(true, "ok") },
         onBack = {},
@@ -1511,7 +1551,7 @@ private fun PreviewItemDetailAdd() = LegionTheme {
         serviceHistory = emptyList(),
         checkDuplicate = { null },
         onSetInterval = { _, _, _ -> WriteOutcome(true, "ok") },
-        onSetAnchor = { _, _, _, _ -> WriteOutcome(true, "ok") },
+        onSetAnchor = { _, _, _, _, _ -> WriteOutcome(true, "ok") },
         onDelete = { WriteOutcome(true, "ok") },
         onAddItem = { _, _, _, _, _, _ -> WriteOutcome(true, "ok") },
         onBack = {},

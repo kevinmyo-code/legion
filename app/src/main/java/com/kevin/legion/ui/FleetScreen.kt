@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,9 +43,11 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CodeClearEvent
 import com.kevin.legion.data.local.CodeEvent
 import com.kevin.legion.data.local.DailyDriveLog
+import com.kevin.legion.data.local.BuildEntry
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.MonthlyRecap
 import com.kevin.legion.data.local.OilAnalysis
+import com.kevin.legion.data.local.TaggedPlace
 import com.kevin.legion.data.local.YearlyWrapped
 import com.kevin.legion.ui.common.DeckFeedRow
 import com.kevin.legion.ui.common.DeckPane
@@ -55,6 +58,7 @@ import com.kevin.legion.ui.common.DeckTagStyle
 import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.HalfTile
 import com.kevin.legion.data.local.ServiceRecord
+import com.kevin.legion.ui.fleet.BuildSheetScreen
 import com.kevin.legion.ui.fleet.DriveHistoryDrilldownScreen
 import com.kevin.legion.ui.fleet.DriveSummaryView
 import com.kevin.legion.ui.fleet.DtcClearDialog
@@ -89,6 +93,7 @@ import com.kevin.legion.ui.fleet.writeConfirmAll
 import com.kevin.legion.ui.fleet.writeDeleteItem
 import com.kevin.legion.ui.fleet.writeDeleteServiceRecord
 import com.kevin.legion.ui.fleet.writeEditServiceRecord
+import com.kevin.legion.ui.fleet.writeLogBuildEntry
 import com.kevin.legion.ui.fleet.writeSetAnchor
 import com.kevin.legion.ui.fleet.writeSetInterval
 import com.kevin.legion.ui.theme.LegionTheme
@@ -97,6 +102,7 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.theme.deckMotionEnabled
 import com.kevin.legion.util.shortDate
 import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.vehicle.BuildSheetController
 import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.DtcDescriptions
 import com.kevin.legion.vehicle.FleetSpendController
@@ -108,6 +114,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.kevin.legion.location.LocationController
+import com.kevin.legion.location.NavigationController
 import com.kevin.legion.location.PlaceController
 
 /**
@@ -244,7 +252,25 @@ data class FleetUiState(
      */
     val dtcDescriptions: Map<String, Pair<String, String>> = emptyMap(),
     val serviceHistoryCount: Int = 0,
+    /**
+     * `build_entries` count for the CARS pane's "Build sheet" row (ticket 07, command-center) -
+     * loaded and rendered nowhere until this ticket; see that row's own comment in [CarsPane].
+     */
     val buildSheetCount: Int = 0,
+    /**
+     * Every [BuildEntry] for the vehicle, newest first - the BUILD SHEET drilldown's list, read off
+     * [BuildSheetController.history] (the SAME reads `list_build_history`/the voice tools use).
+     */
+    val buildEntries: List<BuildEntry> = emptyList(),
+    /**
+     * [BuildSheetController.spendByCategory] itself, unmodified - the BUILD SHEET drilldown's spend
+     * panel, computed by the SAME function `get_spend`'s voice dispatch calls, never a parallel sum
+     * (CLAUDE.md's own reconciliation-gate posture applied to a plain read: two totals that could
+     * disagree is worse than one, even off a store with no reconciliation gate of its own).
+     */
+    val buildSpendByCategory: Map<String, Double> = emptyMap(),
+    /** [BuildSheetController.totalSpend] itself, unmodified - see [buildSpendByCategory]'s doc. */
+    val buildSpendTotal: Double = 0.0,
     val recapCount: Int = 0,
     /** Cars in the roster OTHER than the active one - what the switcher row offers. */
     val otherCarCount: Int = 0,
@@ -309,7 +335,7 @@ data class FleetUiState(
  * [FleetScreen] below, so returning from ITEM DETAIL to FULL SCHEDULE preserves the filter without
  * threading it back through the enum itself.
  */
-private enum class FleetDrilldown { UPLINK, MAINTENANCE, FULL_SCHEDULE, ITEM_DETAIL, SERVICE_HISTORY, DRIVES, ADAPTER, SPECS, RECAPS, OIL, POPULATE, FAULTS }
+private enum class FleetDrilldown { UPLINK, MAINTENANCE, FULL_SCHEDULE, ITEM_DETAIL, SERVICE_HISTORY, DRIVES, ADAPTER, SPECS, RECAPS, OIL, POPULATE, FAULTS, BUILD_SHEET }
 
 @Composable
 fun FleetScreen(
@@ -429,6 +455,14 @@ fun FleetScreen(
         val spendByType = FleetSpendController.spendByServiceType(context, vehicle.obdMac)
         val spendByYear = FleetSpendController.spendByYear(context, vehicle.obdMac)
 
+        // BUILD SHEET (ticket 07, command-center): the SAME BuildSheetController reads/writes
+        // `log_build_entry`/`list_build_history`/`get_spend` already use - see FleetUiState's own
+        // doc on buildEntries/buildSpendByCategory/buildSpendTotal for why these are never
+        // recomputed a second way.
+        val buildEntries = BuildSheetController.history(context, vehicleId = vehicle.obdMac)
+        val buildSpendByCategory = BuildSheetController.spendByCategory(context, vehicle.obdMac)
+        val buildSpendTotal = BuildSheetController.totalSpend(context, vehicle.obdMac)
+
         val selectedAdapter = ObdBluetoothManager.getActiveDeviceMac(context)
         val adapterLabel = selectedAdapter?.let { mac ->
             if (ObdDeviceRegistry.isBle(context, mac)) "$mac · BLE" else mac
@@ -488,6 +522,9 @@ fun FleetScreen(
             dtcDescriptions = descriptions,
             serviceHistoryCount = db.serviceRecordDao().countForVehicle(vehicle.obdMac),
             buildSheetCount = db.buildEntryDao().countForVehicle(vehicle.obdMac),
+            buildEntries = buildEntries,
+            buildSpendByCategory = buildSpendByCategory,
+            buildSpendTotal = buildSpendTotal,
             recapCount = monthlyRecaps.size,
             // Archived cars are excluded: they are not switchable targets, so
             // counting them would offer the driver more cars than the roster
@@ -618,7 +655,7 @@ fun FleetScreen(
                 serviceHistory = fullState.allServiceRecords.filter { it.serviceName == itemDetailTarget },
                 checkDuplicate = { typed -> VehicleController.looksLikeExistingItem(typed, fullState.maintenanceItems.map { it.serviceName }) },
                 onSetInterval = { serviceName, miles, months -> writeSetInterval(context, fullState.vehicleId, serviceName, miles, months) },
-                onSetAnchor = { serviceName, mode, mileage, date -> writeSetAnchor(context, fullState.vehicleId, serviceName, mode, mileage, date) },
+                onSetAnchor = { serviceName, mode, mileage, date, costCents -> writeSetAnchor(context, fullState.vehicleId, serviceName, mode, mileage, date, costCents) },
                 onDelete = { serviceName -> writeDeleteItem(context, fullState.vehicleId, serviceName) },
                 onAddItem = { name, miles, months, mode, mileage, date -> writeAddItem(context, fullState.vehicleId, name, miles, months, mode, mileage, date) },
                 onBack = { reloadKey++; drilldown = FleetDrilldown.FULL_SCHEDULE },
@@ -668,6 +705,15 @@ fun FleetScreen(
                 vehicleId = fullState.vehicleId,
                 onBack = { reloadKey++; drilldown = null },
             )
+            FleetDrilldown.BUILD_SHEET -> BuildSheetScreen(
+                entries = fullState.buildEntries,
+                spendByCategory = fullState.buildSpendByCategory,
+                totalSpend = fullState.buildSpendTotal,
+                onAddEntry = { title, type, costCents, vendor, notes ->
+                    writeLogBuildEntry(context, fullState.vehicleId, title, type, costCents, vendor, notes)
+                },
+                onBack = { reloadKey++; drilldown = null },
+            )
         }
         return
     }
@@ -683,6 +729,7 @@ fun FleetScreen(
         onOpenDrivingMode = onOpenDrivingMode,
         onOpenAdapter = { drilldown = FleetDrilldown.ADAPTER },
         onOpenSpecs = { drilldown = FleetDrilldown.SPECS },
+        onOpenBuildSheet = { drilldown = FleetDrilldown.BUILD_SHEET },
         onSetOdometer = { showOdometerDialog = true },
         onClearCodes = {
             showClearCodesDialog = true
@@ -744,6 +791,10 @@ fun FleetContent(
     onOpenDrivingMode: () -> Unit = {},
     onOpenAdapter: () -> Unit = {},
     onOpenSpecs: () -> Unit = {},
+    // Ticket 07 (command-center): defaulted to a no-op for the same reason onOpenFaults is below -
+    // existing preview/test construction sites that predate the BUILD SHEET drilldown keep
+    // compiling unchanged.
+    onOpenBuildSheet: () -> Unit = {},
     onSetOdometer: () -> Unit = {},
     onClearCodes: () -> Unit = {},
     onSweepActiveChanged: (Boolean) -> Unit = {},
@@ -764,7 +815,7 @@ fun FleetContent(
             if (state.loading) {
                 Text("LOADING...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
             } else {
-                FleetListing(state, onOpenPlaces, onOpenCars, onOpenUplink, onOpenFaults, onOpenMaintenance, onOpenDrives, onOpenDrivingMode, onOpenAdapter, onOpenSpecs, onSetOdometer, onClearCodes, onSweepActiveChanged)
+                FleetListing(state, onOpenPlaces, onOpenCars, onOpenUplink, onOpenFaults, onOpenMaintenance, onOpenDrives, onOpenDrivingMode, onOpenAdapter, onOpenSpecs, onOpenBuildSheet, onSetOdometer, onClearCodes, onSweepActiveChanged)
             }
         }
     }
@@ -782,6 +833,7 @@ private fun FleetListing(
     onOpenDrivingMode: () -> Unit,
     onOpenAdapter: () -> Unit,
     onOpenSpecs: () -> Unit,
+    onOpenBuildSheet: () -> Unit,
     onSetOdometer: () -> Unit,
     onClearCodes: () -> Unit,
     onSweepActiveChanged: (Boolean) -> Unit,
@@ -848,7 +900,7 @@ private fun FleetListing(
 
         // ------------------------------------------------------------ CARS row
         item(key = "cars-pane") {
-            CarsPane(state, onOpenCars, onOpenPlaces, onOpenAdapter, onOpenSpecs, onSetOdometer)
+            CarsPane(state, onOpenCars, onOpenPlaces, onOpenAdapter, onOpenSpecs, onOpenBuildSheet, onSetOdometer)
         }
 
         // ------------------------------------------------------------ GOALS (ticket 19)
@@ -1184,6 +1236,7 @@ private fun CarsPane(
     onOpenPlaces: () -> Unit,
     onOpenAdapter: () -> Unit,
     onOpenSpecs: () -> Unit,
+    onOpenBuildSheet: () -> Unit,
     onSetOdometer: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
@@ -1243,6 +1296,16 @@ private fun CarsPane(
             modifier = Modifier.clickable(onClick = onOpenSpecs),
         )
         DeckRow(label = "Places", value = ">", modifier = Modifier.clickable(onClick = onOpenPlaces))
+        // Ticket 07 (command-center): the build sheet's entry point - `FleetUiState.buildSheetCount`
+        // was loaded and rendered nowhere until this row (the ticket's own "no half-wired state"
+        // rule). Count-as-value matches this pane's own "Places" row above (a bare ">" doorway would
+        // have been the cheaper fix, but a live count is what tells the driver there's something
+        // here worth opening, same reasoning ServiceHistoryScreen's SectionHeader counts already use).
+        DeckRow(
+            label = "Build sheet",
+            value = if (state.buildSheetCount > 0) "${state.buildSheetCount} logged" else "empty",
+            modifier = Modifier.clickable(onClick = onOpenBuildSheet),
+        )
     }
 }
 
@@ -1307,26 +1370,261 @@ private fun PreviewFleetConnectedEmpty() = LegionTheme {
 }
 
 /**
- * `fleet/places` - absorbed from the deleted `SavedPlacesActivity`. Content
- * unchanged (list of tagged-place labels for the `show_saved_places` voice
- * tool); only the hosting changed, per ticket 07 resolution §5 ("their
- * content is already written - only the hosting changes"). Untouched by
- * ticket 09/18 - fleet's read-only screens above are additive, not a rewrite
- * of this sub-route.
+ * `fleet/places` (command-center ticket 06). Rewritten from ticket 07's absorbed-but-unrewritten
+ * single Text blob into a real management screen, per ADR 0035 ("every voice capability has a
+ * non-voice path") applied to `tag_place`/`forget_place`/`get_current_location`/`open_navigation` -
+ * all four were voice-only. **Not a second implementation of any of them**: tag and forget go
+ * through the exact [PlaceController.tagPlace]/[PlaceController.forgetPlace] functions the voice
+ * tools call (`service/LiveToolbox.kt`'s `dispatch` for `tag_place`/`forget_place`), the
+ * current-location readout mirrors `getCurrentLocation`'s own three failure branches and
+ * geocode-with-coords-fallback line for line (that function is private to `LiveToolbox`, so it is
+ * restated here rather than reached into - see [currentLocationReadout]'s own doc), and the
+ * navigate icon calls [NavigationController.launch] directly, the same function `open_navigation`
+ * dispatches to.
+ *
+ * **Delete keeps a confirm step on purpose.** ADR 0035 + this ticket's own wording: "a misheard
+ * voice delete is why the confirm exists - keep the same care by hand." [PlaceController.forgetPlace]
+ * itself already refuses an unknown label; the dialog adds the one thing voice cannot offer, a
+ * pause before the write.
  */
 @Composable
 fun SavedPlacesScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    var places by remember { mutableStateOf(listOf<String>()) }
-    LaunchedEffect(Unit) {
-        places = PlaceController.all(context).map { it.label }
+    val scope = rememberCoroutineScope()
+    val sem = LocalLegionSemantics.current
+
+    var places by remember { mutableStateOf(listOf<TaggedPlace>()) }
+    var reloadNonce by remember { mutableStateOf(0) }
+    var hasLocationPermission by remember { mutableStateOf(LocationController.hasPermission(context)) }
+    var currentLocationText by remember { mutableStateOf("Checking...") }
+    var showTagDialog by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<TaggedPlace?>(null) }
+
+    // Same shape TodayScreen/NotesScreen's own calendar-grant launchers use: request, then bump
+    // a reload nonce so the screen re-queries on the same load path a fresh open uses.
+    val requestLocation = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ -> reloadNonce++ }
+
+    LaunchedEffect(reloadNonce) {
+        places = PlaceController.all(context)
+        // init() is idempotent and seeds from getLastKnownLocation synchronously - see
+        // getCurrentLocation's own doc in LiveToolbox for why this call matters right after a
+        // permission grant rather than waiting on the first live update.
+        LocationController.init(context)
+        hasLocationPermission = LocationController.hasPermission(context)
+        currentLocationText = currentLocationReadout(context)
     }
+
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.padding(16.dp)) {
-            androidx.compose.material3.TextButton(onClick = onBack) {
-                Text("< Back")
+            TextButton(onClick = onBack) { Text("< Back") }
+
+            Text("Saved places", style = MaterialTheme.typography.titleMedium)
+            Text(
+                currentLocationText,
+                style = LegionType.stamp,
+                color = sem.faint,
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+            )
+
+            // Location permission absent is an honest state naming the grant, not a blank
+            // screen (ADR 0035 / this ticket's rule) - same shape as SettingsRows'
+            // LocationAccessRow/CallHandlingRow, restated here rather than reused because those
+            // two also cover background access and call permissions this screen has no business
+            // asking for.
+            if (!hasLocationPermission) {
+                Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "LEGION doesn't have location permission, so tagging a place and the " +
+                                "current-location line above can't work until it's granted.",
+                            style = LegionType.stamp,
+                            color = sem.faint,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = {
+                            requestLocation.launch(arrayOf(
+                                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                            ))
+                        }) { Text("GRANT") }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
             }
-            Text(if (places.isEmpty()) "No saved places yet" else places.joinToString("\n"))
+
+            com.kevin.legion.ui.common.DeckButton(
+                text = "Tag current location",
+                onClick = { showTagDialog = true },
+                enabled = hasLocationPermission,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            if (places.isEmpty()) {
+                Text("No saved places yet", style = MaterialTheme.typography.bodyMedium, color = sem.faint)
+            } else {
+                LazyColumn {
+                    items(places, key = { it.label }) { place ->
+                        SavedPlaceRow(
+                            place = place,
+                            onNavigate = {
+                                // Same intent shape open_navigation uses (NavigationController.launch,
+                                // mode NAVIGATE - the tool's own default). Coordinates, not a typed
+                                // address: a saved place already has an exact GPS fix, so there is no
+                                // spoken destination string to reconstruct.
+                                NavigationController.launch(
+                                    context,
+                                    "${place.latitude},${place.longitude}",
+                                    NavigationController.Mode.NAVIGATE,
+                                )
+                            },
+                            onDelete = { pendingDelete = place },
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
         }
     }
+
+    if (showTagDialog) {
+        TagPlaceDialog(
+            onDismiss = { showTagDialog = false },
+            onTag = { label ->
+                scope.launch {
+                    PlaceController.tagPlace(context, label)
+                    showTagDialog = false
+                    reloadNonce++
+                }
+            },
+        )
+    }
+
+    pendingDelete?.let { place ->
+        ForgetPlaceConfirmDialog(
+            label = place.label,
+            onDismiss = { pendingDelete = null },
+            onConfirm = {
+                scope.launch {
+                    PlaceController.forgetPlace(context, place.label)
+                    pendingDelete = null
+                    reloadNonce++
+                }
+            },
+        )
+    }
+}
+
+/**
+ * One saved place: label, coordinates, a navigate action, a delete action. Plain [Surface] + [Row]
+ * shape lifted from `ui/SettingsRows.kt`'s `LocationAccessRow`/`CallHandlingRow` (Surface,
+ * `tonalElevation`, title in `bodyMedium`, detail in [LegionType.stamp]/`sem.faint`) rather than
+ * inventing a third row style for the same screen family.
+ */
+@Composable
+private fun SavedPlaceRow(place: TaggedPlace, onNavigate: () -> Unit, onDelete: () -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(place.label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    "(lat ${place.latitude}, lng ${place.longitude})",
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                )
+            }
+            TextButton(onClick = onNavigate) { Text("NAVIGATE") }
+            TextButton(onClick = onDelete) { Text("DELETE") }
+        }
+    }
+}
+
+/**
+ * "Tag current location" - the hands path for `tag_place`. The label is typed here instead of
+ * spoken; [PlaceController.tagPlace] does the exact same normalization
+ * (lower-case, strip filler words, "home"/"work" aliasing) on whatever comes in either way, so a
+ * typed "Home" and a spoken "this is my home" land on the same row.
+ */
+@Composable
+private fun TagPlaceDialog(onDismiss: () -> Unit, onTag: (String) -> Unit) {
+    var label by remember { mutableStateOf("") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Tag current location") },
+        text = {
+            androidx.compose.material3.OutlinedTextField(
+                value = label,
+                onValueChange = { label = it },
+                label = { Text("Label, e.g. home or work") },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(enabled = label.isNotBlank(), onClick = { onTag(label) }) { Text("Tag") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * Delete confirm for a saved place - same posture as `ui/fleet/FleetRows.kt`'s `DtcClearDialog`
+ * ("a real write does not get an accidental dismiss to cancel it, so the confirm step is a real
+ * step, not decoration"), scaled down for a plain Room delete that has no in-flight-write window
+ * to protect. This is the one piece of "care" a hands path can offer that voice cannot: a pause
+ * before [PlaceController.forgetPlace] runs, not a second way of deciding what gets deleted.
+ */
+@Composable
+private fun ForgetPlaceConfirmDialog(label: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete \"$label\"?") },
+        text = { Text("This removes the saved place. It can be re-tagged later, but this exact entry is gone.") },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Delete") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * The current-location line at the top of [SavedPlacesScreen]. Deliberately restates
+ * `service/LiveToolbox.kt`'s private `getCurrentLocation` rather than reaching into it (it is
+ * `private` to that object and dispatch's job, not a shared utility) - but every branch below is
+ * the SAME branch in the SAME order: no permission, providers off, no fix yet, then a reverse
+ * geocode with a coords-only fallback if the geocoder fails or returns nothing. Never hands the
+ * model or the screen an IANA timezone id as a place (CLAUDE.md sec 1) - this reads
+ * [LocationController]'s live GPS fix and Android's own [android.location.Geocoder], nothing else.
+ * `location/` stays read-only from this file: every call below is a public accessor already used
+ * elsewhere, never a write.
+ */
+private suspend fun currentLocationReadout(context: android.content.Context): String {
+    val loc = LocationController.state.value
+        ?: return when {
+            !LocationController.hasPermission(context) -> "Current location: unknown (no location permission)."
+            !LocationController.anyProviderEnabled(context) -> "Current location: unknown (location services are off)."
+            else -> "Current location: unknown (no GPS fix yet)."
+        }
+    val coords = "(lat ${loc.latitude}, lng ${loc.longitude})"
+    val label = withContext(Dispatchers.IO) {
+        runCatching {
+            @Suppress("DEPRECATION")
+            android.location.Geocoder(context, java.util.Locale.getDefault())
+                .getFromLocation(loc.latitude, loc.longitude, 1)
+                ?.firstOrNull()
+                ?.let { listOfNotNull(it.thoroughfare, it.locality, it.adminArea).joinToString(", ") }
+                ?.ifBlank { null }
+        }.getOrNull()
+    }
+    return if (label != null) "Current location: $label $coords"
+    else "Current location: $coords (couldn't resolve an address)"
 }

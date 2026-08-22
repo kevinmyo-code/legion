@@ -3,12 +3,12 @@ map: command-center
 ticket: "07"
 title: "The build sheet exists on screen"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built: build-sheet screen, spend parity with get_spend by test, service cost enters by hand. Notes have no column, said plainly. Owes the on-phone pass."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The build sheet exists on screen

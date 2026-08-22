@@ -3,12 +3,12 @@ map: command-center
 ticket: "04"
 title: "Music gets buttons"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built: transport, volume, queue, search, browse, mini-bar for Home. Transport works without Spotify. Owes the on-phone pass. Drift note: transport ordering restates a private LiveToolbox helper - wave 2 ticket 08 lifts it to shared."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Music gets buttons
