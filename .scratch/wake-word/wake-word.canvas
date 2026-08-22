@@ -51,9 +51,9 @@
       "color": "4"
     },
     {
-      "id": "841fb7e235928036",
+      "id": "7cbdd62d9d24ada6",
       "type": "file",
-      "file": ".scratch/wake-word/issues/10-weak-pickup-on-a-drive.md",
+      "file": ".scratch/wake-word/issues/12-deaf-in-the-jeep.md",
       "x": 0,
       "y": 750,
       "width": 320,
@@ -61,31 +61,21 @@
       "color": "1"
     },
     {
-      "id": "4dd57d5aa9688889",
+      "id": "cc43aa2746f47f5a",
       "type": "file",
-      "file": ".scratch/wake-word/issues/11-let-him-say-never-mind.md",
+      "file": ".scratch/wake-word/issues/13-weak-pickup-on-a-drive.md",
       "x": 0,
       "y": 900,
-      "width": 320,
-      "height": 110,
-      "color": "4"
-    },
-    {
-      "id": "dc5b8de5042ec036",
-      "type": "file",
-      "file": ".scratch/wake-word/issues/11-service-refused-to-start.md",
-      "x": 0,
-      "y": 1050,
       "width": 320,
       "height": 110,
       "color": "1"
     },
     {
-      "id": "7cbdd62d9d24ada6",
+      "id": "8085030fae504105",
       "type": "file",
-      "file": ".scratch/wake-word/issues/12-deaf-in-the-jeep.md",
+      "file": ".scratch/wake-word/issues/14-service-refused-to-start.md",
       "x": 0,
-      "y": 1200,
+      "y": 1050,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -109,6 +99,16 @@
       "width": 320,
       "height": 110,
       "color": "5"
+    },
+    {
+      "id": "4dd57d5aa9688889",
+      "type": "file",
+      "file": ".scratch/wake-word/issues/11-let-him-say-never-mind.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "4"
     },
     {
       "id": "7a3c9183aaf64e84",
@@ -192,8 +192,8 @@
       "toSide": "left"
     },
     {
-      "id": "2f19423f45b53619",
-      "fromNode": "841fb7e235928036",
+      "id": "ca7c3768a5b67682",
+      "fromNode": "cc43aa2746f47f5a",
       "fromSide": "right",
       "toNode": "4dd57d5aa9688889",
       "toSide": "left"
