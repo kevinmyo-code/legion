@@ -28,7 +28,7 @@ Six life domains plus music control, one voice loop. Tabs: Today, Money, Body, F
 
 <!-- VOICE-SURFACE:START -->
 
-**101 voice tools across 13 domains**, dispatched from one Gemini Live
+**103 voice tools across 13 domains**, dispatched from one Gemini Live
 socket. Every one is declared with a schema and a description written to constrain the
 model rather than to sell the feature.
 
@@ -43,7 +43,7 @@ model rather than to sell the feature.
 | Training and sleep | 10 | &ldquo;Squats, five at a hundred kilos&rdquo; |
 | Goals and advice | 9 | &ldquo;I want to save five grand by December&rdquo; |
 | Music | 4 | &ldquo;Play the Roadtrip playlist&rdquo; |
-| Mail and calendar | 3 | &ldquo;Any mail from the garage?&rdquo; |
+| Mail and calendar | 5 | &ldquo;Any mail from the garage?&rdquo; |
 | Phone calls | 2 | &ldquo;Answer it&rdquo; |
 | Memory | 3 | &ldquo;Remember that the XJ takes 5W-30&rdquo; |
 | Settings and control | 3 | &ldquo;Call yourself Alfred&rdquo; |

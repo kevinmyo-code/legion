@@ -30,6 +30,12 @@ val geminiApiKey: String =
 val tomtomApiKey: String =
     if (project.hasProperty("nokey")) "" else localProps.getProperty("TOMTOM_API_KEY", "")
 
+// AirNow (US EPA air quality). Same BYO shape and the same degrade-in-words rule: with no key the
+// air-quality answer says it has no key rather than reporting clean air it never measured. A
+// missing reading and a good reading are different sentences (CLAUDE.md sec 1).
+val airnowApiKey: String =
+    if (project.hasProperty("nokey")) "" else localProps.getProperty("AIRNOW_API_KEY", "")
+
 // Release signing. The keystore (app/release.jks, gitignored) is a personal
 // signing key, not a Play Store upload key. All four values must come from
 // local.properties - no hardcoded fallback, so the password never lands in
@@ -66,6 +72,7 @@ android {
 
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
         buildConfigField("String", "TOMTOM_API_KEY", "\"$tomtomApiKey\"")
+        buildConfigField("String", "AIRNOW_API_KEY", "\"$airnowApiKey\"")
     }
 
     signingConfigs {
