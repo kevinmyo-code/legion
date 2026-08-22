@@ -111,6 +111,17 @@ class LiveSessionController(context: Context) {
     // hot-loop failed connects. Reset on any successful connect and on a fresh tap.
     private var consecutivePrewarmFailures = 0
 
+    // Ticket 24 (`.scratch/hands-and-senses/issues/24-the-socket-that-never-rests.md`):
+    // wall-clock time of the last genuine signal - a tap ([onTap]), a wake-word trigger (also
+    // [onTap], with fromWakeWord=true), or a proactive raise that needed to speak
+    // ([requestSpeak]). This is the only input [shouldAutoReconnectAfterClose] reads, and it is
+    // what the [LiveEvent.Closed] branch's auto-reconnect is gated on: a server-initiated close
+    // (measured at ~153s, unrelated to anything the app does) is only worth immediately
+    // reconnecting when something real happened recently. Initialized to construction time so a
+    // freshly-started service still gets the ordinary warm behaviour for a while, not an
+    // instant cold shoulder.
+    private var lastRealInteractionMs = System.currentTimeMillis()
+
     // What to do once the socket finishes connecting (the setup handshake is
     // async). A warm/prewarmed socket is already connected, so these only matter
     // for a cold connect.
@@ -240,6 +251,13 @@ class LiveSessionController(context: Context) {
      * no greeting); otherwise it connects a fresh conversation.
      */
     fun onTap(fromWakeWord: Boolean = false) {
+        // Ticket 24: a tap (or a wake-word trigger, which calls this with fromWakeWord=true) IS
+        // the genuine signal [shouldAutoReconnectAfterClose] waits for. Recorded unconditionally,
+        // before any of the early returns below, so even a tap that bounces off "ON A CALL" or
+        // "NO SIGNAL OUT HERE" still counts as someone being there - the socket staying warm a
+        // while longer is the safe direction to be wrong in, not the storm this ticket exists to
+        // stop.
+        lastRealInteractionMs = System.currentTimeMillis()
         // Ticket 11: never let a dismissal armed by a previous turn survive into this one. If the
         // driver tapped stop, or the socket died, between the tool call and TurnComplete, the flag
         // was never consumed - and a stale one would hang up the NEXT conversation the instant the
@@ -318,6 +336,12 @@ class LiveSessionController(context: Context) {
         listensForReply: Boolean = false,
         carriesReadThroughContent: Boolean = false,
     ) {
+        // Ticket 24: a proactive raise that needs to speak is the third genuine signal
+        // [shouldAutoReconnectAfterClose] recognises, alongside a tap and a wake-word trigger
+        // (see [onTap]). It reconnects on its own cold path below regardless of the idle window
+        // (startProactive / speakAndListen / the warm/mid-connect branches) - this timestamp only
+        // extends how long the socket THEN stays willing to auto-reconnect on its own after that.
+        lastRealInteractionMs = System.currentTimeMillis()
         // Mark BEFORE the line is spoken, and on every branch below, so a reply that arrives fast
         // still lands in a turn already flagged. See GeminiLiveSession.markTurnReadThrough.
         if (carriesReadThroughContent) session?.markTurnReadThrough()
@@ -767,14 +791,37 @@ class LiveSessionController(context: Context) {
                 connectedThisSession = false
                 set(Phase.IDLE, IDLE_STATUS)
 
-                // Re-establish a warm socket so the next tap is instant again,
-                // backing off after repeated connect failures (dead zone / bad key).
-                if (!destroyed) {
+                // Re-establish a warm socket so the next tap is instant again, backing off after
+                // repeated connect failures (dead zone / bad key) - UNLESS ticket 24's idle window
+                // has lapsed, in which case we do nothing here and let the socket stay closed.
+                //
+                // This is the fix for the measured reconnect storm: the Live server closes an
+                // idle prewarmed socket every ~153s on its own (see the ticket - resumption does
+                // NOT discount the re-sent setup payload), and reconnecting on every one of those
+                // closes forever is what turned an idle phone into ~565 reconnects and ~9.1M
+                // estimated input tokens a day with nobody using the app. Past the idle window, a
+                // close is left alone; the next tap, wake-word trigger, or proactive raise
+                // reconnects instantly anyway through its own cold-start path ([onTap],
+                // [startProactive]/[speakAndListen]) regardless of what happens here.
+                //
+                // The trade, stated rather than buried: the FIRST interaction after a long idle
+                // stretch pays a cold connect - measured at roughly a second slower than a warm
+                // resume - instead of the instant resume a still-warm socket would have given. That
+                // cost is real and is paid once per idle stretch, not 565 times a day.
+                if (!destroyed && shouldAutoReconnectAfterClose(lastRealInteractionMs, System.currentTimeMillis())) {
                     val failures = consecutivePrewarmFailures
                     if (failures > 0) {
                         scope.launch {
                             delay((30_000L * (1L shl failures.coerceAtMost(6))).coerceAtMost(300_000L))
-                            if (!destroyed && session == null) prewarm()
+                            // Re-check the idle window too, not just destroyed/session==null: the
+                            // backoff delay itself can be long enough to carry the last real
+                            // interaction outside the window, and a real tap/wake/raise during the
+                            // delay already reconnects on its own via its own cold path.
+                            if (!destroyed && session == null &&
+                                shouldAutoReconnectAfterClose(lastRealInteractionMs, System.currentTimeMillis())
+                            ) {
+                                prewarm()
+                            }
                         }
                     } else {
                         prewarm()
@@ -1059,5 +1106,52 @@ class LiveSessionController(context: Context) {
             closeReason: String,
             hasResumeHandle: Boolean,
         ): Boolean = wasConversationActive && closeReason != "stopped" && !hasResumeHandle
+
+        // Ticket 24: how long the socket keeps auto-reconnecting after an unattended close, once
+        // nothing real has happened for a while. GUESSED, not measured - the ticket fixed the
+        // decision shape (a pure idle window) and left the exact number to this build. Long enough
+        // that an ordinary pause between turns, or Kevin setting the phone down and picking it back
+        // up a few minutes later, still finds a warm socket and pays no cold-connect tax; short
+        // enough that the measured ~153s reconnect storm only runs a handful of times - not all
+        // day - before it goes quiet. If real usage says otherwise, this is the one number to
+        // revisit; the mechanism around it should not need to change.
+        private const val IDLE_RECONNECT_WINDOW_MS = 10 * 60 * 1000L // 10 minutes
+
+        /**
+         * Ticket 24 (`.scratch/hands-and-senses/issues/24-the-socket-that-never-rests.md`) pure
+         * decision behind the [LiveEvent.Closed] branch's auto-reconnect.
+         *
+         * Measured 2026-08-22: the Live server closes an idle prewarmed socket roughly every 153
+         * seconds regardless of anything the app does, and every connect - cold OR resumed -
+         * re-sends the full `systemInstruction` plus all 66 tool declarations (~16,189 estimated
+         * tokens; session resumption does NOT discount it, traced in the ticket). Reconnecting on
+         * every one of those closes, forever, is what turned an idle phone into ~565 reconnects and
+         * ~9.1M estimated input tokens a day on Kevin's own BYO key with nobody using the app.
+         *
+         * [lastInteractionMs] is the wall-clock time of the last genuine signal - a tap ([onTap],
+         * which also covers a wake-word trigger), or a proactive raise that needed to speak
+         * ([requestSpeak]). All three ALSO reconnect unconditionally through their own already-
+         * existing cold-start paths ([onTap] -> [startConversation]/[resumeWarm],
+         * [requestSpeak] -> [startProactive]/[speakAndListen]/the mid-connect PROACTIVE_WARM
+         * branch) - this function does not gate any of those. It governs only whether the
+         * [LiveEvent.Closed] branch's own automatic re-prewarm fires after a close nobody asked
+         * for.
+         *
+         * Inside [idleWindowMs] of the last signal: yes, keep reconnecting, same as today - tap
+         * latency in the case that matters (Kevin actually using the app) is unchanged. Past it:
+         * no, leave the socket closed. The trade this accepts, stated rather than buried: the
+         * FIRST interaction after a long idle stretch then pays a cold connect - measured at
+         * roughly a second slower than a warm resume from a real capture - instead of finding an
+         * already-warm socket. That cost is real, and it is paid once per idle stretch instead of
+         * on every one of the ~565 daily closes.
+         *
+         * Pure and Context-free on purpose, per the ticket's own requirement, so it is directly
+         * unit-testable - see [LiveSessionControllerIdleReconnectTest].
+         */
+        internal fun shouldAutoReconnectAfterClose(
+            lastInteractionMs: Long,
+            nowMs: Long,
+            idleWindowMs: Long = IDLE_RECONNECT_WINDOW_MS,
+        ): Boolean = nowMs - lastInteractionMs < idleWindowMs
     }
 }

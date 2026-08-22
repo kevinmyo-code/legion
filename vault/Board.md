@@ -17,7 +17,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[08-layout\|08]] | prototype | Layout for a phone that is 384 x 832, not a head unit |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-it-said-142k\|20]] | task | It said the Jeep was at 142k when the record says 227k |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[24-the-socket-that-never-rests\|24]] | build | The socket restarts every 2.5 minutes, all day |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[25-build-inbox-intelligence\|25]] | build | BUILD: where is my package, when is my flight |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
@@ -33,6 +32,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[22-build-the-sitrep\|22]] | build | Build the sitrep |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[23-conversation-audit-trail\|23]] | build | An audit trail of every conversation and every tool call |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[24-the-socket-that-never-rests\|24]] | build | The socket restarts every 2.5 minutes, all day |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[11-reframe-missed-the-toolbox\|11]] | bug | The concierge reframe missed the largest prompt surface |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |

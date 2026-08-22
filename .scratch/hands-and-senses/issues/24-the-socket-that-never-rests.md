@@ -3,12 +3,12 @@ map: hands-and-senses
 ticket: 24
 title: "The socket restarts every 2.5 minutes, all day"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Measured, then fixed. Idle window is 10 minutes and GUESSED. Owes the on-phone check: leave it idle, confirm the storm stops, then tap and confirm it still answers."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The socket restarts every 2.5 minutes, all day
@@ -151,3 +151,62 @@ resolves the expensive way.
 - The measured token figure, written down here, with how it was measured.
 - Whatever changes, the tap-to-talk latency Kevin already has must not get worse without that being
   stated plainly as the trade.
+
+---
+
+## The fix, decided 2026-08-22 (Kevin: "yeah take it")
+
+Measurement first was the right order: the guess was ~101 declarations and the truth was 66, but
+the daily figure is still about **9.1M estimated input tokens with nobody using the app**, and
+**session resumption does not discount it** - a resumed connect sends a byte-identical payload.
+
+### What changes
+
+**Stop reconnecting on a close that nobody asked for.** Today `onClosed` leads straight back to a
+reconnect, every 2m33s, forever. Instead the socket goes idle and STAYS closed once nothing has
+happened for a while, and comes back on the first sign it is wanted.
+
+The decision must be a **pure function** of (time since the last real interaction, now), so it is
+testable without a socket:
+
+- Inside the warm window: reconnect as today. Tap latency is unchanged in the case that actually
+  matters, which is Kevin using the app.
+- Outside it: do not reconnect. Wait.
+- Any genuine signal reconnects immediately: a tap, a wake-word trigger, or a proactive raise that
+  needs to speak. The cold paths for all three already exist.
+
+### The trade, stated rather than buried
+
+**The first interaction after a long idle pays a cold connect.** From the 12:57 capture a warm tap
+had Alfred speaking in about one second; a cold connect adds roughly a second more. That is the
+cost, it is real, and it is paid once per idle stretch rather than 565 times a day.
+
+**This must not become a proactive-mode regression.** A raise that needs to speak has to connect
+and speak, not be silently dropped because the socket was idle. Whatever the raise path does today
+on a cold socket is what it must keep doing.
+
+### Out of scope, deliberately
+
+**Do not trim tool descriptions in this ticket.** The measurement names `control_music` (~876
+tokens), `manage_item` (~871) and `play_music` (~603) as the largest, and trimming them is a real
+saving on every connect that survives. It is also a separate change with its own risk of quietly
+removing a rule the model needs, and mixing it in here would make it impossible to tell which
+change moved the number.
+
+## Built 2026-08-22
+
+`LiveSessionController.shouldAutoReconnectAfterClose(lastInteractionMs, nowMs)` gates the
+auto-reconnect in the `Closed` handler, at both the immediate and the backoff-delayed call site -
+the delayed one re-checks after its delay, because the delay itself can carry the last interaction
+out of the window. It composes with the existing `consecutivePrewarmFailures` backoff rather than
+replacing it: a dead key and an idle app are different failure modes and want different guards.
+
+**`IDLE_RECONNECT_WINDOW_MS` is 10 minutes and it is GUESSED**, not measured or derived. The number
+is the one thing here worth revisiting against real usage.
+
+**The three cold paths are untouched and unconditional**, so a tap, a wake-word trigger and a
+proactive raise all still connect from a fully closed socket. The raise path was **traced, not
+tested**: `requestSpeak` with a null session falls to `startProactive`, which calls `newSession()`,
+sets `Pending.PROACTIVE_COLD`, and speaks the pending prompt on `Connected`. A unit test would need
+a live `Context`, a `GeminiLiveSession` and Room, which is the same constraint that keeps every
+other test here on the companion object's pure functions.
