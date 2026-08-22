@@ -3,12 +3,12 @@ map: hands-and-senses
 ticket: 19
 title: "The people in Kevin's life: dates and facts he tells it"
 type: grilling
-status: open
-status-detail: ""
+status: closed
+status-detail: "Archived 2026-08-21, Kevin - not wanted"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The people in Kevin's life: dates and facts he tells it
@@ -47,3 +47,16 @@ Decide:
    memory-write LEGION has never done before; decide deliberately.
 6. **Tool budget.** One `people` tool (read + write with an action parameter), or fold into the
    existing notes tools? Write the description.
+
+## Archived - 2026-08-21 (Kevin)
+
+*"dont need this anymore. archive it."*
+
+Closed unbuilt and undecided. Nothing here was wrong; Kevin does not want the assistant holding a
+model of the people in his life, and that is a scoping call rather than a technical one.
+
+**Out of scope, not deferred.** It returns only as a fresh effort if he ever asks for it.
+
+Worth noting what this does NOT touch: the assistant still stores what he explicitly tells it via
+`remember`, and still reads his calendar. What is closed is the idea of a curated store of facts
+ABOUT other people.

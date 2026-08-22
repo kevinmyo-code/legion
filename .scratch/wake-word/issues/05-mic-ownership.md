@@ -3,12 +3,12 @@ map: wake-word
 ticket: "05"
 title: "Who owns the microphone, and what yields to what?"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "2026-08-21, Kevin - one arbiter, live turn > ring > wake word"
 blockers: ["01"]
 blocked-by: ["[[01-mic-under-doze]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Who owns the microphone, and what yields to what?
@@ -44,3 +44,43 @@ The questions:
 
 Ticket [Does a foreground service still get the microphone with the screen off?](01-mic-under-doze.md)
 must land first: several of these have platform-level answers that are not Kevin's to choose.
+
+## Resolution - 2026-08-21 (Kevin)
+
+**One arbiter object owns the microphone. Priority: a live turn beats ring listening beats the wake
+word.**
+
+### Why an object rather than written-down rules
+
+Today three subsystems grab the mic independently - `WakeWordEngine`, `GeminiLiveSession`, and the
+ring-listening window added the same day - and the only coordination between any of them is a
+boolean.
+
+**That boolean got stuck, and it cost a real bug.** `duckNow()`'s `ducked` flag stayed true after
+Android took audio focus away, so every later turn short-circuited and the assistant spoke
+inaudibly for the rest of the session while subtitles kept rendering
+(`.scratch/proactive-mode/issues/13-silent-after-focus-loss.md`). Written-down precedence enforced
+at each call site is the same shape that just failed: **N places that must each remember.**
+
+An arbiter makes the question structural. It is the only thing that can answer "who has the mic
+right now" at all, which today nothing can.
+
+### The priority, and why this order
+
+| Rank | Claimant | Why |
+|---|---|---|
+| 1 | **A live turn** | The only one where Kevin is mid-sentence. Cutting him off is the worst outcome available |
+| 2 | **Ring listening** | Seconds long, with an action attached ("answer it") |
+| 3 | **Wake word** | Yields to both, resumes after |
+
+Ring-listening-over-live-turn was rejected deliberately: the ring build already refuses to tear down
+a running conversation to announce a call, on the grounds that it would take the microphone from
+someone mid-sentence to tell them something they can already hear. Inverting that here would
+contradict a decision made hours earlier.
+
+### This is a refactor, and it should be sequenced honestly
+
+**[Ticket 10](10-weak-pickup-on-a-drive.md) has a symptom and no cause**, and mic contention is one
+of its four candidates. The arbiter is worth building regardless - the focus bug alone justifies it -
+but **do not claim it fixed the weak wake word** unless a log pull shows contention was implicated.
+An output fix was already nearly credited with an input improvement once today.

@@ -3,12 +3,12 @@ map: hands-and-senses
 ticket: 17
 title: "The document vault: LEGION reads the papers that run your life"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "2026-08-21, Kevin - his own Drive folder, answered from the document, re-read every time"
 blockers: ["16"]
 blocked-by: ["[[16-vault-retrieval-research]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The document vault: LEGION reads the papers that run your life
@@ -75,3 +75,49 @@ Decide:
    writes it - Kevin by hand, or an LLM pass at ingest whose output he confirms? An expiry date in
    the descriptor is what makes "registration expires next month" answerable without reading every
    document, so this is load-bearing, not decoration.
+
+## Resolution - 2026-08-21 (Kevin, 2 calls)
+
+### 1. It lives in a Drive folder Kevin curates - same shape as the ledger
+
+*"i wanna put it in my google drive folder. same idea as ledger. that way i can curate and edit the
+documents as i need in that folder."*
+
+So this reuses the pattern `ledger-drive-ingestion` already established: a SAF folder the user picks,
+his own Drive, no Kevin-hosted anything (CLAUDE.md §7). He adds, edits and removes documents in the
+folder like any other folder, and the app follows.
+
+### 2. Answers come FROM the document, with a citation, always
+
+**Nothing is extracted and stored as truth.** Asked about his policy excess, it reads the paper and
+answers *"per your State Farm policy dated March 2025, ..."*.
+
+This is the reconciliation gate's posture applied to a source that **cannot** be gated. A bank
+statement prints a total to reconcile line items against; **an insurance policy prints nothing.**
+There is no anchor, so CLAUDE.md §4 rule 2 can never be satisfied - and rather than reach for rule
+7's provisional-storage carve-out, this sidesteps the problem: **if every answer points at the
+document it came from, nothing is ever asserted as a standalone fact.** The citation IS the anchor.
+
+Storing extracted rows was rejected for the reason the ledger gate exists: a parse error becomes a
+stored fact that outlives the mistake, and here there would be no printed total to catch it.
+
+### 3. The folder is the truth, re-read on every question
+
+No import step, no `ingested_files` row, no staleness. Kevin drops a renewed policy in and that is
+simply what the assistant sees.
+
+**Deliberately NOT the ledger's import-tracking**, even though it exists and works: that pattern
+prevents double-processing of immutable statements, and these documents are **mutable by design** -
+the whole point of the folder is that he curates it. A file he corrected would keep answering with
+the old text until re-imported, which is the failure this avoids.
+
+Costs a read per question. For a handful of documents that is nothing, and it can be revisited if
+the folder ever grows large enough to matter.
+
+### Still open for the build
+
+- **How a document is chosen** when several could answer. Ask, or read filenames, or a cheap index?
+  An index is a cache and caches drift from the folder - which is what call 3 just avoided.
+- **What a scanned photo does.** A born-digital PDF has text; a photo of a policy needs OCR or
+  vision, which is the pantry problem again.
+- Whether it reuses the ledger's existing SAF folder or takes its own.

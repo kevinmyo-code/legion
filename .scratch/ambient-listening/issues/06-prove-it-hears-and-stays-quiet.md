@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["02", "03"]
 blocked-by: ["[[02-the-toggle-and-its-words]]", "[[03-what-is-worth-speaking-into]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

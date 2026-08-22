@@ -3,12 +3,12 @@ map: quant-viz
 ticket: 17
 title: "Two shipped visualisations vanished in a later rebuild, and nothing noticed"
 type: grilling
-status: open
-status-detail: "Decisions 1-4 built and verified in the tree 2026-08-19. Only decision 5 - auditing the rest of the rebuild for other silent losses - is still open."
+status: resolved
+status-detail: "2026-08-21, Kevin - a presence test, not a screenshot suite"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Two shipped visualisations vanished in a later rebuild, and nothing noticed
@@ -96,3 +96,20 @@ whether there was a third.
 
 **So this ticket stays open on purpose, narrowed to that audit.** Closing it on the strength of the
 four that are done would retire the question it exists to answer.
+
+## Resolution - 2026-08-21 (Kevin)
+
+**A test that names each screen's expected charts and fails the build when one disappears.**
+
+Same posture as the two guards that already earned their place today: `PromptRoleNamingTest`, which
+caught 183 real leaks, and the exact-set drift guard on `EPISODIC_EXCLUDED_TOOLS`, which failed the
+moment a fourth name was added and forced that addition to be a written decision. **This turns
+"nothing noticed" into "the build noticed."**
+
+Screenshot tests were rejected as the wrong tool here: they catch far more - layout, theming, empty
+states - and they are famously noisy on a one-developer project with no CI. A noisy guard gets
+disabled, and a disabled guard is worse than none because it still looks like coverage.
+
+**What it cannot catch, stated plainly:** a chart that is present but rendering nothing, or bound to
+the wrong data. Presence is the cheap half. The regression that prompted this ticket was two charts
+**vanishing entirely**, which is exactly what presence catches.

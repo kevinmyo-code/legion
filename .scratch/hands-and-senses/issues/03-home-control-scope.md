@@ -3,12 +3,12 @@ map: hands-and-senses
 ticket: 03
 title: "Home control: what does LEGION actually get to touch?"
 type: grilling
-status: open
-status-detail: ""
+status: kiv
+status-detail: "KIV 2026-08-21, Kevin - parked, not queued"
 blockers: ["02"]
 blocked-by: ["[[02-ha-api-research]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Home control: what does LEGION actually get to touch?
@@ -38,3 +38,16 @@ Settled decision 1 makes HA the device layer. This ticket decides the LEGION sid
    Words, not glyphs.
 5. **Clone-and-run.** A stranger without HA skips the aspect entirely; the aspect must be invisible
    until configured, like the Gemini key screen. Confirm the shape.
+
+## KIV - 2026-08-21 (Kevin)
+
+Parked on purpose. Not dead, not queued.
+
+The garage relay already works through the Shelly path and is governed by its own rule (a spoken
+offer, never automatic, because the relay cannot report door state). **That is the only home device
+LEGION touches, and it stays that way** until this is picked up.
+
+When it is, the fork that was on the table: read everything but write only what is safe to get
+wrong (lights, scenes, setpoints) versus read-only versus everything-with-confirmation. **Locks were
+the sharp case** - the one device where a mistaken action has a real-world security consequence, and
+a voice assistant mishearing in a car is the wrong place for it.

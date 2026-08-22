@@ -3,12 +3,12 @@ map: ambient-listening
 ticket: "04"
 title: "What is kept, for how long, and what is never written down"
 type: grilling
-status: open
-status-detail: ""
+status: closed
+status-detail: "Out of scope 2026-08-21 - ambient listening retired"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # What is kept, for how long, and what is never written down
@@ -37,3 +37,17 @@ one that is not.
 The crisis path deserves its own beat here: an always-listening feature makes `ai/CrisisDetector.kt`
 far more likely to fire than push-to-talk ever did, and a transcript is exactly the material that
 should not be retained when it does.
+
+## Closed OUT OF SCOPE - 2026-08-21 (Kevin)
+
+**Ambient listening was retired** (`.scratch/proactive-mode/issues/12-retire-ambient-listening.md`).
+It could not satisfy the raise contract - the sub-agent authored the spoken line itself, so there
+were no facts for the prompt to state - and it was dead code besides: the opt-in had no writer, so
+it could never actually run.
+
+This ticket is a decision about a feature that no longer exists. Closed out of scope rather than
+left reading as pending work. Wayfinder's own rule applies: **a scope boundary is not a step on the
+route**, so this does not appear in Decisions-so-far.
+
+**The idea is not forbidden, only this implementation.** A listening mode that CAN state its facts
+would be a fresh effort, not a resumption of this one.

@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["01"]
 blocked-by: ["[[01-the-listening-indicator]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # The toggle, and the words next to it

@@ -3,12 +3,12 @@ map: hands-and-senses
 ticket: 20
 title: Memory that forgets like a person does
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "2026-08-21, Kevin - importance x age, decayed on recall, nothing deleted"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Memory that forgets like a person does
@@ -113,3 +113,26 @@ whether embeddings were ever wired (**no** - the field exists and is dead).
 **Genuinely open:** pruning (against a documented no-purge position), unforgettability, the legacy
 `MemoryEntry` Room decision, backup semantics, and whether the orphan `embeddingVector` field should
 be filled or deleted.
+
+## Resolution - 2026-08-21 (Kevin)
+
+**Weight recall by importance decayed against age. Delete nothing.**
+
+`CompanionMemory` already stores an `importance` 1-10, set deliberately by the consolidation pass, so
+the input exists. A big fact stays reachable for a long time; a small one stops surfacing. The row
+remains either way.
+
+**Nothing is deleted, and that is the load-bearing half.** A wrong decay curve then costs relevance -
+something surfaces less than it should - rather than data. Hard expiry was the honest reading of
+"forgets like a person does" and was rejected for exactly that: the first time it drops something
+Kevin wanted, it is gone and he cannot get it back, and he would have no way to know it happened.
+
+Also consistent with CLAUDE.md §7's memory rule: memory stays anchored to external falsifiable
+facts. Decay changes what is SURFACED, never what was true.
+
+### Still to decide at build time
+
+- The curve itself. A half-life per importance band is the obvious shape; the numbers are a guess
+  until recall quality can be judged against real memories.
+- Whether an explicitly-remembered fact (`remember` tool) decays at all, or is exempt because Kevin
+  deliberately asked for it. **Leaning exempt** - he said it out loud on purpose.

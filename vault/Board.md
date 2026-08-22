@@ -13,27 +13,20 @@ Open tickets whose blockers are all resolved.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
-| [[.scratch/ambient-listening/map\|ambient-listening]] | [[01-the-listening-indicator\|01]] | prototype | What the listening indicator looks like, and where it lives |
-| [[.scratch/ambient-listening/map\|ambient-listening]] | [[03-what-is-worth-speaking-into\|03]] | grilling | What counts as a moment worth speaking into? |
-| [[.scratch/ambient-listening/map\|ambient-listening]] | [[04-what-is-retained\|04]] | grilling | What is kept, for how long, and what is never written down |
+| [[.scratch/ambient-listening/map\|ambient-listening]] | [[02-the-toggle-and-its-words\|02]] | task | The toggle, and the words next to it |
+| [[.scratch/ambient-listening/map\|ambient-listening]] | [[07-passengers-who-did-not-consent\|07]] | grilling | What does LEGION owe a passenger who never agreed to any of this? |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | [[20-ship-pass\|20]] | task | Ship pass: advisors answering on the phone |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[08-layout\|08]] | prototype | Layout for a phone that is 384 x 832, not a head unit |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[01-what-on-track-means\|01]] | grilling | What \"on track\" actually means, per shape of goal |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | [[16-ship-pass\|16]] | task | BUILD: ship pass - the destination gate |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[05-comms\|05]] | grilling | Comms: place a call, send a text |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[07-wrench-mode-shape\|07]] | grilling | Wrench mode: live stream or snap-and-ask, and how the car's history gets in the room |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[17-document-vault\|17]] | grilling | The document vault: LEGION reads the papers that run your life |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[18-inbox-intelligence\|18]] | grilling | Inbox intelligence: packages and travel, from mail LEGION can already read |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[19-people-dates\|19]] | grilling | The people in Kevin's life: dates and facts he tells it |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-it-said-142k\|20]] | task | It said the Jeep was at 142k when the record says 227k |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[20-memory-decay\|20]] | grilling | Memory that forgets like a person does |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
-| [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
-| [[.scratch/wake-word/map\|wake-word]] | [[05-mic-ownership\|05]] | grilling | Who owns the microphone, and what yields to what? |
+| [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery |
 | [[.scratch/wake-word/map\|wake-word]] | [[10-weak-pickup-on-a-drive\|10]] | bug | The wake word sometimes does not hear him on a drive |
 
 ## Built, owing a run on hardware
@@ -57,10 +50,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What | Waiting on |
 |---|---|---|---|---|
-| [[.scratch/ambient-listening/map\|ambient-listening]] | [[02-the-toggle-and-its-words\|02]] | task | The toggle, and the words next to it  waiting on [[01-the-listening-indicator\|01]] |
 | [[.scratch/ambient-listening/map\|ambient-listening]] | [[05-what-it-costs-per-drive\|05]] | task | What the reaction pass costs on Kevin's own key  waiting on [[02-the-toggle-and-its-words\|02]] |
-| [[.scratch/ambient-listening/map\|ambient-listening]] | [[06-prove-it-hears-and-stays-quiet\|06]] | task | Prove it hears, it indicates, and it mostly stays quiet  waiting on [[02-the-toggle-and-its-words\|02]], [[03-what-is-worth-speaking-into\|03]] |
-| [[.scratch/ambient-listening/map\|ambient-listening]] | [[07-passengers-who-did-not-consent\|07]] | grilling | What does LEGION owe a passenger who never agreed to any of this?  waiting on [[01-the-listening-indicator\|01]] |
+| [[.scratch/ambient-listening/map\|ambient-listening]] | [[06-prove-it-hears-and-stays-quiet\|06]] | task | Prove it hears, it indicates, and it mostly stays quiet  waiting on [[02-the-toggle-and-its-words\|02]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[02-what-makes-a-goal-trackable\|02]] | grilling | What makes a goal trackable, and how set_goal captures it  waiting on [[01-what-on-track-means\|01]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | [[03-the-check-in-record\|03]] | grilling | The check-in record: how a spoken answer becomes a falsifiable fact  waiting on [[01-what-on-track-means\|01]] |
@@ -82,7 +73,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[12-ship-pass\|12]] | task | Ship pass: installed on the A25 and drivable  waiting on [[01-scopes-and-one-reapproval\|01]], [[02-app-remote-spine\|02]], [[03-tool-surface\|03]], [[04-queue\|04]], [[05-library-writes\|05]], [[06-shuffle-repeat-seek\|06]], [[07-now-playing-truth\|07]], [[08-playlists-by-name\|08]], [[09-history-uri\|09]], [[11-rec-engine\|11]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[13-more-from-this-artist\|13]] | task | More from this artist, and what else they have  waiting on [[02-app-remote-spine\|02]], [[03-tool-surface\|03]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[04-what-drain-is-acceptable\|04]] | grilling | What drain is acceptable, and what happens when it is not met?  waiting on [[03-measure-the-battery-cost\|03]] |
-| [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery  waiting on [[05-mic-ownership\|05]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[07-false-triggers\|07]] | grilling | How many false triggers is too many, and how would Kevin ever know?  waiting on [[06-prove-it-on-the-phone\|06]] |
 
 ## KIV
@@ -100,6 +90,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/android-auto/map\|android-auto]] | [[13-prove-the-obd-silent-stall\|13]] | task | Prove or kill the OBD silent-stall claim |
 | [[.scratch/android-auto/map\|android-auto]] | [[14-does-gearhead-draw-the-call\|14]] | task | Does gearhead actually draw the call? |
 | [[.scratch/android-auto/map\|android-auto]] | [[15-the-live-session-can-be-silenced\|15]] | task | The live session can be silenced with no error |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[09-tomtom-surface-area\|09]] | grilling | The rest of the TomTom surface area |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[11-rec-engine\|11]] | task | The recommendation engine LEGION has to build itself |
 
@@ -107,7 +98,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 
 | Map | Tickets | Open | Canvas |
 |---|---|---|---|
-| [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 7 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
+| [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 4 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 9 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 1 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
@@ -117,7 +108,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | 8 | 7 | [[.scratch/goal-keeping/goal-keeping.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 1 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 23 | 9 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 23 | 5 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |
@@ -126,6 +117,6 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
-| [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
+| [[.scratch/quant-viz/map\|quant-viz]] | 17 | 0 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 12 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
-| [[.scratch/wake-word/map\|wake-word]] | 14 | 8 | [[.scratch/wake-word/wake-word.canvas\|open]] |
+| [[.scratch/wake-word/map\|wake-word]] | 14 | 7 | [[.scratch/wake-word/wake-word.canvas\|open]] |
