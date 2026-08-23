@@ -293,8 +293,8 @@ fun ProactiveCategoryRow(
  * - shape lifted straight from [ProactiveCategoryRow], the ticket's own instruction to follow
  * that file "exactly as the pattern." No `masterOn` parameter here, unlike that row: the sitrep
  * has no master kill switch of its own ([com.kevin.legion.sitrep.SitrepSettings]'s own class doc
- * explains why - the askable path is never gated at all, and the SCHEDULED path is gated by
- * [ProactiveCategory.DIGEST]'s switch above, not by anything on this row).
+ * explains why - a sitrep is produced only when asked for, never gated at all, and since ticket 32
+ * (Kevin: "sitreps stay tap only or via voice activation only") that is the ONLY path there is.
  */
 @Composable
 fun SitrepModuleRow(
@@ -319,25 +319,21 @@ fun SitrepModuleRow(
 }
 
 /**
- * The sitrep's schedule time and newsletter sender list (ticket 22 part F) - one row, matching
- * [com.kevin.legion.data.local.SitrepSchedule]'s own one-row-per-schedule shape. [hourText]/
- * [minuteText] are plain typed digits rather than a picker dialog (this app's clean-slate `ui/`
- * has no time-picker component yet, and CLAUDE.md says to STOP and surface a missing design
- * primitive rather than improvise a new one - a two-field typed time is the smallest thing that
- * does not require inventing one). [onSave] is called with the whole row's state at once so the
- * caller can validate/persist it as one write, same as [com.kevin.legion.ui.common.DeckTextField]'s
- * callers elsewhere on this screen.
+ * The sitrep's curated newsletter sender list (ticket 22 part F, narrowed by ticket 32 - Kevin:
+ * "sitreps stay tap only or via voice activation only"). Used to be one row with a schedule time
+ * attached ([com.kevin.legion.data.local.SitrepSchedule]'s `hour`/`minute`); ticket 32 retired the
+ * alarm those fields armed, so this row is senders only now. [onSave] is called with the row's
+ * whole state at once so the caller can validate/persist it as one write, same as
+ * [com.kevin.legion.ui.common.DeckTextField]'s callers elsewhere on this screen.
  *
  * **Newsletter senders are curated by Kevin, by hand** (ticket 08 §6) - this field is a plain
  * comma-separated text entry, never a picker or a suggestion list; nothing here infers a sender.
+ * An empty list is a real, supported state, not an error - [com.kevin.legion.sitrep.SitrepBuilder]
+ * falls back to Gmail's own newsletter/promo classification when nothing is curated.
  */
 @Composable
-fun SitrepScheduleRow(
-    hourText: String,
-    minuteText: String,
+fun SitrepNewsSendersRow(
     sendersText: String,
-    onHourChange: (String) -> Unit,
-    onMinuteChange: (String) -> Unit,
     onSendersChange: (String) -> Unit,
     onSave: () -> Unit,
     statusLine: String,
@@ -345,42 +341,31 @@ fun SitrepScheduleRow(
     val sem = LocalLegionSemantics.current
     Surface(Modifier.fillMaxWidth(), tonalElevation = 1.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Text("Sitrep schedule", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text("Sitrep newsletter senders", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             Text(statusLine, style = LegionType.stamp, color = sem.faint)
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                com.kevin.legion.ui.common.DeckTextField(
-                    value = hourText, onValueChange = onHourChange, label = "Hour (0-23)",
-                    modifier = Modifier.weight(1f),
-                )
-                com.kevin.legion.ui.common.DeckTextField(
-                    value = minuteText, onValueChange = onMinuteChange, label = "Minute (0-59)",
-                    modifier = Modifier.weight(1f),
-                )
-            }
             Spacer(Modifier.height(8.dp))
             com.kevin.legion.ui.common.DeckTextField(
                 value = sendersText, onValueChange = onSendersChange,
                 label = "Newsletter senders (comma-separated)",
             )
             Spacer(Modifier.height(8.dp))
-            DeckButton(text = "Save schedule", onClick = onSave)
+            DeckButton(text = "Save senders", onClick = onSave)
         }
     }
 }
 
 /**
  * The wellbeing digest's schedule time (goal-plans ticket 05,
- * `.scratch/goal-plans/issues/05-wellbeing-digest.md`) - shape lifted directly from
- * [SitrepScheduleRow] above, minus the newsletter-sender field that domain has and this one does
- * not. Same typed-digit reasoning: this app's clean-slate `ui/` has no time-picker component yet,
- * and CLAUDE.md says to STOP and surface a missing design primitive rather than improvise a new
- * one.
+ * `.scratch/goal-plans/issues/05-wellbeing-digest.md`) - a two-field typed hour/minute, the
+ * smallest thing that does not require inventing a time-picker component this app's clean-slate
+ * `ui/` does not have yet (CLAUDE.md: STOP and surface a missing design primitive rather than
+ * improvise one). **This is a different feature from the sitrep and is unaffected by ticket 32**
+ * (Kevin, goal-plans 05: its own compulsion-test reasoning) - the wellbeing digest still fires on
+ * a schedule Kevin sets, here.
  *
  * **No enable switch here** - the real kill switch is [ProactiveCategoryRow]'s own WELLBEING row,
  * which sits above this one on the settings screen. This row only configures WHEN the digest
- * fires, matching [SitrepScheduleRow]'s own "these rows configure WHAT it says, not WHETHER it
- * may" split for the sitrep's schedule under DIGEST.
+ * fires, never WHETHER it may.
  */
 @Composable
 fun WellbeingDigestScheduleRow(

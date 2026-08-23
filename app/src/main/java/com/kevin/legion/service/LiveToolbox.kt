@@ -1566,8 +1566,10 @@ object LiveToolbox {
         // resolution §6 is explicit that a per-module tool would let the model choose which
         // sections to ask for on Kevin's behalf, the same "model decides what he doesn't hear"
         // failure the whole design avoids elsewhere. Askable at any hour by name - "sitrep" is
-        // deliberately time-agnostic (see SitrepModule's own doc) - AND fired on a schedule via
-        // SitrepAlarmReceiver/ProactiveBus; this declaration only covers the askable half.
+        // deliberately time-agnostic (see SitrepModule's own doc). **This is now the ONLY way a
+        // sitrep is ever produced, alongside the Home card's tap** - ticket 32 (Kevin: "sitreps
+        // stay tap only or via voice activation only") retired the scheduled alarm that used to
+        // fire one unasked; there is no other half of this declaration anymore.
         fns.put(fn(
             name = "get_sitrep",
             description = "Give the user a sitrep: a status report pulling together their " +

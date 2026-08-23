@@ -68,6 +68,9 @@ import com.kevin.legion.vehicle.DtcDescriptions
 import com.kevin.legion.vehicle.MpgTrust
 import com.kevin.legion.vehicle.VehicleController.WriteOutcome
 import kotlinx.coroutines.Dispatchers
+// AnchorWriteOutcome lives in this same package (MaintenanceWrites.kt) - no import needed, but
+// named here for the reader: onSetAnchor's return type, not WriteOutcome, since ticket 31 needs
+// it to carry back the RESOLVED mileage/date/neverDone, not just success/message.
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -569,7 +572,7 @@ fun ItemDetailScreen(
      * routing through [com.kevin.legion.vehicle.VehicleController.logServiceDirect]). `null` means
      * "no cost logged" - skipping it stays legal on every anchor mode, DONE_AT included.
      */
-    onSetAnchor: suspend (serviceName: String, mode: AnchorMode, mileage: Int?, date: Long?, costCents: Long?) -> WriteOutcome,
+    onSetAnchor: suspend (serviceName: String, mode: AnchorMode, mileage: Int?, date: Long?, costCents: Long?) -> AnchorWriteOutcome,
     onDelete: suspend (serviceName: String) -> WriteOutcome,
     onAddItem: suspend (name: String, miles: Int?, months: Int?, mode: AnchorMode, mileage: Int?, date: Long?) -> WriteOutcome,
     onBack: () -> Unit,
@@ -772,11 +775,23 @@ fun ItemDetailScreen(
                                 statusText = outcome.message
                                 if (outcome.success) {
                                     if (anchorMode == AnchorMode.DONE_AT && costCents != null) anchorCostText = ""
+                                    // Repaint from what [writeSetAnchor] actually WROTE, never from
+                                    // the form's raw mileage/date - ticket 31. resolveDoneAtDate can
+                                    // substitute a date the driver never typed (a mileage-only save
+                                    // re-deriving one from an existing service record), and painting
+                                    // the form's own blank date back over that looked identical to
+                                    // the save doing nothing at all. Both the invisible mirror
+                                    // (`current`, read by the GUESS-tag check above) AND the visible
+                                    // text fields update, so a resolved date actually SHOWS.
                                     current = target.copy(
-                                        neverDone = anchorMode == AnchorMode.NEVER_DONE,
-                                        lastDoneMileage = if (anchorMode == AnchorMode.DONE_AT) mileage else null,
-                                        lastDoneDate = if (anchorMode == AnchorMode.DONE_AT) date else null,
+                                        neverDone = outcome.neverDone,
+                                        lastDoneMileage = outcome.mileage,
+                                        lastDoneDate = outcome.date,
                                     )
+                                    anchorMileageText = outcome.mileage?.toString().orEmpty()
+                                    anchorDateText = outcome.date
+                                        ?.let { LocalDate.ofInstant(java.time.Instant.ofEpochMilli(it), ZoneId.systemDefault()).toString() }
+                                        .orEmpty()
                                 }
                             }
                         },
@@ -1536,7 +1551,7 @@ private fun PreviewItemDetailExisting() = LegionTheme {
         serviceHistory = listOf(ServiceRecord(vehicleId = "x", serviceName = "Oil Change", mileage = 100_000, date = 1_700_000_000_000L)),
         checkDuplicate = { null },
         onSetInterval = { _, _, _ -> WriteOutcome(true, "ok") },
-        onSetAnchor = { _, _, _, _, _ -> WriteOutcome(true, "ok") },
+        onSetAnchor = { _, _, _, _, _ -> AnchorWriteOutcome(true, "ok") },
         onDelete = { WriteOutcome(true, "ok") },
         onAddItem = { _, _, _, _, _, _ -> WriteOutcome(true, "ok") },
         onBack = {},
@@ -1551,7 +1566,7 @@ private fun PreviewItemDetailAdd() = LegionTheme {
         serviceHistory = emptyList(),
         checkDuplicate = { null },
         onSetInterval = { _, _, _ -> WriteOutcome(true, "ok") },
-        onSetAnchor = { _, _, _, _, _ -> WriteOutcome(true, "ok") },
+        onSetAnchor = { _, _, _, _, _ -> AnchorWriteOutcome(true, "ok") },
         onDelete = { WriteOutcome(true, "ok") },
         onAddItem = { _, _, _, _, _, _ -> WriteOutcome(true, "ok") },
         onBack = {},

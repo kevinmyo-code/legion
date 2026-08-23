@@ -211,6 +211,26 @@
       "color": "1"
     },
     {
+      "id": "ac2f40bdca00eaa5",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/31-silent-success.md",
+      "x": 0,
+      "y": 3150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "12f7bcaf293fcf6d",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/32-sitrep-on-demand-only.md",
+      "x": 0,
+      "y": 3300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "5e3558b6fd0ef25d",
       "type": "file",
       "file": ".scratch/hands-and-senses/issues/03-home-control-scope.md",

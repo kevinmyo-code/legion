@@ -333,7 +333,20 @@ object VehicleController {
      * general one regardless of declaration order, so adding an entry can no
      * longer silently shadow an existing one.
      */
-    internal fun canonicalizeServiceName(serviceName: String): String {
+    internal fun canonicalizeServiceName(serviceName: String): String =
+        keywordMatch(serviceName) ?: titlecaseWords(serviceName.trim())
+
+    /**
+     * The keyword-table half of [canonicalizeServiceName], split out (ticket 31, hands-and-senses
+     * "near-duplicate service names breed") so [matchServiceName] can tell "this name IS one of the
+     * 17 known concepts" from "this fell through to the titlecase fallback" apart. That distinction
+     * is load-bearing there: [nearMissServiceNames]' token-overlap scoring is only safe for names
+     * OUTSIDE this table, because two DIFFERENT keyword-table entries can share one generic word
+     * (`Brake Fluid` / `Brake Pads` both contain "brake") without naming the same job - exactly the
+     * false-merge this table's own longest-match rule already exists to prevent one layer up. Null
+     * when nothing in [SERVICE_KEYWORDS] matches.
+     */
+    private fun keywordMatch(serviceName: String): String? {
         val lower = serviceName.lowercase()
         return SERVICE_KEYWORDS
             .mapNotNull { (canonical, kws) ->
@@ -341,7 +354,6 @@ object VehicleController {
             }
             .maxByOrNull { it.second }
             ?.first
-            ?: titlecaseWords(serviceName.trim())
     }
 
     /**
@@ -414,15 +426,91 @@ object VehicleController {
      *
      * Returns the EXISTING name verbatim (same contract as [looksLikeExistingItem]) or null.
      */
-    internal fun nearMissServiceName(candidate: String, existingNames: List<String>): String? {
+    internal fun nearMissServiceName(candidate: String, existingNames: List<String>): String? =
+        nearMissServiceNames(candidate, existingNames).firstOrNull()
+
+    /**
+     * The full-list sibling of [nearMissServiceName], `internal` for the same reasons - same
+     * token-overlap scoring, but returns EVERY existing name that clears the threshold instead of
+     * just the first. Built for ticket 31 (hands-and-senses, "near-duplicate service names breed"):
+     * [matchServiceName] below needs the COUNT of near-misses to tell "one plausible match" from
+     * "ambiguous, ask" apart, which [nearMissServiceName]'s `firstOrNull` throws away. Order
+     * preserved from [existingNames], so `nearMissServiceName` delegating to
+     * `.firstOrNull()` here is behaviour-identical to its old standalone body - existing callers
+     * ([com.kevin.legion.vehicle.buildPopulateDiff], its own pinned tests) see no change.
+     */
+    internal fun nearMissServiceNames(candidate: String, existingNames: List<String>): List<String> {
         val candidateTokens = significantTokens(candidate)
-        if (candidateTokens.isEmpty()) return null
-        return existingNames.firstOrNull { existing ->
+        if (candidateTokens.isEmpty()) return emptyList()
+        return existingNames.filter { existing ->
             val existingTokens = significantTokens(existing)
-            if (existingTokens.isEmpty()) return@firstOrNull false
+            if (existingTokens.isEmpty()) return@filter false
             val overlap = candidateTokens.intersect(existingTokens).size
             val smallerSide = minOf(candidateTokens.size, existingTokens.size)
             overlap.toDouble() / smallerSide >= 0.5
+        }
+    }
+
+    /** Result of [matchServiceName] - see that function's doc. */
+    internal sealed class ServiceMatch {
+        /** One confident match - either an exact canonical collision, or the single near-miss found. */
+        data class Matched(val name: String) : ServiceMatch()
+        /** Two or more near-miss candidates - too risky to pick silently. The caller must ask. */
+        data class Ambiguous(val candidates: List<String>) : ServiceMatch()
+        /** Nothing collided at any level - a genuinely new service. */
+        object None : ServiceMatch()
+    }
+
+    /**
+     * Matches a spoken/typed service name against a vehicle's existing schedule BEFORE a caller
+     * decides whether to create a new [MaintenanceItem] row - ticket 31 (hands-and-senses)
+     * decision 3, "near-duplicate service names breed": the Jeep accumulated `Brake Fluid`
+     * (deleted), `Brake Fluid Flush` (live), `Brake Pads` (deleted) because nothing matched a
+     * spoken name against names OUTSIDE [SERVICE_KEYWORDS]' table before creating one.
+     *
+     * Two tiers, in order:
+     *  1. [looksLikeExistingItem] - the exact canonical-keyword collision [logServiceDirect] and
+     *     [logPastServiceDirect] already used. Unambiguous by construction (`firstOrNull` over a
+     *     comparator that only ever returns one class of match), so it wins outright and near-miss
+     *     is never even consulted. This is also why "Brake Fluid Flush" vs "Brake Fluid" already
+     *     matches without reaching tier 2 at all: both canonicalise onto the same `SERVICE_KEYWORDS`
+     *     entry ("brake fluid" is the longest keyword substring of both raw strings).
+     *  2. [nearMissServiceNames] - for names OUTSIDE the keyword table entirely, where tier 1 can
+     *     never fire. **Exactly one candidate is used as a match; two or more is [Ambiguous]** and
+     *     the caller must ask rather than guess which one was meant, on purpose - `place_call`'s
+     *     own "more than one match... which one?" posture for a name that resolves to more than one
+     *     real-world thing. A near-miss is a WEAKER signal than an exact canonical hit (it is a
+     *     token-overlap heuristic, not an identity match), so even a single candidate is a "this
+     *     looks like it, is it?" match, never silently folded in without the caller surfacing it -
+     *     see [logServiceDirect]/[logPastServiceDirect]'s own callers for how the single-candidate
+     *     case is phrased.
+     *
+     * **Bias toward asking, never toward merging.** A single stray shared word ("brake") between
+     * two genuinely different services (`Brake Fluid` vs `Brake Pads`) is exactly the false-merge
+     * shape ticket 31 warns against - a false merge silently attributes one car's history to the
+     * wrong job, which is worse than the duplicate row it would have prevented. That specific pair
+     * never reaches tier 2 in practice (both are keyword-table entries, intercepted at tier 1), but
+     * tier 2's own scoring is unchanged from [nearMissServiceName]'s existing conservative 0.5
+     * threshold - this function adds NO new merging logic, only routes an ambiguous result to a
+     * question instead of leaving it undetected.
+     */
+    internal fun matchServiceName(typedName: String, existingNames: List<String>): ServiceMatch {
+        looksLikeExistingItem(typedName, existingNames)?.let { return ServiceMatch.Matched(it) }
+        // Near-miss is gated to names OUTSIDE the keyword table on BOTH sides - see
+        // [keywordMatch]'s own doc for why. A typed name that IS a known keyword-table concept
+        // (e.g. "Brake Fluid") never enters tier 2 at all, even when tier 1 found no collision -
+        // that "no collision" already means it collided with nothing REAL on this vehicle, and
+        // tier 2's generic-word overlap scoring is exactly what would wrongly fold it onto an
+        // unrelated keyword-table sibling like "Brake Pads". Existing names that are themselves
+        // keyword-table concepts are filtered out of the near-miss candidate pool for the same
+        // reason, so a NOVEL typed name can never near-miss-merge onto one either.
+        if (keywordMatch(typedName) != null) return ServiceMatch.None
+        val novelExisting = existingNames.filter { keywordMatch(it) == null }
+        val nearMisses = nearMissServiceNames(typedName, novelExisting)
+        return when (nearMisses.size) {
+            0 -> ServiceMatch.None
+            1 -> ServiceMatch.Matched(nearMisses.single())
+            else -> ServiceMatch.Ambiguous(nearMisses)
         }
     }
 
@@ -456,8 +544,23 @@ object VehicleController {
         // the same comparator ticket 07 built for the hand-add duplicate
         // warning, because "does this name refer to a service already on the
         // schedule" is one question with two callers, not two questions.
+        //
+        // Widened to [matchServiceName] (ticket 31, hands-and-senses "near-duplicate service names
+        // breed"): a name outside SERVICE_KEYWORDS that near-misses TWO OR MORE existing items is
+        // ambiguous and must be asked about, never guessed, BEFORE anything is written - the same
+        // "which one?" posture place_call takes on two matching contacts. A zero-write refusal here
+        // is deliberate: writing the ServiceRecord under a guessed name and only then discovering
+        // the ambiguity would already be the false-merge / duplicate-row damage this ticket exists
+        // to stop.
         val existingItems = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
-        val matchedName = looksLikeExistingItem(serviceName, existingItems.map { it.serviceName })
+        val match = matchServiceName(serviceName, existingItems.map { it.serviceName })
+        if (match is ServiceMatch.Ambiguous) {
+            return WriteOutcome(
+                false,
+                "That could be ${match.candidates.joinToString(" or ")} - which one, or is this a new item?",
+            )
+        }
+        val matchedName = (match as? ServiceMatch.Matched)?.name
 
         // The ServiceRecord is ALWAYS written - work done is a true fact
         // regardless of what the schedule knows (ticket 08 decision). Filed
@@ -514,9 +617,23 @@ object VehicleController {
     /**
      * Backfills a maintenance item from memory rather than a precise moment
      * ("I changed the oil about 3,000 miles ago", "never rotated the tires").
-     * Unlike [logServiceDirect] this writes ONLY the maintenance_items anchor,
-     * never a [ServiceRecord] - a remembered approximation doesn't belong in the
-     * precise service ledger the driver builds by logging real work as it happens.
+     * Unlike [logServiceDirect]'s unconditional record, this writes the maintenance_items anchor
+     * ALWAYS and a [ServiceRecord] only when [date] is a real, specific date - never on
+     * [mileage]/[milesAgo]-only approximation. That split is deliberate, not an oversight: "I
+     * changed the oil about 3,000 miles ago" is a REMEMBERED APPROXIMATION with no real calendar
+     * date behind it, and does not belong in the precise service ledger the driver builds by
+     * logging real work as it happens. "It was done the same day as the oil change" is a REAL,
+     * SPECIFIC EVENT the driver is naming precisely, even though it arrives as a resolved date
+     * rather than a mileage - the fact is exact, only the anchor's mileage half is missing, and
+     * that is not the same kind of uncertainty as "about 3,000 miles ago" (ticket 31,
+     * hands-and-senses "the model resolved the date and no service_records row exists").
+     * `log_past_service` with a genuine date now writes through the SAME
+     * [com.kevin.legion.data.local.ServiceRecordDao.insert] shape [logServiceDirect] uses, never a
+     * second writer - the mileage on that record falls back to the vehicle's current live reading
+     * only when no mileage was given, mirroring [logServiceDirect]'s own capture for a record with
+     * no explicit mileage. If the spoken request genuinely carries no date, none is invented -
+     * anchor-only stays legal, and the returned message says plainly that only the maintenance
+     * clock moved, not the service history.
      *
      * At least one of [mileage] / [milesAgo] / [date] / [neverDone] must be given;
      * with nothing concrete, nothing is written and the driver is asked again.
@@ -540,11 +657,18 @@ object VehicleController {
         val db = CarDatabase.getDatabase(context)
         val vehicle = vehicleFor(context, vehicleId)
 
-        // Same comparator-based matching as logServiceDirect (ticket 08) - see
-        // its doc. A backfill against an item that doesn't exist yet creates one,
-        // same as a fresh log.
+        // Same widened matching as logServiceDirect (ticket 08, widened by ticket 31) - see that
+        // function's own comment. A backfill against an item that doesn't exist yet creates one,
+        // same as a fresh log; an ambiguous near-miss refuses and asks, before anything is written.
         val existingItems = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
-        val matchedName = looksLikeExistingItem(serviceName, existingItems.map { it.serviceName })
+        val match = matchServiceName(serviceName, existingItems.map { it.serviceName })
+        if (match is ServiceMatch.Ambiguous) {
+            return WriteOutcome(
+                false,
+                "That could be ${match.candidates.joinToString(" or ")} - which one, or is this a new item?",
+            )
+        }
+        val matchedName = (match as? ServiceMatch.Matched)?.name
         val targetName = matchedName ?: canonical
 
         // Ticket 08's backfill-conflict rule: a remembered approximation may not
@@ -610,15 +734,45 @@ object VehicleController {
             db.maintenanceItemDao().upsert(merged)
         }
 
-        return if (neverDone) {
-            WriteOutcome(true, "Got it, marking $targetName as never done — I'll flag it as overdue.")
-        } else {
-            WriteOutcome(
+        // Ticket 31 decision 2: a REAL date is a precise fact, not the approximation this
+        // function otherwise handles, and belongs in the same service ledger [logServiceDirect]
+        // writes to - through the SAME insert shape that function uses, not a second writer. Never
+        // fires for `neverDone` (nothing was "done" to log) or a mileage/milesAgo-only backfill
+        // (no date means nothing precise enough to file). [merged.lastDoneMileage] is null exactly
+        // when only a date was given ([mergeBackfillAnchors]'s anti-pairing rule), so the record's
+        // mileage falls back to the vehicle's current live reading then - mirrors
+        // [logServiceDirect]'s own mileage capture for a record with no explicit one.
+        if (date != null && !neverDone) {
+            val recordMileage = merged.lastDoneMileage ?: currentMileage(vehicle)
+            db.serviceRecordDao().insert(
+                ServiceRecord(vehicleId = vehicle.obdMac, serviceName = targetName, mileage = recordMileage, date = date, costCents = null),
+            )
+        }
+
+        return when {
+            neverDone -> WriteOutcome(true, "Got it, marking $targetName as never done — I'll flag it as overdue.")
+            // A real date was given: both the maintenance clock AND the service history moved,
+            // and the reply says so rather than the old blanket "filed into the record" wording
+            // that read as true even on the mileage/milesAgo-only branch below where nothing was
+            // actually filed (hands-and-senses ticket 31's own reported incident).
+            date != null -> WriteOutcome(
                 true,
                 listOf(
-                    "Noted — $targetName, backfilled from what you remember.",
+                    "Noted, $targetName - logged into the service history with that date.",
                     "Got it, filed $targetName into the record.",
-                    "Logged $targetName from memory.",
+                    "Logged $targetName from memory, with the date on file.",
+                ).random(),
+            )
+            // Mileage/milesAgo only, no date: the maintenance clock moved and nothing else did -
+            // said plainly, so an anchor-only backfill can never again read as a full log
+            // (CLAUDE.md §7's "nothing may stay silent about a write it did not make", the mirror
+            // of this ticket's own headline rule).
+            else -> WriteOutcome(
+                true,
+                listOf(
+                    "Noted, moved $targetName's maintenance clock from what you remember - no date given, so nothing was filed to the service history.",
+                    "Got it - updated $targetName's schedule from memory. No date, so the service history stays as it was.",
+                    "Updated $targetName's clock from what you remember; without a date I can't log it to history yet.",
                 ).random(),
             )
         }

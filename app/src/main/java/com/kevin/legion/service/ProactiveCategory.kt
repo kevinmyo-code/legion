@@ -15,11 +15,16 @@ package com.kevin.legion.service
  * [hasContent] is the honest half of the settings screen. A category with no raise wired to it
  * must say so, not hide, grey out, or fall silent (ticket 04 call 4) - same posture as the digest
  * builders' "not logged, never 0". **Flip this to `true` in the same commit that adds the
- * category's first raise**, never before. All five now have content: TIMING/FLEET/SAFETY shipped
- * with the proactive build itself, DIGEST got the scheduled sitrep (`.scratch/hands-and-senses/issues/22-build-the-sitrep.md`),
- * and WELLBEING got the scheduled checklist digest
+ * category's first raise, and back to `false` in the commit that removes its last one** - the
+ * same discipline in reverse. TIMING/FLEET/SAFETY shipped content with the proactive build itself
+ * and keep it; WELLBEING got the scheduled checklist digest
  * (`.scratch/goal-plans/issues/05-wellbeing-digest.md`,
- * [com.kevin.legion.wellbeing.WellbeingDigestAlarmReceiver]).
+ * [com.kevin.legion.wellbeing.WellbeingDigestAlarmReceiver]) and keeps it. **DIGEST is back to
+ * `false`**: its only raise was the scheduled sitrep
+ * (`.scratch/hands-and-senses/issues/22-build-the-sitrep.md`), and ticket 32 (Kevin: "sitreps stay
+ * tap only or via voice activation only") deleted the alarm that raised it -
+ * `SitrepAlarmReceiver` no longer exists. A switch that governs nothing must say so, the same rule
+ * that decided it should say `true` when the sitrep alarm first existed.
  */
 enum class ProactiveCategory(
     /** Stable storage key. Written to `proactive_settings.key` and to the raise history, so it
@@ -66,12 +71,15 @@ enum class ProactiveCategory(
     /** The cars. Open recalls, an odometer milestone, a long drive without a break. */
     FLEET("fleet", "Fleet", "Your cars - recalls, milestones, and a nudge on a long drive.", true),
 
-    /** A summary you asked to receive, at a time you chose. **First content, ticket 22
-     * (`.scratch/hands-and-senses/issues/22-build-the-sitrep.md`): the scheduled sitrep**
-     * ([com.kevin.legion.sitrep.SitrepAlarmReceiver]) raises through this category. `hasContent`
-     * flips to `true` in the SAME commit that lands the alarm/receiver wiring, per this file's own
-     * class doc rule and ticket 08's resolution §1/§7 - never before, and never a commit later. */
-    DIGEST("digest", "Digest", "Round-ups and briefings, at a time you pick.", true);
+    /** Round-ups and briefings raised WITHOUT being asked. **Empty again, ticket 32** (Kevin:
+     * "sitreps stay tap only or via voice activation only") - its only raise, the scheduled
+     * sitrep (`.scratch/hands-and-senses/issues/22-build-the-sitrep.md`,
+     * [com.kevin.legion.sitrep.SitrepBuilder]'s old `SitrepAlarmReceiver` caller), no longer
+     * exists. A sitrep is still produced by a tap or a spoken `get_sitrep`, but neither of those
+     * is unprompted speech, so neither routes through this category or any other - see
+     * [com.kevin.legion.sitrep.SitrepSettings]'s own class doc. `hasContent` goes back to `false`
+     * per this file's own class doc rule until something else raises through DIGEST. */
+    DIGEST("digest", "Digest", "Round-ups and briefings, at a time you pick.", false);
 
     companion object {
         fun fromKey(key: String): ProactiveCategory? = entries.firstOrNull { it.key == key }

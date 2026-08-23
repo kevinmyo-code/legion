@@ -8,12 +8,12 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 
 /**
- * The sitrep's schedule and its newsletter sender list - a SIBLING table to
- * [SitrepModuleSetting] rather than columns bolted onto it (ticket 22's own call: "your call,
- * document it"). Reasoning: [SitrepModuleSetting] is a key/value ROW PER MODULE, so a schedule
- * time or a sender list has nowhere honest to live on that shape without either duplicating it on
- * every module row or picking one arbitrary module's row to smuggle it onto. A second table with
- * exactly one row (see [ID]) says plainly "this is the one schedule, not a per-module setting."
+ * The sitrep's newsletter sender list - a SIBLING table to [SitrepModuleSetting] rather than
+ * columns bolted onto it (ticket 22's own call: "your call, document it"). Reasoning:
+ * [SitrepModuleSetting] is a key/value ROW PER MODULE, so a sender list has nowhere honest to live
+ * on that shape without either duplicating it on every module row or picking one arbitrary
+ * module's row to smuggle it onto. A second table with exactly one row (see [ID]) says plainly
+ * "this is the one sender list, not a per-module setting."
  *
  * **Newsletter senders are one comma-separated [String]** ([senders]), not a child table -
  * ticket 08's resolution §6 is explicit that "the newsletter sender list is curated by Kevin, by
@@ -21,10 +21,15 @@ import androidx.room.Query
  * with its own lifecycle worth a table and a DAO of its own. [com.kevin.legion.sitrep.SitrepBuilder]
  * is the one place that parses it back into individual addresses for the Gmail query.
  *
- * **`hour`/`minute` are plain ints in device-local time**, matching [ListItem]'s own local-time
- * convention for a reminder rather than an epoch millis "next fire" (an epoch value would go stale
- * the moment [com.kevin.legion.sitrep.SitrepScheduler] re-arms it for the next day - the intent is
- * "8:30 every morning," not "8:30 on 2026-08-22 specifically").
+ * **`hour`/`minute` are VESTIGIAL, not live** (ticket 32, Kevin: "sitreps stay tap only or via
+ * voice activation only"). They used to be the scheduled sitrep's fire time, plain ints in
+ * device-local time, re-armed daily by the alarm ticket 32 retired
+ * ([com.kevin.legion.sitrep.SitrepScheduler] and `SitrepAlarmReceiver` are both gone). Kept
+ * rather than dropped because they are non-null columns on a table this file's own `senders`
+ * column still needs - CLAUDE.md §5's "an unused table is cheaper than a destructive migration"
+ * applies the same way to unused columns on a table still in use. Every write goes through
+ * [com.kevin.legion.sitrep.SitrepSettings.setNewsletterSenders], which always persists `0`/`0`;
+ * nothing reads them back.
  */
 @Entity(tableName = "sitrep_schedule")
 data class SitrepSchedule(

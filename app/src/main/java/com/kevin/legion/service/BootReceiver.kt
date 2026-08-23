@@ -6,7 +6,6 @@ import android.content.Intent
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.location.GeofenceManager
 import com.kevin.legion.notes.AlarmScheduler
-import com.kevin.legion.sitrep.SitrepScheduler
 import com.kevin.legion.wellbeing.WellbeingDigestScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,14 +56,11 @@ class BootReceiver : BroadcastReceiver() {
                 // versa; before this they shared one try and the first thrower ate the second.
                 runCatching { AlarmScheduler.rescheduleAll(context) }
                     .onFailure { MidnightEvents.appStartWorkFailed("boot_reschedule_alarms", it) }
-                // The sitrep's own single alarm (ticket 22) - `AlarmManager` forgets it across a
-                // reboot exactly the same way it forgets every reminder alarm above, and this is a
-                // no-op when Kevin has never set a schedule (SitrepScheduler.rescheduleFromSettings
-                // reads null and returns). Guarded separately, same reasoning as the two guards
-                // already here: a failure to re-arm the sitrep must not cost the reminders their
-                // restart, or the ignition its resume.
-                runCatching { SitrepScheduler.rescheduleFromSettings(context) }
-                    .onFailure { MidnightEvents.appStartWorkFailed("boot_reschedule_sitrep", it) }
+                // NOTE: the sitrep used to have its own single alarm here (ticket 22). Ticket 32
+                // (Kevin: "sitreps stay tap only or via voice activation only") retired it -
+                // `SitrepScheduler`/`SitrepAlarmReceiver` are both gone, and nothing re-arms a
+                // sitrep on boot anymore. A sitrep is produced only from a tap on the Home card or
+                // a spoken `get_sitrep`, never queued.
                 // The wellbeing digest's own single alarm (goal-plans ticket 05) - same
                 // AlarmManager-forgets-everything-across-a-reboot problem as the sitrep's alarm
                 // above, and the same no-op-when-never-set behaviour. Guarded separately for the

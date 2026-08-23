@@ -204,6 +204,79 @@ class VehicleControllerServiceWritesTest {
         assertTrue(db.serviceRecordDao().getRecentForVehicle("V1", 10).isEmpty())
     }
 
+    // --- logPastServiceDirect: a real date writes a real record (ticket 31, hands-and-senses ---
+    // --- "the model resolved the date and no service_records row exists") ----------------------
+
+    @Test
+    fun `logPastServiceDirect with a real date writes a service_records row through the same shape log_service uses`() = runBlocking {
+        val outcome = VehicleController.logPastServiceDirect(context, "brake fluid flush", date = 1_723_000_000_000L, vehicleId = "V1")
+
+        assertTrue("Was: ${outcome.message}", outcome.success)
+        val records = db.serviceRecordDao().getRecentForVehicle("V1", 10)
+        assertEquals("a real date must file a record, not just move the anchor", 1, records.size)
+        val record = records.single()
+        assertEquals("Brake Fluid", record.serviceName)
+        assertEquals(1_723_000_000_000L, record.date)
+        // No mileage given - falls back to the vehicle's current live reading, same as
+        // logServiceDirect's own capture for a record with no explicit mileage.
+        assertEquals(227_000, record.mileage)
+        // The anchor moves too - a dated backfill is not weaker than a mileage-only one.
+        val item = db.maintenanceItemDao().get("V1", "Brake Fluid")!!
+        assertEquals(1_723_000_000_000L, item.lastDoneDate)
+    }
+
+    @Test
+    fun `logPastServiceDirect with only mileage or milesAgo still writes no service_records row`() = runBlocking {
+        val outcome = VehicleController.logPastServiceDirect(context, "coolant flush", mileage = 220_000, vehicleId = "V1")
+
+        assertTrue(outcome.success)
+        assertTrue(
+            "anchor-only stays legal, and nothing must be invented - unchanged by ticket 31",
+            db.serviceRecordDao().getRecentForVehicle("V1", 10).isEmpty(),
+        )
+    }
+
+    // --- logServiceDirect / logPastServiceDirect: match before create (ticket 31) --------------
+
+    @Test
+    fun `logServiceDirect matching an existing near-miss item does not create a second one`() = runBlocking {
+        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Check The Wheel Alignment"))
+
+        val outcome = VehicleController.logServiceDirect(context, "Wheel Alignment Check", vehicleId = "V1")
+
+        assertTrue("Was: ${outcome.message}", outcome.success)
+        assertEquals("must fold onto the existing near-miss item, never create a second row", 1, db.maintenanceItemDao().getForVehicle("V1").size)
+        assertEquals(227_000, db.maintenanceItemDao().get("V1", "Check The Wheel Alignment")!!.lastDoneMileage)
+    }
+
+    @Test
+    fun `logServiceDirect with an ambiguous near-miss refuses and asks, writing nothing`() = runBlocking {
+        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Check The Wheel Alignment"))
+        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Front Wheel Alignment"))
+
+        val outcome = VehicleController.logServiceDirect(context, "Wheel Alignment Check", vehicleId = "V1")
+
+        assertFalse("An ambiguous match must ASK, never guess. Was: ${outcome.message}", outcome.success)
+        assertTrue("The refusal must name the candidates. Was: ${outcome.message}", outcome.message.contains("Wheel Alignment"))
+        // Nothing written at all - neither item's anchor moved, and no third row was created.
+        assertEquals(2, db.maintenanceItemDao().getForVehicle("V1").size)
+        assertNull(db.maintenanceItemDao().get("V1", "Check The Wheel Alignment")!!.lastDoneMileage)
+        assertNull(db.maintenanceItemDao().get("V1", "Front Wheel Alignment")!!.lastDoneMileage)
+        assertTrue(db.serviceRecordDao().getRecentForVehicle("V1", 10).isEmpty())
+    }
+
+    @Test
+    fun `logServiceDirect never collapses Brake Fluid into Brake Pads over the shared word brake`() = runBlocking {
+        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Brake Pads"))
+
+        val outcome = VehicleController.logServiceDirect(context, "brake fluid", vehicleId = "V1")
+
+        assertTrue(outcome.success)
+        // A genuinely new item, never folded onto the unrelated "Brake Pads" row.
+        assertNotNull(db.maintenanceItemDao().get("V1", "Brake Fluid"))
+        assertNull("Brake Pads must be untouched", db.maintenanceItemDao().get("V1", "Brake Pads")!!.lastDoneMileage)
+    }
+
     @Test
     fun `logPastServiceDirect neverDone replaces any prior anchor via the targeted write`() = runBlocking {
         db.maintenanceItemDao().upsertStamped(

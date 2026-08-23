@@ -2,6 +2,7 @@ package com.kevin.legion.vehicle
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -164,6 +165,60 @@ class VehicleControllerServiceNameTest {
             "The comparator must return the EXISTING string verbatim, never a canonicalised or rewritten form",
             handTypedOriginal,
             collision,
+        )
+    }
+
+    // --- matchServiceName: the wired-in "match before creating" tier (ticket 31, ---------------
+    // --- hands-and-senses "near-duplicate service names breed") --------------------------------
+
+    @Test
+    fun `matchServiceName matches the obvious suffix pair via the keyword table, unambiguously`() {
+        // "Brake Fluid Flush" vs "Brake Fluid" - the ticket's own worked example. Both canonicalise
+        // onto the SAME SERVICE_KEYWORDS entry ("brake fluid" is the longest keyword substring of
+        // both raw strings), so this is a tier-1 exact collision and never touches near-miss at all.
+        val result = VehicleController.matchServiceName("Brake Fluid Flush", listOf("Brake Fluid Flush"))
+
+        assertEquals(VehicleController.ServiceMatch.Matched("Brake Fluid Flush"), result)
+    }
+
+    @Test
+    fun `matchServiceName picks up a single near-miss OUTSIDE the keyword table`() {
+        val result = VehicleController.matchServiceName("Wheel Alignment Check", listOf("Check The Wheel Alignment"))
+
+        assertEquals(VehicleController.ServiceMatch.Matched("Check The Wheel Alignment"), result)
+    }
+
+    @Test
+    fun `matchServiceName is Ambiguous with two or more near-miss candidates, and picks neither`() {
+        val result = VehicleController.matchServiceName(
+            "Wheel Alignment Check",
+            listOf("Check The Wheel Alignment", "Front Wheel Alignment"),
+        )
+
+        assertTrue(result is VehicleController.ServiceMatch.Ambiguous)
+        assertEquals(2, (result as VehicleController.ServiceMatch.Ambiguous).candidates.size)
+    }
+
+    @Test
+    fun `matchServiceName is None for a genuinely new service - creation stays legal`() {
+        val result = VehicleController.matchServiceName("Timing Chain Tensioner", listOf("Oil Change", "Tire Rotation"))
+
+        assertEquals(VehicleController.ServiceMatch.None, result)
+    }
+
+    @Test
+    fun `matchServiceName never collapses two keyword-table services sharing only a generic word`() {
+        // Brake Fluid and Brake Pads are BOTH keyword-table entries and share nothing but the bare
+        // word "brake" once near-miss's own stopword list strips "fluid" - exactly the false-merge
+        // shape ticket 31 warns against. Tier 1 already tells them apart (different canonical
+        // entries); tier 2 must never re-blur that by treating "brake" alone as identity, which is
+        // why matchServiceName gates near-miss to names OUTSIDE the keyword table on both sides.
+        val result = VehicleController.matchServiceName("Brake Fluid", listOf("Brake Pads"))
+
+        assertEquals(
+            "A typed name that IS a keyword-table concept must never near-miss onto an unrelated sibling",
+            VehicleController.ServiceMatch.None,
+            result,
         )
     }
 }

@@ -19,9 +19,12 @@ import kotlinx.coroutines.withContext
 
 /**
  * Composes the sitrep - ticket 22 (`.scratch/hands-and-senses/issues/22-build-the-sitrep.md`), the
- * BUILD for the decision ticket 08 (`08-morning-brief.md`) made. Both askable at any hour
- * ([build] takes no clock-of-day opinion at all - "sitrep" is time-agnostic by ticket 08's own
- * naming call) and scheduled (see [SitrepScheduler]/[SitrepAlarmReceiver]).
+ * BUILD for the decision ticket 08 (`08-morning-brief.md`) made. [build] takes no clock-of-day
+ * opinion at all - "sitrep" is time-agnostic by ticket 08's own naming call. **Askable only, never
+ * scheduled** - ticket 32 (`.scratch/hands-and-senses/issues/32-sitrep-on-demand-only.md`, Kevin:
+ * "sitreps stay tap only or via voice activation only") deleted the `SitrepScheduler`/
+ * `SitrepAlarmReceiver` pair that used to call this on a timer; the only callers left are
+ * [com.kevin.legion.service.LiveToolbox]'s `get_sitrep` dispatch and the Home card's tap.
  *
  * **Three of four sections are deterministic; only [SitrepModule.NEWS] ever reaches an LLM**
  * (ticket 08's resolution §3, restated at [SitrepModule]'s own doc): CALENDAR/WEATHER/FLEET are
@@ -264,7 +267,8 @@ object SitrepBuilder {
      * [String] fall out of scope (see this file's class doc on read-through). Runs the network
      * calls off the main thread the same way [com.kevin.legion.service.LiveToolbox]'s own mail
      * tools do (`withContext(Dispatchers.IO)`), since [build] may be called from a live-tool
-     * dispatch or from [SitrepAlarmReceiver]'s own IO-dispatcher coroutine either way.
+     * dispatch or from a plain Compose click handler (ticket 32 - there is no longer a third,
+     * alarm-driven caller).
      */
     private suspend fun newsSectionLive(context: Context): String {
         val senders = SitrepSettings.newsletterSenders(context)

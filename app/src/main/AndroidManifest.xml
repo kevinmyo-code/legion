@@ -311,13 +311,6 @@
             android:enabled="true"
             android:exported="false" />
 
-        <!-- Fired only by SitrepScheduler's own PendingIntent - never by the system, so
-             exported=false. Ticket 22's one alarm for the scheduled sitrep. -->
-        <receiver
-            android:name=".sitrep.SitrepAlarmReceiver"
-            android:enabled="true"
-            android:exported="false" />
-
         <!-- Fired only by WellbeingDigestScheduler's own PendingIntent - never by the system, so
              exported=false. goal-plans ticket 05's one alarm for the scheduled wellbeing digest. -->
         <receiver

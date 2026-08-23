@@ -132,6 +132,49 @@ class MaintenanceWritesTest {
         assertEquals(1_700_000_000_000L, after.lastDoneDate)
     }
 
+    // ------------------------------------------------- writeSetAnchor: the RESOLVED outcome ----
+    // ------------------------------------------------- (ticket 31, hands-and-senses) -----------
+
+    @Test
+    fun `writeSetAnchor DONE_AT with only mileage returns the RESOLVED date, not the form's blank`() = runBlocking {
+        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change"))
+        db.serviceRecordDao().insert(
+            com.kevin.legion.data.local.ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 227_374, date = 1_723_000_000_000L),
+        )
+
+        // Mirrors Kevin's own report: mileage typed, date field left blank.
+        val outcome = writeSetAnchor(context, "V1", "Oil Change", AnchorMode.DONE_AT, mileage = 227_483, date = null)
+
+        assertTrue("Was: ${outcome.message}", outcome.success)
+        assertEquals(227_483, outcome.mileage)
+        assertEquals(
+            "the outcome must carry the date resolveDoneAtDate actually wrote, never the form's null - " +
+                "a mileage-only save that silently re-derives a date must be visible, not identical on screen to nothing happening",
+            1_723_000_000_000L,
+            outcome.date,
+        )
+        assertTrue("the message itself must state the resolved date. Was: ${outcome.message}", outcome.message.contains("2024"))
+    }
+
+    @Test
+    fun `writeSetAnchor NEVER_DONE and DONT_KNOW report their resolved (empty) anchor, not the caller's raw args`() = runBlocking {
+        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", lastDoneMileage = 100_000, lastDoneDate = 1_000L))
+
+        // A stale mileage/date is passed in deliberately - NEVER_DONE/DONT_KNOW must ignore it and
+        // report what was actually written (null/null), not echo the caller's leftover values.
+        val neverDone = writeSetAnchor(context, "V1", "Oil Change", AnchorMode.NEVER_DONE, mileage = 999_999, date = 12_345L)
+        assertTrue(neverDone.success)
+        assertNull(neverDone.mileage)
+        assertNull(neverDone.date)
+        assertTrue(neverDone.neverDone)
+
+        val dontKnow = writeSetAnchor(context, "V1", "Oil Change", AnchorMode.DONT_KNOW, mileage = 999_999, date = 12_345L)
+        assertTrue(dontKnow.success)
+        assertNull(dontKnow.mileage)
+        assertNull(dontKnow.date)
+        assertFalse(dontKnow.neverDone)
+    }
+
     // ------------------------------------------------------ writeDeleteItem: zero-row failure
 
     @Test

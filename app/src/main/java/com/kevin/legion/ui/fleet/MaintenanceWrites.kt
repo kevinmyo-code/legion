@@ -84,15 +84,35 @@ suspend fun writeSetAnchor(
     mileage: Int?,
     date: Long?,
     costCents: Long? = null,
-): WriteOutcome {
+): AnchorWriteOutcome {
     val now = System.currentTimeMillis()
     val db = CarDatabase.getDatabase(context)
     val dao = db.maintenanceItemDao()
+    // Resolved BEFORE the write, and carried back on [AnchorWriteOutcome] - ticket 31
+    // (hands-and-senses): the caller used to repaint its own local state from the FORM's raw
+    // mileage/date, but resolveDoneAtDate below can substitute a date the form never showed (a
+    // mileage-only save that re-derives a date from an existing service record). Echoing the
+    // form back then painted that resolved date as null - identical on screen to nothing having
+    // happened, which is exactly the "i typed 227483... but nothing happened" report this ticket
+    // is named for. The screen must render what was ACTUALLY written, not what was typed.
+    val resolvedMileage: Int?
+    val resolvedDate: Long?
+    val resolvedNeverDone: Boolean
     val written = when (mode) {
-        AnchorMode.NEVER_DONE -> dao.setNeverDone(vehicleId, serviceName, now)
+        AnchorMode.NEVER_DONE -> {
+            resolvedMileage = null
+            resolvedDate = null
+            resolvedNeverDone = true
+            dao.setNeverDone(vehicleId, serviceName, now)
+        }
         // Both anchors null is the legitimate "I don't know" state setAnchor's own doc names -
         // never a silent no-op read as "nothing changed".
-        AnchorMode.DONT_KNOW -> dao.setAnchor(vehicleId, serviceName, null, null, now)
+        AnchorMode.DONT_KNOW -> {
+            resolvedMileage = null
+            resolvedDate = null
+            resolvedNeverDone = false
+            dao.setAnchor(vehicleId, serviceName, null, null, now)
+        }
         // The date is RESOLVED, never taken raw: mileage and date are independently optional
         // fields on this form, and a mileage-only save used to write a null date straight over
         // one a real logged service had established. That is how the Jeep ended up claiming
@@ -100,16 +120,15 @@ suspend fun writeSetAnchor(
         // assistant came to deny an oil change it could show on screen (hands-and-senses 28).
         // resolveDoneAtDate re-derives the date from the backing record when one exists and
         // never overrides a date the user actually typed.
-        AnchorMode.DONE_AT -> dao.setAnchor(
-            vehicleId,
-            serviceName,
-            mileage,
-            VehicleController.resolveDoneAtDate(context, vehicleId, serviceName, mileage, date),
-            now,
-        )
+        AnchorMode.DONE_AT -> {
+            resolvedMileage = mileage
+            resolvedDate = VehicleController.resolveDoneAtDate(context, vehicleId, serviceName, mileage, date)
+            resolvedNeverDone = false
+            dao.setAnchor(vehicleId, serviceName, resolvedMileage, resolvedDate, now)
+        }
     }
     if (written == 0) {
-        return WriteOutcome(false, "I found $serviceName a moment ago but couldn't write to it just now - it may have just been removed.")
+        return AnchorWriteOutcome(false, "I found $serviceName a moment ago but couldn't write to it just now - it may have just been removed.")
     }
     if (mode == AnchorMode.DONE_AT && costCents != null) {
         val recordMileage = mileage ?: VehicleController.currentMileage(VehicleController.vehicleFor(context, vehicleId))
@@ -117,8 +136,41 @@ suspend fun writeSetAnchor(
             ServiceRecord(vehicleId = vehicleId, serviceName = serviceName, mileage = recordMileage, date = date ?: now, costCents = costCents),
         )
     }
-    return WriteOutcome(true, "Updated $serviceName.")
+    // The message itself states the RESOLVED anchor, not a bare "Updated" - ticket 31's whole
+    // complaint was a save that reported success in words the screen then failed to visibly back
+    // up. A mileage-only DONE_AT save now says the date it actually landed on, even though the
+    // driver never typed one.
+    val message = when (mode) {
+        AnchorMode.NEVER_DONE -> "Updated $serviceName - marked never done."
+        AnchorMode.DONT_KNOW -> "Updated $serviceName - cleared to unknown."
+        AnchorMode.DONE_AT -> {
+            val datePhrase = resolvedDate?.let {
+                " on " + java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(it), java.time.ZoneId.systemDefault())
+            } ?: ""
+            val mileagePhrase = resolvedMileage?.let { "$it miles" } ?: "no mileage given"
+            "Updated $serviceName - done at $mileagePhrase$datePhrase."
+        }
+    }
+    return AnchorWriteOutcome(true, message, resolvedMileage, resolvedDate, resolvedNeverDone)
 }
+
+/**
+ * [writeSetAnchor]'s own write reported back, never the form's raw input (ticket 31,
+ * `.scratch/hands-and-senses/issues/31-silent-success.md`). [mileage]/[date]/[neverDone] are the
+ * values that actually landed on the row - `null`/`false` on a failed write, and on a successful
+ * one the RESOLVED values (see [writeSetAnchor]'s `AnchorMode.DONE_AT` branch: [date] can differ
+ * from what the caller passed in when [com.kevin.legion.vehicle.VehicleController.resolveDoneAtDate]
+ * substituted a date from an existing service record). The caller repaints its local mirror and its
+ * form fields from THIS, never from the mileage/date it sent in - the whole point of this type
+ * existing is that those two can legitimately differ.
+ */
+data class AnchorWriteOutcome(
+    val success: Boolean,
+    val message: String,
+    val mileage: Int? = null,
+    val date: Long? = null,
+    val neverDone: Boolean = false,
+)
 
 /**
  * Soft-deletes an item (ticket 07 decision 1: a real delete via the existing tombstone, never a

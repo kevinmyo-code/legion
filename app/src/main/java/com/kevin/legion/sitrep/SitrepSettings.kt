@@ -17,12 +17,12 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * **No master kill switch here.** The sitrep's OFF state is "every module disabled", which
  * [SitrepBuilder.build] already reads as "nothing to report" - a second boolean layered on top
- * would just be a second way to express the same state. The actual on-air kill switch for the
- * SCHEDULED delivery is [com.kevin.legion.service.ProactiveCategory.DIGEST]'s own master-ANDed
- * switch in [com.kevin.legion.service.ProactiveSettings] (ticket 08 §1: "This fills the Digest
- * category ... the master kill switch, quiet hours, the daily cap ... apply to it for free") - the
- * ASKABLE-any-hour path in [SitrepBuilder] never goes through that gate at all, by design, the same
- * way [com.kevin.legion.service.ProactiveBus.speakSolicited] is never gated.
+ * would just be a second way to express the same state. The sitrep is never gated by
+ * [com.kevin.legion.service.ProactiveBus] at all, by design, the same way
+ * [com.kevin.legion.service.ProactiveBus.speakSolicited] is never gated: ticket 32 (Kevin,
+ * "sitreps stay tap only or via voice activation only") retired the scheduled alarm that used to
+ * be the one path routed through [com.kevin.legion.service.ProactiveCategory.DIGEST], so every
+ * sitrep now happens the same way - asked for, this turn, never queued.
  */
 object SitrepSettings {
 
@@ -57,25 +57,32 @@ object SitrepSettings {
      * true; a caller that skips it sees the class-default seed instead of the stored value. */
     fun enabledModules(): Set<SitrepModule> = _modules.value.filterValues { it }.keys
 
-    /** The stored schedule, or null if Kevin has never set one (the settings row has never been
-     * written) - [com.kevin.legion.sitrep.SitrepScheduler] treats null as "nothing to arm". */
-    suspend fun schedule(context: Context): SitrepSchedule? =
+    /** The stored row, or null if Kevin has never curated a sender list (the row has never been
+     * written). **`hour`/`minute` on the row are vestigial** - they belonged to the scheduled
+     * alarm ticket 32 retired, and stay only because the row is a Room entity with non-null
+     * columns and dropping them would need a real migration (CLAUDE.md §5: "an unused table is
+     * cheaper than a destructive one" - the same call applies to unused columns on a table that
+     * IS still used, here for its `senders` column). Nothing reads `hour`/`minute` anymore;
+     * [setNewsletterSenders] writes `0`/`0` and no caller looks at what comes back. */
+    private suspend fun row(context: Context): SitrepSchedule? =
         CarDatabase.getDatabase(context).sitrepScheduleDao().get()
 
     /** Newsletter sender addresses/domains, parsed from [SitrepSchedule.senders]' comma-separated
      * storage form - blank entries (a stray leading/trailing comma) are dropped rather than
-     * passed through as an empty Gmail `from:()` term. Empty when no schedule row exists yet. */
+     * passed through as an empty Gmail `from:()` term. Empty when no row exists yet. */
     suspend fun newsletterSenders(context: Context): List<String> =
-        schedule(context)?.senders.orEmpty().split(",").map { it.trim() }.filter { it.isNotBlank() }
+        row(context)?.senders.orEmpty().split(",").map { it.trim() }.filter { it.isNotBlank() }
 
     /**
-     * Writes the schedule time and sender list in one row (ticket 22's own call to keep them
-     * together - see [SitrepSchedule]'s doc). [senders] is joined back into the comma-separated
-     * storage form here so every OTHER caller only ever deals in a real list.
+     * Writes the curated newsletter sender list - the only thing left in [SitrepSchedule] worth
+     * writing since ticket 32 (Kevin: "sitreps stay tap only or via voice activation only")
+     * retired the scheduled alarm [SitrepSchedule.hour]/[SitrepSchedule.minute] used to arm.
+     * [senders] is joined back into the comma-separated storage form here so every OTHER caller
+     * only ever deals in a real list.
      */
-    suspend fun setSchedule(context: Context, hour: Int, minute: Int, senders: List<String>) {
+    suspend fun setNewsletterSenders(context: Context, senders: List<String>) {
         CarDatabase.getDatabase(context).sitrepScheduleDao()
-            .put(SitrepSchedule(hour = hour, minute = minute, senders = senders.joinToString(",")))
+            .put(SitrepSchedule(hour = 0, minute = 0, senders = senders.joinToString(",")))
     }
 
     /** Test seam: drops the loaded flag and the cached flow back to the fresh-install default. */

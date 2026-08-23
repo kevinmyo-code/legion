@@ -358,16 +358,16 @@ class ProactiveGateRulesTest {
     }
 
     @Test
-    fun `every category now has content, and each flag flipped in the commit that earned it`() {
-        // Ticket 22: DIGEST got its first content (the scheduled sitrep) and its own hasContent
-        // flipped to true in that same commit. goal-plans ticket 05: WELLBEING got its first
-        // content (the scheduled wellbeing digest,
+    fun `hasContent tracks exactly which categories a raise actually reaches`() {
+        // goal-plans ticket 05: WELLBEING got its first content (the scheduled wellbeing digest,
         // com.kevin.legion.wellbeing.WellbeingDigestAlarmReceiver) and its own hasContent flipped
-        // to true in that same commit - the last category with nothing raising into it is now
-        // gone, and a future sixth category must repeat the same discipline: flag flips WITH the
-        // first raise, never before.
+        // to true in that same commit - the discipline is flag flips WITH the first raise, never
+        // before. Ticket 22 briefly gave DIGEST content the same way (the scheduled sitrep), and
+        // ticket 32 (Kevin: "sitreps stay tap only or via voice activation only") took it back out
+        // - SitrepAlarmReceiver no longer exists, so DIGEST is empty again. This is that same
+        // discipline run in reverse: the flag follows the raise, not the other way around.
         val empty = ProactiveCategory.entries.filter { !it.hasContent }.toSet()
-        assertEquals(emptySet<ProactiveCategory>(), empty)
+        assertEquals(setOf(ProactiveCategory.DIGEST), empty)
     }
 
     @Test

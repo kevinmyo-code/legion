@@ -27,13 +27,12 @@ import com.kevin.legion.service.DebugSettings
 import com.kevin.legion.service.ProactiveCategory
 import com.kevin.legion.service.ProactiveSettings
 import com.kevin.legion.sitrep.SitrepModule
-import com.kevin.legion.sitrep.SitrepScheduler
 import com.kevin.legion.sitrep.SitrepSettings
 import com.kevin.legion.ui.ProactiveCategoryRow
 import com.kevin.legion.ui.ProactiveSpeechRow
 import com.kevin.legion.ui.RecallAlertsRow
 import com.kevin.legion.ui.SitrepModuleRow
-import com.kevin.legion.ui.SitrepScheduleRow
+import com.kevin.legion.ui.SitrepNewsSendersRow
 import com.kevin.legion.ui.WellbeingDigestScheduleRow
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.theme.LegionType
@@ -45,14 +44,18 @@ import kotlinx.coroutines.launch
 /**
  * "Proactive speech" - the second subscreen `settings/` split into (command-center ticket 02).
  * **One screen owns the whole question of when the assistant may speak first**: the recall-alert
- * toggle, the master kill switch, all five [ProactiveCategory] levers, the sitrep's module registry
- * and schedule, and the wellbeing digest's schedule. The ticket's own charter for this screen
- * ("ALL the category levers... quiet hours, the daily cap, sitrep schedule + modules, wellbeing
- * digest time") - quiet hours and the daily cap are noted here for future reference but are NOT
- * moved, because they were never a settings row to begin with: [com.kevin.legion.service
- * .ProactiveBus] enforces both as fixed constants with no writer anywhere in the app, so there is
- * nothing to relocate without inventing a control the old screen never had (out of this ticket's
- * scope - a reorganisation, not a rebuild).
+ * toggle, the master kill switch, all five [ProactiveCategory] levers, the sitrep's module
+ * registry and curated newsletter senders, and the wellbeing digest's schedule. The ticket's own
+ * charter for this screen ("ALL the category levers... quiet hours, the daily cap, sitrep schedule
+ * + modules, wellbeing digest time") - quiet hours and the daily cap are noted here for future
+ * reference but are NOT moved, because they were never a settings row to begin with:
+ * [com.kevin.legion.service.ProactiveBus] enforces both as fixed constants with no writer anywhere
+ * in the app, so there is nothing to relocate without inventing a control the old screen never had
+ * (out of this ticket's scope - a reorganisation, not a rebuild). **The sitrep's own schedule row
+ * is GONE** (ticket 32, Kevin: "sitreps stay tap only or via voice activation only") - a sitrep is
+ * produced only from the Home card's tap or a spoken `get_sitrep`, never queued, so there is
+ * nothing left to arm here. What remains for the sitrep is the module switches (what it says when
+ * asked) and [SitrepNewsSendersRow] (which mail it treats as newsletters).
  *
  * Every row is the same composable the old monolith called, unmoved in substance.
  */
@@ -68,31 +71,21 @@ fun ProactiveSpeechScreen(onBack: () -> Unit) {
     }
     var companionName by remember { mutableStateOf<String?>(null) }
     var sitrepModules by remember { mutableStateOf<Map<SitrepModule, Boolean>>(emptyMap()) }
-    var sitrepHourText by remember { mutableStateOf("") }
-    var sitrepMinuteText by remember { mutableStateOf("") }
     var sitrepSendersText by remember { mutableStateOf("") }
-    var sitrepScheduleStatus by remember { mutableStateOf("No schedule set - the sitrep is askable any time, but never fires on its own.") }
+    var sitrepSendersStatus by remember { mutableStateOf("The sitrep is askable any time - a tap on the Home card, or \"sitrep\" by voice. It never fires on its own.") }
     var wellbeingHourText by remember { mutableStateOf("") }
     var wellbeingMinuteText by remember { mutableStateOf("") }
     var wellbeingScheduleStatus by remember { mutableStateOf("No schedule set - the wellbeing digest never fires on its own.") }
     var reloadNonce by remember { mutableStateOf(0) }
 
-    // Ticket 22 part F: loads the module switches plus whatever schedule is stored, formatting
-    // hour/minute as plain zero-padded digits for the two DeckTextFields. A never-set schedule
-    // (SitrepSettings.schedule returns null) leaves the three fields blank rather than seeding a
-    // fake default time - an empty field is what tells Kevin nothing has been saved yet.
+    // Ticket 22 part F, narrowed by ticket 32: loads the module switches plus whatever newsletter
+    // senders are curated. No schedule to load anymore - ticket 32 (Kevin: "sitreps stay tap only
+    // or via voice activation only") retired the alarm this row used to arm, so there is nothing
+    // left here but the module switches and the sender list.
     suspend fun reloadSitrepSettings() {
         SitrepSettings.load(context)
         sitrepModules = SitrepSettings.modules.value
-        val schedule = SitrepSettings.schedule(context)
-        if (schedule != null) {
-            sitrepHourText = schedule.hour.toString()
-            sitrepMinuteText = schedule.minute.toString()
-            sitrepSendersText = schedule.senders
-            sitrepScheduleStatus = "Fires daily at %02d:%02d".format(schedule.hour, schedule.minute)
-        } else {
-            sitrepScheduleStatus = "No schedule set - the sitrep is askable any time, but never fires on its own."
-        }
+        sitrepSendersText = SitrepSettings.newsletterSenders(context).joinToString(", ")
     }
 
     // goal-plans ticket 05 - same shape as reloadSitrepSettings above, minus the module switches
@@ -183,10 +176,11 @@ fun ProactiveSpeechScreen(onBack: () -> Unit) {
                     )
                 }
 
-                // Ticket 22: the sitrep module registry, plus its schedule. Sits right below
-                // Digest's own switch/category row above, since a scheduled sitrep is delivered
-                // THROUGH that category (ticket 08 §1) - these rows configure WHAT it says, not
-                // WHETHER it may.
+                // Ticket 22, narrowed by ticket 32: the sitrep module registry, plus its curated
+                // newsletter senders. No schedule row anymore - a sitrep is never armed, only
+                // asked for (Home card tap, or "sitrep" by voice), so there is no DIGEST-category
+                // switch these rows need to sit near either. They configure WHAT the sitrep says
+                // when asked, never WHETHER or WHEN it fires on its own - it never does.
                 Spacer(Modifier.height(8.dp))
                 SitrepModule.entries.forEach { module ->
                     Spacer(Modifier.height(4.dp))
@@ -200,29 +194,19 @@ fun ProactiveSpeechScreen(onBack: () -> Unit) {
                     )
                 }
                 Spacer(Modifier.height(4.dp))
-                SitrepScheduleRow(
-                    hourText = sitrepHourText,
-                    minuteText = sitrepMinuteText,
+                SitrepNewsSendersRow(
                     sendersText = sitrepSendersText,
-                    onHourChange = { sitrepHourText = it.filter(Char::isDigit).take(2) },
-                    onMinuteChange = { sitrepMinuteText = it.filter(Char::isDigit).take(2) },
                     onSendersChange = { sitrepSendersText = it },
-                    statusLine = sitrepScheduleStatus,
+                    statusLine = sitrepSendersStatus,
                     onSave = {
-                        val hour = sitrepHourText.toIntOrNull()?.coerceIn(0, 23)
-                        val minute = sitrepMinuteText.toIntOrNull()?.coerceIn(0, 59)
-                        if (hour == null || minute == null) {
-                            sitrepScheduleStatus = "Enter a valid hour (0-23) and minute (0-59) first."
-                            return@SitrepScheduleRow
-                        }
                         val senders = sitrepSendersText.split(",").map { it.trim() }.filter { it.isNotBlank() }
                         scope.launch {
-                            SitrepSettings.setSchedule(context, hour, minute, senders)
-                            // Re-arms immediately (ticket 22 part D) - a saved schedule with no
-                            // armed alarm until the next reboot would be a setting that lies about
-                            // being live.
-                            SitrepScheduler.schedule(context, hour, minute)
-                            sitrepScheduleStatus = "Fires daily at %02d:%02d".format(hour, minute)
+                            SitrepSettings.setNewsletterSenders(context, senders)
+                            sitrepSendersStatus = if (senders.isEmpty()) {
+                                "Saved. No senders curated - NEWS falls back to Gmail's own newsletter/promo classification."
+                            } else {
+                                "Saved ${senders.size} sender(s)."
+                            }
                         }
                     },
                 )
