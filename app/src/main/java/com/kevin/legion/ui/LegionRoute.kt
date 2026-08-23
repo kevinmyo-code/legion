@@ -156,6 +156,16 @@ object LegionRoute {
      */
     const val SETTINGS_SPOTIFY_MEDIA = "settings/spotify/media"
 
+    /**
+     * "What can I do" (command-center ticket 09,
+     * `.scratch/command-center/issues/09-discovery-and-wiki.md`) - see
+     * [com.kevin.legion.ui.help.VoiceGuideScreen]. Same shape as [SETTINGS_MEMORY]/[SETTINGS_PHONE]:
+     * no sub-routes, the search filter and group expansion are internal Compose state, not
+     * nav-graph destinations. Row lives on [SETTINGS_ASSISTANT] - see that screen's own comment for
+     * why there rather than [SETTINGS_DATA_PRIVACY].
+     */
+    const val SETTINGS_HELP = "settings/help"
+
     /** The six bottom-nav destinations, in display order (was five - Notes added 2026-08-07, ticket
      * 07). Assistant is NOT one of them - it's a mode, not a place (original resolution §5, still true). */
     val TOP_LEVEL = listOf(TODAY, MONEY, BODY, FLEET, NOTES, SETTINGS)

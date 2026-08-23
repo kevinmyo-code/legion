@@ -3,8 +3,8 @@ map: command-center
 ticket: "09"
 title: "The app can say what it can do"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built: in-app What Can I Do screen, generated from the same source as the web guide and README, drift fails the build. Every one of the 104 entries carries its hands path. Owes the 20-second find test on the phone."
 blockers: ["01"]
 blocked-by: ["[[01-home-command-center]]"]
 open-blockers: 1

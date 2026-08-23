@@ -591,7 +591,14 @@ private fun LegionShell(
                     onBack = { navController.popBackStack() },
                     onOpenCompanions = { navController.navigate(LegionRoute.SETTINGS_COMPANIONS) },
                     onOpenPlaybooks = { navController.navigate(LegionRoute.SETTINGS_PLAYBOOKS) },
+                    onOpenVoiceGuide = { navController.navigate(LegionRoute.SETTINGS_HELP) },
                 )
+            }
+            // "What can I do" (command-center ticket 09, ADR 0035's in-app hands-path guide) - see
+            // LegionRoute.SETTINGS_HELP's own doc comment. No sub-routes, same shape as
+            // SETTINGS_MEMORY/SETTINGS_PHONE just below.
+            composable(LegionRoute.SETTINGS_HELP) {
+                com.kevin.legion.ui.help.VoiceGuideScreen(onBack = { navController.popBackStack() })
             }
             composable(LegionRoute.SETTINGS_PROACTIVE_SPEECH) {
                 com.kevin.legion.ui.settings.ProactiveSpeechScreen(onBack = { navController.popBackStack() })

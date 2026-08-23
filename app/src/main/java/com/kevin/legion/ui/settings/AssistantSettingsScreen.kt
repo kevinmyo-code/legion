@@ -39,6 +39,7 @@ import com.kevin.legion.ui.SettingsNavRow
 import com.kevin.legion.ui.TemperatureUnitRow
 import com.kevin.legion.ui.WakeWordRow
 import com.kevin.legion.ui.common.DeckScreenHeader
+import com.kevin.legion.ui.help.VoiceGuideData
 import com.kevin.legion.util.Temp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -54,12 +55,18 @@ import kotlinx.coroutines.withContext
  * and [TemperatureUnitRow] are the exact same composables the old screen called, with their exact
  * single-writer write paths ([AssistantIgnition], [WakeWordPreferences], [Temp]) unchanged. Only the
  * host screen and the state that feeds them moved.
+ *
+ * **The "What can I do" row (command-center ticket 09) lives here, not on
+ * [com.kevin.legion.ui.settings.DataPrivacyScreen].** That screen answers "what does it store";
+ * this one is the conversation-behaviour screen, and "what can I ask it" is a conversation
+ * question, same family as the wake word phrase and the persona above it - not a privacy concern.
  */
 @Composable
 fun AssistantSettingsScreen(
     onBack: () -> Unit,
     onOpenCompanions: () -> Unit,
     onOpenPlaybooks: () -> Unit,
+    onOpenVoiceGuide: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -198,6 +205,15 @@ fun AssistantSettingsScreen(
                         Temp.setUnit(context, unit)
                         temperatureUnit = unit
                     },
+                )
+
+                // Command-center ticket 09: the app can now say what it does, and where the
+                // button for it is - see ui/help/VoiceGuideScreen.kt.
+                Spacer(Modifier.height(8.dp))
+                SettingsNavRow(
+                    label = "What can I do",
+                    status = "${VoiceGuideData.TOOL_COUNT} things it can do by voice, and where the hands path is",
+                    onClick = onOpenVoiceGuide,
                 )
 
                 Spacer(Modifier.height(24.dp))

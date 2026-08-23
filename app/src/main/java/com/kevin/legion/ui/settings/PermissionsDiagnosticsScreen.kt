@@ -185,9 +185,11 @@ fun PermissionsDiagnosticsScreen(onBack: () -> Unit, onOpenCarProbe: () -> Unit,
                 // Android Auto probe harness (`.scratch/android-auto/map.md` wave 1) - a debug
                 // surface, not a user-facing feature, kept last for that reason.
                 Spacer(Modifier.height(8.dp))
-                // The dial screen is a capability, not a setting, but until the Home command center
-                // (command-center ticket 01) gives it a front door, this row next to the grant that
-                // enables it is the one honest place a person looking for calling would look.
+                // The dial screen is a capability, not a setting. The Home command center shipped
+                // without a calling tile (ticket 01 chose day/mail/money/media for its tiles), so
+                // this row next to the grant that enables it IS the standing front door - whether
+                // calling also earns a Home tile is an open taste call for Kevin (ticket 10's
+                // contested list), not a TODO.
                 SettingsNavRow(
                     label = "Place a call",
                     status = "Dial a contact or a number by hand, same confirm step as voice",

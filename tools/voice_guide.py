@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
-"""Generate `docs/voice.html` - the user-facing guide to what LEGION can do by voice.
+"""Generate `docs/voice.html` and `ui/help/VoiceGuideData.kt` - the user-facing and in-app guides
+to what LEGION can do by voice, from ONE source (command-center ticket 09).
 
-**Why this is generated rather than written.** `service/LiveToolbox.kt` declares 97 voice tools and
-grows most weeks. A hand-written page listing them is stale the day after it is written, and a stale
-"what can I ask it" page is worse than none: it teaches phrases that no longer work and omits the
-ones that do.
+**Why this is generated rather than written.** `service/LiveToolbox.kt` declares 97+ voice tools
+and grows most weeks. A hand-written page listing them is stale the day after it is written, and a
+stale "what can I ask it" page is worse than none: it teaches phrases that no longer work and omits
+the ones that do. The in-app screen is the same problem twice over - it is also the more urgent
+copy, because ADR 0035 (`docs/adr/0035-every-voice-capability-has-a-hands-path.md`) means every
+entry now also claims a HANDS path, and a stale claim there is not just outdated, it is a lie about
+where a button is.
 
 **How drift is made impossible rather than unlikely.** The tool NAMES come from the Kotlin source, so
-nothing can be missed. The user-facing COPY lives in `tools/voice_guide_copy.py`, keyed by tool name.
-If a tool exists in the code with no copy - or copy exists for a tool that has been deleted - this
-script **exits non-zero and names it**. Adding a voice tool therefore forces a decision about how to
-explain it, in the same way `docs_check.py` forces a decision about a moved source file.
+nothing can be missed. The user-facing COPY lives in `tools/voice_guide_copy.py`, keyed by tool name,
+now a 3-tuple of (say, does, hands). If a tool exists in the code with no copy - or copy exists for a
+tool that has been deleted - this script **exits non-zero and names it**. Adding a voice tool
+therefore forces a decision about how to explain it AND where its hands path is, in the same way
+`docs_check.py` forces a decision about a moved source file.
 
-The model-facing `description` in the Kotlin is deliberately NOT used. It is written to steer a
-language model - dense, full of internal caveats, and often about what the model must not do. It
-reads badly to a human and would leak implementation reasoning onto a public page.
+**`ui/help/VoiceGuideData.kt` is generated from the exact same `COPY`/`GROUPS`/`INTRO`/`GROUP_BLURBS`
+that `docs/voice.html` reads.** There is no second copy to fall out of sync - `write_kotlin()` below
+renders the same Python dict into a Kotlin object literal. If that file is stale relative to
+`voice_guide_copy.py` (hand-edited, or the source changed and the generator did not rerun), `--check`
+fails and says so, exactly like the HTML/Kotlin's-own drift check already does for the tool list.
 
-    python tools/voice_guide.py          # write docs/voice.html
+The model-facing `description` in the Kotlin `LiveToolbox` is deliberately NOT used anywhere in this
+pipeline. It is written to steer a language model - dense, full of internal caveats, and often about
+what the model must not do. It reads badly to a human and would leak implementation reasoning onto a
+public page or an in-app screen.
+
+    python tools/voice_guide.py          # write docs/voice.html + ui/help/VoiceGuideData.kt
     python tools/voice_guide.py --check  # report drift only, write nothing
 """
 import html
@@ -27,6 +39,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TOOLBOX = ROOT / 'app/src/main/java/com/kevin/legion/service/LiveToolbox.kt'
 OUT = ROOT / 'docs/voice.html'
+KOTLIN_OUT = ROOT / 'app/src/main/java/com/kevin/legion/ui/help/VoiceGuideData.kt'
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from voice_guide_copy import GROUPS, COPY, INTRO, GROUP_BLURBS  # noqa: E402
@@ -76,10 +89,10 @@ def render(tools):
             parts.append(f'<p class="blurb">{blurb}</p>')
         parts.append('<dl>')
         for n in live:
-            say, does = COPY[n]
+            say, does, hands = COPY[n]
             parts.append(
                 f'<dt>&ldquo;{html.escape(say)}&rdquo;</dt>'
-                f'<dd>{html.escape(does)}</dd>'
+                f'<dd>{html.escape(does)}<span class="hands">By hand: {html.escape(hands)}</span></dd>'
             )
         parts.append('</dl></section>')
     parts.append(FOOTER)
@@ -102,6 +115,7 @@ p.blurb{color:var(--dim);font-size:.9rem;margin:.6em 0 1.2em}
 dl{margin:0}
 dt{margin-top:1.1em;color:var(--fg);font-weight:600}
 dd{margin:.15em 0 0;color:var(--dim);font-size:.93rem}
+dd .hands{display:block;margin-top:.25em;color:var(--accent);font-size:.85rem}
 footer{margin-top:4em;padding-top:1.4em;border-top:1px solid var(--line);
  color:var(--dim);font-size:.85rem}
 footer strong{color:var(--fg)}
@@ -116,6 +130,10 @@ are examples, not commands. If it cannot do something, it says so rather than pr
 <p><strong>Some of these need a key or a permission.</strong> Music needs Spotify connected, mail and
 calendar need a Google account, caller ID needs phone permissions, and everything spoken needs a
 Gemini key. The Setup screen says which are missing.</p>
+<p><strong>Every entry says where the same thing is reachable by hand</strong>, or says
+&ldquo;Voice only.&rdquo; when there is not yet a button for it - <a href="https://github.com/kevinmyo-code/legion/blob/main/docs/adr/0035-every-voice-capability-has-a-hands-path.md">ADR 0035</a>.
+The app's own Setup &gt; Assistant &gt; &ldquo;What can I do&rdquo; screen shows the same list,
+searchable, without leaving the app.</p>
 <p>Generated from <code>LiveToolbox.kt</code> by <code>tools/voice_guide.py</code> - if a tool exists
 in the app it is on this page, because the build fails otherwise.</p>
 </footer>"""
@@ -173,9 +191,121 @@ def write_readme(tools):
     return 'markers-missing'
 
 
+KOTLIN_HEADER = """// GENERATED FILE - DO NOT HAND EDIT.
+//
+// Produced by `python tools/voice_guide.py` from `tools/voice_guide_copy.py` - the exact same
+// source `docs/voice.html` is generated from (command-center ticket 09, ADR 0035's in-app hands
+// path). Edit the copy there and rerun the script; a hand edit here is overwritten on the next run
+// and, if it diverges first, `voice_guide.py --check` fails the build and names the drift - same
+// posture as the tool-list check this file's generator already enforces.
+"""
+
+
+def _kt_string(s: str) -> str:
+    """Escapes a Python string for a Kotlin double-quoted string literal. `$` is escaped too -
+    Kotlin treats it as template interpolation, and several hands-path/description strings in
+    `voice_guide_copy.py` are free text that could pick one up by accident later."""
+    return (
+        s.replace('\\', '\\\\')
+        .replace('"', '\\"')
+        .replace('$', '\\$')
+        .replace('\n', '\\n')
+    )
+
+
+def kotlin_source(tools) -> str:
+    """Renders `ui/help/VoiceGuideData.kt` - one `Group` per live [docs/voice.html] section, each
+    holding the tool's `say`/`does`/`hands` triple verbatim from `voice_guide_copy.COPY`. Kept
+    intentionally dumb (a flat object literal, no logic) so a diff against the previous run is
+    exactly a diff of the copy that changed.
+    """
+    lines = [KOTLIN_HEADER, 'package com.kevin.legion.ui.help', '']
+    lines.append('/**')
+    lines.append(' * Data for the in-app "What can I do" screen (`ui/help/VoiceGuideScreen.kt`).')
+    lines.append(' * See the header above: this whole file is generated, never hand edit it.')
+    lines.append(' */')
+    lines.append('object VoiceGuideData {')
+    lines.append('')
+    lines.append('    /**')
+    lines.append('     * One voice capability. [hands] is ADR 0035\'s field: where the same')
+    lines.append('     * capability is reachable without voice, or "Voice only." when it is not yet.')
+    lines.append('     */')
+    lines.append('    data class Entry(')
+    lines.append('        val name: String,')
+    lines.append('        val say: String,')
+    lines.append('        val does: String,')
+    lines.append('        val hands: String,')
+    lines.append('    )')
+    lines.append('')
+    lines.append('    data class Group(')
+    lines.append('        val title: String,')
+    lines.append('        val blurb: String?,')
+    lines.append('        val entries: List<Entry>,')
+    lines.append('    )')
+    lines.append('')
+    lines.append(f'    val INTRO: String = "{_kt_string(INTRO)}"')
+    lines.append('')
+    lines.append('    val GROUPS: List<Group> = listOf(')
+    total = 0
+    for group, names in GROUPS.items():
+        live = [n for n in names if n in tools]
+        if not live:
+            continue
+        blurb = GROUP_BLURBS.get(group)
+        blurb_kt = f'"{_kt_string(blurb)}"' if blurb else 'null'
+        lines.append(f'        Group(')
+        lines.append(f'            title = "{_kt_string(group)}",')
+        lines.append(f'            blurb = {blurb_kt},')
+        lines.append(f'            entries = listOf(')
+        for n in live:
+            say, does, hands = COPY[n]
+            lines.append(
+                f'                Entry(name = "{n}", say = "{_kt_string(say)}", '
+                f'does = "{_kt_string(does)}", hands = "{_kt_string(hands)}"),'
+            )
+            total += 1
+        lines.append('            ),')
+        lines.append('        ),')
+    lines.append('    )')
+    lines.append('')
+    lines.append(f'    /** Total entries across every group above - {total} as of the last regeneration. */')
+    lines.append(f'    val TOOL_COUNT: Int = {total}')
+    lines.append('}')
+    lines.append('')
+    return '\n'.join(lines)
+
+
+def write_kotlin(tools) -> str:
+    KOTLIN_OUT.parent.mkdir(parents=True, exist_ok=True)
+    src = kotlin_source(tools)
+    if KOTLIN_OUT.exists() and KOTLIN_OUT.read_text(encoding='utf-8') == src:
+        return 'unchanged'
+    KOTLIN_OUT.write_text(src, encoding='utf-8')
+    return 'written'
+
+
+def kotlin_drift_problems(tools):
+    """`--check`'s half of the Kotlin generator: the generated file must equal what the copy
+    source would produce RIGHT NOW. A missing file is drift too (never generated at all), not a
+    pass - the whole point is that the in-app screen cannot silently fall behind the copy that
+    feeds `docs/voice.html`."""
+    expected = kotlin_source(tools)
+    if not KOTLIN_OUT.exists():
+        return [f'{KOTLIN_OUT.relative_to(ROOT)} does not exist - run `python tools/voice_guide.py` to generate it']
+    actual = KOTLIN_OUT.read_text(encoding='utf-8')
+    if actual != expected:
+        return [
+            f'{KOTLIN_OUT.relative_to(ROOT)} is stale relative to tools/voice_guide_copy.py - '
+            'rerun `python tools/voice_guide.py`'
+        ]
+    return []
+
+
 def main():
     tools = declared_tools()
     problems = check(tools)
+    if '--check' in sys.argv:
+        problems += kotlin_drift_problems(tools)
     if problems:
         print(f'voice_guide: {len(problems)} problem(s)')
         for p in problems:
@@ -186,8 +316,10 @@ def main():
         return 0
     OUT.write_text(render(tools), encoding='utf-8')
     status = write_readme(tools)
+    kotlin_status = write_kotlin(tools)
     print(f'{OUT.relative_to(ROOT)}: {len(tools)} tools across {len(GROUPS)} groups')
     print(f'README.md: {status}')
+    print(f'{KOTLIN_OUT.relative_to(ROOT)}: {kotlin_status}')
     if status == 'markers-missing':
         print('  add <!-- VOICE-SURFACE:START --> and <!-- VOICE-SURFACE:END --> to README.md')
         return 1

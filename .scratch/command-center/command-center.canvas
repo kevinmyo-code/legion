@@ -71,11 +71,21 @@
       "color": "1"
     },
     {
+      "id": "95430a7be9e08e46",
+      "type": "file",
+      "file": ".scratch/command-center/issues/10-page-audits.md",
+      "x": 0,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "4"
+    },
+    {
       "id": "5cf5f6390d3b1a30",
       "type": "file",
       "file": ".scratch/command-center/issues/11-small-writes.md",
       "x": 0,
-      "y": 1050,
+      "y": 1200,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -96,16 +106,6 @@
       "file": ".scratch/command-center/issues/09-discovery-and-wiki.md",
       "x": 1040,
       "y": 0,
-      "width": 320,
-      "height": 110,
-      "color": "1"
-    },
-    {
-      "id": "95430a7be9e08e46",
-      "type": "file",
-      "file": ".scratch/command-center/issues/10-page-audits.md",
-      "x": 1040,
-      "y": 150,
       "width": 320,
       "height": 110,
       "color": "1"
@@ -152,20 +152,6 @@
       "fromNode": "cb3a0a3bb8bb98b8",
       "fromSide": "right",
       "toNode": "2dfb33efce929739",
-      "toSide": "left"
-    },
-    {
-      "id": "db452779a7ff846f",
-      "fromNode": "cb3a0a3bb8bb98b8",
-      "fromSide": "right",
-      "toNode": "95430a7be9e08e46",
-      "toSide": "left"
-    },
-    {
-      "id": "95beccae26f6c431",
-      "fromNode": "e56ce5ee7c4b4286",
-      "fromSide": "right",
-      "toNode": "95430a7be9e08e46",
       "toSide": "left"
     }
   ]

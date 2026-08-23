@@ -57,7 +57,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 |---|---|---|---|---|
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
-| [[.scratch/command-center/map\|command-center]] | [[10-page-audits\|10]] | task | Every page defends its pixels  waiting on [[01-home-command-center\|01]], [[02-settings-submenus\|02]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[03-plan-revision-by-conversation\|03]] | build | Arguing with the plan  waiting on [[02-recommender-and-playbook\|02]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[04-checklist-and-surfaces\|04]] | build | The daily checklist, on Body and Home  waiting on [[02-recommender-and-playbook\|02]] |
@@ -89,7 +88,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
-| [[.scratch/command-center/map\|command-center]] | 11 | 11 | [[.scratch/command-center/command-center.canvas\|open]] |
+| [[.scratch/command-center/map\|command-center]] | 11 | 10 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
