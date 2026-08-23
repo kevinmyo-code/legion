@@ -3,8 +3,8 @@ map: aspect-engine
 ticket: "09"
 title: "Dashboard grid mechanics: staged prototype"
 type: prototype
-status: claimed
-status-detail: "Prototype built 2026-08-23 on branch prototype/dashboard-grid; awaiting Kevin on the A25."
+status: resolved
+status-detail: "Resolved 2026-08-23. Kevin on the A25: feels like a dashboard. Edit mode kept. Stage 2 (true 2D grid) AUTHORIZED, built inside ticket 18."
 blockers: ["08"]
 blocked-by: ["[[08-widget-contract]]"]
 open-blockers: 0
@@ -56,3 +56,17 @@ Resolution waits on Kevin's on-device reaction; this section is the mechanics ha
 5. **Edit-mode verdict from building it:** always-live drag would crowd half-width cards with
    permanent chrome and make accidental drags the main failure; the modal edit mode also gives a
    natural commit point. Recommend keeping edit mode.
+
+## Answer
+
+Resolved 2026-08-23. Kevin installed the hash-verified prototype on the A25 and ruled:
+**"feels like a dashboard. build stage 2."**
+
+1. Stage 1 validated on-device: pager + reorderable half/full-width cards in the mission-control
+   skin reads as a dashboard, not a settings list.
+2. Edit mode (long-press jiggle, drag handle, remove chip, EDIT/DONE pill) is kept; always-live
+   drag rejected per the Findings.
+3. **Stage 2 is authorized**: hand-rolled occupancy-map cell grid (drag to cell, corner resize,
+   reflow), priced 8-12 days in the Findings. It ships inside
+   [Build the widget pager](18-build-widget-pager.md), which absorbs the prototype learnings
+   (ancestor-coordinate drag tracking, the row/column collapse fix, debug source-set pattern).

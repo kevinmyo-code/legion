@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["07", "16"]
 blocked-by: ["[[07-aspect-clerk-prototype]]", "[[16-build-engine-core]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

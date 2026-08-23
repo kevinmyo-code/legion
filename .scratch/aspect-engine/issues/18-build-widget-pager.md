@@ -18,7 +18,11 @@ tags: [ticket]
 Build what tickets 08 and 10 locked, informed by the grid prototype (ticket 09):
 
 1. The pager: home page one, one page per aspect, new aspect = new page. Stage 1 mechanics
-   (reorderable half/full-width cards); stage 2 free grid per the prototype's pricing.
+   (reorderable half/full-width cards) AND stage 2, authorized by Kevin 2026-08-23: hand-rolled
+   occupancy-map cell grid (per-widget row/col/rowSpan/colSpan, drag to cell with live reflow,
+   corner resize with snap preview, boundary and min-size clamps). Reuse the prototype learnings
+   from ticket 09: ancestor-coordinate drag tracking, a real cell model instead of
+   nearest-centre distance, the debug source-set harness for feel-testing before integration.
 2. The eight engine widget types: stat tile, record list, next-due, quick-add, single-record
    card, agenda, chart, photo. Per-device `widget_instances` persistence. Error/empty states in
    words on every widget.

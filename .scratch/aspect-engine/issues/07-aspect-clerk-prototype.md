@@ -8,7 +8,7 @@ status-detail: "Resolved 2026-08-23. Flash runs the clerk (~1.1-2.5s); Pro reser
 blockers: ["06"]
 blocked-by: ["[[06-meta-tool-surface]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The aspect clerk: prototype and latency

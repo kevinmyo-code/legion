@@ -13,7 +13,6 @@ Open tickets whose blockers are all resolved.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[07-aspect-clerk-prototype\|07]] | prototype | The aspect clerk: prototype and latency |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[09-grid-mechanics-prototype\|09]] | prototype | Dashboard grid mechanics: staged prototype |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
@@ -67,7 +66,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What | Waiting on |
 |---|---|---|---|---|
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[17-build-voice-surface\|17]] | task | Build the voice surface  waiting on [[07-aspect-clerk-prototype\|07]], [[16-build-engine-core\|16]] |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | [[17-build-voice-surface\|17]] | task | Build the voice surface  waiting on [[16-build-engine-core\|16]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[18-build-widget-pager\|18]] | task | Build the widget pager and generated screens  waiting on [[09-grid-mechanics-prototype\|09]], [[16-build-engine-core\|16]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[19-build-dates-aspect\|19]] | task | Build the Dates aspect  waiting on [[16-build-engine-core\|16]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[20-build-mirror-sync\|20]] | task | Build the mirror and sync  waiting on [[16-build-engine-core\|16]] |
@@ -106,7 +105,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | 21 | 8 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | 21 | 7 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |

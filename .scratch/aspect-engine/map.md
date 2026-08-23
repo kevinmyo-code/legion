@@ -5,7 +5,7 @@ charted: 2026-08-23
 charted-by: "Kevin + Fable"
 effort: "`.scratch/aspect-engine/`"
 tickets: 21
-open: 7
+open: 6
 status: open
 tags: [map]
 ---
@@ -135,6 +135,10 @@ These are charter decisions, not resolved tickets. Tickets refine them; they do 
   the clerk (1.1-2.5s median, zero hallucinations in 30 runs); Pro reserved for schema
   generation; **Kevin: hold silent, filler only past 4s**; the clerk must be handed the grounded
   current date (owed in ticket 17).
+
+- [Dashboard grid mechanics: staged prototype](issues/09-grid-mechanics-prototype.md) - Kevin on
+  the A25: **"feels like a dashboard."** Edit mode kept; stage 2 (true 2D occupancy-map grid,
+  8-12 days) authorized and folded into Build the widget pager.
 
 ## Not yet specified
 
