@@ -125,6 +125,81 @@ counterpart. `grilling` and `research` can be copied straight over. `wayfinder` 
 reapply. `to-spec`, `domain-modeling`, and `prototype` carry real local edits - merge, don't
 overwrite. Then update the commit above.
 
+## rcosteira79/android-skills (4 skills, 2026-08-23)
+
+- Source: https://github.com/rcosteira79/android-skills
+- Commit: `80406d9aacfcc030b1f9705a6d2b1407403414bc`
+- Vendored: 2026-08-23
+- License: MIT (author: Ricardo Costeira)
+- What was copied: only `plugins/android-skills/skills/<name>/SKILL.md` for the four skills below.
+  Nothing executable; the repo's plugin manifests and `scripts/` were not copied. Selection per
+  `.scratch/aspect-engine/research/kotlin-skills-scout.md` (#1, #2, #3).
+
+| Skill | State |
+|---|---|
+| `android-debugging/` | **One edit.** The closing pointer to `android-skills:compose` → `references/performance.md` (not vendored) now points at the vendored chrisbanes `compose-recomposition-performance` / `compose-stability-diagnostics` skills, with a note. External URL pointers (Perfetto skills, reverse-engineering plugin) kept as read-only references. |
+| `gradle-build-performance/` | **One edit.** The `android-skills:android-gradle-logic` plugin-syntax link now names the locally vendored `android-gradle-logic` skill. |
+| `android-gradle-logic/` | **Verbatim.** Vendored as `gradle-build-performance`'s companion; lower priority for a single-module app but small. Its "this repo's `gradle-build-performance`" reference resolves locally. |
+| `android-testing/` | **Two edits.** (1) **The "Test-first (the foundation)" section was STRIPPED** - RED-GREEN-REFACTOR discipline is the `mattpocock-skills:tdd` plugin's ground, the same reason upstream `tdd` was not vendored; a vendoring note marks the strip, the intro line lost its "test-first foundation" clause, and the section's testing-setup pointer now names the locally vendored `testing-setup`. The frontmatter description still mentions test-first (kept intact per the vendoring instruction). (2) The `compose/references/focus-navigation.md` pointer (not vendored) now names the vendored `compose-focus-navigation` skill. |
+
+### To refresh
+Re-fetch `plugins/android-skills/skills/<name>/SKILL.md` at a newer commit and diff. All four carry
+local edits (link retargets; `android-testing` a section strip) - merge, don't overwrite. Then
+update the commit above.
+
+## android/skills - Google official (2 skills, 2026-08-23)
+
+- Source: https://github.com/android/skills
+- Commit: `6685cac2923e3ccc7e5c385019464374699cda95`
+- Vendored: 2026-08-23
+- License: Apache-2.0 (author: Google LLC). The SKILL.md frontmatter says "Complete terms in
+  LICENSE.txt", referring to the repo's `LICENSE.txt` (Apache-2.0) at the source URL above; it was
+  not copied alongside, this citation stands in for it.
+- What was copied, all verbatim, markdown only:
+  - `testing/testing-setup/SKILL.md` plus its three `references/` files at their original relative
+    paths (so the intra-skill links resolve unchanged):
+    `references/android/develop/ui/compose/testing/common-patterns.md`,
+    `references/android/studio/preview/compose-screenshot-testing.md`,
+    `references/android/training/dependency-injection/hilt-testing.md`
+  - `security/android-intent-security/SKILL.md` (no references dir upstream)
+- Deliberately NOT vendored from this repo: `performance/r8-analyzer` (premature - no minified
+  release build yet) and `profilers/android-profiler` (bundles executables, violating the
+  markdown-only posture; also no current perf problem). Both are bookmarked in the scout note.
+
+### To refresh
+Re-fetch the same paths at a newer commit and copy straight over (verbatim, no local edits). Then
+update the commit above.
+
+## skydoves/android-testing-skills - the adb/ subtree only (10 skills, 2026-08-23)
+
+- Source: https://github.com/skydoves/android-testing-skills
+- Commit: `8665ed59643c90eb1056a256a6ddec161aa1cfa1`
+- Vendored: 2026-08-23
+- License: Apache-2.0 (author: Jaewoong Eum, skydoves)
+- What was copied: the ten `adb/**/SKILL.md` files, all **verbatim**, each into a directory named
+  by its frontmatter `name` (upstream's category subdirs flattened). No name collided with an
+  existing skill, so none was prefixed. The repo's `compose/*`, `jvm-tests/*`, `fundamentals/*`,
+  `instrumentation/*`, `kotlin/*`, and `platform/*` subtrees were deliberately NOT vendored
+  (overlap with the chrisbanes set and `android-testing`); `scripts/install-skills.sh` was not
+  copied (nothing executable is vendored).
+
+| Vendored directory | Upstream path |
+|---|---|
+| `connecting-to-devices/` | `adb/devices/connecting-to-devices/` |
+| `connecting-over-wifi/` | `adb/devices/connecting-over-wifi/` |
+| `understanding-adb-architecture/` | `adb/architecture/understanding-adb-architecture/` |
+| `installing-and-managing-apps/` | `adb/apps/installing-and-managing-apps/` |
+| `extracting-logs-with-logcat/` | `adb/observability/extracting-logs-with-logcat/` |
+| `capturing-screenshots-and-screenrecord/` | `adb/capture/capturing-screenshots-and-screenrecord/` |
+| `injecting-input-and-state/` | `adb/control/injecting-input-and-state/` |
+| `running-instrumented-tests-via-adb/` | `adb/tests/running-instrumented-tests-via-adb/` |
+| `extracting-test-artifacts/` | `adb/transfer/extracting-test-artifacts/` |
+| `scripting-adb-for-ci/` | `adb/automation/scripting-adb-for-ci/` |
+
+### To refresh
+Re-fetch `adb/**/SKILL.md` at a newer commit and copy straight over (verbatim). Then update the
+commit above.
+
 ## Considered but not installed
 - `skydoves/compose-performance-skills` - heavy overlap with the above plus premature tooling
   (baseline profiles, R8 tuning) for this project. Revisit if deep release-mode profiling is needed.
