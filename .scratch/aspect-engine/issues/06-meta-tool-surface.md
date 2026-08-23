@@ -3,11 +3,11 @@ map: aspect-engine
 ticket: "06"
 title: "The meta-tool surface"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-08-23: nine meta-tools, generator subagent for schema, inventory deferred to build."
 blockers: ["03"]
 blocked-by: ["[[03-engine-schema]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
@@ -31,3 +31,20 @@ Charter decision 7: ~8 generic tools replace per-aspect CRUD. Specify them exact
    which are neither and need a call. The answer includes that inventory table.
 5. **voice_guide.py fallout.** The generator and its copy file assume a fixed tool list; decide
    what the user guide lists in a meta-tool world (probably aspects + verbs, not tools).
+
+## Answer
+
+Resolved 2026-08-23 (Kevin, batched grilling).
+
+1. **The surface:** list_aspects, describe_aspect, query_records, create_record, update_record,
+   delete_record, aspect_clerk, create_aspect, update_aspect. The two schema tools route through
+   the **schema generator subagent** (Pro-tier, executor pattern): it drafts the definition, the
+   assistant reads it back, commit happens on confirmation only.
+2. **Delete rails:** single-record deletes execute unconfirmed into the 30-day trash and say what
+   they binned; query-matched bulk deletes confirm with the count first. A gate-quarantined write
+   returns the quarantine reason in words so the model can say what did NOT happen.
+3. **Descriptions** state the estimate rule and the outcome rule, and never say "driver"
+   (PromptRoleNamingTest binds them).
+4. **Deferred with a named follow-up (L11):** the inventory of the existing 97 tools (which die
+   into meta-tools, which survive as plugin verbs) and the voice_guide.py rethink live in
+   [Build the voice surface](17-build-voice-surface.md). Not silently dropped; owed there.

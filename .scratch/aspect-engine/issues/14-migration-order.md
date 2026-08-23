@@ -3,11 +3,11 @@ map: aspect-engine
 ticket: "14"
 title: "Migration order for the existing aspects"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-08-23: new ground first, then notes/lists/places, pantry, ledger, fleet last."
 blockers: ["03", "11"]
 blocked-by: ["[[03-engine-schema]]", "[[11-capability-plugin-api]]"]
-open-blockers: 2
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
@@ -35,3 +35,18 @@ plan:
    retained N versions? Drive export before migration as the belt-and-braces copy?)
 
 Resolution opens the per-aspect build tickets in the same commit.
+
+## Answer
+
+Resolved 2026-08-23 (Kevin, batched grilling).
+
+1. **Order: new ground first.** 1) Engine core plus the Dates aspect plus one user-authored
+   aspect - proves everything on data with no history to lose. 2) notes/lists/places.
+   3) pantry. 4) ledger (the gate re-plumb). 5) fleet last, biggest plugin surface.
+2. **Cutover per aspect, never big bang.** Old screens and tools keep working until the engine
+   version of that aspect is verified on the A25 (hash-verified install, per standing memory).
+3. **Rollback:** Drive export of the old tables before each wave; old tables retained until the
+   wave's on-device verification passes; only then dropped, in their own migration.
+4. **Per-aspect carve** (which entities become record types, which stay plugin-internal, which
+   die) is specified inside each wave in [Migration waves](21-migration-waves.md), feeding on
+   ticket 11's plugin API.

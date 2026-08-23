@@ -3,11 +3,11 @@ map: aspect-engine
 ticket: "11"
 title: "The capability plugin API, and the gate's new home"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-08-23: partially editable plugin schemas, gate is the door."
 blockers: ["03"]
 blocked-by: ["[[03-engine-schema]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
@@ -33,3 +33,20 @@ Charter decision 2: native code attaches to aspects as plugins. Specify the API:
 5. **Inventory.** Enumerate the actual plugins v1 ships: OBD/fleet, ledger parsers + gate, pantry
    vision, music, comms, weather, location/places, Google Calendar import (feeds ticket 05),
    Gmail read-through. For each: tools, widgets, screens, workers it registers.
+
+## Answer
+
+Resolved 2026-08-23 (Kevin, batched grilling).
+
+1. **Binding: partially editable.** Plugins declare required fields; those are locked and badged
+   with the owning plugin. Users add fields, reorder, relabel, and delete anything not required.
+2. **A plugin registers:** verb tools, native widgets, native screens (ingestion UIs, detail
+   overrides), background workers, and record writes - all through the single RecordStore door.
+3. **The reconciliation gate is engine infrastructure**, the door every ingestion write passes,
+   not a convention a plugin remembers. Quarantine, provenance tagging, and the rule-7
+   provisional path live in the engine.
+4. **Deleting a plugin-bound aspect** detaches and disables the plugin; data archives like any
+   aspect (30-day purge); a reinstallable default can recreate the aspect fresh.
+5. **Deferred with a named follow-up:** the per-plugin inventory (tools, widgets, screens,
+   workers for OBD, ledger, pantry, music, comms, weather, places, calendar import, Gmail
+   read-through) is enumerated per wave in [Migration waves](21-migration-waves.md).

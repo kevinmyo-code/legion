@@ -4,8 +4,8 @@ title: "Map: The aspect engine - every aspect an instance of one module"
 charted: 2026-08-23
 charted-by: "Kevin + Fable"
 effort: "`.scratch/aspect-engine/`"
-tickets: 15
-open: 15
+tickets: 21
+open: 9
 status: open
 tags: [map]
 ---
@@ -88,19 +88,51 @@ These are charter decisions, not resolved tickets. Tickets refine them; they do 
 
 <!-- one line per resolved ticket -->
 
+- [Can the app write files back into a Drive folder through SAF?](issues/01-drive-folder-write-back.md) -
+  works-with-caveats: create and write are real and reach the cloud, but truncation is unreliable,
+  so writes are `rwt` full-rewrite plus read-back hash verify with mirror quarantine on mismatch.
+  The local-folder-sync fallback is dead. On-A25 probe owed (ticket 20 carries it).
+- [xlsx on Android: library, size, and embedded validation](issues/02-xlsx-on-android.md) -
+  fastexcel, bare-JVM testable; money as integer cents in number cells; embedded validation is
+  decoration (no source establishes Sheets mobile enforcing it), the import gate carries all
+  integrity.
+- [The engine schema](issues/03-engine-schema.md) - standard promoted set (incl. amountCents,
+  searchText, provenance as a column); 13 field types v1 (duration deferred); references through
+  the single `RecordStore` door; aspect delete = archive, record delete = trash, 30-day purge;
+  schema editing voice-reachable via a Pro-tier generator subagent with confirm-before-commit.
+- [Computed fields](issues/04-computed-fields.md) - aggregations plus same-record arithmetic, no
+  formula language; materialized on write; errors in words, never a silent zero.
+- [The central date database](issues/05-central-date-database.md) - a built-in Dates aspect on the
+  engine; Google Calendar imports store everything including invites (tagged, one-way, deletions
+  mirror); agenda is a query; exact alarms; every reminder passes the compulsion test.
+- [The meta-tool surface](issues/06-meta-tool-surface.md) - nine meta-tools including
+  create_aspect/update_aspect via the generator subagent; unconfirmed single deletes into trash,
+  bulk confirms with count; the 97-tool inventory and voice_guide rethink owed in ticket 17.
+- [The widget contract](issues/08-widget-contract.md) - all eight widget types in v1; layouts
+  per-device and deliberately unsynced; error/empty states in words on every widget.
+- [Generated screens](issues/10-generated-screens.md) - list/detail/form per record type, the
+  ADR 0035 hands path; plugin detail override with the generated screen as permanent fallback;
+  provenance in words; mission-control tokens.
+- [The capability plugin API](issues/11-capability-plugin-api.md) - partially editable: plugin
+  required fields locked and badged, everything else user-ownable; the gate is engine
+  infrastructure every ingestion write passes; deleting a plugin aspect detaches and disables,
+  data archives, defaults reinstallable.
+- [The xlsx mirror and its import gate](issues/12-xlsx-mirror-import-gate.md) - workbook per
+  aspect, sheet per record type; debounced export with staleness stated in words; reconciled rows
+  read-only in the mirror; the gate carries all integrity.
+- [Two-phone sync under the engine](issues/13-two-phone-sync.md) - **Kevin: the xlsx files ARE
+  the sync channel**, journal and appDataFolder declined; binding condition: row-level merge
+  keyed by record id plus updatedAt, never whole-file replace.
+- [Migration order](issues/14-migration-order.md) - new ground first (Dates + one user aspect),
+  then notes/lists/places, pantry, ledger, fleet last; cutover per aspect; Drive export before
+  each wave and old tables retained until on-device verification.
+
 ## Not yet specified
 
-- **Per-aspect migration specifics.** How fleet's OBD live data, ledger's gate plumbing, and
-  pantry's photo store each carve into engine records + plugin. Sharpens after the schema
-  (ticket 03) and the plugin API (ticket 11) land.
-- **Reminders firing.** AlarmManager vs WorkManager, notification shape, and how the proactive-mode
-  compulsion test applies to due-date nudges. Waits on the date database (ticket 05).
-- **The proactive layer and the date DB.** OpenerCalendarBriefing currently reads Google directly;
-  it should read the central date table once that exists.
-- **Docs and generators.** voice_guide.py assumes 97 hand-written tools; the meta-tool world needs
-  a rethink of what the user guide even lists. Same for the README voice-surface block.
 - **Aspect templates / sharing.** An aspect definition is data, so it could export/import. Unasked.
-- **What "delete the fleet aspect" does to the plugin.** Detach? Disable? Sharpen in ticket 11.
+- **CompanionSync's fate.** Record sync moves to the xlsx channel; whether companion profiles keep
+  their own appDataFolder path is reviewed at migration time (ticket 20 notes it).
+- **Duration field type** and any v2 field types. Deferred at ticket 03.
 
 ## Out of scope
 

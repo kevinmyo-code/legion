@@ -4409,3 +4409,106 @@ Became `CLAUDE.md` §7, a feature-add checklist line, and ADR 0035. The existing
 comply and the size of the gap is unmeasured, so ticket 27 measures it before anything is built -
 the same order the socket ticket proved right when its guess of 101 declarations turned out to be
 66.
+
+## 2026-08-23 - The aspect engine: runtime, user-authorable, two-layer plugin model
+
+Kevin and Fable charted `.scratch/aspect-engine/` on 2026-08-23. Map decision: LEGION refactors
+onto a runtime aspect engine (option B) over a registry of built aspects. Users author brand-new
+aspects on the phone with freeform field names and typed columns. Fleet, ledger, and pantry
+migrate onto the engine as built-in aspects.
+
+Architecture: two-layer split. The engine layer owns record types, fields, CRUD, generic voice
+tools (list/describe/query/create/update/delete), and user-facing widgets. The native capability
+layer bundles Kotlin plugins (OBD stack, statement/receipt parsers, vision, music, comms) and
+attaches them to aspects for bespoke verb tools. Plugins are never user-authorable.
+
+Storage: one central store inside Room. All 48 inherited entities migrate to fixed generic tables
+(aspects, record_types, field_defs, records) with JSON payload column plus promoted columns for
+indexing. ERP-style structure, no runtime DDL. Kevin offered to unblock dynamic SQL, then chose
+fixed tables.
+
+Network: offline requirement DROPPED for this effort. Kevin: *"phone will always have internet."*
+Local store stays primary for speed only.
+
+Data mirror: .xlsx per table in a normal user-visible Drive folder via SAF (no OAuth, no Sheets
+API, no CSV). Data-validation rules generated into the files. Hand edits return through a
+validating import gate that quarantines failures. Native Google Sheets explicitly out - it is not
+a file.
+
+Time ownership: **LEGION owns time.** Central date database is truth. Google Calendar imports as
+tagged rows. Reminders fire from the central store. Every engine record carries due/remind columns.
+SUPERSEDES the google-account-integration ruling that Google Calendar owns timed events.
+
+Voice CRUD: generic meta-tools instead of per-aspect generated tools. list_aspects,
+describe_aspect, query_records, create_record, update_record, delete_record, clerk (executor).
+Capability plugins keep bespoke verb tools (e.g., "play", "clear DTCs"). (Ticket 06 later fixed
+the surface at nine, adding create_aspect/update_aspect.)
+
+Clerk subagent: executor, not router. Bounded meta-tool loop off-thread. Reports what it actually
+wrote. Preserves the outcome-verb rule (§7, CLAUDE.md). Kevin's original router idea reshaped to
+this with his agreement.
+
+UI: whole app becomes a widget pager. Home is page one; every aspect is a page; new aspect = new
+page. Grid mechanics staged: reorderable cards first, then free-form grid. Mission-control look
+becomes the default arrangement.
+
+Widgets as windows: taps drill into engine-generated list/detail/form screens. All screens come
+from the same field definitions. Ingestion UIs stay native with plugins.
+
+References: enforced by the engine, not SQL foreign keys. Reference field type, per-field delete
+policies, import-gate checks.
+
+Execution scope: destination is the engine shipped with all aspects migrated. Kevin: *"we plan now,
+then i leave u to build with the team."* Unbuilt tickets of other maps that the engine supersedes
+freeze with pointers to the aspect-engine map (ticket 15 documents this closure).
+
+## 2026-08-23 - Aspect engine: ticket resolutions (batched grilling, Kevin + Fable)
+
+CORRECTION, same day: the eight entries this section replaces were filed by a librarian pass that
+INVENTED detail nowhere decided - a "browse" tool with fabricated signatures, immutable field
+names, a five-type field list, an appDataFolder mirror, an RRULE design, a backfill-not-migration
+plan, five fabricated phases, nonexistent map names, and a quote Kevin never said. Deleted
+wholesale. The authoritative record is each ticket's Answer section under
+`.scratch/aspect-engine/issues/`; this entry is the accurate gist.
+
+Kevin resolved tickets 03-06, 08, 10-14 in one batched session (research 01 and 02 resolved by
+subagents the same day):
+
+- **Schema (03):** promoted columns id, recordTypeId, createdAt, updatedAt, dueAt, amountCents,
+  searchText, provenance (a real column - the gate queries it); payload JSON for the rest.
+  13 field types v1: text, number, money-cents, date, datetime, boolean, choice, multi-select
+  choice, reference, photo, location, rating, computed (duration deferred). All writes through
+  one door, `RecordStore`. Aspect delete = archive, record delete = trash, both 30-day purge.
+  Schema editing IS voice-reachable in v1 via a Pro-tier generator subagent, confirm-before-commit.
+- **Computed fields (04):** aggregations over referenced children plus same-record arithmetic,
+  no formula language; materialized on write; failures speak in words, never a silent zero.
+- **Dates (05):** a built-in Dates aspect ON the engine, not a bespoke table. Google Calendar
+  import stores everything including invites (a deliberate-import ruling on the third-party rule;
+  mail stays read-through). Tagged source+id, one-way, deletions mirror. Agenda is a query across
+  Dates plus every record's dueAt. Exact alarms; every reminder passes the compulsion test.
+- **Meta-tools (06):** nine - the six CRUD/query tools, aspect_clerk, create_aspect,
+  update_aspect. Single deletes unconfirmed into trash with a spoken receipt; bulk confirms with
+  count. The 97-tool inventory and voice_guide rethink are OWED in build ticket 17, not decided.
+- **Widgets (08):** all eight types in v1 (stat tile, record list, next-due, quick-add,
+  single-record card, agenda, chart, photo); layouts per-device, deliberately unsynced.
+- **Generated screens (10):** list/detail/form per record type, ADR 0035 hands path; plugin may
+  override detail with the generated screen as permanent fallback; provenance in words.
+- **Plugin API (11):** partially editable - plugin-declared required fields locked and badged,
+  the rest user-ownable. The reconciliation gate is engine infrastructure every ingestion write
+  passes. Deleting a plugin aspect detaches and disables; data archives; defaults reinstallable.
+- **Mirror (12):** one workbook per aspect, sheet per record type; debounced export plus
+  on-background, staleness stated in words; SAF rwt full-rewrite with read-back hash verify
+  (research 01); fastexcel, integer-cents cells, embedded validation is decoration and the import
+  gate carries all integrity (research 02); reconciled rows read-only in the mirror.
+- **Sync (13):** Kevin chose **the xlsx files ARE the sync channel** - journal and appDataFolder
+  both declined, despite the last-write-wins warning being stated. Binding condition accepted
+  with it: import is row-level merge keyed by record id plus updatedAt, never whole-file replace.
+  Residual risk (same row edited on both phones between syncs) accepted for a two-adult household.
+- **Migration order (14):** new ground first (engine + Dates + one user-authored aspect), then
+  notes/lists/places, pantry, ledger, fleet last. Cutover per aspect, never big bang; Drive
+  export before each wave; old tables retained until on-device verification.
+
+Resolutions opened build tickets 16-21 in the same commit (engine core, voice surface, widget
+pager + generated screens, Dates aspect, mirror + sync, migration waves). Open frontier after
+resolution: prototypes 07 (clerk latency) and 09 (grid mechanics), task 15 (freeze superseded
+tickets across other maps), build 16 (engine core, unblocked).

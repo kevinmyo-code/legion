@@ -3,12 +3,12 @@ map: aspect-engine
 ticket: "03"
 title: "The engine schema: fixed tables, field types, references"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-08-23 with Kevin, batched grilling."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The engine schema: fixed tables, field types, references
@@ -40,3 +40,24 @@ hold every aspect and every record (charter decision 3), and the field-type voca
 
 Resolve with /grilling + /domain-modeling; the answer is a schema spec with verbatim CREATE
 statements and the v1 field-type table. Opens a build ticket on resolution.
+
+## Answer
+
+Resolved 2026-08-23 (Kevin, batched grilling).
+
+1. **Promoted columns: the standard set.** `records` carries real columns for id, recordTypeId,
+   createdAt, updatedAt, dueAt, amountCents, searchText, and provenance. Everything else lives in
+   the JSON payload. Provenance is a COLUMN, not payload: the gate queries it.
+2. **Field types v1:** text, number, money-cents, date, datetime, boolean, choice,
+   multi-select choice, reference, photo, location, rating, computed. Duration deferred to v2.
+3. **References:** engine-enforced through the single write door (`RecordStore`); per-field delete
+   policy (block / cascade / null); nothing writes `records` directly, ever - meta-tools, forms,
+   import gate, and plugins all use the one API.
+4. **Aspect delete = archive.** Hidden everywhere, restorable from settings, hard-purged after 30
+   days or on manual purge. **Record delete = trash**, same 30-day restore; voice deletes execute
+   without confirmation and say what they binned; bulk deletes confirm with the count first.
+5. **Schema editing is voice-reachable in v1**, via a **schema generator subagent** (Pro-tier
+   model, executor pattern like the clerk): it drafts or amends the aspect definition from the
+   spoken ask, and the definition is confirmed before commit.
+6. Exact CREATE statements, indexes, and the migration test are build work:
+   [Build the engine core](16-build-engine-core.md).

@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["06"]
 blocked-by: ["[[06-meta-tool-surface]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # The aspect clerk: prototype and latency

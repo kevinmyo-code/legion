@@ -3,11 +3,11 @@ map: aspect-engine
 ticket: "10"
 title: "Generated screens: list, detail, form"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-08-23: generated trio confirmed, plugin override with generated fallback."
 blockers: ["03"]
 blocked-by: ["[[03-engine-schema]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
@@ -31,3 +31,17 @@ type, generated from field definitions - the guaranteed hands path (ADR 0035). D
    remains the fallback so the hands path never vanishes.
 5. **Theming.** Mission-control skin tokens applied to generated components - one visual
    language, no second design system.
+
+## Answer
+
+Resolved 2026-08-23 (Kevin, batched grilling).
+
+1. Every record type gets generated **list, detail, and form** screens from its field
+   definitions; they are the ADR 0035 hands path and can never vanish.
+2. **Escape hatch: yes.** A plugin may override the detail screen (car with live OBD); the
+   generated screen remains reachable as the fallback.
+3. Detail screens show provenance **in words** (sec 4 rule 7 applies to generated surfaces).
+   Forms enforce required fields and speak validation and quarantine in words.
+4. Mission-control tokens skin all generated components; no second design system.
+5. Column choice, title-field designation, search, and pagination are build work:
+   [Build the widget pager](18-build-widget-pager.md) (screens ship with the pager).

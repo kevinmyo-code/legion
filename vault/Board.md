@@ -13,10 +13,10 @@ Open tickets whose blockers are all resolved.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[01-drive-folder-write-back\|01]] | research | Can the app write files back into a Drive folder through SAF? |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[02-xlsx-on-android\|02]] | research | xlsx on Android: library, size, and embedded validation |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[03-engine-schema\|03]] | grilling | The engine schema: fixed tables, field types, references |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | [[07-aspect-clerk-prototype\|07]] | prototype | The aspect clerk: prototype and latency |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | [[09-grid-mechanics-prototype\|09]] | prototype | Dashboard grid mechanics: staged prototype |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[15-freeze-superseded-tickets\|15]] | task | Freeze the superseded tickets across the other maps |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | [[16-build-engine-core\|16]] | task | Build the engine core |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
@@ -68,17 +68,11 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What | Waiting on |
 |---|---|---|---|---|
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[04-computed-fields\|04]] | grilling | Computed fields: vocabulary and evaluation  waiting on [[03-engine-schema\|03]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[05-central-date-database\|05]] | grilling | The central date database: LEGION owns time  waiting on [[03-engine-schema\|03]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[06-meta-tool-surface\|06]] | grilling | The meta-tool surface  waiting on [[03-engine-schema\|03]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[07-aspect-clerk-prototype\|07]] | prototype | The aspect clerk: prototype and latency  waiting on [[06-meta-tool-surface\|06]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[08-widget-contract\|08]] | grilling | The widget contract  waiting on [[03-engine-schema\|03]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[09-grid-mechanics-prototype\|09]] | prototype | Dashboard grid mechanics: staged prototype  waiting on [[08-widget-contract\|08]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[10-generated-screens\|10]] | grilling | Generated screens: list, detail, form  waiting on [[03-engine-schema\|03]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[11-capability-plugin-api\|11]] | grilling | The capability plugin API, and the gate's new home  waiting on [[03-engine-schema\|03]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[12-xlsx-mirror-import-gate\|12]] | grilling | The xlsx mirror and its import gate  waiting on [[01-drive-folder-write-back\|01]], [[02-xlsx-on-android\|02]], [[03-engine-schema\|03]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[13-two-phone-sync\|13]] | grilling | Two-phone sync under the engine  waiting on [[12-xlsx-mirror-import-gate\|12]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[14-migration-order\|14]] | grilling | Migration order for the existing aspects  waiting on [[03-engine-schema\|03]], [[11-capability-plugin-api\|11]] |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | [[17-build-voice-surface\|17]] | task | Build the voice surface  waiting on [[07-aspect-clerk-prototype\|07]], [[16-build-engine-core\|16]] |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | [[18-build-widget-pager\|18]] | task | Build the widget pager and generated screens  waiting on [[09-grid-mechanics-prototype\|09]], [[16-build-engine-core\|16]] |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | [[19-build-dates-aspect\|19]] | task | Build the Dates aspect  waiting on [[16-build-engine-core\|16]] |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | [[20-build-mirror-sync\|20]] | task | Build the mirror and sync  waiting on [[16-build-engine-core\|16]] |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | [[21-migration-waves\|21]] | task | Migration waves: every aspect onto the engine  waiting on [[17-build-voice-surface\|17]], [[18-build-widget-pager\|18]], [[19-build-dates-aspect\|19]], [[20-build-mirror-sync\|20]] |
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
@@ -113,7 +107,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | 15 | 15 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | 21 | 9 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |

@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["08"]
 blocked-by: ["[[08-widget-contract]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # Dashboard grid mechanics: staged prototype

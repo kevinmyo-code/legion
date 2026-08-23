@@ -3,11 +3,11 @@ map: aspect-engine
 ticket: "08"
 title: "The widget contract"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-08-23: eight widget types, per-device layouts."
 blockers: ["03"]
 blocked-by: ["[[03-engine-schema]]"]
-open-blockers: 1
+open-blockers: 0
 ready: false
 tags: [ticket]
 ---
@@ -31,3 +31,18 @@ Every aspect page and home is a grid of widgets (charter decision 9). Specify th
    have no widget equivalent yet (that list feeds ticket 14).
 5. **Empty and error states.** A widget over a deleted aspect, an empty record type, an
    unreadable source: words, not blanks (the unreadable-vs-empty rule).
+
+## Answer
+
+Resolved 2026-08-23 (Kevin, batched grilling).
+
+1. **Widget types v1, all eight:** stat tile, record list, next-due, quick-add, single-record
+   card, agenda, chart (numeric field over date, mission-control skin), photo. Native plugin
+   widgets (now playing, OBD gauges, weather) ride the same contract.
+2. **Layouts are per-device.** Aspect definitions and records sync; page arrangement is personal.
+   Widget instances (type, target, params, size, position, page) live in an engine table that
+   the sync channel deliberately skips.
+3. **Contract requirements on every widget,** plugin ones included: size classes, tap target, and
+   error/empty states in words (unreadable and empty are different sentences).
+4. **Deferred with a named follow-up:** the mapping of existing mission-control screens to
+   default arrangements is enumerated in [Build the widget pager](18-build-widget-pager.md).
