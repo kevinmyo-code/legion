@@ -3,6 +3,7 @@
 package com.kevin.legion.ui.grid
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector2D
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.VectorConverter
@@ -27,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -87,12 +89,12 @@ import kotlin.math.roundToInt
  *   path, not a mere overlap.
  * - **A valid release commits exactly the previewed arrangement** and animates the small residual
  *   distance between the raw drop point and the snapped cell for the ACTIVELY dragged/resized card
- *   only (see [MoveDrag]/[ResizeDrag]'s own "settle" animation below) - both the valid-commit and
- *   the rejected-and-returned case share ONE animation mechanism, they only differ in which rect
- *   they animate toward. **Displaced OTHER occupants land at their new cell without their own
- *   settle animation** - a deliberate scope cut for this pass (multi-item simultaneous settle
- *   animation is a larger change than this rework), flagged as a follow-up polish item rather than
- *   silently shipped as if it were animated.
+ *   (see [MoveDrag]/[ResizeDrag]'s own "settle" animation below) - both the valid-commit and the
+ *   rejected-and-returned case share ONE animation mechanism, they only differ in which rect they
+ *   animate toward. **Every OTHER occupant a drop displaces gets the same 200ms settle too**
+ *   (the deferred polish, wired in the same rework that fixed the fourth feel-test pass's bug
+ *   below) - `displacementSettle`, a map keyed by id rather than a single shared `Animatable`,
+ *   since an arbitrary number of occupants can be displaced by one drop (a knock-on chain).
  *
  * **Cell hit-testing, not nearest-centre distance - the stage-1 defect this ticket exists to
  * fix.** The prototype's reorder targeted whichever OTHER item's centre was nearest the dragged
@@ -103,17 +105,37 @@ import kotlin.math.roundToInt
  * (row, col) cell, then clamps that cell into bounds - there is no point at which two candidate
  * cells are compared by distance.
  *
- * **The commit-path bug found on the A25 (2026-08-23, first feel-test pass) and its fix, stated
- * plainly.** [GridEngine] itself was never wrong - `GridEngineTest`'s cases proved the engine
- * functions compute the right geometry from a given final delta. The bug was pure Compose state
- * plumbing: an earlier draft's `onResizeDragEnd`/`onMoveDragEnd` closures committed a value
- * computed once per RECOMPOSITION and captured by reference into that specific composition's
- * lambdas. A fast resize/drag gesture can deliver several `onDrag` pointer callbacks and then
- * `onDragEnd` before Compose ever gets a scheduled frame to recompose in between - pointer
- * dispatch is synchronous, recomposition is not. **Every commit below reads drag state and
- * [baseItems] directly at commit time** (both are either a live `mutableStateOf` read or a value
- * with no drag-state dependency) - never a composition-scoped `val` that requires an extra
- * recompose to be current.
+ * **Two Compose state-plumbing bugs found on the A25, both fixed, stated plainly.** [GridEngine]
+ * itself was never wrong either time - `GridEngineTest`'s cases proved the engine functions
+ * compute the right geometry from a given final delta or a given `List<GridItem>`.
+ *
+ * *First feel-test pass (resize did not commit):* an earlier draft's `onResizeDragEnd`/
+ * `onMoveDragEnd` closures committed a value computed once per RECOMPOSITION and captured by
+ * reference into that specific composition's lambdas. A fast resize/drag gesture can deliver
+ * several `onDrag` pointer callbacks and then `onDragEnd` before Compose ever gets a scheduled
+ * frame to recompose in between - pointer dispatch is synchronous, recomposition is not. **Every
+ * commit below reads drag state and [baseItems] directly at commit time** (both are either a live
+ * `mutableStateOf` read or a value with no drag-state dependency) - never a composition-scoped
+ * `val` that requires an extra recompose to be current.
+ *
+ * *Fourth feel-test pass (every drop appeared to revert):* `baseItems` used to be
+ * `remember(items, columnCount) { GridEngine.normalize(items, columnCount) }`, keying directly on
+ * `items`. The harness's `items` is a `SnapshotStateList` mutated IN PLACE (`clear()` + `addAll()`,
+ * never replaced), so every recomposition after the very first commit compared the SAME object
+ * reference against itself - `remember`'s change check degenerated to `x.equals(x)`, always true,
+ * so `baseItems` froze at whatever it computed on this composable's FIRST-EVER composition and
+ * never recomputed again. Every card rendered its pre-drag position forever, and every settle
+ * animation's target was that same frozen position - exactly "drop card to new position, it snaps
+ * back to old position": `onLayoutChange` correctly updated the caller's own state, but this
+ * composable's own `baseItems` never noticed. **Fixed by keying on `items.toList()`** - a genuinely
+ * new immutable copy taken fresh every recomposition, so the comparison is real structural List
+ * equality against a frozen snapshot from last time, not an object against itself. A coordinator
+ * hypothesis for this same symptom (a self-overlap flaw in [GridEngine.displaceForPlacement], the
+ * dragged item's own OLD position counting as an obstacle to itself) was checked FIRST via
+ * `GridEngineTest` and disproven - `others` in that function already filters `it.id !=
+ * candidate.id` before any collision check runs, so the mover's own old rect was never a real
+ * obstacle at that layer. This bug lived entirely in this file's own composition, not in the
+ * pure model - see `GridEngineTest`'s own doc comment for the exact test name.
  */
 
 /**
@@ -164,7 +186,21 @@ fun DeckGrid(
     val density = LocalDensity.current
     val sem = LocalLegionSemantics.current
     val scope = rememberCoroutineScope()
-    val baseItems = remember(items, columnCount) { GridEngine.normalize(items, columnCount) }
+    // THE BUG (fourth feel-test pass, 2026-08-23): `remember(items, columnCount) { ... }` used to
+    // key directly on `items`. The harness's `items` is a `SnapshotStateList` mutated IN PLACE
+    // (`clear()` + `addAll()`, never replaced with a new list instance), so on every recomposition
+    // after the very first commit, the key `remember` compares against is the exact SAME object it
+    // stored last time - `remember`'s change check degenerates to `sameObject.equals(sameObject)`,
+    // which is trivially true regardless of what the list's CONTENT now holds. `baseItems` froze at
+    // whatever `normalize` produced on this composable's very first composition and never
+    // recomputed again - every card rendered its pre-drag position forever, and every settle
+    // animation's TARGET was that same frozen position, which is exactly "drop card to new
+    // position, it snaps back to old position": the underlying `items` the caller held WAS
+    // correctly updated by `onLayoutChange`, but this composable's own `baseItems` never noticed.
+    // `items.toList()` is the fix - a genuinely NEW immutable `List<GridItem>` copy taken fresh on
+    // every recomposition, so `remember`'s `.equals()` check compares CONTENT (structural List
+    // equality) against a real frozen snapshot from last time, not an object against itself.
+    val baseItems = remember(items.toList(), columnCount) { GridEngine.normalize(items, columnCount) }
 
     var moveDrag by remember { mutableStateOf<MoveDrag?>(null) }
     var resizeDrag by remember { mutableStateOf<ResizeDrag?>(null) }
@@ -178,6 +214,15 @@ fun DeckGrid(
     val resizeSettle = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
     var settlingResizeId by remember { mutableStateOf<String?>(null) }
 
+    // Displaced-OCCUPANT settle (the deferred polish from the third feel-test pass, added here):
+    // one independent Animatable per id currently animating from its pre-commit pixel position
+    // down to zero residual against its new (post-commit) cell - unlike [moveSettle]/[resizeSettle]
+    // above (exactly one active gesture's own card at a time), an arbitrary NUMBER of occupants can
+    // be displaced by a single drop (a knock-on chain), so this is a map keyed by id rather than a
+    // single shared Animatable. An id is present in the map only while its own settle animation is
+    // running; [startDisplacementSettle] removes it on completion.
+    val displacementSettle = remember { mutableStateMapOf<String, Animatable<Offset, AnimationVector2D>>() }
+
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val gapPx = with(density) { gap.toPx() }
         val totalWidthPx = with(density) { maxWidth.toPx() }
@@ -188,6 +233,33 @@ fun DeckGrid(
 
         fun widthPxFor(colSpan: Int) = cellWidthPx + (colSpan - 1) * colPitchPx
         fun heightPxFor(rowSpan: Int) = rowHeightPx * rowSpan + gapPx * (rowSpan - 1).coerceAtLeast(0)
+
+        // Kicks off (or restarts) a settle animation for every item in `committed` whose row/col
+        // differs from its counterpart in `preCommit` - i.e. every OCCUPANT a drop just displaced,
+        // excluding `excludeId` (the actively dragged/resized card, which already gets its own
+        // dedicated [moveSettle]/[resizeSettle] treatment). Called once, right after a valid
+        // [GridEngine.displaceForPlacement] commit, from both onMoveDragEnd and onResizeDragEnd.
+        fun startDisplacementSettles(preCommit: List<GridItem>, committed: List<GridItem>, excludeId: String) {
+            val preById = preCommit.associateBy { it.id }
+            for (moved in committed) {
+                if (moved.id == excludeId) continue
+                val before = preById[moved.id] ?: continue
+                if (before.row == moved.row && before.col == moved.col) continue
+                val oldPx = Offset(before.col * colPitchPx, before.row * rowPitchPx)
+                val newPx = Offset(moved.col * colPitchPx, moved.row * rowPitchPx)
+                val residual = oldPx - newPx
+                val anim = Animatable(residual, Offset.VectorConverter)
+                displacementSettle[moved.id] = anim
+                scope.launch {
+                    anim.animateTo(Offset.Zero, tween(200))
+                    // Only clear this id's entry if IT is still the animation we started - a
+                    // second drop displacing the same occupant again before this one finished
+                    // would have already replaced the map entry with a NEW Animatable, and this
+                    // stale coroutine finishing later must not clobber that newer one.
+                    if (displacementSettle[moved.id] === anim) displacementSettle.remove(moved.id)
+                }
+            }
+        }
 
         // baseItems never changes mid-gesture (nothing here reflows), so the row count only needs
         // to account for what is actually committed, plus one spare row while dragging/resizing so
@@ -312,6 +384,10 @@ fun DeckGrid(
                 val isResizing = resizeDrag?.id == item.id
                 val isSettlingMove = settlingMoveId == item.id
                 val isSettlingResize = settlingResizeId == item.id
+                // The deferred polish: an occupant a drop just displaced (never the actively
+                // dragged/resized card itself - that one is covered by isSettlingMove/Resize above,
+                // and is excluded from this map by startDisplacementSettles's own `excludeId`).
+                val displacementAnim = displacementSettle[item.id]
 
                 val baseWidth = with(density) { widthPxFor(item.colSpan).toDp() }
                 val baseHeight = with(density) { heightPxFor(item.rowSpan).toDp() }
@@ -327,15 +403,19 @@ fun DeckGrid(
                 val settleYDp = if (isSettlingMove) with(density) { moveSettle.value.y.toDp() } else 0.dp
                 val settleWidthDp = if (isSettlingResize) with(density) { resizeSettle.value.x.toDp() } else 0.dp
                 val settleHeightDp = if (isSettlingResize) with(density) { resizeSettle.value.y.toDp() } else 0.dp
+                val displacementXDp = if (displacementAnim != null) with(density) { displacementAnim.value.x.toDp() } else 0.dp
+                val displacementYDp = if (displacementAnim != null) with(density) { displacementAnim.value.y.toDp() } else 0.dp
 
                 val offsetX = when {
                     isDragging -> (dragStartX ?: targetX) + dragOffsetXDp
                     isSettlingMove -> targetX + settleXDp
+                    displacementAnim != null -> targetX + displacementXDp
                     else -> targetX
                 }
                 val offsetY = when {
                     isDragging -> (dragStartY ?: targetY) + dragOffsetYDp
                     isSettlingMove -> targetY + settleYDp
+                    displacementAnim != null -> targetY + displacementYDp
                     else -> targetY
                 }
                 val boxWidth = if (isSettlingResize) baseWidth + settleWidthDp else baseWidth
@@ -356,7 +436,7 @@ fun DeckGrid(
                             shadowElevation = if (isDragging) 16f else if (isResizing) 10f else 0f
                         }
                         .zIndex(if (isDragging || isResizing) 1f else 0f)
-                        .gridJiggle(active = editMode && !isDragging && !isResizing && !isSettlingMove && !isSettlingResize, seed = item.id.hashCode()),
+                        .gridJiggle(active = editMode && !isDragging && !isResizing && !isSettlingMove && !isSettlingResize && displacementAnim == null, seed = item.id.hashCode()),
                 ) {
                     GridCellChrome(
                         item = item,
@@ -392,7 +472,13 @@ fun DeckGrid(
                                     // see GridEngine.displaceForPlacement's own doc.
                                     val committed = GridEngine.displaceForPlacement(baseItems, candidate, columnCount)
                                     val settleTarget = if (committed != null) candidate else current
-                                    if (committed != null) onLayoutChange(committed)
+                                    if (committed != null) {
+                                        onLayoutChange(committed)
+                                        // The deferred polish: every OTHER occupant this drop
+                                        // displaced gets the same 200ms settle the dragged card
+                                        // itself gets, instead of jumping straight to its new cell.
+                                        startDisplacementSettles(baseItems, committed, excludeId = d.id)
+                                    }
                                     val originPx = Offset(d.originCol * colPitchPx, d.originRow * rowPitchPx)
                                     val settlePx = Offset(settleTarget.col * colPitchPx, settleTarget.row * rowPitchPx)
                                     val rawDropPx = originPx + d.accumPx
@@ -430,7 +516,13 @@ fun DeckGrid(
                                     // DISPLACE, not reject - same reasoning as onMoveDragEnd above.
                                     val committed = GridEngine.displaceForPlacement(baseItems, candidate, columnCount)
                                     val settleTarget = if (committed != null) candidate else current
-                                    if (committed != null) onLayoutChange(committed)
+                                    if (committed != null) {
+                                        onLayoutChange(committed)
+                                        // Same deferred polish as onMoveDragEnd - a resize can also
+                                        // displace occupants (their row/col changes, never their
+                                        // own span), and they get the same 200ms settle.
+                                        startDisplacementSettles(baseItems, committed, excludeId = d.id)
+                                    }
                                     val rawWidthPx = widthPxFor(current.colSpan) + d.accumPx.x
                                     val rawHeightPx = heightPxFor(current.rowSpan) + d.accumPx.y
                                     val settleWidthPx = widthPxFor(settleTarget.colSpan)

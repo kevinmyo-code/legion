@@ -648,4 +648,33 @@ class GridEngineTest {
         val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)!!
         assertEquals(untouched, result.single { it.id == "bystander" })
     }
+
+    // ---- fourth feel-test pass, 2026-08-23: "doesnt commit, snaps back to old position" -------
+    // Coordinator hypothesis to check FIRST: a short drag's candidate almost always overlaps the
+    // MOVER'S OWN old footprint, and if `others` in displaceForPlacement failed to exclude the
+    // mover's own id, that self-overlap would either try to displace the mover against itself or
+    // make the arrangement look impossible (null -> reject -> animate home), matching the symptom
+    // for most real drags. This test is that exact shape - a short move whose candidate rect
+    // overlaps BOTH the mover's own old cells AND a real occupant - and it PASSES against the
+    // current code, which disproves the hypothesis at the GridEngine layer: `others` already
+    // filters `it.id != candidate.id` before any collision check runs, so the mover's own old
+    // rect was never a real obstacle. The actual bug is elsewhere (see DeckGrid.kt's own doc on
+    // the `remember` key fix) - stated here plainly per L-shape precedent, not left implicit.
+    @Test
+    fun `a short move whose candidate overlaps the mover's OWN old cells still commits, mover excluded`() {
+        val mover = item("mover", row = 0, col = 0, colSpan = 2) // occupies col 0-1
+        val occupant = item("occupant", row = 0, col = 2, colSpan = 2) // occupies col 2-3
+        val items = listOf(mover, occupant)
+        // A one-cell drag right: candidate occupies col 1-2 - overlaps the mover's OWN old
+        // footprint at col 1 (which must NOT count as a collision) AND overlaps occupant at col 2
+        // (which MUST be displaced).
+        val candidate = item("mover", row = 0, col = 1, colSpan = 2)
+        val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)
+        assertTrue("expected a commit, not a reject", result != null)
+        val byId = result!!.associateBy { it.id }
+        assertEquals(candidate, byId.getValue("mover")) // landed exactly on the drop target
+        assertEquals(1, byId.getValue("occupant").row) // displaced - row 0 had no free column left
+        assertEquals(0, byId.getValue("occupant").col)
+        for (x in result) for (y in result) assertFalse(GridEngine.collides(x, y))
+    }
 }
