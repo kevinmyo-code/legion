@@ -1372,3 +1372,21 @@ val MIGRATION_33_34 = object : Migration(33, 34) {
         )
     }
 }
+
+/**
+ * v35 (aspect-engine ticket 18): the [WidgetInstance] grid-geometry columns - see that entity's own
+ * v35 doc comment for why these are real columns rather than folded into its already-existing
+ * `config` blob. Four bare `ALTER TABLE ... ADD COLUMN`s, each with the literal default the entity's
+ * own Kotlin default already promises (`gridRow`/`gridCol` at 0, `rowSpan`/`colSpan` at 1) - SQLite
+ * requires a `DEFAULT` on an `ADD COLUMN` against a `NOT NULL` column so any pre-existing row (there
+ * are none yet; this table has no real caller before this ticket) has a legal value to backfill.
+ * Nothing else about `widget_instances` changes, and no other table is touched.
+ */
+val MIGRATION_34_35 = object : Migration(34, 35) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `widget_instances` ADD COLUMN `gridRow` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `widget_instances` ADD COLUMN `gridCol` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `widget_instances` ADD COLUMN `rowSpan` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE `widget_instances` ADD COLUMN `colSpan` INTEGER NOT NULL DEFAULT 1")
+    }
+}

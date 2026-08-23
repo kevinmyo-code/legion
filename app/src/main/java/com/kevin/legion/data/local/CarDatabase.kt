@@ -245,6 +245,11 @@ import androidx.room.RoomDatabase
  * materialization. **Nothing existing migrates onto this schema yet** - fleet/ledger/pantry stay on
  * their own 48 typed entities until the migration-wave tickets (ticket 14's order) cut over one
  * aspect at a time; this version only builds the target the wave lands into.
+ *
+ * v35 (aspect-engine ticket 18, "build the widget pager and generated screens"): four columns on
+ * `widget_instances` - `gridRow`/`gridCol`/`rowSpan`/`colSpan`, the [com.kevin.legion.ui.grid.GridItem]
+ * geometry the production `DeckGrid` pager persists through. See [WidgetInstance]'s own v35 doc
+ * comment and [MIGRATION_34_35] for the schema itself. No other table changes.
  */
 @Database(
     entities = [
@@ -277,7 +282,7 @@ import androidx.room.RoomDatabase
         WellbeingDigestSchedule::class,
         Aspect::class, RecordType::class, FieldDef::class, EngineRecord::class, WidgetInstance::class,
     ],
-    version = 34,
+    version = 35,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -427,6 +432,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_25_26,
                         MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
                         MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34,
+                        MIGRATION_34_35,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it
