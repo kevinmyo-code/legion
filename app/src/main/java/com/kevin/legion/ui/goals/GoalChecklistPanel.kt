@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.goals
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -71,9 +72,26 @@ import kotlinx.coroutines.launch
  * empty completion list still gets a worded caption rather than silently reading as "done every
  * day", matching CLAUDE.md §4's "unreadable and empty are different sentences" posture carried over
  * from ledger/pantry to this domain.
+ *
+ * **Hosts the relocated TRAINING affordances now (ticket 08, `goal-plans`, Kevin: "bio page >
+ * training and checklist > retire training page. delete it.").** `ui/BodyScreen.kt` deleted its
+ * standalone TRAINING `DeckPane`; ADR 0035's hands path for `log_workout_set` (the `+ LOG SET`
+ * dialog) and the exercise-progression drilldown did not go with it - they render from here now,
+ * in FULL mode only ([compact] `== false`; HOME's glance card gets neither). **This panel still
+ * owns no controller call or DAO of its own for either one** - [onLogSet] and
+ * [onOpenTrainingDrilldown] are callbacks into `BodyScreen`'s EXISTING `showLogSet` dialog state
+ * and its EXISTING top-level [com.kevin.legion.ui.BodyDrilldown] swap, both null by default so
+ * every other caller (and every preview) is unaffected. See `ui/BodyScreen.kt`'s own file doc
+ * comment for why the swap mechanism itself stays there rather than a second one nesting inside
+ * this panel's own `LazyColumn` item.
  */
 @Composable
-fun GoalChecklistPanel(compact: Boolean = false, modifier: Modifier = Modifier) {
+fun GoalChecklistPanel(
+    compact: Boolean = false,
+    modifier: Modifier = Modifier,
+    onLogSet: (() -> Unit)? = null,
+    onOpenTrainingDrilldown: (() -> Unit)? = null,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<GoalChecklistItemView>>(emptyList()) }
@@ -118,6 +136,29 @@ fun GoalChecklistPanel(compact: Boolean = false, modifier: Modifier = Modifier) 
                         style = LegionType.stamp,
                         color = sem.faint,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
+            }
+        }
+        // Ticket 08's relocated TRAINING affordances - full mode only, and only when the caller
+        // (BodyScreen) actually wired them, so HOME's compact card and every preview stay exactly
+        // as they were before this ticket.
+        if (!compact) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                onLogSet?.let { onClick ->
+                    Text(
+                        "+ LOG SET",
+                        style = LegionType.stamp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { onClick() },
+                    )
+                }
+                onOpenTrainingDrilldown?.let { onClick ->
+                    Text(
+                        "TRAINING HISTORY",
+                        style = LegionType.stamp,
+                        color = sem.faint,
+                        modifier = Modifier.padding(start = 16.dp).clickable { onClick() },
                     )
                 }
             }

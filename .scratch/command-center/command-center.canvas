@@ -91,6 +91,36 @@
       "color": "1"
     },
     {
+      "id": "7e08078a53a2e124",
+      "type": "file",
+      "file": ".scratch/command-center/issues/12-newsletter-summarizer.md",
+      "x": 0,
+      "y": 1350,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3ca101ef47d390ee",
+      "type": "file",
+      "file": ".scratch/command-center/issues/13-information-leads-plumbing-sinks.md",
+      "x": 0,
+      "y": 1500,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c97289d6edb4b29d",
+      "type": "file",
+      "file": ".scratch/command-center/issues/14-motion-and-touch.md",
+      "x": 0,
+      "y": 1650,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "cb3a0a3bb8bb98b8",
       "type": "file",
       "file": ".scratch/command-center/issues/01-home-command-center.md",

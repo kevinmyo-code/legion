@@ -13,7 +13,7 @@ import org.junit.Test
  * [LiveToolbox.resolveCurrentLocation] can fail before there is even an area to check) and
  * [aqiLine] (the ticket's own "a missing reading is NEVER rendered as clean air" rule, at the
  * function that actually decides what gets rendered). Same posture as
- * [PackageFlightCardFailureLineTest] - no Compose harness in this repo, so the mapping function
+ * the retired PackageFlightCardFailureLineTest did - no Compose harness in this repo, so the mapping function
  * IS the testable unit.
  */
 class AreaCardFailureLineTest {

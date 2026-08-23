@@ -616,91 +616,9 @@ data class AlertRowData(val label: String, val value: String, val tier: AlertTie
  * the worded `AND N MORE` line, never a bare count badge alone. */
 data class AlertsSummary(val visible: List<AlertRowData>, val overflowCount: Int)
 
-/**
- * Builds every row ALERTS can show today, **ALARM always first** (ticket 11 section 3) - the two
- * `+` concatenations below ARE that ordering rule; nothing here sorts within a tier, so arrival
- * order (quarantine rows in [quarantined]'s own order, then the key advisory, then goals in
- * [overdueGoals]'s own order) is preserved and never silently reshuffled.
- *
- * **Only wires advisory sources that already exist** (ticket 16's binding) - a missing Gemini key
- * ([hasGeminiKey], read via [com.kevin.legion.ai.GeminiKeyProvider.hasKey]) and an overdue active
- * [Goal] (already computed by [com.kevin.legion.advisor.digest.HomeDigestBuilder.exceptionsLine] for
- * the advisor digest, filtered the identical way here: `deadlineEpoch != null && deadlineEpoch < now`
- * - see `TodayScreen.kt`'s `LaunchedEffect`). A sync failure / expired Drive credential is ticket
- * 04's third ADVISORY example but **has no readable state anywhere in the app today** (traced: no
- * `SyncStatus`/`syncError` field exists in `sync/`) - not wired, because wiring it would be
- * inventing state this ticket's binding explicitly forbids, not reading an existing one. An active
- * vehicle fault (DTC) is ticket 04's other ALARM example and has the same gap: `vehicle/`'s DTC
- * reads are a LIVE OBD scan, not a cached/persisted state HOME can cheaply poll, so it is absent
- * here too, for the same reason.
- *
- * **[recentRaises] is command-center ticket 01's third source** - the proactive raise history
- * ([ProactiveRaiseRow], already-fired lines [com.kevin.legion.service.ProactiveBus] wrote), passed
- * in already filtered to "not declined" by [com.kevin.legion.data.local.ProactiveRaiseDao
- * .recentUndeclined] so a brushed-off nudge never re-appears here - see [alertRowForRaise]. RENDERED
- * only: reading this table has no side effect, marks nothing delivered, and triggers no speech -
- * that already happened, at raise time. Appended AFTER the key/goal advisories rather than
- * interleaved, so this function's existing ordering guarantee (ALARM always first, arrival order
- * preserved within a tier) needed no change to accommodate a third source, only an append.
- */
-fun buildAlertRows(
-    quarantined: List<IngestedFile>,
-    hasGeminiKey: Boolean,
-    overdueGoals: List<Goal>,
-    recentRaises: List<ProactiveRaiseRow> = emptyList(),
-): List<AlertRowData> {
-    val alarms = quarantined.map { file ->
-        AlertRowData(label = file.displayName, value = "FAILED THE GATE", tier = AlertTier.ALARM, tagText = "QUARANTINED", target = AlertTarget.CRED)
-    }
-    val advisories = buildList {
-        if (!hasGeminiKey) {
-            add(AlertRowData(label = "Assistant", value = "NO GEMINI KEY", tier = AlertTier.ADVISORY, tagText = "NO KEY", target = AlertTarget.KEY))
-        }
-        overdueGoals.forEach { goal ->
-            add(
-                AlertRowData(
-                    label = goal.statement,
-                    value = "WAS DUE ${compactDate(goal.deadlineEpoch!!)}",
-                    tier = AlertTier.ADVISORY,
-                    tagText = "OVERDUE",
-                    target = alertTargetForAspect(AdvisorAspect.fromKey(goal.aspect)),
-                ),
-            )
-        }
-        recentRaises.forEach { add(alertRowForRaise(it)) }
-    }
-    return alarms + advisories
-}
 
-/** One [ProactiveRaiseRow] as an ALERTS row - [ProactiveRaiseRow.reason] is already the plain,
- * falsifiable fact stored at raise time (that entity's own class doc: "a fact rather than the
- * model reconstructing a plausible one"), so this never re-derives or re-words it, only re-shapes
- * it into [AlertRowData]'s four slots, same posture every other row builder in this file follows. */
-fun alertRowForRaise(row: ProactiveRaiseRow): AlertRowData {
-    val label = ProactiveCategory.fromKey(row.category)?.title ?: row.category
-    return AlertRowData(label = label, value = row.reason, tier = AlertTier.ADVISORY, tagText = "RAISED", target = alertTargetForRaiseCategory(row.category))
-}
 
-/** Routes a raise's [ProactiveRaiseRow.category] to the tile/tab that owns it - same "no guessed
- * destination" posture [alertTargetForAspect] states for a goal exception. [ProactiveCategory.DIGEST]
- * (a sitrep, not owned by any one tab) and an unrecognised category both fall to [AlertTarget.NONE]. */
-fun alertTargetForRaiseCategory(category: String): AlertTarget = when (ProactiveCategory.fromKey(category)) {
-    ProactiveCategory.SAFETY, ProactiveCategory.FLEET -> AlertTarget.FLEET
-    ProactiveCategory.WELLBEING -> AlertTarget.BIO
-    ProactiveCategory.TIMING -> AlertTarget.LOG
-    ProactiveCategory.DIGEST, null -> AlertTarget.NONE
-}
 
-/**
- * Whether [rows] holds at least one [AlertTier.ALARM] entry - mission-control ticket 04 build,
- * "the ALERTS pane on TodayScreen passes `alarm = true` when it holds any ALARM row." Pulled out
- * of `TodayScreen.kt`'s `DeckPane(header = "Alerts", alarm = ...)` call site as its own named,
- * pure function rather than left inline specifically so it is unit-testable without Compose - see
- * [TodayGapResolversTest]'s coverage. [buildAlertRows] already puts ALARM rows first (ticket 11
- * section 3), but this checks the whole list rather than relying on that ordering, so it stays
- * correct even if a future caller changes it.
- */
-fun alertRowsHaveAlarm(rows: List<AlertRowData>): Boolean = rows.any { it.tier == AlertTier.ALARM }
 
 /** Routes a [Goal.aspect] to the tile/tab that owns it. [AdvisorAspect.HOME] and an unrecognised
  * key both fall to [AlertTarget.NONE] rather than a guessed destination - no write path ever mints a

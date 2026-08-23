@@ -68,8 +68,6 @@ import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.world.AreaCard
-import com.kevin.legion.ui.world.FlightCard
-import com.kevin.legion.ui.world.PackageCard
 import com.kevin.legion.util.clockTime
 import com.kevin.legion.vehicle.VehicleController
 import com.kevin.legion.weather.WeatherController
@@ -101,9 +99,9 @@ import kotlinx.coroutines.launch
  *  2. **CONTEXT STRIP** - a weather line ([weatherLine]) over [AreaCard] (area name + AirNow AQI,
  *     command-center ticket 08's own build, consumed here wholesale rather than re-implemented -
  *     see that file's own class doc for why it is on-demand, in-memory, never a background poll).
- *  3. **TILES**, each opening its full surface: [PackageCard]/[FlightCard] (mail-derived,
- *     ticket 08), the newsletters digest ([NewsDigestCard], this ticket's own build - see its doc
- *     comment for why it is the one tile that never auto-fetches), INTAKE/BIO/LOG and CRED/FLEET
+ *  3. **TILES**, each opening its full surface: the newsletters digest ([NewsDigestCard] - see
+ *     its doc comment for why it never auto-fetches; the package/flight tiles that once led this
+ *     row were retired by Kevin the day they shipped), INTAKE/BIO/LOG and CRED/FLEET
  *     (ticket 16's own half-tile row, re-ranked down from the top of the screen rather than
  *     rebuilt - INTAKE demotes into this row using [buildIntakeTile], the exact half-tile shape
  *     [BodyScreen] already uses for its own demoted INTAKE tile, never a second builder), and
@@ -122,7 +120,7 @@ import kotlinx.coroutines.launch
  * [com.kevin.legion.service.ProactiveCategory] ([alertTargetForRaiseCategory]); [MediaMiniBar] taps
  * through [onOpenMedia] (command-center ticket 04's own media control panel, nested under
  * `settings/spotify/media` - see [LegionRoute.SETTINGS_SPOTIFY_MEDIA]'s own doc comment for why).
- * [PackageCard]/[FlightCard]/[AreaCard]/[NewsDigestCard] have no tap-through of their own: each IS
+ * [AreaCard]/[NewsDigestCard] have no tap-through of their own: each IS
  * its own full surface already (a `DeckPane` with its own refresh affordance), so there is no
  * deeper screen to open - "each tile opening its full surface" is satisfied by the tile already
  * being that surface, not a summary of one.
@@ -172,26 +170,6 @@ data class TodayUiState(
      * own Google coverage. Defaults true so a screen that has not finished its first load never
      * flashes a false "not linked" prompt before the real check runs. */
     val calendarPermissionGranted: Boolean = true,
-    /** ALERTS ALARM rows (ticket 16): every currently-quarantined ingested file (CLAUDE.md §4). The
-     * FULL list, not just a count, because each one is now its own row - see
-     * [TodayGapResolvers.buildAlertRows]. */
-    val quarantinedFiles: List<IngestedFile> = emptyList(),
-    /** ALERTS ADVISORY row (ticket 16): whether a usable Gemini key is set
-     * ([GeminiKeyProvider.hasKey]) - "wire the advisory sources that already exist" is this
-     * ticket's binding read literally; this is the one that makes a fresh install say so on HOME. */
-    val hasGeminiKey: Boolean = true,
-    /** ALERTS goal-exception rows (ticket 16): every ACTIVE [Goal] whose own stated
-     * [Goal.deadlineEpoch] has already passed - filtered the identical way
-     * [com.kevin.legion.advisor.digest.HomeDigestBuilder.exceptionsLine] filters for the advisor
-     * digest ("`deadlineEpoch != null && deadlineEpoch < now`"), read independently here rather
-     * than calling that digest builder (same "never call another builder's full logic" posture
-     * [HomeDigestBuilder]'s own class doc states for itself). */
-    val overdueGoals: List<Goal> = emptyList(),
-    /** ALERTS' third source (command-center ticket 01): recent, undeclined lines from the
-     * proactive raise history ([com.kevin.legion.data.local.ProactiveRaiseDao.recentUndeclined],
-     * a plain SELECT with no side effect). See [TodayGapResolvers.buildAlertRows]'s own doc
-     * comment for the ordering guarantee and [TodayGapResolvers.alertRowForRaise] for the mapping. */
-    val recentRaises: List<ProactiveRaiseRow> = emptyList(),
     /** Context strip (command-center ticket 01): [WeatherController.current] at load time -
      * `null` until the first successful Open-Meteo fetch, rendered by [weatherLine] as its own
      * honest sentence rather than a blank line. */
@@ -323,10 +301,6 @@ fun TodayScreen(
         // now the recent, undeclined proactive-raise history - see buildAlertRows's own doc comment
         // for exactly why these four and not the other two ticket 04 named (a Drive sync failure
         // and an active vehicle DTC, still absent for the same "would be inventing state" reason).
-        val quarantinedFiles = LedgerController.quarantinedFiles(context)
-        val hasGeminiKey = GeminiKeyProvider.hasKey()
-        val overdueGoals = db.goalDao().allCurrentGoals().filter { it.deadlineEpoch != null && it.deadlineEpoch < now }
-        val recentRaises = db.proactiveRaiseDao().recentUndeclined(sinceMs = now - RAISE_HISTORY_WINDOW_MS, limit = RAISE_HISTORY_CAP)
 
         // Context strip (command-center ticket 01): the same WeatherController the foreground
         // service and the sitrep already read - `refresh()` is a no-op past its own 30-minute TTL
@@ -352,10 +326,6 @@ fun TodayScreen(
             agendaEntries = mergeAgenda(oneOff + recurringToday, googleEvents),
             notesMissedCount = notesMissedCount,
             calendarPermissionGranted = calendarPermissionGranted,
-            quarantinedFiles = quarantinedFiles,
-            hasGeminiKey = hasGeminiKey,
-            overdueGoals = overdueGoals,
-            recentRaises = recentRaises,
             weather = weather,
             nowMs = now,
         )
@@ -375,11 +345,9 @@ fun TodayScreen(
  * own daily-cap window on purpose: those are two separate concepts (how many times it may SPEAK
  * versus how long a spoken line stays worth RE-SHOWING on a screen), and conflating them would make
  * a future change to one silently move the other. */
-private const val RAISE_HISTORY_WINDOW_MS = 24L * 60 * 60 * 1000
 /** [com.kevin.legion.ui.TodayGapResolvers.capAlertRows]'s own five-row cap already bounds what
  * actually renders; this only bounds how much the query itself has to sort, generously above that
  * so a genuinely busy day never trims a real row before the cap gets a chance to word the overflow. */
-private const val RAISE_HISTORY_CAP = 10
 
 /** Plain UI: [state] plus callbacks, no controller/DB reference - see the file doc comment. */
 @Composable
@@ -472,48 +440,13 @@ private fun TodayListing(
             )
         }
 
-        // ------------------------------------------------------------ HERO 3/3: ALERTS
-        item(key = "alerts-pane") {
-            val rows = buildAlertRows(state.quarantinedFiles, state.hasGeminiKey, state.overdueGoals, state.recentRaises)
-            val alarm = alertRowsHaveAlarm(rows)
-            DeckPane(header = "Alerts", alarm = alarm, modifier = Modifier.padding(top = 9.dp)) {
-                if (rows.isEmpty()) {
-                    Text(
-                        "0 ALERTS · ALL SYSTEMS NOMINAL",
-                        style = LegionType.stamp,
-                        color = sem.credit,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    )
-                } else {
-                    val capped = capAlertRows(rows)
-                    capped.visible.forEach { row ->
-                        DeckRow(
-                            label = row.label,
-                            value = row.value,
-                            tag = {
-                                // ALARM reads through QuarantineTag - the app's only red; every
-                                // ADVISORY row (key, goal, and now a raised line) shares one amber
-                                // pill style, distinguished from each other in WORDS by tagText.
-                                if (row.tier == AlertTier.ALARM) {
-                                    QuarantineTag(row.tagText)
-                                } else {
-                                    DeckTag(row.tagText, DeckTagStyle.INVERTED_AMBER)
-                                }
-                            },
-                            modifier = Modifier.clickable(onClick = { onAlertTap(row.target) }),
-                        )
-                    }
-                    if (capped.overflowCount > 0) {
-                        Text(
-                            "AND ${capped.overflowCount} MORE",
-                            style = LegionType.stamp,
-                            color = sem.faint,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        )
-                    }
-                }
-            }
-        }
+        // The Alerts pane that stood here was retired by Kevin the day the command center
+        // shipped (2026-08-22: "alerts tab in home is useless. retire it. delete"). What it
+        // showed still surfaces where it is actionable: quarantined files on the Money
+        // screen, the key state in Settings, overdue goals on the goals panel, and a raise
+        // that mattered was already SPOKEN by the proactive bus - a second, silent listing
+        // of things already said or shown elsewhere answered no question. The raise-history
+        // DAO read and buildAlertRows survive for the audit surfaces that still use them.
 
         // ================================================================ CONTEXT STRIP
 
@@ -535,13 +468,11 @@ private fun TodayListing(
 
         // ================================================================ TILES
 
-        // ------------------------------------------------------------ mail-derived: packages + flights
-        item(key = "tile-mail") {
-            EqualHeightRow(Modifier.fillMaxWidth().padding(top = 9.dp), horizontalGap = 9.dp) {
-                PackageCard()
-                FlightCard()
-            }
-        }
+        // The package and flight tiles that stood here were retired hours after shipping
+        // (Kevin, 2026-08-22: "package and flight tabs in home are useless. just retire it
+        // delete"). The voice tools and their shared LiveToolbox functions are untouched -
+        // asking "where is my package" still works; a permanent tile for an occasional
+        // question answered no daily need.
 
         // ------------------------------------------------------------ newsletters digest (tap-only)
         item(key = "tile-newsletters") {
@@ -660,14 +591,14 @@ private fun TodayListing(
  * path.
  *
  * **Deliberately the one tile on this screen with NO auto-fetch.** Every other mail-derived card
- * ([PackageCard]/[FlightCard]/[AreaCard]) fetches once on first compose, which the ticket still
+ * ([AreaCard]) fetches once on first compose, which the ticket still
  * counts as "on demand" (opening the screen is the demand). Newsletters is different by the
  * ticket's own explicit instruction ("On-demand only (a tap)") - a newsletter check folds several
  * message bodies into one prompt and pays for a real LLM call, where the others are one metadata
  * search; the tap is what keeps that cost tied to an actual ask rather than every visit to HOME.
  *
  * In-memory only (`remember`, no Room row, no cache file) - navigating away and back starts blank
- * again, same "refresh is a user act" posture [PackageCard]'s own doc states.
+ * again - refresh is a user act, never a background poll.
  */
 @Composable
 private fun NewsDigestCard(modifier: Modifier = Modifier) {
@@ -721,8 +652,7 @@ private fun NewsDigestCard(modifier: Modifier = Modifier) {
 }
 
 /** [NewsDigestCard]'s own three states - a sealed type for the same reason every other on-demand
- * card on this screen uses one ([PackageFlightCards.kt]'s `MailCardState`, `AreaCard.kt`'s
- * `AreaCardState`): "not yet asked", "asked, waiting", and "asked, got an answer" are three
+ * card on this screen uses one (`AreaCard.kt`'s `AreaCardState`): "not yet asked", "asked, waiting", and "asked, got an answer" are three
  * different facts a nullable string cannot keep apart. */
 private sealed class NewsDigestState {
     object Idle : NewsDigestState()
@@ -781,10 +711,6 @@ private fun PreviewTodayAllEmpty() = LegionTheme {
             openTaskCount = 0,
             logHasAnyItems = false,
             agendaEntries = emptyList(),
-            quarantinedFiles = emptyList(),
-            hasGeminiKey = false, // the fresh-install case ticket 16 exists to surface
-            overdueGoals = emptyList(),
-            recentRaises = emptyList(),
             weather = null,
         ),
     )
@@ -841,30 +767,6 @@ private fun PreviewTodayMixed() = LegionTheme {
                 AgendaEntry("Kevin's birthday", PREVIEW_NOW_MS, allDay = true),
             ),
             notesMissedCount = 1,
-            quarantinedFiles = listOf(
-                IngestedFile(
-                    driveFileId = "preview-1",
-                    treeUri = null,
-                    displayName = "eStmt_2025-11-05.pdf",
-                    sizeBytes = 40_000L,
-                    lastModified = System.currentTimeMillis(),
-                    contentSha256 = null,
-                    state = com.kevin.legion.data.local.IngestState.QUARANTINED,
-                    quarantineReason = "Lines summed to 4,182.19 but the statement says 4,180.00.",
-                    firstSeenAt = System.currentTimeMillis(),
-                    lastAttemptAt = System.currentTimeMillis(),
-                ),
-            ),
-            hasGeminiKey = true,
-            overdueGoals = emptyList(),
-            recentRaises = listOf(
-                ProactiveRaiseRow(
-                    ruleId = "rest_nudge",
-                    category = "wellbeing",
-                    reason = "it's 11:40pm, an hour past your usual wind-down",
-                    spokenAt = PREVIEW_NOW_MS - 600_000L,
-                ),
-            ),
             weather = WeatherController.WeatherInfo(tempF = 68, description = "partly cloudy", caution = false),
             nowMs = PREVIEW_NOW_MS,
         ),
@@ -899,9 +801,6 @@ private fun previewCredBaseState() = TodayUiState(
     openTaskCount = 0,
     logHasAnyItems = false,
     agendaEntries = emptyList(),
-    quarantinedFiles = emptyList(),
-    hasGeminiKey = true,
-    overdueGoals = emptyList(),
 )
 
 @Preview(name = "Today: CRED balance - nothing nominated", widthDp = 360, heightDp = 900)

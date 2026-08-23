@@ -1248,3 +1248,21 @@ val MIGRATION_30_31 = object : Migration(30, 31) {
         )
     }
 }
+
+/**
+ * v31 -> v32: two additive nullable columns (goal-plans ticket 08). `workout_plan_items` gets
+ * `repsPerSet` (see [WorkoutPlanItem.repsPerSet]) and `list_items` gets `loggedAt` (see
+ * [ListItem.loggedAt]) - both bare `ALTER TABLE ... ADD COLUMN`, nothing existing touched, nothing
+ * backfilled.
+ *
+ * SQL below is copied VERBATIM from the generated
+ * `app/schemas/com.kevin.legion.data.local.CarDatabase/32.json`'s own `createSql` (confirmed by a
+ * real `compileDebugKotlin -Pnokey` run, not hand-derived) - same discipline [MIGRATION_29_30]
+ * documents.
+ */
+val MIGRATION_31_32 = object : Migration(31, 32) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `workout_plan_items` ADD COLUMN `repsPerSet` INTEGER DEFAULT NULL")
+        db.execSQL("ALTER TABLE `list_items` ADD COLUMN `loggedAt` INTEGER DEFAULT NULL")
+    }
+}

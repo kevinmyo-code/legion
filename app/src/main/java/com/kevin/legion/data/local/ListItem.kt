@@ -99,4 +99,18 @@ data class ListItem(
     /** Set when the driver dismisses this item from the MISSED list - clears the REPORT only,
      * never the item itself (firing/missing changes nothing about the underlying task, ticket 12). */
     val missedDismissedAt: Long? = null,
+
+    // ---- v32, goal-plans ticket 08: the lazy end-of-day auto-log's idempotence anchor ----
+    /** Set once, by [com.kevin.legion.advisor.GoalChecklistSync]'s end-of-day sweep, the moment a
+     * TICKED past-day plan `WORKOUT` line is written through
+     * [com.kevin.legion.workouts.WorkoutController.logSet]. Null means "not swept yet" - the
+     * sweep's own idempotence rests entirely on this column being null exactly once per item, so a
+     * repeated app-open on the same stale item can never double-log it. Deliberately NOT the same
+     * signal as [doneAt]: `doneAt` is the ADHERENCE fact (the user ticked it, on whatever day that
+     * happened) and survives forever per [com.kevin.legion.advisor.GoalChecklistSync]'s retention
+     * rule; [loggedAt] is a bookkeeping fact about THIS app's own write path and would be wrong to
+     * conflate with a tick timestamp the user might in principle produce well after ticking (a
+     * missed-then-caught-up scenario). A meal/sleep checklist line is never given one - see
+     * [com.kevin.legion.advisor.GoalChecklistSync]'s sweep doc for why only `WORKOUT` lines qualify. */
+    @ColumnInfo(defaultValue = "NULL") val loggedAt: Long? = null,
 )

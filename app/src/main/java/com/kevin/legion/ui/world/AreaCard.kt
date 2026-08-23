@@ -35,7 +35,8 @@ import kotlinx.coroutines.launch
  * Geocoder call re-deriving the permission/providers/fix branches. Air-quality half is this
  * ticket's own first consumer of [AirNow].
  *
- * **In-memory only, on-demand, no auto-poll** - same posture as [PackageCard]/[FlightCard]. **A
+ * **In-memory only, on-demand, no auto-poll** - the posture every on-demand card holds (the
+ * package/flight cards that shared it were retired by Kevin on 2026-08-22; voice still answers). **A
  * missing AQI reading is NEVER rendered as clean air** (the ticket's own rule, restated in
  * [aqiLine]): [AirNow.Reading.NoKey]/[Unreachable]/[NoData] each get their own worded line, never
  * collapsed into silence or into a false "Good".

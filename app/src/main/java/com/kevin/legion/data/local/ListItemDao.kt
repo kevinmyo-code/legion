@@ -158,4 +158,15 @@ interface ListItemDao {
      * not completing the underlying task (ticket 12: "firing changes nothing on the item"). */
     @Query("UPDATE list_items SET missedDismissedAt = :at WHERE id = :id")
     suspend fun dismissMissed(id: Long, at: Long)
+
+    /**
+     * Marks a plan WORKOUT line as swept by the end-of-day auto-log (goal-plans ticket 08) -
+     * touches [ListItem.loggedAt] ONLY, never `done`/`doneAt`, so the adherence record (the tick
+     * itself) survives exactly as it was. This is the whole idempotence mechanism:
+     * `GoalChecklistSync`'s sweep only ever selects candidates where `loggedAt IS NULL`, so calling
+     * this once per item makes a repeated sweep on the same item a no-op by construction, not by a
+     * count or a date comparison that could drift.
+     */
+    @Query("UPDATE list_items SET loggedAt = :loggedAt, updatedAt = :loggedAt WHERE id = :id")
+    suspend fun markLogged(id: Long, loggedAt: Long)
 }

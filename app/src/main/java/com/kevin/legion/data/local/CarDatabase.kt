@@ -215,6 +215,15 @@ import androidx.room.RoomDatabase
  * content" - `.scratch/goal-plans/issues/05-wellbeing-digest.md`). One additive `CREATE TABLE`,
  * nothing existing touched. See [WellbeingDigestSchedule]'s own doc comment for why this is a
  * sibling of [SitrepSchedule] rather than a widening of it.
+ *
+ * v32: two additive nullable columns (goal-plans ticket 08, "the checklist prescribes a day, and a
+ * ticked day logs itself" - Kevin: "3 sets x 10 rep kettlebell swing etc. and i check it off. end
+ * of day it checks what i ticked and logs it"). `workout_plan_items.repsPerSet` lets a NEW plan
+ * carry reps without fabricating them for old rows - see [WorkoutPlanItem.repsPerSet]'s doc.
+ * `list_items.loggedAt` is the end-of-day auto-log sweep's idempotence anchor - see
+ * [ListItem.loggedAt]'s doc. Both ride in the same migration since both are bare `ALTER TABLE ...
+ * ADD COLUMN` statements with no data touched, matching this file's existing practice of batching
+ * unrelated additive columns into one version bump when they land in the same ticket.
  */
 @Database(
     entities = [
@@ -246,7 +255,7 @@ import androidx.room.RoomDatabase
         ConversationAudit::class,
         WellbeingDigestSchedule::class,
     ],
-    version = 31,
+    version = 32,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -345,7 +354,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 31
+        const val SCHEMA_VERSION = 32
         // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
         // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
@@ -358,6 +367,8 @@ abstract class CarDatabase : RoomDatabase() {
         // (`conversation_audit`, ticket 23).
         // 2026-08-22: bumped to 31 alongside `@Database(version=)` in the same edit again
         // (`wellbeing_digest_schedule`, goal-plans ticket 05).
+        // 2026-08-22: bumped to 32 alongside `@Database(version=)` in the same edit again
+        // (`workout_plan_items.repsPerSet` + `list_items.loggedAt`, goal-plans ticket 08).
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -380,7 +391,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
                         MIGRATION_25_26,
                         MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
-                        MIGRATION_30_31,
+                        MIGRATION_30_31, MIGRATION_31_32,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

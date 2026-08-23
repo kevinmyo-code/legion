@@ -29,7 +29,8 @@ import org.robolectric.RuntimeEnvironment
  * was one before the rewrite). No other test in this repo calls `GmailAuth.authorize`/
  * `tokenOrReason` under Robolectric either - see [com.kevin.legion.gmail.GmailToolLogicTest]'s own
  * doc comment ("No Android, no GmailAuth, no GmailClient"). The "same shared function" claim for
- * [LiveToolbox.trackPackage]/[LiveToolbox.flightStatus] is `ui/world/PackageFlightCards.kt` calling
+ * [LiveToolbox.trackPackage]/[LiveToolbox.flightStatus] was `ui/world/PackageFlightCards.kt` calling
+ * (the cards were later retired; the internal widening stays for the voice path and any future hands one)
  * the identical `internal` function `dispatch` calls (traced by reading both call sites, same
  * posture [com.kevin.legion.ui.body.BodyWriteSameFunctionTest]'s own doc comment takes for a claim
  * this repo has no safe harness to execute), not proved by a running test.

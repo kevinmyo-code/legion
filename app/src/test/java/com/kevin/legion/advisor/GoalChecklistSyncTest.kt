@@ -3,9 +3,12 @@ package com.kevin.legion.advisor
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.data.local.MealTarget
+import com.kevin.legion.data.local.WorkoutPlan
+import com.kevin.legion.data.local.WorkoutPlanItem
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.testutil.RoomTestReset
+import com.kevin.legion.workouts.weekStartEpoch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -277,5 +280,144 @@ class GoalChecklistSyncTest {
         GoalChecklistSync.materializeToday(context, now)
 
         assertNotNull("an item still inside the window must not be swept up by the same trim pass", db.listItemDao().getById(recentId))
+    }
+
+    // --- ticket 08: the lazy end-of-day auto-log sweep --------------------------------------------
+
+    /** A whole-plan `WorkoutPlan` + one `WorkoutPlanItem`, effective for [weekStart] - the minimum
+     * a sweep candidate needs behind it so [GoalChecklist.workoutLinesForDay] can regenerate the
+     * exact line the sweep will try to match. */
+    private suspend fun givenAWorkoutPlan(weekStart: Long, at: Long, exercise: String = "Kettlebell swing", targetSets: Int = 12, sessionsPerWeek: Int = 7) {
+        val db = CarDatabase.getDatabase(context)
+        db.workoutPlanDao().upsert(WorkoutPlan(sessionsPerWeek = sessionsPerWeek, effectiveFromWeekEpoch = weekStart, updatedAt = at))
+        db.workoutPlanItemDao().upsert(WorkoutPlanItem(exercise = exercise, targetSetsPerWeek = targetSets, effectiveFromWeekEpoch = weekStart, updatedAt = at))
+    }
+
+    @Test
+    fun `a ticked past-day workout line auto-logs exactly once across three materialization runs`() = runBlocking {
+        val now = System.currentTimeMillis()
+        val yesterday = now - 24 * 60 * 60 * 1000
+        val yesterdayDow = java.time.Instant.ofEpochMilli(yesterday).atZone(java.time.ZoneId.systemDefault()).dayOfWeek
+        val weekStart = weekStartEpoch(yesterday)
+        // sessionsPerWeek = 7 ("train every day") so the test does not need to reason about WHICH
+        // of the week's days assignedDays(N) actually lands on - every day qualifies, so whatever
+        // day "yesterday" happens to be is always an assigned one.
+        givenAWorkoutPlan(weekStart, yesterday, sessionsPerWeek = 7)
+
+        // The exact line GoalChecklist.workoutLinesForDay would have derived for that day under
+        // that plan - built from the SAME function the sweep itself calls, never hand-typed, so
+        // this test cannot drift from a formatting change the production code also picked up.
+        val line = GoalChecklist.workoutLinesForDay(
+            listOf(WorkoutPlanItem(exercise = "Kettlebell swing", targetSetsPerWeek = 12, effectiveFromWeekEpoch = weekStart, updatedAt = yesterday)),
+            7,
+            yesterdayDow,
+        ).single()
+
+        val list = NotesController.theList(context)
+        val db = CarDatabase.getDatabase(context)
+        val itemId = db.listItemDao().insert(
+            ListItem(
+                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + line.text,
+                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
+            ),
+        )
+
+        // Three materialize calls, same as three app opens - idempotence is the entire point.
+        repeat(3) { GoalChecklistSync.materializeToday(context, now) }
+
+        val logs = db.workoutSetLogDao().getRecent(10)
+        assertEquals("exactly one log across three materialization runs, not three", 1, logs.size)
+        val log = logs.single()
+        assertEquals("Kettlebell swing", log.exercise)
+        assertEquals(line.sets, log.sets)
+        assertEquals(
+            "the logged row must carry the ITEM's own day, not the sweep's day",
+            yesterday, log.loggedAt,
+        )
+
+        val reread = db.listItemDao().getById(itemId)
+        assertNotNull(reread)
+        assertTrue("the tick itself must survive the sweep - adherence is not deleted", reread!!.done)
+        assertNotNull("loggedAt must now be set - this is the whole idempotence anchor", reread.loggedAt)
+    }
+
+    @Test
+    fun `a ticked past-day meal or sleep line logs nothing`() = runBlocking {
+        val now = System.currentTimeMillis()
+        val yesterday = now - 24 * 60 * 60 * 1000
+        val list = NotesController.theList(context)
+        val db = CarDatabase.getDatabase(context)
+        val mealItemId = db.listItemDao().insert(
+            ListItem(
+                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "Hit 2300 kcal / 180g protein",
+                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
+            ),
+        )
+        val sleepItemId = db.listItemDao().insert(
+            ListItem(
+                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "Sleep 8h",
+                done = true, doneAt = yesterday, sortOrder = 1, createdAt = yesterday,
+            ),
+        )
+
+        GoalChecklistSync.materializeToday(context, now)
+
+        assertTrue(
+            "a meal/sleep tick must never invent a workout log - it is not a workout line",
+            db.workoutSetLogDao().getRecent(10).isEmpty(),
+        )
+        assertNull(db.listItemDao().getById(mealItemId)!!.loggedAt)
+        assertNull(db.listItemDao().getById(sleepItemId)!!.loggedAt)
+    }
+
+    @Test
+    fun `an un-ticked past-day workout line is never swept`() = runBlocking {
+        val now = System.currentTimeMillis()
+        val yesterday = now - 24 * 60 * 60 * 1000
+        val yesterdayDow = java.time.Instant.ofEpochMilli(yesterday).atZone(java.time.ZoneId.systemDefault()).dayOfWeek
+        val weekStart = weekStartEpoch(yesterday)
+        givenAWorkoutPlan(weekStart, yesterday, sessionsPerWeek = 7)
+        val line = GoalChecklist.workoutLinesForDay(
+            listOf(WorkoutPlanItem(exercise = "Kettlebell swing", targetSetsPerWeek = 12, effectiveFromWeekEpoch = weekStart, updatedAt = yesterday)),
+            7,
+            yesterdayDow,
+        ).single()
+
+        val list = NotesController.theList(context)
+        val db = CarDatabase.getDatabase(context)
+        db.listItemDao().insert(
+            ListItem(
+                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + line.text,
+                done = false, sortOrder = 0, createdAt = yesterday,
+            ),
+        )
+
+        GoalChecklistSync.materializeToday(context, now)
+
+        assertTrue("nothing was ticked, so nothing should have been reported logged", db.workoutSetLogDao().getRecent(10).isEmpty())
+    }
+
+    @Test
+    fun `a ticked line whose text no longer matches any current plan derivation is skipped, never guessed`() = runBlocking {
+        val now = System.currentTimeMillis()
+        val yesterday = now - 24 * 60 * 60 * 1000
+        val list = NotesController.theList(context)
+        val db = CarDatabase.getDatabase(context)
+        // No WorkoutPlan/WorkoutPlanItem on file for that week at all - a line whose plan has since
+        // changed (or was never a real plan-derived line) has nothing to structurally match against.
+        val itemId = db.listItemDao().insert(
+            ListItem(
+                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "3 sets - Kettlebell swing",
+                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
+            ),
+        )
+
+        GoalChecklistSync.materializeToday(context, now)
+
+        assertTrue(
+            "no anchor to match against means no claim - never fabricate exercise/sets for an unmatched line",
+            db.workoutSetLogDao().getRecent(10).isEmpty(),
+        )
+        assertNull("an unmatched item stays un-swept, available for a later materialize if the plan is restored", db.listItemDao().getById(itemId)!!.loggedAt)
     }
 }

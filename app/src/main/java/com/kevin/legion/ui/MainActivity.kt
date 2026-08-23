@@ -581,6 +581,7 @@ private fun LegionShell(
                     onOpenConnections = { navController.navigate(LegionRoute.SETTINGS_CONNECTIONS) },
                     onOpenDataPrivacy = { navController.navigate(LegionRoute.SETTINGS_DATA_PRIVACY) },
                     onOpenPermissionsDiagnostics = { navController.navigate(LegionRoute.SETTINGS_PERMISSIONS_DIAGNOSTICS) },
+                    onOpenVoiceGuide = { navController.navigate(LegionRoute.SETTINGS_HELP) },
                 )
             }
             // The five subscreens (command-center ticket 02) - each takes only the granular

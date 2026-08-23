@@ -100,13 +100,4 @@ interface ProactiveRaiseDao {
     @Query("SELECT * FROM proactive_raises ORDER BY spokenAt DESC LIMIT 1")
     suspend fun mostRecent(): ProactiveRaiseRow?
 
-    /**
-     * Command-center ticket 01: HOME's ALERTS pane third source, "recent/pending raises" rendered
-     * as ALERT rows (`ui/TodayGapResolvers.kt`'s `alertRowForRaise`). Reading this never marks a
-     * row delivered or triggers speech - it is a plain SELECT, same as [mostRecent]. `declined = 0`
-     * is filtered HERE, at the query, rather than by the caller, so a brushed-off nudge can never
-     * accidentally reappear on HOME because some future call site forgot to filter it out.
-     */
-    @Query("SELECT * FROM proactive_raises WHERE spokenAt >= :sinceMs AND declined = 0 ORDER BY spokenAt DESC LIMIT :limit")
-    suspend fun recentUndeclined(sinceMs: Long, limit: Int): List<ProactiveRaiseRow>
 }

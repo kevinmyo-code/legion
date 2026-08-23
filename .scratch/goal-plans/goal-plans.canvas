@@ -21,6 +21,16 @@
       "color": "1"
     },
     {
+      "id": "5f64ddb3a6a8a415",
+      "type": "file",
+      "file": ".scratch/goal-plans/issues/08-daily-prescription-and-autolog.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "e9c09b5d47687baf",
       "type": "file",
       "file": ".scratch/goal-plans/issues/02-recommender-and-playbook.md",

@@ -5,6 +5,7 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.notes.NotesController
+import com.kevin.legion.workouts.WorkoutController
 import com.kevin.legion.workouts.weekStartEpoch
 
 /**
@@ -88,6 +89,9 @@ object GoalChecklistSync {
         val mealTarget = db.mealTargetDao().currentTarget(dayStartEpoch(now))
         val sleepTarget = db.sleepTargetDao().currentTarget(dayStartEpoch(now))
         val workoutItems = db.workoutPlanItemDao().currentItems(weekStartEpoch(now))
+        // Ticket 08: the whole-plan session count that decides how many days a WEEK each exercise
+        // gets shown on (see WorkoutPlan.sessionsPerWeek's own doc and GoalChecklist.forToday's).
+        val sessionsPerWeek = db.workoutPlanDao().currentPlan(weekStartEpoch(now))?.sessionsPerWeek
 
         // The device-local calendar day, not a UTC one (ticket 07) - the same "a timestamp
         // captured from a clock belongs to the day the user was living when it was captured"
@@ -95,7 +99,7 @@ object GoalChecklistSync {
         // picking which of the week's sessions today actually is.
         val today = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault()).dayOfWeek
 
-        val derived = GoalChecklist.forToday(mealTarget, sleepTarget, workoutItems, today)
+        val derived = GoalChecklist.forToday(mealTarget, sleepTarget, workoutItems, sessionsPerWeek, today)
         val wantedTexts = derived.items.map { ITEM_PREFIX + it }.toSet()
 
         val list = NotesController.theList(context)
@@ -113,7 +117,78 @@ object GoalChecklistSync {
             NotesController.addItem(context, list.id, text)
         }
 
+        sweepPastDayAutoLog(context, list.id, todayStart, now)
         trimExpiredPlanItems(context, list.id, now)
+    }
+
+    /**
+     * Ticket 08's end-of-day auto-log: every TICKED plan `WORKOUT` line from a PAST day
+     * ([ListItem.createdAt] before [todayStart]) that has not yet been logged
+     * ([ListItem.loggedAt] still null) is written through [WorkoutController.logSet] - the exact
+     * function voice and [com.kevin.legion.ui.body.LogWorkoutSetDialog] both call, so a swept item
+     * gets the identical trust tier and write path a spoken log gets (D37, and the ticket's own
+     * "same trust tier a spoken log gets - he reported it either way").
+     *
+     * **Runs on every [materializeToday] call, not just "the first one on a new day"** - the
+     * ticket's own idempotence requirement ("no double-log on repeated opens") is what makes this
+     * safe rather than merely convenient: a call that finds nothing to sweep (every past-day item
+     * already carries a [ListItem.loggedAt]) does no writes at all, so running this every time
+     * [materializeToday] runs is equivalent to running it once on the first call of a new day - it
+     * is simply cheaper to make the mechanism idempotent than to also track "have I swept today".
+     *
+     * **Matching is structural, never a parse of the rendered string** (the ticket's own
+     * instruction): [GoalChecklist.workoutLinesForDay] is called again, for the ticked item's OWN
+     * day and the [com.kevin.legion.data.local.WorkoutPlanItem]/`WorkoutPlan.sessionsPerWeek` rows
+     * that were EFFECTIVE THAT WEEK (`currentItems`/`currentPlan` are both "copy forward" reads
+     * keyed by week, so this is the exact plan the item was originally materialized against, not
+     * whatever plan is current today) - the freshly regenerated line list and the stored item text
+     * were built by the SAME function from the SAME data, so an exact string match reliably
+     * recovers the `(exercise, sets, reps)` triple with zero parsing. An item whose text no longer
+     * matches ANY regenerated line - a meal/sleep line (never produced by [GoalChecklist.workoutLinesForDay]
+     * at all), or a workout line whose plan has since changed so the old spread/split no longer
+     * reproduces it - is simply skipped: there is nothing here that could safely reconstruct what
+     * to log, and skipping is the "no anchor, no claim" posture this codebase uses everywhere else
+     * for an unverifiable write.
+     *
+     * **Never touches `done`/`doneAt`** - only [ListItemDao.markLogged] runs, which the DAO's own
+     * doc comment confirms writes `loggedAt` alone. The adherence record (the tick itself) survives
+     * a sweep, exactly as ticket 08's own build item requires.
+     */
+    private suspend fun sweepPastDayAutoLog(context: Context, listId: Long, todayStart: Long, now: Long) {
+        val candidates = NotesController.allItems(context).filter {
+            it.listId == listId && it.text.startsWith(ITEM_PREFIX) &&
+                it.createdAt < todayStart && it.done && it.loggedAt == null
+        }
+        if (candidates.isEmpty()) return
+
+        val db = CarDatabase.getDatabase(context)
+        val zone = java.time.ZoneId.systemDefault()
+        for (item in candidates) {
+            val itemDay = java.time.Instant.ofEpochMilli(item.createdAt).atZone(zone).dayOfWeek
+            val itemWeekStart = weekStartEpoch(item.createdAt)
+            val workoutItems = db.workoutPlanItemDao().currentItems(itemWeekStart)
+            if (workoutItems.isEmpty()) continue
+            val sessionsPerWeek = db.workoutPlanDao().currentPlan(itemWeekStart)?.sessionsPerWeek
+            val lines = GoalChecklist.workoutLinesForDay(workoutItems, sessionsPerWeek, itemDay)
+            val strippedText = item.text.removePrefix(ITEM_PREFIX)
+            val match = lines.firstOrNull { it.text == strippedText } ?: continue
+
+            // Timestamped to the ITEM's own day (ticket 08: "not now") - a set logged by tonight's
+            // app-open still reads as having happened the day it was ticked for.
+            val outcome = WorkoutController.logSet(
+                context = context,
+                exercise = match.exercise,
+                sets = match.sets,
+                reps = match.reps,
+                weightValue = null,
+                weightUnit = null,
+                loggedAt = item.createdAt,
+            )
+            // A failed write leaves loggedAt null, so a LATER sweep retries it - the same "no false
+            // success" posture CLAUDE.md §7 asks of every write, applied to a write nobody asked
+            // for out loud but that this object is making on the user's behalf.
+            if (outcome.success) db.listItemDao().markLogged(item.id, now)
+        }
     }
 
     /**

@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,8 +52,8 @@ import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckPoint
 import com.kevin.legion.ui.common.DeckRange
 import com.kevin.legion.ui.common.DeckRangeSelector
-import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.common.DeckSparkline
+import com.kevin.legion.ui.common.DrilldownHeader
 import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.GapEmptyRow
 import com.kevin.legion.ui.common.HalfTile
@@ -69,25 +68,40 @@ import com.kevin.legion.util.shortDate
 import com.kevin.legion.workouts.WorkoutController
 
 /**
- * `body` tab, rebuilt for the cyberdeck (ticket 16, per ticket 07's grilled answer). Four
- * MILSPEC panels in a FIXED order - MASS, INTAKE, SLEEP, TRAINING - each a one-glance sparkline
- * readout ([DeckPane] + [DeckSparkline]/[DeckRow]), never a full chart inline (ticket 07 answer
- * #1: "full-chart-inline declined"). Depth is one tap in: every panel opens an IN-SCREEN
- * drilldown (a full-height [DeckLineChart]/[DeckBarChart] plus the history list that used to live
- * on the module screen directly), following [com.kevin.legion.ui.ledger.CategoryDrilldownScreen]'s
- * "owns its own internal drill-down... rather than adding nav-graph sub-routes with arguments"
- * precedent - [BodyDrilldown] is a plain state var this file swaps on, not a new `LegionRoute`.
- * TRAINING drills TWICE (ticket 07 answer #2): panel -> exercise list -> per-exercise progression
- * chart, the "biohacker's payoff chart".
+ * `body` tab, rebuilt for the cyberdeck (ticket 16, per ticket 07's grilled answer). Three
+ * MILSPEC panels in a FIXED order - MASS, INTAKE, SLEEP - each a one-glance sparkline readout
+ * ([DeckPane] + [DeckSparkline]), never a full chart inline (ticket 07 answer #1:
+ * "full-chart-inline declined"). Depth is one tap in: every panel opens an IN-SCREEN drilldown (a
+ * full-height [DeckLineChart]/[DeckBarChart] plus the history list that used to live on the module
+ * screen directly), following [com.kevin.legion.ui.ledger.CategoryDrilldownScreen]'s "owns its own
+ * internal drill-down... rather than adding nav-graph sub-routes with arguments" precedent -
+ * [BodyDrilldown] is a plain state var this file swaps on, not a new `LegionRoute`.
+ *
+ * **The standalone TRAINING PANE retired (ticket 08, `goal-plans`, Kevin: "bio page > training and
+ * checklist > retire training page. delete it.").** The logged-sets record that pane used to show
+ * was redundant with the checklist below it once ticket 08 gave that checklist a real daily
+ * prescription - two sections both answering "what training am I doing" is exactly how they end up
+ * disagreeing (one derived from the plan, the other from logged sets), the same reasoning ticket 07
+ * already used to retire the "workouts this week" gap row. **ADR 0035 still binds, so the TRAINING
+ * DRILLDOWN itself did not vanish - only its entry point moved.** [BodyDrilldown.TrainingExercises]/
+ * [BodyDrilldown.TrainingProgression] and their two composables are unchanged; this file still owns
+ * the top-level swap for the same "one state holder" reason every other drilldown here does (a full-
+ * screen [Surface] swapped in from inside a `LazyColumn` `item {}` cannot safely rely on
+ * `fillMaxSize()` against that item's unbounded scroll-axis constraint - staying with the existing
+ * top-level swap sidesteps that risk entirely rather than nesting a second one inside
+ * [com.kevin.legion.ui.goals.GoalChecklistPanel]). What moved is the AFFORDANCE: `+ LOG SET` and the
+ * "view training history" tap now render inside [com.kevin.legion.ui.goals.GoalChecklistPanel]'s own
+ * full-mode UI (via the `onLogSet`/`onOpenTrainingDrilldown` callbacks this file passes down), not on
+ * a `TRAINING` `DeckPane` of their own.
  *
  * **Tiled to the mission-control grammar (ticket 16's BIO build, `.scratch/mission-control/issues/
  * 12-surface-inventories.md`).** MASS stays FULL (this surface's hero - latest reading, trend,
- * sparkline) and TRAINING stays FULL (a set list is rows, not a figure); INTAKE and SLEEP drop from
- * their own FULL panels to a shared HALF-tile row via [com.kevin.legion.ui.common.EqualHeightRow] /
- * [com.kevin.legion.ui.common.HalfTile] - the exact shell HOME's BIO/CRED/FLEET/LOG row already
- * uses, moved to `ui/common/DeckTiles.kt` by this ticket so both files read the same primitive
- * instead of each hand-rolling one. Tap-through is unchanged - each tile still opens the same
- * [BodyDrilldown] its old FULL panel did; only the panel-list SHAPE changed, not the drilldowns.
+ * sparkline); INTAKE and SLEEP drop from their own FULL panels to a shared HALF-tile row via
+ * [com.kevin.legion.ui.common.EqualHeightRow] / [com.kevin.legion.ui.common.HalfTile] - the exact
+ * shell HOME's BIO/CRED/FLEET/LOG row already uses, moved to `ui/common/DeckTiles.kt` by that
+ * ticket so both files read the same primitive instead of each hand-rolling one. Tap-through is
+ * unchanged - each tile still opens the same [BodyDrilldown] its old FULL panel did; only the
+ * panel-list SHAPE changed, not the drilldowns.
  *
  * **Header, once**: ticket 03's universal-state rule - Body's rows are ALL [TrustTier.REPORTED]
  * by construction (nothing here is verified against anything external), so that state is said
@@ -95,17 +109,17 @@ import com.kevin.legion.workouts.WorkoutController
  * ticket 16's brief.
  *
  * **Gaps, never zeros** (ticket 07 answer #5, CLAUDE.md §4 rule 6): every sparkline/bar-chart
- * series below is built by [bucketBodyweightDaily]/[bucketMealKcalDaily]/[bucketSleepMinutesDaily]/
- * [buildExerciseProgression] in `BodyGapResolvers.kt`, all of which put a `null` in an unlogged
- * day's slot - the chart kit ([com.kevin.legion.ui.common.DeckCharts.kt]) renders that as a gap by
- * construction, never a zero-height mark. Empty panels/drilldowns are worded (`NOT LOGGED`,
- * `NO READINGS YET`), never a blank space.
+ * series below is built by [bucketBodyweightDaily]/[bucketMealKcalDaily]/[bucketSleepMinutesDaily]
+ * in `BodyGapResolvers.kt`, all of which put a `null` in an unlogged day's slot - the chart kit
+ * ([com.kevin.legion.ui.common.DeckCharts.kt]) renders that as a gap by construction, never a
+ * zero-height mark. Empty panels/drilldowns are worded (`NOT LOGGED`, `NO READINGS YET`), never a
+ * blank space.
  *
  * **No longer read-only (ticket 03, `.scratch/command-center/issues/03-body-writes-by-hand.md`,
- * ADR 0035).** Voice was the ONLY way to write any of these four streams until this ticket - a
+ * ADR 0035).** Voice was the ONLY way to write any of these streams until this ticket - a
  * misheard log, a dead socket, or no key at all meant the capability simply did not exist for that
- * moment. Every write affordance below (`+ LOG WEIGHT`/`+ LOG`/`+ LOG SET`/`EDIT TARGET`/`DEL`)
- * calls the exact controller function `LiveToolbox`'s matching voice tool dispatches to - see
+ * moment. Every write affordance below (`+ LOG WEIGHT`/`+ LOG`/`EDIT TARGET`/`DEL`) calls the exact
+ * controller function `LiveToolbox`'s matching voice tool dispatches to - see
  * `ui/body/BodyWriteDialogs.kt`'s own doc comment for the full trace. What is still true from the
  * old posture: nothing here re-derives a score, a streak, or a percentage, and every macro figure
  * a controller only estimates is spoken by the controller's own return string as an estimate, not
@@ -113,7 +127,7 @@ import com.kevin.legion.workouts.WorkoutController
  *
  * Split per the repo's vendored `compose-state-holder-ui-split` skill: [BodyScreen] is the ONLY
  * state holder in this file (owns every Context/Room read, including the drilldowns' own
- * range-scoped loads) and swaps between [BodyContent] (the panel list) and one of five drilldown
+ * range-scoped loads) and swaps between [BodyContent] (the panel list) and one of three drilldown
  * composables, all of which are plain-data/callback UI with no controller reference of their own -
  * the same split [com.kevin.legion.ui.LedgerScreen] uses around
  * [com.kevin.legion.ui.ledger.CategoryDrilldownScreen]. `@Preview`s below exercise [BodyContent]
@@ -121,7 +135,6 @@ import com.kevin.legion.workouts.WorkoutController
  */
 data class BodyUiState(
     val loading: Boolean = true,
-    val recentSets: List<WorkoutSetLog> = emptyList(),
     val mealGap: DailyMealGap = DailyMealGap.NotLogged,
     val hasMealTarget: Boolean = false,
     val mealTargetKcal: Int? = null,
@@ -152,10 +165,12 @@ data class BodyUiState(
 /**
  * Which in-screen drilldown, if any, is open - the "selected-panel enum + BackHandler" shape the
  * brief calls for, except a sealed class rather than a bare enum because TRAINING's second level
- * carries data ([TrainingProgression.exercise]) the other four don't need. `null` (a plain state
+ * carries data ([TrainingProgression.exercise]) the other three don't need. `null` (a plain state
  * var, not a member of this type - matching [com.kevin.legion.ui.ledger.CategoryDrilldownSelection]'s
  * own doc comment on why "not open" is deliberately kept out of the sealed type) means the panel
- * list is showing.
+ * list is showing. **Ticket 08 (goal-plans) retired the standalone TRAINING PANE that used to open
+ * [TrainingExercises], not the drilldown itself** - see the file doc comment for why it stays a
+ * top-level swap owned here, entered from [com.kevin.legion.ui.goals.GoalChecklistPanel] instead.
  */
 internal sealed class BodyDrilldown {
     object Mass : BodyDrilldown()
@@ -202,7 +217,6 @@ fun BodyScreen() {
 
         state = BodyUiState(
             loading = false,
-            recentSets = WorkoutController.recentSets(context),
             mealGap = MealController.dayGap(context, now),
             hasMealTarget = mealTarget != null,
             mealTargetKcal = mealTarget?.caloriesKcal,
@@ -412,13 +426,18 @@ internal fun BodyContent(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Unit
 }
 
 /**
- * Ticket 03: the four `+ LOG ...`/`EDIT TARGET` affordances below are the ONLY place this file
- * calls a controller write directly (each dialog does, from `ui/body/BodyWriteDialogs.kt`) -
- * everything else in [BodyPanelList] stays the plain read this file's doc comment describes.
+ * Ticket 03: the `+ LOG ...`/`EDIT TARGET` affordances below are the ONLY place this file calls a
+ * controller write directly (each dialog does, from `ui/body/BodyWriteDialogs.kt`) - everything
+ * else in [BodyPanelList] stays the plain read this file's doc comment describes.
  * [GoalsPanel]/[GoalChecklistPanel] already break that same "read-only" posture on purpose (see
  * this file's own doc comment on why GOALS is "the one panel on this screen that is read-AND-edit"),
  * so this is the second deliberate exception, not the first - both exist because ADR 0035 makes a
- * voice-only write a defect, not a feature.
+ * voice-only write a defect, not a feature. **`+ LOG SET` used to be a third exception, here on a
+ * TRAINING pane - ticket 08 moved its affordance into [com.kevin.legion.ui.goals.GoalChecklistPanel]
+ * instead** (via the `onLogSet`/`onOpenTrainingDrilldown` callbacks below), so [showLogSet]'s dialog
+ * still lives HERE (this file is still the one state holder, per its own doc comment - the CALL SITE
+ * of the affordance moved, not where the write happens) but nothing in this file's own panel list
+ * renders the button that opens it any more.
  */
 @Composable
 private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Unit, onDataChanged: () -> Unit) {
@@ -468,9 +487,9 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
         // Mission-control ticket 16's BIO build: both panels drop from FULL to HALF per ticket 12's
         // inventory, sharing one row via EqualHeightRow - the same mechanism HOME's BIO/CRED/FLEET/LOG
         // row uses (see that composable's own doc for why a bare `Row(IntrinsicSize.Min)` crashes on
-        // a DeckPane child). MASS stays FULL above (the surface's hero) and TRAINING stays FULL below
-        // (a set list is rows, not a figure) - ticket 12's own reasoning, unchanged by this tiling.
-        // Tap-through is unchanged: each tile still opens the exact drilldown its old FULL panel did.
+        // a DeckPane child). MASS stays FULL above (the surface's hero) - ticket 12's own reasoning,
+        // unchanged by this tiling. Tap-through is unchanged: each tile still opens the exact
+        // drilldown its old FULL panel did.
         item(key = "tile-row-intake-sleep") {
             val intakeTile = buildIntakeTile(state.mealGap, state.hasMealTarget)
             val sleepTile = buildSleepTile(state.sleepGap, state.hasSleepTarget)
@@ -523,41 +542,24 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
         }
         item(key = "pane-spacer-3") { Spacer(Modifier.height(10.dp)) }
 
-        // ------------------------------------------------------------ TRAINING
-        //
-        // No "Workouts this week" gap row here any more (ticket 07, `goal-plans`, Kevin
-        // 2026-08-22: "retire workouts this week. redundant.") - the daily checklist below already
-        // states today's session, and two sections both answering "what training am I doing" is
-        // exactly how they end up disagreeing (one derived from the plan, the other from logged
-        // sets). This pane is now the logged-sets record only.
-        item(key = "pane-training") {
-            DeckPane(header = "TRAINING", modifier = Modifier.clickable { onOpenPane(BodyDrilldown.TrainingExercises) }) {
-                if (state.recentSets.isEmpty()) {
-                    Text("NOT LOGGED", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
-                } else {
-                    state.recentSets.take(5).forEach { log ->
-                        DeckRow(label = log.exercise, value = workoutSetValueText(log))
-                    }
-                }
-                Text(
-                    "+ LOG SET",
-                    style = LegionType.stamp,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp).clickable { showLogSet = true },
-                )
-            }
-        }
-        item(key = "pane-spacer-4") { Spacer(Modifier.height(14.dp)) }
-
         // ---------------------------------------------------------------- CHECKLIST
         // Ticket 04, `goal-plans` (Kevin: "revamp of BIO/body tab..."). Full mode - every line,
-        // plus the recent-skip record - self-contained the same way GOALS below is (its own
-        // LaunchedEffect; not part of BodyUiState's batched load). Placed after TRAINING and
-        // before GOALS: the checklist is the day-to-day habit surface derived FROM the targets and
-        // goals above it, read top-to-bottom as "here's where you stand, here's today's list,
-        // here's the standing goal it all points at".
+        // plus the recent-completion record, PLUS (ticket 08) the relocated TRAINING affordances -
+        // self-contained the same way GOALS below is (its own LaunchedEffect; not part of
+        // BodyUiState's batched load). Placed where TRAINING used to sit and before GOALS: the
+        // checklist is the day-to-day habit surface derived FROM the targets and goals above it,
+        // read top-to-bottom as "here's where you stand, here's today's list, here's the standing
+        // goal it all points at". `onLogSet`/`onOpenTrainingDrilldown` are this file's own
+        // `showLogSet` dialog and `onOpenPane(BodyDrilldown.TrainingExercises)` top-level swap -
+        // GoalChecklistPanel never gets a controller reference or a DAO of its own for these, it
+        // only triggers the SAME write/navigation this file already owned (see the file doc
+        // comment on why the swap itself stays here).
         item(key = "pane-checklist") {
-            com.kevin.legion.ui.goals.GoalChecklistPanel(compact = false)
+            com.kevin.legion.ui.goals.GoalChecklistPanel(
+                compact = false,
+                onLogSet = { showLogSet = true },
+                onOpenTrainingDrilldown = { onOpenPane(BodyDrilldown.TrainingExercises) },
+            )
         }
         item(key = "pane-spacer-4b") { Spacer(Modifier.height(14.dp)) }
 
@@ -598,19 +600,11 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
 }
 
 // ------------------------------------------------------------------- drilldowns
-
-/** Shared "< BACK" + title header every drilldown below opens with - same shape as [com.kevin.legion.ui.ledger.CategoryDrilldownScreen]'s own header row. */
-@Composable
-private fun DrilldownHeader(title: String, onBack: () -> Unit) {
-    Column {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) {
-                Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-            }
-        }
-        Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
-    }
-}
+//
+// DrilldownHeader used to be a private composable in this file; ticket 08 (goal-plans) lifted it
+// to `ui/common/DrilldownHeader.kt` so the relocated TRAINING drilldown
+// (`ui/goals/GoalChecklistPanel.kt`, a different package) can open with the same header instead of
+// a second hand-rolled copy - see that shared file's own doc comment.
 
 /**
  * MASS drilldown: full-height [DeckLineChart] + [DeckRangeSelector] + the bodyweight history list
@@ -771,7 +765,7 @@ private fun BodySleepDrilldown(
     }
 }
 
-/** TRAINING's first drilldown level: every distinct exercise, most recently worked first - taps into [BodyExerciseProgressionDrilldown]. */
+/** TRAINING's first drilldown level: every distinct exercise, most recently worked first - taps into [BodyExerciseProgressionDrilldown]. Entry point relocated to [com.kevin.legion.ui.goals.GoalChecklistPanel] by ticket 08 - see this file's doc comment. */
 @Composable
 private fun BodyTrainingExerciseListDrilldown(
     exercises: List<WorkoutSetLogDao.ExerciseRecency>,
@@ -810,7 +804,8 @@ private fun BodyTrainingExerciseListDrilldown(
  * (sets without a weight are listed here even though [series] excludes them from the plot - see
  * [buildExerciseProgression]'s doc comment). Ticket 03 build item 3: [onDelete] is
  * `WorkoutController.deleteSetLog`, the SAME row-scoped delete `undo_last_log` reaches for a
- * workout-set log.
+ * workout-set log. Entry point relocated to [com.kevin.legion.ui.goals.GoalChecklistPanel] by
+ * ticket 08 - see this file's doc comment.
  */
 @Composable
 private fun BodyExerciseProgressionDrilldown(
@@ -878,17 +873,13 @@ private fun PreviewBodyAllEmpty() = LegionTheme {
     BodyContent(BodyUiState(loading = false))
 }
 
-@Preview(name = "Body: populated - four panels, sparklines and gaps", widthDp = 360, heightDp = 900)
+@Preview(name = "Body: populated - panels, sparklines and gaps", widthDp = 360, heightDp = 900)
 @Composable
 private fun PreviewBodyPopulated() = LegionTheme {
     val now = System.currentTimeMillis()
     BodyContent(
         BodyUiState(
             loading = false,
-            recentSets = listOf(
-                WorkoutSetLog(id = 1, exercise = "Squat", sets = 3, reps = 5, weightValue = 225.0, weightUnit = "lbs", loggedAt = now, trustTier = TrustTier.REPORTED),
-                WorkoutSetLog(id = 2, exercise = "Pushups", sets = 3, reps = 15, weightValue = null, weightUnit = null, loggedAt = now, trustTier = TrustTier.REPORTED),
-            ),
             mealGap = DailyMealGap.Logged(
                 PlanGap(
                     target = com.kevin.legion.meals.MacroTotals(2200, 150.0, 220.0, 70.0),

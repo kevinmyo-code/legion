@@ -450,64 +450,6 @@ class TodayGapResolversTest {
         Goal(lineageId = 1L, aspect = aspect, statement = statement, deadlineEpoch = 100L)
 
     @Test
-    fun `ALERTS - ALARM rows always come before ADVISORY rows`() {
-        val rows = buildAlertRows(
-            quarantined = emptyList(),
-            hasGeminiKey = false,
-            overdueGoals = listOf(overdueGoal("bio")),
-        )
-        // No quarantine here, so this only proves the key advisory and the goal advisory both land
-        // in ADVISORY - the real ordering proof is the next test, which has both tiers present.
-        assertTrue(rows.all { it.tier == AlertTier.ADVISORY })
-    }
-
-    @Test
-    fun `ALERTS - a quarantined file sorts before every advisory, never reshuffled by content`() {
-        val rows = buildAlertRows(
-            quarantined = listOf(quarantinedFile("b.pdf"), quarantinedFile("a.pdf")),
-            hasGeminiKey = false,
-            overdueGoals = listOf(overdueGoal("bio")),
-        )
-        assertEquals(listOf(AlertTier.ALARM, AlertTier.ALARM, AlertTier.ADVISORY, AlertTier.ADVISORY), rows.map { it.tier })
-        // Arrival order within a tier is preserved, never re-sorted by label.
-        assertEquals(listOf("b.pdf", "a.pdf"), rows.take(2).map { it.label })
-    }
-
-    @Test
-    fun `ALERTS - a missing Gemini key is the fresh-install advisory`() {
-        val rows = buildAlertRows(quarantined = emptyList(), hasGeminiKey = false, overdueGoals = emptyList())
-        assertEquals(1, rows.size)
-        assertEquals(AlertTier.ADVISORY, rows.single().tier)
-        assertEquals("NO KEY", rows.single().tagText)
-        assertEquals(AlertTarget.KEY, rows.single().target)
-    }
-
-    @Test
-    fun `ALERTS - nothing needing attention is an empty list, not a nominal row`() {
-        val rows = buildAlertRows(quarantined = emptyList(), hasGeminiKey = true, overdueGoals = emptyList())
-        assertTrue(rows.isEmpty())
-    }
-
-    @Test
-    fun `alertRowsHaveAlarm is true exactly when an ALARM row is present`() {
-        val withAlarm = buildAlertRows(
-            quarantined = listOf(quarantinedFile("a.pdf")),
-            hasGeminiKey = false,
-            overdueGoals = listOf(overdueGoal("bio")),
-        )
-        assertTrue(alertRowsHaveAlarm(withAlarm))
-
-        val advisoryOnly = buildAlertRows(
-            quarantined = emptyList(),
-            hasGeminiKey = false,
-            overdueGoals = listOf(overdueGoal("bio")),
-        )
-        assertTrue(!alertRowsHaveAlarm(advisoryOnly))
-
-        assertTrue(!alertRowsHaveAlarm(emptyList()))
-    }
-
-    @Test
     fun `alertTargetForAspect routes every real aspect and falls back to NONE for HOME or unknown`() {
         assertEquals(AlertTarget.BIO, alertTargetForAspect(AdvisorAspect.BIO))
         assertEquals(AlertTarget.LOG, alertTargetForAspect(AdvisorAspect.LOG))
@@ -660,46 +602,4 @@ class TodayGapResolversTest {
         spokenAt = 0L,
         declined = declined,
     )
-
-    @Test
-    fun `alertRowForRaise carries the stored reason verbatim, never re-worded`() {
-        val row = alertRowForRaise(raiseRow(category = "safety", reason = "coolant 118C, over the 110C threshold"))
-        assertEquals("Safety", row.label)
-        assertEquals("coolant 118C, over the 110C threshold", row.value)
-        assertEquals(AlertTier.ADVISORY, row.tier)
-        assertEquals("RAISED", row.tagText)
-    }
-
-    @Test
-    fun `alertTargetForRaiseCategory routes every real category and falls back to NONE for digest or unknown`() {
-        assertEquals(AlertTarget.FLEET, alertTargetForRaiseCategory("safety"))
-        assertEquals(AlertTarget.FLEET, alertTargetForRaiseCategory("fleet"))
-        assertEquals(AlertTarget.BIO, alertTargetForRaiseCategory("wellbeing"))
-        assertEquals(AlertTarget.LOG, alertTargetForRaiseCategory("timing"))
-        assertEquals(AlertTarget.NONE, alertTargetForRaiseCategory("digest"))
-        assertEquals(AlertTarget.NONE, alertTargetForRaiseCategory("not-a-real-category"))
-    }
-
-    @Test
-    fun `buildAlertRows appends undeclined raises after the existing advisories, never ahead of an ALARM`() {
-        val rows = buildAlertRows(
-            quarantined = listOf(quarantinedFile("a.pdf")),
-            hasGeminiKey = false,
-            overdueGoals = emptyList(),
-            recentRaises = listOf(raiseRow(category = "fleet", reason = "12,003 mi - oil change due")),
-        )
-        assertEquals(
-            listOf(AlertTier.ALARM, AlertTier.ADVISORY, AlertTier.ADVISORY),
-            rows.map { it.tier },
-        )
-        assertEquals("RAISED", rows.last().tagText)
-        assertEquals(AlertTarget.FLEET, rows.last().target)
-    }
-
-    @Test
-    fun `buildAlertRows with no recentRaises behaves exactly as before - the default is a true no-op`() {
-        val rows = buildAlertRows(quarantined = emptyList(), hasGeminiKey = false, overdueGoals = emptyList())
-        assertEquals(1, rows.size)
-        assertEquals("NO KEY", rows.single().tagText)
-    }
 }

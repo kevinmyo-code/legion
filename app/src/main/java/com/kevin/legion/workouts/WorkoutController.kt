@@ -53,6 +53,10 @@ object WorkoutController {
                     targetSetsPerWeek = targetSets,
                     effectiveFromWeekEpoch = weekStart,
                     updatedAt = now,
+                    // Ticket 08: only the exercises the model actually gave a rep count for carry
+                    // one - draft.repsPerSet has no entry at all for the rest, and this stays null
+                    // rather than inventing one (see WorkoutPlanItem.repsPerSet's own doc).
+                    repsPerSet = draft.repsPerSet[exercise],
                 )
             }
         )
@@ -73,6 +77,13 @@ object WorkoutController {
      * silent no-op. [WriteOutcome.success] on the write path is derived from the DAO's own
      * `insert` returning a real row id (Room's autoincrement id is always > 0 for a landed row),
      * not asserted - this closes the exact gap `log_workout_set`'s dispatch used to hardcode.
+     *
+     * [loggedAt] defaults to "now" for every existing caller (voice, the dialog) - both report a
+     * set as it happens. Ticket 08's end-of-day auto-log is the one caller that passes something
+     * else: a TICKED past day's own local midnight, never the moment the sweep itself runs, so a
+     * log written by tonight's app-open still reads as having happened on the day it was ticked
+     * for, same "REPORTED, not observed live" trust tier either way (D37) - the ticket ruled this
+     * is the same trust tier a spoken log gets, "he reported it either way".
      */
     suspend fun logSet(
         context: Context,
@@ -81,13 +92,13 @@ object WorkoutController {
         reps: Int?,
         weightValue: Double?,
         weightUnit: String?,
+        loggedAt: Long = System.currentTimeMillis(),
     ): WriteOutcome {
         if (exercise.isBlank())
             return WriteOutcome(false, "I didn't catch which exercise - say the name and I'll log it.")
         if (sets <= 0)
             return WriteOutcome(false, "That's not a set count I can log - how many sets?")
 
-        val now = System.currentTimeMillis()
         val rowId = CarDatabase.getDatabase(context).workoutSetLogDao().insert(
             WorkoutSetLog(
                 exercise = exercise,
@@ -95,7 +106,7 @@ object WorkoutController {
                 reps = reps,
                 weightValue = weightValue,
                 weightUnit = weightUnit,
-                loggedAt = now,
+                loggedAt = loggedAt,
                 trustTier = TrustTier.REPORTED,
             )
         )

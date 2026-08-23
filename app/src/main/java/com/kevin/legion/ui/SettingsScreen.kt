@@ -38,6 +38,7 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
 @Composable
 fun SettingsScreen(
     onOpenAssistant: () -> Unit,
+    onOpenVoiceGuide: () -> Unit = {},
     onOpenProactiveSpeech: () -> Unit,
     onOpenConnections: () -> Unit,
     onOpenDataPrivacy: () -> Unit,
@@ -60,6 +61,16 @@ fun SettingsScreen(
             )
 
             Spacer(Modifier.height(12.dp))
+            // First row on purpose (Kevin, 2026-08-22: "where is the what can i do screen? dont
+            // see it anywhere") - a discovery screen buried one level down inside Assistant was a
+            // discoverability failure OF the discoverability screen. It stays linked from
+            // Assistant too; two doors to the same room is fine, zero visible doors is the bug.
+            SettingsNavRow(
+                label = "What can I do",
+                status = "Every voice command, and where its button lives.",
+                onClick = onOpenVoiceGuide,
+            )
+            Spacer(Modifier.height(6.dp))
             SettingsNavRow(
                 label = "Assistant",
                 status = "Companion, voice, wake word, and how it behaves.",
