@@ -231,6 +231,20 @@ import androidx.room.RoomDatabase
  * delete that log ([com.kevin.legion.notes.NotesController.untick]) and closes the phantom-set
  * defect the ticket found.
  * Bare `ALTER TABLE ... ADD COLUMN`, additive only.
+ *
+ * v34: **the aspect engine core** (`.scratch/aspect-engine/issues/16-build-engine-core.md`, tickets
+ * 03/04/11's locked spec). Five additive `CREATE TABLE`s, nothing existing touched:
+ * `aspects` ([Aspect] - the widget-pager page list, archive-not-delete lifecycle),
+ * `record_types` ([RecordType] - one row per user- or plugin-defined record shape),
+ * `field_defs` ([FieldDef] - the v1 13-type field vocabulary, config JSON per type),
+ * `records` ([EngineRecord] - the single generic record table every aspect's data will migrate
+ * into, promoted columns plus JSON payload, trash tombstone), and
+ * `widget_instances` ([WidgetInstance] - per-device pager layout, deliberately unsynced).
+ * [com.kevin.legion.engine.RecordStore] is the only thing that writes `records` - see its own doc
+ * comment for reference enforcement, delete-policy cascade/nullify, and computed-field
+ * materialization. **Nothing existing migrates onto this schema yet** - fleet/ledger/pantry stay on
+ * their own 48 typed entities until the migration-wave tickets (ticket 14's order) cut over one
+ * aspect at a time; this version only builds the target the wave lands into.
  */
 @Database(
     entities = [
@@ -261,8 +275,9 @@ import androidx.room.RoomDatabase
         SitrepModuleSetting::class, SitrepSchedule::class,
         ConversationAudit::class,
         WellbeingDigestSchedule::class,
+        Aspect::class, RecordType::class, FieldDef::class, EngineRecord::class, WidgetInstance::class,
     ],
-    version = 33,
+    version = 34,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -331,6 +346,14 @@ abstract class CarDatabase : RoomDatabase() {
     /** The wellbeing digest's schedule time - one row, see [WellbeingDigestSchedule]. */
     abstract fun wellbeingDigestScheduleDao(): WellbeingDigestScheduleDao
 
+    /** The aspect engine core (v34, ticket 16) - see [com.kevin.legion.engine.RecordStore] for the
+     * write door these five DAOs sit behind. */
+    abstract fun aspectDao(): AspectDao
+    abstract fun recordTypeDao(): RecordTypeDao
+    abstract fun fieldDefDao(): FieldDefDao
+    abstract fun engineRecordDao(): EngineRecordDao
+    abstract fun widgetInstanceDao(): WidgetInstanceDao
+
     companion object {
         @Volatile
         private var INSTANCE: CarDatabase? = null
@@ -361,7 +384,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 33
+        const val SCHEMA_VERSION = 34
         // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
         // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
@@ -378,6 +401,9 @@ abstract class CarDatabase : RoomDatabase() {
         // (`workout_plan_items.repsPerSet` + `list_items.loggedAt`, goal-plans ticket 08).
         // 2026-08-22: bumped to 33 alongside `@Database(version=)` in the same edit again
         // (`workout_set_logs.sourceListItemId`, goal-plans ticket 09).
+        // 2026-08-23: bumped to 34 alongside `@Database(version=)` in the same edit again
+        // (the aspect engine core - `aspects`/`record_types`/`field_defs`/`records`/
+        // `widget_instances`, ticket 16).
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -400,7 +426,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
                         MIGRATION_25_26,
                         MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
-                        MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33,
+                        MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

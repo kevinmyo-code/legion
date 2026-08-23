@@ -8,7 +8,7 @@ status-detail: "Resolved 2026-08-23. Kevin on the A25: feels like a dashboard. E
 blockers: ["08"]
 blocked-by: ["[[08-widget-contract]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Dashboard grid mechanics: staged prototype

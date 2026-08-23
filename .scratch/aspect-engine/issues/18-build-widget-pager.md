@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["09", "16"]
 blocked-by: ["[[09-grid-mechanics-prototype]]", "[[16-build-engine-core]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---
