@@ -298,8 +298,12 @@ private fun SizeToggleChip(size: PrototypeWidgetSize, onToggle: () -> Unit) {
     }
 }
 
+/** `internal`, not `private` (2026-08-23, stage-2 harness) - [PrototypeGrid.kt]'s
+ *  `PrototypeGridPage` reuses this exact rendering so the HOME page's stage-2 grid and the
+ *  FLEET/LEDGER pages' stage-1 columns draw the SAME per-kind widget body, which is the whole
+ *  point of the side-by-side comparison the harness is for. */
 @Composable
-private fun WidgetBody(widget: PrototypeWidget) {
+internal fun WidgetBody(widget: PrototypeWidget) {
     val sem = LocalLegionSemantics.current
     when (widget.kind) {
         PrototypeWidgetKind.STAT_TILE -> {

@@ -89,38 +89,50 @@ fun PrototypeDashboardRoot() {
                         .padding(12.dp),
                 ) {
                     DeckSectionRule(label = page.name)
-                    ReorderableWidgetColumn(
-                        widgets = page.widgets,
-                        editMode = editMode,
-                        onEnterEditMode = { editMode = true },
-                        onReorder = { fromId, toId ->
-                            val fromIdx = page.widgets.indexOfFirst { it.id == fromId }
-                            val toIdx = page.widgets.indexOfFirst { it.id == toId }
-                            if (fromIdx != -1 && toIdx != -1 && fromIdx != toIdx) {
-                                val item = page.widgets.removeAt(fromIdx)
-                                page.widgets.add(toIdx, item)
-                            }
-                        },
-                        onRemove = { id ->
-                            page.widgets.removeAll { it.id == id }
-                        },
-                        onToggleSize = { id ->
-                            val idx = page.widgets.indexOfFirst { it.id == id }
-                            if (idx != -1) {
-                                val w = page.widgets[idx]
-                                w.size = if (w.size == PrototypeWidgetSize.HALF) {
-                                    PrototypeWidgetSize.FULL
-                                } else {
-                                    PrototypeWidgetSize.HALF
+                    // Stage-2 lands ONLY on HOME (page index 0) - FLEET and LEDGER stay on the
+                    // stage-1 reorderable column deliberately, so Kevin can feel both mechanics
+                    // side by side on the same device rather than converting every page at once.
+                    // See PrototypeGrid.kt's own file doc for the full rationale.
+                    if (pageIndex == 0) {
+                        PrototypeGridPage(
+                            widgets = page.widgets,
+                            editMode = editMode,
+                            onEnterEditMode = { editMode = true },
+                        )
+                    } else {
+                        ReorderableWidgetColumn(
+                            widgets = page.widgets,
+                            editMode = editMode,
+                            onEnterEditMode = { editMode = true },
+                            onReorder = { fromId, toId ->
+                                val fromIdx = page.widgets.indexOfFirst { it.id == fromId }
+                                val toIdx = page.widgets.indexOfFirst { it.id == toId }
+                                if (fromIdx != -1 && toIdx != -1 && fromIdx != toIdx) {
+                                    val item = page.widgets.removeAt(fromIdx)
+                                    page.widgets.add(toIdx, item)
                                 }
-                                // Force recomposition of the packed-rows derivation - `size` is a
-                                // plain `var` on a data class, not a Compose State, because the
-                                // widget list itself (a SnapshotStateList) is the observed unit;
-                                // touching the list is what invalidates `remember(widgets)` above.
-                                page.widgets[idx] = w
-                            }
-                        },
-                    )
+                            },
+                            onRemove = { id ->
+                                page.widgets.removeAll { it.id == id }
+                            },
+                            onToggleSize = { id ->
+                                val idx = page.widgets.indexOfFirst { it.id == id }
+                                if (idx != -1) {
+                                    val w = page.widgets[idx]
+                                    w.size = if (w.size == PrototypeWidgetSize.HALF) {
+                                        PrototypeWidgetSize.FULL
+                                    } else {
+                                        PrototypeWidgetSize.HALF
+                                    }
+                                    // Force recomposition of the packed-rows derivation - `size` is a
+                                    // plain `var` on a data class, not a Compose State, because the
+                                    // widget list itself (a SnapshotStateList) is the observed unit;
+                                    // touching the list is what invalidates `remember(widgets)` above.
+                                    page.widgets[idx] = w
+                                }
+                            },
+                        )
+                    }
                 }
             } else {
                 AddPageStub()
