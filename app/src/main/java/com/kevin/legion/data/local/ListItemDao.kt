@@ -44,7 +44,13 @@ interface ListItemDao {
     @Query("UPDATE list_items SET done = 1, doneAt = :doneAt, updatedAt = :doneAt WHERE id = :id")
     suspend fun markDone(id: Long, doneAt: Long)
 
-    @Query("UPDATE list_items SET done = 0, doneAt = NULL, updatedAt = :at WHERE id = :id")
+    // Ticket 09 ("one act, one row"): loggedAt is cleared here too, not just done/doneAt. Before
+    // this, unticking a swept item left loggedAt stamped forever, which made the sweep's own
+    // idempotence guard (`loggedAt IS NULL`) permanently skip it - an undo that could never be
+    // redone by re-ticking and waiting for the next sweep. Clearing it puts the item back to
+    // exactly its pre-sweep state: open for the sweep to reconsider, whether or not a WorkoutSetLog
+    // actually existed to delete alongside it (NotesController.untick does that half).
+    @Query("UPDATE list_items SET done = 0, doneAt = NULL, loggedAt = NULL, updatedAt = :at WHERE id = :id")
     suspend fun markUndone(id: Long, at: Long)
 
     @Query("UPDATE list_items SET deleted = 1, updatedAt = :at WHERE id = :id")

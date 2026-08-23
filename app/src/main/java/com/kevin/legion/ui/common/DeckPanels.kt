@@ -6,6 +6,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -32,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,8 +55,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ui.theme.DRAW_IN_MS
+import com.kevin.legion.ui.theme.LegionMotion
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.theme.deckEntranceEnabled
 import com.kevin.legion.ui.theme.deckMotionEnabled
 
 /**
@@ -156,7 +161,27 @@ fun DeckPane(
     // reserves for "something is actually live" (ticket 03's "one hue, spent rarely" audit).
     val paneFill = if (alarm) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface
     val paneBorder = if (alarm) sem.chrome else sem.chromeDim
-    BoxWithConstraints(modifier.fillMaxWidth()) {
+    // Ticket 14 point 4, "pane entrance": a one-shot fade-in on this pane's own first
+    // composition, never on recomposition and never on an ALARM surface - [deckEntranceEnabled]
+    // is the pure gate ([alarm] plus the shared [deckMotionEnabled] read) that both conditions
+    // reduce to. `LaunchedEffect(Unit)` keys on the pane's OWN composition lifetime: it runs once
+    // when this [DeckPane] enters the tree and never again for as long as the same call site stays
+    // composed, which is what "once on first composition" means in practice - a value update that
+    // merely recomposes this same pane (a new [header], a changed row inside [content]) does not
+    // restart it. An alarming pane's [Animatable] starts already at full alpha, so a quarantine or
+    // safety row that turns a pane alarming never has to wait on a fade to become visible.
+    val motionEnabled = deckMotionEnabled()
+    val entranceEnabled = deckEntranceEnabled(alarm = alarm, motionEnabled = motionEnabled)
+    val entranceAlpha = remember { Animatable(if (entranceEnabled) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        if (entranceEnabled) {
+            entranceAlpha.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(LegionMotion.PANE_ENTRANCE_MS, easing = LegionMotion.STANDARD_EASING),
+            )
+        }
+    }
+    BoxWithConstraints(modifier.fillMaxWidth().graphicsLayer { alpha = entranceAlpha.value }) {
         Column(
             Modifier
                 .fillMaxWidth()
@@ -170,7 +195,12 @@ fun DeckPane(
                 .padding(top = 8.dp)
                 .background(paneFill)
                 .border(1.dp, paneBorder)
-                .padding(start = 9.dp, top = 13.dp, end = 9.dp, bottom = 9.dp),
+                .padding(start = 9.dp, top = 13.dp, end = 9.dp, bottom = 9.dp)
+                // Ticket 14 point 5, "state-change animation": a pane whose content grows or
+                // shrinks (an empty state collapsing, a row appearing) resizes smoothly instead of
+                // snapping - gated on the SAME [entranceEnabled] pure check as the fade above, so
+                // an alarm pane's size changes stay instant along with everything else about it.
+                .let { if (entranceEnabled) it.animateContentSize(tween(LegionMotion.CONTENT_CHANGE_MS, easing = LegionMotion.STANDARD_EASING)) else it },
         ) {
             content()
         }

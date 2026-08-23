@@ -3,6 +3,7 @@ package com.kevin.legion.advisor
 import android.content.Context
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ListItem
+import com.kevin.legion.meals.dayEndEpoch
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.workouts.WorkoutController
@@ -153,6 +154,20 @@ object GoalChecklistSync {
      * **Never touches `done`/`doneAt`** - only [ListItemDao.markLogged] runs, which the DAO's own
      * doc comment confirms writes `loggedAt` alone. The adherence record (the tick itself) survives
      * a sweep, exactly as ticket 08's own build item requires.
+     *
+     * **Ticket 09, "one act, one row".** Before writing, this checks
+     * [com.kevin.legion.data.local.WorkoutSetLogDao.existingForExerciseInWindow] for [match]'s
+     * exercise within the ticked item's OWN local calendar day
+     * ([com.kevin.legion.meals.dayStartEpoch]/[com.kevin.legion.meals.dayEndEpoch] of
+     * [ListItem.createdAt], not "today" - the item may be several days stale by the time a sweep
+     * finally reaches it, and the day that matters is the one the user actually trained). If a set
+     * for that exercise already exists anywhere in that window - hand-logged, voice-logged, or
+     * even a previous sweep's own row - the tick is adherence ONLY: [ListItemDao.markLogged] still
+     * runs (so this candidate is never retried), but [WorkoutController.logSet] is not called at
+     * all. A driver who logged three sets of squats by voice and ticked the same line that evening
+     * did one workout, not two. When a real write does happen, it carries the item's own id as
+     * [com.kevin.legion.data.local.WorkoutSetLog.sourceListItemId] - see that column's doc for what
+     * reads it back.
      */
     private suspend fun sweepPastDayAutoLog(context: Context, listId: Long, todayStart: Long, now: Long) {
         val candidates = NotesController.allItems(context).filter {
@@ -173,8 +188,21 @@ object GoalChecklistSync {
             val strippedText = item.text.removePrefix(ITEM_PREFIX)
             val match = lines.firstOrNull { it.text == strippedText } ?: continue
 
+            // Ticket 09: one act, one row. A set for this exercise already logged - by hand, by
+            // voice, or by an earlier sweep - anywhere in the ITEM's own local day means the user
+            // already reported doing it; this tick is adherence, not a second occurrence, so
+            // stamp loggedAt (never retry this candidate again) and write nothing.
+            val itemDayStart = dayStartEpoch(item.createdAt)
+            val itemDayEnd = dayEndEpoch(item.createdAt)
+            val alreadyLogged = db.workoutSetLogDao().existingForExerciseInWindow(match.exercise, itemDayStart, itemDayEnd)
+            if (alreadyLogged != null) {
+                db.listItemDao().markLogged(item.id, now)
+                continue
+            }
+
             // Timestamped to the ITEM's own day (ticket 08: "not now") - a set logged by tonight's
-            // app-open still reads as having happened the day it was ticked for.
+            // app-open still reads as having happened the day it was ticked for. sourceListItemId
+            // links this row back to the item so an untick can find and delete it (ticket 09).
             val outcome = WorkoutController.logSet(
                 context = context,
                 exercise = match.exercise,
@@ -183,6 +211,7 @@ object GoalChecklistSync {
                 weightValue = null,
                 weightUnit = null,
                 loggedAt = item.createdAt,
+                sourceListItemId = item.id,
             )
             // A failed write leaves loggedAt null, so a LATER sweep retries it - the same "no false
             // success" posture CLAUDE.md §7 asks of every write, applied to a write nobody asked

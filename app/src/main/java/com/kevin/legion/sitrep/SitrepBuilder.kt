@@ -41,8 +41,15 @@ import kotlinx.coroutines.withContext
  *
  * **Background Gmail fetch is permitted ONLY here** (ticket 08's narrow amendment to the
  * google-account map's "no background/proactive Gmail fetch" rule) - inside a sitrep the user
- * scheduled or explicitly asked for, over the sender list Kevin curated by hand
- * ([SitrepSettings.newsletterSenders]), nowhere else in the app.
+ * scheduled or explicitly asked for, nowhere else in the app.
+ *
+ * **No-config default (command-center ticket 12, Kevin 2026-08-22: "take from my gmail >
+ * summarize").** [SitrepSettings.newsletterSenders] used to be a hard requirement - an empty list
+ * meant the module simply refused to run. It is now an OVERRIDE: when Kevin has curated senders,
+ * [resolveNewsletterQuery] scopes the search to exactly them, unchanged from before; when he has
+ * not, it falls back to [NO_CONFIG_NEWSLETTER_QUERY], which finds newsletter-shaped mail directly
+ * off Gmail's own classification rather than refusing. Read-through and the message cap below are
+ * unaffected either way - the only thing the default changes is which `q` string gets built.
  */
 object SitrepBuilder {
 
@@ -180,14 +187,14 @@ object SitrepBuilder {
      * bare null or empty string meant.
      */
     internal sealed interface NewsOutcome {
-        /** [SitrepSettings.newsletterSenders] is empty - Kevin has never curated a sender list. */
-        data object NotConfigured : NewsOutcome
-        /** Senders ARE configured, but the mailbox could not be checked at all - no Gmail grant,
+        /** The mailbox could not be checked at all - no Gmail grant,
          * a lapsed one, or a network/API failure. [reason] is one of [GmailToolLogic]'s own four
          * worded failure messages, reused rather than re-derived. */
         data class CouldNotCheck(val reason: String) : NewsOutcome
-        /** The mailbox WAS checked and nothing matched the sender query in the lookback window -
-         * a real, computed zero, distinct from [NotConfigured] and [CouldNotCheck]. */
+        /** The mailbox WAS checked and nothing matched the query in the lookback window - a real,
+         * computed zero, distinct from [CouldNotCheck]. Same outcome whether the query came from a
+         * curated sender list or [NO_CONFIG_NEWSLETTER_QUERY]; the caller has no way to tell the two
+         * apart from a zero count, and does not need to. */
         data object Empty : NewsOutcome
         /** Messages came in but the summarization call itself failed (offline, bad key, rate
          * limit) - [count] is said in words rather than silently dropping the whole module. */
@@ -200,26 +207,49 @@ object SitrepBuilder {
      * `internal` for direct unit testing - this is the pure half of the NEWS module; [newsSectionLive]
      * below is the half that actually touches Gmail and the network. */
     internal fun newsSection(outcome: NewsOutcome): String = when (outcome) {
-        is NewsOutcome.NotConfigured -> DigestText.line("NEWS", "no newsletter senders configured")
         is NewsOutcome.CouldNotCheck -> DigestText.line("NEWS", "could not check - ${outcome.reason}")
-        is NewsOutcome.Empty -> DigestText.line("NEWS", "nothing from your newsletters in the last day")
+        is NewsOutcome.Empty -> DigestText.line("NEWS", "no newsletters in the last day")
         is NewsOutcome.SummaryFailed ->
             DigestText.line("NEWS", "${outcome.count} newsletter(s) came in but the summary failed - not logged")
         is NewsOutcome.Summarized -> DigestText.line("NEWS", outcome.text)
     }
 
     /**
-     * The Gmail query for the NEWS module: `from:(a OR b OR c) newer_than:1d`, ticket 08's own
-     * worked example ("`GmailToolLogic` already passes a `q` query through, so `from:(...)
-     * newer_than:1d` is nearly free"). Null when [senders] has nothing curated - the caller reads
-     * that as [NewsOutcome.NotConfigured], never as an unfiltered "every newsletter ever" query.
-     * `internal` for direct unit testing.
+     * The Gmail query for a CURATED sender list: `from:(a OR b OR c) newer_than:1d`, ticket 08's
+     * own worked example ("`GmailToolLogic` already passes a `q` query through, so `from:(...)
+     * newer_than:1d` is nearly free"). Null when [senders] has nothing curated - [resolveNewsletterQuery]
+     * is what turns that null into [NO_CONFIG_NEWSLETTER_QUERY] rather than an unfiltered "every
+     * newsletter ever" query. `internal` for direct unit testing.
      */
     internal fun buildNewsletterQuery(senders: List<String>): String? {
         val cleaned = senders.map { it.trim() }.filter { it.isNotBlank() }
         if (cleaned.isEmpty()) return null
         return "from:(${cleaned.joinToString(" OR ")}) newer_than:1d"
     }
+
+    /**
+     * The Gmail search run when [SitrepSettings.newsletterSenders] is empty (command-center ticket
+     * 12, Kevin 2026-08-22: "take from my gmail > summarize"). `category:updates` and
+     * `category:promotions` are Gmail's OWN classification - mail Gmail itself has already sorted
+     * out of `category:primary`, which is where personal correspondence lives - so this query can
+     * never widen into an actual conversation, only into mail Gmail already filed as bulk. The
+     * `unsubscribe` term narrows further to messages that assert they ARE a subscription, which is
+     * close to the one word a personal email never contains. Text pinned by
+     * `SitrepBuilderTest` - changing this string is a deliberate, tested decision, not a drive-by
+     * tweak.
+     */
+    internal const val NO_CONFIG_NEWSLETTER_QUERY =
+        "(category:updates OR category:promotions) unsubscribe newer_than:1d"
+
+    /**
+     * The query [newsSectionLive] actually runs. A curated [senders] list is an OVERRIDE, not a
+     * prerequisite - it wins whenever it is non-empty, unchanged from before this ticket. Only an
+     * empty list falls through to [NO_CONFIG_NEWSLETTER_QUERY]. `internal` for direct unit testing
+     * - this is the one new decision point command-center ticket 12 adds; everything downstream of
+     * it (fetch, fold, summarize, drop) is untouched.
+     */
+    internal fun resolveNewsletterQuery(senders: List<String>): String =
+        buildNewsletterQuery(senders) ?: NO_CONFIG_NEWSLETTER_QUERY
 
     /** What [SubAgent] is told to do with the folded newsletter bodies - plain instructions, no
      * persona, since this text is summarized and immediately handed back into the deterministic
@@ -238,7 +268,7 @@ object SitrepBuilder {
      */
     private suspend fun newsSectionLive(context: Context): String {
         val senders = SitrepSettings.newsletterSenders(context)
-        val query = buildNewsletterQuery(senders) ?: return newsSection(NewsOutcome.NotConfigured)
+        val query = resolveNewsletterQuery(senders)
 
         return when (val tokenResult = GmailAuth.tokenOrReason(context)) {
             is GmailAuth.TokenResult.Token -> withContext(Dispatchers.IO) {

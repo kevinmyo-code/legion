@@ -8,6 +8,7 @@ import com.kevin.legion.data.local.WorkoutPlanItem
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.testutil.RoomTestReset
+import com.kevin.legion.workouts.WorkoutController
 import com.kevin.legion.workouts.weekStartEpoch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -419,5 +420,132 @@ class GoalChecklistSyncTest {
             db.workoutSetLogDao().getRecent(10).isEmpty(),
         )
         assertNull("an unmatched item stays un-swept, available for a later materialize if the plan is restored", db.listItemDao().getById(itemId)!!.loggedAt)
+    }
+
+    // --- ticket 09: "a ticked workout is one act, not two rows" ---------------------------------
+
+    @Test
+    fun `untick after a sweep removes the log and clears the anchor`() = runBlocking {
+        val now = System.currentTimeMillis()
+        val yesterday = now - 24 * 60 * 60 * 1000
+        val yesterdayDow = java.time.Instant.ofEpochMilli(yesterday).atZone(java.time.ZoneId.systemDefault()).dayOfWeek
+        val weekStart = weekStartEpoch(yesterday)
+        givenAWorkoutPlan(weekStart, yesterday, sessionsPerWeek = 7)
+        val line = GoalChecklist.workoutLinesForDay(
+            listOf(WorkoutPlanItem(exercise = "Kettlebell swing", targetSetsPerWeek = 12, effectiveFromWeekEpoch = weekStart, updatedAt = yesterday)),
+            7,
+            yesterdayDow,
+        ).single()
+
+        val list = NotesController.theList(context)
+        val db = CarDatabase.getDatabase(context)
+        val itemId = db.listItemDao().insert(
+            ListItem(
+                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + line.text,
+                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
+            ),
+        )
+
+        GoalChecklistSync.materializeToday(context, now)
+        assertEquals("the sweep must have written a log to undo", 1, db.workoutSetLogDao().getRecent(10).size)
+        val sweptItem = db.listItemDao().getById(itemId)!!
+        assertNotNull("loggedAt must be stamped before the untick", sweptItem.loggedAt)
+
+        NotesController.untick(context, sweptItem)
+
+        assertTrue(
+            "the phantom set defect: unticking must delete the log the sweep wrote, not leave it behind forever",
+            db.workoutSetLogDao().getRecent(10).isEmpty(),
+        )
+        val untickedItem = db.listItemDao().getById(itemId)!!
+        assertFalse(untickedItem.done)
+        assertNull("loggedAt must clear too, so a re-tick is eligible for a fresh sweep", untickedItem.loggedAt)
+    }
+
+    @Test
+    fun `a manual log then a tick produces exactly ONE row`() = runBlocking {
+        val now = System.currentTimeMillis()
+        val yesterday = now - 24 * 60 * 60 * 1000
+        val yesterdayDow = java.time.Instant.ofEpochMilli(yesterday).atZone(java.time.ZoneId.systemDefault()).dayOfWeek
+        val weekStart = weekStartEpoch(yesterday)
+        givenAWorkoutPlan(weekStart, yesterday, sessionsPerWeek = 7)
+        val line = GoalChecklist.workoutLinesForDay(
+            listOf(WorkoutPlanItem(exercise = "Kettlebell swing", targetSetsPerWeek = 12, effectiveFromWeekEpoch = weekStart, updatedAt = yesterday)),
+            7,
+            yesterdayDow,
+        ).single()
+
+        // The hand/voice log lands FIRST, same day, same exercise, exactly as WorkoutController.logSet
+        // is called everywhere except the sweep - sourceListItemId stays null.
+        val outcome = WorkoutController.logSet(
+            context = context, exercise = "Kettlebell swing", sets = 3, reps = 10,
+            weightValue = null, weightUnit = null, loggedAt = yesterday,
+        )
+        assertTrue(outcome.success)
+
+        val list = NotesController.theList(context)
+        val db = CarDatabase.getDatabase(context)
+        val itemId = db.listItemDao().insert(
+            ListItem(
+                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + line.text,
+                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
+            ),
+        )
+
+        GoalChecklistSync.materializeToday(context, now)
+
+        val logs = db.workoutSetLogDao().getRecent(10)
+        assertEquals(
+            "a driver who logged it by hand AND ticked the line did one workout, not two",
+            1, logs.size,
+        )
+        assertNull("the surviving row is the manual one, not a swept duplicate", logs.single().sourceListItemId)
+        assertNotNull(
+            "the tick still counts as adherence even though nothing new was written",
+            db.listItemDao().getById(itemId)!!.loggedAt,
+        )
+    }
+
+    @Test
+    fun `a tick alone with no manual log still produces exactly one row`() = runBlocking {
+        val now = System.currentTimeMillis()
+        val yesterday = now - 24 * 60 * 60 * 1000
+        val yesterdayDow = java.time.Instant.ofEpochMilli(yesterday).atZone(java.time.ZoneId.systemDefault()).dayOfWeek
+        val weekStart = weekStartEpoch(yesterday)
+        givenAWorkoutPlan(weekStart, yesterday, sessionsPerWeek = 7)
+        val line = GoalChecklist.workoutLinesForDay(
+            listOf(WorkoutPlanItem(exercise = "Kettlebell swing", targetSetsPerWeek = 12, effectiveFromWeekEpoch = weekStart, updatedAt = yesterday)),
+            7,
+            yesterdayDow,
+        ).single()
+
+        val list = NotesController.theList(context)
+        val db = CarDatabase.getDatabase(context)
+        db.listItemDao().insert(
+            ListItem(
+                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + line.text,
+                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
+            ),
+        )
+
+        GoalChecklistSync.materializeToday(context, now)
+
+        assertEquals(1, db.workoutSetLogDao().getRecent(10).size)
+    }
+
+    @Test
+    fun `the linked column is null for hand and voice logs`() = runBlocking {
+        val outcome = WorkoutController.logSet(
+            context = context, exercise = "Bench press", sets = 4, reps = 8,
+            weightValue = 135.0, weightUnit = "lbs",
+        )
+        assertTrue(outcome.success)
+
+        val db = CarDatabase.getDatabase(context)
+        val log = db.workoutSetLogDao().getRecent(1).single()
+        assertNull(
+            "WorkoutController.logSet's default is null for every existing caller (voice, the dialog) - only the sweep passes a real id",
+            log.sourceListItemId,
+        )
     }
 }

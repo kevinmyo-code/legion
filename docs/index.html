@@ -85,16 +85,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>52 tickets open</h1>
+<h1>56 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 10 maps. <b>6 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 7 are waiting on another ticket first. <b>33 are already built</b> and owe nothing but a run on the phone. 3 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 10 maps. <b>6 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 8 are waiting on another ticket first. <b>38 are already built</b> and owe nothing but a run on the phone. 3 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">52</span><span class="stamp l">open</span></div>
-<div class="stat"><span class="n mint">9</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">33</span><span class="stamp l">built</span></div>
-<div class="stat"><span class="n amber">7</span><span class="stamp l">blocked</span></div>
+<div class="stat"><span class="n">56</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n mint">7</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n mint">38</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n amber">8</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">6</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">10</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">9</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">3</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -110,13 +110,11 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>command-center</h2>
-<span class="counts"><span class="k">13</span> open<span class="sep">&middot;</span><span class="k mint">3</span> ready<span class="sep">&middot;</span><span class="k mint">10</span> built<span class="sep">&middot;</span><span class="dim">of 14 tickets</span></span>
+<span class="counts"><span class="k">13</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="k mint">12</span> built<span class="sep">&middot;</span><span class="dim">of 14 tickets</span></span>
 <span class="bar"><i style="flex:13"></i><b style="flex:0"></b></span>
 </header>
 <ul class="tl">
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">12</span><span class="body"><span class="tt">Newsletters summarize themselves, no setup required</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
 <li class="t is-build" data-type="build" data-state="ready"><span class="num">13</span><span class="body"><span class="tt">The information leads, the plumbing sinks</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">14</span><span class="body"><span class="tt">The app learns to move</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">01</span><span class="body"><span class="tt">Home is a command center, not a calorie poster</span><span class="det">Built: hero is the day (next event, tickable checklist, alerts from the raise history), context strip with weather and AQI, tiles for mail/news/money/fleet/media, intake demoted. Owes the on-phone look at 384x832 and the airplane-mode honesty check.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">Settings stops being one long wall</span><span class="det">Built: five subscreens, 27 rows reconciled 27, write paths untouched. Finding: quiet hours and the daily cap have no setting anywhere - they are constants; a lever would be a new ticket. Owes the two-tap walk on the phone.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">03</span><span class="body"><span class="tt">The Body tab learns to write</span><span class="det">Built: six dialogs and per-row delete, all same-function-tested against voice dispatch. Owes the tap-through on the phone.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
@@ -127,6 +125,27 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-built" data-type="built" data-state="built"><span class="num">08</span><span class="body"><span class="tt">Packages, flights, and the area, on glass</span><span class="det">Built: package/flight/area cards through the same shared functions the voice tools call; drift debt from wave 1 paid - restatements deleted. AirNow wired, never renders missing as Good; the key still owes a real round trip.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">09</span><span class="body"><span class="tt">The app can say what it can do</span><span class="det">Built: in-app What Can I Do screen, generated from the same source as the web guide and README, drift fails the build. Every one of the 104 entries carries its hands path. Owes the 20-second find test on the phone.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num">11</span><span class="body"><span class="tt">Three small writes: memory, proposals, pendings</span><span class="det">Built: memory add, pending add (Long cents), and the CRED advisor-proposal panel over a real store that was voice-only app-wide. Other aspects&#x27; panels are follow-up. TTL constant now shared, not copied.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">12</span><span class="body"><span class="tt">Newsletters summarize themselves, no setup required</span><span class="det">Built: no-config Gmail query plus the DEFAULT_ON fix that would have defeated it. Owes a real tap on the phone. Flag: scheduled sitreps now fetch Gmail by default.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">14</span><span class="body"><span class="tt">The app learns to move</span><span class="det">Built: motion tokens, route fade, press response, pane entrance, animateContentSize. Alarm panes never animate. Owes the on-phone look including animator-scale-0.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
+<h2>hands-and-senses</h2>
+<span class="counts"><span class="k">9</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">7</span> built<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 31 tickets</span></span>
+<span class="bar"><i style="flex:7"></i><b style="flex:2"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-built" data-type="built" data-state="built"><span class="num">22</span><span class="body"><span class="tt">Build the sitrep</span><span class="det">2026-08-21 - built; owes a run on the phone</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">23</span><span class="body"><span class="tt">An audit trail of every conversation and every tool call</span><span class="det">Table, redaction, tool rows and export all in; owes a read off the phone after a real drive.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">24</span><span class="body"><span class="tt">The socket restarts every 2.5 minutes, all day</span><span class="det">Measured, then fixed. Idle window is 10 minutes and GUESSED. Owes the on-phone check: leave it idle, confirm the storm stops, then tap and confirm it still answers.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">25</span><span class="body"><span class="tt">BUILD: where is my package, when is my flight</span><span class="det">Built. Owes the on-phone run: ask both questions, confirm the answer names the mail and says estimate, confirm nothing lands in memory.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">26</span><span class="body"><span class="tt">BUILD: place a call by name or by number</span><span class="det">Built. Owes the on-phone run: call a contact by name, call a number by voice, confirm the read-back precedes the dial.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">28</span><span class="body"><span class="tt">It has the oil change on file and still says it has no record</span><span class="det">Fixed: last-done derives from service records; the form no longer nulls a date a record established. Owes the on-phone ask.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">30</span><span class="body"><span class="tt">The balance formula is written out in three places again</span><span class="det">Fixed: both voice sites read availableCents; a pinning test proves it by failing when the formula is re-derived.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">29</span><span class="body"><span class="tt">Service history and the maintenance clock become one fact</span></span><span class="chip c-build">build</span><span class="state">waiting on #28</span></li>
+<li class="t is-kiv" data-type="kiv" data-state="kiv"><span class="num">03</span><span class="body"><span class="tt">Home control: what does LEGION actually get to touch?</span><span class="det">KIV 2026-08-21, Kevin - parked, not queued</span></span><span class="chip c-kiv">KIV</span><span class="state">parked</span></li>
 </ul>
 </section>
 <section class="map">
@@ -151,6 +170,24 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <section class="map">
 <header class="mh">
 <span class="kind">effort</span>
+<h2>goal-plans</h2>
+<span class="counts"><span class="k">8</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">8</span> built<span class="sep">&middot;</span><span class="dim">of 9 tickets</span></span>
+<span class="bar"><i style="flex:8"></i><b style="flex:0"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">The recommender, and its editable doctrine</span><span class="det">Recommender, PLAN playbook and the 800 kcal code floor all in, 1932 tests green. No surface yet (tickets 03/04), so nothing on the phone reaches it.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">03</span><span class="body"><span class="tt">Arguing with the plan</span><span class="det">Revision by regeneration, constraint memory and the two voice tools all in. Owes the on-phone run: state a constraint, regenerate, confirm it survived.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">04</span><span class="body"><span class="tt">The daily checklist, on Body and Home</span><span class="det">Both surfaces built. BLOCKED ON A DECISION: a recurring item cannot be ticked, so the checklist is followable and skippable, not tickable. Kevin asked for tickable.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">05</span><span class="body"><span class="tt">The Wellbeing switch finally gets content</span><span class="det">Built at Room v31, hasContent flipped. Owes the on-phone run: fires at the chosen time, silenced by the master switch.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">06</span><span class="body"><span class="tt">A day&#x27;s items you can actually tick</span><span class="det">One-off items, idempotent materializer, 14-day window, real completion record. Owes the on-phone run: tick by voice, tick by hand, survive a restart.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">07</span><span class="body"><span class="tt">A checklist you can actually tick, and one fewer workout section</span><span class="det">All four parts in, no migration needed - the day is derived, never stored. Owes the on-phone run: tick by hand, restart, tick by voice, generate a plan from the button.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">08</span><span class="body"><span class="tt">The checklist prescribes a day, and a ticked day logs itself</span><span class="det">Built at v32: per-day prescriptions summing exactly to weekly volume, reps on new plans, lazy end-of-day auto-log anchored on ListItem.loggedAt, TRAINING pane retired with its hands paths relocated. Owes the on-phone day cycle.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">09</span><span class="body"><span class="tt">A ticked workout is one act, not two rows</span><span class="det">Fixed at v33: swept logs carry their source item, untick deletes the log, the sweep skips a day already logged. Kevin&#x27;s data checked - no phantom rows existed.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
 <h2>location-intelligence</h2>
 <span class="counts"><span class="k">8</span> open<span class="sep">&middot;</span><span class="k mint">1</span> ready<span class="sep">&middot;</span><span class="k mint">3</span> built<span class="sep">&middot;</span><span class="k amber">3</span> blocked<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 10 tickets</span></span>
 <span class="bar"><i style="flex:4"></i><b style="flex:4"></b></span>
@@ -164,39 +201,6 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">6</span><span class="body"><span class="tt">The departure advisor</span></span><span class="chip c-build">build</span><span class="state">waiting on #02</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">8</span><span class="body"><span class="tt">Garage on approach, as an offer</span></span><span class="chip c-build">build</span><span class="state">waiting on #05</span></li>
 <li class="t is-kiv" data-type="kiv" data-state="kiv"><span class="num">09</span><span class="body"><span class="tt">The rest of the TomTom surface area</span><span class="det">Parked by Kevin 2026-08-21 - inventory now, decide later</span></span><span class="chip c-kiv">KIV</span><span class="state">parked</span></li>
-</ul>
-</section>
-<section class="map">
-<header class="mh">
-<span class="kind">effort</span>
-<h2>goal-plans</h2>
-<span class="counts"><span class="k">7</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">7</span> built<span class="sep">&middot;</span><span class="dim">of 8 tickets</span></span>
-<span class="bar"><i style="flex:7"></i><b style="flex:0"></b></span>
-</header>
-<ul class="tl">
-<li class="t is-built" data-type="built" data-state="built"><span class="num">02</span><span class="body"><span class="tt">The recommender, and its editable doctrine</span><span class="det">Recommender, PLAN playbook and the 800 kcal code floor all in, 1932 tests green. No surface yet (tickets 03/04), so nothing on the phone reaches it.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">03</span><span class="body"><span class="tt">Arguing with the plan</span><span class="det">Revision by regeneration, constraint memory and the two voice tools all in. Owes the on-phone run: state a constraint, regenerate, confirm it survived.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">04</span><span class="body"><span class="tt">The daily checklist, on Body and Home</span><span class="det">Both surfaces built. BLOCKED ON A DECISION: a recurring item cannot be ticked, so the checklist is followable and skippable, not tickable. Kevin asked for tickable.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">05</span><span class="body"><span class="tt">The Wellbeing switch finally gets content</span><span class="det">Built at Room v31, hasContent flipped. Owes the on-phone run: fires at the chosen time, silenced by the master switch.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">06</span><span class="body"><span class="tt">A day&#x27;s items you can actually tick</span><span class="det">One-off items, idempotent materializer, 14-day window, real completion record. Owes the on-phone run: tick by voice, tick by hand, survive a restart.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">07</span><span class="body"><span class="tt">A checklist you can actually tick, and one fewer workout section</span><span class="det">All four parts in, no migration needed - the day is derived, never stored. Owes the on-phone run: tick by hand, restart, tick by voice, generate a plan from the button.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">08</span><span class="body"><span class="tt">The checklist prescribes a day, and a ticked day logs itself</span><span class="det">Built at v32: per-day prescriptions summing exactly to weekly volume, reps on new plans, lazy end-of-day auto-log anchored on ListItem.loggedAt, TRAINING pane retired with its hands paths relocated. Owes the on-phone day cycle.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-</ul>
-</section>
-<section class="map">
-<header class="mh">
-<span class="kind">effort</span>
-<h2>hands-and-senses</h2>
-<span class="counts"><span class="k">6</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">5</span> built<span class="sep">&middot;</span><span class="k dim">1</span> KIV<span class="sep">&middot;</span><span class="dim">of 28 tickets</span></span>
-<span class="bar"><i style="flex:5"></i><b style="flex:1"></b></span>
-</header>
-<ul class="tl">
-<li class="t is-built" data-type="built" data-state="built"><span class="num">22</span><span class="body"><span class="tt">Build the sitrep</span><span class="det">2026-08-21 - built; owes a run on the phone</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">23</span><span class="body"><span class="tt">An audit trail of every conversation and every tool call</span><span class="det">Table, redaction, tool rows and export all in; owes a read off the phone after a real drive.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">24</span><span class="body"><span class="tt">The socket restarts every 2.5 minutes, all day</span><span class="det">Measured, then fixed. Idle window is 10 minutes and GUESSED. Owes the on-phone check: leave it idle, confirm the storm stops, then tap and confirm it still answers.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">25</span><span class="body"><span class="tt">BUILD: where is my package, when is my flight</span><span class="det">Built. Owes the on-phone run: ask both questions, confirm the answer names the mail and says estimate, confirm nothing lands in memory.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">26</span><span class="body"><span class="tt">BUILD: place a call by name or by number</span><span class="det">Built. Owes the on-phone run: call a contact by name, call a number by voice, confirm the read-back precedes the dial.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-kiv" data-type="kiv" data-state="kiv"><span class="num">03</span><span class="body"><span class="tt">Home control: what does LEGION actually get to touch?</span><span class="det">KIV 2026-08-21, Kevin - parked, not queued</span></span><span class="chip c-kiv">KIV</span><span class="state">parked</span></li>
 </ul>
 </section>
 <section class="map">

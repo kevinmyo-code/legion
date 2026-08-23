@@ -93,7 +93,20 @@ suspend fun writeSetAnchor(
         // Both anchors null is the legitimate "I don't know" state setAnchor's own doc names -
         // never a silent no-op read as "nothing changed".
         AnchorMode.DONT_KNOW -> dao.setAnchor(vehicleId, serviceName, null, null, now)
-        AnchorMode.DONE_AT -> dao.setAnchor(vehicleId, serviceName, mileage, date, now)
+        // The date is RESOLVED, never taken raw: mileage and date are independently optional
+        // fields on this form, and a mileage-only save used to write a null date straight over
+        // one a real logged service had established. That is how the Jeep ended up claiming
+        // 227,483 mi with no date while a 12 Aug record sat in service_records, and how the
+        // assistant came to deny an oil change it could show on screen (hands-and-senses 28).
+        // resolveDoneAtDate re-derives the date from the backing record when one exists and
+        // never overrides a date the user actually typed.
+        AnchorMode.DONE_AT -> dao.setAnchor(
+            vehicleId,
+            serviceName,
+            mileage,
+            VehicleController.resolveDoneAtDate(context, vehicleId, serviceName, mileage, date),
+            now,
+        )
     }
     if (written == 0) {
         return WriteOutcome(false, "I found $serviceName a moment ago but couldn't write to it just now - it may have just been removed.")

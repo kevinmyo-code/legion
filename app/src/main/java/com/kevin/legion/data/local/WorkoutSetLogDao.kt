@@ -51,4 +51,33 @@ interface WorkoutSetLogDao {
 
     @Query("DELETE FROM workout_set_logs WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    /**
+     * Ticket 09 defect 1 ("unticking leaves a phantom set behind, permanently"): every row a
+     * swept tick produced carries the [WorkoutSetLog.sourceListItemId] of the [ListItem] that
+     * produced it, so undoing that tick can find and delete it by id rather than never being able
+     * to reach it - `mostRecent()`-based `undo_last_log` cannot, once anything else has been
+     * logged since (see the ticket). Called from [com.kevin.legion.notes.NotesController.untick],
+     * the one shared write path every tick surface - voice, the checklist checkbox, and the
+     * generic inbox screen - already funnels through. A no-op (zero rows affected) for the
+     * overwhelmingly common case of unticking an item that was never swept.
+     */
+    @Query("DELETE FROM workout_set_logs WHERE sourceListItemId = :listItemId")
+    suspend fun deleteBySourceListItemId(listItemId: Long)
+
+    /**
+     * Ticket 09 defect 2 ("logging by hand AND ticking double-counts"): the sweep's "one act, one
+     * row" check, called BEFORE ever writing a swept log. [fromMs, toMs) is the ticked item's own
+     * local calendar day (`meals.dayStartEpoch`/`dayEndEpoch` of [ListItem.createdAt] - see
+     * [com.kevin.legion.advisor.GoalChecklistSync.sweepPastDayAutoLog]'s doc for why that day and
+     * not "today"), and [exercise] is matched by EXACT string equality against
+     * [com.kevin.legion.advisor.GoalChecklist.WorkoutLine.exercise] - the same structural-match,
+     * never-fuzzy discipline the sweep already uses to recover `(exercise, sets, reps)` from a
+     * ticked item's text in the first place. A hand- or voice-logged set for the SAME exercise
+     * anywhere in that window - [WorkoutSetLog.sourceListItemId] irrelevant, this deliberately
+     * matches a manual log too - means the user already reported doing it; the tick that evening
+     * is adherence, not a second occurrence.
+     */
+    @Query("SELECT * FROM workout_set_logs WHERE exercise = :exercise AND loggedAt >= :fromMs AND loggedAt < :toMs LIMIT 1")
+    suspend fun existingForExerciseInWindow(exercise: String, fromMs: Long, toMs: Long): WorkoutSetLog?
 }

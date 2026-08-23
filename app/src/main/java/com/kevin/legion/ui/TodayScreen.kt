@@ -599,6 +599,14 @@ private fun TodayListing(
  *
  * In-memory only (`remember`, no Room row, no cache file) - navigating away and back starts blank
  * again - refresh is a user act, never a background poll.
+ *
+ * **No setup required (command-center ticket 12, Kevin: "take from my gmail > summarize").** This
+ * card used to only ever say "not configured" for anyone who had never curated
+ * [com.kevin.legion.sitrep.SitrepSettings.newsletterSenders] by hand - which was everyone, since
+ * nothing in the app ever prompted for that list. [SitrepBuilder.build] now falls back to a
+ * no-config Gmail search when the list is empty (`SitrepBuilder.NO_CONFIG_NEWSLETTER_QUERY`), so
+ * this card needs no change of its own to benefit - it already only displays whatever sentence
+ * came back.
  */
 @Composable
 private fun NewsDigestCard(modifier: Modifier = Modifier) {
@@ -622,7 +630,7 @@ private fun NewsDigestCard(modifier: Modifier = Modifier) {
         when (val s = state) {
             is NewsDigestState.Idle -> {
                 Text(
-                    "Not checked this session - a check reads your newsletter senders' mail and summarizes it.",
+                    "Not checked this session - a check reads newsletter-shaped mail from your Gmail and summarizes it.",
                     style = LegionType.stamp,
                     color = sem.faint,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),

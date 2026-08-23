@@ -1708,6 +1708,43 @@ object VehicleController {
     }
 
     /**
+     * The date a "mark done" write should end up with when the driver supplied a mileage but no
+     * date - ticket 28 (`.scratch/hands-and-senses/issues/28-the-oil-change-it-forgot.md`).
+     *
+     * [mergeBackfillAnchors]'s anti-pairing rule (a mileage-only backfill nulls any existing date)
+     * is correct for the case it was built for: an ambiguous voice backfill like "I changed the
+     * oil about 3,000 miles ago", where a stale [MaintenanceItem.lastDoneDate] on the row might
+     * describe a completely different remembered event and pairing it with the fresh mileage would
+     * assert a fact nobody stated. **It is the wrong rule for a "mark done" action that already has
+     * a real, dated [ServiceRecord] behind it** - there the date is not a stray leftover, it is the
+     * actual event, and nulling it destroys a fact the driver already gave in order to protect
+     * against a fact they never gave. This function is that distinction, made explicit and reusable
+     * rather than re-derived per call site: [suppliedDate] wins outright when the driver gave one
+     * (nothing to resolve), and otherwise the most recent non-deleted record for [serviceName]
+     * supplies the date if one exists - "re-derive", not "preserve", since the anchor's OWN prior
+     * date is deliberately not consulted here (that is still [mergeBackfillAnchors]'s call to make
+     * for the ambiguous-backfill path this function does not touch).
+     *
+     * [logPastServiceDirect] (the voice backfill) does not call this - it already closes the same
+     * gap a different way, by refusing the whole write outright via `hasRecordAtOrAfter` when a
+     * record would conflict (see that function's own comment), which is the right posture for a
+     * free-text remembered approximation. This function exists for a write path that is not that
+     * one: an explicit UI "mark done" edit, where refusing the driver's own typed mileage is worse
+     * UX than simply not discarding the date a real record already establishes. **Not yet wired
+     * in anywhere** - `ui/fleet/MaintenanceWrites.kt`'s `writeSetAnchor` still calls
+     * `MaintenanceItemDao.setAnchor` directly with whatever date the form gave (including null),
+     * which is the traced site of the wrongful clear on Kevin's own device; that file is out of
+     * this ticket's territory (`ui/fleet` is another agent's), so the fix there is reported, not
+     * made here. Built so wiring it in is a one-line change: swap the form's raw `date` for
+     * `resolveDoneAtDate(context, vehicleId, serviceName, mileage, date)`.
+     */
+    suspend fun resolveDoneAtDate(context: Context, vehicleId: String, serviceName: String, mileage: Int?, suppliedDate: Long?): Long? {
+        if (suppliedDate != null) return suppliedDate
+        if (mileage == null) return null
+        return CarDatabase.getDatabase(context).serviceRecordDao().getMostRecentForVehicleAndService(vehicleId, serviceName)?.date
+    }
+
+    /**
      * Pure ranking logic behind [nextService]. `internal` for direct unit testing
      * (see [isDue]'s note).
      *

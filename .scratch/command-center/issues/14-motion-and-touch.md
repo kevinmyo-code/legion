@@ -3,12 +3,12 @@ map: command-center
 ticket: "14"
 title: "The app learns to move"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built: motion tokens, route fade, press response, pane entrance, animateContentSize. Alarm panes never animate. Owes the on-phone look including animator-scale-0."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The app learns to move
@@ -49,3 +49,19 @@ since it was granted.
 - Suite green both ways. docs_check no drift.
 - On the phone: tab switches transition, presses respond, nothing pulses except the one earned
   dot, and animator scale 0 (developer setting) still renders everything instantly and correctly.
+
+---
+
+## The driving-screen question, ruled 2026-08-22
+
+The NavHost fade applies to every destination including `DrivingModeScreen`, which carries a
+standing **zero-theatre** rule (mission-control ticket 08). The build flagged this rather than
+deciding it, and offered a one-line per-route exclusion.
+
+**Kevin: "nah leave it."** The fade stays uniform.
+
+Worth stating why this does not contradict ticket 08: zero-theatre governs what moves ON that
+screen while driving - gauges, values, ambient decoration - because a glance costs road attention.
+A 200ms fade as the screen ARRIVES is not something glanced at mid-drive; it is the transition
+into the mode, before any driving attention is being spent on it. The rule about the screen's
+contents is untouched, and nothing on that screen animates.

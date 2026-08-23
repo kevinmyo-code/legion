@@ -84,6 +84,11 @@ object WorkoutController {
      * log written by tonight's app-open still reads as having happened on the day it was ticked
      * for, same "REPORTED, not observed live" trust tier either way (D37) - the ticket ruled this
      * is the same trust tier a spoken log gets, "he reported it either way".
+     *
+     * [sourceListItemId] (v33, ticket 09): null for every voice/dialog caller, exactly as before
+     * this parameter existed - only [com.kevin.legion.advisor.GoalChecklistSync]'s sweep passes a
+     * real id, naming the [com.kevin.legion.data.local.ListItem] whose tick produced this row. See
+     * [com.kevin.legion.data.local.WorkoutSetLog.sourceListItemId]'s own doc for what reads it back.
      */
     suspend fun logSet(
         context: Context,
@@ -93,6 +98,7 @@ object WorkoutController {
         weightValue: Double?,
         weightUnit: String?,
         loggedAt: Long = System.currentTimeMillis(),
+        sourceListItemId: Long? = null,
     ): WriteOutcome {
         if (exercise.isBlank())
             return WriteOutcome(false, "I didn't catch which exercise - say the name and I'll log it.")
@@ -108,6 +114,7 @@ object WorkoutController {
                 weightUnit = weightUnit,
                 loggedAt = loggedAt,
                 trustTier = TrustTier.REPORTED,
+                sourceListItemId = sourceListItemId,
             )
         )
         // D34: the tool response states what was written, no separate confirm turn.

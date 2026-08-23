@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,6 +54,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.ui.theme.deckMotionEnabled
+import com.kevin.legion.ui.theme.legionPressScale
 import kotlin.math.roundToInt
 
 /**
@@ -312,10 +314,22 @@ fun DeckButton(
             content = MaterialTheme.colorScheme.primary
         }
     }
+    // Ticket 14's uniform press response ("scale 0.97 or a surface shift, one spec in the Deck
+    // components"): built here, once, so every DeckButton caller inherits it without an edit -
+    // the scale is applied to the whole Box (fill, border, padding, and text together) rather than
+    // just the text, so the pressed key visibly shrinks as one unit the way a real hard key would.
+    val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier
             .sizeIn(minHeight = 48.dp, minWidth = 88.dp)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .legionPressScale(interactionSource)
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
             .let { if (fill != null) it.background(fill) else it }
             .border(1.dp, outline)
             .padding(horizontal = 16.dp, vertical = 12.dp),

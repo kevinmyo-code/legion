@@ -6,6 +6,9 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -54,6 +57,7 @@ import com.kevin.legion.ui.companions.MemoryScreen
 import com.kevin.legion.ui.companions.PlaybookScreen
 import com.kevin.legion.ui.media.MediaScreen
 import com.kevin.legion.ui.sync.GoogleAccessScreen
+import com.kevin.legion.ui.theme.LegionMotion
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.clockTime
@@ -466,6 +470,18 @@ private fun LegionShell(
                     // doc comment for the full before/after route map.
                     startDestination = LegionRoute.TODAY,
                     modifier = Modifier.weight(1f),
+                    // Command-center ticket 14: one fade-through, defined once here, no per-route
+                    // override anywhere below. `LegionMotion.ROUTE_FADE_MS`/`STANDARD_EASING` are
+                    // the same tokens every other motion consumer in the app reads, so a route
+                    // switch and (say) a Deck pane's entrance share one timing feel rather than
+                    // drifting apart. All four slots (enter/exit for a forward navigation,
+                    // popEnter/popExit for the back button) get the identical fade - a
+                    // "fade-through", not a directional slide, since LEGION's routes are siblings
+                    // under one bottom nav, not a drilldown stack that wants a sense of depth.
+                    enterTransition = { fadeIn(tween(LegionMotion.ROUTE_FADE_MS, easing = LegionMotion.STANDARD_EASING)) },
+                    exitTransition = { fadeOut(tween(LegionMotion.ROUTE_FADE_MS, easing = LegionMotion.STANDARD_EASING)) },
+                    popEnterTransition = { fadeIn(tween(LegionMotion.ROUTE_FADE_MS, easing = LegionMotion.STANDARD_EASING)) },
+                    popExitTransition = { fadeOut(tween(LegionMotion.ROUTE_FADE_MS, easing = LegionMotion.STANDARD_EASING)) },
                 ) {
             composable(LegionRoute.TODAY) {
                 TodayScreen(

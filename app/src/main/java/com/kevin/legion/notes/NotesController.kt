@@ -130,6 +130,25 @@ object NotesController {
     suspend fun untick(context: Context, item: ListItem) {
         val now = System.currentTimeMillis()
         db(context).listItemDao().markUndone(item.id, now)
+        // Ticket 09 ("a ticked workout is one act, not two rows"): if this item's tick previously
+        // drove GoalChecklistSync's end-of-day auto-log, that log carries this item's own id as
+        // WorkoutSetLog.sourceListItemId and this deletes it - a correction propagates to the
+        // training history and every voice answer that reads it, not just to the checkbox. A
+        // no-op for the overwhelming majority of unticks, which never swept anything.
+        //
+        // Deliberately a DAO call, not a call into workouts/WorkoutController. notes/ is a
+        // foundation module every domain (advisor/, grocery/, location/, vehicle/, workouts/
+        // itself) already imports FROM, never the reverse - importing WorkoutController here
+        // would be the one dependency arrow this codebase does not have, and workouts/WorkoutGap.kt
+        // already references notes/ in its own doc comment, so the reverse import risks a genuine
+        // cycle, not just an awkward layer. This function is also the correct seam regardless of
+        // layering: it is the ONE write every tick surface already shares - voice
+        // (LiveToolbox's manage_item "untick"), the checklist checkbox (GoalChecklistSync.toggle),
+        // and the generic inbox screen (InboxScreen) all call this, and only one of the three goes
+        // through GoalChecklistSync at all, so putting the fix there would have missed the other
+        // two. The DAO call below stays inside data/local, the layer beneath every domain, so
+        // deleting a row by id borrows no business logic from workouts/.
+        db(context).workoutSetLogDao().deleteBySourceListItemId(item.id)
         db(context).itemListDao().touch(item.listId, now)
         // Unticking a past-due item does not resurrect its alarm - only rescheduleAll/setTime
         // arm one, and a once-fired one-off's startsAt is still in the past, so there is nothing

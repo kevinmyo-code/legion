@@ -3,12 +3,12 @@ map: command-center
 ticket: "12"
 title: "Newsletters summarize themselves, no setup required"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built: no-config Gmail query plus the DEFAULT_ON fix that would have defeated it. Owes a real tap on the phone. Flag: scheduled sitreps now fetch Gmail by default."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Newsletters summarize themselves, no setup required

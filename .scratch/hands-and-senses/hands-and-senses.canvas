@@ -191,6 +191,26 @@
       "color": "4"
     },
     {
+      "id": "c69e5c67483e3678",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/28-the-oil-change-it-forgot.md",
+      "x": 0,
+      "y": 2850,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d3c8d908a456aeec",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/30-balance-arithmetic-in-three-places.md",
+      "x": 0,
+      "y": 3000,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "5e3558b6fd0ef25d",
       "type": "file",
       "file": ".scratch/hands-and-senses/issues/03-home-control-scope.md",
@@ -279,6 +299,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "8d3bce12eeacbe24",
+      "type": "file",
+      "file": ".scratch/hands-and-senses/issues/29-one-source-for-service-history.md",
+      "x": 520,
+      "y": 1350,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -343,6 +373,13 @@
       "fromNode": "b8b0d2cb73459c9a",
       "fromSide": "right",
       "toNode": "ff864f43a16ea918",
+      "toSide": "left"
+    },
+    {
+      "id": "6da1af1c049a857e",
+      "fromNode": "c69e5c67483e3678",
+      "fromSide": "right",
+      "toNode": "8d3bce12eeacbe24",
       "toSide": "left"
     }
   ]

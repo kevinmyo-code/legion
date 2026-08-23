@@ -29,17 +29,23 @@ enum class SitrepModule(
     WEATHER("weather", "Weather", "Current conditions at your location."),
     FLEET("fleet", "Fleet", "Maintenance due, open trouble codes, and the odometer."),
     /** The only module an LLM ever touches - see this enum's own class doc and
-     * [SitrepBuilder]'s. Off by default until Kevin curates [com.kevin.legion.data.local
-     * .SitrepSchedule.senders] himself (ticket 08 §6: "curated by Kevin, by hand"). */
+     * [SitrepBuilder]'s. [com.kevin.legion.data.local.SitrepSchedule.senders] remains an OVERRIDE
+     * a driver can curate by hand (ticket 08 §6), but is no longer a PREREQUISITE - command-center
+     * ticket 12 (Kevin: "take from my gmail > summarize") gave [SitrepBuilder] a safe no-config
+     * default query, which is what makes NEWS default-on below correct now where it once was not. */
     NEWS("news", "Newsletters", "A short summary of your newsletters from the last day."),
     ;
 
     companion object {
         fun fromKey(key: String): SitrepModule? = entries.firstOrNull { it.key == key }
 
-        /** What a FRESH install seeds - CALENDAR/WEATHER/FLEET on (all three are read-only, local
-         * or keyless, and cost nothing to leave on), NEWS off because it has no sender list yet
-         * and would otherwise silently run a Gmail fetch nobody configured. */
-        val DEFAULT_ON = setOf(CALENDAR, WEATHER, FLEET)
+        /** What a FRESH install seeds - all four modules on. NEWS joined the other three
+         * (command-center ticket 12) once [SitrepBuilder]'s no-config default query existed: the
+         * old reasoning for leaving it off - "no sender list yet, would otherwise silently run a
+         * Gmail fetch nobody configured" - no longer applies, because NEWS only ever runs from an
+         * explicit ask (a tap on [com.kevin.legion.ui.TodayScreen]'s newsletters card, a spoken
+         * `get_sitrep`, or a schedule Kevin himself set), never a silent background poll, with or
+         * without a curated sender list. */
+        val DEFAULT_ON = setOf(CALENDAR, WEATHER, FLEET, NEWS)
     }
 }

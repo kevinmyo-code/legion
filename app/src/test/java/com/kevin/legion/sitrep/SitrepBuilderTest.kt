@@ -150,17 +150,38 @@ class SitrepBuilderTest {
         assertEquals("from:(a@x.com OR b@y.com) newer_than:1d", query)
     }
 
+    // command-center ticket 12: no-config default query, pinned exactly - a stranger's Gmail
+    // account with zero curated senders must still find newsletter-shaped mail, and this exact
+    // string is the deterministic, testable line between "newsletter" and "personal email".
+    @Test
+    fun `NO_CONFIG_NEWSLETTER_QUERY text is pinned exactly`() {
+        assertEquals(
+            "(category:updates OR category:promotions) unsubscribe newer_than:1d",
+            SitrepBuilder.NO_CONFIG_NEWSLETTER_QUERY,
+        )
+    }
+
+    @Test
+    fun `resolveNewsletterQuery falls back to the no-config default when nothing is curated`() {
+        assertEquals(SitrepBuilder.NO_CONFIG_NEWSLETTER_QUERY, SitrepBuilder.resolveNewsletterQuery(emptyList()))
+        assertEquals(SitrepBuilder.NO_CONFIG_NEWSLETTER_QUERY, SitrepBuilder.resolveNewsletterQuery(listOf("  ", "")))
+    }
+
+    @Test
+    fun `resolveNewsletterQuery prefers a curated sender list over the default - override, not a casualty`() {
+        val query = SitrepBuilder.resolveNewsletterQuery(listOf("a@x.com", "b@y.com"))
+        assertEquals("from:(a@x.com OR b@y.com) newer_than:1d", query)
+        assertTrue("a curated list must win outright, never merge with the default query", !query.contains("category:"))
+    }
+
     @Test
     fun `newsSection renders every outcome distinctly`() {
-        val notConfigured = SitrepBuilder.newsSection(SitrepBuilder.NewsOutcome.NotConfigured)
-        assertTrue(notConfigured.contains("no newsletter senders configured"))
-
         val couldNotCheck = SitrepBuilder.newsSection(SitrepBuilder.NewsOutcome.CouldNotCheck("no Gmail grant"))
         assertTrue(couldNotCheck.contains("could not check"))
         assertTrue(couldNotCheck.contains("no Gmail grant"))
 
         val empty = SitrepBuilder.newsSection(SitrepBuilder.NewsOutcome.Empty)
-        assertTrue(empty.contains("nothing from your newsletters"))
+        assertTrue(empty.contains("no newsletters in the last day"))
 
         val summaryFailed = SitrepBuilder.newsSection(SitrepBuilder.NewsOutcome.SummaryFailed(3))
         assertTrue(summaryFailed.contains("3 newsletter(s)"))
@@ -168,6 +189,25 @@ class SitrepBuilderTest {
 
         val summarized = SitrepBuilder.newsSection(SitrepBuilder.NewsOutcome.Summarized("Two stories on AI chips."))
         assertTrue(summarized.contains("Two stories on AI chips."))
+    }
+
+    // Ticket 12's "three distinct answers": empty, unreachable, and summary-failed must never
+    // collapse into the same wording, and none of them may borrow another's phrase.
+    @Test
+    fun `the three failure-shaped NEWS sentences are textually distinct from each other`() {
+        val empty = SitrepBuilder.newsSection(SitrepBuilder.NewsOutcome.Empty)
+        val couldNotCheck = SitrepBuilder.newsSection(SitrepBuilder.NewsOutcome.CouldNotCheck("no connection"))
+        val summaryFailed = SitrepBuilder.newsSection(SitrepBuilder.NewsOutcome.SummaryFailed(2))
+
+        assertTrue(empty.contains("no newsletters in the last day"))
+        assertTrue(couldNotCheck.contains("could not check"))
+        assertTrue(summaryFailed.contains("2 newsletter(s)") && summaryFailed.contains("summary failed"))
+
+        val sentences = setOf(empty, couldNotCheck, summaryFailed)
+        assertEquals("all three must be distinct strings, not just distinct types", 3, sentences.size)
+        assertTrue("empty must never claim a failure", !empty.contains("could not") && !empty.contains("failed"))
+        assertTrue("an unreachable mailbox must never claim a computed zero", !couldNotCheck.contains("no newsletters"))
+        assertTrue("a summary failure must never read as a clean empty result", !summaryFailed.contains("no newsletters in the last day"))
     }
 
     @Test

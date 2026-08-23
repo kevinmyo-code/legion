@@ -30,6 +30,24 @@ interface ServiceRecordDao {
     @Query("SELECT * FROM service_records WHERE vehicleId = :vehicleId AND deleted = 0 ORDER BY date DESC LIMIT 1")
     suspend fun getMostRecentForVehicle(vehicleId: String): ServiceRecord?
 
+    /**
+     * The most recent non-deleted record for ONE named service (ticket 28,
+     * `.scratch/hands-and-senses/issues/28-the-oil-change-it-forgot.md`) - feeds
+     * [com.kevin.legion.vehicle.MaintenanceAgent]'s "last done" composition, which
+     * must consult this table rather than trusting `maintenance_items`' anchor
+     * columns alone. [serviceName] must be the item's own stored name (the same
+     * string `logServiceDirect`/`logPastServiceDirect` file records under - see
+     * their own comments on `targetName`), never the driver's raw phrasing; an
+     * exact match is correct here because every write path already canonicalises
+     * to the schedule item's name before either table is touched. Plain `@Query`,
+     * no schema change - Room needs no migration for a new read.
+     */
+    @Query(
+        "SELECT * FROM service_records WHERE vehicleId = :vehicleId AND serviceName = :serviceName " +
+            "AND deleted = 0 ORDER BY date DESC LIMIT 1"
+    )
+    suspend fun getMostRecentForVehicleAndService(vehicleId: String, serviceName: String): ServiceRecord?
+
     /** One-shot recent history for the maintenance worker (no Flow to collect). */
     @Query("SELECT * FROM service_records WHERE vehicleId = :vehicleId AND deleted = 0 ORDER BY date DESC LIMIT :limit")
     suspend fun getRecentForVehicle(vehicleId: String, limit: Int): List<ServiceRecord>

@@ -1266,3 +1266,16 @@ val MIGRATION_31_32 = object : Migration(31, 32) {
         db.execSQL("ALTER TABLE `list_items` ADD COLUMN `loggedAt` INTEGER DEFAULT NULL")
     }
 }
+
+/**
+ * v32 -> v33: one additive nullable column (goal-plans ticket 09, "a ticked workout is one act,
+ * not two rows"). `workout_set_logs` gets `sourceListItemId` (see
+ * [WorkoutSetLog.sourceListItemId]) - the swept log's link back to the [ListItem] that produced
+ * it, so an untick can find and delete that log instead of leaving a phantom set behind forever.
+ * A bare `ALTER TABLE ... ADD COLUMN`, nothing existing touched, nothing removed.
+ */
+val MIGRATION_32_33 = object : Migration(32, 33) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `workout_set_logs` ADD COLUMN `sourceListItemId` INTEGER DEFAULT NULL")
+    }
+}

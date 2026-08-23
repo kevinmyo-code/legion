@@ -8,8 +8,10 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,7 +44,9 @@ import com.kevin.legion.service.AriaForegroundService
 import com.kevin.legion.service.AssistantIgnition
 import com.kevin.legion.service.CompanionPhase
 import com.kevin.legion.service.Phase
+import com.kevin.legion.ui.theme.LegionMotion
 import com.kevin.legion.ui.theme.LegionTheme
+import com.kevin.legion.ui.theme.legionPressScale
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import kotlinx.coroutines.delay
@@ -177,10 +181,16 @@ private fun AssistantStripContent(state: AssistantStripResolver.State, onTap: ()
     val labelColor =
         if (state.micBlocked || state.silenced) sem.estimated else MaterialTheme.colorScheme.onSurface
 
+    // Ticket 14 point 3: the strip is a tappable row like any Deck row, so it gets the same
+    // uniform press response - built here rather than skipped, since this strip lives above the
+    // NavHost (Scaffold's own bottomBar slot) and is the one tap target on screen for the whole
+    // time the assistant is switched on.
+    val interactionSource = remember { MutableInteractionSource() }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onTap),
+            .legionPressScale(interactionSource)
+            .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onTap),
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Row(
@@ -230,7 +240,10 @@ private fun PhaseDot(active: Boolean, blocked: Boolean) {
         val pulsingAlpha by transition.animateFloat(
             initialValue = 0.35f,
             targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+            // LegionMotion.PULSE_MS (ticket 14) - the SAME breathing tempo this file's own doc
+            // above calls "the one earned pulse" is now the single tempo any future ambient pulse
+            // in the app reads, rather than a value that happened to be typed here first.
+            animationSpec = infiniteRepeatable(tween(LegionMotion.PULSE_MS), RepeatMode.Reverse),
             label = "assistant-strip-pulse-alpha",
         )
         pulsingAlpha

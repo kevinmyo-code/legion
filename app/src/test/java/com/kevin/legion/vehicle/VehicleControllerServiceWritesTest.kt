@@ -338,4 +338,52 @@ class VehicleControllerServiceWritesTest {
         val after = db.maintenanceItemDao().get("V1", "Oil Change")!!
         assertFalse("neverDone must NOT have been set", after.neverDone)
     }
+
+    // --- resolveDoneAtDate (ticket 28, `.scratch/hands-and-senses/issues/28-the-oil-change-it-forgot.md`) --
+
+    @Test
+    fun `resolveDoneAtDate re-derives the date from a logged record when the driver gave a mileage but no date`() = runBlocking {
+        db.serviceRecordDao().insert(
+            com.kevin.legion.data.local.ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 227_374, date = 1_723_000_000_000L)
+        )
+
+        val resolved = VehicleController.resolveDoneAtDate(context, "V1", "Oil Change", mileage = 227_483, suppliedDate = null)
+
+        assertEquals(
+            "a mark-done that already has a dated record behind it must re-derive that date, not go dateless",
+            1_723_000_000_000L, resolved,
+        )
+    }
+
+    @Test
+    fun `resolveDoneAtDate leaves the date null when there is nothing to derive it from`() = runBlocking {
+        val resolved = VehicleController.resolveDoneAtDate(context, "V1", "Timing Belt", mileage = 50_000, suppliedDate = null)
+        assertNull("no record exists for this service - there is nothing honest to derive, so null stands", resolved)
+    }
+
+    @Test
+    fun `resolveDoneAtDate never overrides a date the driver actually supplied`() = runBlocking {
+        db.serviceRecordDao().insert(
+            com.kevin.legion.data.local.ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 227_374, date = 1_723_000_000_000L)
+        )
+
+        val resolved = VehicleController.resolveDoneAtDate(context, "V1", "Oil Change", mileage = 227_483, suppliedDate = 1_800_000_000_000L)
+
+        assertEquals("an explicit date always wins outright - nothing to resolve", 1_800_000_000_000L, resolved)
+    }
+
+    /**
+     * Pins [VehicleController.mergeBackfillAnchors]'s anti-pairing rule UNCHANGED for the case it
+     * was built for - an ambiguous voice backfill with no conflicting record still nulls a stale
+     * date rather than pairing it with a fresh mileage from a possibly different event. Ticket 28
+     * narrows the wrongful clear to the "mark done" UI path via [resolveDoneAtDate] above; it does
+     * not touch this rule, which stays correct for backfill.
+     */
+    @Test
+    fun `mergeBackfillAnchors still nulls a stale date on a mileage-only backfill with nothing to conflict with`() {
+        val base = MaintenanceItem(vehicleId = "V1", serviceName = "Tire Rotation", lastDoneMileage = 100_000, lastDoneDate = 1_000L)
+        val merged = VehicleController.mergeBackfillAnchors(base, mileage = 150_000, milesAgo = null, date = null, neverDone = false, currentMileage = 200_000)
+        assertEquals(150_000, merged.lastDoneMileage)
+        assertNull("mileage-only backfill must still clear a stale date - unchanged by ticket 28", merged.lastDoneDate)
+    }
 }

@@ -13,9 +13,7 @@ Open tickets whose blockers are all resolved.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
-| [[.scratch/command-center/map\|command-center]] | [[12-newsletter-summarizer\|12]] | build | Newsletters summarize themselves, no setup required |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
-| [[.scratch/command-center/map\|command-center]] | [[14-motion-and-touch\|14]] | build | The app learns to move |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
@@ -37,14 +35,19 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/command-center/map\|command-center]] | [[07-build-sheet-screen\|07]] | build | The build sheet exists on screen |
 | [[.scratch/command-center/map\|command-center]] | [[08-outside-world-cards\|08]] | build | Packages, flights, and the area, on glass |
 | [[.scratch/command-center/map\|command-center]] | [[11-small-writes\|11]] | build | Three small writes: memory, proposals, pendings |
+| [[.scratch/command-center/map\|command-center]] | [[12-newsletter-summarizer\|12]] | build | Newsletters summarize themselves, no setup required |
+| [[.scratch/command-center/map\|command-center]] | [[14-motion-and-touch\|14]] | build | The app learns to move |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[02-recommender-and-playbook\|02]] | build | The recommender, and its editable doctrine |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[07-a-checklist-you-can-tick\|07]] | build | A checklist you can actually tick, and one fewer workout section |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[08-daily-prescription-and-autolog\|08]] | build | The checklist prescribes a day, and a ticked day logs itself |
+| [[.scratch/goal-plans/map\|goal-plans]] | [[09-one-act-one-row\|09]] | bug | A ticked workout is one act, not two rows |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[22-build-the-sitrep\|22]] | build | Build the sitrep |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[23-conversation-audit-trail\|23]] | build | An audit trail of every conversation and every tool call |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[24-the-socket-that-never-rests\|24]] | build | The socket restarts every 2.5 minutes, all day |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[25-build-inbox-intelligence\|25]] | build | BUILD: where is my package, when is my flight |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[26-build-place-a-call\|26]] | build | BUILD: place a call by name or by number |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[28-the-oil-change-it-forgot\|28]] | bug | It has the oil change on file and still says it has no record |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[30-balance-arithmetic-in-three-places\|30]] | bug | The balance formula is written out in three places again |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[11-reframe-missed-the-toolbox\|11]] | bug | The concierge reframe missed the largest prompt surface |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |
@@ -66,6 +69,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/goal-plans/map\|goal-plans]] | [[04-checklist-and-surfaces\|04]] | build | The daily checklist, on Body and Home  waiting on [[02-recommender-and-playbook\|02]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[05-wellbeing-digest\|05]] | build | The Wellbeing switch finally gets content  waiting on [[04-checklist-and-surfaces\|04]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[06-daily-items-not-repeats\|06]] | build | A day's items you can actually tick  waiting on [[04-checklist-and-surfaces\|04]] |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[29-one-source-for-service-history\|29]] | build | Service history and the maintenance clock become one fact  waiting on [[28-the-oil-change-it-forgot\|28]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[02-area-info-tool\|02]] | build | The area_info tool, with attribution baked in  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[04-hazard-raises\|04]] | build | Hazard alerts that speak first  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
@@ -99,9 +103,9 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
 | fleet-wide-voice (no map) | 1 | 0 | [[.scratch/fleet-wide-voice/fleet-wide-voice.canvas\|open]] |
 | [[.scratch/goal-keeping/map\|goal-keeping]] | 8 | 0 | [[.scratch/goal-keeping/goal-keeping.canvas\|open]] |
-| [[.scratch/goal-plans/map\|goal-plans]] | 8 | 7 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
+| [[.scratch/goal-plans/map\|goal-plans]] | 9 | 8 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 28 | 6 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | 31 | 9 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |

@@ -3526,7 +3526,10 @@ object LiveToolbox {
         for (b in matched) {
             val entry = JSONObject()
             val postedBalanceCents = b.balanceCents
-            val availableCents = (postedBalanceCents ?: 0L) + b.provisionalDeltaCents + b.pendingDeltaCents
+            // Read from the shared property, never re-summed here - see
+            // AccountBalance.availableCents's doc comment for why (the
+            // 2026-08-07 incident this ticket 30 fix closes a second instance of).
+            val availableCents = b.availableCents
             val hasAnyFigure = postedBalanceCents != null || b.isProvisional || b.hasPendingRows
             val pendingCount = allPending.count { sameCard(it.accountId, b.accountId) && it.currency == b.currency }
             // JSONObject silently OMITS a key whose value is Kotlin null
@@ -3628,9 +3631,10 @@ object LiveToolbox {
         // Same "no anchor at all" case get_balance's own figure branches on:
         // a balance-less account (no printed running balance, e.g. Bank of
         // America's card layout) can still report a pending-only figure, just
-        // never as if it were a stated balance.
-        val newAvailable = (resolved.balanceCents ?: 0L) + resolved.provisionalDeltaCents +
-            resolved.pendingDeltaCents + amountCents
+        // never as if it were a stated balance. resolved.availableCents is the
+        // shared property read (ticket 30) - this adds only the just-logged
+        // amount on top, never re-summing the base terms itself.
+        val newAvailable = resolved.availableCents + amountCents
         val figure = " New available balance for ${resolved.accountId}: ${formatMoney(newAvailable, resolved.currency)}."
         return result(
             true,
@@ -5845,7 +5849,7 @@ object LiveToolbox {
         val mileageLabel = VehicleController.mileageLabel(vehicle)
 
         return agentResult("I couldn't reach the maintenance specialist just now - try again in a sec.") {
-            MaintenanceAgent.answer(context, label, mileageLabel, items, question)
+            MaintenanceAgent.answer(context, label, mileageLabel, items, question, vehicle.obdMac)
         }
     }
 
