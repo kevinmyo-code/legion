@@ -12,18 +12,19 @@ import androidx.compose.ui.Modifier
 import com.kevin.legion.ui.theme.LegionTheme
 
 /**
- * THROWAWAY debug-only entry point for aspect-engine ticket 09's staged dashboard-grid prototype.
- * Never registered outside `app/src/debug/AndroidManifest.xml` - it cannot ship in a release
- * build, and it is not `MainActivity` or any real screen (the ticket is explicit: do not touch a
- * shipped screen for this).
+ * THROWAWAY debug-only entry point for aspect-engine tickets 09/18's staged dashboard-grid
+ * prototype. Never registered outside `app/src/debug/AndroidManifest.xml` - it cannot ship in a
+ * release build, and it is not `MainActivity` or any real screen (ticket 09 was explicit: do not
+ * touch a shipped screen for this).
  *
  * Launch from an adb shell once the debug build is installed:
  *   `adb shell am start -n com.kevin.legion/.prototype.PrototypeDashboardActivity`
  *
  * The whole `prototype/` package (this file, [PrototypeDashboardRoot], [PrototypeData],
- * [ReorderableWidgetColumn]) is meant to be deleted wholesale once Kevin has reacted to this on
- * the A25 and ticket 09 resolves - keeping it around past that point is dead weight, not a
- * feature.
+ * [PrototypeGridPage]) is meant to be deleted wholesale once ticket 18's real widget pager ships
+ * on a real screen - keeping it around past that point is dead weight, not a feature. The stage-1
+ * reorderable column that used to live here ([ReorderableWidgetColumn]) was already deleted
+ * 2026-08-23 once its side-by-side comparison purpose was served.
  */
 class PrototypeDashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

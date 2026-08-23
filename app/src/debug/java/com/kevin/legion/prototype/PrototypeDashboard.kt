@@ -35,12 +35,14 @@ import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 
 /**
- * Root of the stage-1 dashboard-grid prototype (aspect-engine ticket 09). A [HorizontalPager] of
- * fixed fake pages - HOME plus two fake aspect pages - each a [ReorderableWidgetColumn], a page
- * indicator, and a trailing `+` stub page. All state is in-memory ([mutableStateListOf]/
- * [mutableStateOf]) - there is no engine table behind this (ticket 08's real one is a later
- * ticket), so nothing here persists across a process death; that is deliberate, this composable
- * answers a FEEL question, not a persistence one.
+ * Root of the dashboard-grid prototype (aspect-engine tickets 09 and 18). A [HorizontalPager] of
+ * fixed fake pages - HOME plus two fake aspect pages - each a [PrototypeGridPage] (stage-2 true
+ * 2D grid, on every page since 2026-08-23's second feel-test pass - the stage-1 reorderable
+ * column served its side-by-side comparison purpose and was deleted), a page indicator, and a
+ * trailing `+` stub page. All state is in-memory ([mutableStateListOf]/[mutableStateOf]) - there
+ * is no engine table behind this (ticket 08's real one is a later ticket), so nothing here
+ * persists across a process death; that is deliberate, this composable answers a FEEL question,
+ * not a persistence one.
  */
 @Composable
 fun PrototypeDashboardRoot() {
@@ -89,50 +91,14 @@ fun PrototypeDashboardRoot() {
                         .padding(12.dp),
                 ) {
                     DeckSectionRule(label = page.name)
-                    // Stage-2 lands ONLY on HOME (page index 0) - FLEET and LEDGER stay on the
-                    // stage-1 reorderable column deliberately, so Kevin can feel both mechanics
-                    // side by side on the same device rather than converting every page at once.
-                    // See PrototypeGrid.kt's own file doc for the full rationale.
-                    if (pageIndex == 0) {
-                        PrototypeGridPage(
-                            widgets = page.widgets,
-                            editMode = editMode,
-                            onEnterEditMode = { editMode = true },
-                        )
-                    } else {
-                        ReorderableWidgetColumn(
-                            widgets = page.widgets,
-                            editMode = editMode,
-                            onEnterEditMode = { editMode = true },
-                            onReorder = { fromId, toId ->
-                                val fromIdx = page.widgets.indexOfFirst { it.id == fromId }
-                                val toIdx = page.widgets.indexOfFirst { it.id == toId }
-                                if (fromIdx != -1 && toIdx != -1 && fromIdx != toIdx) {
-                                    val item = page.widgets.removeAt(fromIdx)
-                                    page.widgets.add(toIdx, item)
-                                }
-                            },
-                            onRemove = { id ->
-                                page.widgets.removeAll { it.id == id }
-                            },
-                            onToggleSize = { id ->
-                                val idx = page.widgets.indexOfFirst { it.id == id }
-                                if (idx != -1) {
-                                    val w = page.widgets[idx]
-                                    w.size = if (w.size == PrototypeWidgetSize.HALF) {
-                                        PrototypeWidgetSize.FULL
-                                    } else {
-                                        PrototypeWidgetSize.HALF
-                                    }
-                                    // Force recomposition of the packed-rows derivation - `size` is a
-                                    // plain `var` on a data class, not a Compose State, because the
-                                    // widget list itself (a SnapshotStateList) is the observed unit;
-                                    // touching the list is what invalidates `remember(widgets)` above.
-                                    page.widgets[idx] = w
-                                }
-                            },
-                        )
-                    }
+                    // Every page is stage 2 (2026-08-23, second feel-test pass) - the deleted
+                    // stage-1 reorderable column served its side-by-side comparison purpose once
+                    // Kevin confirmed HOME's grid mechanics on the A25.
+                    PrototypeGridPage(
+                        widgets = page.widgets,
+                        editMode = editMode,
+                        onEnterEditMode = { editMode = true },
+                    )
                 }
             } else {
                 AddPageStub()
