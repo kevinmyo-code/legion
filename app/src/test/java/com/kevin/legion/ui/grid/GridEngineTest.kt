@@ -9,6 +9,18 @@ import org.junit.Test
  * Plain-JVM coverage of [GridEngine] - the whole point of keeping the model free of Compose/Room
  * is that this file needs no Robolectric, no emulator, nothing but the JVM. Aspect-engine ticket
  * 18 (stage-2 grid mechanics): "this logic must not live only under fingers."
+ *
+ * **Two feel-test passes on the A25 (2026-08-23) retired the push-and-compact reflow from the
+ * INTERACTIVE drag/resize path** (`DeckGrid.kt` no longer calls [GridEngine.moveTo]/
+ * [GridEngine.resize]). Their tests below, in the section marked "auto-arrange primitives (kept,
+ * unused by the interactive path)", stay as direct coverage of those two functions - they are
+ * real, present code (kept on purpose per that day's rework, in case a future explicit
+ * "auto-arrange" action wants them), not dead code, so testing them directly remains honest
+ * coverage. [GridEngine.compact]/[GridEngine.resolveCollisions] are exercised both directly AND
+ * through [GridEngine.normalize] (their only remaining LIVE caller in the interactive path's own
+ * call graph). The launcher-semantics replacement - clamp, check, accept-or-reject-outright, never
+ * push - has its own section below: [GridEngine.clampMoveTarget] / [GridEngine.clampResizeTarget] /
+ * [GridEngine.overlapsAny] / [GridEngine.commitIfValid].
  */
 class GridEngineTest {
 
@@ -204,7 +216,10 @@ class GridEngineTest {
         assertEquals(0, result.single().row)
     }
 
-    // -------------------------------------------------------------------- moveTo
+    // ------------------------- auto-arrange primitives (kept, unused by the interactive path) ---
+    // moveTo / resize: react-grid-layout-style push-and-compact. NOT called by DeckGrid.kt's
+    // drag/resize gestures as of 2026-08-23's second rework - kept as a candidate future
+    // "auto-arrange" action. See this file's own doc and GridModel.kt's KDoc on both functions.
 
     @Test
     fun `moveTo places the item at the requested cell when nothing is in the way`() {
@@ -315,6 +330,123 @@ class GridEngineTest {
         val items = listOf(item("a", row = 3, col = 0, rowSpan = 3, colSpan = 4))
         val result = GridEngine.resize(items, "a", newRowSpan = 1, newColSpan = 4, columnCount = 4)
         assertEquals(3, result.single().row) // row is untouched by resize itself
+    }
+
+    // ------------------- interactive placement (no reflow) - the LIVE drag/resize path's own API --
+    // clampMoveTarget / clampResizeTarget / overlapsAny / commitIfValid: Android-launcher
+    // semantics. A candidate is either a legal, unoccupied spot (accepted exactly as proposed) or
+    // it collides with something (rejected outright, `commitIfValid` returns null). No card ever
+    // moves because another card was dragged or resized.
+
+    @Test
+    fun `clampMoveTarget pulls a target column left so it never runs off the right edge`() {
+        val a = item("a", row = 0, col = 0, colSpan = 2)
+        val clamped = GridEngine.clampMoveTarget(a, targetRow = 0, targetCol = 10, columnCount = 4)
+        assertEquals(2, clamped.col) // 4 - colSpan(2)
+    }
+
+    @Test
+    fun `clampMoveTarget floors a negative target row at 0`() {
+        val a = item("a", row = 3, col = 0, colSpan = 2)
+        val clamped = GridEngine.clampMoveTarget(a, targetRow = -9, targetCol = 0, columnCount = 4)
+        assertEquals(0, clamped.row)
+    }
+
+    @Test
+    fun `clampMoveTarget does not touch colSpan or id`() {
+        val a = item("a", row = 0, col = 0, rowSpan = 2, colSpan = 3)
+        val clamped = GridEngine.clampMoveTarget(a, targetRow = 5, targetCol = 1, columnCount = 4)
+        assertEquals("a", clamped.id)
+        assertEquals(3, clamped.colSpan)
+        assertEquals(2, clamped.rowSpan)
+    }
+
+    @Test
+    fun `clampResizeTarget clamps rowSpan and colSpan to the min-size 1x1 floor`() {
+        val a = item("a", row = 0, col = 0, rowSpan = 3, colSpan = 3)
+        val clamped = GridEngine.clampResizeTarget(a, newRowSpan = 0, newColSpan = -2, columnCount = 4)
+        assertEquals(1, clamped.rowSpan)
+        assertEquals(1, clamped.colSpan)
+    }
+
+    @Test
+    fun `clampResizeTarget caps colSpan so the item never grows past the right edge, anchor unmoved`() {
+        val a = item("a", row = 0, col = 2, rowSpan = 1, colSpan = 1)
+        val clamped = GridEngine.clampResizeTarget(a, newRowSpan = 1, newColSpan = 9, columnCount = 4)
+        assertEquals(2, clamped.col) // resize never relocates the anchor
+        assertEquals(2, clamped.colSpan) // 4 - col(2)
+    }
+
+    @Test
+    fun `overlapsAny is false when the candidate collides with nothing`() {
+        val candidate = item("a", row = 0, col = 0, colSpan = 2)
+        val others = listOf(item("b", row = 0, col = 2, colSpan = 2))
+        assertFalse(GridEngine.overlapsAny(candidate, others))
+    }
+
+    @Test
+    fun `overlapsAny is true when the candidate collides with an occupied cell`() {
+        val candidate = item("a", row = 0, col = 0, colSpan = 2)
+        val others = listOf(item("b", row = 0, col = 1, colSpan = 2))
+        assertTrue(GridEngine.overlapsAny(candidate, others))
+    }
+
+    @Test
+    fun `commitIfValid accepts a legal unoccupied placement exactly as proposed`() {
+        val items = listOf(
+            item("a", row = 0, col = 0, colSpan = 2),
+            item("b", row = 4, col = 0, colSpan = 2),
+        )
+        val candidate = item("a", row = 4, col = 2, colSpan = 2) // legal - beside b, not on it
+        val result = GridEngine.commitIfValid(items, candidate)
+        assertEquals(candidate, result!!.single { it.id == "a" })
+        assertEquals(4, result.single { it.id == "b" }.row) // b never moved - no reflow
+    }
+
+    @Test
+    fun `commitIfValid rejects an occupied target and returns null - no partial write`() {
+        val items = listOf(
+            item("a", row = 0, col = 0, colSpan = 2),
+            item("b", row = 4, col = 0, colSpan = 2),
+        )
+        val candidate = item("a", row = 4, col = 0, colSpan = 2) // directly on top of b
+        val result = GridEngine.commitIfValid(items, candidate)
+        assertEquals(null, result)
+    }
+
+    @Test
+    fun `commitIfValid never moves any OTHER item, valid or not`() {
+        val items = listOf(
+            item("a", row = 0, col = 0, colSpan = 1),
+            item("untouched", row = 0, col = 1, colSpan = 1),
+        )
+        val candidate = item("a", row = 3, col = 3, colSpan = 1)
+        val result = GridEngine.commitIfValid(items, candidate)!!
+        assertEquals(item("untouched", row = 0, col = 1, colSpan = 1), result.single { it.id == "untouched" })
+    }
+
+    @Test
+    fun `commitIfValid is a no-op wrapped in a non-null result for an unknown id`() {
+        val items = listOf(item("a", row = 0, col = 0))
+        val candidate = item("missing", row = 5, col = 1)
+        val result = GridEngine.commitIfValid(items, candidate)
+        assertEquals(items, result)
+    }
+
+    @Test
+    fun `a rejected resize leaves the original item exactly as it was`() {
+        val items = listOf(
+            item("grower", row = 0, col = 0, rowSpan = 1, colSpan = 1),
+            item("blocker", row = 0, col = 1, rowSpan = 1, colSpan = 1),
+        )
+        val current = items.first { it.id == "grower" }
+        val candidate = GridEngine.clampResizeTarget(current, newRowSpan = 1, newColSpan = 2, columnCount = 4)
+        val result = GridEngine.commitIfValid(items, candidate)
+        assertEquals(null, result) // grower would now overlap blocker - rejected
+        // Caller-side contract (exercised in DeckGrid.kt, not testable without Compose): on a
+        // null result the caller leaves `items` untouched entirely, so `current` is still exactly
+        // what a re-render would show - nothing here mutates `items` itself.
+        assertEquals(1, current.colSpan)
     }
 
     // -------------------------------------------------------------------- remove

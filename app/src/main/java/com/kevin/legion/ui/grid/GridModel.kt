@@ -7,13 +7,27 @@ package com.kevin.legion.ui.grid
  * (the prototype harness today, `widget_instances` later) hands in and gets back a plain
  * `List<GridItem>`; nothing here knows or cares where that list came from or where it is going.
  *
- * **Shape, deliberately react-grid-layout's**: every widget occupies a rectangle of cells on a
- * fixed column count, drag/resize propose a new rectangle for ONE item, [GridEngine] pushes
- * anything that rectangle now overlaps straight down (never sideways - vertical-only push, same
- * as react-grid-layout's default `verticalCompact` strategy), and a compaction pass pulls every
- * item as far up as it can go without re-colliding. Nothing here is animated or drawn - see
- * `DeckGrid.kt` for the Compose layer that renders a `List<GridItem>` as cell rects and drives
- * these functions from drag/resize gestures.
+ * **Two generations of interactive semantics live here, on purpose (2026-08-23).** The first
+ * build gave drag/resize react-grid-layout's own shape: propose a rectangle, [resolveCollisions]
+ * pushes whatever it now overlaps straight down, [compact] pulls the rest back up. Two feel-test
+ * passes on the A25 rejected that outright - Kevin: "drag and reflow on home page is not very
+ * intuitive" and then, after a rework that made the reflow live instead of drop-only, "still
+ * doesnt feel good. ditch reflow. just snap to grid." **The interactive path (drag-to-move,
+ * corner-resize, both driven from `DeckGrid.kt`) is now Android-launcher semantics instead of a
+ * spreadsheet's**: a candidate rectangle is either a legal, unoccupied spot - accepted exactly as
+ * proposed - or it collides with something and is REJECTED outright. No card ever moves because
+ * another card was dragged or resized. Gaps are allowed and are the user's own business, same as
+ * a home-screen launcher grid. That is [clampMoveTarget] / [clampResizeTarget] / [overlapsAny] /
+ * [commitIfValid] below.
+ *
+ * **[resolveCollisions] and [compact] are NOT deleted** - `ticket 18` may still want an explicit
+ * "auto-arrange" tidy-up action later (a user-invoked "pack my widgets" command is a different
+ * feature from an involuntary reflow mid-drag), and [normalize] still leans on both to make sense
+ * of untrusted input (a raw `widget_instances` read, or this harness's hand-typed fixtures) that
+ * might arrive already overlapping. But as of 2026-08-23, **nothing in the interactive drag/resize
+ * path calls either of them** - [moveTo] and [resize] (the push-and-compact versions) are kept as
+ * that future auto-arrange primitive, explicitly unused by `DeckGrid.kt`'s gestures; see each
+ * function's own KDoc.
  */
 
 /**
@@ -167,12 +181,16 @@ object GridEngine {
     }
 
     /**
-     * The drag-to-move mechanic: move item [id] so its top-left lands at ([targetRow], [targetCol]),
-     * clamped to the grid's own bounds (never off the left/right edge, never above row 0 - there is
-     * no bottom bound, the grid simply grows), push whatever it now overlaps straight down
-     * ([resolveCollisions]), then [compact] the result so the move never leaves a gap behind it.
-     * Returns [items] unchanged if [id] is not present - a caller racing a remove against an
-     * in-flight drag gets a no-op, not a crash.
+     * The OLD (2026-08-23, first build) drag-to-move mechanic: move item [id] so its top-left lands
+     * at ([targetRow], [targetCol]), clamped to the grid's own bounds, push whatever it now overlaps
+     * straight down ([resolveCollisions]), then [compact] the result so the move never leaves a gap
+     * behind it. Returns [items] unchanged if [id] is not present.
+     *
+     * **NOT called by `DeckGrid.kt`'s interactive drag gesture as of the SAME day's rework** - two
+     * feel-test passes rejected the reflow this produces (see the file doc). Kept as a candidate
+     * "auto-arrange" primitive for a future EXPLICIT tidy-up action, which is a different feature
+     * from an involuntary push mid-drag. The interactive path uses [clampMoveTarget] +
+     * [commitIfValid], which never pushes another item and rejects outright instead.
      */
     fun moveTo(items: List<GridItem>, id: String, targetRow: Int, targetCol: Int, columnCount: Int): List<GridItem> {
         val current = items.firstOrNull { it.id == id } ?: return items
@@ -186,11 +204,14 @@ object GridEngine {
     }
 
     /**
-     * The corner-resize mechanic: set item [id]'s span to ([newRowSpan], [newColSpan]), clamped to
-     * the ticket's own "min-size 1x1" floor and to the grid's own bounds (a `colSpan` that would
-     * push `col + colSpan` past [columnCount] is clamped down to whatever still fits at the item's
-     * CURRENT `col`, since a resize never relocates the item's anchor corner), push whatever the new
-     * footprint now overlaps down, then compact. Returns [items] unchanged if [id] is not present.
+     * The OLD (2026-08-23, first build) corner-resize mechanic: set item [id]'s span to
+     * ([newRowSpan], [newColSpan]), clamped to the ticket's own "min-size 1x1" floor and to the
+     * grid's own bounds, push whatever the new footprint now overlaps down, then compact. Returns
+     * [items] unchanged if [id] is not present.
+     *
+     * **NOT called by `DeckGrid.kt`'s interactive resize gesture** - same reasoning and same day's
+     * rework as [moveTo]'s doc. Kept as a candidate auto-arrange primitive. The interactive path
+     * uses [clampResizeTarget] + [commitIfValid].
      */
     fun resize(items: List<GridItem>, id: String, newRowSpan: Int, newColSpan: Int, columnCount: Int): List<GridItem> {
         val current = items.firstOrNull { it.id == id } ?: return items
@@ -201,6 +222,59 @@ object GridEngine {
         val others = items.filter { it.id != id }
         val pushed = resolveCollisions(resized, others)
         return compact(pushed + resized, pinnedId = id)
+    }
+
+    // -------------------------------------------------------- interactive (no-reflow) placement
+
+    /**
+     * Clamp a MOVE target into legal bounds - the bounds half of the old [moveTo]'s clamping,
+     * kept because "bounds-clamping stays" (2026-08-23 rework): `col` pulled left so `col + colSpan`
+     * never exceeds [columnCount], `row` floored at 0. Deliberately does NOT check for a collision
+     * with another item - that is [overlapsAny]'s job, kept separate so a caller (`DeckGrid.kt`) can
+     * render the clamped candidate rect as a snap-preview outline BEFORE deciding whether it is
+     * valid, which is exactly what an Android launcher's own drag preview does.
+     */
+    fun clampMoveTarget(item: GridItem, targetRow: Int, targetCol: Int, columnCount: Int): GridItem {
+        val colSpan = item.colSpan.coerceIn(1, columnCount.coerceAtLeast(1))
+        val col = targetCol.coerceIn(0, (columnCount - colSpan).coerceAtLeast(0))
+        val row = targetRow.coerceAtLeast(0)
+        return item.copy(row = row, col = col, colSpan = colSpan)
+    }
+
+    /**
+     * Clamp a RESIZE target into legal bounds - the min-size-1x1-and-never-exceed-the-grid half of
+     * the old [resize]'s clamping, same "bounds-clamping stays" posture as [clampMoveTarget]. A
+     * resize never relocates the item's anchor corner, so `colSpan` is capped at whatever still
+     * fits starting from the item's CURRENT `col`, not re-anchored. No collision check here either -
+     * see [clampMoveTarget]'s doc for why that stays a separate step.
+     */
+    fun clampResizeTarget(item: GridItem, newRowSpan: Int, newColSpan: Int, columnCount: Int): GridItem {
+        val rowSpan = newRowSpan.coerceAtLeast(1)
+        val maxColSpanHere = (columnCount - item.col).coerceAtLeast(1)
+        val colSpan = newColSpan.coerceIn(1, maxColSpanHere)
+        return item.copy(rowSpan = rowSpan, colSpan = colSpan)
+    }
+
+    /** True when [candidate] collides with anything in [others] - the validity half of the
+     *  Android-launcher "legal, unoccupied spot or reject" rule. [others] is expected to already
+     *  exclude [candidate]'s own id (both [clampMoveTarget]/[clampResizeTarget] preserve the
+     *  original `id`), but [collides] is itself id-safe regardless. */
+    fun overlapsAny(candidate: GridItem, others: List<GridItem>): Boolean = others.any { collides(it, candidate) }
+
+    /**
+     * Commit [candidate] into [items] - replacing whichever existing entry shares its `id` - IF AND
+     * ONLY IF it does not overlap anything else in [items]. Returns `null` (never a mutated or
+     * partial list) when it does, which is the whole "occupied target = invalid" rule: the caller
+     * is expected to treat a `null` result as a rejected drop and leave the item exactly where it
+     * was, never to fall back to some other placement. Returns [items] unchanged, wrapped in a
+     * non-null result, if [candidate]'s id is not present at all (a caller racing a remove against
+     * an in-flight drag/resize) - `commitIfValid` cannot silently invent a row that was never there.
+     */
+    fun commitIfValid(items: List<GridItem>, candidate: GridItem): List<GridItem>? {
+        if (items.none { it.id == candidate.id }) return items
+        val others = items.filter { it.id != candidate.id }
+        if (overlapsAny(candidate, others)) return null
+        return items.map { if (it.id == candidate.id) candidate else it }
     }
 
     /** Drop item [id] entirely and pull everything else up to close the gap it leaves. A no-op
