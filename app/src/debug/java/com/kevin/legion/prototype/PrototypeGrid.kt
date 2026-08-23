@@ -39,12 +39,27 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
  *  a real screen would size this from the device's own width class, which is out of scope here. */
 private const val PROTOTYPE_GRID_COLUMNS = 4
 
+/** How many grid rows a widget KIND needs to show its own mock content without clipping - the
+ *  fifth feel-test pass's defect 3 fix ("card content must clip cleanly... fit rows to the card
+ *  height"). [PrototypeWidgetKind.AGENDA] and [PrototypeWidgetKind.RECORD_LIST] both render THREE
+ *  [DeckRow]s (48dp each = 144dp) plus the pane's own header/padding chrome (~35dp), which does not
+ *  fit inside one row's worth of the grid's default 132dp [com.kevin.legion.ui.grid.DeckGrid.rowHeight] -
+ *  two rows (132*2 + the 10dp gap = 274dp) comfortably clears it. Every other kind's mock content
+ *  fits one row. `DeckGrid` itself ALSO gained a defensive hard clip at the card boundary in the
+ *  same rework (see its own file doc) so a future widget that still overflows its assigned rowSpan
+ *  cuts cleanly rather than slicing a glyph in half - this table is the "fit rows to the card
+ *  height" half of that fix, not the only line of defense. */
+private fun rowSpanFor(kind: PrototypeWidgetKind): Int = when (kind) {
+    PrototypeWidgetKind.AGENDA, PrototypeWidgetKind.RECORD_LIST -> 2
+    else -> 1
+}
+
 /**
  * Hand-assigns an initial [GridItem] layout for [widgets], packing HALF widgets two-to-a-row and
- * FULL widgets to their own row - the same greedy adjacency the deleted stage-1 column used, so
+ * FULL widgets to their own row(s) - the same greedy adjacency the deleted stage-1 column used, so
  * every page starts from a familiar arrangement even though the mechanics underneath are now
- * entirely stage 2. `colSpan` 2 for HALF, 4 (the whole grid) for FULL; every widget starts 1 row
- * tall - exercised for real once edit mode's resize handle is used.
+ * entirely stage 2. `colSpan` 2 for HALF, 4 (the whole grid) for FULL; `rowSpan` per [rowSpanFor] -
+ * exercised for real (both dimensions) once edit mode's resize handle is used.
  */
 private fun initialGridItems(widgets: List<PrototypeWidget>): List<GridItem> {
     val items = mutableListOf<GridItem>()
@@ -53,19 +68,24 @@ private fun initialGridItems(widgets: List<PrototypeWidget>): List<GridItem> {
     while (i < widgets.size) {
         val w = widgets[i]
         if (w.size == PrototypeWidgetSize.FULL) {
-            items.add(GridItem(id = w.id, row = row, col = 0, rowSpan = 1, colSpan = PROTOTYPE_GRID_COLUMNS))
-            row += 1
+            val span = rowSpanFor(w.kind)
+            items.add(GridItem(id = w.id, row = row, col = 0, rowSpan = span, colSpan = PROTOTYPE_GRID_COLUMNS))
+            row += span
             i += 1
         } else {
             val next = widgets.getOrNull(i + 1)
             if (next != null && next.size == PrototypeWidgetSize.HALF) {
-                items.add(GridItem(id = w.id, row = row, col = 0, rowSpan = 1, colSpan = 2))
-                items.add(GridItem(id = next.id, row = row, col = 2, rowSpan = 1, colSpan = 2))
-                row += 1
+                // Two HALF widgets sharing a row must share the SAME rowSpan (they occupy the
+                // same row range) - the taller of the two governs, per [rowSpanFor].
+                val span = maxOf(rowSpanFor(w.kind), rowSpanFor(next.kind))
+                items.add(GridItem(id = w.id, row = row, col = 0, rowSpan = span, colSpan = 2))
+                items.add(GridItem(id = next.id, row = row, col = 2, rowSpan = span, colSpan = 2))
+                row += span
                 i += 2
             } else {
-                items.add(GridItem(id = w.id, row = row, col = 0, rowSpan = 1, colSpan = 2))
-                row += 1
+                val span = rowSpanFor(w.kind)
+                items.add(GridItem(id = w.id, row = row, col = 0, rowSpan = span, colSpan = 2))
+                row += span
                 i += 1
             }
         }

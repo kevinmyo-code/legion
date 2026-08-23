@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -186,21 +188,38 @@ fun DeckGrid(
     val density = LocalDensity.current
     val sem = LocalLegionSemantics.current
     val scope = rememberCoroutineScope()
-    // THE BUG (fourth feel-test pass, 2026-08-23): `remember(items, columnCount) { ... }` used to
-    // key directly on `items`. The harness's `items` is a `SnapshotStateList` mutated IN PLACE
-    // (`clear()` + `addAll()`, never replaced with a new list instance), so on every recomposition
-    // after the very first commit, the key `remember` compares against is the exact SAME object it
-    // stored last time - `remember`'s change check degenerates to `sameObject.equals(sameObject)`,
-    // which is trivially true regardless of what the list's CONTENT now holds. `baseItems` froze at
-    // whatever `normalize` produced on this composable's very first composition and never
-    // recomputed again - every card rendered its pre-drag position forever, and every settle
-    // animation's TARGET was that same frozen position, which is exactly "drop card to new
-    // position, it snaps back to old position": the underlying `items` the caller held WAS
-    // correctly updated by `onLayoutChange`, but this composable's own `baseItems` never noticed.
-    // `items.toList()` is the fix - a genuinely NEW immutable `List<GridItem>` copy taken fresh on
-    // every recomposition, so `remember`'s `.equals()` check compares CONTENT (structural List
-    // equality) against a real frozen snapshot from last time, not an object against itself.
-    val baseItems = remember(items.toList(), columnCount) { GridEngine.normalize(items, columnCount) }
+    // THE FOURTH-PASS BUG (fixed, kept here for the record): `remember(items, columnCount) { ... }`
+    // used to key directly on `items`. The harness's `items` is a `SnapshotStateList` mutated IN
+    // PLACE (`clear()` + `addAll()`, never replaced), so `remember`'s change check degenerated to
+    // `sameObject.equals(sameObject)` - always true regardless of content - and `baseItems` froze
+    // at whatever it computed on this composable's very first composition. Fixing that (keying on
+    // `items.toList()`, a genuinely new copy every recomposition) uncovered the FIFTH-pass bug
+    // below, because it made `baseItems` recompute for real on every content change for the first
+    // time - which is exactly when `GridEngine.normalize`'s own unconditional compaction became
+    // visible: "drop into an empty space, it snaps to the top" (see [GridEngine.normalize]'s own
+    // KDoc - `compact` pulls a valid, deliberately-gapped layout upward on EVERY call, by design,
+    // for untrusted first input; it was never meant to run on an already-valid, already-committed
+    // layout). **The actual fix: stop calling `normalize` on every recomposition at all.**
+    // `normalize` now runs EXACTLY ONCE, on this `DeckGrid` instance's first-ever composition
+    // (`remember { }` with no keys, per its own contract, runs its block once and never again for
+    // the lifetime of this composable) - that is the "genuinely untrusted FIRST input" pass. Every
+    // recomposition after that trusts `items` verbatim: no compaction, no collision resolution,
+    // because a value that already round-tripped through this component's own commit path
+    // ([GridEngine.displaceForPlacement], [GridEngine.clampMoveTarget]/[GridEngine.clampResizeTarget])
+    // is ALREADY valid, and reprocessing it is exactly what silently relocated the user's own
+    // deliberate placement. Proven at the `GridEngine` layer by
+    // `GridEngineTest.normalize does NOT round-trip a valid gapped layout untouched`.
+    val firstPassSeed = remember { GridEngine.normalize(items, columnCount) }
+    var isFirstComposition by remember { mutableStateOf(true) }
+    // `firstPassSeed` (defensively normalized) on this composable's true first-ever pass; `items`
+    // verbatim - no processing at all - on every pass after that, whether triggered by our own
+    // commit or an external add/remove. `isFirstComposition = false` is a plain state write during
+    // composition, not inside a `remember` calculation block - the accepted "one-shot flag" idiom
+    // (see e.g. Compose's own side-effects guidance): it can only ever flip true-to-false once per
+    // composable instance, so it cannot loop, and the one extra recomposition it schedules right
+    // after mount is the standard, cheap cost of that pattern.
+    val baseItems = if (isFirstComposition) firstPassSeed else items
+    isFirstComposition = false
 
     var moveDrag by remember { mutableStateOf<MoveDrag?>(null) }
     var resizeDrag by remember { mutableStateOf<ResizeDrag?>(null) }
@@ -436,6 +455,17 @@ fun DeckGrid(
                             shadowElevation = if (isDragging) 16f else if (isResizing) 10f else 0f
                         }
                         .zIndex(if (isDragging || isResizing) 1f else 0f)
+                        // Content clipping (fifth feel-test pass, defect 3): a widget mock whose
+                        // own content is taller than its assigned rowSpan must never bleed a
+                        // half-visible glyph past the card's own bottom edge - a HARD clip at
+                        // exactly this box's own bounds turns any overflow into a clean edge
+                        // instead of a mid-glyph slice. This is the defensive, general guarantee;
+                        // the SPECIFIC agenda/record-list mocks that actually overflowed at the
+                        // default row height are also fixed at the source (see
+                        // `PrototypeGrid.kt`'s `initialGridItems` - those two widget kinds now
+                        // start at 2 rows tall, which is comfortably enough for 3 DeckRows plus
+                        // chrome) so nothing needs to rely on this clip alone in practice.
+                        .clipToBounds()
                         .gridJiggle(active = editMode && !isDragging && !isResizing && !isSettlingMove && !isSettlingResize && displacementAnim == null, seed = item.id.hashCode()),
                 ) {
                     GridCellChrome(
@@ -544,10 +574,34 @@ fun DeckGrid(
     }
 }
 
+/** How much of the card's own RIGHT edge the remove chip (top) and resize handle (bottom) each
+ *  need reserved so nothing the card's own content draws can be overlapped by either - the fifth
+ *  feel-test pass's "half-width card chrome is broken" defect. 28dp is the chip's own width; 8dp
+ *  is a small breathing gap so the reservation does not read as a hard clip line. Reserved on
+ *  BOTH corners at once by a single END padding on the whole content column (see [GridCellChrome]),
+ *  since chip and handle sit on the SAME right edge, top and bottom respectively. */
+private val CHIP_CLEARANCE = 36.dp
+
 /**
  * The per-cell edit-mode chrome: drag surface over the whole card (move), a small bottom-right
  * corner resize handle, and a remove chip - the three affordances the ticket names. Not exported;
  * [DeckGrid] is the only caller.
+ *
+ * **The half-width chrome-overlap fix (fifth feel-test pass, 2026-08-23).** The remove chip and
+ * resize handle are drawn by THIS file, layered on top of `content()` (the caller's own
+ * [com.kevin.legion.ui.common.DeckPane]) - `DeckPane` itself has no idea either exists, so its own
+ * label-pill ellipsis clamp (`paneWidth - 16dp`) was computed against the FULL card width, with no
+ * awareness that the outer 28dp chip could sit on top of the last ~30-40dp of that width. On a
+ * full-width card the pill's own text is short enough this never mattered; on a HALF-width card
+ * with a two-clause title ("LOG A DRIVE // QUICK ADD"), the pill legitimately rendered text (with
+ * its own ellipsis appended) reaching into the chip's zone, and the chip - an OPAQUE box drawn on
+ * top - visually swallowed the ellipsis dots along with the last few characters, reading as a raw
+ * truncation rather than the intended `…`. **Fix: `content()` itself is measured against a
+ * narrower width** ([CHIP_CLEARANCE] reserved off the trailing edge, edit mode only) so
+ * `DeckPane`'s OWN ellipsis point - and any right-reaching content inside it, like
+ * [com.kevin.legion.ui.common.DeckButton]'s fill width - naturally stops clear of where the chip
+ * and handle actually sit, rather than teaching `DeckPane` (a widely-shared production component)
+ * about an overlay it does not otherwise need to know exists.
  */
 @Composable
 private fun GridCellChrome(
@@ -589,7 +643,9 @@ private fun GridCellChrome(
                 }
             },
     ) {
-        content()
+        Box(Modifier.fillMaxWidth().padding(end = if (editMode) CHIP_CLEARANCE else 0.dp)) {
+            content()
+        }
         if (editMode) {
             Box(
                 Modifier

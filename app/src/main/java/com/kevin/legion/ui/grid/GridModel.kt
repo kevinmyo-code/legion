@@ -164,6 +164,18 @@ object GridEngine {
      * contain by pushing later-sorted items down out of earlier ones' way, then compacts. Idempotent:
      * normalizing an already-normalized list returns it unchanged (proven in
      * `GridEngineTest.normalize is idempotent`).
+     *
+     * **"Idempotent" is not "identity" - do not call this on every recomposition (fifth feel-test
+     * pass, 2026-08-23).** [compact]'s own unconditional pull-everything-up pass means a perfectly
+     * valid, collision-free, DELIBERATELY GAPPED layout does NOT round-trip through this function
+     * untouched - a card sitting alone at row 5 with nothing above it moves to row 0. That is
+     * correct and by design for genuinely untrusted FIRST input, and it is exactly what broke
+     * "drop into an empty space" on the A25: an earlier draft of `DeckGrid.kt` called this on EVERY
+     * recomposition (including the one right after each commit), which silently relocated the
+     * user's OWN just-placed card the instant it landed. **This function is now reserved for the
+     * ONE-TIME pass over whatever `items` looked like on a `DeckGrid` instance's FIRST-EVER
+     * composition** - see that file's own `baseItems` doc for the fix. Proven at this layer by
+     * `GridEngineTest.normalize does NOT round-trip a valid gapped layout untouched`.
      */
     fun normalize(items: List<GridItem>, columnCount: Int): List<GridItem> {
         val clamped = items.map { clampToBounds(it, columnCount) }

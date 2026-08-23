@@ -218,6 +218,31 @@ class GridEngineTest {
         assertEquals(0, result.single().row)
     }
 
+    // ---- fifth feel-test pass, 2026-08-23: "theres an empty space, i move something there, it --
+    // ---- just goes to the top and doesnt stick" ------------------------------------------------
+    // The coordinator's diagnosis to trace and prove FIRST: is `normalize` itself safe to call on
+    // every recomposition? This test proves it is NOT - a valid, collision-free, DELIBERATELY
+    // GAPPED layout does not round-trip untouched, because `compact` (called unconditionally,
+    // `pinnedId = null`) pulls the gapped item straight up regardless of whether the gap was
+    // intentional. This is the exact mechanism that silently relocated a freshly-dropped card:
+    // `DeckGrid.kt`'s `baseItems` used to call `GridEngine.normalize(items, columnCount)` on EVERY
+    // recomposition (including the one immediately following each commit), so a card placed into
+    // an empty mid-grid space got compacted away the instant it landed. The fix lives in
+    // `DeckGrid.kt` (normalize now runs exactly once, on this composable's first-ever composition,
+    // never again) - this test documents the underlying GridEngine behavior that fix depends on
+    // NOT being invoked repeatedly, not a bug in `normalize` itself (its compaction is correct and
+    // intentional for genuinely untrusted first input - see its own KDoc).
+    @Test
+    fun `normalize does NOT round-trip a valid gapped layout untouched`() {
+        val items = listOf(
+            item("a", row = 0, col = 0, colSpan = 4),
+            item("b", row = 5, col = 0, colSpan = 4), // a deliberate gap, rows 1-4 empty
+        )
+        val result = GridEngine.normalize(items, columnCount = 4)
+        assertFalse("normalize is not an identity function on valid gapped input - that is the point", items == result)
+        assertEquals(1, result.single { it.id == "b" }.row) // pulled straight up to close the gap
+    }
+
     // ------------------------- auto-arrange primitives (kept, unused by the interactive path) ---
     // moveTo / resize: react-grid-layout-style push-and-compact. NOT called by DeckGrid.kt's
     // drag/resize gestures as of 2026-08-23's second rework - kept as a candidate future
