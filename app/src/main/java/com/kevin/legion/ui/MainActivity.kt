@@ -492,6 +492,12 @@ private fun LegionShell(
                     onOpenKeySettings = {
                         navController.navigate(LegionRoute.SETTINGS_KEY) { launchSingleTop = true }
                     },
+                    // Command-center ticket 01: the media mini-bar's own tap-through - the media
+                    // control panel command-center ticket 04 built, nested under Spotify's own
+                    // settings route (see LegionRoute.SETTINGS_SPOTIFY_MEDIA's own doc comment).
+                    onOpenMedia = {
+                        navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) { launchSingleTop = true }
+                    },
                 )
             }
 

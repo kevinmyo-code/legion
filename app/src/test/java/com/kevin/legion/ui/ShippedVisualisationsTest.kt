@@ -66,7 +66,17 @@ class ShippedVisualisationsTest {
             knownMissing = true,
         ),
         // --- visualisations that ARE rendered, and must stay that way ---
-        Viz("ui/TodayScreen.kt", "DeckMeter", "goal and budget progress meters on Today"),
+        Viz(
+            "ui/TodayScreen.kt", "DeckMeter",
+            "the INTAKE hero's calorie-pace meter - deliberately dropped by command-center ticket " +
+                "01 (`.scratch/command-center/issues/01-home-command-center.md`), which demotes " +
+                "INTAKE from Today's hero pane to a plain hero/caption HALF tile (buildIntakeTile), " +
+                "the same shape BodyScreen's own demoted INTAKE/SLEEP tiles already use with no " +
+                "meter of their own. The meter itself is unharmed - BudgetSection.kt still renders " +
+                "one for the ledger pace tick, and DeckMeter's own composable is untouched - only " +
+                "Today stopped being one of its call sites.",
+            knownMissing = true,
+        ),
     )
 
     private fun sourceRoot(): File {

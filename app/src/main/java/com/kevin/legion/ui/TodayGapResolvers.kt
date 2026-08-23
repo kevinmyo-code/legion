@@ -6,6 +6,7 @@ import com.kevin.legion.data.local.DailyDriveLog
 import com.kevin.legion.data.local.Goal
 import com.kevin.legion.data.local.IngestedFile
 import com.kevin.legion.data.local.LedgerCurrency
+import com.kevin.legion.data.local.ProactiveRaiseRow
 import com.kevin.legion.ledger.AccountBalance
 import com.kevin.legion.ledger.BudgetLine
 import com.kevin.legion.ledger.BudgetVsActual
@@ -18,6 +19,7 @@ import com.kevin.legion.meals.dayEndEpoch
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.plan.PlanGap
 import com.kevin.legion.plan.TrustTier
+import com.kevin.legion.service.ProactiveCategory
 import com.kevin.legion.sleep.SleepGap
 import com.kevin.legion.sleep.formatMinutesAsHours
 import com.kevin.legion.ui.common.GapRowData
@@ -26,6 +28,7 @@ import com.kevin.legion.ui.fleet.DriveSummaryView
 import com.kevin.legion.ui.fleet.DueRowView
 import com.kevin.legion.util.compactDate
 import com.kevin.legion.util.documentDateCompact
+import com.kevin.legion.weather.WeatherController
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
@@ -194,6 +197,38 @@ data class AgendaEntry(val label: String, val timeMs: Long, val allDay: Boolean,
  * introduce red into a pane that has deliberately never carried it.
  */
 enum class AgendaSource { LOCAL, GOOGLE }
+
+/**
+ * Command-center ticket 01: the hero's own "next thing" line, replacing the old full-day AGENDA
+ * list `TodayScreen.kt` used to render on Home (the ticket's own hierarchy names "next calendar
+ * event", singular, not the whole day - the full list is still one tap away on Notes, which
+ * already renders it via its LISTS | CALENDAR toggle, so nothing that reads it is actually gone).
+ * Picks the first entry in [entries] (already ascending - see this file's own doc comment on
+ * `mergeAgenda`) that is either all-day or has not started yet: an all-day entry's own [AgendaEntry
+ * .timeMs] is local midnight, which would otherwise read as "already passed" for the rest of the
+ * day it is actually still true for. `null` means every entry today has already started/finished -
+ * the caller renders that as its OWN worded state ("nothing left today"), never folded into
+ * [DailyMealGap]-style "not logged" wording, because a day that had things on it and a day that had
+ * nothing on it are different facts (CLAUDE.md's empty-vs-unreadable discipline, extended here to a
+ * third real state rather than collapsed into one of the other two).
+ */
+fun nextAgendaEntry(entries: List<AgendaEntry>, nowMs: Long): AgendaEntry? =
+    entries.firstOrNull { it.allDay || it.timeMs >= nowMs }
+
+/**
+ * Command-center ticket 01's context-strip weather line - the same wording
+ * [com.kevin.legion.sitrep.SitrepBuilder.weatherSection] uses for the sitrep's own WEATHER module,
+ * minus that function's `DigestText.line("WEATHER", ...)` label prefix (the strip already sits
+ * under its own on-screen "Weather" context; a second label would only repeat it). `null` - no GPS
+ * fix yet, or Open-Meteo has never been reached since install - reads its own honest sentence,
+ * never a blank line and never a fabricated "clear" (the same "unreadable, not clean air" posture
+ * `ui/world/AreaCard.kt`'s `aqiLine` states for the AQI half of this same strip).
+ */
+fun weatherLine(info: WeatherController.WeatherInfo?): String {
+    if (info == null) return "Weather not available yet - no location fix"
+    val caution = if (info.caution) " - drive safe" else ""
+    return "${info.tempF}F, ${info.description}$caution"
+}
 
 /**
  * Fraction of the local day already elapsed at [nowMs] - the [com.kevin.legion.ui.common.DeckMeter]
@@ -598,8 +633,22 @@ data class AlertsSummary(val visible: List<AlertRowData>, val overflowCount: Int
  * vehicle fault (DTC) is ticket 04's other ALARM example and has the same gap: `vehicle/`'s DTC
  * reads are a LIVE OBD scan, not a cached/persisted state HOME can cheaply poll, so it is absent
  * here too, for the same reason.
+ *
+ * **[recentRaises] is command-center ticket 01's third source** - the proactive raise history
+ * ([ProactiveRaiseRow], already-fired lines [com.kevin.legion.service.ProactiveBus] wrote), passed
+ * in already filtered to "not declined" by [com.kevin.legion.data.local.ProactiveRaiseDao
+ * .recentUndeclined] so a brushed-off nudge never re-appears here - see [alertRowForRaise]. RENDERED
+ * only: reading this table has no side effect, marks nothing delivered, and triggers no speech -
+ * that already happened, at raise time. Appended AFTER the key/goal advisories rather than
+ * interleaved, so this function's existing ordering guarantee (ALARM always first, arrival order
+ * preserved within a tier) needed no change to accommodate a third source, only an append.
  */
-fun buildAlertRows(quarantined: List<IngestedFile>, hasGeminiKey: Boolean, overdueGoals: List<Goal>): List<AlertRowData> {
+fun buildAlertRows(
+    quarantined: List<IngestedFile>,
+    hasGeminiKey: Boolean,
+    overdueGoals: List<Goal>,
+    recentRaises: List<ProactiveRaiseRow> = emptyList(),
+): List<AlertRowData> {
     val alarms = quarantined.map { file ->
         AlertRowData(label = file.displayName, value = "FAILED THE GATE", tier = AlertTier.ALARM, tagText = "QUARANTINED", target = AlertTarget.CRED)
     }
@@ -618,8 +667,28 @@ fun buildAlertRows(quarantined: List<IngestedFile>, hasGeminiKey: Boolean, overd
                 ),
             )
         }
+        recentRaises.forEach { add(alertRowForRaise(it)) }
     }
     return alarms + advisories
+}
+
+/** One [ProactiveRaiseRow] as an ALERTS row - [ProactiveRaiseRow.reason] is already the plain,
+ * falsifiable fact stored at raise time (that entity's own class doc: "a fact rather than the
+ * model reconstructing a plausible one"), so this never re-derives or re-words it, only re-shapes
+ * it into [AlertRowData]'s four slots, same posture every other row builder in this file follows. */
+fun alertRowForRaise(row: ProactiveRaiseRow): AlertRowData {
+    val label = ProactiveCategory.fromKey(row.category)?.title ?: row.category
+    return AlertRowData(label = label, value = row.reason, tier = AlertTier.ADVISORY, tagText = "RAISED", target = alertTargetForRaiseCategory(row.category))
+}
+
+/** Routes a raise's [ProactiveRaiseRow.category] to the tile/tab that owns it - same "no guessed
+ * destination" posture [alertTargetForAspect] states for a goal exception. [ProactiveCategory.DIGEST]
+ * (a sitrep, not owned by any one tab) and an unrecognised category both fall to [AlertTarget.NONE]. */
+fun alertTargetForRaiseCategory(category: String): AlertTarget = when (ProactiveCategory.fromKey(category)) {
+    ProactiveCategory.SAFETY, ProactiveCategory.FLEET -> AlertTarget.FLEET
+    ProactiveCategory.WELLBEING -> AlertTarget.BIO
+    ProactiveCategory.TIMING -> AlertTarget.LOG
+    ProactiveCategory.DIGEST, null -> AlertTarget.NONE
 }
 
 /**

@@ -3,8 +3,8 @@ map: command-center
 ticket: "01"
 title: "Home is a command center, not a calorie poster"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built: hero is the day (next event, tickable checklist, alerts from the raise history), context strip with weather and AQI, tiles for mail/news/money/fleet/media, intake demoted. Owes the on-phone look at 384x832 and the airplane-mode honesty check."
 blockers: ["03", "04", "06", "07", "08"]
 blocked-by: ["[[03-body-writes-by-hand]]", "[[04-media-panel]]", "[[06-places-by-hand]]", "[[07-build-sheet-screen]]", "[[08-outside-world-cards]]"]
 open-blockers: 5

@@ -608,4 +608,98 @@ class TodayGapResolversTest {
         assertEquals(withDate.primary, withoutDate.primary)
         assertEquals(withDate.secondary, withoutDate.secondary)
     }
+
+    // -------------------------------------------------- command-center ticket 01: HOME hero/strip
+
+    @Test
+    fun `nextAgendaEntry picks the first entry that has not started yet`() {
+        val entries = listOf(
+            AgendaEntry("Standup", timeMs = 1_000L, allDay = false),
+            AgendaEntry("Dentist", timeMs = 5_000L, allDay = false),
+        )
+        assertEquals("Dentist", nextAgendaEntry(entries, nowMs = 2_000L)?.label)
+    }
+
+    @Test
+    fun `nextAgendaEntry treats an all-day entry as always still current`() {
+        // An all-day entry's own timeMs is local midnight - real midnight has already passed by
+        // the time anyone opens the app, so this must not be filtered out as "already started".
+        val entries = listOf(AgendaEntry("Kevin's birthday", timeMs = 0L, allDay = true))
+        assertEquals("Kevin's birthday", nextAgendaEntry(entries, nowMs = 50_000L)?.label)
+    }
+
+    @Test
+    fun `nextAgendaEntry is null when every timed entry today has already passed`() {
+        val entries = listOf(AgendaEntry("Standup", timeMs = 1_000L, allDay = false))
+        assertNull(nextAgendaEntry(entries, nowMs = 2_000L))
+    }
+
+    @Test
+    fun `nextAgendaEntry is null for an empty day, same as an all-passed day - the caller tells them apart`() {
+        assertNull(nextAgendaEntry(emptyList(), nowMs = 2_000L))
+    }
+
+    @Test
+    fun `weatherLine states no fix rather than a blank or a fabricated clear`() {
+        assertEquals("Weather not available yet - no location fix", weatherLine(null))
+    }
+
+    @Test
+    fun `weatherLine states temperature and description, with a caution suffix only when rough`() {
+        val calm = com.kevin.legion.weather.WeatherController.WeatherInfo(tempF = 72, description = "partly cloudy", caution = false)
+        assertEquals("72F, partly cloudy", weatherLine(calm))
+
+        val rough = com.kevin.legion.weather.WeatherController.WeatherInfo(tempF = 40, description = "rainy", caution = true)
+        assertEquals("40F, rainy - drive safe", weatherLine(rough))
+    }
+
+    private fun raiseRow(category: String, reason: String = "fact", declined: Boolean = false) = com.kevin.legion.data.local.ProactiveRaiseRow(
+        ruleId = "rule",
+        category = category,
+        reason = reason,
+        spokenAt = 0L,
+        declined = declined,
+    )
+
+    @Test
+    fun `alertRowForRaise carries the stored reason verbatim, never re-worded`() {
+        val row = alertRowForRaise(raiseRow(category = "safety", reason = "coolant 118C, over the 110C threshold"))
+        assertEquals("Safety", row.label)
+        assertEquals("coolant 118C, over the 110C threshold", row.value)
+        assertEquals(AlertTier.ADVISORY, row.tier)
+        assertEquals("RAISED", row.tagText)
+    }
+
+    @Test
+    fun `alertTargetForRaiseCategory routes every real category and falls back to NONE for digest or unknown`() {
+        assertEquals(AlertTarget.FLEET, alertTargetForRaiseCategory("safety"))
+        assertEquals(AlertTarget.FLEET, alertTargetForRaiseCategory("fleet"))
+        assertEquals(AlertTarget.BIO, alertTargetForRaiseCategory("wellbeing"))
+        assertEquals(AlertTarget.LOG, alertTargetForRaiseCategory("timing"))
+        assertEquals(AlertTarget.NONE, alertTargetForRaiseCategory("digest"))
+        assertEquals(AlertTarget.NONE, alertTargetForRaiseCategory("not-a-real-category"))
+    }
+
+    @Test
+    fun `buildAlertRows appends undeclined raises after the existing advisories, never ahead of an ALARM`() {
+        val rows = buildAlertRows(
+            quarantined = listOf(quarantinedFile("a.pdf")),
+            hasGeminiKey = false,
+            overdueGoals = emptyList(),
+            recentRaises = listOf(raiseRow(category = "fleet", reason = "12,003 mi - oil change due")),
+        )
+        assertEquals(
+            listOf(AlertTier.ALARM, AlertTier.ADVISORY, AlertTier.ADVISORY),
+            rows.map { it.tier },
+        )
+        assertEquals("RAISED", rows.last().tagText)
+        assertEquals(AlertTarget.FLEET, rows.last().target)
+    }
+
+    @Test
+    fun `buildAlertRows with no recentRaises behaves exactly as before - the default is a true no-op`() {
+        val rows = buildAlertRows(quarantined = emptyList(), hasGeminiKey = false, overdueGoals = emptyList())
+        assertEquals(1, rows.size)
+        assertEquals("NO KEY", rows.single().tagText)
+    }
 }
