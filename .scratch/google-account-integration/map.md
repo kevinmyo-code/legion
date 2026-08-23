@@ -59,6 +59,8 @@ Constraints, not open questions. A ticket that contradicts one of these is wrong
 
 ## Decisions so far
 
+> **Annotation 2026-08-23:** charting decision 2 above ("Google owns a timed event") is superseded by aspect-engine charter decision 6 - LEGION owns time, a central date database is the truth, and Google Calendar imports into it as rows (`.scratch/aspect-engine/map.md`). The row stays as written; this note is the supersession.
+
 <!-- one line per closed ticket -->
 
 - [CalendarContract or the Calendar REST API?](issues/02-calendar-api-choice.md) — **`CalendarContract`,

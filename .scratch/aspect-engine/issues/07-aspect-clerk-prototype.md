@@ -3,7 +3,7 @@ map: aspect-engine
 ticket: "07"
 title: "The aspect clerk: prototype and latency"
 type: prototype
-status: open
+status: claimed
 status-detail: ""
 blockers: ["06"]
 blocked-by: ["[[06-meta-tool-surface]]"]

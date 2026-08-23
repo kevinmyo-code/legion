@@ -15,7 +15,6 @@ Open tickets whose blockers are all resolved.
 |---|---|---|---|
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[07-aspect-clerk-prototype\|07]] | prototype | The aspect clerk: prototype and latency |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[09-grid-mechanics-prototype\|09]] | prototype | Dashboard grid mechanics: staged prototype |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[15-freeze-superseded-tickets\|15]] | task | Freeze the superseded tickets across the other maps |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[16-build-engine-core\|16]] | task | Build the engine core |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
@@ -80,7 +79,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/goal-plans/map\|goal-plans]] | [[04-checklist-and-surfaces\|04]] | build | The daily checklist, on Body and Home  waiting on [[02-recommender-and-playbook\|02]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[05-wellbeing-digest\|05]] | build | The Wellbeing switch finally gets content  waiting on [[04-checklist-and-surfaces\|04]] |
 | [[.scratch/goal-plans/map\|goal-plans]] | [[06-daily-items-not-repeats\|06]] | build | A day's items you can actually tick  waiting on [[04-checklist-and-surfaces\|04]] |
-| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[29-one-source-for-service-history\|29]] | build | Service history and the maintenance clock become one fact  waiting on [[28-the-oil-change-it-forgot\|28]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[02-area-info-tool\|02]] | build | The area_info tool, with attribution baked in  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[04-hazard-raises\|04]] | build | Hazard alerts that speak first  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
@@ -97,6 +95,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | Map | Ticket | Type | What |
 |---|---|---|---|
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[03-home-control-scope\|03]] | grilling | Home control: what does LEGION actually get to touch? |
+| [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[29-one-source-for-service-history\|29]] | build | Service history and the maintenance clock become one fact |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[09-tomtom-surface-area\|09]] | grilling | The rest of the TomTom surface area |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | [[11-rec-engine\|11]] | task | The recommendation engine LEGION has to build itself |
 
@@ -107,7 +106,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | 21 | 9 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | 21 | 8 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |

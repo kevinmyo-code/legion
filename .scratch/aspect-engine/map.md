@@ -123,6 +123,10 @@ These are charter decisions, not resolved tickets. Tickets refine them; they do 
 - [Two-phone sync under the engine](issues/13-two-phone-sync.md) - **Kevin: the xlsx files ARE
   the sync channel**, journal and appDataFolder declined; binding condition: row-level merge
   keyed by record id plus updatedAt, never whole-file replace.
+- [Freeze the superseded tickets across the other maps](issues/15-freeze-superseded-tickets.md) -
+  swept all six maps: only hands-and-senses 29 (service-history/clock unification) was open and
+  superseded (kiv, decision 3); GAI map annotated for decision 6; built tickets keep their
+  phone-run debt; everything else already resolved or terminal.
 - [Migration order](issues/14-migration-order.md) - new ground first (Dates + one user aspect),
   then notes/lists/places, pantry, ledger, fleet last; cutover per aspect; Drive export before
   each wave and old tables retained until on-device verification.

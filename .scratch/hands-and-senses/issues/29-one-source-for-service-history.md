@@ -3,8 +3,8 @@ map: hands-and-senses
 ticket: "29"
 title: "Service history and the maintenance clock become one fact"
 type: build
-status: open
-status-detail: ""
+status: kiv
+status-detail: "KIV 2026-08-23: superseded by the aspect engine (.scratch/aspect-engine/map.md, charter decision 3)"
 blockers: ["28"]
 blocked-by: ["[[28-the-oil-change-it-forgot]]"]
 open-blockers: 1

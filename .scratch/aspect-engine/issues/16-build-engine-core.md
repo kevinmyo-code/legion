@@ -3,7 +3,7 @@ map: aspect-engine
 ticket: "16"
 title: "Build the engine core"
 type: task
-status: open
+status: claimed
 status-detail: ""
 blockers: []
 blocked-by: []
