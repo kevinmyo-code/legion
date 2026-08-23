@@ -7,27 +7,32 @@ package com.kevin.legion.ui.grid
  * (the prototype harness today, `widget_instances` later) hands in and gets back a plain
  * `List<GridItem>`; nothing here knows or cares where that list came from or where it is going.
  *
- * **Two generations of interactive semantics live here, on purpose (2026-08-23).** The first
- * build gave drag/resize react-grid-layout's own shape: propose a rectangle, [resolveCollisions]
- * pushes whatever it now overlaps straight down, [compact] pulls the rest back up. Two feel-test
- * passes on the A25 rejected that outright - Kevin: "drag and reflow on home page is not very
- * intuitive" and then, after a rework that made the reflow live instead of drop-only, "still
- * doesnt feel good. ditch reflow. just snap to grid." **The interactive path (drag-to-move,
- * corner-resize, both driven from `DeckGrid.kt`) is now Android-launcher semantics instead of a
- * spreadsheet's**: a candidate rectangle is either a legal, unoccupied spot - accepted exactly as
- * proposed - or it collides with something and is REJECTED outright. No card ever moves because
- * another card was dragged or resized. Gaps are allowed and are the user's own business, same as
- * a home-screen launcher grid. That is [clampMoveTarget] / [clampResizeTarget] / [overlapsAny] /
- * [commitIfValid] below.
+ * **Three generations of interactive semantics live here, on purpose (2026-08-23, three feel-test
+ * passes in one day).** The first build gave drag/resize react-grid-layout's own shape: propose a
+ * rectangle, [resolveCollisions] pushes whatever it now overlaps straight down, [compact] pulls
+ * the rest back up. Kevin: "drag and reflow on home page is not very intuitive." A rework made the
+ * reflow live instead of drop-only; still rejected: "still doesnt feel good. ditch reflow. just
+ * snap to grid." The THIRD pass tried outright rejection of any occupied target (accept exactly as
+ * proposed or refuse and animate home, no reflow at all) - closer, but still wrong: "it doesnt
+ * replace or move the items in the grid up if something is already there." **The interactive path
+ * (drag-to-move, corner-resize, both driven from `DeckGrid.kt`) is now DISPLACE, not reject**: a
+ * candidate rectangle is always accepted exactly as proposed, and whatever it overlaps is
+ * relocated to the nearest free space (upward first) rather than the drop being refused. That is
+ * [displaceForPlacement] below, built on [clampMoveTarget] / [clampResizeTarget] / [collides].
+ * [overlapsAny] / [commitIfValid] (the pure "accept-or-reject-outright" pair from the THIRD
+ * generation) are kept - same posture as [moveTo]/[resize] below - as a stricter primitive a
+ * future caller that must never disturb anything else (a paste, an undo) might still want; they
+ * are no longer called by `DeckGrid.kt`'s interactive gestures either.
  *
- * **[resolveCollisions] and [compact] are NOT deleted** - `ticket 18` may still want an explicit
- * "auto-arrange" tidy-up action later (a user-invoked "pack my widgets" command is a different
- * feature from an involuntary reflow mid-drag), and [normalize] still leans on both to make sense
- * of untrusted input (a raw `widget_instances` read, or this harness's hand-typed fixtures) that
- * might arrive already overlapping. But as of 2026-08-23, **nothing in the interactive drag/resize
- * path calls either of them** - [moveTo] and [resize] (the push-and-compact versions) are kept as
- * that future auto-arrange primitive, explicitly unused by `DeckGrid.kt`'s gestures; see each
- * function's own KDoc.
+ * **[resolveCollisions], [compact], [moveTo], [resize], [overlapsAny], and [commitIfValid] are NOT
+ * deleted** - `ticket 18` may still want an explicit "auto-arrange" tidy-up action later (a
+ * user-invoked "pack my widgets" command is a different feature from an involuntary reflow
+ * mid-drag), and [normalize] still leans on [resolveCollisions]/[compact] to make sense of
+ * untrusted input (a raw `widget_instances` read, or this harness's hand-typed fixtures) that
+ * might arrive already overlapping. But as of 2026-08-23, **the only functions actually called by
+ * `DeckGrid.kt`'s live drag/resize gestures are [clampMoveTarget], [clampResizeTarget], and
+ * [displaceForPlacement]** - everything else in this generational list is kept-but-unused-by-the-
+ * interactive-path; see each function's own KDoc for its specific status.
  */
 
 /**
@@ -275,6 +280,105 @@ object GridEngine {
         val others = items.filter { it.id != candidate.id }
         if (overlapsAny(candidate, others)) return null
         return items.map { if (it.id == candidate.id) candidate else it }
+    }
+
+    /**
+     * **DISPLACE, not reject (2026-08-23, third feel-test pass).** Kevin: "it doesnt replace or
+     * move the items in the grid up if something is already there" - [commitIfValid]'s outright
+     * rejection of any overlap was too strict. This is its replacement for the interactive
+     * drag/resize path: [candidate] (already clamped into bounds by [clampMoveTarget]/
+     * [clampResizeTarget] - this function trusts that, it does not re-clamp) is accepted EXACTLY
+     * as proposed, and every item it now overlaps is relocated to the nearest free space that
+     * fits it - searching UPWARD first (rows above its own, closest first), then DOWNWARD
+     * (its own row and below, closest first) - scanning columns left to right at each row
+     * candidate. A relocation can itself displace a THIRD item it now collides with (the knock-on
+     * chain); an item never queued for relocation - because neither [candidate] nor any moved
+     * item ever overlapped it - never moves, byte-for-byte.
+     *
+     * Returns `null`, the whole displacement wrapped, if NO arrangement fits - the only case this
+     * can actually happen in practice is a displaced item whose own `colSpan` exceeds
+     * [columnCount] (row search is unbounded, so a downward slot always exists eventually; column
+     * width is the one dimension that can be genuinely impossible). The caller ([DeckGrid]'s drag/
+     * resize gestures) treats `null` exactly as [commitIfValid] used to treat any overlap: leave
+     * [items] untouched, animate the dragged/resized card back to where it started.
+     *
+     * Returns [items] unchanged, wrapped in a non-null result, if [candidate]'s id is not present
+     * at all (same "cannot invent a row that was never there" contract as [commitIfValid]).
+     */
+    fun displaceForPlacement(items: List<GridItem>, candidate: GridItem, columnCount: Int): List<GridItem>? {
+        if (items.none { it.id == candidate.id }) return items
+        if (candidate.colSpan < 1 || candidate.colSpan > columnCount) return null
+        if (candidate.col < 0 || candidate.col + candidate.colSpan > columnCount || candidate.row < 0) return null
+
+        val others = items.filter { it.id != candidate.id }.associateBy { it.id }.toMutableMap()
+        val queue = ArrayDeque<String>()
+        val queued = mutableSetOf<String>()
+        for (o in others.values) {
+            if (collides(candidate, o)) {
+                queue.add(o.id)
+                queued.add(o.id)
+            }
+        }
+        while (queue.isNotEmpty()) {
+            val id = queue.removeFirst()
+            val current = others.getValue(id)
+            // Everything NOT being relocated right now is an obstacle: the candidate itself, plus
+            // every other item at its CURRENT best-known position (original if not yet touched,
+            // already-relocated if a prior step in this same call moved it).
+            val avoid = others.values.filter { it.id != id } + candidate
+            val slot = findFreeSlot(current.rowSpan, current.colSpan, avoid, columnCount, searchFromRow = current.row)
+                ?: return null
+            val moved = current.copy(row = slot.first, col = slot.second)
+            others[id] = moved
+            // Knock-on: anything not already queued/settled that the FRESHLY moved item now
+            // overlaps must also relocate - checked against every other item's current
+            // best-known position, same as the avoid-set above.
+            for (o in others.values) {
+                if (o.id == id || o.id in queued) continue
+                if (collides(moved, o)) {
+                    queue.add(o.id)
+                    queued.add(o.id)
+                }
+            }
+        }
+        return listOf(candidate) + others.values.toList()
+    }
+
+    /**
+     * The nearest legal (rowSpan x colSpan) rectangle that collides with nothing in [avoid],
+     * starting the search from [searchFromRow] and preferring UPWARD (searchFromRow - 1 downTo 0,
+     * closest row first) before DOWNWARD (searchFromRow upward, closest row first) - see
+     * [displaceForPlacement]'s own doc for why this order and not an expanding-ring search.
+     * Columns are scanned left to right (0..columnCount-colSpan) at each candidate row; this
+     * function does not attempt to prefer a column nearest the item's own original column, since
+     * ticket 18's brief specified row order only.
+     *
+     * The downward search is bounded, not literally infinite, but the bound
+     * (`max occupied bottom edge in [avoid] + item count + rowSpan + 2`) is constructed to be
+     * provably sufficient - a rectangle placed below every avoided item's bottom edge cannot
+     * collide with any of them - so in practice this only returns `null` via the `colSpan`
+     * checked by [displaceForPlacement] before calling this at all (or a non-positive [colSpan]
+     * passed directly, exercised by `GridEngineTest`).
+     */
+    private fun findFreeSlot(rowSpan: Int, colSpan: Int, avoid: List<GridItem>, columnCount: Int, searchFromRow: Int): Pair<Int, Int>? {
+        if (colSpan < 1 || colSpan > columnCount || rowSpan < 1) return null
+        val maxCol = columnCount - colSpan
+        fun fitsAt(row: Int, col: Int): Boolean {
+            val probe = GridItem("__probe__", row, col, rowSpan, colSpan)
+            return avoid.none { collides(it, probe) }
+        }
+        for (row in (searchFromRow - 1) downTo 0) {
+            for (col in 0..maxCol) {
+                if (fitsAt(row, col)) return row to col
+            }
+        }
+        val downwardBound = (avoid.maxOfOrNull { it.row + it.rowSpan } ?: 0) + avoid.size + rowSpan + 2
+        for (row in searchFromRow..downwardBound) {
+            for (col in 0..maxCol) {
+                if (fitsAt(row, col)) return row to col
+            }
+        }
+        return null
     }
 
     /** Drop item [id] entirely and pull everything else up to close the gap it leaves. A no-op

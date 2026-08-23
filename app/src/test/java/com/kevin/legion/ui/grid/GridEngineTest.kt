@@ -10,17 +10,19 @@ import org.junit.Test
  * is that this file needs no Robolectric, no emulator, nothing but the JVM. Aspect-engine ticket
  * 18 (stage-2 grid mechanics): "this logic must not live only under fingers."
  *
- * **Two feel-test passes on the A25 (2026-08-23) retired the push-and-compact reflow from the
- * INTERACTIVE drag/resize path** (`DeckGrid.kt` no longer calls [GridEngine.moveTo]/
- * [GridEngine.resize]). Their tests below, in the section marked "auto-arrange primitives (kept,
- * unused by the interactive path)", stay as direct coverage of those two functions - they are
- * real, present code (kept on purpose per that day's rework, in case a future explicit
- * "auto-arrange" action wants them), not dead code, so testing them directly remains honest
- * coverage. [GridEngine.compact]/[GridEngine.resolveCollisions] are exercised both directly AND
- * through [GridEngine.normalize] (their only remaining LIVE caller in the interactive path's own
- * call graph). The launcher-semantics replacement - clamp, check, accept-or-reject-outright, never
- * push - has its own section below: [GridEngine.clampMoveTarget] / [GridEngine.clampResizeTarget] /
- * [GridEngine.overlapsAny] / [GridEngine.commitIfValid].
+ * **Three feel-test passes on the A25 (2026-08-23) retired push-and-compact reflow, then outright
+ * rejection, from the INTERACTIVE drag/resize path** (`DeckGrid.kt` no longer calls
+ * [GridEngine.moveTo]/[GridEngine.resize], and no longer calls [GridEngine.commitIfValid] either).
+ * Their tests below, in sections marked "kept, unused by the interactive path", stay as direct
+ * coverage of those functions - they are real, present code (kept on purpose per each day's
+ * rework, in case a future explicit "auto-arrange" or "must never disturb anything else" caller
+ * wants them), not dead code, so testing them directly remains honest coverage.
+ * [GridEngine.compact]/[GridEngine.resolveCollisions] are exercised both directly AND through
+ * [GridEngine.normalize] (their only remaining LIVE caller in the interactive path's own call
+ * graph). **The live interactive path as of the THIRD pass is [GridEngine.clampMoveTarget] /
+ * [GridEngine.clampResizeTarget] / [GridEngine.displaceForPlacement]** - a candidate is always
+ * accepted exactly as proposed, and whatever it overlaps is relocated (upward first) rather than
+ * the drop being refused. `displaceForPlacement`'s own test section is last in this file.
  */
 class GridEngineTest {
 
@@ -332,11 +334,12 @@ class GridEngineTest {
         assertEquals(3, result.single().row) // row is untouched by resize itself
     }
 
-    // ------------------- interactive placement (no reflow) - the LIVE drag/resize path's own API --
-    // clampMoveTarget / clampResizeTarget / overlapsAny / commitIfValid: Android-launcher
-    // semantics. A candidate is either a legal, unoccupied spot (accepted exactly as proposed) or
-    // it collides with something (rejected outright, `commitIfValid` returns null). No card ever
-    // moves because another card was dragged or resized.
+    // -- overlapsAny / commitIfValid: kept, unused by the interactive path (third feel-test pass) --
+    // clampMoveTarget / clampResizeTarget are still LIVE (see the displaceForPlacement section
+    // below) and stay tested here. overlapsAny/commitIfValid implemented the SECOND generation's
+    // outright-reject rule ("occupied target = invalid = reject, no displacement") - superseded
+    // 2026-08-23 by the third pass's displaceForPlacement, but kept as a stricter primitive a
+    // future caller that must never disturb anything else (a paste, an undo) might still want.
 
     @Test
     fun `clampMoveTarget pulls a target column left so it never runs off the right edge`() {
@@ -482,5 +485,167 @@ class GridEngineTest {
             item("b", row = 2, col = 0, rowSpan = 3),
         )
         assertEquals(5, GridEngine.rowCount(items))
+    }
+
+    // ----------------------------------------------------- displaceForPlacement (the LIVE path) --
+    // Third feel-test pass, 2026-08-23: "it doesnt replace or move the items in the grid up if
+    // something is already there." Displacement, not rejection - a candidate is always accepted
+    // exactly as proposed, and whatever it overlaps relocates to the nearest free space, upward
+    // first. This is what DeckGrid.kt's drag/resize commit path actually calls.
+
+    @Test
+    fun `displaceForPlacement is a no-op arrangement when the candidate overlaps nothing`() {
+        val items = listOf(
+            item("a", row = 0, col = 0, colSpan = 2),
+            item("b", row = 4, col = 0, colSpan = 2),
+        )
+        val candidate = item("a", row = 4, col = 2, colSpan = 2) // beside b, not on it
+        val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)!!
+        assertEquals(candidate, result.single { it.id == "a" })
+        assertEquals(item("b", row = 4, col = 0, colSpan = 2), result.single { it.id == "b" }) // untouched, bit-identical
+    }
+
+    @Test
+    fun `displaceForPlacement moves a single occupant UP to the NEAREST free row above`() {
+        // "a" drops onto row 2, exactly where "occupant" already sits. Rows 0-1 are both free -
+        // occupant should land at row 1, the CLOSEST free row above, not row 0 or below.
+        val items = listOf(
+            item("a", row = 5, col = 0, colSpan = 4),
+            item("occupant", row = 2, col = 0, colSpan = 4),
+        )
+        val candidate = item("a", row = 2, col = 0, colSpan = 4)
+        val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)!!
+        val byId = result.associateBy { it.id }
+        assertEquals(candidate, byId.getValue("a")) // accepted exactly as proposed
+        assertEquals(1, byId.getValue("occupant").row) // pushed UP to the NEAREST free row, not row 0
+        for (x in result) for (y in result) assertFalse(GridEngine.collides(x, y))
+    }
+
+    @Test
+    fun `displaceForPlacement moves down when upward is full`() {
+        // Rows 0-1 are already occupied by "blocker", so "occupant" (displaced from row 2) has
+        // nowhere to go upward and must land below everything instead.
+        val items = listOf(
+            item("a", row = 5, col = 0, colSpan = 4),
+            item("occupant", row = 2, col = 0, colSpan = 4),
+            item("blocker", row = 0, col = 0, rowSpan = 2, colSpan = 4),
+        )
+        val candidate = item("a", row = 2, col = 0, colSpan = 4)
+        val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)!!
+        val byId = result.associateBy { it.id }
+        assertEquals(0, byId.getValue("blocker").row) // untouched - candidate never overlapped it
+        assertTrue(byId.getValue("occupant").row >= 3) // could not fit above row 2, pushed down
+        for (x in result) for (y in result) assertFalse(GridEngine.collides(x, y))
+    }
+
+    @Test
+    fun `displaceForPlacement finds a free COLUMN at the same row before moving to a new row`() {
+        // occupant sits at row 0 (no row above it to search - upward is naturally exhausted).
+        // Columns 2-3 at row 0 are free, so occupant should slot in sideways at the SAME row
+        // rather than being pushed down to a different row entirely.
+        val items = listOf(
+            item("a", row = 5, col = 0, colSpan = 2),
+            item("occupant", row = 0, col = 0, colSpan = 2),
+        )
+        val candidate = item("a", row = 0, col = 0, colSpan = 2)
+        val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)!!
+        val occupant = result.single { it.id == "occupant" }
+        assertEquals(0, occupant.row) // same row - a free column was available
+        assertEquals(2, occupant.col)
+    }
+
+    @Test
+    fun `displaceForPlacement chains two simultaneous occupants through processing order`() {
+        // "a" drops as a 2-tall candidate spanning rows 0-1, directly overlapping BOTH "b" (row 0)
+        // and "c" (row 1) at once - both are queued straight from the initial collision, not one
+        // via the other. The chain shows up in processing ORDER: b is relocated first (to the
+        // nearest free row, 2), then c's own search must route around b's NEW position too - if it
+        // did not, both would independently pick the same nearest slot and end up overlapping.
+        val items = listOf(
+            item("a", row = 5, col = 0, colSpan = 4),
+            item("b", row = 0, col = 0, colSpan = 4),
+            item("c", row = 1, col = 0, colSpan = 4),
+        )
+        val candidate = item("a", row = 0, col = 0, rowSpan = 2, colSpan = 4)
+        val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)!!
+        val byId = result.associateBy { it.id }
+        assertEquals(2, byId.getValue("b").row) // nearest free row below candidate's 2-row span
+        assertEquals(3, byId.getValue("c").row) // row 2 was already claimed by b - chained down
+        for (x in result) for (y in result) assertFalse(GridEngine.collides(x, y))
+    }
+
+    @Test
+    fun `displaceForPlacement's knock-on requeue never fires a false collision (safety net)`() {
+        // Defensive coverage for the requeue branch itself: even in a case engineered to try to
+        // trip it (three occupants stacked with no gaps, candidate landing on the first one),
+        // the result is still fully non-overlapping and every occupant that never geometrically
+        // touched the candidate's own footprint stays exactly where it was.
+        val items = listOf(
+            item("a", row = 9, col = 0, colSpan = 4),
+            item("stack1", row = 0, col = 0, colSpan = 4),
+            item("stack2", row = 1, col = 0, colSpan = 4),
+            item("stack3", row = 2, col = 0, colSpan = 4),
+        )
+        val candidate = item("a", row = 0, col = 0, colSpan = 4)
+        val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)!!
+        for (x in result) for (y in result) assertFalse(GridEngine.collides(x, y))
+        assertEquals(4, result.size)
+        val byId = result.associateBy { it.id }
+        // stack2/stack3 never geometrically overlapped the candidate's OWN footprint (row 0
+        // only) - they stay bit-identical, only stack1 (the direct collider) moves.
+        assertEquals(item("stack2", row = 1, col = 0, colSpan = 4), byId.getValue("stack2"))
+        assertEquals(item("stack3", row = 2, col = 0, colSpan = 4), byId.getValue("stack3"))
+    }
+
+    @Test
+    fun `displaceForPlacement never moves an item the candidate and its chain never touched`() {
+        val items = listOf(
+            item("a", row = 0, col = 0, colSpan = 1),
+            item("target", row = 0, col = 1, colSpan = 1),
+            item("faraway", row = 20, col = 3, colSpan = 1),
+        )
+        val candidate = item("a", row = 0, col = 1, colSpan = 1) // overlaps only "target"
+        val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)!!
+        assertEquals(item("faraway", row = 20, col = 3, colSpan = 1), result.single { it.id == "faraway" })
+    }
+
+    @Test
+    fun `displaceForPlacement returns null when a displaced occupant cannot fit any column`() {
+        // occupant's own colSpan (5) exceeds columnCount (4) - genuinely impossible at ANY row,
+        // upward or downward, since row search is unbounded but column width is not.
+        val items = listOf(
+            item("a", row = 3, col = 0, colSpan = 4),
+            item("occupant", row = 0, col = 0, colSpan = 5),
+        )
+        val candidate = item("a", row = 0, col = 0, colSpan = 4)
+        val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)
+        assertEquals(null, result)
+    }
+
+    @Test
+    fun `displaceForPlacement rejects a candidate that is itself out of bounds`() {
+        val items = listOf(item("a", row = 0, col = 0, colSpan = 2))
+        val outOfBounds = item("a", row = 0, col = 3, colSpan = 2) // col + colSpan = 5 > columnCount
+        assertEquals(null, GridEngine.displaceForPlacement(items, outOfBounds, columnCount = 4))
+    }
+
+    @Test
+    fun `displaceForPlacement is a no-op wrapped in a non-null result for an unknown id`() {
+        val items = listOf(item("a", row = 0, col = 0))
+        val candidate = item("missing", row = 5, col = 1)
+        assertEquals(items, GridEngine.displaceForPlacement(items, candidate, columnCount = 4))
+    }
+
+    @Test
+    fun `displaceForPlacement leaves untouched items bit-identical, not just non-overlapping`() {
+        val untouched = item("bystander", row = 10, col = 0, rowSpan = 2, colSpan = 4)
+        val items = listOf(
+            item("a", row = 0, col = 0, colSpan = 2),
+            item("occupant", row = 3, col = 0, colSpan = 2),
+            untouched,
+        )
+        val candidate = item("a", row = 3, col = 0, colSpan = 2)
+        val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)!!
+        assertEquals(untouched, result.single { it.id == "bystander" })
     }
 }

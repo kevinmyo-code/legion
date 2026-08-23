@@ -60,27 +60,39 @@ import kotlin.math.roundToInt
  * out, both plain `List<GridItem>`. No Room import anywhere in this file or [GridModel.kt] -
  * `widget_instances` is ticket 18's job to wire, not this component's to assume.
  *
- * **Android-launcher semantics (2026-08-23, second feel-test pass) - the model this file now
- * implements, stated once so nothing below reads as an accident:**
- * - **No reflow, ever.** No card moves because another card was dragged or resized - not on drop,
- *   not live during the gesture. [GridEngine.moveTo]/[GridEngine.resize] (the push-and-compact
- *   versions) are never called from here; only [GridEngine.clampMoveTarget]/
- *   [GridEngine.clampResizeTarget]/[GridEngine.overlapsAny]/[GridEngine.commitIfValid].
+ * **Android-launcher semantics with DISPLACEMENT (2026-08-23, third feel-test pass) - the model
+ * this file now implements, stated once so nothing below reads as an accident:**
+ * - **No AMBIENT reflow, ever.** No card moves on its own because another card merely started
+ *   being dragged - there is no live shuffling of the whole grid the way stage 2's first two
+ *   passes tried and Kevin rejected twice. [GridEngine.moveTo]/[GridEngine.resize] (the
+ *   push-and-compact versions) are never called from here.
  * - **The grid becomes visible in edit mode** - a low-contrast dotted line at every cell boundary,
  *   drawn once in [DeckGrid]'s own `drawBehind`, invisible outside edit mode. See the grid-line
  *   drawing block below.
- * - **A snap-preview outline**, not a live-reflowing ghost, shows where the dragged/resized card
- *   would land: the dragged card itself follows the raw pointer (with a lift), while a separate
- *   dashed rect - drawn at the CLAMPED candidate cell, before any validity check - tracks the
- *   nearest legal cell alignment. Normal tone (chrome) when the candidate is unoccupied, error
- *   tone ([com.kevin.legion.ui.theme.LegionSemantics.quarantined]) when it collides with another
- *   card or would exit bounds.
- * - **Occupied target = invalid = reject.** [GridEngine.commitIfValid] returns `null` on overlap;
- *   this composable then leaves [items] untouched and animates the card back to where it started.
- *   A valid release commits exactly the previewed candidate and animates the small residual
- *   distance between the raw drop point and the snapped cell (see [MoveDrag]/[ResizeDrag]'s own
- *   "settle" animation below) - both cases share ONE animation mechanism, they only differ in
- *   which rect they animate toward.
+ * - **A snap-preview outline** shows where the dragged/resized card would land: the dragged card
+ *   itself follows the raw pointer (with a lift), while a separate dashed rect - drawn at the
+ *   CLAMPED candidate cell - tracks the nearest legal cell alignment. Chrome tone when
+ *   [GridEngine.displaceForPlacement] finds a workable arrangement, error tone
+ *   ([com.kevin.legion.ui.theme.LegionSemantics.quarantined]) when NOTHING fits at all (see the
+ *   next point).
+ * - **Occupied target = DISPLACE, not reject (third feel-test pass, superseding the second pass's
+ *   outright-reject rule).** Kevin: "it doesnt replace or move the items in the grid up if
+ *   something is already there." [GridEngine.displaceForPlacement] accepts the candidate exactly
+ *   as proposed and relocates whatever it overlaps (and any knock-on chain that causes) to the
+ *   nearest free space, upward first. Every occupant this WOULD move is shown live as a
+ *   dimmer ("chrome-dim") ghost outline at its own new cell while the gesture is still in
+ *   flight - "preview honesty" (the brief's own phrase): the eventual commit can never differ
+ *   from what was previewed. `null` is now reserved for the genuinely-impossible case (see that
+ *   function's own doc) - THAT is what still triggers the error-tone-and-animate-home rejection
+ *   path, not a mere overlap.
+ * - **A valid release commits exactly the previewed arrangement** and animates the small residual
+ *   distance between the raw drop point and the snapped cell for the ACTIVELY dragged/resized card
+ *   only (see [MoveDrag]/[ResizeDrag]'s own "settle" animation below) - both the valid-commit and
+ *   the rejected-and-returned case share ONE animation mechanism, they only differ in which rect
+ *   they animate toward. **Displaced OTHER occupants land at their new cell without their own
+ *   settle animation** - a deliberate scope cut for this pass (multi-item simultaneous settle
+ *   animation is a larger change than this rework), flagged as a follow-up polish item rather than
+ *   silently shipped as if it were animated.
  *
  * **Cell hit-testing, not nearest-centre distance - the stage-1 defect this ticket exists to
  * fix.** The prototype's reorder targeted whichever OTHER item's centre was nearest the dragged
@@ -130,8 +142,8 @@ private data class ResizeDrag(val id: String, val originRowSpan: Int, val origin
  *   AND the visible cell-boundary grid lines; outside edit mode the grid is display-only (no
  *   lines, no drag/resize/remove chrome) and [onEnterEditMode] fires from a long-press on any card.
  * @param onLayoutChange fired with the new list at the END of a drag or resize gesture, ONLY when
- *   the drop was valid (an invalid drop never calls this - see the file doc's "occupied target"
- *   rule). Never mid-gesture.
+ *   [GridEngine.displaceForPlacement] found a workable arrangement (the genuinely-impossible case
+ *   never calls this - see the file doc's "occupied target" rule). Never mid-gesture.
  * @param onRemove fired with an item's id when its remove chip is tapped in edit mode.
  * @param itemContent the widget's own body - this composable supplies only the cell rect, the
  *   jiggle, and the edit-mode chrome (drag surface, resize handle, remove chip) around it.
@@ -213,9 +225,30 @@ fun DeckGrid(
             }
             else -> null
         }
-        val previewValid = previewCandidate?.let { candidate ->
-            !GridEngine.overlapsAny(candidate, baseItems.filter { it.id != candidate.id })
-        } ?: true
+        // DISPLACE, not reject (third feel-test pass, 2026-08-23): the full arrangement that
+        // WOULD result from committing `previewCandidate` right now - `null` only when no
+        // arrangement fits at all (see GridEngine.displaceForPlacement's own doc). Computed fresh
+        // every frame the candidate changes, same as the candidate itself - this is what makes
+        // the ghost ("preview honesty", brief point 3) show EXACTLY what a drop would commit.
+        val previewArrangement: List<GridItem>? = previewCandidate?.let { candidate ->
+            GridEngine.displaceForPlacement(baseItems, candidate, columnCount)
+        }
+        val previewValid = previewArrangement != null
+        // Every occupant whose position in `previewArrangement` differs from its CURRENT
+        // (baseItems) position - i.e. every card that would actually be displaced by this drop,
+        // including knock-on chains - rendered as its own ghost outline at the NEW cell it would
+        // land in. The dragged/resized card itself is excluded (it gets the brighter candidate
+        // outline above, not a second ghost).
+        val candidateId = previewCandidate?.id
+        val displacedGhosts: List<GridItem> = if (previewArrangement != null && candidateId != null) {
+            val baseById = baseItems.associateBy { it.id }
+            previewArrangement.filter { moved ->
+                moved.id != candidateId &&
+                    baseById[moved.id]?.let { it.row != moved.row || it.col != moved.col } == true
+            }
+        } else {
+            emptyList()
+        }
 
         Box(
             Modifier
@@ -253,6 +286,24 @@ fun DeckGrid(
                         .width(pWidth)
                         .height(pHeight)
                         .dashedOutline(outlineColor),
+                )
+            }
+            // Preview honesty (brief point 3): a ghost outline, at the CHROME-DIM tone (dimmer
+            // than the candidate's own chrome-text outline so the two read as primary/secondary,
+            // not as two competing highlights), for every occupant this drop would actually
+            // displace - exactly the arrangement `previewArrangement` already computed, so the
+            // eventual commit can never surprise the user with a move they were not shown live.
+            displacedGhosts.forEach { ghost ->
+                val gWidth = with(density) { widthPxFor(ghost.colSpan).toDp() }
+                val gHeight = with(density) { heightPxFor(ghost.rowSpan).toDp() }
+                val gX = with(density) { (ghost.col * colPitchPx).toDp() }
+                val gY = with(density) { (ghost.row * rowPitchPx).toDp() }
+                Box(
+                    Modifier
+                        .offset(x = gX, y = gY)
+                        .width(gWidth)
+                        .height(gHeight)
+                        .dashedOutline(sem.chromeDim),
                 )
             }
 
@@ -335,8 +386,11 @@ fun DeckGrid(
                                     }, columnCount)
                                     // clampMoveTarget's signature is (item, targetRow, targetCol, columnCount) -
                                     // recomputed explicitly here (never reused from a composition-scoped val)
-                                    // per the file doc's commit-path-bug fix.
-                                    val committed = GridEngine.commitIfValid(baseItems, candidate)
+                                    // per the file doc's commit-path-bug fix. DISPLACE, not reject
+                                    // (third feel-test pass): a null result here means no
+                                    // arrangement fit at all, not merely "something is in the way" -
+                                    // see GridEngine.displaceForPlacement's own doc.
+                                    val committed = GridEngine.displaceForPlacement(baseItems, candidate, columnCount)
                                     val settleTarget = if (committed != null) candidate else current
                                     if (committed != null) onLayoutChange(committed)
                                     val originPx = Offset(d.originCol * colPitchPx, d.originRow * rowPitchPx)
@@ -373,7 +427,8 @@ fun DeckGrid(
                                     val candidateColSpan = d.originColSpan + (d.accumPx.x / colPitchPx).roundToInt()
                                     val candidateRowSpan = d.originRowSpan + (d.accumPx.y / rowPitchPx).roundToInt()
                                     val candidate = GridEngine.clampResizeTarget(current, candidateRowSpan, candidateColSpan, columnCount)
-                                    val committed = GridEngine.commitIfValid(baseItems, candidate)
+                                    // DISPLACE, not reject - same reasoning as onMoveDragEnd above.
+                                    val committed = GridEngine.displaceForPlacement(baseItems, candidate, columnCount)
                                     val settleTarget = if (committed != null) candidate else current
                                     if (committed != null) onLayoutChange(committed)
                                     val rawWidthPx = widthPxFor(current.colSpan) + d.accumPx.x
