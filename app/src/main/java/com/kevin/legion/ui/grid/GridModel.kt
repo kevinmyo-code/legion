@@ -405,3 +405,85 @@ object GridEngine {
      *  assumes a Compose caller, it is just an integer derived from the same geometry. */
     fun rowCount(items: List<GridItem>): Int = items.maxOfOrNull { it.row + it.rowSpan } ?: 0
 }
+
+/**
+ * The pointer-to-cell mapping, extracted into its own pure, unit-testable function (sixth
+ * feel-test pass, 2026-08-23). Kevin, reproducing over adb with screenshots: dragging ANY
+ * full-width card any distance in any direction always committed at row 0, col 0.
+ *
+ * **Root cause, exact line, stated plainly.** `DeckGrid.kt`'s `onMoveDragEnd` computed the commit
+ * candidate with two adjacent, UNNAMED `run { }` blocks passed positionally into
+ * [GridEngine.clampMoveTarget]`(item, targetRow, targetCol, columnCount)`:
+ * ```
+ * val candidate = GridEngine.clampMoveTarget(current, run {
+ *     val liveX = d.originCol * colPitchPx + d.accumPx.x
+ *     floor(liveX / colPitchPx).toInt()
+ * }, run {
+ *     val liveY = d.originRow * rowPitchPx + d.accumPx.y
+ *     floor(liveY / rowPitchPx).toInt().coerceAtLeast(0)
+ * }, columnCount)
+ * ```
+ * The FIRST block - landing in the `targetRow` parameter slot - computes a COLUMN value (`liveX`,
+ * built from `colPitchPx`/`originCol`/`accumPx.x`). The SECOND block - landing in `targetCol` -
+ * computes a ROW value (`liveY`, built from `rowPitchPx`/`originRow`/`accumPx.y`). Row and column
+ * are transposed at this one call site. The live PREVIEW computation a few lines above (used for
+ * the drag's own on-screen ghost outline) does the identical arithmetic correctly, naming its
+ * results `candidateRow`/`candidateCol` and passing them in the right order - only the COMMIT path,
+ * which duplicated the arithmetic inline instead of reusing one implementation, got the order
+ * wrong. That is why the live outline during a drag looked right while the drop still reverted to
+ * the wrong cell: two different, divergent computations of the "same" value.
+ *
+ * **Why this reads as "always (0,0)" specifically.** [GridEngine.clampMoveTarget] clamps its
+ * `targetCol` argument into `[0, columnCount - colSpan]`. For a FULL-width card (`colSpan ==
+ * columnCount`), that range is exactly `[0, 0]` - so whatever numeric value the swap put into the
+ * `targetCol` slot clamps to 0 regardless of magnitude. The swap put the LARGE, correctly-computed
+ * row-progress value there; it also put the near-zero column value (unchanged from `originCol`,
+ * since every reproduction was a vertical-only drag) into `targetRow`, which floors at 0 and stays
+ * ~0 for a card that started at column 0. Two independent near-misses that both happen to land on
+ * 0 for a full-width card starting at col 0 - which is every widget in the reproduction.
+ *
+ * **The fix is this function.** Both the live preview and the commit now call
+ * [GridGesture.candidateCell] - the SAME implementation, called from exactly two sites, both of
+ * which pass its named, ordered result straight into [GridEngine.clampMoveTarget] with no
+ * intervening inline arithmetic to get wrong a second time. This is the "three consecutive passes
+ * shipped gesture-math bugs invisible to the JVM suite" fix: extracting the pixel-to-cell mapping
+ * out of `DeckGrid.kt` (Compose, untestable without Robolectric/instrumentation) into this
+ * dependency-free file means the arithmetic itself now has direct JVM coverage
+ * (`GridGestureTest`), leaving only POINTER EVENT PLUMBING (`detectDragGestures` wiring, state
+ * threading) as the untested remainder - which is the honest boundary of what a JVM test can reach
+ * in a Compose app.
+ */
+object GridGesture {
+    /**
+     * The candidate (row, col) a drag is currently hovering, given the dragged item's ORIGIN cell
+     * (captured once at gesture start, before any movement) and the cumulative RAW pointer delta
+     * in pixels since. [colPitchPx]/[rowPitchPx] are the fixed per-cell pixel pitch (cell size plus
+     * gap) - the same values [DeckGrid][com.kevin.legion.ui.grid] derives from its own measured
+     * width and `rowHeight` parameter.
+     *
+     * No `Offset` type here on purpose - this file (unlike `DeckGrid.kt`) carries zero Compose
+     * imports, so pixel deltas are plain `Float` x/y, exactly like every other geometry value in
+     * this file. `col` is NOT clamped to `columnCount` here - that stays [GridEngine.clampMoveTarget]'s
+     * job once the caller also knows the item's own `colSpan`; this function only answers "which
+     * cell is the pointer over," never "is that cell legal for this item."
+     *
+     * @return `row to col`, row floored at 0 (never negative - there is no ceiling on rows, the
+     *   grid simply grows), col NOT floored or ceilinged (an out-of-bounds column is a real,
+     *   representable answer to "which cell is the pointer over," even left of column 0 or past
+     *   the last column - clamping that away is the caller's job, not this function's).
+     */
+    fun candidateCell(
+        originRow: Int,
+        originCol: Int,
+        accumPxX: Float,
+        accumPxY: Float,
+        colPitchPx: Float,
+        rowPitchPx: Float,
+    ): Pair<Int, Int> {
+        val liveX = originCol * colPitchPx + accumPxX
+        val liveY = originRow * rowPitchPx + accumPxY
+        val col = kotlin.math.floor(liveX / colPitchPx).toInt()
+        val row = kotlin.math.floor(liveY / rowPitchPx).toInt().coerceAtLeast(0)
+        return row to col
+    }
+}

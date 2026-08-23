@@ -51,7 +51,6 @@ import androidx.compose.ui.zIndex
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import kotlinx.coroutines.launch
-import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /**
@@ -296,10 +295,17 @@ fun DeckGrid(
                 if (current == null) {
                     null
                 } else {
-                    val liveX = d.originCol * colPitchPx + d.accumPx.x
-                    val liveY = d.originRow * rowPitchPx + d.accumPx.y
-                    val candidateCol = floor(liveX / colPitchPx).toInt()
-                    val candidateRow = floor(liveY / rowPitchPx).toInt().coerceAtLeast(0)
+                    // GridGesture.candidateCell - the ONE pixel-to-cell implementation (sixth
+                    // feel-test pass fix), also called by onMoveDragEnd below, so there is no
+                    // second inline computation left to diverge from this one.
+                    val (candidateRow, candidateCol) = GridGesture.candidateCell(
+                        originRow = d.originRow,
+                        originCol = d.originCol,
+                        accumPxX = d.accumPx.x,
+                        accumPxY = d.accumPx.y,
+                        colPitchPx = colPitchPx,
+                        rowPitchPx = rowPitchPx,
+                    )
                     GridEngine.clampMoveTarget(current, candidateRow, candidateCol, columnCount)
                 }
             }
@@ -487,19 +493,32 @@ fun DeckGrid(
                             if (d != null) {
                                 val current = baseItems.firstOrNull { it.id == d.id }
                                 if (current != null) {
-                                    val candidate = GridEngine.clampMoveTarget(current, run {
-                                        val liveX = d.originCol * colPitchPx + d.accumPx.x
-                                        floor(liveX / colPitchPx).toInt()
-                                    }, run {
-                                        val liveY = d.originRow * rowPitchPx + d.accumPx.y
-                                        floor(liveY / rowPitchPx).toInt().coerceAtLeast(0)
-                                    }, columnCount)
-                                    // clampMoveTarget's signature is (item, targetRow, targetCol, columnCount) -
-                                    // recomputed explicitly here (never reused from a composition-scoped val)
-                                    // per the file doc's commit-path-bug fix. DISPLACE, not reject
-                                    // (third feel-test pass): a null result here means no
-                                    // arrangement fit at all, not merely "something is in the way" -
-                                    // see GridEngine.displaceForPlacement's own doc.
+                                    // THE SIXTH-PASS BUG lived exactly here: this used to be two
+                                    // adjacent, UNNAMED `run { }` blocks passed positionally into
+                                    // clampMoveTarget(item, targetRow, targetCol, columnCount) - the
+                                    // first block computed a COLUMN value and landed in the
+                                    // targetRow slot, the second computed a ROW value and landed in
+                                    // targetCol. Every full-width card's targetCol range is exactly
+                                    // [0, 0] (columnCount - colSpan == 0), so the swapped-in large
+                                    // row-progress value always clamped to col 0, and the swapped-in
+                                    // near-zero column value always floored to row 0 - "always
+                                    // (0, 0)" regardless of drag direction or distance. Recomputed
+                                    // explicitly here (never reused from a composition-scoped val,
+                                    // per the fourth-pass commit-path-bug fix) via the SAME
+                                    // GridGesture.candidateCell the live preview above calls - one
+                                    // implementation, correctly ordered, nothing left to diverge.
+                                    val (targetRow, targetCol) = GridGesture.candidateCell(
+                                        originRow = d.originRow,
+                                        originCol = d.originCol,
+                                        accumPxX = d.accumPx.x,
+                                        accumPxY = d.accumPx.y,
+                                        colPitchPx = colPitchPx,
+                                        rowPitchPx = rowPitchPx,
+                                    )
+                                    val candidate = GridEngine.clampMoveTarget(current, targetRow, targetCol, columnCount)
+                                    // DISPLACE, not reject (third feel-test pass): a null result
+                                    // here means no arrangement fit at all, not merely "something
+                                    // is in the way" - see GridEngine.displaceForPlacement's own doc.
                                     val committed = GridEngine.displaceForPlacement(baseItems, candidate, columnCount)
                                     val settleTarget = if (committed != null) candidate else current
                                     if (committed != null) {
