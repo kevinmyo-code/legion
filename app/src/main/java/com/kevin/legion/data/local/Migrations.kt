@@ -1279,3 +1279,96 @@ val MIGRATION_32_33 = object : Migration(32, 33) {
         db.execSQL("ALTER TABLE `workout_set_logs` ADD COLUMN `sourceListItemId` INTEGER DEFAULT NULL")
     }
 }
+
+/**
+ * v33 -> v34: the aspect engine core (`.scratch/aspect-engine/issues/16-build-engine-core.md`).
+ * Five additive `CREATE TABLE`s, nothing existing touched - see [CarDatabase]'s v34 doc comment for
+ * what each table is and [com.kevin.legion.engine.RecordStore] for the write door in front of
+ * `records`. SQL below is copied VERBATIM from the generated
+ * `app/schemas/com.kevin.legion.data.local.CarDatabase/34.json`'s own `createSql` (confirmed by a
+ * real `compileDebugKotlin -Pnokey` run, not hand-derived) - same discipline [MIGRATION_29_30]
+ * documents.
+ */
+val MIGRATION_33_34 = object : Migration(33, 34) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `aspects` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`name` TEXT NOT NULL, " +
+                "`icon` TEXT NOT NULL, " +
+                "`color` TEXT NOT NULL, " +
+                "`position` INTEGER NOT NULL, " +
+                "`archived` INTEGER NOT NULL, " +
+                "`archivedAt` INTEGER, " +
+                "`createdAt` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `record_types` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`aspectId` INTEGER NOT NULL, " +
+                "`name` TEXT NOT NULL, " +
+                "`primaryAmountFieldId` INTEGER, " +
+                "`primaryDueDateFieldId` INTEGER, " +
+                "`createdAt` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_record_types_aspectId` ON `record_types` (`aspectId`)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `field_defs` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`recordTypeId` INTEGER NOT NULL, " +
+                "`name` TEXT NOT NULL, " +
+                "`type` TEXT NOT NULL, " +
+                "`required` INTEGER NOT NULL, " +
+                "`position` INTEGER NOT NULL, " +
+                "`config` TEXT, " +
+                "`ownerPluginId` TEXT, " +
+                "`locked` INTEGER NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_field_defs_recordTypeId` ON `field_defs` (`recordTypeId`)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `records` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`recordTypeId` INTEGER NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL, " +
+                "`dueAt` INTEGER, " +
+                "`amountCents` INTEGER, " +
+                "`searchText` TEXT NOT NULL, " +
+                "`provenance` TEXT NOT NULL, " +
+                "`payload` TEXT NOT NULL, " +
+                "`deletedAt` INTEGER)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_records_recordTypeId` ON `records` (`recordTypeId`)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_records_dueAt` ON `records` (`dueAt`)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_records_deletedAt` ON `records` (`deletedAt`)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `widget_instances` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`deviceId` TEXT NOT NULL, " +
+                "`aspectId` INTEGER, " +
+                "`recordTypeId` INTEGER, " +
+                "`widgetType` TEXT NOT NULL, " +
+                "`config` TEXT NOT NULL, " +
+                "`position` INTEGER NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_widget_instances_deviceId` ON `widget_instances` (`deviceId`)"
+        )
+    }
+}
