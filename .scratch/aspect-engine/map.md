@@ -5,7 +5,7 @@ charted: 2026-08-23
 charted-by: "Kevin + Fable"
 effort: "`.scratch/aspect-engine/`"
 tickets: 21
-open: 9
+open: 7
 status: open
 tags: [map]
 ---
@@ -130,6 +130,11 @@ These are charter decisions, not resolved tickets. Tickets refine them; they do 
 - [Migration order](issues/14-migration-order.md) - new ground first (Dates + one user aspect),
   then notes/lists/places, pantry, ledger, fleet last; cutover per aspect; Drive export before
   each wave and old tables retained until on-device verification.
+
+- [The aspect clerk: prototype and latency](issues/07-aspect-clerk-prototype.md) - Flash runs
+  the clerk (1.1-2.5s median, zero hallucinations in 30 runs); Pro reserved for schema
+  generation; **Kevin: hold silent, filler only past 4s**; the clerk must be handed the grounded
+  current date (owed in ticket 17).
 
 ## Not yet specified
 

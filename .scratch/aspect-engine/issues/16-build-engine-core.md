@@ -3,12 +3,12 @@ map: aspect-engine
 ticket: "16"
 title: "Build the engine core"
 type: task
-status: claimed
-status-detail: ""
+status: built
+status-detail: "Built 2026-08-23: Room v34 (aspects/record_types/field_defs/records/widget_instances), RecordStore write door, ComputedEvaluator, ReconciliationGate contract. 35 new unit tests green both key ways; migration test compiled, not run (no emulator this session)."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Build the engine core

@@ -15,7 +15,6 @@ Open tickets whose blockers are all resolved.
 |---|---|---|---|
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[07-aspect-clerk-prototype\|07]] | prototype | The aspect clerk: prototype and latency |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[09-grid-mechanics-prototype\|09]] | prototype | Dashboard grid mechanics: staged prototype |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[16-build-engine-core\|16]] | task | Build the engine core |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
@@ -30,6 +29,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
+| [[.scratch/aspect-engine/map\|aspect-engine]] | [[16-build-engine-core\|16]] | task | Build the engine core |
 | [[.scratch/command-center/map\|command-center]] | [[02-settings-submenus\|02]] | build | Settings stops being one long wall |
 | [[.scratch/command-center/map\|command-center]] | [[03-body-writes-by-hand\|03]] | build | The Body tab learns to write |
 | [[.scratch/command-center/map\|command-center]] | [[04-media-panel\|04]] | build | Music gets buttons |

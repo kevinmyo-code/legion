@@ -3,8 +3,8 @@ map: aspect-engine
 ticket: "07"
 title: "The aspect clerk: prototype and latency"
 type: prototype
-status: claimed
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-08-23. Flash runs the clerk (~1.1-2.5s); Pro reserved for schema generation. Kevin: hold silent, filler only past 4s. Clerk must receive the grounded current date."
 blockers: ["06"]
 blocked-by: ["[[06-meta-tool-surface]]"]
 open-blockers: 0
@@ -186,3 +186,19 @@ is outside its scope.
   in intent even though the literal count is 114; token volume per call is small. Not separately
   measured via `usageMetadata` in this prototype (`reasoned`, not `tested` - `SubAgent.kt` has a
   `parseUsageMetadata` helper this throwaway script did not bother wiring up).
+
+## Answer
+
+Resolved 2026-08-23. The Findings above are the evidence; Kevin ruled on the open half:
+
+1. **Flash runs the clerk.** Median 1.1-2.5s per instruction, zero field hallucinations in 30
+   runs, always describes before writing. Pro is 4-6x slower and leaks visible self-correction
+   into answer text, so it stays reserved for the schema generator subagent (ticket 06).
+2. **Latency policy (Kevin, 2026-08-23): hold silent; speak a filler only if the loop passes
+   4 seconds.** At measured Flash latencies the filler should be rare.
+3. **Routing:** single-field one-shot writes go direct to meta-tools; multi-step (find-then-X)
+   and multi-row instructions go to aspect_clerk. Written into the meta-tool descriptions.
+4. **Requirement carried into build ticket 17:** the clerk is handed the grounded current date
+   (and offset, per the timezone rule); without it Flash confidently queried a hallucinated
+   "today" and reported no match. The clerk result format (rows written / rows failed, in words)
+   is confirmed to support the outcome-verb rule.
