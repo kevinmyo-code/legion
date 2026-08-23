@@ -50,6 +50,57 @@ data class GridItem(
 )
 
 /**
+ * **The FOURTH generation of interactive semantics (2026-08-23, same day, after the seventh
+ * feel-test pass confirmed drag/drop itself was solid).** Kevin: "drag and drop works. but card
+ * sizing is not accurate. lets just implement set size cards. like android widgets." Free
+ * corner-resize - drag a handle, land on whatever `(rowSpan, colSpan)` the pointer happened to
+ * stop at - is RETIRED from the interactive path entirely. In its place, every widget declares a
+ * fixed subset of this catalog it supports (an Android app-widget's own "this widget comes in
+ * these sizes, no others" contract), and edit mode's former resize handle is now a SIZE CHIP that
+ * cycles the selected card through its own kind's supported presets on tap, one preset per tap,
+ * wrapping past the last back to the first.
+ *
+ * Four presets on the 4-column phone grid, chosen to span the two shapes the mocks actually need
+ * (a short single-row card and a multi-row list) at both half and full width - `colSpan` first,
+ * `rowSpan` second, matching [GridItem]'s own field order:
+ * - [SMALL] `2x1` - a stat tile, a quick-add button: one short row, half the grid's width.
+ * - [WIDE] `4x1` - a compact full-width row: next-due, a short single-record summary.
+ * - [TALL] `2x2` - reserved headroom for a half-width widget that needs two rows; no v1 mock
+ *   claims it yet, kept in the catalog because the ticket's own brief names it explicitly.
+ * - [LARGE] `4x2` - a full-width, two-row-tall list: an agenda or a record list with room for
+ *   several entries.
+ *
+ * A widget's declared subset is NOT stored on [GridItem] itself - [GridItem] stays a pure
+ * geometry record with zero knowledge of "widget kinds," same posture as the rest of this file.
+ * The subset lives with whatever knows what a "record list" or a "stat tile" is (today,
+ * `PrototypeWidgetKind.supportedPresets` in the debug-only harness; the real `widget_instances`
+ * catalog's job later) and is handed to [GridEngine.nextPreset] and to `DeckGrid`'s own
+ * `presetsFor` parameter as a plain `List<GridPreset>`.
+ *
+ * **[GridEngine.clampResizeTarget] and [GridEngine.resize] are now unused by BOTH the old free-drag
+ * path (already true before this change) AND the new preset-cycle path** - a preset never shrinks
+ * to fit, it relocates ([GridEngine.clampPresetTarget] reuses [GridEngine.clampMoveTarget] instead,
+ * preserving the full declared span and only ever adjusting `col`). They are kept for the same
+ * "future auto-arrange/paste primitive" reason [GridEngine.moveTo] is kept - see that function's
+ * own doc - not because anything still calls them from `DeckGrid.kt`.
+ */
+enum class GridPreset(val colSpan: Int, val rowSpan: Int, val label: String) {
+    SMALL(colSpan = 2, rowSpan = 1, label = "S"),
+    WIDE(colSpan = 4, rowSpan = 1, label = "W"),
+    TALL(colSpan = 2, rowSpan = 2, label = "T"),
+    LARGE(colSpan = 4, rowSpan = 2, label = "L");
+
+    companion object {
+        /** The catalog entry matching [item]'s CURRENT geometry exactly, or `null` if it does not
+         *  match any preset at all - a stale fixture, or an item still holding a leftover free-resize
+         *  span from before this generation. A caller (`DeckGrid`'s content lambda, deciding how much
+         *  to render) falls back to its own default in the `null` case; [GridEngine.nextPreset] falls
+         *  back to the first SUPPORTED preset rather than throwing, for the identical reason. */
+        fun match(item: GridItem): GridPreset? = entries.firstOrNull { it.colSpan == item.colSpan && it.rowSpan == item.rowSpan }
+    }
+}
+
+/**
  * The pure occupancy-map algorithm. Every function takes a `List<GridItem>` and a fixed
  * `columnCount` and returns a NEW `List<GridItem>` - nothing here mutates its input, and nothing
  * here is a `@Composable`. Order of the returned list is not meaningful (callers key by `id`);
@@ -270,6 +321,38 @@ object GridEngine {
         val maxColSpanHere = (columnCount - item.col).coerceAtLeast(1)
         val colSpan = newColSpan.coerceIn(1, maxColSpanHere)
         return item.copy(rowSpan = rowSpan, colSpan = colSpan)
+    }
+
+    /**
+     * Clamp a PRESET-CYCLE target into legal bounds - the fourth-generation replacement for a
+     * free resize, see [GridPreset]'s own doc for the full "like android widgets" rationale.
+     * Unlike [clampResizeTarget], this never shrinks anything: [item] takes on [preset]'s exact
+     * `(colSpan, rowSpan)` in full, and only its `col` is adjusted (via [clampMoveTarget], reused
+     * rather than reimplemented) if the preset's own width would otherwise run the card off the
+     * grid's right edge - a preset is a fixed shape, not a negotiable span, exactly like an
+     * Android home-screen widget's declared size. `row` is left exactly as [item] already has it;
+     * [GridEngine.displaceForPlacement] (the caller's next step, same as every other interactive
+     * commit in this file) is what makes room for the resulting rectangle among whatever it now
+     * overlaps.
+     */
+    fun clampPresetTarget(item: GridItem, preset: GridPreset, columnCount: Int): GridItem {
+        val resized = item.copy(colSpan = preset.colSpan, rowSpan = preset.rowSpan)
+        return clampMoveTarget(resized, targetRow = resized.row, targetCol = resized.col, columnCount)
+    }
+
+    /**
+     * The next preset in [supported]'s own declared order, wrapping past the end back to the
+     * first - the whole "tap the size chip" interaction. [supported] must not be empty (a widget
+     * kind with no supported preset at all is a fixture bug, not a runtime case to degrade
+     * gracefully for). If [current] is not itself one of [supported] - should not happen once
+     * every fixture starts on a supported preset, but a caller cannot prove that statically -
+     * cycling starts from the FIRST supported preset rather than throwing, since "the current
+     * size is unrecognised" reads closer to "start over" than to an error.
+     */
+    fun nextPreset(current: GridPreset, supported: List<GridPreset>): GridPreset {
+        require(supported.isNotEmpty()) { "a widget kind must support at least one preset" }
+        val index = supported.indexOf(current)
+        return if (index == -1) supported.first() else supported[(index + 1) % supported.size]
     }
 
     /** True when [candidate] collides with anything in [others] - the validity half of the

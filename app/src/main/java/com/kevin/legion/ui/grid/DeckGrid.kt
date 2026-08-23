@@ -7,12 +7,12 @@ import androidx.compose.animation.core.AnimationVector2D
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -50,8 +50,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 /**
  * Stage-2 grid mechanics, Compose layer (aspect-engine ticket 18, priced by ticket 09's spike).
@@ -72,7 +72,7 @@ import kotlin.math.roundToInt
  * - **The grid becomes visible in edit mode** - a low-contrast dotted line at every cell boundary,
  *   drawn once in [DeckGrid]'s own `drawBehind`, invisible outside edit mode. See the grid-line
  *   drawing block below.
- * - **A snap-preview outline** shows where the dragged/resized card would land: the dragged card
+ * - **A snap-preview outline** shows where the dragged card would land: the dragged card
  *   itself follows the raw pointer (with a lift), while a separate dashed rect - drawn at the
  *   CLAMPED candidate cell - tracks the nearest legal cell alignment. Chrome tone when
  *   [GridEngine.displaceForPlacement] finds a workable arrangement, error tone
@@ -89,13 +89,24 @@ import kotlin.math.roundToInt
  *   function's own doc) - THAT is what still triggers the error-tone-and-animate-home rejection
  *   path, not a mere overlap.
  * - **A valid release commits exactly the previewed arrangement** and animates the small residual
- *   distance between the raw drop point and the snapped cell for the ACTIVELY dragged/resized card
- *   (see [MoveDrag]/[ResizeDrag]'s own "settle" animation below) - both the valid-commit and the
+ *   distance between the raw drop point and the snapped cell for the ACTIVELY dragged card
+ *   (see [MoveDrag]'s own "settle" animation below) - both the valid-commit and the
  *   rejected-and-returned case share ONE animation mechanism, they only differ in which rect they
  *   animate toward. **Every OTHER occupant a drop displaces gets the same 200ms settle too**
  *   (the deferred polish, wired in the same rework that fixed the fourth feel-test pass's bug
  *   below) - `displacementSettle`, a map keyed by id rather than a single shared `Animatable`,
  *   since an arbitrary number of occupants can be displaced by one drop (a knock-on chain).
+ * - **FREE RESIZE IS RETIRED (2026-08-23, after the seventh feel-test pass).** Kevin: "card sizing
+ *   is not accurate. lets just implement set size cards. like android widgets." [ResizeDrag], the
+ *   corner-resize handle, and the resize half of the snap-preview/settle machinery above are gone.
+ *   In their place: edit mode's former handle position now hosts a SIZE CHIP (see
+ *   [GridCellChrome]) that, on tap, cycles the card through its own kind's supported
+ *   [GridPreset]s via [GridEngine.nextPreset] and commits the next one through the SAME
+ *   [GridEngine.displaceForPlacement] path a drag commits through - occupants make room exactly
+ *   as they would for a drag, and a preset step that fits nowhere leaves the layout untouched and
+ *   flashes the chip to the quarantine tone rather than silently doing nothing. See [GridPreset]'s
+ *   own doc in `GridModel.kt` for the full catalog and rationale. Drag-to-move is UNCHANGED by
+ *   this rework - only the resize gesture is gone.
  *
  * **Cell hit-testing, not nearest-centre distance - the stage-1 defect this ticket exists to
  * fix.** The prototype's reorder targeted whichever OTHER item's centre was nearest the dragged
@@ -147,10 +158,6 @@ import kotlin.math.roundToInt
  */
 private data class MoveDrag(val id: String, val originRow: Int, val originCol: Int, val accumPx: Offset)
 
-/** One corner-resize gesture in flight: which item, its ORIGINAL span (captured once, at drag
- *  start), and the raw pixel delta accumulated since. */
-private data class ResizeDrag(val id: String, val originRowSpan: Int, val originColSpan: Int, val accumPx: Offset)
-
 /**
  * The grid itself.
  *
@@ -168,8 +175,12 @@ private data class ResizeDrag(val id: String, val originRowSpan: Int, val origin
  *   [GridEngine.displaceForPlacement] found a workable arrangement (the genuinely-impossible case
  *   never calls this - see the file doc's "occupied target" rule). Never mid-gesture.
  * @param onRemove fired with an item's id when its remove chip is tapped in edit mode.
+ * @param presetsFor the fixed [GridPreset] subset a given card supports (a `STAT_TILE` supports
+ *   only [GridPreset.SMALL], a `RECORD_LIST` supports [GridPreset.WIDE] and [GridPreset.LARGE],
+ *   etc - see [GridPreset]'s own doc). Consulted only in edit mode, when the size chip is tapped;
+ *   [GridEngine.nextPreset] cycles through exactly this list.
  * @param itemContent the widget's own body - this composable supplies only the cell rect, the
- *   jiggle, and the edit-mode chrome (drag surface, resize handle, remove chip) around it.
+ *   jiggle, and the edit-mode chrome (drag surface, size chip, remove chip) around it.
  */
 @Composable
 fun DeckGrid(
@@ -179,6 +190,7 @@ fun DeckGrid(
     onEnterEditMode: () -> Unit,
     onLayoutChange: (List<GridItem>) -> Unit,
     onRemove: (id: String) -> Unit,
+    presetsFor: (GridItem) -> List<GridPreset>,
     modifier: Modifier = Modifier,
     rowHeight: Dp = 132.dp,
     gap: Dp = 10.dp,
@@ -221,16 +233,17 @@ fun DeckGrid(
     isFirstComposition = false
 
     var moveDrag by remember { mutableStateOf<MoveDrag?>(null) }
-    var resizeDrag by remember { mutableStateOf<ResizeDrag?>(null) }
 
     // The "settle" animation - shared by BOTH a valid drop (small residual snap from raw pointer
     // position to the exact cell) and an invalid drop (full return trip back to the origin cell).
-    // Only one of these is ever active at a time (one gesture in flight per grid), so one pair of
-    // Animatables covers move and resize's positional/size residual respectively.
+    // Only one move gesture is ever in flight at a time per grid, so one Animatable covers it.
     val moveSettle = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
     var settlingMoveId by remember { mutableStateOf<String?>(null) }
-    val resizeSettle = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
-    var settlingResizeId by remember { mutableStateOf<String?>(null) }
+
+    // The size-chip's error flash (fourth generation, presets replacing free resize): the id of
+    // whichever card's preset-cycle tap just found NO arrangement that fits, for a short,
+    // self-clearing window - see [cyclePreset] below. `null` the rest of the time.
+    var presetErrorId by remember { mutableStateOf<String?>(null) }
 
     // Displaced-OCCUPANT settle (the deferred polish from the third feel-test pass, added here):
     // one independent Animatable per id currently animating from its pre-commit pixel position
@@ -253,10 +266,12 @@ fun DeckGrid(
         fun heightPxFor(rowSpan: Int) = rowHeightPx * rowSpan + gapPx * (rowSpan - 1).coerceAtLeast(0)
 
         // Kicks off (or restarts) a settle animation for every item in `committed` whose row/col
-        // differs from its counterpart in `preCommit` - i.e. every OCCUPANT a drop just displaced,
-        // excluding `excludeId` (the actively dragged/resized card, which already gets its own
-        // dedicated [moveSettle]/[resizeSettle] treatment). Called once, right after a valid
-        // [GridEngine.displaceForPlacement] commit, from both onMoveDragEnd and onResizeDragEnd.
+        // differs from its counterpart in `preCommit` - i.e. every OCCUPANT a drop or a preset-cycle
+        // tap just displaced, excluding `excludeId` (the actively dragged card or the card whose
+        // chip was just tapped, which already gets its own dedicated [moveSettle] treatment, or - for
+        // a preset tap - no positional settle of its own at all, since it did not move). Called once,
+        // right after a valid [GridEngine.displaceForPlacement] commit, from onMoveDragEnd and from
+        // [cyclePreset].
         fun startDisplacementSettles(preCommit: List<GridItem>, committed: List<GridItem>, excludeId: String) {
             val preById = preCommit.associateBy { it.id }
             for (moved in committed) {
@@ -279,48 +294,68 @@ fun DeckGrid(
             }
         }
 
+        // Preset-cycle tap (fourth generation - see the file doc's own "FREE RESIZE IS RETIRED"
+        // paragraph): commit the widget's own NEXT supported [GridPreset] through the exact same
+        // [GridEngine.displaceForPlacement] path a drag commits through. No preview machinery here
+        // at all - unlike a drag, a tap has no in-flight pointer position to preview against, it
+        // either commits immediately or it does not. A `null` result (nothing fits ANY row for the
+        // displaced occupant - see [GridEngine.displaceForPlacement]'s own doc for when that is even
+        // possible) leaves `baseItems` untouched and flashes [presetErrorId] for a short, self-
+        // clearing window instead - the size-chip equivalent of a drag animating back to its origin.
+        fun cyclePreset(itemId: String) {
+            val current = baseItems.firstOrNull { it.id == itemId } ?: return
+            val supported = presetsFor(current)
+            if (supported.isEmpty()) return
+            val currentPreset = GridPreset.match(current) ?: supported.first()
+            val next = GridEngine.nextPreset(currentPreset, supported)
+            val candidate = GridEngine.clampPresetTarget(current, next, columnCount)
+            val committed = GridEngine.displaceForPlacement(baseItems, candidate, columnCount)
+            if (committed != null) {
+                onLayoutChange(committed)
+                startDisplacementSettles(baseItems, committed, excludeId = itemId)
+            } else {
+                presetErrorId = itemId
+                scope.launch {
+                    delay(280)
+                    // Same "only clear if I'm still the flash that fired" guard [startDisplacementSettles]
+                    // uses - a second failed tap on the SAME chip before this delay elapses must not
+                    // have its own flash cut short by this stale coroutine.
+                    if (presetErrorId == itemId) presetErrorId = null
+                }
+            }
+        }
+
         // baseItems never changes mid-gesture (nothing here reflows), so the row count only needs
-        // to account for what is actually committed, plus one spare row while dragging/resizing so
-        // there is somewhere to drop a card below the last occupied row.
-        val rowCount = maxOf(GridEngine.rowCount(baseItems), 1) + if (moveDrag != null || resizeDrag != null) 1 else 0
+        // to account for what is actually committed, plus one spare row while dragging so there is
+        // somewhere to drop a card below the last occupied row. A preset-cycle tap commits
+        // synchronously (no drag in flight), so it needs no extra row of its own here.
+        val rowCount = maxOf(GridEngine.rowCount(baseItems), 1) + if (moveDrag != null) 1 else 0
         val totalHeight = rowHeight * rowCount + gap * (rowCount - 1).coerceAtLeast(0)
 
         // The live snap-preview candidate (clamped, NOT yet reflowed - nothing here ever reflows):
-        // null when no gesture is in flight. Rendered as a dashed outline, normal tone if legal,
+        // null when no drag is in flight. Rendered as a dashed outline, normal tone if legal,
         // error tone if it collides or would exit bounds.
-        val previewCandidate: GridItem? = when {
-            moveDrag != null -> {
-                val d = moveDrag!!
-                val current = baseItems.firstOrNull { it.id == d.id }
-                if (current == null) {
-                    null
-                } else {
-                    // GridGesture.candidateCell - the ONE pixel-to-cell implementation (sixth
-                    // feel-test pass fix), also called by onMoveDragEnd below, so there is no
-                    // second inline computation left to diverge from this one.
-                    val (candidateRow, candidateCol) = GridGesture.candidateCell(
-                        originRow = d.originRow,
-                        originCol = d.originCol,
-                        accumPxX = d.accumPx.x,
-                        accumPxY = d.accumPx.y,
-                        colPitchPx = colPitchPx,
-                        rowPitchPx = rowPitchPx,
-                    )
-                    GridEngine.clampMoveTarget(current, candidateRow, candidateCol, columnCount)
-                }
+        val previewCandidate: GridItem? = if (moveDrag != null) {
+            val d = moveDrag!!
+            val current = baseItems.firstOrNull { it.id == d.id }
+            if (current == null) {
+                null
+            } else {
+                // GridGesture.candidateCell - the ONE pixel-to-cell implementation (sixth
+                // feel-test pass fix), also called by onMoveDragEnd below, so there is no
+                // second inline computation left to diverge from this one.
+                val (candidateRow, candidateCol) = GridGesture.candidateCell(
+                    originRow = d.originRow,
+                    originCol = d.originCol,
+                    accumPxX = d.accumPx.x,
+                    accumPxY = d.accumPx.y,
+                    colPitchPx = colPitchPx,
+                    rowPitchPx = rowPitchPx,
+                )
+                GridEngine.clampMoveTarget(current, candidateRow, candidateCol, columnCount)
             }
-            resizeDrag != null -> {
-                val d = resizeDrag!!
-                val current = baseItems.firstOrNull { it.id == d.id }
-                if (current == null) {
-                    null
-                } else {
-                    val candidateColSpan = d.originColSpan + (d.accumPx.x / colPitchPx).roundToInt()
-                    val candidateRowSpan = d.originRowSpan + (d.accumPx.y / rowPitchPx).roundToInt()
-                    GridEngine.clampResizeTarget(current, candidateRowSpan, candidateColSpan, columnCount)
-                }
-            }
-            else -> null
+        } else {
+            null
         }
         // DISPLACE, not reject (third feel-test pass, 2026-08-23): the full arrangement that
         // WOULD result from committing `previewCandidate` right now - `null` only when no
@@ -406,16 +441,24 @@ fun DeckGrid(
 
             baseItems.forEach { item ->
                 val isDragging = moveDrag?.id == item.id
-                val isResizing = resizeDrag?.id == item.id
                 val isSettlingMove = settlingMoveId == item.id
-                val isSettlingResize = settlingResizeId == item.id
-                // The deferred polish: an occupant a drop just displaced (never the actively
-                // dragged/resized card itself - that one is covered by isSettlingMove/Resize above,
-                // and is excluded from this map by startDisplacementSettles's own `excludeId`).
+                // The deferred polish: an occupant a drop or a preset-cycle tap just displaced
+                // (never the actively dragged card itself - that one is covered by isSettlingMove
+                // above, and is excluded from this map by startDisplacementSettles's own `excludeId`).
                 val displacementAnim = displacementSettle[item.id]
 
+                // Box size now animates directly toward whatever `item`'s OWN colSpan/rowSpan
+                // currently says (fourth generation: a preset-cycle tap changes these fields
+                // outright via `onLayoutChange`, with no in-between drag state to read a live span
+                // from the way the old resize gesture had) - a plain animateDpAsState per axis gives
+                // the size change the same "settle" feel a drag/drop gets, at a fraction of the
+                // hand-rolled Animatable bookkeeping resize used to need. Motion is not restricted on
+                // this app (CLAUDE.md), so an ordinary spring-based animateDpAsState is the right
+                // tool rather than a bespoke Animatable pair.
                 val baseWidth = with(density) { widthPxFor(item.colSpan).toDp() }
                 val baseHeight = with(density) { heightPxFor(item.rowSpan).toDp() }
+                val boxWidth by animateDpAsState(baseWidth, label = "grid-card-width")
+                val boxHeight by animateDpAsState(baseHeight, label = "grid-card-height")
                 val targetX = with(density) { (item.col * colPitchPx).toDp() }
                 val targetY = with(density) { (item.row * rowPitchPx).toDp() }
 
@@ -426,8 +469,6 @@ fun DeckGrid(
 
                 val settleXDp = if (isSettlingMove) with(density) { moveSettle.value.x.toDp() } else 0.dp
                 val settleYDp = if (isSettlingMove) with(density) { moveSettle.value.y.toDp() } else 0.dp
-                val settleWidthDp = if (isSettlingResize) with(density) { resizeSettle.value.x.toDp() } else 0.dp
-                val settleHeightDp = if (isSettlingResize) with(density) { resizeSettle.value.y.toDp() } else 0.dp
                 val displacementXDp = if (displacementAnim != null) with(density) { displacementAnim.value.x.toDp() } else 0.dp
                 val displacementYDp = if (displacementAnim != null) with(density) { displacementAnim.value.y.toDp() } else 0.dp
 
@@ -443,8 +484,6 @@ fun DeckGrid(
                     displacementAnim != null -> targetY + displacementYDp
                     else -> targetY
                 }
-                val boxWidth = if (isSettlingResize) baseWidth + settleWidthDp else baseWidth
-                val boxHeight = if (isSettlingResize) baseHeight + settleHeightDp else baseHeight
 
                 Box(
                     Modifier
@@ -453,14 +492,13 @@ fun DeckGrid(
                         .height(boxHeight)
                         .graphicsLayer {
                             // Slight scale/elevation lift on the card actually under the finger -
-                            // the "picked up" affordance the brief asks for. A resizing card is not
-                            // scaled (its own box IS the live size preview).
+                            // the "picked up" affordance the brief asks for.
                             val lift = isDragging
                             scaleX = if (lift) 1.04f else 1f
                             scaleY = if (lift) 1.04f else 1f
-                            shadowElevation = if (isDragging) 16f else if (isResizing) 10f else 0f
+                            shadowElevation = if (isDragging) 16f else 0f
                         }
-                        .zIndex(if (isDragging || isResizing) 1f else 0f)
+                        .zIndex(if (isDragging) 1f else 0f)
                         // Content clipping (fifth feel-test pass, defect 3): a widget mock whose
                         // own content is taller than its assigned rowSpan must never bleed a
                         // half-visible glyph past the card's own bottom edge - a HARD clip at
@@ -472,13 +510,16 @@ fun DeckGrid(
                         // start at 2 rows tall, which is comfortably enough for 3 DeckRows plus
                         // chrome) so nothing needs to rely on this clip alone in practice.
                         .clipToBounds()
-                        .gridJiggle(active = editMode && !isDragging && !isResizing && !isSettlingMove && !isSettlingResize && displacementAnim == null, seed = item.id.hashCode()),
+                        .gridJiggle(active = editMode && !isDragging && !isSettlingMove && displacementAnim == null, seed = item.id.hashCode()),
                 ) {
                     GridCellChrome(
                         item = item,
                         editMode = editMode,
+                        presetLabel = GridPreset.match(item)?.label ?: "?",
+                        presetError = presetErrorId == item.id,
                         onLongPressToEnterEditMode = onEnterEditMode,
                         onRemove = { onRemove(item.id) },
+                        onCyclePreset = { cyclePreset(item.id) },
                         onMoveDragStart = {
                             val current = baseItems.firstOrNull { it.id == item.id } ?: return@GridCellChrome
                             moveDrag = MoveDrag(item.id, current.row, current.col, Offset.Zero)
@@ -541,51 +582,6 @@ fun DeckGrid(
                                 }
                             }
                         },
-                        onResizeDragStart = {
-                            val current = baseItems.firstOrNull { it.id == item.id } ?: return@GridCellChrome
-                            resizeDrag = ResizeDrag(item.id, current.rowSpan, current.colSpan, Offset.Zero)
-                        },
-                        onResizeDrag = { delta ->
-                            val d = resizeDrag ?: return@GridCellChrome
-                            resizeDrag = d.copy(accumPx = d.accumPx + delta)
-                        },
-                        onResizeDragEnd = {
-                            // This is THE bug Kevin hit on the A25 in the first feel-test pass:
-                            // read `d` fresh (already done, it is a direct property read of the
-                            // live state) and recompute the candidate from `baseItems` directly -
-                            // never a composition-scoped val that needs an extra recompose.
-                            val d = resizeDrag
-                            resizeDrag = null
-                            if (d != null) {
-                                val current = baseItems.firstOrNull { it.id == d.id }
-                                if (current != null) {
-                                    val candidateColSpan = d.originColSpan + (d.accumPx.x / colPitchPx).roundToInt()
-                                    val candidateRowSpan = d.originRowSpan + (d.accumPx.y / rowPitchPx).roundToInt()
-                                    val candidate = GridEngine.clampResizeTarget(current, candidateRowSpan, candidateColSpan, columnCount)
-                                    // DISPLACE, not reject - same reasoning as onMoveDragEnd above.
-                                    val committed = GridEngine.displaceForPlacement(baseItems, candidate, columnCount)
-                                    val settleTarget = if (committed != null) candidate else current
-                                    if (committed != null) {
-                                        onLayoutChange(committed)
-                                        // Same deferred polish as onMoveDragEnd - a resize can also
-                                        // displace occupants (their row/col changes, never their
-                                        // own span), and they get the same 200ms settle.
-                                        startDisplacementSettles(baseItems, committed, excludeId = d.id)
-                                    }
-                                    val rawWidthPx = widthPxFor(current.colSpan) + d.accumPx.x
-                                    val rawHeightPx = heightPxFor(current.rowSpan) + d.accumPx.y
-                                    val settleWidthPx = widthPxFor(settleTarget.colSpan)
-                                    val settleHeightPx = heightPxFor(settleTarget.rowSpan)
-                                    val residual = Offset(rawWidthPx - settleWidthPx, rawHeightPx - settleHeightPx)
-                                    settlingResizeId = d.id
-                                    scope.launch {
-                                        resizeSettle.snapTo(residual)
-                                        resizeSettle.animateTo(Offset.Zero, tween(200))
-                                        settlingResizeId = null
-                                    }
-                                }
-                            }
-                        },
                     ) { itemContent(item) }
                 }
             }
@@ -593,21 +589,22 @@ fun DeckGrid(
     }
 }
 
-/** How much of the card's own RIGHT edge the remove chip (top) and resize handle (bottom) each
- *  need reserved so nothing the card's own content draws can be overlapped by either - the fifth
- *  feel-test pass's "half-width card chrome is broken" defect. 28dp is the chip's own width; 8dp
- *  is a small breathing gap so the reservation does not read as a hard clip line. Reserved on
- *  BOTH corners at once by a single END padding on the whole content column (see [GridCellChrome]),
- *  since chip and handle sit on the SAME right edge, top and bottom respectively. */
+/** How much of the card's own RIGHT edge the remove chip (top) and size chip (bottom, formerly
+ *  the resize handle - see [GridCellChrome]'s own doc) each need reserved so nothing the card's
+ *  own content draws can be overlapped by either - the fifth feel-test pass's "half-width card
+ *  chrome is broken" defect. 28dp is each chip's own width; 8dp is a small breathing gap so the
+ *  reservation does not read as a hard clip line. Reserved on BOTH corners at once by a single END
+ *  padding on the whole content column (see [GridCellChrome]), since the two chips sit on the SAME
+ *  right edge, top and bottom respectively. */
 private val CHIP_CLEARANCE = 36.dp
 
 /**
  * The per-cell edit-mode chrome: drag surface over the whole card (move), a small bottom-right
- * corner resize handle, and a remove chip - the three affordances the ticket names. Not exported;
- * [DeckGrid] is the only caller.
+ * size chip (preset-cycle, formerly a free-resize handle), and a remove chip - the affordances the
+ * ticket names. Not exported; [DeckGrid] is the only caller.
  *
  * **The half-width chrome-overlap fix (fifth feel-test pass, 2026-08-23).** The remove chip and
- * resize handle are drawn by THIS file, layered on top of `content()` (the caller's own
+ * size chip are drawn by THIS file, layered on top of `content()` (the caller's own
  * [com.kevin.legion.ui.common.DeckPane]) - `DeckPane` itself has no idea either exists, so its own
  * label-pill ellipsis clamp (`paneWidth - 16dp`) was computed against the FULL card width, with no
  * awareness that the outer 28dp chip could sit on top of the last ~30-40dp of that width. On a
@@ -619,21 +616,29 @@ private val CHIP_CLEARANCE = 36.dp
  * narrower width** ([CHIP_CLEARANCE] reserved off the trailing edge, edit mode only) so
  * `DeckPane`'s OWN ellipsis point - and any right-reaching content inside it, like
  * [com.kevin.legion.ui.common.DeckButton]'s fill width - naturally stops clear of where the chip
- * and handle actually sit, rather than teaching `DeckPane` (a widely-shared production component)
- * about an overlay it does not otherwise need to know exists.
+ * and size-chip actually sit, rather than teaching `DeckPane` (a widely-shared production
+ * component) about an overlay it does not otherwise need to know exists.
+ *
+ * **The bottom-right corner is a SIZE CHIP now, not a drag-resize handle (fourth generation,
+ * 2026-08-23) - see `DeckGrid`'s own file doc.** A single tap (not a drag) cycles the card through
+ * its own [GridPreset] subset via [DeckGrid]'s `cyclePreset`; [presetLabel] is the CURRENT preset's
+ * one-letter tag ([GridPreset.label] - "S"/"W"/"T"/"L") and [presetError] is a short-lived flash
+ * (the tap's own [GridEngine.displaceForPlacement] found nothing that fits) rendered as the chip's
+ * background swapping to the quarantine tone, the exact "reject" language the drag/drop snap-preview
+ * already uses elsewhere in this file for the identical situation.
  */
 @Composable
 private fun GridCellChrome(
     item: GridItem,
     editMode: Boolean,
+    presetLabel: String,
+    presetError: Boolean,
     onLongPressToEnterEditMode: () -> Unit,
     onRemove: () -> Unit,
+    onCyclePreset: () -> Unit,
     onMoveDragStart: () -> Unit,
     onMoveDrag: (Offset) -> Unit,
     onMoveDragEnd: () -> Unit,
-    onResizeDragStart: () -> Unit,
-    onResizeDrag: (Offset) -> Unit,
-    onResizeDragEnd: () -> Unit,
     content: @Composable () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
@@ -676,27 +681,21 @@ private fun GridCellChrome(
             ) {
                 Text("X", style = LegionType.stamp, color = MaterialTheme.colorScheme.background)
             }
-            // Corner resize handle - bottom-right, its own drag stream separate from the
-            // move-drag surface above so a finger starting exactly on the handle resizes rather
-            // than moves. detectDragGestures on a small child Box wins the gesture over the
-            // larger parent's own pointerInput because Compose's default pointer input dispatch
-            // resolves to the innermost consumer first.
+            // The size chip - bottom-right, where the free-resize handle used to be. A plain tap
+            // target (combinedClickable, no pointerInput/detectDragGestures at all - this is the
+            // whole point of retiring the drag-to-resize gesture), so a finger starting exactly here
+            // cycles the preset rather than moving the card; the move-drag surface covers the WHOLE
+            // card including this corner, but Compose's default pointer dispatch resolves to the
+            // innermost consumer first, so a tap here still reaches this box's own onClick.
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)
-                    .size(24.dp)
-                    .border(1.dp, sem.chromeDim)
-                    .pointerInput(item.id) {
-                        detectDragGestures(
-                            onDragStart = { onResizeDragStart() },
-                            onDragEnd = { onResizeDragEnd() },
-                            onDragCancel = { onResizeDragEnd() },
-                            onDrag = { change, delta -> change.consume(); onResizeDrag(delta) },
-                        )
-                    },
+                    .size(28.dp)
+                    .background(if (presetError) sem.quarantined else sem.chrome)
+                    .combinedClickable(onClick = onCyclePreset),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("⤡", style = LegionType.stamp, color = sem.chromeText)
+                Text(presetLabel, style = LegionType.stamp, color = MaterialTheme.colorScheme.background)
             }
         }
     }

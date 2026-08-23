@@ -13,6 +13,7 @@ import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.grid.DeckGrid
 import com.kevin.legion.ui.grid.GridItem
+import com.kevin.legion.ui.grid.GridPreset
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 
@@ -39,27 +40,15 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
  *  a real screen would size this from the device's own width class, which is out of scope here. */
 private const val PROTOTYPE_GRID_COLUMNS = 4
 
-/** How many grid rows a widget KIND needs to show its own mock content without clipping - the
- *  fifth feel-test pass's defect 3 fix ("card content must clip cleanly... fit rows to the card
- *  height"). [PrototypeWidgetKind.AGENDA] and [PrototypeWidgetKind.RECORD_LIST] both render THREE
- *  [DeckRow]s (48dp each = 144dp) plus the pane's own header/padding chrome (~35dp), which does not
- *  fit inside one row's worth of the grid's default 132dp [com.kevin.legion.ui.grid.DeckGrid.rowHeight] -
- *  two rows (132*2 + the 10dp gap = 274dp) comfortably clears it. Every other kind's mock content
- *  fits one row. `DeckGrid` itself ALSO gained a defensive hard clip at the card boundary in the
- *  same rework (see its own file doc) so a future widget that still overflows its assigned rowSpan
- *  cuts cleanly rather than slicing a glyph in half - this table is the "fit rows to the card
- *  height" half of that fix, not the only line of defense. */
-private fun rowSpanFor(kind: PrototypeWidgetKind): Int = when (kind) {
-    PrototypeWidgetKind.AGENDA, PrototypeWidgetKind.RECORD_LIST -> 2
-    else -> 1
-}
-
 /**
- * Hand-assigns an initial [GridItem] layout for [widgets], packing HALF widgets two-to-a-row and
- * FULL widgets to their own row(s) - the same greedy adjacency the deleted stage-1 column used, so
- * every page starts from a familiar arrangement even though the mechanics underneath are now
- * entirely stage 2. `colSpan` 2 for HALF, 4 (the whole grid) for FULL; `rowSpan` per [rowSpanFor] -
- * exercised for real (both dimensions) once edit mode's resize handle is used.
+ * Hand-assigns an initial [GridItem] layout for [widgets] from each one's own
+ * [PrototypeWidget.initialPreset] - packing two side-by-side widgets into one row whenever both
+ * their presets are narrower than the full grid width and still fit together, one widget to its
+ * own row(s) otherwise (the same greedy adjacency the deleted stage-1 column used, so every page
+ * starts from a familiar arrangement even though the mechanics underneath are now entirely
+ * stage 2, and now entirely preset-driven rather than a HALF/FULL toggle - see
+ * [PrototypeWidget.initialPreset]'s own doc). `rowSpan`/`colSpan` come straight from the preset;
+ * exercised for real (both dimensions change together) the moment edit mode's size chip is tapped.
  */
 private fun initialGridItems(widgets: List<PrototypeWidget>): List<GridItem> {
     val items = mutableListOf<GridItem>()
@@ -67,25 +56,25 @@ private fun initialGridItems(widgets: List<PrototypeWidget>): List<GridItem> {
     var i = 0
     while (i < widgets.size) {
         val w = widgets[i]
-        if (w.size == PrototypeWidgetSize.FULL) {
-            val span = rowSpanFor(w.kind)
-            items.add(GridItem(id = w.id, row = row, col = 0, rowSpan = span, colSpan = PROTOTYPE_GRID_COLUMNS))
-            row += span
+        val preset = w.initialPreset
+        if (preset.colSpan >= PROTOTYPE_GRID_COLUMNS) {
+            items.add(GridItem(id = w.id, row = row, col = 0, rowSpan = preset.rowSpan, colSpan = preset.colSpan))
+            row += preset.rowSpan
             i += 1
         } else {
             val next = widgets.getOrNull(i + 1)
-            if (next != null && next.size == PrototypeWidgetSize.HALF) {
-                // Two HALF widgets sharing a row must share the SAME rowSpan (they occupy the
-                // same row range) - the taller of the two governs, per [rowSpanFor].
-                val span = maxOf(rowSpanFor(w.kind), rowSpanFor(next.kind))
-                items.add(GridItem(id = w.id, row = row, col = 0, rowSpan = span, colSpan = 2))
-                items.add(GridItem(id = next.id, row = row, col = 2, rowSpan = span, colSpan = 2))
+            val nextPreset = next?.initialPreset
+            if (next != null && nextPreset != null && preset.colSpan + nextPreset.colSpan <= PROTOTYPE_GRID_COLUMNS) {
+                // Two widgets sharing a row must share the SAME rowSpan (they occupy the same row
+                // range) - the taller of the two governs.
+                val span = maxOf(preset.rowSpan, nextPreset.rowSpan)
+                items.add(GridItem(id = w.id, row = row, col = 0, rowSpan = span, colSpan = preset.colSpan))
+                items.add(GridItem(id = next.id, row = row, col = preset.colSpan, rowSpan = span, colSpan = nextPreset.colSpan))
                 row += span
                 i += 2
             } else {
-                val span = rowSpanFor(w.kind)
-                items.add(GridItem(id = w.id, row = row, col = 0, rowSpan = span, colSpan = 2))
-                row += span
+                items.add(GridItem(id = w.id, row = row, col = 0, rowSpan = preset.rowSpan, colSpan = preset.colSpan))
+                row += preset.rowSpan
                 i += 1
             }
         }
@@ -121,34 +110,60 @@ fun PrototypeGridPage(widgets: List<PrototypeWidget>, editMode: Boolean, onEnter
             gridItems.addAll(updated)
         },
         onRemove = { id -> gridItems.removeAll { it.id == id } },
+        presetsFor = { item -> widgetsById[item.id]?.kind?.supportedPresets ?: listOf(GridPreset.SMALL) },
         modifier = Modifier.fillMaxWidth(),
     ) { item ->
         val widget = widgetsById[item.id] ?: return@DeckGrid
+        // The card's CURRENT preset comes from the grid's own live geometry ([GridPreset.match]),
+        // never from [PrototypeWidget.initialPreset] - that field seeds the very first layout only
+        // (see its own doc) and is never updated by a size-chip tap. A `null` match (should not
+        // happen once every fixture starts on a supported preset) falls back to the widget's own
+        // first supported preset, same "start over" posture as [GridEngine.nextPreset].
+        val preset = GridPreset.match(item) ?: widget.kind.supportedPresets.first()
         DeckPane(
             header = widget.title,
             headerAccent = widget.kind.name.replace('_', ' '),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            WidgetBody(widget)
+            WidgetBody(widget, preset)
         }
     }
 }
 
+/** How many rows of a multi-row widget's own fixture list to actually render at [preset] - the
+ *  "content adapts per preset, a card always exactly fills its rect" rule (ticket brief point 3).
+ *  [GridPreset.WIDE] (one row tall) gets a compact 2-row read; [GridPreset.LARGE] (two rows tall)
+ *  gets up to 4. Only [PrototypeWidgetKind.RECORD_LIST]/[PrototypeWidgetKind.AGENDA] have more than
+ *  one row of content to begin with - every other kind ignores this and renders its fixed content
+ *  regardless of [preset], since [PrototypeWidgetKind.supportedPresets] never gives them room to
+ *  show more or less. */
+private fun PrototypeWidgetKind.maxRowsFor(preset: GridPreset): Int = when (this) {
+    PrototypeWidgetKind.RECORD_LIST, PrototypeWidgetKind.AGENDA -> if (preset == GridPreset.LARGE) 4 else 2
+    else -> Int.MAX_VALUE
+}
+
 /** Fake per-kind widget body - moved here from the deleted stage-1 `PrototypeReorder.kt`, whose
  *  only remaining caller was this file once every page moved to stage 2. Never sourced from a
- *  controller; see [PrototypeData.kt]'s file doc. */
+ *  controller; see [PrototypeData.kt]'s file doc.
+ *
+ *  [preset] is the card's CURRENT [GridPreset] (not necessarily [widget]'s
+ *  [PrototypeWidget.initialPreset] - see [PrototypeGridPage]'s own call site), threaded through so
+ *  a multi-row kind can render exactly as many rows as [maxRowsFor] says its current size has room
+ *  for - "a card always exactly fills its preset rect," never more, never a clipped remainder. */
 @Composable
-internal fun WidgetBody(widget: PrototypeWidget) {
+internal fun WidgetBody(widget: PrototypeWidget, preset: GridPreset) {
     val sem = LocalLegionSemantics.current
     when (widget.kind) {
         PrototypeWidgetKind.STAT_TILE -> {
+            // SMALL is STAT_TILE's only supported preset (see supportedPresets) - value only, no
+            // per-size branching needed.
             val (value, sub) = PrototypeFixtures.statValue(widget.id)
             Text(value, style = LegionType.amount, color = sem.data)
             Text(sub, style = MaterialTheme.typography.bodySmall, color = sem.faint)
         }
         PrototypeWidgetKind.RECORD_LIST -> {
             Column {
-                PrototypeFixtures.recordRows(widget.id).forEach { (label, value) ->
+                PrototypeFixtures.recordRows(widget.id).take(widget.kind.maxRowsFor(preset)).forEach { (label, value) ->
                     DeckRow(label = label, value = value)
                 }
             }
@@ -158,11 +173,12 @@ internal fun WidgetBody(widget: PrototypeWidget) {
             DeckRow(label = name, value = due)
         }
         PrototypeWidgetKind.QUICK_ADD -> {
+            // SMALL is QUICK_ADD's only supported preset - a single button, no per-size branching.
             DeckButton(text = widget.title, onClick = {})
         }
         PrototypeWidgetKind.AGENDA -> {
             Column {
-                PrototypeFixtures.agendaRows(widget.id).forEach { (time, what) ->
+                PrototypeFixtures.agendaRows(widget.id).take(widget.kind.maxRowsFor(preset)).forEach { (time, what) ->
                     DeckRow(label = time, value = what)
                 }
             }

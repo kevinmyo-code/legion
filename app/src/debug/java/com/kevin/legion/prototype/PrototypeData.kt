@@ -1,5 +1,7 @@
 package com.kevin.legion.prototype
 
+import com.kevin.legion.ui.grid.GridPreset
+
 /**
  * THROWAWAY fixtures for the stage-1 dashboard-grid prototype (aspect-engine ticket 09). Every
  * value here is hand-typed, not read from Room or an aspect definition - ticket 09 is answering
@@ -14,19 +16,46 @@ package com.kevin.legion.prototype
  *  them to feel the column (stat tile, record list, next-due, quick-add, agenda), per the brief. */
 enum class PrototypeWidgetKind { STAT_TILE, RECORD_LIST, NEXT_DUE, QUICK_ADD, AGENDA }
 
-/** Half or full page width - the only two sizes stage 1 answers ticket 09 question 1 with. */
-enum class PrototypeWidgetSize { HALF, FULL }
+/**
+ * The fixed [GridPreset] subset each widget KIND supports (fourth generation, 2026-08-23: "set
+ * size cards, like android widgets" - see `GridModel.kt`'s own [GridPreset] doc for the full
+ * catalog/rationale). This is where the "what sizes does this widget come in" contract actually
+ * lives for the prototype - `GridModel.kt` itself has zero knowledge of widget kinds, on purpose,
+ * same posture as the rest of that file. Order here is CYCLE order for [GridEngine.nextPreset]
+ * (`com.kevin.legion.ui.grid.GridEngine`), not a ranking.
+ *
+ * - [PrototypeWidgetKind.STAT_TILE] / [PrototypeWidgetKind.QUICK_ADD]: a single short row, never
+ *   more - [GridPreset.SMALL] only.
+ * - [PrototypeWidgetKind.NEXT_DUE]: fits as a half-width row or can stretch to the full width for
+ *   more breathing room - [GridPreset.SMALL] and [GridPreset.WIDE].
+ * - [PrototypeWidgetKind.RECORD_LIST] / [PrototypeWidgetKind.AGENDA]: always full-width (their
+ *   rows are too wide for half a 4-column grid to read cleanly), toggling between a compact
+ *   2-row view and a taller 3-4-row view - [GridPreset.WIDE] and [GridPreset.LARGE].
+ */
+val PrototypeWidgetKind.supportedPresets: List<GridPreset>
+    get() = when (this) {
+        PrototypeWidgetKind.STAT_TILE, PrototypeWidgetKind.QUICK_ADD -> listOf(GridPreset.SMALL)
+        PrototypeWidgetKind.NEXT_DUE -> listOf(GridPreset.SMALL, GridPreset.WIDE)
+        PrototypeWidgetKind.RECORD_LIST, PrototypeWidgetKind.AGENDA -> listOf(GridPreset.WIDE, GridPreset.LARGE)
+    }
 
 /**
  * One widget instance sitting in one page's column. `id` is stable across reorders (used as the
  * drag/compose key); `page` reorder and per-page widget order live entirely in in-memory state
  * ([PrototypeDashboardState]) since there is no Room table behind this prototype.
+ *
+ * **`size: PrototypeWidgetSize` (HALF/FULL) is GONE (fourth generation, 2026-08-23)** - replaced
+ * by [initialPreset], one of [kind]'s own [supportedPresets], since a widget's on-screen footprint
+ * is now always an exact [GridPreset] rather than a half/full-width toggle. [initialPreset] seeds
+ * `PrototypeGrid.kt`'s `initialGridItems` layout only - once the grid is live, a card's ACTUAL
+ * preset lives entirely in its own `GridItem.colSpan`/`rowSpan`, mutated by
+ * `DeckGrid`'s size-chip tap, never read back from this field again.
  */
 data class PrototypeWidget(
     val id: String,
     val kind: PrototypeWidgetKind,
     val title: String,
-    var size: PrototypeWidgetSize,
+    val initialPreset: GridPreset,
 )
 
 /** One pager page: a name (page-management chrome, ticket 09 question 4) and its widget column. */
@@ -42,13 +71,13 @@ object PrototypeFixtures {
         id = "home",
         name = "HOME",
         widgets = mutableListOf(
-            PrototypeWidget("h1", PrototypeWidgetKind.STAT_TILE, "NET WORTH", PrototypeWidgetSize.HALF),
-            PrototypeWidget("h2", PrototypeWidgetKind.STAT_TILE, "MILES THIS WEEK", PrototypeWidgetSize.HALF),
-            PrototypeWidget("h3", PrototypeWidgetKind.AGENDA, "TODAY", PrototypeWidgetSize.FULL),
-            PrototypeWidget("h4", PrototypeWidgetKind.NEXT_DUE, "NEXT DUE", PrototypeWidgetSize.FULL),
-            PrototypeWidget("h5", PrototypeWidgetKind.RECORD_LIST, "RECENT LEDGER ROWS", PrototypeWidgetSize.FULL),
-            PrototypeWidget("h6", PrototypeWidgetKind.QUICK_ADD, "LOG A DRIVE", PrototypeWidgetSize.HALF),
-            PrototypeWidget("h7", PrototypeWidgetKind.QUICK_ADD, "ADD RECEIPT", PrototypeWidgetSize.HALF),
+            PrototypeWidget("h1", PrototypeWidgetKind.STAT_TILE, "NET WORTH", GridPreset.SMALL),
+            PrototypeWidget("h2", PrototypeWidgetKind.STAT_TILE, "MILES THIS WEEK", GridPreset.SMALL),
+            PrototypeWidget("h3", PrototypeWidgetKind.AGENDA, "TODAY", GridPreset.WIDE),
+            PrototypeWidget("h4", PrototypeWidgetKind.NEXT_DUE, "NEXT DUE", GridPreset.WIDE),
+            PrototypeWidget("h5", PrototypeWidgetKind.RECORD_LIST, "RECENT LEDGER ROWS", GridPreset.LARGE),
+            PrototypeWidget("h6", PrototypeWidgetKind.QUICK_ADD, "LOG A DRIVE", GridPreset.SMALL),
+            PrototypeWidget("h7", PrototypeWidgetKind.QUICK_ADD, "ADD RECEIPT", GridPreset.SMALL),
         ),
     )
 
@@ -56,11 +85,11 @@ object PrototypeFixtures {
         id = "fleet",
         name = "FLEET",
         widgets = mutableListOf(
-            PrototypeWidget("f1", PrototypeWidgetKind.STAT_TILE, "ODOMETER", PrototypeWidgetSize.HALF),
-            PrototypeWidget("f2", PrototypeWidgetKind.STAT_TILE, "FUEL LEVEL", PrototypeWidgetSize.HALF),
-            PrototypeWidget("f3", PrototypeWidgetKind.NEXT_DUE, "OIL CHANGE", PrototypeWidgetSize.FULL),
-            PrototypeWidget("f4", PrototypeWidgetKind.RECORD_LIST, "RECENT DRIVES", PrototypeWidgetSize.FULL),
-            PrototypeWidget("f5", PrototypeWidgetKind.QUICK_ADD, "LOG FUEL-UP", PrototypeWidgetSize.HALF),
+            PrototypeWidget("f1", PrototypeWidgetKind.STAT_TILE, "ODOMETER", GridPreset.SMALL),
+            PrototypeWidget("f2", PrototypeWidgetKind.STAT_TILE, "FUEL LEVEL", GridPreset.SMALL),
+            PrototypeWidget("f3", PrototypeWidgetKind.NEXT_DUE, "OIL CHANGE", GridPreset.WIDE),
+            PrototypeWidget("f4", PrototypeWidgetKind.RECORD_LIST, "RECENT DRIVES", GridPreset.WIDE),
+            PrototypeWidget("f5", PrototypeWidgetKind.QUICK_ADD, "LOG FUEL-UP", GridPreset.SMALL),
         ),
     )
 
@@ -68,10 +97,10 @@ object PrototypeFixtures {
         id = "ledger",
         name = "LEDGER",
         widgets = mutableListOf(
-            PrototypeWidget("l1", PrototypeWidgetKind.STAT_TILE, "THIS MONTH SPEND", PrototypeWidgetSize.HALF),
-            PrototypeWidget("l2", PrototypeWidgetKind.STAT_TILE, "UNRECONCILED ROWS", PrototypeWidgetSize.HALF),
-            PrototypeWidget("l3", PrototypeWidgetKind.RECORD_LIST, "LATEST TRANSACTIONS", PrototypeWidgetSize.FULL),
-            PrototypeWidget("l4", PrototypeWidgetKind.QUICK_ADD, "IMPORT STATEMENT", PrototypeWidgetSize.FULL),
+            PrototypeWidget("l1", PrototypeWidgetKind.STAT_TILE, "THIS MONTH SPEND", GridPreset.SMALL),
+            PrototypeWidget("l2", PrototypeWidgetKind.STAT_TILE, "UNRECONCILED ROWS", GridPreset.SMALL),
+            PrototypeWidget("l3", PrototypeWidgetKind.RECORD_LIST, "LATEST TRANSACTIONS", GridPreset.LARGE),
+            PrototypeWidget("l4", PrototypeWidgetKind.QUICK_ADD, "IMPORT STATEMENT", GridPreset.SMALL),
         ),
     )
 

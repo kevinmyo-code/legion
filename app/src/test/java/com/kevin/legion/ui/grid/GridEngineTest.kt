@@ -702,4 +702,121 @@ class GridEngineTest {
         assertEquals(0, byId.getValue("occupant").col)
         for (x in result) for (y in result) assertFalse(GridEngine.collides(x, y))
     }
+
+    // -------------------------------------------------- GridPreset (fourth generation, 2026-08-23)
+    // "card sizing is not accurate. lets just implement set size cards. like android widgets."
+    // clampPresetTarget/nextPreset are the two new pieces of GridEngine this generation adds;
+    // displaceForPlacement itself needs no new coverage - the preset-cycle commit path calls it
+    // exactly the way a drag does, already covered above.
+
+    @Test
+    fun `every catalog preset fits the 4-column grid`() {
+        for (preset in GridPreset.entries) {
+            assertTrue(
+                "${preset.name} colSpan ${preset.colSpan} must not exceed a 4-column grid",
+                preset.colSpan in 1..4,
+            )
+            assertTrue("${preset.name} rowSpan ${preset.rowSpan} must be at least 1", preset.rowSpan >= 1)
+        }
+    }
+
+    @Test
+    fun `clampPresetTarget takes on the preset's exact colSpan and rowSpan`() {
+        val current = item("a", row = 1, col = 0, rowSpan = 1, colSpan = 2) // SMALL-shaped already
+        val clamped = GridEngine.clampPresetTarget(current, GridPreset.LARGE, columnCount = 4)
+        assertEquals(4, clamped.colSpan)
+        assertEquals(2, clamped.rowSpan)
+        assertEquals(1, clamped.row) // row is left exactly as the item already had it
+    }
+
+    @Test
+    fun `clampPresetTarget pulls col left rather than shrinking colSpan when the preset would run off the edge`() {
+        val current = item("a", row = 0, col = 2, rowSpan = 1, colSpan = 2) // sitting at col 2 (SMALL, right half)
+        val clamped = GridEngine.clampPresetTarget(current, GridPreset.WIDE, columnCount = 4)
+        assertEquals(4, clamped.colSpan) // full WIDE width, never shrunk
+        assertEquals(0, clamped.col) // relocated left so col + colSpan (4) still fits in 4
+    }
+
+    @Test
+    fun `nextPreset cycles to the following entry in the supported list`() {
+        val supported = listOf(GridPreset.WIDE, GridPreset.LARGE)
+        assertEquals(GridPreset.LARGE, GridEngine.nextPreset(GridPreset.WIDE, supported))
+    }
+
+    @Test
+    fun `nextPreset wraps from the last supported entry back to the first`() {
+        val supported = listOf(GridPreset.SMALL, GridPreset.WIDE)
+        assertEquals(GridPreset.SMALL, GridEngine.nextPreset(GridPreset.WIDE, supported))
+    }
+
+    @Test
+    fun `nextPreset starts over at the first supported entry when current is not itself supported`() {
+        val supported = listOf(GridPreset.WIDE, GridPreset.LARGE)
+        assertEquals(GridPreset.WIDE, GridEngine.nextPreset(GridPreset.SMALL, supported))
+    }
+
+    @Test
+    fun `nextPreset on a single-entry catalog always returns that same entry`() {
+        val supported = listOf(GridPreset.SMALL)
+        assertEquals(GridPreset.SMALL, GridEngine.nextPreset(GridPreset.SMALL, supported))
+    }
+
+    @Test
+    fun `GridPreset match finds the catalog entry matching an item's current geometry`() {
+        val wideItem = item("a", row = 0, col = 0, rowSpan = 1, colSpan = 4)
+        assertEquals(GridPreset.WIDE, GridPreset.match(wideItem))
+    }
+
+    @Test
+    fun `GridPreset match is null for geometry that matches no catalog entry`() {
+        val oddItem = item("a", row = 0, col = 0, rowSpan = 3, colSpan = 3)
+        assertEquals(null, GridPreset.match(oddItem))
+    }
+
+    // ---- the actual "preset cycle commits through displacement" interaction, end to end --------
+
+    @Test
+    fun `a preset-cycle step commits through displaceForPlacement, occupants make room exactly as a drag would`() {
+        // "a" starts SMALL (2x1) at col 0; cycling it to WIDE (4x1) must grow it to the full row
+        // width and DISPLACE whatever now sits in its way - here, "blocker" at col 2, same row.
+        val a = item("a", row = 0, col = 0, rowSpan = 1, colSpan = 2)
+        val blocker = item("blocker", row = 0, col = 2, rowSpan = 1, colSpan = 2)
+        val items = listOf(a, blocker)
+        val candidate = GridEngine.clampPresetTarget(a, GridPreset.WIDE, columnCount = 4)
+        val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)
+        assertTrue("expected a commit, not a reject", result != null)
+        val byId = result!!.associateBy { it.id }
+        assertEquals(candidate, byId.getValue("a")) // grew to the full preset rect, exactly as proposed
+        assertEquals(4, byId.getValue("a").colSpan)
+        assertTrue("blocker must have been relocated out of the way", byId.getValue("blocker").row != 0 || byId.getValue("blocker").col != 2)
+        for (x in result) for (y in result) assertFalse(GridEngine.collides(x, y))
+    }
+
+    @Test
+    fun `an impossible preset step refuses and leaves the layout untouched`() {
+        // Every row is already fully occupied by two SMALL widgets end to end, so cycling "a" to
+        // LARGE (which needs a whole free 4x2 block, both for itself AND to relocate whatever it
+        // overlaps) cannot fit anywhere - `occupant`'s own colSpan (5) is a deliberately impossible
+        // footprint, the same shape GridEngineTest's own displaceForPlacement section uses to prove
+        // a genuinely-impossible case (see "returns null when a displaced occupant cannot fit any
+        // column" above).
+        val a = item("a", row = 0, col = 0, rowSpan = 1, colSpan = 2)
+        val occupant = item("occupant", row = 0, col = 0, rowSpan = 1, colSpan = 5)
+        val items = listOf(a, occupant)
+        val candidate = GridEngine.clampPresetTarget(a, GridPreset.LARGE, columnCount = 4)
+        val result = GridEngine.displaceForPlacement(items, candidate, columnCount = 4)
+        assertEquals(null, result)
+        // Caller-side contract (exercised in DeckGrid.kt's `cyclePreset`, not testable without
+        // Compose): on a null result the caller leaves `items` untouched entirely, so `a` itself -
+        // read straight back out of the original list - is still exactly what it was before the tap.
+        assertEquals(a, items.first { it.id == "a" })
+    }
+
+    @Test
+    fun `cycling through a widget's full supported list and back returns to the starting preset`() {
+        val supported = listOf(GridPreset.WIDE, GridPreset.LARGE)
+        var current = GridPreset.WIDE
+        repeat(supported.size) { current = GridEngine.nextPreset(current, supported) }
+        assertEquals(GridPreset.WIDE, current) // wrapped all the way around, back to the start
+    }
 }
