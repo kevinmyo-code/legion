@@ -3,8 +3,8 @@ map: aspect-engine
 ticket: "16"
 title: "Build the engine core"
 type: task
-status: built
-status-detail: "Built 2026-08-23: Room v34 (aspects/record_types/field_defs/records/widget_instances), RecordStore write door, ComputedEvaluator, ReconciliationGate contract. 35 new unit tests green both key ways; migration test compiled, not run (no emulator this session)."
+status: resolved
+status-detail: "Resolved 2026-08-23. Senior-reviewed (cascade fix), 37 tests green both key ways, and the v33-to-v34 migration VERIFIED on the A25: user_version 34, all five engine tables present in the pulled DB."
 blockers: []
 blocked-by: []
 open-blockers: 0
