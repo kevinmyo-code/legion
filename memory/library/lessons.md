@@ -813,3 +813,35 @@ file under `build/` rather than a test.
 
 **Status:** CLOSED. Rule recorded here. Not yet graduated into an agent definition - the natural home
 is a line in `TEAM.md`'s dispatch cadence, which the next session that edits it should add.
+
+
+## 2026-08-23 - Five on-device rounds for the stage-2 grid: two lessons about Compose gesture code
+
+The dashboard grid (`feat/grid-stage2`, merged to dev today) took five consecutive fix rounds for
+bugs the full JVM suite could not see. Each round was green both key ways before it shipped, and
+each round was broken on the A25 anyway. The individual root causes were all different; the class
+was the same twice over.
+
+1. **`remember(list)` keyed on an in-place-mutated `SnapshotStateList` never invalidates.** The
+   caller mutated with `clear()` + `addAll()`, so the remember key compared the same object against
+   itself, always equal, and the cached layout froze at first composition - every drop appeared to
+   revert. **Rule: a `remember`/`derivedStateOf` key must be a value, not a mutable container.**
+   Key on `items.toList()` or restructure so the state is replaced, never mutated in place.
+   Corollary found the same night: what that remember *computed* was `normalize()`, and running a
+   compacting normalize on every recomposition re-arranged layouts the user had just committed.
+   One-shot initialization work must be structurally one-shot, not merely cached.
+
+2. **Gesture arithmetic inlined in Compose handlers is untested arithmetic.** The
+   row/column-transposition bug (every drag committed to cell 0,0) lived in two positional `run {}`
+   blocks passed to a (row, col) parameter pair - and the preview a few lines above did the same
+   math correctly in its own copy, which is why the ghost looked right while the drop was wrong.
+   **Rule: any pointer-to-model mapping (pixel to cell, offset to index) gets extracted into a
+   pure function with JVM tests before it ships**; the Compose layer may only call it. Duplicate
+   implementations of the same mapping (preview vs commit) are a defect on sight.
+
+**What worked:** driving the repro over adb (`input swipe` + `screencap`) turned "feels broken" into
+screenshots an agent could be handed, and caught round five's regression without spending Kevin's
+patience. The vendored adb skill pack (2026-08-23) now covers this workflow.
+
+**Status:** OPEN until graduated: rule 1 belongs in `compose-state-authoring`'s orbit (a repo-local
+addendum), rule 2 in `TEAM.md`'s dispatch cadence for UI work.
