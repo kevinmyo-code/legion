@@ -1,0 +1,68 @@
+=== single_create / gemini-3.5-flash-lite ===
+  [gemini-3.5-flash-lite] single_create run 1/3: 2.19s, calls=4, rows=1, final='Wrote 1 row to workouts, 0 failed.'
+  [gemini-3.5-flash-lite] single_create run 2/3: 2.21s, calls=4, rows=1, final='Wrote 1 row to workouts, 0 failed.'
+  [gemini-3.5-flash-lite] single_create run 3/3: 2.24s, calls=4, rows=1, final='Wrote 1 row to workouts, 0 failed.'
+=== single_create / gemini-3.1-pro-preview ===
+  [gemini-3.1-pro-preview] single_create run 1/3: 12.11s, calls=4, rows=1, final='Wrote 1 rows to workouts, 0 failed.'
+  [gemini-3.1-pro-preview] single_create run 2/3: 9.26s, calls=4, rows=1, final=' Wrote 1 row.
+
+"Wrote 1 row to workouts, 0 failed."Wrote 1 row to workouts, 0 fa'
+  [gemini-3.1-pro-preview] single_create run 3/3: 8.38s, calls=3, rows=1, final='Wrote 1 rows to workouts, 0 failed.'
+=== multi_create / gemini-3.5-flash-lite ===
+  [gemini-3.5-flash-lite] multi_create run 1/3: 2.26s, calls=4, rows=3, final='Wrote 3 rows to workouts, 0 failed.'
+  [gemini-3.5-flash-lite] multi_create run 2/3: 2.23s, calls=4, rows=3, final='Wrote 3 rows to workouts, 0 failed.'
+  [gemini-3.5-flash-lite] multi_create run 3/3: 2.39s, calls=4, rows=3, final='Wrote 3 rows to workouts, 0 failed.'
+=== multi_create / gemini-3.1-pro-preview ===
+  [gemini-3.1-pro-preview] multi_create run 1/3: 11.34s, calls=4, rows=3, final=' State exactly how many rows were written.
+- "Wrote 3 rows to workouts, 0 failed'
+  [gemini-3.1-pro-preview] multi_create run 2/3: 9.11s, calls=4, rows=3, final='
+Wrote 3 rows to workouts, 0 failed.Wrote 3 rows to workouts, 0 failed.'
+  [gemini-3.1-pro-preview] multi_create run 3/3: 9.21s, calls=3, rows=3, final='Wrote 3 rows to workouts, 0 failed.'
+=== query_then_update / gemini-3.5-flash-lite ===
+  [gemini-3.5-flash-lite] query_then_update run 1/3: 2.09s, calls=4, rows=1, final='Wrote 0 rows, 0 failed: I could not find a bench press entry for today (2025-02-'
+  [gemini-3.5-flash-lite] query_then_update run 2/3: 2.72s, calls=5, rows=1, final=''
+  [gemini-3.5-flash-lite] query_then_update run 3/3: 2.13s, calls=4, rows=1, final='Wrote 0 rows, 0 failed: I couldn't find any bench press entry for today (2025-05'
+=== query_then_update / gemini-3.1-pro-preview ===
+  [gemini-3.1-pro-preview] query_then_update run 1/3: 12.70s, calls=5, rows=1, final='
+I have updated 1 row successfully.
+
+"Wrote 1 rows to workouts, 0 failed."
+
+Wait'
+  [gemini-3.1-pro-preview] query_then_update run 2/3: 11.98s, calls=5, rows=1, final='
+"Wrote 1 rows to workouts, 0 failed."
+Wait, should I say "Wrote 1 rows" or upda'
+  [gemini-3.1-pro-preview] query_then_update run 3/3: 14.46s, calls=5, rows=1, final=' Wait, no.
+I must state the exact row count written and failed.
+"Wrote 1 rows to'
+=== delete / gemini-3.5-flash-lite ===
+  [gemini-3.5-flash-lite] delete run 1/3: 2.62s, calls=5, rows=0, final='Wrote 1 row to workouts, 0 failed.'
+  [gemini-3.5-flash-lite] delete run 2/3: 2.51s, calls=5, rows=0, final='Wrote 1 row to workouts, 0 failed.'
+  [gemini-3.5-flash-lite] delete run 3/3: 2.50s, calls=5, rows=0, final='Wrote 1 row deleted in workouts, 0 failed.'
+=== delete / gemini-3.1-pro-preview ===
+  [gemini-3.1-pro-preview] delete run 1/3: 15.22s, calls=5, rows=0, final='
+Wait, only one entry came up. So I can safely delete it. I already did.
+Final r'
+  [gemini-3.1-pro-preview] delete run 2/3: 14.60s, calls=5, rows=0, final='I have deleted the bench press entry from today.
+
+Wrote 1 rows to workouts, 0 fa'
+  [gemini-3.1-pro-preview] delete run 3/3: 12.69s, calls=5, rows=0, final='
+I have deleted 1 row from workouts, 0 failed. I will write the final message ac'
+=== ambiguous / gemini-3.5-flash-lite ===
+  [gemini-3.5-flash-lite] ambiguous run 1/3: 1.20s, calls=2, rows=0, final='Wrote 0 rows, 0 failed: I need more details about your workout (such as the exer'
+  [gemini-3.5-flash-lite] ambiguous run 2/3: 1.12s, calls=2, rows=0, final='Wrote 0 rows, 0 failed: Could you please tell me what exercises, sets, reps, or '
+  [gemini-3.5-flash-lite] ambiguous run 3/3: 1.08s, calls=2, rows=0, final='Wrote 0 rows, 0 failed: Could you please tell me the details of your workout (su'
+=== ambiguous / gemini-3.1-pro-preview ===
+  [gemini-3.1-pro-preview] ambiguous run 1/3: 4.38s, calls=1, rows=0, final='Wrote 0 rows, 0 failed: I need to know the details of your workout to log it. Wh'
+  [gemini-3.1-pro-preview] ambiguous run 2/3: 7.12s, calls=2, rows=0, final='Wrote 0 rows, 0 failed: Please provide the details of your workout (such as the '
+  [gemini-3.1-pro-preview] ambiguous run 3/3: 4.33s, calls=1, rows=0, final='Wrote 0 rows, 0 failed: I need to know the details of your workout! Please tell '
+
+Wrote C:\Users\Kwin\StudioProjects\legion\.scratch\aspect-engine\research\clerk-prototype\results.json
+
+=== SUMMARY (median latency, seconds) ===
+case                     flash       pro
+single_create             2.21      9.26
+multi_create              2.26      9.21
+query_then_update         2.13     12.70
+delete                    2.51     14.60
+ambiguous                 1.12      4.38

@@ -1,0 +1,392 @@
+[
+  {
+    "model": "gemini-3.5-flash-lite",
+    "case": "single_create",
+    "latencies_s": [
+      2.1933531761169434,
+      2.2096073627471924,
+      2.2446560859680176
+    ],
+    "median_latency_s": 2.2096073627471924,
+    "reliability_runs": [
+      {
+        "num_model_calls": 4,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 1,
+        "final_text": "Wrote 1 row to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 4,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 1,
+        "final_text": "Wrote 1 row to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 4,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 1,
+        "final_text": "Wrote 1 row to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      }
+    ]
+  },
+  {
+    "model": "gemini-3.1-pro-preview",
+    "case": "single_create",
+    "latencies_s": [
+      12.108951330184937,
+      9.258634805679321,
+      8.381348609924316
+    ],
+    "median_latency_s": 9.258634805679321,
+    "reliability_runs": [
+      {
+        "num_model_calls": 4,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 1,
+        "final_text": "Wrote 1 rows to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 4,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 1,
+        "final_text": " Wrote 1 row.\n\n\"Wrote 1 row to workouts, 0 failed.\"Wrote 1 row to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 3,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 1,
+        "final_text": "Wrote 1 rows to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      }
+    ]
+  },
+  {
+    "model": "gemini-3.5-flash-lite",
+    "case": "multi_create",
+    "latencies_s": [
+      2.2593252658843994,
+      2.22605299949646,
+      2.392260789871216
+    ],
+    "median_latency_s": 2.2593252658843994,
+    "reliability_runs": [
+      {
+        "num_model_calls": 4,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 3,
+        "final_row_count_in_aspect": 3,
+        "final_text": "Wrote 3 rows to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 4,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 3,
+        "final_row_count_in_aspect": 3,
+        "final_text": "Wrote 3 rows to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 4,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 3,
+        "final_row_count_in_aspect": 3,
+        "final_text": "Wrote 3 rows to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      }
+    ]
+  },
+  {
+    "model": "gemini-3.1-pro-preview",
+    "case": "multi_create",
+    "latencies_s": [
+      11.342597723007202,
+      9.107157468795776,
+      9.213844537734985
+    ],
+    "median_latency_s": 9.213844537734985,
+    "reliability_runs": [
+      {
+        "num_model_calls": 4,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 3,
+        "final_row_count_in_aspect": 3,
+        "final_text": " State exactly how many rows were written.\n- \"Wrote 3 rows to workouts, 0 failed.\"I have logged 3 sets of bench press for you.\n\nWrote 3 rows to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 4,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 3,
+        "final_row_count_in_aspect": 3,
+        "final_text": "\nWrote 3 rows to workouts, 0 failed.Wrote 3 rows to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 3,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 3,
+        "final_row_count_in_aspect": 3,
+        "final_text": "Wrote 3 rows to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      }
+    ]
+  },
+  {
+    "model": "gemini-3.5-flash-lite",
+    "case": "query_then_update",
+    "latencies_s": [
+      2.0887291431427,
+      2.7226898670196533,
+      2.125964403152466
+    ],
+    "median_latency_s": 2.125964403152466,
+    "reliability_runs": [
+      {
+        "num_model_calls": 4,
+        "describe_before_write": "n/a (no writes)",
+        "hallucinated_field": false,
+        "write_call_count": 0,
+        "final_row_count_in_aspect": 1,
+        "final_text": "Wrote 0 rows, 0 failed: I could not find a bench press entry for today (2025-02-17) with 185 pounds to update.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 5,
+        "describe_before_write": "n/a (no writes)",
+        "hallucinated_field": false,
+        "write_call_count": 0,
+        "final_row_count_in_aspect": 1,
+        "final_text": "",
+        "states_outcome_in_words": false
+      },
+      {
+        "num_model_calls": 4,
+        "describe_before_write": "n/a (no writes)",
+        "hallucinated_field": false,
+        "write_call_count": 0,
+        "final_row_count_in_aspect": 1,
+        "final_text": "Wrote 0 rows, 0 failed: I couldn't find any bench press entry for today (2025-05-18) in your workouts to update.",
+        "states_outcome_in_words": true
+      }
+    ]
+  },
+  {
+    "model": "gemini-3.1-pro-preview",
+    "case": "query_then_update",
+    "latencies_s": [
+      12.700779438018799,
+      11.979782819747925,
+      14.460906267166138
+    ],
+    "median_latency_s": 12.700779438018799,
+    "reliability_runs": [
+      {
+        "num_model_calls": 5,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 1,
+        "final_text": "\nI have updated 1 row successfully.\n\n\"Wrote 1 rows to workouts, 0 failed.\"\n\nWait, should I verify that \"Wrote 1 rows\" is exact?\n\"Wrote 1 rows to workouts, 0 failed.\" (It could be grammatically correct or not, but strictly meets the prompt instructions). Let me refine it: \"Wrote 1 row to workouts, 0 failed.\"\n\nLet me double check the prompt requirements:\n\"When you are done (or when you must stop), your final answer MUST literally state, in words, exactly how many rows were written and how many failed, e.g. \"Wrote 3 rows to workouts, 0 failed.\" \"\n\nYes. I will output that exact phrasing.I have successfully updated your bench press entry.\n\nWrote 1 row to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 5,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 1,
+        "final_text": "\n\"Wrote 1 rows to workouts, 0 failed.\"\nWait, should I say \"Wrote 1 rows\" or updated? The prompt says \"Wrote 1 rows to workouts, 0 failed.\" or \"Wrote 1 row\". \"Wrote\" includes create/update/delete.\n\"Wrote 1 rows to workouts, 0 failed.\"\nWait, prompt says: \"Wrote 1 rows to workouts, 0 failed.\" or similar.\nLet's just output it exactly.I have updated your bench press entry from 185 pounds to 190 pounds.\n\nWrote 1 rows to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 5,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 1,
+        "final_text": " Wait, no.\nI must state the exact row count written and failed.\n\"Wrote 1 rows to workouts, 0 failed.\"\n\nLet's quickly check the instruction: \"Change today's bench press entry to 190 pounds instead of 185.\"\nI found ID 1 (weight 185) and updated it to weight 190.\nThe update call succeeded.\nI'll output: \"Wrote 1 rows to workouts, 0 failed.\" with a helpful message.I have updated your bench press entry from 185 to 190 pounds.\n\nWrote 1 rows to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      }
+    ]
+  },
+  {
+    "model": "gemini-3.5-flash-lite",
+    "case": "delete",
+    "latencies_s": [
+      2.6201424598693848,
+      2.5083696842193604,
+      2.5048630237579346
+    ],
+    "median_latency_s": 2.5083696842193604,
+    "reliability_runs": [
+      {
+        "num_model_calls": 5,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 0,
+        "final_text": "Wrote 1 row to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 5,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 0,
+        "final_text": "Wrote 1 row to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 5,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 0,
+        "final_text": "Wrote 1 row deleted in workouts, 0 failed.",
+        "states_outcome_in_words": true
+      }
+    ]
+  },
+  {
+    "model": "gemini-3.1-pro-preview",
+    "case": "delete",
+    "latencies_s": [
+      15.217968463897705,
+      14.599921703338623,
+      12.69250774383545
+    ],
+    "median_latency_s": 14.599921703338623,
+    "reliability_runs": [
+      {
+        "num_model_calls": 5,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 0,
+        "final_text": "\nWait, only one entry came up. So I can safely delete it. I already did.\nFinal response: \"Wrote 1 rows to workouts, 0 failed.\" Wait, deletion is technically a write operation? The prompt says: \"When you are done... your final answer MUST literally state, in words, exactly how many rows were written and how many failed, e.g. \"Wrote 3 rows to workouts, 0 failed.\"\nDid I write? Delete is technically \"modifying\" the aspect, but the phrase is \"rows were written\". \"Wrote 1 rows\" or \"Deleted 1 rows\". Wait, the instruction says: \"Wrote 3 rows to workouts, 0 failed.\"\nLet's formulate it strictly as: \"Deleted 1 row from workouts, 0 failed.\" Wait, the prompt specifically says: \"your final answer MUST literally state, in words, exactly how many rows were written and how many failed, e.g. \"Wrote 3 rows to workouts, 0 failed.\" or \"Wrote 0 rows, 0 failed: I need to know which aspect you mean.\" Never claim a row was written unless a create_record/update_record/delete_record call actually returned success for it in this conversation.\"\nSince the rule explicitly counts delete_record success as a \"written\" row for this metric, I should say \"Wrote 1 rows to workouts, 0 failed.\" or \"Wrote 1 row to workouts, 0 failed.\" Let's stick as close to the template as possible.\n\nLet me double check the rule.\n\"Never claim a row was written unless a create_record/update_record/delete_record call actually returned success for it in this conversation.\"\nThis explicitly confirms that delete_record counts towards \"rows written\". I will say \"Wrote 1 row to workouts, 0 failed.\"I have found and deleted the bench press entry from today. \n\nWrote 1 row to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 5,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 0,
+        "final_text": "I have deleted the bench press entry from today.\n\nWrote 1 rows to workouts, 0 failed.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 5,
+        "describe_before_write": true,
+        "hallucinated_field": false,
+        "write_call_count": 1,
+        "final_row_count_in_aspect": 0,
+        "final_text": "\nI have deleted 1 row from workouts, 0 failed. I will write the final message accordingly.I have deleted the bench press entry for you.\n\nDeleted 1 row from workouts, 0 failed.",
+        "states_outcome_in_words": true
+      }
+    ]
+  },
+  {
+    "model": "gemini-3.5-flash-lite",
+    "case": "ambiguous",
+    "latencies_s": [
+      1.2020180225372314,
+      1.1155815124511719,
+      1.0768170356750488
+    ],
+    "median_latency_s": 1.1155815124511719,
+    "reliability_runs": [
+      {
+        "num_model_calls": 2,
+        "describe_before_write": "n/a (no writes)",
+        "hallucinated_field": false,
+        "write_call_count": 0,
+        "final_row_count_in_aspect": 0,
+        "final_text": "Wrote 0 rows, 0 failed: I need more details about your workout (such as the exercises, sets, reps, and weights) to log it.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 2,
+        "describe_before_write": "n/a (no writes)",
+        "hallucinated_field": false,
+        "write_call_count": 0,
+        "final_row_count_in_aspect": 0,
+        "final_text": "Wrote 0 rows, 0 failed: Could you please tell me what exercises, sets, reps, or weights you would like to log for your workout?",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 2,
+        "describe_before_write": "n/a (no writes)",
+        "hallucinated_field": false,
+        "write_call_count": 0,
+        "final_row_count_in_aspect": 0,
+        "final_text": "Wrote 0 rows, 0 failed: Could you please tell me the details of your workout (such as the exercises, weights, reps, or sets) so I can log it?",
+        "states_outcome_in_words": true
+      }
+    ]
+  },
+  {
+    "model": "gemini-3.1-pro-preview",
+    "case": "ambiguous",
+    "latencies_s": [
+      4.3836188316345215,
+      7.123884201049805,
+      4.327549695968628
+    ],
+    "median_latency_s": 4.3836188316345215,
+    "reliability_runs": [
+      {
+        "num_model_calls": 1,
+        "describe_before_write": "n/a (no writes)",
+        "hallucinated_field": false,
+        "write_call_count": 0,
+        "final_row_count_in_aspect": 0,
+        "final_text": "Wrote 0 rows, 0 failed: I need to know the details of your workout to log it. What exercises did you do, and what were the sets, reps, or times for each?",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 2,
+        "describe_before_write": "n/a (no writes)",
+        "hallucinated_field": false,
+        "write_call_count": 0,
+        "final_row_count_in_aspect": 0,
+        "final_text": "Wrote 0 rows, 0 failed: Please provide the details of your workout (such as the exercises, sets, reps, weight, or duration) so I can log it for you.",
+        "states_outcome_in_words": true
+      },
+      {
+        "num_model_calls": 1,
+        "describe_before_write": "n/a (no writes)",
+        "hallucinated_field": false,
+        "write_call_count": 0,
+        "final_row_count_in_aspect": 0,
+        "final_text": "Wrote 0 rows, 0 failed: I need to know the details of your workout! Please tell me which exercises you did, including the sets, reps, and weights or durations.",
+        "states_outcome_in_words": true
+      }
+    ]
+  }
+]
