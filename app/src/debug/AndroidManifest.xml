@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  THROWAWAY prototype manifest overlay, debug build type only - never merged into a release
+  build, so `PrototypeDashboardActivity` cannot ship. This is the answer to aspect-engine ticket
+  09 ("Dashboard grid mechanics: staged prototype"): a spike to let Kevin react on the A25, not
+  a shipped screen. Delete this whole overlay (this file + prototype/) once the ticket resolves,
+  whichever way the answer lands.
+
+  Launch from the phone with:
+    adb shell am start -n com.kevin.legion/.prototype.PrototypeDashboardActivity
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".prototype.PrototypeDashboardActivity"
+            android:exported="true"
+            android:label="LEGION Prototype: Dashboard Grid"
+            android:theme="@style/Theme.Legion">
+            <!-- No LAUNCHER category on purpose - this must not appear on the home screen
+                 next to the real app icon. adb am start is the intended way in. -->
+        </activity>
+    </application>
+</manifest>
