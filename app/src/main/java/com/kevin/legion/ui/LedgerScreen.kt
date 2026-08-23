@@ -174,6 +174,9 @@ data class LedgerUiState(
     // existed since ticket 07 with no caller anywhere until this pass wired
     // it. See LedgerController.pendingCategoryGuesses's doc comment.
     val pendingCategoryGuesses: List<LedgerTransaction> = emptyList(),
+    // Command-center ticket 11: `accept_proposal` by hand, CRED aspect only - see
+    // `ui/ledger/CredDrilldowns.kt`'s `AdvisorProposalsSection` doc comment.
+    val pendingProposals: List<com.kevin.legion.data.local.AdvisorAdvice> = emptyList(),
     // 2026-08-18 fix ("it says nothing to categorize" while 44 real rows sat uncategorised):
     // `category IS NULL` rows, split the same way `LedgerController.uncategorizedMerchants`
     // already splits its own candidate pool - `uncategorized` genuinely needs a category,
@@ -340,6 +343,12 @@ fun LedgerScreen(
         val quarantined = LedgerController.quarantinedFiles(context)
         val pending = LedgerController.pendingTransactions(context)
         val pendingCategoryGuesses = LedgerController.pendingCategoryGuesses(context)
+        // Command-center ticket 11: pending advisor proposals for the CRED aspect only - this
+        // screen has no reach into BIO/LOG/FLEET/HOME's own proposals, each of which belongs on
+        // its own aspect screen.
+        val pendingProposals = com.kevin.legion.advisor.AdvisorProposalHandPath.pendingProposals(
+            context, com.kevin.legion.advisor.AdvisorAspect.CRED,
+        )
         // quant-viz ticket 10: loaded HERE, eagerly, rather than lazily behind `showSpendTrend` -
         // the Money tab face's sparkline needs it visible without opening the drilldown.
         // `SpendTrendDrilldown` below reuses this SAME field (its default 24-month range, unchanged
@@ -361,6 +370,7 @@ fun LedgerScreen(
             pnlMonthsWithData = months,
             pending = pending,
             pendingCategoryGuesses = pendingCategoryGuesses,
+            pendingProposals = pendingProposals,
             spendTrend = spendTrend,
             uncategorized = uncategorizedSplit.real,
             uncategorizedTransfers = uncategorizedSplit.transfers,
@@ -694,6 +704,15 @@ fun LedgerScreen(
                 }
             },
             onBack = { showCategorize = false },
+            // Command-center ticket 11: `log_pending_transaction` by hand. `state.balances` is the
+            // SAME list already loaded for BALANCES above - never a second fetch.
+            accounts = state.balances,
+            onPendingAdded = { reloadNonce++ },
+            // Command-center ticket 11: `accept_proposal` by hand, CRED aspect.
+            proposals = state.pendingProposals,
+            onAcceptProposal = { id -> com.kevin.legion.advisor.AdvisorProposalHandPath.acceptPendingProposal(context, id) },
+            onDismissProposal = { id -> com.kevin.legion.advisor.AdvisorProposalHandPath.dismissPendingProposal(context, id) },
+            onProposalActed = { reloadNonce++ },
         )
         return
     }

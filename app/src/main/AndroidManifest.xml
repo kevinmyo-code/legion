@@ -333,6 +333,14 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Fired only by the ring-time notification's own ANSWER/DECLINE PendingIntents
+             (command-center ticket 05, ADR 0035's founding case) - never by the system, so
+             exported=false, same reasoning as ReminderActionReceiver above. -->
+        <receiver
+            android:name=".service.CallNotificationReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- FileProvider for CameraCapture's camera-app handoff URI (pantry
              receipt photos). Authority = packageName + ".provider". Not
              exported; the OS broker grants read-URI permission to the

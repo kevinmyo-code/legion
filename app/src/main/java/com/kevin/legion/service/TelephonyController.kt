@@ -1,12 +1,18 @@
 ﻿package com.kevin.legion.service
 
 import android.Manifest
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.kevin.legion.ui.MainActivity
 
 /**
  * Makes the assistant aware of phone calls. The OS still owns the call audio and its own
@@ -14,8 +20,11 @@ import androidx.core.content.ContextCompat
  * assistant can:
  *
  *  1. announce an incoming call, saying WHO it is ([CallerId]) rather than only that one exists,
- *  2. stay silent while a call is connected ([isInCall]), since the call owns the speakers, and
- *  3. let Kevin answer or decline by voice while it rings ([isRinging], [CallActions]).
+ *  2. stay silent while a call is connected ([isInCall]), since the call owns the speakers,
+ *  3. let Kevin answer or decline by voice while it rings ([isRinging], [CallActions]), and
+ *  4. offer the SAME two actions as buttons on a notification (command-center ticket 05, ADR
+ *     0035's founding case) - the part that works with the phone locked in a mount, where voice
+ *     is not always reliable and there is otherwise no hands path to a ringing call at all.
  *
  * **`PhoneStateListener` is deprecated and is kept deliberately.** Its replacement,
  * `TelephonyCallback.CallStateListener`, has NO phone-number parameter - AOSP's own dispatch
@@ -116,6 +125,11 @@ object TelephonyController {
                 // owns the speakers now. This can cut off a half-spoken confirmation; that is the
                 // right trade, because the call connecting IS the answer.
                 if (wasRinging) ProactiveBus.stopListening()
+                // The ring-time notification's job is done the instant the call is no longer
+                // ringing - regardless of WHICH door answered it (voice, the notification's own
+                // ANSWER button, or the OS's own in-call UI). See CallNotificationReceiver's own
+                // doc for why cancellation lives here and not in the receiver.
+                if (wasRinging) appContext?.let { CallNotificationReceiver.cancel(it) }
             }
             TelephonyManager.CALL_STATE_IDLE -> {
                 val wasRinging = isRinging
@@ -126,6 +140,7 @@ object TelephonyController {
                 // ring" means exactly that, and a mic that outlived the ring would be a mic left
                 // open for no stated reason.
                 if (wasRinging) ProactiveBus.stopListening()
+                if (wasRinging) appContext?.let { CallNotificationReceiver.cancel(it) }
             }
         }
         lastState = state
@@ -151,6 +166,10 @@ object TelephonyController {
         val caller = CallerId.identify(context, phoneNumber)
         val whoFacts = CallerId.describe(caller)
         val canAct = CallActions.hasPermission(context)
+        // The notification is the hands path (ticket 05) and is posted regardless of whether the
+        // line below ends up spoken or not - a spoken line still leaves nothing on a locked screen
+        // to tap, and the whole reason this ticket exists is the phone locked in a mount.
+        postIncomingCallNotification(context, caller, canAct)
         // Only offer what is genuinely available. Naming a capability the app does not have is the
         // failure CANNOT_CLAUSE exists for, one layer earlier.
         val offer = if (canAct) {
@@ -183,7 +202,82 @@ object TelephonyController {
                 // ProactiveRaise.listensForReply for why that default exists and why this earns
                 // the exception. Closed below the moment ringing stops.
                 listensForReply = canAct,
+                // This file already posted the ring-time notification above, WITH the ANSWER/
+                // DECLINE buttons ProactiveDelivery.notify has no way to add - so the bus must not
+                // also post its own plain-text one on top of it (ticket 05: "do not post a second
+                // competing notification").
+                callerPostsItsOwnNotification = true,
             )
+        )
+    }
+
+    /**
+     * The ring-time notification: ADR 0035's founding case. ANSWER and DECLINE, wired to the
+     * exact same [CallActions.answer]/[CallActions.reject] the voice tools call, via
+     * [CallNotificationReceiver] - not a second implementation, a second door onto the same one.
+     *
+     * Buttons are offered only when [canAct] - mirroring [announceIncoming]'s own spoken offer:
+     * naming a capability the app does not have (no `ANSWER_PHONE_CALLS` grant) is the exact
+     * failure `CANNOT_CLAUSE` exists to prevent one layer up, and a notification button that
+     * silently fails on tap is the same failure with no words to soften it.
+     *
+     * Posted regardless of `POST_NOTIFICATIONS` state - `NotificationManagerCompat.notify` is a
+     * silent no-op at the OS level when that permission is refused, same posture
+     * `ReminderAlarmReceiver.postNotification` already accepts, never a crash.
+     */
+    private fun postIncomingCallNotification(context: Context, caller: CallerId.Caller, canAct: Boolean) {
+        CallChannel.ensureCreated(context)
+
+        val title = when (caller) {
+            is CallerId.Caller.Known -> caller.name
+            is CallerId.Caller.NumberOnly -> caller.number
+            CallerId.Caller.Withheld -> "Withheld number"
+            CallerId.Caller.CannotTell -> "Incoming call"
+        }
+
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openPi = PendingIntent.getActivity(
+            context, CallNotificationReceiver.NOTIFICATION_ID, openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val builder = NotificationCompat.Builder(context, CallChannel.CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText("Incoming call")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setContentIntent(openPi)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            // Not auto-cancelled: a ringing call is not dismissed by tapping the body, only by
+            // ANSWER, DECLINE, or the ring itself ending - see TelephonyController.handleState's
+            // own cancel-on-transition calls, which are the only other place this is cleared.
+            .setAutoCancel(false)
+            .setOngoing(true)
+
+        if (canAct) {
+            builder
+                .addAction(0, "ANSWER", callActionPendingIntent(context, CallNotificationReceiver.ACTION_ANSWER))
+                .addAction(0, "DECLINE", callActionPendingIntent(context, CallNotificationReceiver.ACTION_DECLINE))
+        }
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            NotificationManagerCompat.from(context).notify(CallNotificationReceiver.NOTIFICATION_ID, builder.build())
+        }
+    }
+
+    private fun callActionPendingIntent(context: Context, action: String): PendingIntent {
+        val intent = Intent(context, CallNotificationReceiver::class.java).apply { this.action = action }
+        // Distinct request codes per action so ANSWER's PendingIntent never overwrites DECLINE's -
+        // same reasoning ReminderAlarmReceiver.requestCodeFor states for its own two actions.
+        val requestCode = CallNotificationReceiver.NOTIFICATION_ID + (if (action == CallNotificationReceiver.ACTION_ANSWER) 1 else 2)
+        return PendingIntent.getBroadcast(
+            context, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }
 

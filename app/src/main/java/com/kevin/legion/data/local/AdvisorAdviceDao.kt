@@ -23,6 +23,16 @@ interface AdvisorAdviceDao {
     @Query("SELECT * FROM advisor_advice WHERE id = :id")
     suspend fun pending(id: Long): AdvisorAdvice?
 
+    /**
+     * Every still-`pending` row for one [aspect], newest first (command-center ticket 11: the
+     * hands path for `accept_proposal` - `service/LiveToolbox.kt`'s own dispatch reads a proposal
+     * by [pending]'s single-id lookup because the live model always names a specific id; a driver
+     * looking at a SCREEN has no id to name, so this is the list a screen needs instead. Additive
+     * query, no schema change - matches this DAO's existing `recent`/`pending` shape.
+     */
+    @Query("SELECT * FROM advisor_advice WHERE aspect = :aspect AND outcome = 'pending' ORDER BY createdAt DESC")
+    suspend fun pendingForAspect(aspect: String): List<AdvisorAdvice>
+
     /** Resolves a proposal's lifecycle in place - the one field [AdvisorAdvice] expects to change
      * post-insert, see its class doc. */
     @Query("UPDATE advisor_advice SET outcome = :outcome, resolvedAt = :resolvedAt WHERE id = :id")

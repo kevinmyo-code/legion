@@ -3,12 +3,12 @@ map: command-center
 ticket: "02"
 title: "Settings stops being one long wall"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built: five subscreens, 27 rows reconciled 27, write paths untouched. Finding: quiet hours and the daily cap have no setting anywhere - they are constants; a lever would be a new ticket. Owes the two-tap walk on the phone."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Settings stops being one long wall

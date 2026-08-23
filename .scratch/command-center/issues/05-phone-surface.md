@@ -3,12 +3,12 @@ map: command-center
 ticket: "05"
 title: "The phone gets buttons for its own calls"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built: ANSWER/DECLINE on the ring notification, dial screen with the confirm gate as two taps, all failure sentences as states. Owes a real incoming call on the phone."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The phone gets buttons for its own calls

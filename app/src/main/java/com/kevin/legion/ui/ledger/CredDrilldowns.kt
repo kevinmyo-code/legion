@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.ledger
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +48,7 @@ import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.documentDateCompact
 import java.time.YearMonth
+import kotlinx.coroutines.launch
 
 /**
  * The three drilldowns mission-control ticket 16's CRED rebuild hangs off the new HALF tiles/hero
@@ -124,12 +127,37 @@ fun CategorizeDrilldownScreen(
     onRunRules: () -> Unit,
     onConfirmGuesses: () -> Unit,
     onBack: () -> Unit,
+    // Command-center ticket 11: ADD on the PENDING section, hands path for `log_pending_transaction`
+    // (see `ui/ledger/LedgerWriteDialogs.kt`'s own doc comment for the trace). `accounts` is the
+    // SAME `AccountBalance` list this screen's caller already loaded for the BALANCES section -
+    // never a second fetch - and `onPendingAdded` is how the caller learns to reload `pending`,
+    // matching `onClearPending`'s own callback-out shape.
+    accounts: List<AccountBalance> = emptyList(),
+    onPendingAdded: () -> Unit = {},
+    // `accept_proposal` by hand, CRED aspect only (see `advisor/AdvisorProposalHandPath.kt`'s own
+    // class doc for why the write is the SAME [com.kevin.legion.advisor.AdvisorProposalExecutor]
+    // call the voice tool makes, just re-orchestrated outside `LiveToolbox`). `onProposalActed` is
+    // how the caller learns to reload - a proposal's execution can touch a goal or a budget target
+    // this screen doesn't itself render, but `pending` almost never changes as a side effect, so
+    // this still rides the same reload signal as every other write on this screen for consistency.
+    proposals: List<com.kevin.legion.data.local.AdvisorAdvice> = emptyList(),
+    onAcceptProposal: suspend (Long) -> com.kevin.legion.advisor.AdvisorProposalHandPath.Outcome = { com.kevin.legion.advisor.AdvisorProposalHandPath.Outcome(false, "Not wired up.") },
+    onDismissProposal: suspend (Long) -> Unit = {},
+    onProposalActed: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     // The GUESS CATEGORIES confirm control's own second-tap arm state - PurgeLedgerRow's exact
     // shape, local because it is purely "has this button been tapped once already", not a
     // persisted fact the caller's state holder needs to know about.
     var guessArmed by remember { mutableStateOf(false) }
+    var showAddPending by remember { mutableStateOf(false) }
+    if (showAddPending) {
+        AddPendingTransactionDialog(
+            accounts = accounts,
+            onDismiss = { showAddPending = false },
+            onDone = { showAddPending = false; onPendingAdded() },
+        )
+    }
     val emptySentence = LedgerCategoryResolver.categorizeEmptyStateSentence(
         pendingCount = pending.size,
         categoryGuessCount = categoryGuesses.size,
@@ -143,13 +171,31 @@ fun CategorizeDrilldownScreen(
                     Text("< BACK", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
                 }
             }
-            Text("Categorize", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Categorize", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+                // Always visible, unlike the PENDING section itself below - the section can be
+                // entirely absent from the LazyColumn when the empty-state sentence short-circuits
+                // it (see `emptySentence`'s own branch just below), and ADD must not disappear
+                // along with it.
+                TextButton(onClick = { showAddPending = true }) {
+                    Text("ADD PENDING", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                }
+            }
             Text(
                 "Confirming a voice entry and confirming an AI-guessed category are the same job - both land here.",
                 style = LegionType.stamp,
                 color = sem.faint,
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
+            if (proposals.isNotEmpty()) {
+                AdvisorProposalsSection(proposals, onAcceptProposal, onDismissProposal, onProposalActed)
+                Spacer(Modifier.height(4.dp))
+                Hairline()
+            }
             Spacer(Modifier.height(8.dp))
             // Step 1: rules, free, no confirmation - fires immediately.
             DeckButton(
@@ -479,6 +525,73 @@ fun BalancesDrilldownScreen(balances: List<AccountBalance>, onBack: () -> Unit) 
                 BalancesSection(balances)
                 Spacer(Modifier.height(24.dp))
             }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ advisor proposals (ticket 11)
+
+/**
+ * `accept_proposal` by hand, CRED aspect. Each row is one still-`pending`
+ * [com.kevin.legion.data.local.AdvisorAdvice] - [AdvisorAdvice.gist] as the headline (the short
+ * summary the digest itself rides, so this reads the same claim the advisor made), with ACCEPT
+ * (runs the real write via [onAccept], same [com.kevin.legion.advisor.AdvisorProposalExecutor]
+ * call `accept_proposal` makes - see `advisor/AdvisorProposalHandPath.kt`) and DISMISS (marks
+ * `rejected`, [onDismiss] - no voice-tool counterpart exists for this half, see that file's own
+ * class doc for why that is not a gap this screen needs to fill any further).
+ *
+ * Not a [LazyColumn] item like the sections below it - deliberately placed in the screen's ALWAYS
+ * visible top area (see the call site's own comment) so a proposal is never hidden behind the
+ * empty-state sentence the way [PendingTransactionsSection] can be.
+ */
+@Composable
+private fun AdvisorProposalsSection(
+    proposals: List<com.kevin.legion.data.local.AdvisorAdvice>,
+    onAccept: suspend (Long) -> com.kevin.legion.advisor.AdvisorProposalHandPath.Outcome,
+    onDismiss: suspend (Long) -> Unit,
+    onActed: () -> Unit,
+) {
+    val sem = LocalLegionSemantics.current
+    val scope = rememberCoroutineScope()
+    var busyId by remember { mutableStateOf<Long?>(null) }
+    var lastResult by remember { mutableStateOf<String?>(null) }
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+        SectionHeader("FROM YOUR MONEY ADVISOR", proposals.size.toString())
+        for (advice in proposals) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(advice.gist, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                Row(Modifier.padding(top = 6.dp)) {
+                    TextButton(
+                        enabled = busyId == null,
+                        onClick = {
+                            busyId = advice.id
+                            scope.launch {
+                                val outcome = onAccept(advice.id)
+                                lastResult = outcome.message
+                                busyId = null
+                                onActed()
+                            }
+                        },
+                    ) { Text("ACCEPT", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary) }
+                    TextButton(
+                        enabled = busyId == null,
+                        onClick = {
+                            busyId = advice.id
+                            scope.launch {
+                                onDismiss(advice.id)
+                                busyId = null
+                                onActed()
+                            }
+                        },
+                        modifier = Modifier.padding(start = 8.dp),
+                    ) { Text("DISMISS", style = LegionType.stamp, color = sem.faint) }
+                }
+            }
+        }
+        // Only the MOST RECENT accept/dismiss result is shown - same "one wording, not stacked"
+        // posture every other write dialog in this app takes with its own `result` var.
+        lastResult?.let {
+            Text(it, style = LegionType.stamp, color = sem.data, modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 4.dp))
         }
     }
 }

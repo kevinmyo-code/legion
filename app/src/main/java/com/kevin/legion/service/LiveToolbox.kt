@@ -2846,6 +2846,36 @@ object LiveToolbox {
     private fun mailFailure(cause: GmailToolLogic.Cause): JSONObject =
         JSONObject().put("success", false).put("message", GmailToolLogic.message(cause))
 
+    /**
+     * The four failure buckets `ui/world`'s package/flight cards render (command-center ticket
+     * 08) - a coarser grouping than [GmailToolLogic.Cause]'s four, because a card doesn't need to
+     * tell "never granted" from "grant lapsed" apart the way the spoken message does; it needs to
+     * tell "you can't get in" from "nothing was there" from "the network dropped" from "we got the
+     * mail but couldn't read it". `internal` (not private) so [MailCardFailure] and the JSON key
+     * it's tagged under ([MAIL_CARD_FAILURE_KEY]) are visible to `ui/world` without duplicating the
+     * enum there - one classification, read by both the failure copy and the card's `when`.
+     */
+    internal enum class MailCardFailure { NO_PERMISSION, NO_MATCH, UNREACHABLE, EXTRACTION_FAILED }
+
+    /** The JSON key [MailCardFailure] rides under on a failed [trackPackage]/[flightStatus] result.
+     * Absent entirely on success - a card must never read this key without first checking `success`. */
+    internal const val MAIL_CARD_FAILURE_KEY = "failure_kind"
+
+    /** [GmailToolLogic.Cause] collapsed to the two buckets a card actually distinguishes: no
+     * permission (never granted or lapsed - both are "you can't get in" to a person looking at a
+     * card, unlike the spoken message which does tell them apart) and unreachable (a real network
+     * or API failure once permission is not the problem). */
+    private fun mailCardFailureFor(cause: GmailToolLogic.Cause): MailCardFailure = when (cause) {
+        GmailToolLogic.Cause.NEEDS_CONSENT, GmailToolLogic.Cause.NEVER_GRANTED -> MailCardFailure.NO_PERMISSION
+        GmailToolLogic.Cause.NO_NETWORK, GmailToolLogic.Cause.API_ERROR -> MailCardFailure.UNREACHABLE
+    }
+
+    /** [mailFailure] plus the [MailCardFailure] tag a card needs - every [mailExtraction] failure
+     * branch that originates from a Gmail-side [GmailToolLogic.Cause] goes through this instead of
+     * the bare [mailFailure], so the tag can never drift out of sync with the spoken cause. */
+    private fun mailCardFailure(cause: GmailToolLogic.Cause): JSONObject =
+        mailFailure(cause).put(MAIL_CARD_FAILURE_KEY, mailCardFailureFor(cause).name)
+
     // --- Inbox intelligence: packages and flights (ticket 25, hands-and-senses map) ------
     //
     // Two read-through answers over the SAME mail search_mail/read_mail already reach (ticket 18's
@@ -2895,8 +2925,11 @@ object LiveToolbox {
         "I found the mail but couldn't read it through just now - try again in a sec."
 
     /** `track_package`. See this section's header comment for why the answer is composed the way
-     * it is; this function only supplies the domain-specific query and extraction prompt. */
-    private suspend fun trackPackage(context: Context): JSONObject = mailExtraction(
+     * it is; this function only supplies the domain-specific query and extraction prompt.
+     * `internal` (not private) - command-center ticket 08's package card calls this SAME function
+     * on demand rather than restating the search-and-extract sequence, so the tool dispatch below
+     * and the card can never drift into two different answers for the same question. */
+    internal suspend fun trackPackage(context: Context): JSONObject = mailExtraction(
         context = context,
         query = PACKAGE_MAIL_QUERY,
         noMatchMessage = PACKAGE_NO_MATCH_MESSAGE,
@@ -2912,8 +2945,9 @@ object LiveToolbox {
 
     /** `flight_status`. See this section's header comment; the calendar-boundary instruction lives
      * in the tool's own declared description, not here - a rule the live model never reads cannot
-     * steer it toward `read_calendar` first. */
-    private suspend fun flightStatus(context: Context): JSONObject = mailExtraction(
+     * steer it toward `read_calendar` first. `internal` for the same reason as [trackPackage] -
+     * the flight card calls this directly, never a second search-and-extract. */
+    internal suspend fun flightStatus(context: Context): JSONObject = mailExtraction(
         context = context,
         query = FLIGHT_MAIL_QUERY,
         noMatchMessage = FLIGHT_NO_MATCH_MESSAGE,
@@ -2941,8 +2975,16 @@ object LiveToolbox {
      * mail at all ([noMatchMessage], the one case that is not an error - the inbox was read fine
      * and simply has nothing), and a Gemini-side failure reading the one message found
      * ([agentResult]'s own generic phrasing).
+     *
+     * **Command-center ticket 08's card fields.** A successful result additionally carries
+     * `source_line`/`answer`/`estimate_suffix` as their OWN keys, alongside the already-composed
+     * `message` string the voice tool speaks - the card renders the three parts on separate lines
+     * ("shows the answer, the source mail line... and the estimate label", per the ticket) rather
+     * than re-splitting the spoken sentence back apart by punctuation. A failed result carries
+     * [MAIL_CARD_FAILURE_KEY] so the card can pick one of its four failure states without
+     * re-deriving [GmailToolLogic.Cause] from the message text.
      */
-    private suspend fun mailExtraction(
+    internal suspend fun mailExtraction(
         context: Context,
         query: String,
         noMatchMessage: String,
@@ -2951,22 +2993,23 @@ object LiveToolbox {
         val token = when (val tokenResult = GmailAuth.tokenOrReason(context)) {
             is GmailAuth.TokenResult.Token -> tokenResult.accessToken
             is GmailAuth.TokenResult.NeedsConsent ->
-                return mailFailure(GmailToolLogic.causeForNeedsConsent(CompanionProfile.isGmailEnabled(context)))
+                return mailCardFailure(GmailToolLogic.causeForNeedsConsent(CompanionProfile.isGmailEnabled(context)))
             is GmailAuth.TokenResult.Failed ->
-                return mailFailure(GmailToolLogic.causeForFailure(GmailAuth.looksLikeNetworkFailure(tokenResult.error)))
+                return mailCardFailure(GmailToolLogic.causeForFailure(GmailAuth.looksLikeNetworkFailure(tokenResult.error)))
         }
         return withContext(Dispatchers.IO) {
             val client = GmailClient(token)
             val hit = when (val page = client.search(query, GmailToolLogic.SEARCH_CAP)) {
                 is GmailClient.FetchResult.Ok -> page.value.messages.firstOrNull()
                     ?: return@withContext result(false, noMatchMessage)
+                        .put(MAIL_CARD_FAILURE_KEY, MailCardFailure.NO_MATCH.name)
                 is GmailClient.FetchResult.Failed ->
-                    return@withContext mailFailure(GmailToolLogic.causeForFailure(page.networkFailure))
+                    return@withContext mailCardFailure(GmailToolLogic.causeForFailure(page.networkFailure))
             }
             val body = when (val fetched = client.fetchFull(hit.id)) {
                 is GmailClient.FetchResult.Ok -> fetched.value
                 is GmailClient.FetchResult.Failed ->
-                    return@withContext mailFailure(GmailToolLogic.causeForFailure(fetched.networkFailure))
+                    return@withContext mailCardFailure(GmailToolLogic.causeForFailure(fetched.networkFailure))
             }
             val sourceLine = buildMailSourceLine(
                 subject = body.subject,
@@ -2980,9 +3023,17 @@ object LiveToolbox {
                 )
             }
             if (!extracted.optBoolean("success")) {
-                extracted
+                // Every agentResult failure branch here happens strictly AFTER the mail itself was
+                // found and read (rate-limited/offline/bad-key/overloaded/generic-failed all reach
+                // this same `if`) - from the card's point of view that is one bucket, EXTRACTION_FAILED,
+                // whichever of agentResult's own five wordings the driver would have heard spoken.
+                extracted.put(MAIL_CARD_FAILURE_KEY, MailCardFailure.EXTRACTION_FAILED.name)
             } else {
-                result(true, "$sourceLine ${extracted.optString("message")} $ESTIMATE_SUFFIX")
+                val answer = extracted.optString("message")
+                result(true, "$sourceLine $answer $ESTIMATE_SUFFIX")
+                    .put("source_line", sourceLine)
+                    .put("answer", answer)
+                    .put("estimate_suffix", ESTIMATE_SUFFIX)
             }
         }
     }
@@ -4177,7 +4228,11 @@ object LiveToolbox {
      * for a proposal accepted in a later conversation within the same day - a gap flagged here
      * rather than silently narrowed to something the ticket didn't ask for.
      */
-    private const val PROPOSAL_TTL_MS = 24L * 60 * 60 * 1000
+    // Internal, not private: AdvisorProposalHandPath (the ADR 0035 hands path for accepting a
+    // proposal) enforces the SAME expiry, and a copied constant is how the two paths would one day
+    // expire the same row at two different ages. Same widen-to-internal pattern as
+    // resolveCurrentLocation and controlMusicTransport.
+    internal const val PROPOSAL_TTL_MS = 24L * 60 * 60 * 1000
 
     /**
      * `why_did_you_say_that`. Reads the most recent [ProactiveRaiseRow] and hands back its stored
@@ -6176,8 +6231,14 @@ object LiveToolbox {
      * satisfy exhaustiveness against the FULL [MusicAction] enum (which keeps growing as later
      * tickets land); reaching one would mean [controlMusic]'s routing itself is broken, so they
      * throw rather than silently doing nothing.
+     *
+     * `internal` (not private) - command-center ticket 08's drift-debt half:
+     * `ui/media/MediaTransport.kt`'s `run` used to restate this exact two-backend ordering (its
+     * own doc named the reason: this function used to be `private`, "file-scoped in Kotlin even
+     * within the same module"). It now calls this SAME function, so the ordering can never drift
+     * out of step between the voice tool and the hands path again.
      */
-    private suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject {
+    internal suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject {
         if (NowPlayingController.hasAccess(context)) {
             val ok = withContext(Dispatchers.Main) {
                 when (action) {
@@ -6247,11 +6308,45 @@ object LiveToolbox {
     }
 
     /**
-     * Reverse-geocodes via Android's built-in `Geocoder` (needs a GMS geocoding
-     * backend on-device; degrades to coordinates-only if unavailable, per CLAUDE.md
-     * sec 9's "network calls degrade gracefully" rule).
+     * The permission/providers-off/no-fix/available branch [getCurrentLocation] decides on, lifted
+     * out to its own type (command-center ticket 08, drift-debt half) because
+     * `ui/FleetScreen.kt`'s `currentLocationReadout` used to RESTATE this exact branch order in a
+     * second private function - its own doc comment flagged the drift risk explicitly, since that
+     * file has no business reaching into a `private` LiveToolbox function. Now there is one
+     * decision (this function) and two renderers: [getCurrentLocation] turns it into the tool's
+     * spoken sentences, `FleetScreen.currentLocationReadout` turns the SAME value into its
+     * "Current location: ..." line. `internal` so the screen can call it directly.
      */
-    private suspend fun getCurrentLocation(context: Context): JSONObject {
+    internal sealed class LocationReadout {
+        /** A live fix exists. [label] is the best-effort reverse-geocoded street/city/state,
+         * null if the geocoder is unavailable or returned nothing - never a reason to fail the
+         * whole readout, since [coords] alone is still an honest answer (CLAUDE.md §7's
+         * degrade-in-words rule applied to a partial success, not just a total failure). [coords]
+         * is the pre-formatted "(lat X, lng Y)" clause the spoken sentence uses; [lat]/[lon] are
+         * the same two numbers un-formatted, added for command-center ticket 08's `AreaCard` so it
+         * can hand a real coordinate pair to [com.kevin.legion.location.AirNow] without parsing
+         * [coords] back apart. */
+        data class Available(val label: String?, val coords: String, val lat: Double, val lon: Double) : LocationReadout()
+
+        /** LEGION itself was never granted location - the one actionable case; everything else
+         * below is the phone's own settings, not something re-asking fixes. */
+        object NoPermission : LocationReadout()
+
+        /** Permission granted, but the driver (or a battery saver mode) has both GPS and network
+         * location switched off system-wide - a different fix than "wait longer". */
+        object ProvidersOff : LocationReadout()
+
+        /** Permission granted, a provider is on, there's just no fix yet. */
+        object NoFix : LocationReadout()
+    }
+
+    /**
+     * Resolves [LocationController]'s live state into a [LocationReadout], reverse-geocoding via
+     * Android's built-in `Geocoder` when a fix exists (needs a GMS geocoding backend on-device;
+     * degrades to coordinates-only if unavailable, per CLAUDE.md sec 9's "network calls degrade
+     * gracefully" rule). Never throws and never guesses - see [LocationReadout]'s own branch docs.
+     */
+    internal suspend fun resolveCurrentLocation(context: Context): LocationReadout {
         // init() is idempotent (see its own doc) and, critically, seeds state from
         // getLastKnownLocation synchronously - so a driver who just granted location in Android
         // Settings and comes straight back to a voice call gets an immediate answer instead of
@@ -6262,19 +6357,9 @@ object LiveToolbox {
         LocationController.init(context)
         val loc = LocationController.state.value
             ?: return when {
-                // The one actionable case: LEGION itself was never granted location. Everything
-                // else below is the phone's own settings, not something re-asking the tool fixes.
-                !LocationController.hasPermission(context) -> result(success = false,
-                    message = "LEGION doesn't have location permission. Grant it in Android's " +
-                        "app settings for LEGION and try again.")
-                // Permission granted, but the driver (or a battery saver mode) has both GPS and
-                // network location switched off system-wide - a different fix than "wait longer".
-                !LocationController.anyProviderEnabled(context) -> result(success = false,
-                    message = "Location services are switched off on the phone. Turn on GPS or " +
-                        "network location and try again.")
-                // Permission granted, a provider is on, there's just no fix yet - this is the
-                // ONLY case the old blanket message was actually true for.
-                else -> result(success = false, message = "I don't have a GPS fix yet.")
+                !LocationController.hasPermission(context) -> LocationReadout.NoPermission
+                !LocationController.anyProviderEnabled(context) -> LocationReadout.ProvidersOff
+                else -> LocationReadout.NoFix
             }
 
         val coords = "(lat ${loc.latitude}, lng ${loc.longitude})"
@@ -6288,9 +6373,26 @@ object LiveToolbox {
                     ?.ifBlank { null }
             }.getOrNull()
         }
-        return if (label != null) result(success = true, message = "Current location: $label $coords")
-        else result(success = true, message = "Current location: $coords (couldn't resolve an address)")
+        return LocationReadout.Available(label, coords, loc.latitude, loc.longitude)
     }
+
+    private suspend fun getCurrentLocation(context: Context): JSONObject =
+        when (val readout = resolveCurrentLocation(context)) {
+            // The one actionable case: LEGION itself was never granted location. Everything
+            // else below is the phone's own settings, not something re-asking the tool fixes.
+            LocationReadout.NoPermission -> result(success = false,
+                message = "LEGION doesn't have location permission. Grant it in Android's " +
+                    "app settings for LEGION and try again.")
+            LocationReadout.ProvidersOff -> result(success = false,
+                message = "Location services are switched off on the phone. Turn on GPS or " +
+                    "network location and try again.")
+            // The ONLY case the old blanket message was actually true for.
+            LocationReadout.NoFix -> result(success = false, message = "I don't have a GPS fix yet.")
+            is LocationReadout.Available -> if (readout.label != null)
+                result(success = true, message = "Current location: ${readout.label} ${readout.coords}")
+            else
+                result(success = true, message = "Current location: ${readout.coords} (couldn't resolve an address)")
+        }
 
     /**
      * The single "do we have an actual live GPS fix, with NO fallback" gate (location-intelligence

@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -23,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MemoryAudit
 import com.kevin.legion.data.local.record
@@ -62,6 +65,26 @@ import kotlinx.coroutines.launch
  * row is not the ledger-purge shape ([com.kevin.legion.ui.PurgeLedgerRow]'s two-tap arm), it is one
  * fact leaving one list, and [MemoryDao]/[CompanionMemoryDao] have no undo to make a confirm step
  * meaningfully safer than just doing it.
+ *
+ * **ADD (command-center ticket 11, ADR 0035).** Traced `remember`'s dispatch in
+ * `service/LiveToolbox.kt` before writing [AddMemoryDialog]: it calls
+ * [com.kevin.legion.ai.AriaBrain.remember] directly with the typed text - no category parameter
+ * exists anywhere on that path. [MemoryEntry] itself carries only `text`/`timestamp`/`syncId` (no
+ * category column at all); the category split this screen actually shows (REMEMBERED FACTS vs.
+ * LEARNED FROM CONVERSATIONS) is a split between [MemoryEntry] and the separate [CompanionMemory]
+ * table, not a field on either row, so there is no category to prompt for - [AddMemoryDialog] is
+ * text-only, matching the tool's own single argument.
+ *
+ * **The read-through gate does not apply here, and this is a reasoned finding, not a skip.**
+ * `LiveToolbox`'s `remember` case refuses when [com.kevin.legion.service.GeminiLiveSession] has
+ * already reduced "did this TURN touch a mail-read tool" to a boolean
+ * (`rememberBlockedByReadThroughTool`, ticket 21's "close the remember leak") - the gate exists
+ * because a live turn that just read Gmail could otherwise smuggle mail content into long-term
+ * memory disguised as something the driver said. A hand-typed entry on this screen has no live
+ * turn, no socket, and no mail read behind it at all - there is no "this turn" for the boolean to
+ * describe, so the gate has no input to evaluate, not an input it happens to pass. The refusal
+ * string [REMEMBER_MAIL_REFUSAL] exists for the one call site testing that boolean; this call site
+ * never constructs one because nothing here could ever set it true.
  */
 private const val MEMORY_LIMIT = 200
 
@@ -72,8 +95,10 @@ fun MemoryScreen(onBack: () -> Unit) {
     var loading by remember { mutableStateOf(true) }
     var facts by remember { mutableStateOf(emptyList<MemoryEntry>()) }
     var learned by remember { mutableStateOf(emptyList<CompanionMemory>()) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var reloadNonce by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(reloadNonce) {
         val db = CarDatabase.getDatabase(context)
         // Room's suspend DAO methods already dispatch off the caller's thread through their own
         // query executor - unlike PlaybookStore's raw file IO, no explicit Dispatchers.IO wrap is
@@ -83,10 +108,22 @@ fun MemoryScreen(onBack: () -> Unit) {
         loading = false
     }
 
+    if (showAddDialog) {
+        AddMemoryDialog(
+            onDismiss = { showAddDialog = false },
+            onDone = { showAddDialog = false; reloadNonce++ },
+        )
+    }
+
     val sem = LocalLegionSemantics.current
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             DeckScreenHeader(title = "What it remembers", onBack = onBack)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { showAddDialog = true }) {
+                    Text("ADD", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                }
+            }
             if (loading) {
                 Text("Loading...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
             } else {
@@ -207,4 +244,55 @@ private fun CompanionMemoryRow(memory: CompanionMemory, onDelete: () -> Unit) {
 private fun EmptyMemorySection(text: String) {
     val sem = LocalLegionSemantics.current
     Text(text, style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
+}
+
+/**
+ * `remember` by hand (command-center ticket 11). Calls the exact same
+ * [com.kevin.legion.ai.AriaBrain.remember] the `remember` voice tool dispatches to - text only, no
+ * category, no read-through gate to evaluate (see the file doc comment for why). Same
+ * `result`/`busy` shape [com.kevin.legion.ui.body.BodyWriteDialogs] already established for this
+ * app's hands-path dialogs, so a driver sees the same interaction everywhere.
+ */
+@Composable
+private fun AddMemoryDialog(onDismiss: () -> Unit, onDone: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var text by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<String?>(null) }
+    val sem = LocalLegionSemantics.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Remember something") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("What should it remember") },
+                    enabled = !busy,
+                )
+                result?.let { Text(it, style = LegionType.stamp, color = sem.data, modifier = Modifier.padding(top = 8.dp)) }
+            }
+        },
+        confirmButton = {
+            if (result == null) {
+                TextButton(
+                    enabled = !busy && text.isNotBlank(),
+                    onClick = {
+                        busy = true
+                        scope.launch {
+                            // Same call remember's dispatch makes: AriaBrain.get(context).remember(text).
+                            result = AriaBrain.get(context).remember(text.trim())
+                            busy = false
+                        }
+                    },
+                ) { Text("Remember") }
+            } else {
+                TextButton(onClick = onDone) { Text("Done") }
+            }
+        },
+        dismissButton = { if (result == null) TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

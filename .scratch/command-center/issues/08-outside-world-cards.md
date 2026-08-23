@@ -3,12 +3,12 @@ map: command-center
 ticket: "08"
 title: "Packages, flights, and the area, on glass"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built: package/flight/area cards through the same shared functions the voice tools call; drift debt from wave 1 paid - restatements deleted. AirNow wired, never renders missing as Good; the key still owes a real round trip."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Packages, flights, and the area, on glass

@@ -570,17 +570,56 @@ private fun LegionShell(
 
             composable(LegionRoute.SETTINGS) {
                 SettingsScreen(
-                    onOpenKeyScreen = { navController.navigate(LegionRoute.SETTINGS_KEY) },
+                    onOpenAssistant = { navController.navigate(LegionRoute.SETTINGS_ASSISTANT) },
+                    onOpenProactiveSpeech = { navController.navigate(LegionRoute.SETTINGS_PROACTIVE_SPEECH) },
+                    onOpenConnections = { navController.navigate(LegionRoute.SETTINGS_CONNECTIONS) },
+                    onOpenDataPrivacy = { navController.navigate(LegionRoute.SETTINGS_DATA_PRIVACY) },
+                    onOpenPermissionsDiagnostics = { navController.navigate(LegionRoute.SETTINGS_PERMISSIONS_DIAGNOSTICS) },
+                )
+            }
+            // The five subscreens (command-center ticket 02) - each takes only the granular
+            // callbacks its own moved rows need, wired straight to the same destinations the old
+            // monolith's rows opened.
+            composable(LegionRoute.SETTINGS_ASSISTANT) {
+                com.kevin.legion.ui.settings.AssistantSettingsScreen(
+                    onBack = { navController.popBackStack() },
                     onOpenCompanions = { navController.navigate(LegionRoute.SETTINGS_COMPANIONS) },
+                    onOpenPlaybooks = { navController.navigate(LegionRoute.SETTINGS_PLAYBOOKS) },
+                )
+            }
+            composable(LegionRoute.SETTINGS_PROACTIVE_SPEECH) {
+                com.kevin.legion.ui.settings.ProactiveSpeechScreen(onBack = { navController.popBackStack() })
+            }
+            composable(LegionRoute.SETTINGS_CONNECTIONS) {
+                com.kevin.legion.ui.settings.ConnectionsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenKeyScreen = { navController.navigate(LegionRoute.SETTINGS_KEY) },
                     onOpenGoogleAccess = { navController.navigate(LegionRoute.SETTINGS_GOOGLE) },
                     onOpenSpotify = { navController.navigate(LegionRoute.SETTINGS_SPOTIFY) },
-                    onOpenCarProbe = { navController.navigate(LegionRoute.SETTINGS_CAR_PROBE) },
-                    onOpenPlaybooks = { navController.navigate(LegionRoute.SETTINGS_PLAYBOOKS) },
+                )
+            }
+            composable(LegionRoute.SETTINGS_DATA_PRIVACY) {
+                com.kevin.legion.ui.settings.DataPrivacyScreen(
+                    onBack = { navController.popBackStack() },
                     onOpenMemory = { navController.navigate(LegionRoute.SETTINGS_MEMORY) },
+                )
+            }
+            composable(LegionRoute.SETTINGS_PERMISSIONS_DIAGNOSTICS) {
+                com.kevin.legion.ui.settings.PermissionsDiagnosticsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenCarProbe = { navController.navigate(LegionRoute.SETTINGS_CAR_PROBE) },
+                    onOpenDialer = { navController.navigate(LegionRoute.SETTINGS_PHONE) },
                 )
             }
             composable(LegionRoute.SETTINGS_KEY) {
                 KeyScreen(onBack = { navController.popBackStack() })
+            }
+            // The dial screen (command-center ticket 05, ADR 0035's hands path for `place_call`) -
+            // see LegionRoute.SETTINGS_PHONE's own doc comment. Fully-qualified rather than a new
+            // top-level import, same posture PermissionsDiagnosticsScreen just above already uses,
+            // to keep this shared file's import block untouched while three other agents edit it.
+            composable(LegionRoute.SETTINGS_PHONE) {
+                com.kevin.legion.ui.phone.PhoneDialScreen(onBack = { navController.popBackStack() })
             }
             composable(LegionRoute.SETTINGS_COMPANIONS) {
                 CompanionsScreen(onBack = { navController.popBackStack() })

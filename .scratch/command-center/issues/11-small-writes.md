@@ -3,12 +3,12 @@ map: command-center
 ticket: "11"
 title: "Three small writes: memory, proposals, pendings"
 type: build
-status: open
-status-detail: ""
+status: built
+status-detail: "Built: memory add, pending add (Long cents), and the CRED advisor-proposal panel over a real store that was voice-only app-wide. Other aspects' panels are follow-up. TTL constant now shared, not copied."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Three small writes: memory, proposals, pendings

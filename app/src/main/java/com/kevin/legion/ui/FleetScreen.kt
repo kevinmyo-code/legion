@@ -1597,34 +1597,22 @@ private fun ForgetPlaceConfirmDialog(label: String, onDismiss: () -> Unit, onCon
 }
 
 /**
- * The current-location line at the top of [SavedPlacesScreen]. Deliberately restates
- * `service/LiveToolbox.kt`'s private `getCurrentLocation` rather than reaching into it (it is
- * `private` to that object and dispatch's job, not a shared utility) - but every branch below is
- * the SAME branch in the SAME order: no permission, providers off, no fix yet, then a reverse
- * geocode with a coords-only fallback if the geocoder fails or returns nothing. Never hands the
- * model or the screen an IANA timezone id as a place (CLAUDE.md sec 1) - this reads
- * [LocationController]'s live GPS fix and Android's own [android.location.Geocoder], nothing else.
- * `location/` stays read-only from this file: every call below is a public accessor already used
- * elsewhere, never a write.
+ * The current-location line at the top of [SavedPlacesScreen]. **No longer restates**
+ * `service/LiveToolbox.kt`'s branch logic (command-center ticket 08, drift-debt half) - it calls
+ * [com.kevin.legion.service.LiveToolbox.resolveCurrentLocation] directly, the same `internal`
+ * function `getCurrentLocation` itself resolves against, and only re-words the four outcomes into
+ * this screen's own "Current location: ..." phrasing. One decision, two renderers; see
+ * [com.kevin.legion.service.LiveToolbox.LocationReadout]'s own doc for why it exists.
  */
-private suspend fun currentLocationReadout(context: android.content.Context): String {
-    val loc = LocationController.state.value
-        ?: return when {
-            !LocationController.hasPermission(context) -> "Current location: unknown (no location permission)."
-            !LocationController.anyProviderEnabled(context) -> "Current location: unknown (location services are off)."
-            else -> "Current location: unknown (no GPS fix yet)."
-        }
-    val coords = "(lat ${loc.latitude}, lng ${loc.longitude})"
-    val label = withContext(Dispatchers.IO) {
-        runCatching {
-            @Suppress("DEPRECATION")
-            android.location.Geocoder(context, java.util.Locale.getDefault())
-                .getFromLocation(loc.latitude, loc.longitude, 1)
-                ?.firstOrNull()
-                ?.let { listOfNotNull(it.thoroughfare, it.locality, it.adminArea).joinToString(", ") }
-                ?.ifBlank { null }
-        }.getOrNull()
+private suspend fun currentLocationReadout(context: android.content.Context): String =
+    when (val readout = com.kevin.legion.service.LiveToolbox.resolveCurrentLocation(context)) {
+        com.kevin.legion.service.LiveToolbox.LocationReadout.NoPermission ->
+            "Current location: unknown (no location permission)."
+        com.kevin.legion.service.LiveToolbox.LocationReadout.ProvidersOff ->
+            "Current location: unknown (location services are off)."
+        com.kevin.legion.service.LiveToolbox.LocationReadout.NoFix ->
+            "Current location: unknown (no GPS fix yet)."
+        is com.kevin.legion.service.LiveToolbox.LocationReadout.Available ->
+            if (readout.label != null) "Current location: ${readout.label} ${readout.coords}"
+            else "Current location: ${readout.coords} (couldn't resolve an address)"
     }
-    return if (label != null) "Current location: $label $coords"
-    else "Current location: $coords (couldn't resolve an address)"
-}

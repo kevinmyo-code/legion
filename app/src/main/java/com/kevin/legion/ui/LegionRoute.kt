@@ -73,6 +73,19 @@ object LegionRoute {
     const val DRIVING = "driving"
 
     const val SETTINGS = "settings"
+
+    /**
+     * The five subscreens `settings/` split into (command-center ticket 02, 2026-08-22,
+     * `.scratch/command-center/issues/02-settings-submenus.md`) - [SETTINGS] itself is now five
+     * navigation rows and nothing else. See `ui/settings/AssistantSettingsScreen.kt` and its four
+     * siblings for what landed on each.
+     */
+    const val SETTINGS_ASSISTANT = "settings/assistant"
+    const val SETTINGS_PROACTIVE_SPEECH = "settings/proactive-speech"
+    const val SETTINGS_CONNECTIONS = "settings/connections"
+    const val SETTINGS_DATA_PRIVACY = "settings/data-privacy"
+    const val SETTINGS_PERMISSIONS_DIAGNOSTICS = "settings/permissions-diagnostics"
+
     const val SETTINGS_KEY = "settings/key"
     /** The companion profile picker (roster, create/edit/delete/switch) - Part 2 of the multi-companion feature. */
     const val SETTINGS_COMPANIONS = "settings/companions"
@@ -103,6 +116,14 @@ object LegionRoute {
      * only interaction below the list is a delete, not a drill-down.
      */
     const val SETTINGS_MEMORY = "settings/memory"
+
+    /**
+     * The dial screen (command-center ticket 05, ADR 0035's hands path for `place_call`) - see
+     * [com.kevin.legion.ui.phone.PhoneDialScreen]. Same shape as [SETTINGS_MEMORY]: no sub-routes,
+     * every state below the top level (resolving, confirm read-back, called, failed, refused) is
+     * internal Compose state inside the one screen, not a nav-graph destination.
+     */
+    const val SETTINGS_PHONE = "settings/phone"
 
     /**
      * The Android Auto probe harness's on-screen readout (`.scratch/android-auto/map.md`
