@@ -222,6 +222,17 @@
             android:label="Dashboard"
             android:theme="@style/Theme.Legion" />
 
+        <!-- The mirror/sync settings stub (aspect-engine ticket 20 item 5) - same debug-entry
+             posture as WidgetPagerActivity above: exported=false, no launcher intent-filter,
+             reached only via
+             `adb shell am start -n com.kevin.legion/.ui.mirror.MirrorSyncActivity`
+             until a later ticket folds it into MainActivity's own NavHost. -->
+        <activity
+            android:name=".ui.mirror.MirrorSyncActivity"
+            android:exported="false"
+            android:label="Mirror Sync"
+            android:theme="@style/Theme.Legion" />
+
         <service
             android:name=".service.AriaForegroundService"
             android:enabled="true"

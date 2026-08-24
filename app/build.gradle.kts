@@ -229,6 +229,11 @@ dependencies {
     // to Python's pdfplumber word-position extraction the DBS parser depends on.
     implementation(libs.pdfbox.android)
 
+    // Aspect-engine mirror/sync (ticket 20): xlsx workbook read/write. Plain-JVM library, no
+    // Android assets - see MirrorCodec's own doc comment for why this needs no Robolectric.
+    implementation(libs.fastexcel.writer)
+    implementation(libs.fastexcel.reader)
+
     // Custom wake word ("hey <name>"), ported from Midnight AI.
     implementation(libs.vosk.android)
 

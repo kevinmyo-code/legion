@@ -54,6 +54,11 @@ media3 = "1.4.1"
 # section 5/6 documents) needs an explicit `implementation` dependency here to be resolvable.
 # Pinned to the version already resolved transitively so nothing double-loads at a different one.
 media-compat = "1.7.0"
+# fastexcel (aspect-engine ticket 20, mirror/sync): plain-JVM xlsx reader/writer, no Android
+# assets, no java.awt - unlike PdfBox-Android this needs no Robolectric (research
+# `.scratch/aspect-engine/research/02-xlsx-on-android.md` section 1/"Test implications"). Writer
+# and reader are published as separate artifacts at the same version.
+fastexcel = "0.19.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -95,6 +100,8 @@ pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 media-compat = { group = "androidx.media", name = "media", version.ref = "media-compat" }
+fastexcel-writer = { group = "org.dhatim", name = "fastexcel", version.ref = "fastexcel" }
+fastexcel-reader = { group = "org.dhatim", name = "fastexcel-reader", version.ref = "fastexcel" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
