@@ -43,9 +43,13 @@ import java.time.ZoneId
 class BioDigestBuilder : DigestBuilder {
     override val aspect = AdvisorAspect.BIO
 
-    override suspend fun build(context: Context): String {
+    override suspend fun build(context: Context): String = build(context, System.currentTimeMillis())
+
+    /** Clock-injectable overload. Production always goes through the override above; tests pin
+     * [now] mid-week so week-window assertions cannot flake on a Monday run (the exact failure
+     * BioDigestBuilderTest hit on 2026-08-18 and again on 2026-08-24). */
+    internal suspend fun build(context: Context, now: Long): String {
         val db = CarDatabase.getDatabase(context)
-        val now = System.currentTimeMillis()
         val zone = ZoneId.systemDefault()
 
         val lines = mutableListOf<String>()

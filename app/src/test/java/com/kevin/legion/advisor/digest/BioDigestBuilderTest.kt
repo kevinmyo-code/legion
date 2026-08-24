@@ -90,15 +90,21 @@ class BioDigestBuilderTest {
     @Test
     fun `an unlogged day inside a target-set week is named, and a logged day's kcal is marked estimate`() = runBlocking {
         val db = CarDatabase.getDatabase(context)
+        // Pinned to mid-week (weekStart + 2 days, noon-ish) via the clock-injectable overload: on
+        // a real Monday run the live window holds only today, every day is logged, and the
+        // "unlogged day" premise silently vanishes - this test failed exactly that way on
+        // 2026-08-24 (a Monday), the same boundary the bodyweight test above documents.
+        val pinnedNow = weekStartEpoch(now) + 2 * 86_400_000L + 12 * 60 * 60 * 1000L
         db.mealTargetDao().upsert(
-            MealTarget(caloriesKcal = 2200, proteinG = 150.0, carbsG = 200.0, fatG = 70.0, effectiveFromDateEpoch = dayStartEpoch(now), updatedAt = now)
+            MealTarget(caloriesKcal = 2200, proteinG = 150.0, carbsG = 200.0, fatG = 70.0, effectiveFromDateEpoch = dayStartEpoch(pinnedNow), updatedAt = pinnedNow)
         )
-        // One meal logged today; no meal logged yesterday, inside the current window.
+        // One meal logged on the pinned "today"; Monday and Tuesday of the pinned week stay
+        // unlogged, inside the window by construction.
         db.mealLogDao().insert(
-            MealLog(description = "chicken and rice", caloriesKcal = 650, loggedAt = now, trustTier = TrustTier.REPORTED)
+            MealLog(description = "chicken and rice", caloriesKcal = 650, loggedAt = pinnedNow, trustTier = TrustTier.REPORTED)
         )
 
-        val digest = builder.build(context)
+        val digest = builder.build(context, pinnedNow)
         val intakeLine = digest.lines().first { it.startsWith("INTAKE") }
 
         assertTrue("today's real kcal figure must be present", intakeLine.contains("650"))
