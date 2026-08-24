@@ -140,6 +140,10 @@ These are charter decisions, not resolved tickets. Tickets refine them; they do 
   the A25: **"feels like a dashboard."** Edit mode kept; stage 2 (true 2D occupancy-map grid,
   8-12 days) authorized and folded into Build the widget pager.
 
+- [Build the mirror and sync](issues/20-build-mirror-sync.md) - shipped at v37 with guid
+  identity and wired auto-sync; **probed live by Kevin on the A25**: real Drive folder, export
+  stamped, hash verify clean. Two-phone end-to-end and airplane/reboot cases still open.
+
 ## Not yet specified
 
 - **Aspect templates / sharing.** An aspect definition is data, so it could export/import. Unasked.

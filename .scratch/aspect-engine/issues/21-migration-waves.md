@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["17", "18", "19", "20"]
 blocked-by: ["[[17-build-voice-surface]]", "[[18-build-widget-pager]]", "[[19-build-dates-aspect]]", "[[20-build-mirror-sync]]"]
-open-blockers: 4
+open-blockers: 3
 ready: false
 tags: [ticket]
 ---
