@@ -4,7 +4,7 @@ ticket: "22"
 title: "Cutover per aspect: the engine becomes the read and write path"
 type: task
 status: claimed
-status-detail: "Cutover 1 (Notes+Places) MERGED and DATA-VERIFIED on the A25 2026-08-24: 26 migrated + 14 engine-native advisor items = 40 active, zero dupes, zero resurrections; SyncEngine places spec retired per ticket 13; outcome-verb honesty plumbed through both controllers. Owed: Kevin exercising reminders and voice on it. Next: pantry."
+status-detail: "Cutovers 1 (Notes+Places) and 2 (Pantry) MERGED and DATA-VERIFIED on the A25 2026-08-24. Pantry: 3+26 intact, zero dupes, the three anchor fields (subtotal/tax/otherCharges) live on the seeded phone - the gate now persists what it verifies. Owed: a real receipt scan end to end. Next: ledger."
 blockers: []
 blocked-by: []
 open-blockers: 0
