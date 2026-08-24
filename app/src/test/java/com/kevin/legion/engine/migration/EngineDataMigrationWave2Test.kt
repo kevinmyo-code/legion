@@ -1,10 +1,12 @@
 package com.kevin.legion.engine.migration
 
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.DeletePolicy
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.PantryLineItem
 import com.kevin.legion.data.local.PantryReceipt
 import com.kevin.legion.data.local.RecordProvenance
+import com.kevin.legion.engine.FieldConfig
 import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.pantry.PantryAspectSeeder
 import com.kevin.legion.testutil.RoomTestReset
@@ -227,5 +229,128 @@ class EngineDataMigrationWave2Test {
         assertEquals(1, result.receiptsCopied)
         assertEquals(0, result.lineItemsCopied)
         assertTrue(result.alreadyDone.not())
+    }
+
+    // -------------------------------------------------------------- section-4 invariant survives
+
+    @Test
+    fun `sum of migrated line-item totalPrice equals the migrated receipt total, re-summed on the engine records`() = runBlocking {
+        // Mirrors the real gate shape (PantryReceiptReceiptAgent's own anchor 1: sum(items) ==
+        // subtotal/total) - this is that invariant re-checked AFTER migration, on the engine's own
+        // records, not merely assumed to have survived the copy.
+        val receiptId = seedReceipt(totalCents = 900L)
+        db.pantryLineItemDao().insertAll(
+            listOf(
+                PantryLineItem(receiptId = receiptId, name = "a", totalPriceCents = 300L),
+                PantryLineItem(receiptId = receiptId, name = "b", totalPriceCents = 250L),
+                PantryLineItem(receiptId = receiptId, name = "c", totalPriceCents = 350L),
+            ),
+        )
+
+        EngineDataMigrationWave2.copyPantryIfNeeded(context)
+
+        val schema = PantryAspectSeeder.ensureSeeded(context)
+        val receiptRecord = db.engineRecordDao().activeByRecordType(schema.receipt.recordTypeId).single()
+        val itemRecords = db.engineRecordDao().activeByRecordType(schema.lineItem.recordTypeId)
+        assertEquals(3, itemRecords.size)
+
+        val engineSideTotal = itemRecords.sumOf { record ->
+            PayloadCodec.readLong(JSONObject(record.payload), schema.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_TOTAL_PRICE))
+                ?: 0L
+        }
+        val receiptTotal = PayloadCodec.readLong(JSONObject(receiptRecord.payload), schema.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_TOTAL))
+
+        assertEquals(900L, engineSideTotal)
+        assertEquals(receiptTotal, engineSideTotal)
+        assertEquals(receiptRecord.amountCents, engineSideTotal) // promoted column agrees too
+    }
+
+    // ------------------------------------------------------------------------------ failure paths
+
+    /** Corrupts the already-seeded `receipt` REFERENCE field's config so [FieldType.REFERENCE]
+     * validation in [com.kevin.legion.engine.RecordStore.create] rejects EVERY line item this pass
+     * ("wrong record type" - the target config is pointed at the LineItem type itself instead of
+     * Receipt). [PantryAspectSeeder.ensureSeeded] never re-creates a field that already exists by
+     * name, so this corruption survives every subsequent `ensureSeeded`/`copyPantryIfNeeded` call
+     * until [restoreReceiptReferenceField] fixes it back - the exact "test seam" the senior review
+     * names as an acceptable way to force a genuine [com.kevin.legion.engine.RecordStore.WriteResult.Failure]. */
+    private suspend fun corruptReceiptReferenceField(schema: PantryAspectSeeder.Schema) {
+        val field = db.fieldDefDao().forRecordType(schema.lineItem.recordTypeId)
+            .single { it.id == schema.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_RECEIPT) }
+        db.fieldDefDao().update(
+            field.copy(config = FieldConfig.serializeReference(schema.lineItem.recordTypeId, DeletePolicy.CASCADE)),
+        )
+    }
+
+    private suspend fun restoreReceiptReferenceField(schema: PantryAspectSeeder.Schema) {
+        val field = db.fieldDefDao().forRecordType(schema.lineItem.recordTypeId)
+            .single { it.id == schema.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_RECEIPT) }
+        db.fieldDefDao().update(
+            field.copy(config = FieldConfig.serializeReference(schema.receipt.recordTypeId, DeletePolicy.CASCADE)),
+        )
+    }
+
+    @Test
+    fun `a forced line-item create failure leaves the completion flag UNSET, and the item is retried on the next run`() = runBlocking {
+        val receiptId = seedReceipt(totalCents = 200L)
+        db.pantryLineItemDao().insertAll(listOf(PantryLineItem(receiptId = receiptId, name = "milk", totalPriceCents = 200L)))
+        val schema = PantryAspectSeeder.ensureSeeded(context)
+        corruptReceiptReferenceField(schema)
+
+        val first = EngineDataMigrationWave2.copyPantryIfNeeded(context)
+
+        assertEquals(1, first.receiptsCopied) // the receipt itself has no reference field - unaffected
+        assertEquals(0, first.lineItemsCopied) // the line item's reference validation rejected it
+        assertFalse(
+            "the completion flag must stay clear when a line-item create failed this pass",
+            context.getSharedPreferences("engine_migration_wave2", android.content.Context.MODE_PRIVATE)
+                .getBoolean("pantry_completed_v1", false),
+        )
+        assertEquals(0, db.engineRecordDao().activeByRecordType(schema.lineItem.recordTypeId).size)
+
+        // Fix the corruption (as a real fix/redeploy would) and confirm the retry actually lands.
+        restoreReceiptReferenceField(schema)
+        val retry = EngineDataMigrationWave2.copyPantryIfNeeded(context)
+
+        assertEquals(0, retry.receiptsCopied) // already copied, guid recognized
+        assertEquals(1, retry.lineItemsCopied) // the previously-failed item is retried and now lands
+    }
+
+    @Test
+    fun `failure-path mirror of idempotence - partial failure leaves the flag clear, second run completes the copy, count-exact`() = runBlocking {
+        val r1 = seedReceipt(store = "A", totalCents = 500L)
+        db.pantryLineItemDao().insertAll(listOf(PantryLineItem(receiptId = r1, name = "milk", totalPriceCents = 500L)))
+        val r2 = seedReceipt(store = "B", totalCents = 300L)
+        db.pantryLineItemDao().insertAll(
+            listOf(
+                PantryLineItem(receiptId = r2, name = "eggs", totalPriceCents = 150L),
+                PantryLineItem(receiptId = r2, name = "bread", totalPriceCents = 150L),
+            ),
+        )
+        val schema = PantryAspectSeeder.ensureSeeded(context)
+        corruptReceiptReferenceField(schema)
+
+        val first = EngineDataMigrationWave2.copyPantryIfNeeded(context)
+        assertEquals(2, first.receiptsCopied)
+        assertEquals(0, first.lineItemsCopied)
+        assertFalse(first.alreadyDone)
+        assertFalse(
+            context.getSharedPreferences("engine_migration_wave2", android.content.Context.MODE_PRIVATE)
+                .getBoolean("pantry_completed_v1", false),
+        )
+
+        restoreReceiptReferenceField(schema)
+        val second = EngineDataMigrationWave2.copyPantryIfNeeded(context)
+
+        assertEquals(0, second.receiptsCopied) // both receipts already carried a real guid
+        assertEquals(3, second.lineItemsCopied) // all three previously-failed items land now
+        assertFalse(second.alreadyDone) // the flag was clear going in, so this was a real pass, not a skip
+
+        // count-exact at the end: every legacy row has exactly one engine record, nothing doubled.
+        assertEquals(2, db.engineRecordDao().activeByRecordType(schema.receipt.recordTypeId).size)
+        assertEquals(3, db.engineRecordDao().activeByRecordType(schema.lineItem.recordTypeId).size)
+
+        val third = EngineDataMigrationWave2.copyPantryIfNeeded(context)
+        assertTrue("a genuinely complete pass must now set the flag and fast-path every later call", third.alreadyDone)
     }
 }

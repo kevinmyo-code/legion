@@ -185,6 +185,23 @@ class MidnightApplication : Application() {
                     .onFailure { MidnightEvents.appStartWorkFailed("migrate_places_wave1", it) }
             }
 
+            // Wave 2 of the aspect-engine migration (`.scratch/aspect-engine/issues/21-migration-waves.md`):
+            // seeds the built-in Pantry aspect, then copies existing PantryReceipt/PantryLineItem
+            // rows onto the engine (see EngineDataMigrationWave2's own doc comment - same two-layer
+            // idempotency as Wave 1 above, plus a fold-in of any line-item-level Failure into the
+            // completion check so a partially-copied receipt can never be marked done).
+            // ADDITIVE ONLY: never touches pantry_receipts/pantry_line_items, which stay the live
+            // read/write path for `pantry/PantryController` and every existing pantry voice tool
+            // until this aspect's own cutover wave (ticket 14 point 2). Senior review, 2026-08-23
+            // (MUST-FIX 1): this block was missing entirely on first landing - the migration
+            // compiled and its own tests passed, but with zero call sites outside its own file it
+            // structurally could never run on a real device. Same appScope.launch + runCatching
+            // isolation as every block in this section.
+            appScope.launch {
+                runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave2.copyPantryIfNeeded(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("migrate_pantry_wave2", it) }
+            }
+
             // Ticket 04's label rule (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`):
             // the retired "this car" sentinel is a magic value masquerading as user data, and the
             // two rows carrying it are both archived and invisible today - which is exactly why

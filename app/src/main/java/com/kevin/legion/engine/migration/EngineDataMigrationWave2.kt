@@ -66,6 +66,14 @@ object EngineDataMigrationWave2 {
 
         var receiptsCopied = 0
         var lineItemsCopied = 0
+        // Senior review MUST-FIX 2 (2026-08-23): a line-item WriteResult.Failure used to be
+        // discarded, and the completion check below only ever re-derived receipt completeness -
+        // a lost line item under an otherwise-successful receipt would set the flag anyway and
+        // that row would never be retried again. Collected explicitly, folded into the
+        // completion check at the end. The reconciliation-gate rule-6 posture ("a check that
+        // passes when nothing parsed is not a gate") applied to migration completeness: a
+        // completion flag satisfiable by a partial copy is the same shape of bug.
+        val failedLineItemGuids = mutableSetOf<String>()
 
         for (receipt in receipts) {
             val receiptGuid = receipt.syncId
@@ -125,16 +133,24 @@ object EngineDataMigrationWave2 {
                     now = receipt.purchaseDate,
                     guid = itemGuid,
                 )
-                if (result is RecordStore.WriteResult.Success) lineItemsCopied++
+                if (result is RecordStore.WriteResult.Success) {
+                    lineItemsCopied++
+                } else {
+                    failedLineItemGuids += itemGuid
+                }
             }
         }
 
         // Only mark the whole domain complete if nothing was left unattempted this pass - a
         // receipt create Failure (schema mismatch, reference validation, etc.) means the domain is
         // NOT actually finished, and the flag must stay clear so the next app start retries.
-        val anyFailures = receipts.any { r ->
-            db.engineRecordDao().getByGuid(r.syncId) == null
-        }
+        // MUST-FIX 2: a receipt Failure is re-derived here (its guid never landed), but a
+        // LINE-ITEM Failure leaves its RECEIPT's guid very much present - re-deriving completeness
+        // from `EngineRecordDao.getByGuid` alone would silently miss it, which is exactly the bug
+        // this fixes. [failedLineItemGuids] is the direct record of what this call itself saw fail,
+        // and is folded in explicitly rather than re-derived.
+        val anyReceiptFailures = receipts.any { r -> db.engineRecordDao().getByGuid(r.syncId) == null }
+        val anyFailures = anyReceiptFailures || failedLineItemGuids.isNotEmpty()
         if (!anyFailures) prefs.edit().putBoolean(KEY_PANTRY_COMPLETED, true).apply()
 
         return Result(receiptsCopied = receiptsCopied, lineItemsCopied = lineItemsCopied, alreadyDone = false)
