@@ -4,7 +4,7 @@ ticket: "22"
 title: "Cutover per aspect: the engine becomes the read and write path"
 type: task
 status: claimed
-status-detail: "Cutovers 1 (Notes+Places) and 2 (Pantry) MERGED and DATA-VERIFIED on the A25 2026-08-24. Pantry: 3+26 intact, zero dupes, the three anchor fields (subtotal/tax/otherCharges) live on the seeded phone - the gate now persists what it verifies. Owed: a real receipt scan end to end. Next: ledger."
+status-detail: "Cutovers 1-3 (Notes+Places, Pantry, LEDGER) merged and DATA-VERIFIED on the A25 2026-08-24. Ledger: 161 DETERMINISTIC + 7 UNRECONCILED intact through the flip, zero dupes; the gate commits engine-side atomically with in-transaction rule-7 supersession; the first-launch catch-up race fixed with a positively-tracked migrated-guid set. Owed: a real statement import. Remaining: fleet, then the home flip."
 blockers: []
 blocked-by: []
 open-blockers: 0
