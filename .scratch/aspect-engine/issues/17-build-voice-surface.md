@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["07", "16"]
 blocked-by: ["[[07-aspect-clerk-prototype]]", "[[16-build-engine-core]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # Build the voice surface
