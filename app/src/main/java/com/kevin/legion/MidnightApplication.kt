@@ -219,6 +219,22 @@ class MidnightApplication : Application() {
                     .onFailure { MidnightEvents.appStartWorkFailed("migrate_ledger_wave3", it) }
             }
 
+            // Wave 4 of the aspect-engine migration (`.scratch/aspect-engine/issues/21-migration-waves.md`):
+            // seeds the built-in Fleet aspect (Vehicle/ServiceHistory/MaintenanceSchedule), then
+            // copies the fleet CORE CHAIN - vehicles, service records, maintenance items, odometer -
+            // onto the engine (see EngineDataMigrationWave4's own doc comment). ADDITIVE-ONLY for the
+            // copy half: never touches vehicles/service_records/maintenance_items, which stay the
+            // live read/write path for `vehicle/VehicleController` and every existing fleet voice
+            // tool until this aspect's own cutover wave (ticket 14 point 2). Full carve:
+            // `docs/architecture/wave4-carve-2026-08-23.md`. Wired in from this wave's first landing
+            // (Wave 2's senior review MUST-FIX 1: a migration with zero call sites cannot run on a
+            // real device), same appScope.launch + runCatching isolation as every block in this
+            // section.
+            appScope.launch {
+                runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave4.copyFleetIfNeeded(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("migrate_fleet_wave4", it) }
+            }
+
             // Ticket 04's label rule (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`):
             // the retired "this car" sentinel is a magic value masquerading as user data, and the
             // two rows carrying it are both archived and invisible today - which is exactly why

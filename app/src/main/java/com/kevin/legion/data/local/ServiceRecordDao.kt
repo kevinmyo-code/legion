@@ -27,6 +27,15 @@ interface ServiceRecordDao {
     @Query("SELECT * FROM service_records WHERE vehicleId = :vehicleId AND deleted = 0 ORDER BY date DESC")
     fun getRecordsForVehicle(vehicleId: String): Flow<List<ServiceRecord>>
 
+    /**
+     * One-shot, UNBOUNDED (no `LIMIT`) counterpart to [getRecordsForVehicle] - added for
+     * [com.kevin.legion.engine.migration.EngineDataMigrationWave4], which needs every non-deleted
+     * record for a vehicle in a single suspend call rather than a `Flow` to collect or
+     * [getRecentForVehicle]'s bounded `LIMIT`. A plain additive `@Query`, no schema/version change.
+     */
+    @Query("SELECT * FROM service_records WHERE vehicleId = :vehicleId AND deleted = 0 ORDER BY date DESC")
+    suspend fun getRecordsForVehicleOnce(vehicleId: String): List<ServiceRecord>
+
     @Query("SELECT * FROM service_records WHERE vehicleId = :vehicleId AND deleted = 0 ORDER BY date DESC LIMIT 1")
     suspend fun getMostRecentForVehicle(vehicleId: String): ServiceRecord?
 
