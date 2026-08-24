@@ -59,6 +59,12 @@ media-compat = "1.7.0"
 # `.scratch/aspect-engine/research/02-xlsx-on-android.md` section 1/"Test implications"). Writer
 # and reader are published as separate artifacts at the same version.
 fastexcel = "0.19.0"
+# Roborazzi (hardening ticket 01, screenshot tests): Robolectric-native screenshot testing, runs
+# in testDebugUnitTest alongside every other JVM unit test - no emulator/device needed, unlike
+# Dropshots-style instrumented screenshot tests. `roborazzi`/`roborazzi-compose` are the runtime
+# capture libraries (ComposeTestRule.onRoot().captureRoboImage(...)); the Gradle plugin below
+# wires the record/verify/compare task triples per build type.
+roborazzi = "1.72.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -105,8 +111,19 @@ media3-session = { group = "androidx.media3", name = "media3-session", version.r
 media-compat = { group = "androidx.media", name = "media", version.ref = "media-compat" }
 fastexcel-writer = { group = "org.dhatim", name = "fastexcel", version.ref = "fastexcel" }
 fastexcel-reader = { group = "org.dhatim", name = "fastexcel-reader", version.ref = "fastexcel" }
+# Compose UI testing entry points - createComposeRule()/createAndroidComposeRule<T>(), needed for
+# the screenshot tests (hardening ticket 01) and for any future Compose behaviour test. Neither
+# was in this catalog before (see BodyWriteSameFunctionTest's own doc: "repo has no
+# createComposeRule harness").
+ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+# Supplies the merged-manifest <activity> Robolectric/Espresso need to host createComposeRule()'s
+# default ComponentActivity - test-only, never shipped.
+ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+roborazzi = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "roborazzi" }
+roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version.ref = "roborazzi" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }

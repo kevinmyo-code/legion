@@ -5,6 +5,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("kotlin-kapt")
+    // Roborazzi (hardening ticket 01): Robolectric-native screenshot tests, running inside
+    // testDebugUnitTest like every other JVM unit test. Provides the recordRoborazziDebug /
+    // compareRoborazziDebug / verifyRoborazziDebug task triple - see the `roborazzi { }` block
+    // below and app/src/test/snapshots/README.md for what each does and when to run it.
+    alias(libs.plugins.roborazzi)
 }
 
 // Secrets are kept out of source control - set them in local.properties
@@ -170,6 +175,30 @@ android {
             // (decideOnHistory, claimAnnouncement, nearest, MicArbiter) are pure by design and take
             // their inputs as parameters - so there is nothing to mask.
             isReturnDefaultValues = true
+
+            // Roborazzi (hardening ticket 01) draws real pixels through Robolectric's NATIVE
+            // graphics shadow layer (Skia via the host JVM), not the LEGACY software-canvas one -
+            // NATIVE is what makes a captured PNG resemble what actually renders on a phone rather
+            // than Robolectric's own approximation of Android's 2D pipeline. Robolectric 4.10+
+            // already defaults to NATIVE, but the mode is pinned explicitly rather than trusted to
+            // a default that could silently change under a future Robolectric bump - see
+            // app/src/test/resources/robolectric.properties (`graphicsMode=NATIVE`), which every
+            // Robolectric test in this module reads, not just the screenshot ones.
+
+            // `roborazzi.output.dir` alone is NOT enough to make a bare `captureRoboImage("x.png")`
+            // land under it - confirmed 2026-08-24 by decompiling roborazzi-core-jvm-1.72.0.jar
+            // (`FileWithRecordFilePathStrategyKt.fileWithRecordFilePathStrategy`, called from every
+            // `captureRoboImage` overload): a relative file path is resolved against
+            // `roborazzi.output.dir` ONLY under the `RelativePathFromRoborazziContextOutputDirectory`
+            // strategy, and Roborazzi's OWN default is `RelativePathFromCurrentDirectory` - which
+            // is exactly why every baseline first landed in the module root (`app/*.png`, the test
+            // JVM's working directory) rather than under `outputDir`. Both properties are pinned
+            // explicitly here rather than trusted to the `roborazzi { outputDir.set(...) }`
+            // convention-plugin DSL, which sets `roborazzi.output.dir` correctly on its own but has
+            // no equivalent DSL surface for the strategy property.
+            all {
+                it.systemProperty("roborazzi.record.filePathStrategy", "relativePathFromRoborazziContextOutputDirectory")
+            }
         }
     }
 }
@@ -178,6 +207,15 @@ kapt {
     arguments {
         arg("room.schemaLocation", "$projectDir/schemas")
     }
+}
+
+// Roborazzi (hardening ticket 01) - baselines are committed, one flat directory per the ticket's
+// own instruction ("baselines committed under app/src/test/snapshots/"). Never run the record task
+// from CI or a git hook (ticket item 5, and app/src/test/snapshots/README.md's own instruction) -
+// recording is an on-demand, human-reviewed action, same posture this repo already holds for the
+// LLM evals.
+roborazzi {
+    outputDir.set(file("src/test/snapshots"))
 }
 
 dependencies {
@@ -266,6 +304,25 @@ dependencies {
     // AssetManager and reach PdfBox-Android's bundled fonts/glyphlists (see
     // testOptions.unitTests.isIncludeAndroidResources above for why).
     testImplementation(libs.robolectric)
+    // Compose UI testing (hardening ticket 01's screenshot tests, and any future Compose
+    // behaviour test) - createComposeRule()/createAndroidComposeRule<T>() plus the merged-manifest
+    // ComponentActivity host createComposeRule() launches by default under Robolectric.
+    testImplementation(libs.ui.test.junit4)
+    // debugImplementation, NOT testImplementation: Robolectric's `testDebugUnitTest` merges the
+    // DEBUG variant's own manifest (main + debugImplementation-scoped library manifests) into the
+    // manifest it resolves activities against - a testImplementation-scoped manifest is never
+    // folded in, which is why `createComposeRule()`'s internal `ComponentActivity` host 404'd with
+    // "Unable to resolve activity" until this moved here. `ui-test-manifest` contributes exactly
+    // one `<activity android:name="androidx.activity.ComponentActivity">` with a LAUNCHER
+    // intent-filter, test-only in spirit even though it rides the debug manifest; ProGuard/R8 never
+    // sees it since debug is never minified (see `buildTypes.release` above - only release runs R8,
+    // and this app has no release-time uses of it either).
+    debugImplementation(libs.ui.test.manifest)
+    // Roborazzi (hardening ticket 01): Robolectric-native screenshot capture -
+    // ComposeTestRule.onRoot().captureRoboImage(...). roborazzi-compose is the Compose-specific
+    // capture extension; plain `roborazzi` alone only covers android.view.View.
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))
