@@ -1,5 +1,6 @@
 package com.kevin.legion.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -51,14 +52,19 @@ data class WidgetInstance(
     /** Placement order on the page this widget lives on - see this entity's v35 doc for why this
      * survives alongside the new geometry columns rather than being replaced by them. */
     val position: Int = 0,
-    /** [com.kevin.legion.ui.grid.GridItem.row] - see this entity's v35 doc comment. */
-    val gridRow: Int = 0,
-    /** [com.kevin.legion.ui.grid.GridItem.col]. */
-    val gridCol: Int = 0,
-    /** [com.kevin.legion.ui.grid.GridItem.rowSpan], floored at 1 by [com.kevin.legion.ui.grid.GridEngine] the same way the in-memory type is. */
-    val rowSpan: Int = 1,
-    /** [com.kevin.legion.ui.grid.GridItem.colSpan]. */
-    val colSpan: Int = 1,
+    /** [com.kevin.legion.ui.grid.GridItem.row] - see this entity's v35 doc comment. `defaultValue`
+     * set (senior review, 2026-08-23) so [MIGRATION_34_35]'s `ADD COLUMN ... DEFAULT 0` and Room's
+     * own expected `createSql` for this column agree - without it Room infers no `DEFAULT` clause
+     * at all for the generated schema, which would silently diverge from what the migration's SQL
+     * actually produces on a real upgrade even though both "read" as zero for a fresh row. */
+    @ColumnInfo(defaultValue = "0") val gridRow: Int = 0,
+    /** [com.kevin.legion.ui.grid.GridItem.col]. See [gridRow]'s doc for why `defaultValue` is set. */
+    @ColumnInfo(defaultValue = "0") val gridCol: Int = 0,
+    /** [com.kevin.legion.ui.grid.GridItem.rowSpan], floored at 1 by [com.kevin.legion.ui.grid.GridEngine]
+     * the same way the in-memory type is. See [gridRow]'s doc for why `defaultValue` is set. */
+    @ColumnInfo(defaultValue = "1") val rowSpan: Int = 1,
+    /** [com.kevin.legion.ui.grid.GridItem.colSpan]. See [gridRow]'s doc for why `defaultValue` is set. */
+    @ColumnInfo(defaultValue = "1") val colSpan: Int = 1,
     val createdAt: Long,
     val updatedAt: Long,
 )

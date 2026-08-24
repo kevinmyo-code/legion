@@ -389,7 +389,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 34
+        const val SCHEMA_VERSION = 35
         // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
         // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
@@ -409,6 +409,8 @@ abstract class CarDatabase : RoomDatabase() {
         // 2026-08-23: bumped to 34 alongside `@Database(version=)` in the same edit again
         // (the aspect engine core - `aspects`/`record_types`/`field_defs`/`records`/
         // `widget_instances`, ticket 16).
+        // 2026-08-23: bumped to 35 alongside `@Database(version=)` in the same edit again
+        // (`widget_instances.gridRow`/`gridCol`/`rowSpan`/`colSpan`, ticket 18).
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {

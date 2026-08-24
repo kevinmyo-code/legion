@@ -2,6 +2,8 @@ package com.kevin.legion.engine
 
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.testutil.RoomTestReset
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -19,7 +21,7 @@ class DefaultArrangementSeederTest {
     private val context = RuntimeEnvironment.getApplication()
     private val db get() = CarDatabase.getDatabase(context)
     private val store get() = WidgetInstanceStore(db.widgetInstanceDao())
-    private val seeder get() = DefaultArrangementSeeder(store, db.aspectDao())
+    private val seeder get() = DefaultArrangementSeeder(db, store, db.aspectDao())
 
     @Before
     fun clearState() {
@@ -56,6 +58,18 @@ class DefaultArrangementSeederTest {
     fun `does not seed a different device`() = runBlocking {
         seeder.seedHomeIfEmpty("device-a")
         assertTrue(store.isDeviceEmpty("device-b"))
+    }
+
+    @Test
+    fun `two racing calls on the same device still seed exactly five widgets, not ten`() = runBlocking {
+        // Senior review, 2026-08-23: check-then-act without a transaction let two concurrent callers
+        // both observe isDeviceEmpty() == true before either had inserted anything, doubling the
+        // seed. db.withTransaction serializes them - the second call's own emptiness check does not
+        // begin until the first call's five inserts have fully committed.
+        val a = async { seeder.seedHomeIfEmpty("device-race") }
+        val b = async { seeder.seedHomeIfEmpty("device-race") }
+        awaitAll(a, b)
+        assertEquals(5, store.layoutForPage("device-race", aspectId = null).size)
     }
 
     @Test

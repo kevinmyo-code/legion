@@ -71,7 +71,7 @@ fun WidgetPagerRoot() {
     val db = remember { CarDatabase.getDatabase(context) }
     val widgetStore = remember { WidgetInstanceStore(db.widgetInstanceDao()) }
     val dataSource = remember { WidgetDataSource(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao(), db.aspectDao()) }
-    val seeder = remember { DefaultArrangementSeeder(widgetStore, db.aspectDao()) }
+    val seeder = remember { DefaultArrangementSeeder(db, widgetStore, db.aspectDao()) }
     val deviceId = remember { DeviceId.current(context) }
 
     var aspects by remember { mutableStateOf<List<Aspect>>(emptyList()) }
