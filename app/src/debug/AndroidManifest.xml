@@ -12,12 +12,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <application>
-        <!-- Debug-only export of the widget pager so adb can launch it for on-device QA.
-             The main manifest keeps exported=false, so a release build stays unexported. -->
-        <activity
-            android:name=".ui.widgets.WidgetPagerActivity"
-            android:exported="true"
-            tools:replace="android:exported" />
+        <!-- The widget pager's own debug export DELETED (cutover 5,
+             docs/architecture/cutover5-2026-08-24.md) - WidgetPagerActivity itself is gone, the
+             pager is reached through MainActivity (already exported, already launcher) now.
+             MirrorSyncActivity keeps its own debug export below - untouched by this cutover. -->
         <activity
             android:name=".ui.mirror.MirrorSyncActivity"
             android:exported="true"

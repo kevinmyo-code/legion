@@ -58,14 +58,25 @@ import kotlinx.coroutines.launch
  * `prototype/PrototypeDashboard.kt`'s in-memory fixtures with the real engine tables while keeping
  * every mechanic that prototype validated: [DeckGrid] stage-2 grid, edit-mode jiggle, page dots.
  *
- * **NOT wired as the app's home yet** (ticket 18 build item 5, matching ticket 14's "old screens
- * keep working until verified" posture) - [WidgetPagerActivity] is a SEPARATE, non-launcher entry
- * point, reachable only by `adb shell am start`, exactly the debug-prototype's own reachability
- * pattern but shipped in the real `main` source set now that this is real, persistent data rather
- * than a throwaway harness. Cutover onto `MainActivity`'s own `NavHost` is a later, deliberate step.
+ * **The app's home as of cutover 5** (`docs/architecture/cutover5-2026-08-24.md`) - hosted as an
+ * ordinary `composable(LegionRoute.DASHBOARD)` destination inside `MainActivity`'s own `NavHost`
+ * (the same shell every other screen lives in), not a separate Activity. `WidgetPagerActivity` -
+ * the debug-only, `adb shell am start`-reachable entry point ticket 18 shipped this behind - is
+ * DELETED as of this cutover, same disposal `SavedPlacesActivity`/`LedgerImportActivity`/
+ * `PantryImportActivity` got at ticket 07: only the hosting changed, the composable is unchanged.
+ *
+ * [onOpenRoute] is how this composable reaches destinations OUTSIDE itself without owning a
+ * [androidx.navigation.NavHostController] of its own - the same shape every other top-level screen
+ * in this app's `NavHost` already uses (see `TodayScreen`'s `onOpenBody`/`onOpenFleet` etc.). Two
+ * callers: the HOME page's own "CLASSIC" button (`LegionRoute.TODAY` - the old Today panel, which
+ * this pager's seeded HOME arrangement is modelled on but does not yet fully replicate, e.g. the
+ * ALERTS pane and the media mini-bar tap-through), and each aspect page's "OPEN FULL SCREEN" button
+ * for an aspect that still has a richer legacy screen ([legacyRouteForAspect]) - ingestion UIs
+ * (ledger/pantry import), OBD live views, and other capabilities the generic engine widgets do not
+ * yet carry.
  */
 @Composable
-fun WidgetPagerRoot() {
+fun WidgetPagerRoot(onOpenRoute: (String) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val db = remember { CarDatabase.getDatabase(context) }
@@ -106,8 +117,17 @@ fun WidgetPagerRoot() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("LEGION // DASHBOARD", style = LegionType.stamp, color = LocalLegionSemantics.current.chromeText)
-            if (pagerState.currentPage < pageCount - 1) {
-                DeckButton(text = if (editMode) "DONE" else "EDIT", onClick = { editMode = !editMode })
+            Row {
+                // The HOME page's own hands path back to the old Today panel (cutover 5) - see
+                // this file's own doc comment on [onOpenRoute] for exactly what it still carries
+                // that the seeded HOME arrangement does not yet replicate. Only on page 0: every
+                // other page has its own "OPEN FULL SCREEN" link instead (see [WidgetPagerPage]).
+                if (pagerState.currentPage == 0) {
+                    DeckButton(text = "CLASSIC", onClick = { onOpenRoute(com.kevin.legion.ui.LegionRoute.TODAY) })
+                }
+                if (pagerState.currentPage < pageCount - 1) {
+                    DeckButton(text = if (editMode) "DONE" else "EDIT", onClick = { editMode = !editMode })
+                }
             }
         }
 
@@ -132,6 +152,8 @@ fun WidgetPagerRoot() {
                         dataSource = dataSource,
                         editMode = editMode,
                         onEnterEditMode = { editMode = true },
+                        legacyRoute = legacyRouteForAspect(aspect.name),
+                        onOpenRoute = onOpenRoute,
                     )
                 }
                 else -> AddAspectPage(
@@ -149,6 +171,24 @@ fun WidgetPagerRoot() {
     }
 }
 
+/**
+ * The legacy `LegionRoute` an aspect page's "OPEN FULL SCREEN" button targets, keyed by
+ * [com.kevin.legion.data.local.Aspect.name] against the exact string literal each of the six
+ * `engine` package `AspectSeeder.kt` files' own `ASPECT_NAME` constant seeds - cutover 5's own reachability
+ * ruling table (`docs/architecture/cutover5-2026-08-24.md`) names the mapping and why `Dates`
+ * carries none: it is a genuinely new aspect with no pre-existing legacy screen to point at, not a
+ * capability this cutover dropped. A user-created aspect (the pager's own "+" page) also carries
+ * none - it never had a legacy screen either.
+ */
+internal fun legacyRouteForAspect(aspectName: String): String? = when (aspectName) {
+    "Fleet" -> com.kevin.legion.ui.LegionRoute.FLEET
+    "Ledger" -> com.kevin.legion.ui.LegionRoute.MONEY
+    "Pantry" -> com.kevin.legion.ui.LegionRoute.MONEY_PANTRY
+    "Notes" -> com.kevin.legion.ui.LegionRoute.NOTES
+    "Places" -> com.kevin.legion.ui.LegionRoute.FLEET_PLACES
+    else -> null
+}
+
 /** One page's body: header rule, then a [DeckGrid] over that page's [WidgetInstance] rows. */
 @Composable
 private fun WidgetPagerPage(
@@ -159,6 +199,8 @@ private fun WidgetPagerPage(
     dataSource: WidgetDataSource,
     editMode: Boolean,
     onEnterEditMode: () -> Unit,
+    legacyRoute: String? = null,
+    onOpenRoute: (String) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var rows by remember(aspectId) { mutableStateOf<List<WidgetInstance>>(emptyList()) }
@@ -178,6 +220,13 @@ private fun WidgetPagerPage(
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
         DeckSectionRule(label = label)
+        // The aspect page's own hands path to its richer legacy screen (cutover 5) - ingestion
+        // UIs (ledger/pantry import), the OBD live views, and other capabilities the generic
+        // engine widgets above do not yet carry. Absent for an aspect with no legacy screen
+        // ([legacyRouteForAspect]'s own doc for exactly which and why).
+        if (legacyRoute != null) {
+            DeckButton(text = "OPEN FULL SCREEN", onClick = { onOpenRoute(legacyRoute) })
+        }
         if (rows.isEmpty()) {
             Text("NOTHING PLACED ON THIS PAGE YET", style = LegionType.stamp, color = LocalLegionSemantics.current.faint)
             return@Column
