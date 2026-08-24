@@ -13,6 +13,18 @@ interface PantryReceiptDao {
     @Query("SELECT * FROM pantry_receipts ORDER BY purchaseDate DESC LIMIT :limit")
     suspend fun getRecent(limit: Int): List<PantryReceipt>
 
+    /**
+     * EVERY receipt, unlimited, ordered by id (insertion order) rather than [purchaseDate] -
+     * `engine/migration/EngineDataMigrationWave2.kt`'s copier needs a stable, complete pass over
+     * the whole legacy table (there is no `deleted` column to filter on - see
+     * `docs/architecture/wave2-carve-2026-08-23.md`'s finding that every row here already passed
+     * the reconciliation gate), not [getRecent]'s capped, purchase-date-ordered read. A plain
+     * additive `@Query` - no schema/version change, same columns [getRecent]/[getAllForCharts]
+     * already expose.
+     */
+    @Query("SELECT * FROM pantry_receipts ORDER BY id ASC")
+    suspend fun getAll(): List<PantryReceipt>
+
     @Query("SELECT COALESCE(SUM(totalCents), 0) FROM pantry_receipts")
     suspend fun totalSpendCents(): Long
 
