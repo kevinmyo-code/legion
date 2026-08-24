@@ -211,16 +211,11 @@
              pantry/import - only the hosting changed, so there is no longer a
              second <activity> for any of them. -->
 
-        <!-- The production widget pager (aspect-engine ticket 18) - NOT the app's home yet
-             (build item 5). No launcher intent-filter, exported=false: reachable only via
-             `adb shell am start -n com.kevin.legion/.ui.widgets.WidgetPagerActivity`, exactly
-             like the debug-only prototype it replaces, until a later ticket makes this a real
-             NavHost destination and this <activity> is deleted the same way the three above were. -->
-        <activity
-            android:name=".ui.widgets.WidgetPagerActivity"
-            android:exported="false"
-            android:label="Dashboard"
-            android:theme="@style/Theme.Legion" />
+        <!-- WidgetPagerActivity DELETED (cutover 5, docs/architecture/cutover5-2026-08-24.md).
+             The widget pager it hosted (WidgetPagerRoot) is now MainActivity's own start
+             destination (composable(LegionRoute.DASHBOARD)), the app's home - same absorption
+             SavedPlacesActivity/LedgerImportActivity/PantryImportActivity got at ticket 07, see
+             that comment above: only the hosting changed, the composable is unchanged. -->
 
         <!-- The mirror/sync settings stub (aspect-engine ticket 20 item 5) - same debug-entry
              posture as WidgetPagerActivity above: exported=false, no launcher intent-filter,

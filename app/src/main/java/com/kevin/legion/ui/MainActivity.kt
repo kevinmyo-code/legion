@@ -57,6 +57,7 @@ import com.kevin.legion.ui.companions.MemoryScreen
 import com.kevin.legion.ui.companions.PlaybookScreen
 import com.kevin.legion.ui.media.MediaScreen
 import com.kevin.legion.ui.sync.GoogleAccessScreen
+import com.kevin.legion.ui.widgets.WidgetPagerRoot
 import com.kevin.legion.ui.theme.LegionMotion
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -465,10 +466,11 @@ private fun LegionShell(
                 }
                 NavHost(
                     navController = navController,
-                    // Today is the start destination (2026-08-07 brief) - was FLEET
-                    // under ticket 07's original four-tab shape. See LegionRoute's
-                    // doc comment for the full before/after route map.
-                    startDestination = LegionRoute.TODAY,
+                    // The widget pager is the start destination as of cutover 5
+                    // (`docs/architecture/cutover5-2026-08-24.md`) - was TODAY (2026-08-07 brief,
+                    // itself a supersession of FLEET under ticket 07's original four-tab shape).
+                    // See LegionRoute's doc comment for the full before/after route map.
+                    startDestination = LegionRoute.DASHBOARD,
                     modifier = Modifier.weight(1f),
                     // Command-center ticket 14: one fade-through, defined once here, no per-route
                     // override anywhere below. `LegionMotion.ROUTE_FADE_MS`/`STANDARD_EASING` are
@@ -483,6 +485,15 @@ private fun LegionShell(
                     popEnterTransition = { fadeIn(tween(LegionMotion.ROUTE_FADE_MS, easing = LegionMotion.STANDARD_EASING)) },
                     popExitTransition = { fadeOut(tween(LegionMotion.ROUTE_FADE_MS, easing = LegionMotion.STANDARD_EASING)) },
                 ) {
+            // The widget pager, hosted as an ordinary NavHost destination (cutover 5) - see
+            // WidgetPagerRoot's own doc comment for what onOpenRoute carries out to (the old
+            // TODAY panel from the HOME page's CLASSIC button; a per-aspect legacy screen from
+            // each aspect page's OPEN FULL SCREEN button). WidgetPagerActivity, the debug-only
+            // Activity this composable used to live behind exclusively, is deleted - see the
+            // manifest's own comment at the point its <activity> entry used to be.
+            composable(LegionRoute.DASHBOARD) {
+                WidgetPagerRoot(onOpenRoute = { route -> navController.navigate(route) { launchSingleTop = true } })
+            }
             composable(LegionRoute.TODAY) {
                 TodayScreen(
                     onOpenNotes = {
@@ -796,9 +807,13 @@ private const val CLOCK_POLL_MS = 60_000L
  * Order is the hard-key sequence from the Answer, not [LegionRoute.TOP_LEVEL]'s
  * bottom-nav order (which keeps Settings in its list for [LegionRoute.topLevelOf]'s
  * prefix matching elsewhere).
+ *
+ * **Cutover 5**: HOME's target is [LegionRoute.DASHBOARD] (the widget pager), not
+ * [LegionRoute.TODAY] - see [LegionRoute.TOP_LEVEL]'s own updated doc comment. TODAY is still a
+ * real route (reached from the pager's own CLASSIC button), it simply no longer has a hard key.
  */
 private val HARD_KEYS = listOf(
-    LegionRoute.TODAY to "HOME",
+    LegionRoute.DASHBOARD to "HOME",
     LegionRoute.BODY to "BIO",
     LegionRoute.NOTES to "LOG",
     LegionRoute.FLEET to "FLEET",
