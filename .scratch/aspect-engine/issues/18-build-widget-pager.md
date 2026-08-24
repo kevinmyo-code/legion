@@ -3,12 +3,12 @@ map: aspect-engine
 ticket: "18"
 title: "Build the widget pager and generated screens"
 type: task
-status: open
-status-detail: ""
+status: built
+status-detail: "Built 2026-08-23, review fixes in, merged to dev. VERIFIED on the A25: pager live with real calendar data, seeder ran. Owes: hands-on edit-mode pass and the add-widget picker (follow-up)."
 blockers: ["09", "16"]
 blocked-by: ["[[09-grid-mechanics-prototype]]", "[[16-build-engine-core]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Build the widget pager and generated screens

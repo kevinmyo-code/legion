@@ -87,14 +87,14 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
 <h1>63 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
-<p class="lede">Across 11 maps. <b>6 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 8 are waiting on another ticket first. <b>40 are already built</b> and owe nothing but a run on the phone. 4 are parked (KIV) and sit at the bottom.</p>
+<p class="lede">Across 11 maps. <b>6 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 8 are waiting on another ticket first. <b>44 are already built</b> and owe nothing but a run on the phone. 4 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
 <div class="stat"><span class="n">63</span><span class="stamp l">open</span></div>
-<div class="stat"><span class="n mint">11</span><span class="stamp l">ready now</span></div>
-<div class="stat"><span class="n mint">40</span><span class="stamp l">built</span></div>
+<div class="stat"><span class="n mint">7</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n mint">44</span><span class="stamp l">built</span></div>
 <div class="stat"><span class="n amber">8</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">6</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">13</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">9</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">4</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -209,14 +209,14 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <header class="mh">
 <span class="kind">effort</span>
 <h2>aspect-engine</h2>
-<span class="counts"><span class="k">5</span> open<span class="sep">&middot;</span><span class="k mint">4</span> ready<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">of 21 tickets</span></span>
+<span class="counts"><span class="k">5</span> open<span class="sep">&middot;</span><span class="k mint">0</span> ready<span class="sep">&middot;</span><span class="k mint">4</span> built<span class="sep">&middot;</span><span class="k amber">1</span> blocked<span class="sep">&middot;</span><span class="dim">of 21 tickets</span></span>
 <span class="bar"><i style="flex:4"></i><b style="flex:1"></b></span>
 </header>
 <ul class="tl">
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">17</span><span class="body"><span class="tt">Build the voice surface</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">18</span><span class="body"><span class="tt">Build the widget pager and generated screens</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">19</span><span class="body"><span class="tt">Build the Dates aspect</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">20</span><span class="body"><span class="tt">Build the mirror and sync</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">17</span><span class="body"><span class="tt">Build the voice surface</span><span class="det">Built 2026-08-23, senior-approved, merged to dev. Nine meta-tools + clerk + schema generator live in LiveToolbox; 104-tool inventory written. Owes: a real voice round-trip on the A25.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">18</span><span class="body"><span class="tt">Build the widget pager and generated screens</span><span class="det">Built 2026-08-23, review fixes in, merged to dev. VERIFIED on the A25: pager live with real calendar data, seeder ran. Owes: hands-on edit-mode pass and the add-widget picker (follow-up).</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">19</span><span class="body"><span class="tt">Build the Dates aspect</span><span class="det">Built 2026-08-23, senior-approved, merged to dev (v36). VERIFIED on the A25: aspect seeded, 160 records imported from Google Calendar. Owes: an alarm actually firing, permission flow.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">20</span><span class="body"><span class="tt">Build the mirror and sync</span><span class="det">Built 2026-08-23, review BLOCK fixed (guid identity v37, wired triggers, import-before-export), merged to dev. Owes: the on-A25 Drive probe - Kevin picks the folder, taps Sync now.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 <li class="t is-build is-blocked" data-type="build" data-state="blocked"><span class="num">21</span><span class="body"><span class="tt">Migration waves: every aspect onto the engine</span></span><span class="chip c-task">build</span><span class="state">waiting on #17, #18, #19, #20</span></li>
 </ul>
 </section>

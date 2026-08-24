@@ -3,12 +3,12 @@ map: aspect-engine
 ticket: "20"
 title: "Build the mirror and sync"
 type: task
-status: open
-status-detail: ""
+status: built
+status-detail: "Built 2026-08-23, review BLOCK fixed (guid identity v37, wired triggers, import-before-export), merged to dev. Owes: the on-A25 Drive probe - Kevin picks the folder, taps Sync now."
 blockers: ["16"]
 blocked-by: ["[[16-build-engine-core]]"]
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Build the mirror and sync
