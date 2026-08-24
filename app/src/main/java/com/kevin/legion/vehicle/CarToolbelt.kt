@@ -128,8 +128,7 @@ object CarToolbelt {
      */
     suspend fun serviceHistory(context: Context, limit: Int = 10, vehicleId: String? = null): String {
         val vehicle = VehicleController.vehicleFor(context, vehicleId)
-        val recs = CarDatabase.getDatabase(context).serviceRecordDao()
-            .getRecentForVehicle(vehicle.obdMac, limit)
+        val recs = FleetEngineStore.getRecentForVehicle(context, vehicle.obdMac, limit)
         if (recs.isEmpty()) return "No service history logged yet."
         return recs.joinToString("\n") { r ->
             buildString {

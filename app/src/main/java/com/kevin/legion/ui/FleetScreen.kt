@@ -418,7 +418,7 @@ fun FleetScreen(
         val db = CarDatabase.getDatabase(context)
         val now = System.currentTimeMillis()
 
-        val items: List<MaintenanceItem> = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val items: List<MaintenanceItem> = com.kevin.legion.vehicle.FleetEngineStore.getForVehicle(context, vehicle.obdMac)
         val codeEvents = db.codeEventDao().getAll(vehicle.obdMac)
         // D7's union rule (`.scratch/hands-and-senses/issues/01-clear-dtc.md`) - see
         // visibleFaultCodes' own doc for why this needs the full clear-event history, not just
@@ -445,7 +445,7 @@ fun FleetScreen(
         // vehicle's history, filtered by name at the ITEM_DETAIL call site - see that call site's
         // own comment for why this is not a second, per-name DAO query. SERVICE HISTORY (ticket 11
         // §3) reuses this SAME list unfiltered - "one list implementation, two entry points."
-        val allServiceRecords = db.serviceRecordDao().getRecordsForVehicle(vehicle.obdMac).first()
+        val allServiceRecords = com.kevin.legion.vehicle.FleetEngineStore.serviceRecordsForVehicle(context, vehicle.obdMac)
 
         // Fleet spend (ticket 11 §4): the four controller reads, turned into display strings/chart
         // data by the pure buildFleetSpendView - never touched again once assembled, matching this
@@ -520,7 +520,7 @@ fun FleetScreen(
             codeEventsNewestFirst = codeEvents,
             clearEventsAll = clearEvents,
             dtcDescriptions = descriptions,
-            serviceHistoryCount = db.serviceRecordDao().countForVehicle(vehicle.obdMac),
+            serviceHistoryCount = com.kevin.legion.vehicle.FleetEngineStore.countForVehicle(context, vehicle.obdMac),
             buildSheetCount = db.buildEntryDao().countForVehicle(vehicle.obdMac),
             buildEntries = buildEntries,
             buildSpendByCategory = buildSpendByCategory,

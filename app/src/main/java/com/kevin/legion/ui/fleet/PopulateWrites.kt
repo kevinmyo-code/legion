@@ -1,8 +1,8 @@
 package com.kevin.legion.ui.fleet
 
 import android.content.Context
-import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MaintenanceItem
+import com.kevin.legion.vehicle.FleetEngineStore
 import com.kevin.legion.vehicle.PopulateChangeRow
 import com.kevin.legion.vehicle.PopulatePossibleMatchRow
 import com.kevin.legion.vehicle.PopulateRestoreRow
@@ -51,7 +51,7 @@ import com.kevin.legion.vehicle.VehicleController.WriteOutcome
  */
 suspend fun writePopulateAdd(context: Context, vehicleId: String, item: MaintenanceItem): WriteOutcome {
     val now = System.currentTimeMillis()
-    val rowId = CarDatabase.getDatabase(context).maintenanceItemDao().insertIgnore(
+    val rowId = FleetEngineStore.insertIgnore(context,
         item.copy(
             vehicleId = vehicleId, intervalSource = "LOOKUP", lastDoneMileage = null, lastDoneDate = null,
             neverDone = false, deleted = false, updatedAt = now,
@@ -80,8 +80,7 @@ suspend fun writePopulateAdd(context: Context, vehicleId: String, item: Maintena
  */
 suspend fun writePopulateChange(context: Context, vehicleId: String, row: PopulateChangeRow): WriteOutcome {
     val now = System.currentTimeMillis()
-    val written = CarDatabase.getDatabase(context).maintenanceItemDao()
-        .setIntervals(vehicleId, row.serviceName, row.proposedMiles, row.proposedMonths, "LOOKUP", now)
+    val written = FleetEngineStore.setIntervals(context, vehicleId, row.serviceName, row.proposedMiles, row.proposedMonths, "LOOKUP", now)
     return if (written == 0) {
         WriteOutcome(false, "I found ${row.serviceName} a moment ago but couldn't write to it just now - it may have just been removed.")
     } else {
@@ -110,8 +109,7 @@ suspend fun writePopulateDelete(context: Context, vehicleId: String, serviceName
  */
 suspend fun writePopulateRestore(context: Context, vehicleId: String, row: PopulateRestoreRow): WriteOutcome {
     val now = System.currentTimeMillis()
-    val written = CarDatabase.getDatabase(context).maintenanceItemDao()
-        .restore(vehicleId, row.serviceName, row.proposedMiles, row.proposedMonths, "LOOKUP", now)
+    val written = FleetEngineStore.restore(context, vehicleId, row.serviceName, row.proposedMiles, row.proposedMonths, "LOOKUP", now)
     return if (written == 0) {
         WriteOutcome(false, "Couldn't restore ${row.serviceName} - it may not have been on file after all.")
     } else {

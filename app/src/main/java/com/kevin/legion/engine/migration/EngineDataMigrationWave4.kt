@@ -8,7 +8,7 @@ import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.engine.RecordStore
 import com.kevin.legion.engine.fleet.FleetAspectSeeder
-import java.util.UUID
+import com.kevin.legion.engine.fleet.FleetRecordBridge
 
 /**
  * The one-time, idempotent copier that carries Wave 4's live data (`.scratch/aspect-engine/issues/
@@ -325,15 +325,18 @@ object EngineDataMigrationWave4 {
     // UUID.nameUUIDFromBytes off the natural key, same shape Wave 1's TaggedPlace.label derivation
     // already established, so a second run recognizes and skips a row it already wrote rather than
     // duplicating it under a fresh random UUID.
+    //
+    // Cutover 4 (`docs/architecture/cutover4-2026-08-24.md`): these three derivations moved onto
+    // [FleetRecordBridge] so the live write path (`vehicle/FleetEngineStore.kt`) and this migration
+    // resolve the IDENTICAL guid for the identical natural key - a post-cutover `setAnchor` call
+    // must land on the SAME `ASSERTED` row a pre-cutover migration already wrote for that
+    // `(vehicleId, serviceName)` pair, not a duplicate one. Delegated, not duplicated.
 
-    private fun vehicleGuid(obdMac: String): String =
-        UUID.nameUUIDFromBytes("fleet-vehicle:$obdMac".toByteArray()).toString()
+    private fun vehicleGuid(obdMac: String): String = FleetRecordBridge.vehicleGuid(obdMac)
 
-    private fun scheduleGuid(vehicleId: String, serviceName: String): String =
-        UUID.nameUUIDFromBytes("fleet-schedule:$vehicleId:$serviceName".toByteArray()).toString()
+    private fun scheduleGuid(vehicleId: String, serviceName: String): String = FleetRecordBridge.scheduleGuid(vehicleId, serviceName)
 
-    private fun assertedAnchorGuid(vehicleId: String, serviceName: String): String =
-        UUID.nameUUIDFromBytes("fleet-anchor:$vehicleId:$serviceName".toByteArray()).toString()
+    private fun assertedAnchorGuid(vehicleId: String, serviceName: String): String = FleetRecordBridge.assertedAnchorGuid(vehicleId, serviceName)
 
     /** App-start convenience, wrapped so a failure here can never cost anything else - same L12
      * "independent failure mode" reasoning [EngineDataMigrationWave1.runAll]/

@@ -75,7 +75,7 @@ object HomeDigestBuilder : DigestBuilder {
         val credLine = credHeadline(credTargetsByCurrency, credTxnsByCurrency)
 
         val vehicle = VehicleController.currentVehicle(context)
-        val maintenanceItems = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val maintenanceItems = com.kevin.legion.vehicle.FleetEngineStore.getForVehicle(context, vehicle.obdMac)
         val fleetLine = fleetHeadline(
             items = maintenanceItems,
             due = VehicleController.dueItems(context, vehicle),

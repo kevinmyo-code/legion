@@ -5,6 +5,7 @@ import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.testutil.RoomTestReset
 import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.vehicle.FleetEngineStore
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertFalse
@@ -35,7 +36,9 @@ class LiveToolboxNextServiceGuessCaveatTest {
     }
 
     private suspend fun seedVehicle(mac: String, name: String) {
-        CarDatabase.getDatabase(context).vehicleDao().upsert(
+        // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): a real ENGINE Vehicle record.
+        FleetEngineStore.createVehicle(
+            context,
             Vehicle(obdMac = mac, name = name, make = "Test", model = "Car", year = 2020, personaPrompt = "", odometerBaseline = 2000, odometerBaselineAt = 1L),
         )
     }
@@ -43,7 +46,8 @@ class LiveToolboxNextServiceGuessCaveatTest {
     @Test
     fun `a SEEDED interval's spoken next-service line carries the guess caveat aloud`() = runBlocking {
         seedVehicle("AA:BB", "Outlander")
-        CarDatabase.getDatabase(context).maintenanceItemDao().upsert(
+        FleetEngineStore.upsertNewItem(
+            context,
             MaintenanceItem(vehicleId = "AA:BB", serviceName = "Oil Change", intervalSource = "SEEDED", intervalMiles = 5000, lastDoneMileage = 1000),
         )
         ActiveVehicle.select(context, "AA:BB")
@@ -60,7 +64,8 @@ class LiveToolboxNextServiceGuessCaveatTest {
     @Test
     fun `a CONFIRMED interval's spoken next-service line carries no caveat at all`() = runBlocking {
         seedVehicle("CC:DD", "Miata")
-        CarDatabase.getDatabase(context).maintenanceItemDao().upsert(
+        FleetEngineStore.upsertNewItem(
+            context,
             MaintenanceItem(vehicleId = "CC:DD", serviceName = "Oil Change", intervalSource = "CONFIRMED", intervalMiles = 5000, lastDoneMileage = 1000),
         )
         ActiveVehicle.select(context, "CC:DD")

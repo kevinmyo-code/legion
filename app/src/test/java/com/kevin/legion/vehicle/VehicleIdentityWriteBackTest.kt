@@ -45,7 +45,11 @@ class VehicleIdentityWriteBackTest {
 
     @Test
     fun `blank identity fields are filled from the decode`() = runBlocking {
-        dao.upsert(
+        // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): a real ENGINE Vehicle record must
+        // exist - FleetEngineStore.applyDecodedIdentity resolves the row by its deterministic
+        // engine guid, which a legacy-only dao.upsert fixture would leave unresolvable.
+        FleetEngineStore.createVehicle(
+            context,
             Vehicle(
                 obdMac = "REAL:MAC", name = "Old Nickname", make = "", model = "", year = 0,
                 trim = "", personaPrompt = "", confirmed = false,
@@ -178,7 +182,8 @@ class VehicleIdentityWriteBackTest {
         // trailing space off a text field used to read as a real disagreement - and a false
         // conflict is expensive here, because ANY conflict aborts the whole write and shows the
         // driver a difference that does not exist.
-        dao.upsert(
+        FleetEngineStore.createVehicle(
+            context,
             Vehicle(
                 obdMac = "REAL:MAC", name = "Jeep", make = "  Jeep ", model = "Cherokee  ", year = 1998,
                 trim = "", personaPrompt = "", confirmed = true,

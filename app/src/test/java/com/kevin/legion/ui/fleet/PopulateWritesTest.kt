@@ -2,7 +2,9 @@ package com.kevin.legion.ui.fleet
 
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MaintenanceItem
+import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.testutil.RoomTestReset
+import com.kevin.legion.vehicle.FleetEngineStore
 import com.kevin.legion.vehicle.PopulateChangeRow
 import com.kevin.legion.vehicle.PopulatePossibleMatchRow
 import com.kevin.legion.vehicle.PopulateRestoreRow
@@ -32,8 +34,14 @@ class PopulateWritesTest {
     private val db get() = CarDatabase.getDatabase(context)
 
     @Before
-    fun clearState() {
+    fun clearState() = runBlocking {
         RoomTestReset.resetCarDatabaseSingleton()
+        // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): every MaintenanceSchedule write
+        // resolves its vehicle by a real ENGINE record now.
+        FleetEngineStore.createVehicle(
+            context,
+            Vehicle(obdMac = "V1", name = "Test Car", make = "Jeep", model = "Cherokee", year = 1998, personaPrompt = "", confirmed = true),
+        )
     }
 
     // ------------------------------------------------------------ writePopulateAdd
@@ -45,7 +53,7 @@ class PopulateWritesTest {
         val outcome = writePopulateAdd(context, "V1", candidate)
 
         assertTrue("Was: ${outcome.message}", outcome.success)
-        val created = db.maintenanceItemDao().get("V1", "Coolant Flush")
+        val created = FleetEngineStore.get(context, "V1", "Coolant Flush")
         assertNotNull(created)
         assertEquals("V1", created?.vehicleId)
         assertEquals(24, created?.intervalMonths)
@@ -71,7 +79,7 @@ class PopulateWritesTest {
             vehicleId = "V1", serviceName = "Coolant Flush", intervalMonths = 24,
             intervalSource = "CONFIRMED", lastDoneMileage = 132_400, lastDoneDate = 1_700_000_000_000L,
         )
-        db.maintenanceItemDao().upsertStamped(concurrent)
+        FleetEngineStore.upsertNewItem(context, concurrent)
 
         val staleCandidate = MaintenanceItem(vehicleId = "ignored", serviceName = "Coolant Flush", intervalMonths = 36, intervalSource = "SEEDED")
         val outcome = writePopulateAdd(context, "V1", staleCandidate)
@@ -81,7 +89,7 @@ class PopulateWritesTest {
 
         // The concurrent row's anchor and provenance must survive UNTOUCHED - REPLACE would have
         // clobbered both back to the stale candidate's values (36 months, no anchor, SEEDED).
-        val after = db.maintenanceItemDao().get("V1", "Coolant Flush")!!
+        val after = FleetEngineStore.get(context, "V1", "Coolant Flush")!!
         assertEquals(24, after.intervalMonths)
         assertEquals("CONFIRMED", after.intervalSource)
         assertEquals(132_400, after.lastDoneMileage)
@@ -92,7 +100,7 @@ class PopulateWritesTest {
 
     @Test
     fun `writePopulateChange writes the proposed interval and stamps LOOKUP`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(
+        FleetEngineStore.upsertNewItem(context, 
             MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 3_000, intervalSource = "SEEDED"),
         )
         val row = PopulateChangeRow(
@@ -103,7 +111,7 @@ class PopulateWritesTest {
         val outcome = writePopulateChange(context, "V1", row)
 
         assertTrue("Was: ${outcome.message}", outcome.success)
-        val after = db.maintenanceItemDao().get("V1", "Oil Change")!!
+        val after = FleetEngineStore.get(context, "V1", "Oil Change")!!
         assertEquals(7_500, after.intervalMiles)
         assertEquals(6, after.intervalMonths)
         // LOOKUP, not CONFIRMED (ticket 18) - the proposed value is still the factory lookup's own
@@ -128,27 +136,30 @@ class PopulateWritesTest {
 
     @Test
     fun `writePopulateDelete tombstones an existing row`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Brake Fluid Flush", intervalMonths = 24, intervalSource = "SEEDED"))
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Brake Fluid Flush", intervalMonths = 24, intervalSource = "SEEDED"))
 
         val outcome = writePopulateDelete(context, "V1", "Brake Fluid Flush")
 
         assertTrue("Was: ${outcome.message}", outcome.success)
-        assertNull(db.maintenanceItemDao().get("V1", "Brake Fluid Flush"))
+        assertNull(FleetEngineStore.get(context, "V1", "Brake Fluid Flush"))
     }
 
     // ------------------------------------------------------------ writePopulateRestore
 
     @Test
     fun `writePopulateRestore un-tombstones a row and writes the proposed interval`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(
-            MaintenanceItem(vehicleId = "V1", serviceName = "Tire Rotation", intervalMiles = 6_000, deleted = true),
-        )
+        // Cutover 4: a tombstone is now the engine record's OWN trashed state
+        // (RecordStore.delete), not a payload field - MaintenanceItem.deleted plays no part in
+        // FleetEngineStore.upsertNewItem's field map, so the fixture must genuinely trash the
+        // record via softDeleteItem rather than construct a value object claiming deleted = true.
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Tire Rotation", intervalMiles = 6_000))
+        FleetEngineStore.softDeleteItem(context, "V1", "Tire Rotation", System.currentTimeMillis())
         val row = PopulateRestoreRow(serviceName = "Tire Rotation", proposedMiles = 7_500, proposedMonths = null)
 
         val outcome = writePopulateRestore(context, "V1", row)
 
         assertTrue("Was: ${outcome.message}", outcome.success)
-        val after = db.maintenanceItemDao().get("V1", "Tire Rotation")!!
+        val after = FleetEngineStore.get(context, "V1", "Tire Rotation")!!
         assertFalse(after.deleted)
         assertEquals(7_500, after.intervalMiles)
         // LOOKUP, not CONFIRMED (ticket 18) - the restored interval is the factory lookup's own
@@ -170,7 +181,7 @@ class PopulateWritesTest {
 
     @Test
     fun `writePopulateMergeMatch writes onto the EXISTING name, never the factory name`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(
+        FleetEngineStore.upsertNewItem(context, 
             MaintenanceItem(vehicleId = "V1", serviceName = "Check The Wheel Alignment", intervalMiles = 15_000, intervalSource = "SEEDED"),
         )
         val row = PopulatePossibleMatchRow(
@@ -182,12 +193,12 @@ class PopulateWritesTest {
 
         assertTrue("Was: ${outcome.message}", outcome.success)
         // The EXISTING name is what got the write - the factory's own wording never became a row.
-        val after = db.maintenanceItemDao().get("V1", "Check The Wheel Alignment")!!
+        val after = FleetEngineStore.get(context, "V1", "Check The Wheel Alignment")!!
         assertEquals(20_000, after.intervalMiles)
         // LOOKUP, not CONFIRMED (ticket 18) - reached via writePopulateChange under the hood, same
         // reasoning as that function's own test.
         assertEquals("LOOKUP", after.intervalSource)
-        assertNull(db.maintenanceItemDao().get("V1", "Wheel Alignment Check"))
+        assertNull(FleetEngineStore.get(context, "V1", "Wheel Alignment Check"))
     }
 
     // ------------------------------------------------------------ writePopulateAddAsNew (BLOCKING 1b)
@@ -195,7 +206,7 @@ class PopulateWritesTest {
     @Test
     fun `writePopulateAddAsNew inserts the factory name verbatim as its own row`() = runBlocking {
         // Some OTHER item is on file - the near-miss guess the driver is overriding.
-        db.maintenanceItemDao().upsertStamped(
+        FleetEngineStore.upsertNewItem(context, 
             MaintenanceItem(vehicleId = "V1", serviceName = "Check The Wheel Alignment", intervalMiles = 15_000, intervalSource = "SEEDED"),
         )
         val row = PopulatePossibleMatchRow(
@@ -206,20 +217,20 @@ class PopulateWritesTest {
         val outcome = writePopulateAddAsNew(context, "V1", row)
 
         assertTrue("Was: ${outcome.message}", outcome.success)
-        val newRow = db.maintenanceItemDao().get("V1", "Wheel Alignment Check")!!
+        val newRow = FleetEngineStore.get(context, "V1", "Wheel Alignment Check")!!
         assertEquals(20_000, newRow.intervalMiles)
         // LOOKUP, not CONFIRMED (ticket 18) - reached via writePopulateAdd under the hood, same
         // reasoning as that function's own test.
         assertEquals("LOOKUP", newRow.intervalSource)
         // The item the driver said was NOT a match must survive completely untouched.
-        val untouched = db.maintenanceItemDao().get("V1", "Check The Wheel Alignment")!!
+        val untouched = FleetEngineStore.get(context, "V1", "Check The Wheel Alignment")!!
         assertEquals(15_000, untouched.intervalMiles)
         assertEquals("SEEDED", untouched.intervalSource)
     }
 
     @Test
     fun `writePopulateAddAsNew refuses to overwrite a row that already exists under the factory name`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(
+        FleetEngineStore.upsertNewItem(context, 
             MaintenanceItem(
                 vehicleId = "V1", serviceName = "Wheel Alignment Check", intervalMiles = 12_000,
                 intervalSource = "CONFIRMED", lastDoneMileage = 90_000, lastDoneDate = 1_600_000_000_000L,
@@ -233,7 +244,7 @@ class PopulateWritesTest {
         val outcome = writePopulateAddAsNew(context, "V1", row)
 
         assertFalse("must refuse rather than silently replace - BLOCKING 2 applies here too", outcome.success)
-        val after = db.maintenanceItemDao().get("V1", "Wheel Alignment Check")!!
+        val after = FleetEngineStore.get(context, "V1", "Wheel Alignment Check")!!
         assertEquals(12_000, after.intervalMiles)
         assertEquals(90_000, after.lastDoneMileage)
     }

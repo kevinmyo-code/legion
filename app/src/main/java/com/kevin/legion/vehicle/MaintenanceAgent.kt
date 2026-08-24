@@ -53,7 +53,6 @@ object MaintenanceAgent {
         question: String,
         vehicleId: String,
     ): AgentResult {
-        val dao = CarDatabase.getDatabase(context).serviceRecordDao()
         val ctx = buildString {
             if (vehicleLabel.isNotBlank()) append("Vehicle: ").append(vehicleLabel).append(".\n")
             if (mileageLabel.isNotBlank()) append("Current odometer: ").append(mileageLabel).append(".\n")
@@ -66,7 +65,7 @@ object MaintenanceAgent {
                     // would add (see describeItem's doc on why the anchor still wins when it is
                     // itself the newer fact), so this stays one query per item that actually needs
                     // one rather than N queries per schedule regardless of whether they help.
-                    val record = if (!it.neverDone) dao.getMostRecentForVehicleAndService(vehicleId, it.serviceName) else null
+                    val record = if (!it.neverDone) FleetEngineStore.mostRecentForVehicleAndService(context, vehicleId, it.serviceName) else null
                     append("- ").append(describeItem(it, record)).append("\n")
                 }
             } else {

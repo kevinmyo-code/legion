@@ -38,7 +38,14 @@ class VehicleControllerServiceWritesTest {
     @Before
     fun clearState() = runBlocking {
         RoomTestReset.resetCarDatabaseSingleton()
-        db.vehicleDao().upsert(
+        // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): the vehicle must exist as a real
+        // ENGINE record now, not just a legacy vehicleDao() row - FleetEngineStore's every write
+        // resolves the engine Vehicle by its deterministic guid (FleetRecordBridge.vehicleGuid),
+        // and every fixture in this file that used to write straight into the legacy vehicleDao()
+        // now goes through FleetEngineStore.createVehicle, same shape cutover 3's own
+        // insertEngineTransactions test helper took for ledger fixtures.
+        FleetEngineStore.createVehicle(
+            context,
             Vehicle(
                 obdMac = "V1", name = "Cherokee", make = "Jeep", model = "Cherokee", year = 1998,
                 personaPrompt = "", odometerBaseline = 227_000, confirmed = true,
@@ -50,7 +57,7 @@ class VehicleControllerServiceWritesTest {
 
     @Test
     fun `logServiceDirect resets the anchor of a matching existing item via a targeted write`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(
+        FleetEngineStore.upsertNewItem(context, 
             MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000, lastDoneMileage = 220_000)
         )
 
@@ -59,13 +66,13 @@ class VehicleControllerServiceWritesTest {
         val outcome = VehicleController.logServiceDirect(context, "I just changed the oil", vehicleId = "V1")
 
         assertTrue("A landed write must report success. Was: $outcome", outcome.success)
-        val after = db.maintenanceItemDao().get("V1", "Oil Change")!!
+        val after = FleetEngineStore.get(context, "V1", "Oil Change")!!
         assertEquals(227_000, after.lastDoneMileage)
         // Interval must ride along untouched - this is the read-modify-write
         // race ticket 05 removed by switching to a targeted setAnchor write.
         assertEquals(5_000, after.intervalMiles)
         // Exactly one item - matching must not have created a duplicate.
-        assertEquals(1, db.maintenanceItemDao().getForVehicle("V1").size)
+        assertEquals(1, FleetEngineStore.getForVehicle(context, "V1").size)
     }
 
     // --- logServiceDirect: cost capture (ticket 11 §2) --------------------------------------
@@ -75,7 +82,7 @@ class VehicleControllerServiceWritesTest {
         val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1", costCents = 4599)
 
         assertTrue(outcome.success)
-        val record = db.serviceRecordDao().getRecentForVehicle("V1", 1).single()
+        val record = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single()
         assertEquals(4599L, record.costCents)
     }
 
@@ -84,7 +91,7 @@ class VehicleControllerServiceWritesTest {
         val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
 
         assertTrue(outcome.success)
-        val record = db.serviceRecordDao().getRecentForVehicle("V1", 1).single()
+        val record = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single()
         assertNull("an omitted cost must stay null - CLAUDE.md §4 rule 6, never a silent $0.00", record.costCents)
     }
 
@@ -93,14 +100,14 @@ class VehicleControllerServiceWritesTest {
     @Test
     fun `editServiceRecordDirect touches only mileage and costCents, and reads the value back`() = runBlocking {
         VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
-        val id = db.serviceRecordDao().getRecentForVehicle("V1", 1).single().id
+        val id = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single().id
 
         val outcome = VehicleController.editServiceRecordDirect(context, id, mileageMiles = 227_500, costCents = 4599)
 
         assertTrue("Was: $outcome", outcome.success)
         assertTrue("Read-back must state the new mileage. Was: ${outcome.message}", outcome.message.contains("227500") || outcome.message.contains("227,500"))
         assertTrue("Read-back must state the new cost. Was: ${outcome.message}", outcome.message.contains("45.99"))
-        val after = db.serviceRecordDao().getById(id)!!
+        val after = FleetEngineStore.getServiceRecordById(context, id)!!
         assertEquals(227_500, after.mileage)
         assertEquals(4599L, after.costCents)
     }
@@ -111,19 +118,25 @@ class VehicleControllerServiceWritesTest {
         assertFalse(outcome.success)
     }
 
+    // Cutover 4: this is now an engine RecordStore.delete (trash, 30-day restorable), not the
+    // legacy local-only-tombstone shape ServiceRecordDao.softDelete's own doc warned about. The old
+    // "this delete doesn't sync, on this phone only" wording is no longer true - the engine mirror
+    // exports every record uniformly - so VehicleController.deleteServiceRecordDirect's own message
+    // was retired to say what IS true now (recoverable, not "local only"). See that function's own
+    // comment for the full reasoning.
     @Test
-    fun `deleteServiceRecordDirect soft-deletes and its message says the delete is local only`() = runBlocking {
+    fun `deleteServiceRecordDirect soft-deletes and its message says it is recoverable`() = runBlocking {
         VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
-        val id = db.serviceRecordDao().getRecentForVehicle("V1", 1).single().id
+        val id = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single().id
 
         val outcome = VehicleController.deleteServiceRecordDirect(context, id)
 
         assertTrue(outcome.success)
         assertTrue(
-            "the delete's local-only nature must be stated in words (CLAUDE.md §2's tombstone caveat), not implied",
-            outcome.message.contains("this phone", ignoreCase = true),
+            "a trash-not-hard-delete must say so in words, never implied",
+            outcome.message.contains("30 days", ignoreCase = true),
         )
-        assertTrue(db.serviceRecordDao().getRecentForVehicle("V1", 10).isEmpty())
+        assertTrue(FleetEngineStore.getRecentForVehicle(context, "V1", 10).isEmpty())
     }
 
     @Test
@@ -142,7 +155,7 @@ class VehicleControllerServiceWritesTest {
         assertTrue(outcome.success)
         // Ticket 08 decision: the ServiceRecord is ALWAYS written - work done
         // is a fact regardless of what the schedule knew about it.
-        val records = db.serviceRecordDao().getRecentForVehicle("V1", 10)
+        val records = FleetEngineStore.getRecentForVehicle(context, "V1", 10)
         assertEquals(1, records.size)
         assertEquals(227_000, records.single().mileage)
     }
@@ -156,18 +169,18 @@ class VehicleControllerServiceWritesTest {
             "An unmatched log must say a new item was added, not silently create one (ticket 08). Was: ${outcome.message}",
             outcome.message.contains("Nothing on your schedule matched", ignoreCase = true),
         )
-        val created = db.maintenanceItemDao().get("V1", "Wheel Bearing Service")
+        val created = FleetEngineStore.get(context, "V1", "Wheel Bearing Service")
         assertEquals("Wheel Bearing Service", created?.serviceName)
         assertEquals(227_000, created?.lastDoneMileage)
     }
 
     @Test
     fun `logServiceDirect clears neverDone on the matched item`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Tire Rotation", neverDone = true))
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Tire Rotation", neverDone = true))
 
         VehicleController.logServiceDirect(context, "rotated the tires", vehicleId = "V1")
 
-        val after = db.maintenanceItemDao().get("V1", "Tire Rotation")!!
+        val after = FleetEngineStore.get(context, "V1", "Tire Rotation")!!
         assertFalse("A just-completed service must not still read as permanently overdue", after.neverDone)
     }
 
@@ -179,7 +192,7 @@ class VehicleControllerServiceWritesTest {
         // precise record and its anchor...
         val logged = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
         assertTrue(logged.success)
-        val afterLog = db.maintenanceItemDao().get("V1", "Oil Change")!!
+        val afterLog = FleetEngineStore.get(context, "V1", "Oil Change")!!
         assertEquals(227_000, afterLog.lastDoneMileage)
 
         // ...then, moments later, a memory-based backfill tries to overwrite
@@ -187,7 +200,7 @@ class VehicleControllerServiceWritesTest {
         val backfilled = VehicleController.logPastServiceDirect(context, "oil change", mileage = 226_800, vehicleId = "V1")
 
         assertFalse("A backfill conflicting with a precise record must report failure. Was: $backfilled", backfilled.success)
-        val afterBackfill = db.maintenanceItemDao().get("V1", "Oil Change")!!
+        val afterBackfill = FleetEngineStore.get(context, "V1", "Oil Change")!!
         assertEquals("The precise anchor must survive the refused backfill", 227_000, afterBackfill.lastDoneMileage)
         assertNotNull(afterBackfill.lastDoneDate)
     }
@@ -197,11 +210,11 @@ class VehicleControllerServiceWritesTest {
         val outcome = VehicleController.logPastServiceDirect(context, "coolant flush", milesAgo = 5_000, vehicleId = "V1")
 
         assertTrue(outcome.success)
-        val after = db.maintenanceItemDao().get("V1", "Coolant Flush")!!
+        val after = FleetEngineStore.get(context, "V1", "Coolant Flush")!!
         assertEquals(222_000, after.lastDoneMileage)
         // logPastServiceDirect never writes a ServiceRecord - a remembered
         // approximation does not belong in the precise ledger.
-        assertTrue(db.serviceRecordDao().getRecentForVehicle("V1", 10).isEmpty())
+        assertTrue(FleetEngineStore.getRecentForVehicle(context, "V1", 10).isEmpty())
     }
 
     // --- logPastServiceDirect: a real date writes a real record (ticket 31, hands-and-senses ---
@@ -212,7 +225,7 @@ class VehicleControllerServiceWritesTest {
         val outcome = VehicleController.logPastServiceDirect(context, "brake fluid flush", date = 1_723_000_000_000L, vehicleId = "V1")
 
         assertTrue("Was: ${outcome.message}", outcome.success)
-        val records = db.serviceRecordDao().getRecentForVehicle("V1", 10)
+        val records = FleetEngineStore.getRecentForVehicle(context, "V1", 10)
         assertEquals("a real date must file a record, not just move the anchor", 1, records.size)
         val record = records.single()
         assertEquals("Brake Fluid", record.serviceName)
@@ -221,7 +234,7 @@ class VehicleControllerServiceWritesTest {
         // logServiceDirect's own capture for a record with no explicit mileage.
         assertEquals(227_000, record.mileage)
         // The anchor moves too - a dated backfill is not weaker than a mileage-only one.
-        val item = db.maintenanceItemDao().get("V1", "Brake Fluid")!!
+        val item = FleetEngineStore.get(context, "V1", "Brake Fluid")!!
         assertEquals(1_723_000_000_000L, item.lastDoneDate)
     }
 
@@ -232,7 +245,7 @@ class VehicleControllerServiceWritesTest {
         assertTrue(outcome.success)
         assertTrue(
             "anchor-only stays legal, and nothing must be invented - unchanged by ticket 31",
-            db.serviceRecordDao().getRecentForVehicle("V1", 10).isEmpty(),
+            FleetEngineStore.getRecentForVehicle(context, "V1", 10).isEmpty(),
         )
     }
 
@@ -240,53 +253,53 @@ class VehicleControllerServiceWritesTest {
 
     @Test
     fun `logServiceDirect matching an existing near-miss item does not create a second one`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Check The Wheel Alignment"))
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Check The Wheel Alignment"))
 
         val outcome = VehicleController.logServiceDirect(context, "Wheel Alignment Check", vehicleId = "V1")
 
         assertTrue("Was: ${outcome.message}", outcome.success)
-        assertEquals("must fold onto the existing near-miss item, never create a second row", 1, db.maintenanceItemDao().getForVehicle("V1").size)
-        assertEquals(227_000, db.maintenanceItemDao().get("V1", "Check The Wheel Alignment")!!.lastDoneMileage)
+        assertEquals("must fold onto the existing near-miss item, never create a second row", 1, FleetEngineStore.getForVehicle(context, "V1").size)
+        assertEquals(227_000, FleetEngineStore.get(context, "V1", "Check The Wheel Alignment")!!.lastDoneMileage)
     }
 
     @Test
     fun `logServiceDirect with an ambiguous near-miss refuses and asks, writing nothing`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Check The Wheel Alignment"))
-        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Front Wheel Alignment"))
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Check The Wheel Alignment"))
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Front Wheel Alignment"))
 
         val outcome = VehicleController.logServiceDirect(context, "Wheel Alignment Check", vehicleId = "V1")
 
         assertFalse("An ambiguous match must ASK, never guess. Was: ${outcome.message}", outcome.success)
         assertTrue("The refusal must name the candidates. Was: ${outcome.message}", outcome.message.contains("Wheel Alignment"))
         // Nothing written at all - neither item's anchor moved, and no third row was created.
-        assertEquals(2, db.maintenanceItemDao().getForVehicle("V1").size)
-        assertNull(db.maintenanceItemDao().get("V1", "Check The Wheel Alignment")!!.lastDoneMileage)
-        assertNull(db.maintenanceItemDao().get("V1", "Front Wheel Alignment")!!.lastDoneMileage)
-        assertTrue(db.serviceRecordDao().getRecentForVehicle("V1", 10).isEmpty())
+        assertEquals(2, FleetEngineStore.getForVehicle(context, "V1").size)
+        assertNull(FleetEngineStore.get(context, "V1", "Check The Wheel Alignment")!!.lastDoneMileage)
+        assertNull(FleetEngineStore.get(context, "V1", "Front Wheel Alignment")!!.lastDoneMileage)
+        assertTrue(FleetEngineStore.getRecentForVehicle(context, "V1", 10).isEmpty())
     }
 
     @Test
     fun `logServiceDirect never collapses Brake Fluid into Brake Pads over the shared word brake`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Brake Pads"))
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Brake Pads"))
 
         val outcome = VehicleController.logServiceDirect(context, "brake fluid", vehicleId = "V1")
 
         assertTrue(outcome.success)
         // A genuinely new item, never folded onto the unrelated "Brake Pads" row.
-        assertNotNull(db.maintenanceItemDao().get("V1", "Brake Fluid"))
-        assertNull("Brake Pads must be untouched", db.maintenanceItemDao().get("V1", "Brake Pads")!!.lastDoneMileage)
+        assertNotNull(FleetEngineStore.get(context, "V1", "Brake Fluid"))
+        assertNull("Brake Pads must be untouched", FleetEngineStore.get(context, "V1", "Brake Pads")!!.lastDoneMileage)
     }
 
     @Test
     fun `logPastServiceDirect neverDone replaces any prior anchor via the targeted write`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(
+        FleetEngineStore.upsertNewItem(context, 
             MaintenanceItem(vehicleId = "V1", serviceName = "Battery", lastDoneMileage = 200_000, lastDoneDate = 5_000L)
         )
 
         val outcome = VehicleController.logPastServiceDirect(context, "battery", neverDone = true, vehicleId = "V1")
 
         assertTrue(outcome.success)
-        val after = db.maintenanceItemDao().get("V1", "Battery")!!
+        val after = FleetEngineStore.get(context, "V1", "Battery")!!
         assertTrue(after.neverDone)
         assertNull(after.lastDoneMileage)
         assertNull(after.lastDoneDate)
@@ -303,7 +316,7 @@ class VehicleControllerServiceWritesTest {
 
     @Test
     fun `setMaintenanceInterval on an existing item writes CONFIRMED and reads the value back`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(
+        FleetEngineStore.upsertNewItem(context, 
             MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 3_000, intervalSource = "SEEDED", lastDoneMileage = 118_483)
         )
 
@@ -314,7 +327,7 @@ class VehicleControllerServiceWritesTest {
         // must state the value actually now on the row.
         assertTrue("Read-back must state the new interval. Was: ${outcome.message}", outcome.message.contains("7500") || outcome.message.contains("7,500"))
         assertTrue("Read-back must state the last-done anchor. Was: ${outcome.message}", outcome.message.contains("118483") || outcome.message.contains("118,483"))
-        val after = db.maintenanceItemDao().get("V1", "Oil Change")!!
+        val after = FleetEngineStore.get(context, "V1", "Oil Change")!!
         assertEquals(7_500, after.intervalMiles)
         // A driver-confirmed edit is CONFIRMED, never left SEEDED - ticket 05's
         // whole point is that a future factory populate must skip this row.
@@ -326,7 +339,7 @@ class VehicleControllerServiceWritesTest {
         val outcome = VehicleController.setMaintenanceInterval(context, "differential fluid", intervalMiles = 30_000, vehicleId = "V1")
 
         assertTrue(outcome.success)
-        val after = db.maintenanceItemDao().get("V1", "Differential Fluid")!!
+        val after = FleetEngineStore.get(context, "V1", "Differential Fluid")!!
         assertEquals(30_000, after.intervalMiles)
         assertEquals("CONFIRMED", after.intervalSource)
     }
@@ -336,7 +349,7 @@ class VehicleControllerServiceWritesTest {
         val outcome = VehicleController.setMaintenanceInterval(context, "oil change", vehicleId = "V1")
 
         assertFalse(outcome.success)
-        assertNull(db.maintenanceItemDao().get("V1", "Oil Change"))
+        assertNull(FleetEngineStore.get(context, "V1", "Oil Change"))
     }
 
     /**
@@ -353,7 +366,7 @@ class VehicleControllerServiceWritesTest {
      */
     @Test
     fun `setMaintenanceInterval editing one axis leaves the other one alone`() = runBlocking {
-        db.maintenanceItemDao().upsert(
+        FleetEngineStore.upsertNewItem(context, 
             MaintenanceItem(
                 vehicleId = "V1", serviceName = "Oil Change",
                 intervalMiles = 3_000, intervalMonths = 3,
@@ -364,7 +377,7 @@ class VehicleControllerServiceWritesTest {
         val outcome = VehicleController.setMaintenanceInterval(context, "oil change", intervalMiles = 7_500, vehicleId = "V1")
 
         assertTrue("Was: ${outcome.message}", outcome.success)
-        val after = db.maintenanceItemDao().get("V1", "Oil Change")!!
+        val after = FleetEngineStore.get(context, "V1", "Oil Change")!!
         assertEquals("the edited axis takes the new value", 7_500, after.intervalMiles)
         assertEquals("the UNTOUCHED axis must survive", 3, after.intervalMonths)
         assertEquals("the anchor is not this write's business", 118_483, after.lastDoneMileage)
@@ -374,14 +387,14 @@ class VehicleControllerServiceWritesTest {
     /** The mirror: editing only the time axis must not wipe the mileage one. */
     @Test
     fun `setMaintenanceInterval editing months leaves miles alone`() = runBlocking {
-        db.maintenanceItemDao().upsert(
+        FleetEngineStore.upsertNewItem(context, 
             MaintenanceItem(vehicleId = "V1", serviceName = "Tire Rotation", intervalMiles = 6_000, intervalMonths = 6)
         )
 
         val outcome = VehicleController.setMaintenanceInterval(context, "tire rotation", intervalMonths = 12, vehicleId = "V1")
 
         assertTrue(outcome.success)
-        val after = db.maintenanceItemDao().get("V1", "Tire Rotation")!!
+        val after = FleetEngineStore.get(context, "V1", "Tire Rotation")!!
         assertEquals(6_000, after.intervalMiles)
         assertEquals(12, after.intervalMonths)
     }
@@ -394,12 +407,8 @@ class VehicleControllerServiceWritesTest {
      */
     @Test
     fun `marking never-done is refused when a logged record proves otherwise, and says why`() = runBlocking {
-        db.maintenanceItemDao().upsert(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 7_500))
-        db.serviceRecordDao().insert(
-            com.kevin.legion.data.local.ServiceRecord(
-                vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_786_567_802_968L,
-            )
-        )
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 7_500))
+        FleetEngineStore.insertObserved(context, "V1", "Oil Change", mileage = 118_374, date = 1_786_567_802_968L, costCents = null)
 
         val outcome = VehicleController.logPastServiceDirect(context, "oil change", neverDone = true, vehicleId = "V1")
 
@@ -408,7 +417,7 @@ class VehicleControllerServiceWritesTest {
             "The refusal must fit the never-done case, not talk about moving a schedule backward. Was: ${outcome.message}",
             outcome.message.contains("never done", ignoreCase = true),
         )
-        val after = db.maintenanceItemDao().get("V1", "Oil Change")!!
+        val after = FleetEngineStore.get(context, "V1", "Oil Change")!!
         assertFalse("neverDone must NOT have been set", after.neverDone)
     }
 
@@ -416,9 +425,7 @@ class VehicleControllerServiceWritesTest {
 
     @Test
     fun `resolveDoneAtDate re-derives the date from a logged record when the driver gave a mileage but no date`() = runBlocking {
-        db.serviceRecordDao().insert(
-            com.kevin.legion.data.local.ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 227_374, date = 1_723_000_000_000L)
-        )
+        FleetEngineStore.insertObserved(context, "V1", "Oil Change", mileage = 227_374, date = 1_723_000_000_000L, costCents = null)
 
         val resolved = VehicleController.resolveDoneAtDate(context, "V1", "Oil Change", mileage = 227_483, suppliedDate = null)
 
@@ -436,9 +443,7 @@ class VehicleControllerServiceWritesTest {
 
     @Test
     fun `resolveDoneAtDate never overrides a date the driver actually supplied`() = runBlocking {
-        db.serviceRecordDao().insert(
-            com.kevin.legion.data.local.ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 227_374, date = 1_723_000_000_000L)
-        )
+        FleetEngineStore.insertObserved(context, "V1", "Oil Change", mileage = 227_374, date = 1_723_000_000_000L, costCents = null)
 
         val resolved = VehicleController.resolveDoneAtDate(context, "V1", "Oil Change", mileage = 227_483, suppliedDate = 1_800_000_000_000L)
 

@@ -1,9 +1,8 @@
 package com.kevin.legion.ui.fleet
 
 import android.content.Context
-import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MaintenanceItem
-import com.kevin.legion.data.local.ServiceRecord
+import com.kevin.legion.vehicle.FleetEngineStore
 import com.kevin.legion.vehicle.VehicleController
 import com.kevin.legion.vehicle.VehicleController.WriteOutcome
 
@@ -86,8 +85,6 @@ suspend fun writeSetAnchor(
     costCents: Long? = null,
 ): AnchorWriteOutcome {
     val now = System.currentTimeMillis()
-    val db = CarDatabase.getDatabase(context)
-    val dao = db.maintenanceItemDao()
     // Resolved BEFORE the write, and carried back on [AnchorWriteOutcome] - ticket 31
     // (hands-and-senses): the caller used to repaint its own local state from the FORM's raw
     // mileage/date, but resolveDoneAtDate below can substitute a date the form never showed (a
@@ -103,7 +100,7 @@ suspend fun writeSetAnchor(
             resolvedMileage = null
             resolvedDate = null
             resolvedNeverDone = true
-            dao.setNeverDone(vehicleId, serviceName, now)
+            FleetEngineStore.setNeverDone(context, vehicleId, serviceName, now)
         }
         // Both anchors null is the legitimate "I don't know" state setAnchor's own doc names -
         // never a silent no-op read as "nothing changed".
@@ -111,7 +108,7 @@ suspend fun writeSetAnchor(
             resolvedMileage = null
             resolvedDate = null
             resolvedNeverDone = false
-            dao.setAnchor(vehicleId, serviceName, null, null, now)
+            FleetEngineStore.setAnchor(context, vehicleId, serviceName, null, null, now)
         }
         // The date is RESOLVED, never taken raw: mileage and date are independently optional
         // fields on this form, and a mileage-only save used to write a null date straight over
@@ -124,7 +121,7 @@ suspend fun writeSetAnchor(
             resolvedMileage = mileage
             resolvedDate = VehicleController.resolveDoneAtDate(context, vehicleId, serviceName, mileage, date)
             resolvedNeverDone = false
-            dao.setAnchor(vehicleId, serviceName, resolvedMileage, resolvedDate, now)
+            FleetEngineStore.setAnchor(context, vehicleId, serviceName, resolvedMileage, resolvedDate, now)
         }
     }
     if (written == 0) {
@@ -132,9 +129,21 @@ suspend fun writeSetAnchor(
     }
     if (mode == AnchorMode.DONE_AT && costCents != null) {
         val recordMileage = mileage ?: VehicleController.currentMileage(VehicleController.vehicleFor(context, vehicleId))
-        db.serviceRecordDao().insert(
-            ServiceRecord(vehicleId = vehicleId, serviceName = serviceName, mileage = recordMileage, date = date ?: now, costCents = costCents),
-        )
+        // Cutover 4: goes through the SAME insertObserved every voice log_service call uses, so the
+        // ASSERTED-supersession rule (instruction 3) fires identically whether a service was logged
+        // by voice or by hand through this exact screen - one unification, two entry points, per
+        // wave4-carve's own "one source for service history" finding. A failure here is reported
+        // rather than silently dropped, though the anchor write above already succeeded (the write
+        // FleetScreen shows the driver is still correct - only the optional cost-linked history row
+        // failed to land).
+        val insertResult = FleetEngineStore.insertObserved(context, vehicleId, serviceName, recordMileage, date ?: now, costCents)
+        if (insertResult is FleetEngineStore.InsertObservedResult.Failure) {
+            return AnchorWriteOutcome(
+                false,
+                "Updated the schedule, but couldn't file the cost into the history - ${insertResult.reason}.",
+                resolvedMileage, resolvedDate, resolvedNeverDone,
+            )
+        }
     }
     // The message itself states the RESOLVED anchor, not a bare "Updated" - ticket 31's whole
     // complaint was a save that reported success in words the screen then failed to visibly back
@@ -180,7 +189,7 @@ data class AnchorWriteOutcome(
  */
 suspend fun writeDeleteItem(context: Context, vehicleId: String, serviceName: String): WriteOutcome {
     val now = System.currentTimeMillis()
-    val written = CarDatabase.getDatabase(context).maintenanceItemDao().softDelete(vehicleId, serviceName, now)
+    val written = FleetEngineStore.softDeleteItem(context, vehicleId, serviceName, now)
     return if (written == 0) {
         WriteOutcome(false, "Couldn't delete $serviceName - it may have already been removed.")
     } else {
@@ -251,7 +260,7 @@ suspend fun writeAddItem(
     // this sibling as out of its own scope rather than reaching into this file. Fixed here on the
     // same reasoning that governs the rest of this map: a known instance of a bug just fixed
     // elsewhere is not a smaller bug for being known.
-    val rowId = CarDatabase.getDatabase(context).maintenanceItemDao().insertIgnore(item)
+    val rowId = FleetEngineStore.insertIgnore(context, item)
     if (rowId == -1L) {
         return WriteOutcome(false, "$trimmed is already on the schedule - open it to change its interval.")
     }

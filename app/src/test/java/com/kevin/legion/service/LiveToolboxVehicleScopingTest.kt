@@ -5,6 +5,7 @@ import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.testutil.RoomTestReset
 import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.vehicle.FleetEngineStore
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.ObdTransport
 import kotlinx.coroutines.runBlocking
@@ -52,13 +53,17 @@ class LiveToolboxVehicleScopingTest {
         personaPrompt = "", odometerBaseline = odometerBaseline, odometerBaselineAt = 1L,
     )
 
+    // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): both fixtures write through
+    // FleetEngineStore now - every FleetEngineStore write resolves the vehicle by a real ENGINE
+    // record, which the legacy-only vehicleDao()/maintenanceItemDao() upserts this file used to
+    // call would leave unresolvable.
     private suspend fun seedVehicles(vararg vehicles: Vehicle) {
-        val dao = CarDatabase.getDatabase(context).vehicleDao()
-        for (v in vehicles) dao.upsert(v)
+        for (v in vehicles) FleetEngineStore.createVehicle(context, v)
     }
 
     private suspend fun seedItem(vehicleId: String, serviceName: String) {
-        CarDatabase.getDatabase(context).maintenanceItemDao().upsert(
+        FleetEngineStore.upsertNewItem(
+            context,
             MaintenanceItem(
                 vehicleId = vehicleId, serviceName = serviceName,
                 intervalMiles = 5000, lastDoneMileage = 1000,
