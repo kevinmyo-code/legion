@@ -9,8 +9,15 @@
   Launch from the phone with:
     adb shell am start -n com.kevin.legion/.prototype.PrototypeDashboardActivity
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <application>
+        <!-- Debug-only export of the widget pager so adb can launch it for on-device QA.
+             The main manifest keeps exported=false, so a release build stays unexported. -->
+        <activity
+            android:name=".ui.widgets.WidgetPagerActivity"
+            android:exported="true"
+            tools:replace="android:exported" />
         <activity
             android:name=".prototype.PrototypeDashboardActivity"
             android:exported="true"
