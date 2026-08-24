@@ -79,32 +79,39 @@ object PlaceController {
             PayloadCodec.readString(JSONObject(it.payload), sch.fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL)) == label
         }
         val store = store(context)
-        if (existing != null) {
-            store.update(existing.id, fieldValues)
+        // Senior review, 2026-08-24 (should-fix 3): a §7 outcome-verb violation - tagPlace used to
+        // always return ackFor(label) regardless of whether the engine write actually landed, so a
+        // failed RecordStore.create/update still spoke a confident "got it, pinned it." Both branches
+        // now check the real WriteResult and only speak the ack on a genuine Success.
+        val ok = if (existing != null) {
+            store.update(existing.id, fieldValues) is RecordStore.WriteResult.Success
         } else {
-            store.create(sch.recordTypeId, fieldValues, RecordProvenance.USER)
+            store.create(sch.recordTypeId, fieldValues, RecordProvenance.USER) is RecordStore.WriteResult.Success
         }
-        return ackFor(label)
+        return if (ok) ackFor(label) else "Something went wrong pinning that spot - it didn't save. Try again in a sec."
     }
 
-    /** Deletes the saved place matching [rawLabel]. Returns a spoken ack, or an error if not found. */
+    /** Deletes the saved place matching [rawLabel]. Returns a spoken ack, or an error if not found
+     * or if the delete itself did not actually land (same §7 fix as [tagPlace]). */
     suspend fun forgetPlace(context: Context, rawLabel: String): String {
         val label = normalizeLabel(rawLabel) ?: return "I'm not sure which place you mean."
         val sch = schema(context)
         val existing = activeRecords(context).firstOrNull {
             PayloadCodec.readString(JSONObject(it.payload), sch.fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL)) == label
         } ?: return "I don't have a saved place called \"$label\"."
-        store(context).delete(existing.id)
-        return forgetAck(label)
+        val trashed = store(context).delete(existing.id) is RecordStore.DeleteResult.Trashed
+        return if (trashed) forgetAck(label) else "I found \"$label\" but couldn't remove it just now - nothing was deleted."
     }
 
-    /** Deletes a saved place by label (used by the UI list). */
-    suspend fun forget(context: Context, label: String) {
+    /** Deletes a saved place by label (used by the UI list). Returns true only on a confirmed
+     * delete - false for "no such label" and for a write that did not actually land, same §7 fix as
+     * [tagPlace]/[forgetPlace]. */
+    suspend fun forget(context: Context, label: String): Boolean {
         val sch = schema(context)
         val existing = activeRecords(context).firstOrNull {
             PayloadCodec.readString(JSONObject(it.payload), sch.fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL)) == label
-        } ?: return
-        store(context).delete(existing.id)
+        } ?: return false
+        return store(context).delete(existing.id) is RecordStore.DeleteResult.Trashed
     }
 
     /** All saved places (used by the UI list). */

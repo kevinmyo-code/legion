@@ -84,6 +84,19 @@ class PlaceControllerTest {
         assertTrue(missing.contains("don't have"))
     }
 
+    // -------------------------------------------------------------- outcome-verb honesty (should-fix 3)
+
+    @Test
+    fun `forget returns true on a real delete and false for an unknown label, never a false success`() = runBlocking {
+        PlaceController.tagPlace(context, "home")
+        assertTrue("a real delete must report true", PlaceController.forget(context, "home"))
+        assertTrue("the place must actually be gone", PlaceController.all(context).isEmpty())
+        assertTrue(
+            "forget on an unknown label must report false, not silently claim success",
+            !PlaceController.forget(context, "home"),
+        )
+    }
+
     @Test
     fun `currentLabel matches the nearest saved place within radius`() = runBlocking {
         PlaceController.tagPlace(context, "work")

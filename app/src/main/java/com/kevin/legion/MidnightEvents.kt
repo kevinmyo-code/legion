@@ -173,6 +173,17 @@ object MidnightEvents {
         Log.w(TAG, "import_rekeyed: $rows row(s), $remap")
     }
 
+    /**
+     * Cutover 1's `EngineDataMigrationWave1.rekeySkipsToEngineIds` (`docs/architecture/cutover1-2026-08-24.md`)
+     * could not find a live target for one `ListItemSkip` row and left it un-rekeyed - its
+     * occurrence-skip is silently lost (the same accepted cost that function's own doc comment
+     * already names). Logged, not silently dropped, so the owed on-device run can actually observe
+     * whether this ever fires for real data rather than only in a unit test fixture.
+     */
+    fun skipRekeyOrphaned(skipId: Long, legacyItemId: Long, reason: String) = safe {
+        Log.w(TAG, "skip_rekey_orphaned: skip #$skipId (legacy itemId $legacyItemId) - $reason")
+    }
+
     // --- Handled errors -------------------------------------------------------
 
     /** Records a handled (non-fatal) error under [tag]. */

@@ -195,18 +195,23 @@ internal fun ItemEditDialog(item: ListItem, onDismiss: () -> Unit, onSaved: () -
                 enabled = canSave,
                 onClick = {
                     scope.launch {
+                        // Senior review, 2026-08-24 (should-fix 3): NotesController.setTime/
+                        // setPlaceTrigger/setExact/setRepeat now return null on a failed engine
+                        // write rather than silently letting a stale item look current - each
+                        // `?: current` below keeps the last known-GOOD state rather than crashing
+                        // on a null, since this hands-path dialog has no spoken layer to word the
+                        // failure through (unlike LiveToolbox.scheduleItem's own fix).
                         var current = item
                         if (text != item.text) NotesController.renameItem(context, current, text)
                         current = when (triggerKind) {
                             TriggerKind.NONE -> { NotesController.clearTime(context, current); current.copy(startsAt = null, triggerPlaceLabel = null) }
-                            TriggerKind.PLACE -> NotesController.setPlaceTrigger(context, current, placeLabel.trim())
+                            TriggerKind.PLACE -> NotesController.setPlaceTrigger(context, current, placeLabel.trim()) ?: current
                             TriggerKind.TIME -> {
                                 val date = parsedDate!!
                                 val time = parsedTime!!
                                 val startsAt = LocalDateTime.of(date, time).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                                var updated = NotesController.setTime(context, current, startsAt, null, allDay)
-                                updated = NotesController.setExact(context, updated, exact)
-                                updated
+                                val updated = NotesController.setTime(context, current, startsAt, null, allDay) ?: current
+                                NotesController.setExact(context, updated, exact) ?: updated
                             }
                         }
                         if (triggerKind == TriggerKind.TIME && repeatEnabled) {

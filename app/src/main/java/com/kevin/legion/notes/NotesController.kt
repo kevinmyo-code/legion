@@ -157,7 +157,11 @@ object NotesController {
         allDay: Boolean = true,
     ): ListItem {
         val item = addItem(context, listId, text)
-        return if (startsAt == null) item else setTime(context, item, startsAt, null, allDay)
+        // setTime returning null (a failed engine write) keeps the freshly-added, undated item
+        // rather than fabricating a due date that never actually landed - the append itself already
+        // succeeded (addItem does not itself return nullable), so this is a partial, not a total,
+        // failure, and the caller still gets a real item back.
+        return if (startsAt == null) item else setTime(context, item, startsAt, null, allDay) ?: item
     }
 
     suspend fun itemById(context: Context, id: Long): ListItem? {
@@ -192,20 +196,35 @@ object NotesController {
     suspend fun findItem(context: Context, listId: Long, query: String): ItemMatch =
         matchItem(query, openItemsForList(context, listId))
 
-    /** Refuses (returns false, writes nothing) for a recurring item - ticket 04. */
+    /** True only when [result] is a [RecordStore.WriteResult.Success] - the one place every
+     * Boolean-returning mutator below decides success, so "wrote nothing but said success" (the
+     * §7 outcome-verb violation senior review flagged 2026-08-24) cannot creep back in one function
+     * at a time. A [RecordStore.WriteResult.Failure] is swallowed to a plain `false` here
+     * deliberately - the worded [RecordStore.WriteResult.Failure.reason] is for whoever is closer
+     * to the user (LiveToolbox's spoken layer, a screen's own error state), not baked into this
+     * controller's return type, so every caller of a `Boolean`-returning function here stays exactly
+     * as simple as it was before this fix; a caller that wants the worded reason calls
+     * [RecordStore.update]/[RecordStore.create] itself instead of going through this facade. */
+    private fun RecordStore.WriteResult.succeeded(): Boolean = this is RecordStore.WriteResult.Success
+
+    /** Refuses (returns false, writes nothing) for a recurring item - ticket 04. Also returns false,
+     * writing nothing further, if the engine write itself fails (senior review, 2026-08-24: "tick...
+     * ignore RecordStore.WriteResult and return true" was a real §7 outcome-verb violation - a
+     * failed write must never look like a successful tick to the spoken layer). */
     suspend fun tick(context: Context, item: ListItem): Boolean {
         if (item.repeatKind != null) return false
         val sch = schema(context)
         val now = System.currentTimeMillis()
-        store(context).update(item.id, fieldValues(sch, NotesAspectSeeder.FIELD_DONE to true, NotesAspectSeeder.FIELD_DONE_AT to now), now)
-        AlarmScheduler.cancel(context, item.id)
-        return true
+        val ok = store(context).update(item.id, fieldValues(sch, NotesAspectSeeder.FIELD_DONE to true, NotesAspectSeeder.FIELD_DONE_AT to now), now).succeeded()
+        if (ok) AlarmScheduler.cancel(context, item.id)
+        return ok
     }
 
-    suspend fun untick(context: Context, item: ListItem) {
+    /** Returns false, writing nothing further, on a failed engine write - same §7 fix as [tick]. */
+    suspend fun untick(context: Context, item: ListItem): Boolean {
         val sch = schema(context)
         val now = System.currentTimeMillis()
-        store(context).update(
+        val ok = store(context).update(
             item.id,
             fieldValues(
                 sch,
@@ -214,42 +233,56 @@ object NotesController {
                 NotesAspectSeeder.FIELD_LOGGED_AT to null,
             ),
             now,
-        )
+        ).succeeded()
+        if (!ok) return false
         // Ticket 09 ("a ticked workout is one act, not two rows"): a correction propagates to the
         // training history - see the pre-cutover version of this comment, unchanged reasoning,
         // still a DAO call rather than a WorkoutController import (notes/ stays a foundation layer).
         db(context).workoutSetLogDao().deleteBySourceListItemId(item.id)
+        return true
     }
 
     /** No confirmation (ticket 05) - trashed via [RecordStore.delete], same discipline as every
-     * other engine record. */
-    suspend fun removeItem(context: Context, item: ListItem) {
-        store(context).delete(item.id)
-        AlarmScheduler.cancel(context, item.id)
+     * other engine record. Returns false on [RecordStore.DeleteResult.NotFound]/
+     * [RecordStore.DeleteResult.AlreadyTrashed]/[RecordStore.DeleteResult.Blocked] - only a real
+     * [RecordStore.DeleteResult.Trashed] cancels the alarm and reports success. */
+    suspend fun removeItem(context: Context, item: ListItem): Boolean {
+        val trashed = store(context).delete(item.id) is RecordStore.DeleteResult.Trashed
+        if (trashed) AlarmScheduler.cancel(context, item.id)
+        return trashed
     }
 
-    suspend fun renameItem(context: Context, item: ListItem, text: String) {
+    suspend fun renameItem(context: Context, item: ListItem, text: String): Boolean {
         val sch = schema(context)
-        store(context).update(item.id, fieldValues(sch, NotesAspectSeeder.FIELD_TEXT to text.trim()), System.currentTimeMillis())
+        return store(context).update(item.id, fieldValues(sch, NotesAspectSeeder.FIELD_TEXT to text.trim()), System.currentTimeMillis()).succeeded()
     }
 
-    suspend fun moveItem(context: Context, item: ListItem, siblingsInOrder: List<ListItem>, up: Boolean) {
+    /** Returns false (writing nothing further) the moment EITHER swap-half fails, rather than
+     * reporting success on a half-applied reorder - the two updates are not wrapped in a single
+     * transaction, so this is the closest this function can get to "no false success" without a new
+     * [RecordStore] capability. */
+    suspend fun moveItem(context: Context, item: ListItem, siblingsInOrder: List<ListItem>, up: Boolean): Boolean {
         val index = siblingsInOrder.indexOfFirst { it.id == item.id }
-        if (index < 0) return
+        if (index < 0) return false
         val swapIndex = if (up) index - 1 else index + 1
-        if (swapIndex !in siblingsInOrder.indices) return
+        if (swapIndex !in siblingsInOrder.indices) return false
         val other = siblingsInOrder[swapIndex]
         val sch = schema(context)
         val now = System.currentTimeMillis()
         val s = store(context)
-        s.update(item.id, fieldValues(sch, NotesAspectSeeder.FIELD_SORT_ORDER to other.sortOrder), now)
-        s.update(other.id, fieldValues(sch, NotesAspectSeeder.FIELD_SORT_ORDER to item.sortOrder), now)
+        val firstOk = s.update(item.id, fieldValues(sch, NotesAspectSeeder.FIELD_SORT_ORDER to other.sortOrder), now).succeeded()
+        val secondOk = s.update(other.id, fieldValues(sch, NotesAspectSeeder.FIELD_SORT_ORDER to item.sortOrder), now).succeeded()
+        return firstOk && secondOk
     }
 
-    suspend fun setTime(context: Context, item: ListItem, startsAt: Long, endsAt: Long?, allDay: Boolean): ListItem {
+    /** Returns null (writing nothing further - no alarm scheduled) on a failed engine write, the
+     * `ListItem`-returning counterpart of [tick]'s Boolean fix. A non-null return is a genuine,
+     * confirmed write - callers must not treat a null as "unchanged" and silently carry on with the
+     * stale pre-call item, the same "no false success" posture as every Boolean fix in this file. */
+    suspend fun setTime(context: Context, item: ListItem, startsAt: Long, endsAt: Long?, allDay: Boolean): ListItem? {
         val sch = schema(context)
         val now = System.currentTimeMillis()
-        store(context).update(
+        val ok = store(context).update(
             item.id,
             fieldValues(
                 sch,
@@ -261,24 +294,27 @@ object NotesController {
                 NotesAspectSeeder.FIELD_MISSED_DISMISSED_AT to null,
             ),
             now,
-        )
+        ).succeeded()
+        if (!ok) return null
         scheduleAlarmFor(context, item.copy(startsAt = startsAt, endsAt = endsAt, allDay = allDay, triggerPlaceLabel = null))
         return refetch(context, item.id, item)
     }
 
-    suspend fun clearTime(context: Context, item: ListItem) {
+    suspend fun clearTime(context: Context, item: ListItem): Boolean {
         val sch = schema(context)
-        store(context).update(
+        val ok = store(context).update(
             item.id,
             fieldValues(sch, NotesAspectSeeder.FIELD_STARTS_AT to null, NotesAspectSeeder.FIELD_ENDS_AT to null, NotesAspectSeeder.FIELD_TRIGGER_PLACE_LABEL to null),
             System.currentTimeMillis(),
-        )
-        AlarmScheduler.cancel(context, item.id)
+        ).succeeded()
+        if (ok) AlarmScheduler.cancel(context, item.id)
+        return ok
     }
 
-    suspend fun setPlaceTrigger(context: Context, item: ListItem, placeLabel: String): ListItem {
+    /** See [setTime]'s doc comment for the null-on-failure contract this shares. */
+    suspend fun setPlaceTrigger(context: Context, item: ListItem, placeLabel: String): ListItem? {
         val sch = schema(context)
-        store(context).update(
+        val ok = store(context).update(
             item.id,
             fieldValues(
                 sch,
@@ -287,17 +323,19 @@ object NotesController {
                 NotesAspectSeeder.FIELD_TRIGGER_PLACE_LABEL to placeLabel,
             ),
             System.currentTimeMillis(),
-        )
+        ).succeeded()
+        if (!ok) return null
         // A place trigger has no clock to watch - nothing for AlarmManager to schedule.
         AlarmScheduler.cancel(context, item.id)
         return refetch(context, item.id, item)
     }
 
-    suspend fun setRepeat(context: Context, item: ListItem, rule: RepeatRule?, end: RepeatEnd): ListItem {
+    /** See [setTime]'s doc comment for the null-on-failure contract this shares. */
+    suspend fun setRepeat(context: Context, item: ListItem, rule: RepeatRule?, end: RepeatEnd): ListItem? {
         val sch = schema(context)
         val now = System.currentTimeMillis()
         val cols = repeatColumnsFor(rule, end)
-        store(context).update(
+        val ok = store(context).update(
             item.id,
             fieldValues(
                 sch,
@@ -311,7 +349,8 @@ object NotesController {
                 NotesAspectSeeder.FIELD_REPEAT_END_COUNT to cols.repeatEndCount,
             ),
             now,
-        )
+        ).succeeded()
+        if (!ok) return null
         scheduleAlarmFor(
             context,
             item.copy(
@@ -323,34 +362,36 @@ object NotesController {
         return refetch(context, item.id, item)
     }
 
-    suspend fun setExact(context: Context, item: ListItem, exact: Boolean): ListItem {
+    /** See [setTime]'s doc comment for the null-on-failure contract this shares. */
+    suspend fun setExact(context: Context, item: ListItem, exact: Boolean): ListItem? {
         val sch = schema(context)
-        store(context).update(item.id, fieldValues(sch, NotesAspectSeeder.FIELD_EXACT to exact), System.currentTimeMillis())
+        val ok = store(context).update(item.id, fieldValues(sch, NotesAspectSeeder.FIELD_EXACT to exact), System.currentTimeMillis()).succeeded()
+        if (!ok) return null
         scheduleAlarmFor(context, item.copy(exact = exact))
         return refetch(context, item.id, item)
     }
 
     /** [AlarmScheduler.schedule]'s own downgrade-persistence write - was a direct DAO call before
      * cutover, now routed through the engine like every other field write in this file. */
-    suspend fun setExactDowngraded(context: Context, itemId: Long, downgraded: Boolean) {
+    suspend fun setExactDowngraded(context: Context, itemId: Long, downgraded: Boolean): Boolean {
         val sch = schema(context)
-        store(context).update(itemId, fieldValues(sch, NotesAspectSeeder.FIELD_EXACT_DOWNGRADED to downgraded), System.currentTimeMillis())
+        return store(context).update(itemId, fieldValues(sch, NotesAspectSeeder.FIELD_EXACT_DOWNGRADED to downgraded), System.currentTimeMillis()).succeeded()
     }
 
     /** [AlarmScheduler.rescheduleAll]'s own missed-marking write - ticket 12: "stored once, never
      * recomputed." No `missedAt IS NULL` guard here (unlike the legacy DAO query) - callers
      * ([AlarmScheduler.rescheduleAll]) already check that before calling, matching the legacy
      * comment's own "idempotent by construction... only calls this when missedAt IS NULL". */
-    suspend fun markMissed(context: Context, itemId: Long) {
+    suspend fun markMissed(context: Context, itemId: Long): Boolean {
         val sch = schema(context)
-        store(context).update(itemId, fieldValues(sch, NotesAspectSeeder.FIELD_MISSED_AT to System.currentTimeMillis()), System.currentTimeMillis())
+        return store(context).update(itemId, fieldValues(sch, NotesAspectSeeder.FIELD_MISSED_AT to System.currentTimeMillis()), System.currentTimeMillis()).succeeded()
     }
 
     /** [GoalChecklistSync]'s own idempotence-anchor write - see this file's own class doc for why
      * `loggedAt` needed a new field on the engine side. */
-    suspend fun markLogged(context: Context, itemId: Long, loggedAt: Long = System.currentTimeMillis()) {
+    suspend fun markLogged(context: Context, itemId: Long, loggedAt: Long = System.currentTimeMillis()): Boolean {
         val sch = schema(context)
-        store(context).update(itemId, fieldValues(sch, NotesAspectSeeder.FIELD_LOGGED_AT to loggedAt), loggedAt)
+        return store(context).update(itemId, fieldValues(sch, NotesAspectSeeder.FIELD_LOGGED_AT to loggedAt), loggedAt).succeeded()
     }
 
     /** Skip a single occurrence, never move one (ticket 04). [ListItemSkip.itemId] now stores the

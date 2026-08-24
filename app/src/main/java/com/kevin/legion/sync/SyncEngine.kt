@@ -39,17 +39,53 @@ private typealias Mode = SyncMerge.Mode
  *  - UNION: append-only events - a remote row is inserted locally if its identity
  *    is unseen; existing rows are never touched.
  *  - LWW: mutable rows - the copy with the newer clock column wins.
- * Identity is a natural key where one exists (vehicles/obdMac, places/label,
- * obd_samples' composite) or the portable [syncId] UUID otherwise - never the
- * local autoincrement `id`, which isn't portable across devices.
+ * Identity is a natural key where one exists (vehicles/obdMac, maintenance_items'
+ * composite, obd_samples' composite) or the portable [syncId] UUID otherwise -
+ * never the local autoincrement `id`, which isn't portable across devices.
  *
- * `car_tasks` and `places` carry a `deleted` soft-delete tombstone column
- * (B19): the SELECT * snapshot below is deliberately NOT filtered on it, so a
+ * `car_tasks` carries a `deleted` soft-delete tombstone column (B19): the
+ * SELECT * snapshot below is deliberately NOT filtered on it, so a
  * tombstoned row ships to Drive and propagates through the normal LWW path
  * (a newer `deleted=1` wins like any other edit) instead of a hard DELETE
  * being invisible to sync and resurrected on the next pull. Every other
- * reader of these two tables (DAOs, controllers, tools, UI) DOES filter
- * `deleted = 0` - only this sync path and tombstone GC ever see them.
+ * reader of this table (DAOs, controllers, tools, UI) DOES filter
+ * `deleted = 0` - only this sync path and tombstone GC ever see it.
+ * `car_tasks` is itself dead (superseded by `list_items` - see the Notes
+ * cutover doc below), so this is legacy plumbing kept alive only because the
+ * table is still registered, not because anything writes new rows into it.
+ *
+ * **`places` was RETIRED from [REGISTRY] at cutover 1
+ * (`docs/architecture/cutover1-2026-08-24.md`, 2026-08-24) - not narrowed, not
+ * filtered differently, gone.** Ticket 13's own answer already decided this
+ * ("the appDataFolder SyncEngine retires for record data" once an aspect
+ * cuts over): a saved place is now an [com.kevin.legion.data.local.EngineRecord]
+ * in the Places aspect, and `com.kevin.legion.engine.mirror.MirrorSync` - the
+ * engine's own Drive-mirror channel, not this raw-SQLite registry - is the
+ * cross-device path for it now, exactly like every other engine record.
+ * Leaving a `places` [Spec] in this file after `location/PlaceController.kt`
+ * stopped writing the legacy table at all would have meant this engine ran a
+ * real merge pass over a table that could only ever be empty going forward,
+ * for no gain and a live risk: any writer that ever touched `places` directly
+ * (this registry's own raw `execSQL`, or a stray future one) would silently
+ * defeat the "zero writers" cutover guarantee the DAO-only grep swept for -
+ * this file's own `Spec("places", ...)` line was exactly that, and grepping
+ * only `PlaceDao`/`listItemDao()`-shaped calls (cutover 1's original
+ * methodology) missed it entirely.
+ *
+ * **Transition consequence, stated rather than assumed away:** a peer phone
+ * still running a PRE-cutover build keeps pushing/pulling `places` through
+ * THIS registry - to itself, since no other device shares that registry entry
+ * anymore. Any place it tags after this phone upgrades never reaches the
+ * upgraded phone's engine store (nothing here pulls INTO `places` and reads
+ * it back out), and any place the upgraded phone tags never reaches the old
+ * phone (nothing here pushes engine records into the legacy `places` Drive
+ * file anymore either). This is a real, known dead window - not a data-loss
+ * risk (nothing here deletes what a peer already has), but a real
+ * synchronization gap - that closes itself the moment BOTH phones run a
+ * cutover-or-later build. Both of Kevin's phones share one Drive account
+ * (CLAUDE.md sec 2's "Drive-BYO... one shared Google account, two phones"),
+ * so the fix is simply: upgrade both before relying on cross-device place
+ * sync again.
  *
  * Mixtapes are NOT synced here - they wait for the media phase (decisions.md).
  * Recaps (monthly/yearly/daily) joined in build step 5 - light data (DB rows)
@@ -188,7 +224,9 @@ object SyncEngine {
         // Mutable, last-write-wins.
         Spec("car_tasks", listOf("syncId"), Mode.LWW, naturalPk = false, hasSyncId = true),
         Spec("place_reminders", listOf("syncId"), Mode.LWW, naturalPk = false, hasSyncId = true),
-        Spec("places", listOf("label"), Mode.LWW, naturalPk = true, clock = "timestamp"),
+        // "places" retired here at cutover 1 (2026-08-24) - see this file's own class doc for the
+        // full reasoning and the stated transition consequence. Do not re-add it: the live path is
+        // com.kevin.legion.engine.mirror.MirrorSync now.
         Spec("vehicles", listOf("obdMac"), Mode.LWW, naturalPk = true),
         Spec("maintenance_items", listOf("vehicleId", "serviceName"), Mode.LWW, naturalPk = true),
         Spec("vehicle_specs", listOf("vehicleId"), Mode.LWW, naturalPk = true),
@@ -228,10 +266,12 @@ object SyncEngine {
         // set. That is silently double-counted money on the one table §4's
         // reconciliation gate exists to protect, via a path the gate never sees.
         //
-        // The tombstone pattern car_tasks/places use cannot rescue UNION either:
-        // it works there precisely BECAUSE they are LWW, where a newer
-        // `deleted = 1` wins as an ordinary edit. Under UNION an existing local
-        // row is never updated, so a soft-delete would never propagate.
+        // The tombstone pattern car_tasks uses cannot rescue UNION either: it
+        // works there precisely BECAUSE it is LWW, where a newer `deleted = 1`
+        // wins as an ordinary edit. Under UNION an existing local row is never
+        // updated, so a soft-delete would never propagate. (`places` used the
+        // same pattern here too, before it retired from this registry entirely
+        // at cutover 1 - see the class doc above.)
         //
         // So UNION and delete-propagation are mutually exclusive here, and
         // ticket 10 explicitly rejected LWW. Rather than overturn that ruling

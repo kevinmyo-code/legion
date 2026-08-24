@@ -78,15 +78,17 @@ class EngineDataMigrationWave1CutoverTest {
     fun `catchUpOnce rekeys a skip row onto its item's new engine record id`() = runBlocking {
         val listId = seedList()
         val now = System.currentTimeMillis()
-        // A throwaway earlier engine record so the two tables' independent AUTOINCREMENT counters
-        // cannot coincidentally agree on the same number - this test needs to prove the id genuinely
-        // CHANGED, not merely that it happens to look the same on a freshly-reset database.
-        db.engineRecordDao().insert(
-            com.kevin.legion.data.local.EngineRecord(
-                recordTypeId = NotesAspectSeeder.ensureSeeded(context).recordTypeId,
-                createdAt = now, updatedAt = now, provenance = com.kevin.legion.data.local.RecordProvenance.USER,
-            ),
-        )
+        // A throwaway, DELETED legacy item consumes a `list_items` AUTOINCREMENT slot without
+        // producing an engine record at all (wave 1's copier skips tombstoned rows - see
+        // EngineDataMigrationWave1's own "does not copy tombstoned rows" doc) - shifting the legacy
+        // id space forward relative to the engine's `records` table, so this fixture's real item
+        // cannot coincidentally collide the way should-fix 1's own collision-guard test below
+        // deliberately forces. (An earlier version of this fixture inserted a throwaway ENGINE
+        // record directly instead, which - after the should-fix 1 guard landed - made the fixture
+        // indistinguishable from a genuine collision and the guard correctly refused to touch it,
+        // failing this test for the right reason applied to the wrong fixture.)
+        val throwawayLegacyId = db.listItemDao().insert(ListItem(listId = listId, text = "throwaway", createdAt = now, updatedAt = now))
+        db.listItemDao().deleteById(throwawayLegacyId, now)
         val legacyItemId = db.listItemDao().insert(
             ListItem(listId = listId, text = "weekly trash day", repeatKind = "WEEKLY", repeatEvery = 1, createdAt = now, updatedAt = now),
         )
@@ -104,6 +106,55 @@ class EngineDataMigrationWave1CutoverTest {
         assertTrue(
             "the skip must no longer be findable under the stale legacy id",
             db.listItemSkipDao().skippedDatesForItem(legacyItemId).isEmpty(),
+        )
+    }
+
+    @Test
+    fun `an already-correct engine-keyed skip is never misdirected by an id-space collision with an unrelated legacy row`() = runBlocking {
+        // Senior review, 2026-08-24 (should-fix 1): rekeySkipsToEngineIds must check liveness
+        // against the Notes engine record type BEFORE ever consulting the legacy table - otherwise
+        // an already-correct, post-cutover, engine-keyed skip whose itemId numerically collides
+        // with an UNRELATED legacy list_items id gets misdirected onto that unrelated row.
+        val now = System.currentTimeMillis()
+        val schema = NotesAspectSeeder.ensureSeeded(context)
+
+        // A real Notes engine record for "item A", created directly (not via the legacy copier) -
+        // the `records` table's own AUTOINCREMENT sequence gives it id 1, its very first row.
+        val store = com.kevin.legion.engine.RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+        val created = store.create(
+            recordTypeId = schema.recordTypeId,
+            fieldValues = mapOf(
+                schema.fieldIds.getValue(NotesAspectSeeder.FIELD_TEXT) to "item A",
+                schema.fieldIds.getValue(NotesAspectSeeder.FIELD_DONE) to false,
+            ),
+            provenance = com.kevin.legion.data.local.RecordProvenance.USER,
+            now = now,
+        )
+        val engineIdA = (created as com.kevin.legion.engine.RecordStore.WriteResult.Success).recordId
+
+        // A skip already correctly keyed to item A's real engine id - exactly what a post-cutover
+        // NotesController.skipOccurrence would have written.
+        val skipDate = now
+        db.listItemSkipDao().insert(ListItemSkip(itemId = engineIdA, skippedDate = skipDate))
+
+        // An UNRELATED legacy item B - `list_items`' own AUTOINCREMENT sequence is independent of
+        // `records`', so its very first row ALSO gets id 1, forcing the collision this test exists
+        // to exercise.
+        val listId = seedList()
+        val legacyItemBId = db.listItemDao().insert(
+            ListItem(listId = listId, text = "item B", createdAt = now, updatedAt = now),
+        )
+        assertEquals("the fixture only proves anything if the two id spaces genuinely collide", engineIdA, legacyItemBId)
+
+        EngineDataMigrationWave1.catchUpOnce(context)
+
+        // The skip must still be found under item A's real engine id, completely undisturbed - not
+        // rekeyed onto whatever item B's own guid happened to resolve to (or orphaned as a false
+        // negative because item B's syncId matched nothing).
+        assertEquals(
+            "an already-correct skip must never be touched by the legacy-lookup path at all",
+            listOf(skipDate),
+            db.listItemSkipDao().skippedDatesForItem(engineIdA),
         )
     }
 }

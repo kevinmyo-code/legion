@@ -50,7 +50,7 @@ class NotesControllerTest {
         assertTrue(NotesController.itemById(context, oneOff.id)!!.done)
 
         val recurring = NotesController.addItem(context, list.id, "recurring")
-        val withRepeat = NotesController.setRepeat(context, recurring, RepeatRule.Daily(1), RepeatEnd.Never)
+        val withRepeat = NotesController.setRepeat(context, recurring, RepeatRule.Daily(1), RepeatEnd.Never)!!
         assertFalse(NotesController.tick(context, withRepeat))
         assertFalse(NotesController.itemById(context, recurring.id)!!.done)
     }
@@ -59,15 +59,46 @@ class NotesControllerTest {
     fun `setTime then setPlaceTrigger enforces at most one trigger`() = runBlocking {
         val list = NotesController.theList(context)
         val item = NotesController.addItem(context, list.id, "errand")
-        val timed = NotesController.setTime(context, item, System.currentTimeMillis() + 3_600_000, null, true)
+        val timed = NotesController.setTime(context, item, System.currentTimeMillis() + 3_600_000, null, true)!!
         assertTrue(timed.startsAt != null)
 
-        val placed = NotesController.setPlaceTrigger(context, timed, "work")
+        val placed = NotesController.setPlaceTrigger(context, timed, "work")!!
         assertNull("setting a place trigger must clear any time trigger", placed.startsAt)
         assertEquals("work", placed.triggerPlaceLabel)
 
-        val backToTime = NotesController.setTime(context, placed, System.currentTimeMillis() + 7_200_000, null, true)
+        val backToTime = NotesController.setTime(context, placed, System.currentTimeMillis() + 7_200_000, null, true)!!
         assertNull("setting a time trigger must clear any place trigger", backToTime.triggerPlaceLabel)
+    }
+
+    // -------------------------------------------------------------- outcome-verb honesty (should-fix 3)
+
+    @Test
+    fun `setTime returns null rather than a stale item when the record does not exist`() = runBlocking {
+        val list = NotesController.theList(context)
+        val item = NotesController.addItem(context, list.id, "will be deleted")
+        assertTrue(NotesController.removeItem(context, item))
+
+        // The record is now trashed - RecordStore.update refuses a write against a trashed record
+        // (RecordStore.WriteResult.Failure), so this must surface as null, never a silently-unchanged
+        // ListItem that looks like the write succeeded.
+        val result = NotesController.setTime(context, item, System.currentTimeMillis() + 3_600_000, null, true)
+        assertNull("a write against a trashed record must fail, not silently succeed", result)
+    }
+
+    @Test
+    fun `removeItem returns false for an already-removed item, never a false success`() = runBlocking {
+        val list = NotesController.theList(context)
+        val item = NotesController.addItem(context, list.id, "one-time delete")
+        assertTrue("the first delete must genuinely trash the record", NotesController.removeItem(context, item))
+        assertFalse("a second delete of an already-trashed record must report failure, not success", NotesController.removeItem(context, item))
+    }
+
+    @Test
+    fun `tick returns false for an already-removed item, never a false success`() = runBlocking {
+        val list = NotesController.theList(context)
+        val item = NotesController.addItem(context, list.id, "gone before ticking")
+        NotesController.removeItem(context, item)
+        assertFalse("ticking a trashed record must fail honestly", NotesController.tick(context, item))
     }
 
     @Test
@@ -130,7 +161,7 @@ class NotesControllerTest {
     fun `skipOccurrence keys ListItemSkip by the engine record id`() = runBlocking {
         val list = NotesController.theList(context)
         val item = NotesController.addItem(context, list.id, "weekly trash day")
-        val withRepeat = NotesController.setRepeat(context, item, RepeatRule.Weekly(1, setOf(java.time.DayOfWeek.MONDAY)), RepeatEnd.Never)
+        val withRepeat = NotesController.setRepeat(context, item, RepeatRule.Weekly(1, setOf(java.time.DayOfWeek.MONDAY)), RepeatEnd.Never)!!
         val skipDate = System.currentTimeMillis()
 
         NotesController.skipOccurrence(context, withRepeat, skipDate)

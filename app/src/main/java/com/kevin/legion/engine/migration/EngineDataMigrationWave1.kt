@@ -1,6 +1,7 @@
 package com.kevin.legion.engine.migration
 
 import android.content.Context
+import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.engine.RecordStore
@@ -227,7 +228,24 @@ object EngineDataMigrationWave1 {
      * A skip whose legacy item or matching engine record cannot be found (deleted, or never
      * migrated - e.g. it belonged to a tombstoned `ListItem` wave 1 deliberately never copied) is
      * left alone rather than guessed at; its occurrence-skip is lost, the same accepted cost wave
-     * 1's own "does not copy tombstoned rows" scope cut already accepted for the item itself.
+     * 1's own "does not copy tombstoned rows" scope cut already accepted for the item itself -
+     * logged via [com.kevin.legion.MidnightEvents.skipRekeyOrphaned] rather than silently dropped,
+     * so the owed on-device run can actually see whether this ever fires for real data.
+     *
+     * **Senior review, 2026-08-24 (BLOCKING-adjacent should-fix): re-run safety comes FIRST, before
+     * any legacy lookup at all.** `catchUpOnce` only ever forces a rescan once (its own completion
+     * marker), so in the ordinary case this function runs exactly once and every skip it sees is
+     * still legacy-keyed. But `[itemId] already resolves to a live Notes-aspect EngineRecord` is not
+     * merely "already rekeyed" - it is also true for a skip written by [copyNotesIfNeeded]'s own
+     * *retry* path, or by any future manual re-run, where `itemId` is a perfectly correct ENGINE id
+     * that happens to numerically collide with an UNRELATED row's legacy `list_items.id` (two
+     * independent `AUTOINCREMENT` sequences have no reason not to agree on a number). The old
+     * ordering - legacy lookup first, "does the resolved engine id already equal itemId" second -
+     * could not tell "already correct" apart from "coincidentally looks correct against the wrong
+     * legacy row" and would misdirect the skip onto that wrong row's engine record. Checking
+     * liveness against the Notes record type BEFORE ever touching the legacy table closes that: an
+     * itemId that already IS a live Notes engine record id is accepted immediately, unconditionally,
+     * with no legacy row read at all.
      */
     private suspend fun rekeySkipsToEngineIds(context: Context) {
         val db = CarDatabase.getDatabase(context)
@@ -235,10 +253,24 @@ object EngineDataMigrationWave1 {
         val skipDao = db.listItemSkipDao()
         val itemDao = db.listItemDao()
         val engineDao = db.engineRecordDao()
+        val notesRecordTypeId = NotesAspectSeeder.ensureSeeded(context).recordTypeId
 
         for (skip in skipDao.allActive()) {
-            val legacyItem = itemDao.getById(skip.itemId) ?: continue
-            val engineRecord = engineDao.getByGuid(legacyItem.syncId) ?: continue
+            val alreadyLive = engineDao.getById(skip.itemId)
+            if (alreadyLive != null && alreadyLive.deletedAt == null && alreadyLive.recordTypeId == notesRecordTypeId) {
+                continue // itemId is already a live Notes engine record id - never consult the legacy table for this row
+            }
+
+            val legacyItem = itemDao.getById(skip.itemId)
+            if (legacyItem == null) {
+                MidnightEvents.skipRekeyOrphaned(skip.id, skip.itemId, "no legacy list_items row found")
+                continue
+            }
+            val engineRecord = engineDao.getByGuid(legacyItem.syncId)
+            if (engineRecord == null) {
+                MidnightEvents.skipRekeyOrphaned(skip.id, skip.itemId, "legacy item's syncId has no matching engine record")
+                continue
+            }
             if (engineRecord.id == skip.itemId) continue // already points at the right id (re-run safety)
             skipDao.rekeyItemId(skip.id, engineRecord.id, now)
         }
