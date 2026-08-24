@@ -8,7 +8,7 @@ status-detail: "Resolved 2026-08-24. Ten Roborazzi baselines on the A25 profile,
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Screenshot tests: the phone's eyes in the suite

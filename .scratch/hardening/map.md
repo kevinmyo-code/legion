@@ -5,7 +5,7 @@ charted: 2026-08-24
 charted-by: "Kevin + Fable"
 effort: "`.scratch/hardening/`"
 tickets: 4
-open: 3
+open: 1
 status: open
 tags: [map]
 ---
@@ -29,6 +29,9 @@ for the sync channel only; local Room stays primary regardless.
 ## Decisions so far
 
 - [Screenshot tests](issues/01-ui-screenshot-tests.md) - ten baselines live in the JVM suite; DeckGrid graphicsLayer capture limitation named.
+
+- [Sync channel v2](issues/02-sync-channel-v2.md) - **Supabase, BYO project, sync + push**; every push must pass the compulsion test; supersedes xlsx-as-channel when built.
+- [Encryption at rest](issues/04-encryption-at-rest.md) - platform encryption accepted on the record; ADR owed.
 
 ## Not yet specified
 
