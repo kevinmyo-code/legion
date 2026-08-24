@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 35,
-    "identityHash": "238c8364e8c11609d6130402762546ab",
+    "version": 36,
+    "identityHash": "81b5895a479346546df0079dad00d072",
     "entities": [
       {
         "tableName": "service_records",
@@ -4095,11 +4095,35 @@
             "createSql": "CREATE INDEX IF NOT EXISTS `index_widget_instances_deviceId` ON `${TABLE_NAME}` (`deviceId`)"
           }
         ]
+      },
+      {
+        "tableName": "muted_reminders",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`recordId` INTEGER NOT NULL, `mutedAt` INTEGER NOT NULL, PRIMARY KEY(`recordId`))",
+        "fields": [
+          {
+            "fieldPath": "recordId",
+            "columnName": "recordId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mutedAt",
+            "columnName": "mutedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "recordId"
+          ]
+        }
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '238c8364e8c11609d6130402762546ab')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '81b5895a479346546df0079dad00d072')"
     ]
   }
 }
