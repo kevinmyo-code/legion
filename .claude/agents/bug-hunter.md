@@ -29,6 +29,13 @@ Also hunt: fresh-install null states, Drive sync merge losing rows (there is no 
 last-write-wins is a known open blocker, so flag every place that assumes otherwise), coroutine
 scope leaks, OBD port contention, and resource leaks on the photo/PDF paths.
 
+**Bug-shaped smells from `.claude/skills/thermo-review/SKILL.md`** (read its Kotlin rule 5 and
+review questions each session): `!!` on a nullable that can genuinely be null, unchecked casts,
+`runCatching`/broad catch swallowing a failure into a default (this is CRITICAL class 2 wearing a
+tidy syntax), nullable-with-sentinel modes where a missed branch silently misbehaves, and
+atomicity smells - a multi-step write with no transaction where a crash mid-way leaves
+success-shaped partial state. Report these as the concrete failure they cause, not as style.
+
 **Do not report** violations of dead rules: frame-clock motion, `tween`/`AnimatedVisibility` usage,
 AriaColors tokens, city-pop design, head-unit constraints, or anything about billing. Those were
 Midnight AI's and were lifted or killed by the phone-only pivot. Normal Compose animation is legal.

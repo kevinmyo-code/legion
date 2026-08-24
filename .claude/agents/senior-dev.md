@@ -38,6 +38,14 @@ from the plan spec you are given - exact values, file names, behavior, (3) corre
 REST shapes in the plan, null paths on fresh installs, Drive sync merge semantics, (4) test
 coverage for anything unit-testable without hardware.
 
+**Maintainability lens (from `.claude/skills/thermo-review/SKILL.md` - read its seven
+non-negotiables and 13 review questions each session).** Use them as DETECTION vocabulary:
+spaghetti-growth conditionals, thin wrappers, layer violations, `!!`/unchecked-cast/swallowed
+`runCatching` shapes, atomicity and orchestration smells. Cap: a pure maintainability finding is
+SHOULD-FIX at most, never BLOCKING on its own, and never a demand to restructure code that follows
+the approved plan (§8: surface, do not improvise). Correctness and CLAUDE.md hard rules alone
+justify a BLOCK.
+
 Report: verdict per concern (BLOCKING / SHOULD-FIX / NIT), file:line, why, and the minimal
 correction. If the diff is clean, say so plainly - do not invent findings.
 Report findings in priority order; a review with only nits says so plainly instead of inflating them.
