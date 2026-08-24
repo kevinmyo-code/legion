@@ -16,6 +16,31 @@ interface LedgerTransactionDao {
     @Query("SELECT * FROM ledger_transactions WHERE accountId = :accountId ORDER BY txnDate DESC")
     suspend fun getForAccount(accountId: String): List<LedgerTransaction>
 
+    /**
+     * Every ledger row, unconditionally, oldest-first by `id` (statement/insert order - see
+     * [latestBalanceCents]'s doc comment for why `id` tracks file order). Added for
+     * [com.kevin.legion.engine.migration.EngineDataMigrationWave3] - a plain additive `@Query`, no
+     * schema/version change, same shape as `PantryReceiptDao.getAll()` added for Wave 2. Ordering by
+     * `id` (not `txnDate`) is deliberate: it gives the migration a deterministic, repeatable pass
+     * order across retries even though it has no bearing on correctness (the copier's own per-row
+     * `guid` idempotency check does not care about order).
+     */
+    @Query("SELECT * FROM ledger_transactions ORDER BY id ASC")
+    suspend fun getAll(): List<LedgerTransaction>
+
+    /**
+     * The exact set of [LedgerTransaction.syncId] values currently live in the legacy table -
+     * [com.kevin.legion.engine.migration.EngineDataMigrationWave3]'s delete-reconciliation pass
+     * reads this to find which previously-migrated [com.kevin.legion.data.local.RecordProvenance.UNRECONCILED]
+     * engine records no longer have a legacy row behind them (deleted by
+     * [deleteSupersededProvisional], [deletePendingById], or a replace-flow's
+     * [deleteBySourceFileId]) and must be trashed to keep CLAUDE.md §4 rule 7's "can never outlive
+     * or double-count against the verified row that supersedes it" guarantee true of the ENGINE
+     * copy too, not just the legacy table it was copied from.
+     */
+    @Query("SELECT syncId FROM ledger_transactions")
+    suspend fun allSyncIds(): List<String>
+
     /** Most recent transactions across all accounts, for `list_recent_transactions`. */
     @Query("SELECT * FROM ledger_transactions ORDER BY txnDate DESC LIMIT :limit")
     suspend fun getRecent(limit: Int): List<LedgerTransaction>

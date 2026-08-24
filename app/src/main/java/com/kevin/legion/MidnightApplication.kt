@@ -202,6 +202,23 @@ class MidnightApplication : Application() {
                     .onFailure { MidnightEvents.appStartWorkFailed("migrate_pantry_wave2", it) }
             }
 
+            // Wave 3 of the aspect-engine migration (`.scratch/aspect-engine/issues/21-migration-waves.md`):
+            // seeds the built-in Ledger aspect, then copies existing LedgerTransaction rows onto the
+            // engine (see EngineDataMigrationWave3's own doc comment - same two-layer idempotency as
+            // Waves 1/2, plus a delete-reconciliation pass every call, including the fast path, so
+            // CLAUDE.md §4 rule 7's "an UNRECONCILED row can never outlive the verified row that
+            // supersedes it" keeps holding on the ENGINE copy too, not just the legacy table).
+            // ADDITIVE-ONLY for the copy half: never touches ledger_transactions/ingested_files,
+            // which stay the live read/write path for `ledger/LedgerController`,
+            // `ledger/IngestPipeline`, and every existing ledger voice tool until this aspect's own
+            // cutover wave (ticket 14 point 2). Wired in from this wave's first landing (Wave 2's
+            // senior review MUST-FIX 1: a migration with zero call sites cannot run on a real
+            // device), same appScope.launch + runCatching isolation as every block in this section.
+            appScope.launch {
+                runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave3.copyLedgerIfNeeded(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("migrate_ledger_wave3", it) }
+            }
+
             // Ticket 04's label rule (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`):
             // the retired "this car" sentinel is a magic value masquerading as user data, and the
             // two rows carrying it are both archived and invisible today - which is exactly why
