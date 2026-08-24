@@ -83,3 +83,7 @@ app/src/debug/assets/midnight_import/
 # They churn on every run of obsidian_sync.py / voice_guide.py and mean nothing to anyone.
 __pycache__/
 *.pyc
+
+# tools/evals/ per-run transcripts and reports - one JSON file per case per run, every run
+# on demand against a real key. Reproducible from the suites + a fingerprint, not source.
+tools/evals/runs/
