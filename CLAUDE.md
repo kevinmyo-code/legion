@@ -78,9 +78,9 @@ If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins 
 - **Aspects:**
   | Aspect | What it is | State |
   |---|---|---|
-  | fleet | OBD, car, maintenance, drives | Ported from Midnight AI, compiles |
-  | ledger | Bank-statement ingestion | Ported from Project Andromeda, done, 11 tests |
-  | pantry | Grocery receipt photo ingestion + macro estimates | New design work, done, 8 tests |
+  | fleet | OBD, car, maintenance, drives | Ported from Midnight AI, compiles, **engine-native since the 2026-08-24 cutover** (anchors derive from a single row, no independent duplicate) |
+  | ledger | Bank-statement ingestion | Ported from Project Andromeda, done, **engine-native since the 2026-08-24 cutover** (`IngestPipeline.commit` writes through `RecordStore`, rule-7 supersession atomic with the insert) |
+  | pantry | Grocery receipt photo ingestion + macro estimates | New design work, done, **engine-native since the 2026-08-24 cutover** (reconciliation anchors persist on the engine record itself) |
 - **Repo:** `C:\Users\Kwin\StudioProjects\legion` (second machine: `C:\Users\kevin\AndroidStudioProjects\legion`), public, `github.com/kevinmyo-code/legion`.
   Package `com.kevin.legion`. Clean history, seeded 2026-07-31 by copying surviving Midnight AI
   source.
@@ -144,7 +144,7 @@ repeat. Commit map and ticket changes like any other file.
 | Voice AI | Gemini Live WebSocket STS | `service/GeminiLiveSession.kt`, server VAD, half-duplex |
 | Sub-agents | Gemini Flash REST | `ai/SubAgent.kt`, one-shot + bounded investigate loop; now also takes an optional inline image part (`imageBytes`/`imageMimeType`) for pantry vision |
 | BYO key | Paste + 1-token validation ping | Ping is `ai/GeminiKeyValidator.kt` (`VALID`/`INVALID_KEY`/`NETWORK_ERROR`); storage is `ai/KeyVault.kt` (Keystore AES/GCM) via `CompanionProfile.saveGeminiKey`; resolution is `ai/GeminiKeyProvider.kt`. Direct to Google, no proxy |
-| Local DB | Room **v34** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). 53 entities, chain complete through `MIGRATION_33_34` (the aspect-engine tables, 2026-08-23); all real verbatim generated-SQL migrations with `exportSchema` |
+| Local DB | Room **v37** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). 60 entities (verified by counting `::class` in `CarDatabase.kt`'s `entities = [...]`), chain complete through `MIGRATION_36_37` (`records.guid`, the cross-device identity column, 2026-08-24); all real verbatim generated-SQL migrations with `exportSchema` |
 | OBD | ELM327 Bluetooth RFCOMM + BLE | Unchanged from Midnight AI |
 | Music | Spotify App Remote as the SPINE (`media/SpotifyController`, connection held in the FGS - ADR 0032) + Web API name resolution (`media/SpotifyWebApi`, own library first) + generic MediaSession transport fallback (`media/MusicController`) | BYO Spotify client ID (ADR 0033). `MusicRouter`/`MusicSource`/mixtapes all retired |
 | Location | Android `Geocoder` | The Mapbox-backed `NavGeocoder`, embedded nav, and the phone-to-head-unit GPS beacon are all gone |
@@ -208,7 +208,7 @@ anchored to external, falsifiable reality.
 
 ---
 
-## 5. Data Layer (Room v34)
+## 5. Data Layer (Room v37)
 
 Additive migrations only, verbatim generated SQL, `exportSchema = true`, schema JSON committed
 under `app/schemas/`, no destructive fallback on upgrade.
@@ -220,10 +220,21 @@ under `app/schemas/`, no destructive fallback on upgrade.
   every row is LLM-extracted by construction, so it would always read the same value.
 - **v4** - `ingested_files` + DAO (the per-file ingestion ledger, ticket 03).
 - **v5** - `companion_profiles` + DAO.
-- **v6 through v34** - not listed here (v34 is the aspect-engine core: `aspects`, `record_types`, `field_defs`, `records`, `widget_instances`, 2026-08-23; the engine's only writer is `engine/RecordStore.kt`). `data/local/Migrations.kt` is the authority, and the entity
-  roster grouped by aspect is in `docs/architecture/c3-data.md`. **CORRECTED 2026-08-18:** this
-  section said v21 for weeks while the code was at v25, and `CarDatabase.kt`'s own KDoc still says
-  15 in one place. Read the code before quoting a version.
+- **v6 through v34** - not listed here (v34 is the aspect-engine core: `aspects`, `record_types`, `field_defs`, `records`, `widget_instances`, 2026-08-23; the engine's only writer is `engine/RecordStore.kt`).
+- **v35** - `widget_instances` gains `gridRow`/`gridCol`/`rowSpan`/`colSpan` (the pager's grid
+  mechanics, aspect-engine ticket 09).
+- **v36** - `muted_reminders` (aspect-engine ticket 19, the Dates aspect build; a reminder mute is
+  its own tiny table rather than a column on `records` - see `MutedReminder`'s own doc comment).
+- **v37** - `records.guid`, a `TEXT NOT NULL DEFAULT ''` column plus a real per-row backfill plus a
+  unique index, the cross-device identity column senior review of the mirror/sync ticket flagged
+  as a MUST-FIX (a per-database `AUTOINCREMENT` id was being matched across two independent
+  phones). 2026-08-24.
+
+`data/local/Migrations.kt` is the authority, and the entity roster grouped by aspect is in
+`docs/architecture/c3-data.md`. **CORRECTED 2026-08-18, and again 2026-08-24:** this section said
+v21 for weeks while the code was at v25, then said v34 while the code was at v37, and
+`CarDatabase.kt`'s own KDoc still says 15 in one place. Read the code before quoting a version -
+`sed -n '/version = /p' data/local/CarDatabase.kt` is the one-line way to check.
 
 **Widening an enum stored as TEXT is not a migration.** `LedgerTransaction.ingestMethod` and
 friends are `TEXT NOT NULL` with no CHECK constraint, so adding a constant changes no SQL, leaves
@@ -235,29 +246,56 @@ with zero schema change. Confirm it the same way rather than assuming: read the 
 
 ## 6. Codebase Map
 
+**CORRECTED 2026-08-24.** This map went stale in two ways at once: it never got an `engine/`
+entry after the 2026-08-23 aspect-engine build, and its `ui/` line ("CLEAN SLATE... all
+placeholders") had been long false even before that - see §10, corrected 2026-08-18, for the
+same drift. `ui/` is 121 Kotlin files. Read the code before trusting a package list, this one
+included.
+
 ```
 app/src/main/java/com/kevin/legion/
 ├── ai/            AriaBrain, SubAgent (+ inline image part), AssistantIdentity (resolver) +
 │                  Personas (the ACTUAL register copy: ALFRED, DOROTHY), KeyVault, CrisisDetector,
 │                  OnboardingFlow, PersonaTraits (ORPHANED - see §10), Voices, ReflectionEngine
+├── engine/        THE SPINE (2026-08-24). RecordStore (the one write door), ReconciliationGate
+│                  (rehomed here from ledger/pantry-only), ComputedEvaluator, FieldConfig,
+│                  PayloadCodec, WidgetInstanceStore, DefaultArrangementSeeder, DeviceId;
+│                  dates/, fleet/, ledger/, notes/, pantry/, places/ (per-aspect engine adapters:
+│                  the copiers and cutover glue, not a second copy of each domain's old logic),
+│                  migration/ (the wave1-4 one-time copiers, still present, writer-less now),
+│                  mirror/ (xlsx export per aspect into the user's Drive folder - the audit
+│                  surface and the two-phone sync channel)
 ├── service/       AriaForegroundService, GeminiLiveSession, LiveSessionController, LiveToolbox,
-│                  WakeWordEngine, ProactiveBus, AmbientListener, GlanceCardController, Phase
-├── ledger/        LedgerController, LedgerStatementAgent, LedgerIngestResult, parsers/
-├── pantry/        PantryController, PantryReceiptAgent, PantryIngestResult
-├── vehicle/       fleet aspect: OBD stack, agents, maintenance, recaps, garage (Shelly)
+│                  EngineToolbox (the nine engine meta-tools + clerk + schema generator, folded
+│                  into LiveToolbox's declarations/dispatch), WakeWordEngine (live, Vosk-based -
+│                  AmbientListener was retired 2026-08-21 and no longer exists), ProactiveBus,
+│                  GlanceCardController, Phase
+├── ledger/        LedgerController (now a read/write bridge over engine/RecordStore, not the
+│                  table owner), LedgerStatementAgent, LedgerIngestResult, parsers/
+├── pantry/        PantryController (same bridge shape as ledger), PantryReceiptAgent, PantryIngestResult
+├── vehicle/       fleet aspect: OBD stack, agents, maintenance, recaps, garage (Shelly). Anchors
+│                  (odometer, service due) now derive from the engine via engine/fleet/
 ├── media/         MusicController, NowPlayingController, SpotifyController, SpotifyWebApi, VolumeController
 ├── location/      LocationController, PlaceController, ReminderController
-├── sync/          DriveAuth, DriveClient, SyncEngine, SyncMerge, SyncCodec, CompanionSync
-├── data/          PantryPhotoStore, local/ (Room)
+├── sync/          DriveAuth, DriveClient, SyncEngine, SyncMerge, SyncCodec, DatabaseSnapshot(Guard),
+│                  DriveConflict, SyncCapability - the LEGACY appDataFolder JSON sync. Separate
+│                  from engine/mirror/'s xlsx channel, which is the sync path going forward
+├── data/          EnginePhotoStore, PantryPhotoStore, MidnightImport, local/ (Room, v37)
 ├── weather/       WeatherController (Open-Meteo, keyless)
-├── ui/            CLEAN SLATE. MainActivity, SavedPlacesActivity, LedgerImportActivity,
-│                  PantryImportActivity, CameraCapture. All placeholders except CameraCapture
-└── util/          Dates
+├── ui/            NOT a clean slate - mission-control design language shipped and verified
+│                  on-device (see §10). MainActivity is the ONLY Activity; its NavHost start
+│                  destination is DASHBOARD (the widget pager), with "Classic" one tap away to
+│                  the per-aspect screens. widgets/ (the pager itself), generated/ (list/detail/
+│                  form screens driven by field defs), grid/ (preset sizes, launcher semantics),
+│                  plus theme/, common/, and one folder per aspect
+└── util/          AppSigning, Dates, Units
 ```
 
 **Build:**
 - `./gradlew compileDebugKotlin -Pnokey` - compile without a baked-in key (the honest first-run path)
-- `./gradlew testDebugUnitTest` - unit tests (19 across ledger + pantry, all green as of 2026-07-31)
+- `./gradlew testDebugUnitTest` - unit tests (2,530 across the whole suite, green both with and
+  without a baked Gemini key, verified 2026-08-24. The old "19 across ledger + pantry" figure was
+  from 2026-07-31, before fleet, engine, and everything since)
 - `./gradlew assembleDebug` - build
 
 **Setup:** `local.properties` needs `sdk.dir` and optionally `GEMINI_API_KEY` for a convenience dev
@@ -485,8 +523,11 @@ read next run (`.claude/agents/*.md`, this file). Ledger: `memory/library/lesson
 
 Stated so nobody treats these as gaps to panic about or as silently-missing work:
 
-- ~~**Almost all of `ui/`.**~~ **STALE, corrected 2026-08-18.** `ui/` holds 87 Kotlin files and the design language IS chosen: mission control, built and verified on the phone. See
-  `docs/adr/0023-design-language-mission-control.md`.
+- ~~**Almost all of `ui/`.**~~ **STALE, corrected 2026-08-18, count refreshed 2026-08-24.** `ui/`
+  holds 121 Kotlin files and the design language IS chosen: mission control, built and verified on
+  the phone, now hosting a widget-pager dashboard as the app's home screen. See
+  `docs/adr/0023-design-language-mission-control.md` and
+  `docs/adr/0037-the-aspect-engine-is-the-spine.md`.
 - **Onboarding UI.** `ai/OnboardingFlow.kt` ported, but its identity clause is placeholder and the
   conversational onboarding screen that hosts it does not exist.
 - ~~**The assistant's actual voice.**~~ **DONE, corrected 2026-08-16** - see §1. `Personas.kt`
@@ -503,9 +544,14 @@ Stated so nobody treats these as gaps to panic about or as silently-missing work
 - **Ledger categorization / FX / insights.** Nothing to port; new design work.
 - **Pantry consumption-rate tracking and spend/nutrition aggregation.** Deliberately deferred at
   scoping time, same shape as ledger's insight layers.
-- **`LedgerController` dedup and `PantryController` DB-write paths are untested** (Robolectric
-  `ShadowContentResolver` mismatch, judged not worth chasing - the queries underneath are simple
-  and inspectable).
+- ~~**`LedgerController` dedup and `PantryController` DB-write paths are untested.**~~ **STALE,
+  corrected 2026-08-24.** Both cutovers (2 and 3) closed this: `PantryControllerTest` and
+  `LedgerIngestPipelineEngineCommitTest`/`IngestPipelineEngineCommitTest` are real Robolectric
+  suites over the engine write path (CRUD reads, the gate's Success/Quarantine boundary, anchor
+  persistence, rule-7 supersession, a genuine post-gate write failure rolling back rather than
+  reporting false success) - the `ShadowContentResolver` gap that blocked this was worked around
+  by testing `PantryController.writeReceipt`/`IngestPipeline.commit` directly rather than through
+  the content-resolver-backed import entry points.
 - **Firebase.** Not wired up. `MidnightEvents` logs via `Log.d`.
 
 Two contested calls left open by the port, flagged not decided: whether `media/MusicController` is

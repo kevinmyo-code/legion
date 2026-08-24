@@ -26,7 +26,9 @@ https://github.com/user-attachments/assets/c32ebf9b-8f26-41fd-9167-d63e413733b6
 | Goals / Advisors | Budget and habit targets with a structured (schema-constrained) LLM advisor pass |
 | Music | Full Spotify voice control on the driver's own client ID: play by name resolved against their own library before the catalogue, a 20-action control surface (queue, like, follow, shuffle, seek, add-to-playlist, "more from this artist"), now-playing read from Spotify's own pushed player state, replayable history. Spotify App Remote creates the active device, so it is designed to work with the Spotify app closed |
 
-Six life domains plus music control, one voice loop. Tabs: Today, Money, Body, Fleet, Notes, Setup.
+Six life domains plus music control, one voice loop. Home is a widget dashboard (a pager of
+per-aspect cards backed live by the aspect engine); the classic per-domain screens (Today, Money,
+Body, Fleet, Notes, Setup) are one tap away behind a "Classic" button, not retired.
 
 ## What you can actually say to it
 
@@ -73,8 +75,10 @@ dashboard widgets, and voice CRUD - all from one schema definition.
 - **All six legacy domains migrated onto it** in four reviewed waves, each verified against the
   real device database - counts exact, provenance preserved (the ledger's seven provisional rows
   stayed provisional; a drifted maintenance anchor survived un-merged next to the observed
-  service that contradicts it). Cutover is underway aspect by aspect: notes and places are
-  served by the engine live today.
+  service that contradicts it). **Cutover is complete** (2026-08-24, five flips: notes+places,
+  pantry, ledger, fleet, and the home flip itself) - every aspect reads and writes through the
+  engine, the widget pager is the app's start destination, and the legacy tables are frozen
+  writer-less (kept for one soak period, not yet dropped).
 - **The data is legible outside the app**: one xlsx workbook per aspect mirrors into a
   user-picked Drive folder (hash-verified writes), doubling as the audit surface and the
   two-phone sync channel, with hand edits re-entering through a validating import gate.
@@ -133,7 +137,7 @@ extraction safe to use for money and health data at all, rather than a liability
                   descriptions the live          sub-agent's hands)
                   model saw)
                        |
-                  Room (SQLite, v26, additive-only migrations)
+                  Room (SQLite, v37, additive-only migrations)
                        |
         Drive appDataFolder sync (BYO account, no server)
 ```
@@ -151,7 +155,7 @@ extraction safe to use for money and health data at all, rather than a liability
   never happens.
 - **Sub-agents:** `ai/SubAgent.kt` - one-shot or bounded-investigate Gemini Flash calls, optional
   inline image part for vision (pantry receipts).
-- **Storage:** Room, currently schema v26. Every version bump is an additive, verbatim-SQL
+- **Storage:** Room, currently schema v37. Every version bump is an additive, verbatim-SQL
   migration with `exportSchema` on; no destructive fallback is used anywhere.
 - **Sync:** Google Drive `appDataFolder`, the user's own account, no server in between.
 - **Keys:** Gemini API key is pasted by the user, validated with a one-token ping, sealed in the
@@ -230,11 +234,11 @@ from it rather than maintained by hand.
 | Tool-block dispatcher split | Built, on-device; one dispatched write path (meal logging) broke on first real use and was fixed and re-verified same day. Write tools have since been moved back to direct declarations |
 | Spotify voice control (App Remote spine, 20-action surface, own-library-first playlists, replayable history) | Built and unit-tested, ten of twelve tickets merged. **Never run on a phone, and nothing in the Spotify layer has ever run against a real account** - the headline claim (playback with Spotify closed) is unverified |
 | Aspect engine + data migration | Room v37, four migration waves senior-reviewed and **verified against the real device database** - counts exact, provenance preserved, including seven provisional ledger rows staying provisional and a drifted maintenance anchor surviving un-merged |
-| Engine cutover | Notes and places served by the engine **live on-device today** (26 migrated + 14 engine-native rows verified, zero duplicates); pantry cutover in progress; ledger and fleet queued |
+| Engine cutover | **Complete, all five aspects, device-verified 2026-08-24.** Notes+places, pantry, ledger, and fleet all read/write through `engine/RecordStore.kt`; the widget pager is the app's start destination (`WidgetPagerActivity` deleted, folded into `MainActivity`). 569 active engine records, zero duplicate guids, Kevin's own verdict on the phone: "i like it". Legacy tables frozen writer-less, not yet dropped |
 | xlsx mirror / Drive | **Probed for real**: folder picked on-device, workbook written over SAF, read-back hash verified, opened from Drive. Two-phone round trip not yet exercised (second phone not updated) |
 | Eval harness | First real report exists: clerk/honesty/quarantine/grounding suites at 100% (N=1), tone-judge honestly WEAK at 73% on a genuine rubric ambiguity |
 | Screenshot tests | Ten Roborazzi baselines at the device's own 384x832dp profile, verifying inside the ordinary JVM suite |
-| Unit test suite | **2,484 tests, green both key ways** (with and without a baked Gemini key) |
+| Unit test suite | **2,530 tests, green both key ways** (with and without a baked Gemini key) |
 | Onboarding UI | Not built. The identity/system-prompt plumbing exists; no screen hosts it |
 | Wake word | Live - verified by ear on-device 2026-08-20 ("hey alfred" opens a turn); battery cost still unmeasured |
 | Google Drive sync | Built, never executed against real data - both devices have diverged locally with nothing to reconcile them yet |

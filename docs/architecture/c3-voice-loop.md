@@ -2,7 +2,7 @@
 title: C3 Voice loop
 level: c3
 tags: [architecture]
-verified: 2026-08-18
+verified: 2026-08-24
 ---
 
 # C3: The voice loop
@@ -54,6 +54,7 @@ The names are not self-explanatory and several are not where you would guess.
 | `service/LiveSessionController.kt` | **The conversation state machine and sole socket owner.** Three doors in: prewarm, start conversation, start proactive, all funnelled through one `newSession()` | Core |
 | `service/GeminiLiveSession.kt` | The WebSocket, the mic loop, the playback path. Emits `LiveEvent`s | Core |
 | `service/LiveToolbox.kt` | Every tool declaration and the single `dispatch()` entry | Core |
+| `service/EngineToolbox.kt` | The nine aspect-engine meta-tools (generic record CRUD over `RecordStore`) plus the Flash clerk and the Pro schema generator. Declarations folded into `LiveToolbox.declarations()`, dispatch tried first in `LiveToolbox.dispatch()` before the per-domain tools | Core, but merged in rather than standalone |
 | `ai/SubAgent.kt` | Bounded investigate loop over Gemini REST. Its tool calls replay through the *same* `dispatch()` | Core |
 | `ai/AriaBrain.kt` | **A context supplier, not a turn participant.** Called once per socket for the system instruction and the greeting context. Also backs the `remember` tool and memory recall | Yes, outside |
 | `service/Phase.kt` | `IDLE / CONNECTING / LISTENING / THINKING / SPEAKING`. Set through one method that writes status *before* phase, deliberately, then mirrors to `service/CompanionPhase.kt` so the Activity draws what the service drew | Cross-cutting |

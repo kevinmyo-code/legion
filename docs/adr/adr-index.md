@@ -49,6 +49,8 @@ Format and the test for whether something deserves an ADR:
 | 0033 | [[0033-byo-spotify-client-id\|BYO Spotify client ID satisfies clone-and-run]] | accepted | 2026-08-19 | - |
 | 0034 | [[0034-own-recommendation-engine\|Music discovery is built in-house; Spotify's is unavailable]] | accepted | 2026-08-19 | - |
 | 0035 | [[0035-every-voice-capability-has-a-hands-path\|Every voice capability has a non-voice path]] | accepted | 2026-08-22 | - |
+| 0036 | [[0036-platform-encryption-accepted\|Platform encryption accepted; SQLCipher rejected]] | accepted | 2026-08-24 | - |
+| 0037 | [[0037-the-aspect-engine-is-the-spine\|The aspect engine is the spine]] | accepted | 2026-08-24 | - |
 
 ## Superseded
 

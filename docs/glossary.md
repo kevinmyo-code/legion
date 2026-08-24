@@ -37,6 +37,20 @@ Terms are listed because they are load-bearing and easy to misread, not because 
 | **spend gate** | **two different things.** The LLM cost prompt ([[0016-llm-spend-gate-after-deterministic]]), and a retired Midnight AI access gate ([[0030-retired-carry-overs]]). Say which |
 | **twin transactions** | genuinely identical rows within one statement. Why dedup counts rather than tests | [[0015-dedup-counts-per-tuple]] |
 
+## The aspect engine
+
+| Term | Gloss | Defined in |
+|---|---|---|
+| **aspect engine** | the runtime metadata system (`aspects`/`record_types`/`field_defs`/`records`) that is now the app's spine. Not a per-domain table set - one generic store | [[0037-the-aspect-engine-is-the-spine]] |
+| **record type** | a user- or plugin-defined schema (e.g. "Transaction", "Workout") made of field defs. Defines a type, not an instance | `engine/FieldConfig.kt`, [[0037-the-aspect-engine-is-the-spine]] |
+| **field def** | one typed field on a record type (13 field types v1: text, number, money-cents, date, etc.) | `memory/library/decisions.md` 2026-08-23 |
+| **`RecordStore`** | `engine/RecordStore.kt`. The single write door for every engine record - reference integrity, delete policy, trash, computed fields | [[0037-the-aspect-engine-is-the-spine]] |
+| **provenance** *(engine sense)* | tagged per engine record same as ledger/pantry provenance, but the write path is now `RecordStore` rather than a per-aspect DAO | CLAUDE.md §4 rule 4, [[0037-the-aspect-engine-is-the-spine]] |
+| **widget pager / dashboard** | `ui/widgets/`, `LegionRoute.DASHBOARD`. The app's home screen since the 2026-08-24 home-flip cutover; "Classic" reaches the old per-aspect screens | [[0037-the-aspect-engine-is-the-spine]], `docs/architecture/cutover5-2026-08-24.md` |
+| **mirror** | the xlsx-per-aspect export into the user's own Drive folder (`engine/mirror/`) - the audit surface and the two-phone sync channel, not the legacy `sync/` mechanism | `memory/library/decisions.md` 2026-08-23 ticket 12/13 |
+| **meta-tools** | the nine generic voice tools (`service/EngineToolbox.kt`) that do CRUD/query over any record type, replacing most per-feature tools | `memory/library/decisions.md` 2026-08-23 ticket 06 |
+| **clerk** | the bounded Flash sub-agent behind the meta-tools that turns a loose voice request into a structured engine call. An executor, not a router | `memory/library/decisions.md` 2026-08-23 ticket 06 |
+
 ## Planning and process
 
 | Term | Gloss | Defined in |

@@ -2,7 +2,7 @@
 title: C2 Containers
 level: c2
 tags: [architecture]
-verified: 2026-08-18
+verified: 2026-08-24
 ---
 
 # C2: Containers
@@ -17,7 +17,7 @@ graph TB
         App["MidnightApplication<br/>process entry, appScope"]
 
         subgraph UI["Foreground, user-facing"]
-            MA["MainActivity<br/>the only Activity<br/>~20 NavHost destinations"]
+            MA["MainActivity<br/>the only Activity<br/>~20 NavHost destinations<br/>start destination: DASHBOARD (widget pager)"]
         end
 
         subgraph Services["Services"]
@@ -33,7 +33,8 @@ graph TB
         end
 
         subgraph State["Shared state, no DI container"]
-            Ctl["28 controllers<br/>27 are object singletons"]
+            Ctl["31 controllers<br/>30 are object singletons"]
+            Eng["engine/RecordStore<br/>the one write door for records"]
             Room["Room database<br/>legion_database"]
             Sync["SyncEngine<br/>process-lifetime scope"]
         end
@@ -48,6 +49,8 @@ graph TB
     LIS --> Ctl
     RX --> Ctl
     Ctl --> Room
+    Ctl --> Eng
+    Eng --> Room
     Sync --> Room
 ```
 
@@ -56,7 +59,7 @@ graph TB
 | Container | Entry point | Why it exists separately |
 |---|---|---|
 | `MidnightApplication` | `MidnightApplication.kt` | Process entry. Owns `appScope`, a `SupervisorJob` on IO that lives as long as the process. Runs the one-time `data/MidnightImport.kt` |
-| `MainActivity` | `ui/MainActivity.kt` | The **only** Activity. One `NavHost`, routes as string constants in `ui/LegionRoute.kt`. Also hosts the Spotify OAuth token exchange, deliberately above the NavHost so a recomposition cannot lose it |
+| `MainActivity` | `ui/MainActivity.kt` | The **only** Activity. One `NavHost`, routes as string constants in `ui/LegionRoute.kt`, start destination `DASHBOARD` (the widget pager, folded in at the 2026-08-24 home-flip cutover - `WidgetPagerActivity` no longer exists as a separate Activity). Also hosts the Spotify OAuth token exchange, deliberately above the NavHost so a recomposition cannot lose it |
 | `AriaForegroundService` | `service/AriaForegroundService.kt` | The voice loop. Owns `LiveSessionController`, starts Vosk, runs the health, arrival, drive and recap monitors. Also holds the Spotify App Remote connection for its whole life, deliberately - see [[0032-spotify-app-remote-spine]] |
 | `LedgerIngestService` | `service/LedgerIngestService.kt` | **Separate on purpose.** Folding it into `AriaForegroundService` would boot the entire voice assistant every time the Ledger tab opens. Goes foreground only inside `startScan`, not in `onCreate` |
 | `LegionMediaLibraryService` | `car/LegionMediaLibraryService.kt` | Exported media3 stub. Android Auto binds it cross-process. Probe stage |
@@ -88,12 +91,18 @@ whether or not the foreground service is alive, which is the point of it being a
 
 ## The controller layer
 
-28 controllers. **27 are Kotlin `object` singletons** - process-global, no DI, no ViewModel between
+31 controllers. **30 are Kotlin `object` singletons** - process-global, no DI, no ViewModel between
 them and Compose. The single exception is `LiveSessionController`, which is a `class`, instantiated
 exactly once, by `AriaForegroundService`.
 
 That is unusual enough to state plainly: **state lives in top-level singletons and Room, and the UI
 reads them directly.** If you are looking for the layer that mediates, there isn't one.
+
+**Since the 2026-08-24 cutover, most controllers no longer write their own legacy Room tables** -
+they call through to `engine/RecordStore.kt`, the class described above, which is a second and
+narrower exception to "everything is a singleton": it is instantiated (not a global `object`)
+because it is threaded with a `CarDatabase` instance rather than reaching for one itself. See
+[[c3-data]]'s "aspect engine" section.
 
 Full roster grouped by aspect: [[c3-data]].
 

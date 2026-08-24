@@ -4512,3 +4512,38 @@ Resolutions opened build tickets 16-21 in the same commit (engine core, voice su
 pager + generated screens, Dates aspect, mirror + sync, migration waves). Open frontier after
 resolution: prototypes 07 (clerk latency) and 09 (grid mechanics), task 15 (freeze superseded
 tickets across other maps), build 16 (engine core, unblocked).
+
+## 2026-08-24 - The cutover arc: five decisions in one day
+
+`.scratch/aspect-engine/issues/22-cutover-per-aspect.md` was the last open build ticket from the
+2026-08-23 engine build: cut every legacy aspect OVER to the engine, one at a time,
+senior-reviewed and device-verified before the next. Five flips landed and were approved on the
+phone the same day (Kevin: *"i like it"*). Full detail per flip:
+`docs/architecture/cutover{1..5}-2026-08-24.md`.
+
+1. **Notes + Places go engine-native** (cutover1). No legacy write path existed to retire for
+   these two - they were mid-build when the engine landed, so this flip is closer to "finish"
+   than "migrate."
+2. **Pantry cutover** (cutover2). Receipt ingestion now commits through `RecordStore`; the
+   reconciliation gate's anchors (stated totals) persist on the engine record itself rather than
+   a separate legacy column.
+3. **Ledger cutover** (cutover3). `IngestPipeline.commit` writes through `RecordStore` inside one
+   `db.withTransaction`; rule 7's provisional-row supersession moved into that same transaction,
+   so a commit and its supersession are now atomic together where they were two independent
+   writes before.
+4. **Fleet cutover** (cutover4). Anchors (odometer, service due) derive from a single row, which
+   makes aspect-engine ticket 29's two-anchor drift scenario dead by construction, not merely
+   detected.
+5. **The home flip** (cutover5). `LegionRoute.DASHBOARD` (the widget pager) becomes
+   `MainActivity`'s start destination; `WidgetPagerActivity` deleted as a standalone Activity and
+   folded in; "Classic" and every per-aspect full-screen button keep the old screens one tap away.
+
+Result: Room v37 (`records.guid` added at `MIGRATION_36_37` for cross-device identity, senior
+review MUST-FIX 1), 569 active engine records, zero duplicate guids, legacy tables frozen
+writer-less but not dropped (one soak period first, per the same caution every wave used). Known
+named gap carried forward: the widget pager's generated list/detail/form screens do not navigate
+on tap yet (zero callers). Two ADRs recorded the standing consequences:
+[[0036-platform-encryption-accepted]] (Kevin, same day: accept Android FBE + Keystore, reject
+SQLCipher - threat model is two adults, no untrusted third party, and SQLCipher would tax the
+pulled-DB debugging workflow this project has repeatedly relied on to find real bugs) and
+[[0037-the-aspect-engine-is-the-spine]] (the cutover arc's standing architectural outcome).

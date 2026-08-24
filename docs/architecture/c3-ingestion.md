@@ -2,7 +2,7 @@
 title: C3 Ingestion
 level: c3
 tags: [architecture]
-verified: 2026-08-18
+verified: 2026-08-24
 ---
 
 # C3: Ingestion and the gate
@@ -60,6 +60,22 @@ Rules 6 and 7 are the two that were learned the hard way. Rule 6 exists because 
 statement prints interest rows in a different shape, all four silently failed to match, and the
 section check reconciled zero parsed rows against a printed $0.00 and passed. It held only because
 interest happened to be zero that month.
+
+**Since [[cutover3-2026-08-24]] (2026-08-24), the gate's own logic above is unchanged, but where its
+result LANDS is not: `ledger/IngestPipeline.kt`'s `commit` writes through `engine/RecordStore.kt`
+(one `Transaction` record per row, `RecordStore.create`) instead of `LedgerTransactionDao.insertAll`,
+and rule 7's supersession (trashing a superseded `UNRECONCILED` row) now happens inside that same
+`db.withTransaction` rather than as a separate legacy-table delete - so a commit and its
+supersession are atomic together, where before they were two independent writes. `LedgerController`
+is now a read/write bridge over the engine rather than the owner of its own table.**
+
+## Money as engine payload, not a schema column
+
+The reconciliation gate's money-as-`Long`-cents rule ([[0007-money-as-long-cents]]) survives the
+cutover unchanged, but its home moved: cents live inside `EngineRecord.payload` (JSON), typed by
+the `Transaction` record type's field defs, not as a dedicated `INTEGER` column the way
+`LedgerTransaction.amountCents` was. `PayloadCodec` is what serialises and deserialises it; nothing
+about the gate's exactness requirement changed, only where the verified number is stored.
 
 ## Ledger
 
