@@ -5,7 +5,7 @@ charted: 2026-08-24
 charted-by: "Kevin + Fable"
 effort: "`.scratch/hardening/`"
 tickets: 4
-open: 4
+open: 3
 status: open
 tags: [map]
 ---
@@ -27,6 +27,8 @@ android-testing, gradle-build-performance. Ticket 02 REOPENS a locked section-2 
 for the sync channel only; local Room stays primary regardless.
 
 ## Decisions so far
+
+- [Screenshot tests](issues/01-ui-screenshot-tests.md) - ten baselines live in the JVM suite; DeckGrid graphicsLayer capture limitation named.
 
 ## Not yet specified
 
