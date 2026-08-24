@@ -1,3 +1,5 @@
+
+
 # LEGION
 
 LEGION is a study in trusted autonomy on commodity hardware: a voice-commanded agent system
@@ -9,6 +11,8 @@ entirely on the phone and the user's own Google Drive.
 
 Solo-developer project. Public repo, private-use scale (two phones, one household). Read as a
 portfolio piece, not a product.
+
+https://github.com/user-attachments/assets/c32ebf9b-8f26-41fd-9167-d63e413733b6
 
 ## What it does today
 
@@ -233,7 +237,6 @@ open gap, not a hypothetical one - it is the reason the sync architecture is des
 
 ## Provenance
 
-LEGION was pivoted from a private, single-purpose car-launcher predecessor on 2026-07-31: a
 clean-history copy of only the code worth keeping, re-scoped from a head-unit product to a
 phone-only assistant with no commercial model. The fleet domain is a direct port; ledger and
 pantry are largely new design work built around the reconciliation gate. Everything before that
