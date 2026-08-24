@@ -4,7 +4,7 @@ ticket: "21"
 title: "Migration waves: every aspect onto the engine"
 type: task
 status: claimed
-status-detail: "Wave 1 (notes/lists/places) MERGED and VERIFIED on the A25 2026-08-23: Notes 12/12, Places 3/3 live rows copied exactly, tombstones excluded, old tables untouched. Kevin ruled one Notes aspect. Waves 2-4 (pantry, ledger, fleet) remain."
+status-detail: "Waves 1 AND 2 merged and VERIFIED on the A25 2026-08-23. Wave 2: 3/3 receipts, 26/26 line items, all LLM_RECONCILED, byte-faithful (the sum-vs-total gap is legacy tax, verified then discarded at ingestion - NOT a migration defect). Follow-up owed at pantry cutover: persist subtotal/tax/other so the gate invariant is re-checkable post-hoc. Waves 3-4 (ledger, fleet) remain."
 blockers: ["17", "18", "19", "20"]
 blocked-by: ["[[17-build-voice-surface]]", "[[18-build-widget-pager]]", "[[19-build-dates-aspect]]", "[[20-build-mirror-sync]]"]
 open-blockers: 3
