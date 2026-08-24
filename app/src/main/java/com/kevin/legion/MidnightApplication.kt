@@ -168,6 +168,23 @@ class MidnightApplication : Application() {
                     .onFailure { MidnightEvents.appStartWorkFailed("arm_dates_reminder", it) }
             }
 
+            // Wave 1 of the aspect-engine migration (`.scratch/aspect-engine/issues/21-migration-waves.md`):
+            // seeds the built-in Notes and Places aspects, then copies existing ListItem/TaggedPlace
+            // rows onto the engine (see EngineDataMigrationWave1's own doc comment for the two-layer
+            // idempotency this rests on - a SharedPreferences completion flag per domain plus a
+            // per-row guid check, so a crash partway through never duplicates a row on retry).
+            // ADDITIVE ONLY: never touches the legacy tables, which stay the live read/write path for
+            // every existing screen and voice tool until this aspect's own cutover wave (ticket 14
+            // point 2). Two independent runCatching calls, same L12 "independent failure mode"
+            // reasoning as the Dates block above - a Notes copy failure must never cost Places, or
+            // vice versa.
+            appScope.launch {
+                runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave1.copyNotesIfNeeded(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("migrate_notes_wave1", it) }
+                runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave1.copyPlacesIfNeeded(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("migrate_places_wave1", it) }
+            }
+
             // Ticket 04's label rule (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`):
             // the retired "this car" sentinel is a magic value masquerading as user data, and the
             // two rows carrying it are both archived and invisible today - which is exactly why
