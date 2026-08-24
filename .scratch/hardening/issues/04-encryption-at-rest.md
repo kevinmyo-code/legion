@@ -8,7 +8,7 @@ status-detail: "Resolved 2026-08-24 (Kevin). Platform encryption accepted; ADR o
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Encryption at rest: decide it on the record

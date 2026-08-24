@@ -58,6 +58,31 @@ generated from `LiveToolbox.kt`, so a tool that exists is on the page or the bui
 
 <!-- VOICE-SURFACE:END -->
 
+## The aspect engine: a personal-life ERP
+
+As of 2026-08-24 the app's spine is a runtime **aspect engine** - the same shape Salesforce uses
+for custom objects, arrived at independently: fixed metadata tables (`aspects`, `record_types`,
+`field_defs`, `records`), never runtime DDL. A user can say *"make me a workouts aspect with
+exercise, weight and reps"* and get a typed record store, generated list/detail/form screens,
+dashboard widgets, and voice CRUD - all from one schema definition.
+
+- **One write door.** `engine/RecordStore.kt` is the only writer of records; it enforces
+  reference integrity, per-field delete policies (deleting a car with service history *refuses*,
+  in words), a 30-day trash, and computed-field materialization. Thirteen field types; money is
+  integer cents inside the payload.
+- **All six legacy domains migrated onto it** in four reviewed waves, each verified against the
+  real device database - counts exact, provenance preserved (the ledger's seven provisional rows
+  stayed provisional; a drifted maintenance anchor survived un-merged next to the observed
+  service that contradicts it). Cutover is underway aspect by aspect: notes and places are
+  served by the engine live today.
+- **The data is legible outside the app**: one xlsx workbook per aspect mirrors into a
+  user-picked Drive folder (hash-verified writes), doubling as the audit surface and the
+  two-phone sync channel, with hand edits re-entering through a validating import gate.
+- **The voice layer collapsed** from per-feature tools toward nine generic meta-tools plus a
+  bounded executor sub-agent, and prompt-rule obedience is now measured, not hoped: an on-demand
+  eval harness scores honesty, quarantine speech, and grounding per prompt version, and ten
+  Roborazzi screenshot baselines guard the UI in the ordinary JVM suite.
+
 ## The trust architecture
 
 The reconciliation gate is the core rule (full text: `CLAUDE.md` §4). It is what makes LLM
@@ -204,9 +229,14 @@ from it rather than maintained by hand.
 | Pantry receipt ingestion | Unit-tested against canned model output; DB write path not covered by the test suite (Robolectric content-resolver gap) |
 | Tool-block dispatcher split | Built, on-device; one dispatched write path (meal logging) broke on first real use and was fixed and re-verified same day. Write tools have since been moved back to direct declarations |
 | Spotify voice control (App Remote spine, 20-action surface, own-library-first playlists, replayable history) | Built and unit-tested, ten of twelve tickets merged. **Never run on a phone, and nothing in the Spotify layer has ever run against a real account** - the headline claim (playback with Spotify closed) is unverified |
-| Unit test suite | **1747 tests, green.** An earlier known-failing pair (`BioDigestBuilderTest`) has been fixed |
+| Aspect engine + data migration | Room v37, four migration waves senior-reviewed and **verified against the real device database** - counts exact, provenance preserved, including seven provisional ledger rows staying provisional and a drifted maintenance anchor surviving un-merged |
+| Engine cutover | Notes and places served by the engine **live on-device today** (26 migrated + 14 engine-native rows verified, zero duplicates); pantry cutover in progress; ledger and fleet queued |
+| xlsx mirror / Drive | **Probed for real**: folder picked on-device, workbook written over SAF, read-back hash verified, opened from Drive. Two-phone round trip not yet exercised (second phone not updated) |
+| Eval harness | First real report exists: clerk/honesty/quarantine/grounding suites at 100% (N=1), tone-judge honestly WEAK at 73% on a genuine rubric ambiguity |
+| Screenshot tests | Ten Roborazzi baselines at the device's own 384x832dp profile, verifying inside the ordinary JVM suite |
+| Unit test suite | **2,484 tests, green both key ways** (with and without a baked Gemini key) |
 | Onboarding UI | Not built. The identity/system-prompt plumbing exists; no screen hosts it |
-| Wake word | Blocked - the Vosk model asset was never actually added to the repo, only documented |
+| Wake word | Live - verified by ear on-device 2026-08-20 ("hey alfred" opens a turn); battery cost still unmeasured |
 | Google Drive sync | Built, never executed against real data - both devices have diverged locally with nothing to reconcile them yet |
 | Master proactive kill switch | Two of the app's proactive paths (`AmbientListener`, `TelephonyController`) currently bypass the shared gate, so the master switch cannot yet silence everything it is meant to |
 | Android Auto surface | Installed, never plugged into a head unit |

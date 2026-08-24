@@ -19,9 +19,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
-| [[.scratch/hardening/map\|hardening]] | [[02-sync-channel-v2\|02]] | grilling | Sync channel v2: op-log journal or a BYO backend |
 | [[.scratch/hardening/map\|hardening]] | [[03-pre-migration-backup\|03]] | task | Automatic backup before any schema migration |
-| [[.scratch/hardening/map\|hardening]] | [[04-encryption-at-rest\|04]] | grilling | Encryption at rest: decide it on the record |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
@@ -120,7 +118,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/goal-plans/map\|goal-plans]] | 9 | 8 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 33 | 11 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
-| [[.scratch/hardening/map\|hardening]] | 4 | 3 | [[.scratch/hardening/hardening.canvas\|open]] |
+| [[.scratch/hardening/map\|hardening]] | 4 | 1 | [[.scratch/hardening/hardening.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |

@@ -8,7 +8,7 @@ status-detail: "Resolved 2026-08-24 (Kevin). Supabase, BYO project per household
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Sync channel v2: op-log journal or a BYO backend
