@@ -1,0 +1,35 @@
+{
+  "nodes": [
+    {
+      "id": "9f8933aa4067c301",
+      "type": "file",
+      "file": ".scratch/ai-craft/issues/01-eval-harness.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "9a625f66f396c26c",
+      "type": "file",
+      "file": ".scratch/ai-craft/issues/02-semantic-recall.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "cb86ff33f0a5f4a8",
+      "type": "file",
+      "file": ".scratch/ai-craft/issues/03-durable-jobs.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": []
+}

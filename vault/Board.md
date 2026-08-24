@@ -13,6 +13,9 @@ Open tickets whose blockers are all resolved.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
+| [[.scratch/ai-craft/map\|ai-craft]] | [[01-eval-harness\|01]] | task | The eval harness: prompt obedience becomes a number |
+| [[.scratch/ai-craft/map\|ai-craft]] | [[02-semantic-recall\|02]] | task | Semantic recall: embeddings in a Room column |
+| [[.scratch/ai-craft/map\|ai-craft]] | [[03-durable-jobs\|03]] | task | Durable jobs: agent work that survives process death |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[22-cutover-per-aspect\|22]] | task | Cutover per aspect: the engine becomes the read and write path |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
@@ -100,6 +103,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 
 | Map | Tickets | Open | Canvas |
 |---|---|---|---|
+| [[.scratch/ai-craft/map\|ai-craft]] | 3 | 3 | [[.scratch/ai-craft/ai-craft.canvas\|open]] |
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
