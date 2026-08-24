@@ -100,13 +100,16 @@ class FleetEngineStoreTest {
     @Test
     fun `an OBSERVED insert that matches only ONE axis of the ASSERTED anchor does NOT supersede it - the both-axes rule`() = runBlocking {
         FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change"))
-        // The Jeep's real incident shape: a dateless anchor at 227,483 mi.
+        // The Jeep's real incident shape: a dateless anchor at 227,483 mi, stated NOW (real wall
+        // clock) - the most-recently-stated fact on file for this service.
         FleetEngineStore.setAnchor(context, "V1", "Oil Change", mileage = 227_483, date = null, now = System.currentTimeMillis())
         val assertedGuid = com.kevin.legion.engine.fleet.FleetRecordBridge.assertedAnchorGuid("V1", "Oil Change")
 
         // A DIFFERENT, coincidentally-mileage-matching event that does NOT actually back the same
         // anchor on every axis it states is irrelevant here since the anchor states only mileage -
         // so use a genuinely mismatched mileage instead, matching the carve doc's own regression case.
+        // Its own "now" is the OLDER service date (1_692_000_000_000L, 2023), never the wall clock -
+        // insertObserved's own create call passes the service's own date as the row's `now`.
         FleetEngineStore.insertObserved(context, "V1", "Oil Change", mileage = 227_374, date = 1_692_000_000_000L, costCents = null)
 
         val asserted = db.engineRecordDao().getByGuid(assertedGuid)!!
@@ -114,6 +117,39 @@ class FleetEngineStoreTest {
             "a mismatched mileage must NOT trash the anchor - ticket 29's dateless 227,483 anchor " +
                 "must survive alongside a disagreeing OBSERVED row, both facts stated, never silently reconciled",
             asserted.deletedAt,
+        )
+
+        // Senior review MUST-FIX (2026-08-24): projectAnchor derives BOTH axes from the single
+        // most-recently-stated row, never a cross-row blend. The ASSERTED anchor was stated at real
+        // wall-clock "now" (2026); the OBSERVED row's own clock is the older service date it
+        // actually happened on (2023) - so the ASSERTED row is still the most recent fact on file,
+        // and the derived anchor must be EXACTLY its own two axes: 227,483 mi, no date. It must
+        // NEVER read as (227,483 mi, 1_692_000_000_000L) - that pairing was never asserted by any
+        // single write, only fabricated by taking the max of each axis independently, which is
+        // exactly the bug this fix removes.
+        val derived = FleetEngineStore.get(context, "V1", "Oil Change")!!
+        assertEquals("the derived mileage is the most-recent row's OWN mileage", 227_483, derived.lastDoneMileage)
+        assertNull(
+            "the derived date must be the most-recent row's OWN null, never borrowed from the older OBSERVED row's real date",
+            derived.lastDoneDate,
+        )
+    }
+
+    @Test
+    fun `the derived anchor's date is null when the most-recently-stated row is dateless, even though an older row has a real date`() = runBlocking {
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Coolant Flush"))
+        // An older, dated, real event.
+        FleetEngineStore.insertObserved(context, "V1", "Coolant Flush", mileage = 210_000, date = 1_650_000_000_000L, costCents = null)
+        // A NEWER assertion that states only a mileage - "I think it was done again around
+        // 215,000" - with no date attached, stated at real wall-clock now.
+        FleetEngineStore.setAnchor(context, "V1", "Coolant Flush", mileage = 215_000, date = null, now = System.currentTimeMillis())
+
+        val derived = FleetEngineStore.get(context, "V1", "Coolant Flush")!!
+
+        assertEquals("the newer, dateless row's own mileage wins outright", 215_000, derived.lastDoneMileage)
+        assertNull(
+            "the newer row's own null date must stand - never silently backfilled from the older dated row",
+            derived.lastDoneDate,
         )
     }
 

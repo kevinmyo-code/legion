@@ -180,20 +180,34 @@ object FleetRecordBridge {
 
     /**
      * "Records are the events. The clock is a projection of them, plus an explicit override" -
-     * ticket 29's own framing, applied per axis rather than per row: the mileage anchor is the
-     * HIGHEST mileage stated by any `ServiceHistory` row (`OBSERVED` or `ASSERTED`) for this
-     * service - an odometer only ever goes up, so the highest stated mileage is the most recent real
-     * knowledge regardless of which row happens to carry it - and the date anchor is independently
-     * the LATEST date stated by any row. The two axes are allowed to come from DIFFERENT rows,
-     * exactly mirroring the legacy schema's own two independently-settable columns
-     * (`MaintenanceItemDao.setAnchor` always wrote both together, but nothing ever required them to
-     * have originated from the same write). A vehicle with no history for this service on either
-     * axis reports `null, null` - genuinely unknown, not zero.
+     * ticket 29's own framing, applied PER ROW, never per axis (senior review, 2026-08-24,
+     * MUST-FIX). The anchor is BOTH axes of the single MOST-RECENTLY-STATED `ServiceHistory` row
+     * (`OBSERVED` or `ASSERTED` alike) for this service - "most recently stated" meaning the row
+     * with the greatest [EngineRecord.updatedAt], which is exactly the moment its own last write
+     * (a fresh log, or a `setAnchor`/`setNeverDone` edit) actually landed. Both fields come from
+     * THAT ONE row, including a null - a dateless row that is nonetheless the most recent one on
+     * file yields a dateless anchor, never a date borrowed from an older row.
+     *
+     * **The prior version of this function independently took the highest mileage across ALL rows
+     * and the latest date across ALL rows, allowing the two axes to come from two DIFFERENT rows.**
+     * That is exactly the cross-fact pairing [VehicleController.mergeBackfillAnchors]'s own
+     * anti-pairing rule exists to forbid - its doc comment states the reasoning this function must
+     * honour too: "pairing it with the fresh mileage would assert a fact nobody stated." Fabricating
+     * a joint (mileage, date) pair that no single write ever actually asserted together is not a
+     * derived fact, it is an invented one - the same failure shape CLAUDE.md §4 rule 6 names for a
+     * reconciliation gate ("a check that passes when nothing parsed is not a gate"), here applied to
+     * a projection instead of an extraction. This function now mirrors the LEGACY behaviour
+     * EXACTLY: `MaintenanceItemDao.setAnchor` always overwrote both anchor columns together in one
+     * UPDATE, so the row's live state was always whatever the LAST write fully stated, never a
+     * blend of two different writes' individual fields - selecting the single most-recently-updated
+     * row and taking both its fields wholesale reproduces that same last-write-wins-with-no-blending
+     * contract over N rows instead of one mutable pair of columns.
+     *
+     * A vehicle with no history for this service reports `null, null` - genuinely unknown, not zero.
      */
     fun projectAnchor(historyForThisService: List<EngineRecord>, shFieldIds: Map<String, Long>): Pair<Int?, Long?> {
-        val mileage = historyForThisService.mapNotNull { serviceHistoryMileage(it, shFieldIds) }.maxOrNull()
-        val date = historyForThisService.mapNotNull { serviceHistoryDate(it, shFieldIds) }.maxOrNull()
-        return mileage to date
+        val mostRecent = historyForThisService.maxByOrNull { it.updatedAt } ?: return null to null
+        return serviceHistoryMileage(mostRecent, shFieldIds) to serviceHistoryDate(mostRecent, shFieldIds)
     }
 
     /**
