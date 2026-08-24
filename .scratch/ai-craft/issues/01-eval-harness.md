@@ -3,12 +3,12 @@ map: ai-craft
 ticket: "01"
 title: "The eval harness: prompt obedience becomes a number"
 type: task
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-08-24. Built and run for real the same night: clerk/honesty/quarantine/grounding all 100 percent at N=1; tone_judge 73 percent WEAK on judge disagreement over clause (d) - a finding, flagged to Kevin, not a harness bug."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The eval harness: prompt obedience becomes a number
@@ -31,3 +31,15 @@ Suites v1, each with pass criteria stated up front:
 
 Report format: per-suite pass rate, per-run transcripts kept, a one-line verdict per suite. Track
 against a prompts-fingerprint (hash of the prompt surfaces exercised) so results pin to versions.
+
+## Answer
+
+Built at tools/evals/ (Python, stdlib-only, on-demand on Kevin's key, never CI) and run for real
+2026-08-24. First report: clerk_crud, outcome_honesty, quarantine_speech, grounding all 100 percent
+(N=1); tone_judge 73 percent WEAK - the judge flagged clause (d) on three absence-referencing
+samples, a genuine ambiguity the disagreement-reporting design exists to surface, left unaveraged
+per the ticket. Reports pin to a prompts fingerprint over AriaBrain/Personas/EngineToolbox.
+Notable: Gemini rejects fabricated functionCall turns (missing thought_signature), so the honesty
+suites let the model make its own real tool call and feed back a canned failure - recorded as a
+SKILL for every future fixture. Tone ground-truth labels are the builder's reading of the
+compulsion test, not Kevin's - the (c)/(d) sample set is his to bless when he cares to.

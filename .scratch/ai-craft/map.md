@@ -5,7 +5,7 @@ charted: 2026-08-24
 charted-by: "Kevin + Fable"
 effort: "`.scratch/ai-craft/`"
 tickets: 3
-open: 3
+open: 2
 status: open
 tags: [map]
 ---
@@ -27,6 +27,9 @@ Kevin's key, never CI - key spend is his. Prior art to reuse: ticket 07's clerk 
 -vault research already ruled RAG/chunking out at LEGION's document sizes.
 
 ## Decisions so far
+
+- [The eval harness](issues/01-eval-harness.md) - shipped and run the same night; four suites at
+  100 percent, tone_judge WEAK at 73 on a real clause-(d) ambiguity flagged for Kevin.
 
 ## Not yet specified
 
