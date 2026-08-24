@@ -3,8 +3,8 @@ map: aspect-engine
 ticket: "21"
 title: "Migration waves: every aspect onto the engine"
 type: task
-status: open
-status-detail: ""
+status: claimed
+status-detail: "Wave 1 (notes/lists/places) MERGED and VERIFIED on the A25 2026-08-23: Notes 12/12, Places 3/3 live rows copied exactly, tombstones excluded, old tables untouched. Kevin ruled one Notes aspect. Waves 2-4 (pantry, ledger, fleet) remain."
 blockers: ["17", "18", "19", "20"]
 blocked-by: ["[[17-build-voice-surface]]", "[[18-build-widget-pager]]", "[[19-build-dates-aspect]]", "[[20-build-mirror-sync]]"]
 open-blockers: 3
