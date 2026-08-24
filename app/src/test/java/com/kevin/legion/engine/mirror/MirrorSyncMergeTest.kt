@@ -7,10 +7,13 @@ import com.kevin.legion.data.local.FieldType
 import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.data.local.RecordType
 import com.kevin.legion.engine.FieldConfig
+import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.RecordStore
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -21,14 +24,20 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 
 /**
- * Merge-semantics coverage for [MirrorSync] (ticket 20 item 6: "merge semantics (latest-updatedAt
- * wins, local-newer survives, remote-delete trashes...) all through a fake store"). "Fake store"
- * here means exactly what [RecordStoreTest] already establishes for the engine itself: a real,
- * Robolectric-backed [CarDatabase]/[RecordStore], with hand-built [MirrorCodec.ParsedRecordRow]
- * values standing in for what [MirrorCodec] would have parsed out of a real xlsx - there is no SAF,
- * no [MirrorStore], no real Drive folder anywhere in this file. [mergeRecordSheet] itself is marked
- * `internal` for exactly this reason: it is the one piece of [MirrorSync] worth exercising directly,
- * without going through [MirrorSync.exportNow]'s SAF-dependent orchestration.
+ * Merge-semantics coverage for [MirrorSync] (ticket 20 item 6, updated by senior review MUST-FIX 1:
+ * "merge semantics (latest-updatedAt wins, local-newer survives, remote-delete trashes, foreign-guid
+ * creates...) all through a fake store"). "Fake store" here means exactly what [RecordStoreTest]
+ * already establishes for the engine itself: a real, Robolectric-backed [CarDatabase]/[RecordStore],
+ * with hand-built [MirrorCodec.ParsedRecordRow] values standing in for what [MirrorCodec] would have
+ * parsed out of a real xlsx - there is no SAF, no [MirrorStore], no real Drive folder anywhere in
+ * this file. [mergeRecordSheet] itself is marked `internal` for exactly this reason: it is the one
+ * piece of [MirrorSync] worth exercising directly, without going through [MirrorSync.exportNow]'s
+ * SAF-dependent orchestration.
+ *
+ * **Keyed by guid, never by local id** (senior review MUST-FIX 1) - every row this file builds
+ * carries a [MirrorCodec.ParsedRecordRow.guid], and every lookup [mergeRecordSheet] does is by guid
+ * ([com.kevin.legion.data.local.EngineRecordDao.getByGuid]), matching the fix this file's own tests
+ * exist to confirm.
  */
 @RunWith(RobolectricTestRunner::class)
 class MirrorSyncMergeTest {
@@ -70,26 +79,27 @@ class MirrorSyncMergeTest {
     }
 
     private fun row(
-        recordId: Long?,
+        guid: String?,
         updatedAt: Long?,
         fieldValues: Map<Long, Any?>,
         parseErrors: Map<Long, String> = emptyMap(),
+        provenance: RecordProvenance? = null,
     ) = MirrorCodec.ParsedRecordRow(
         rowNumber = 1,
-        recordId = recordId,
+        guid = guid,
         createdAt = updatedAt,
         updatedAt = updatedAt,
-        provenance = null,
+        provenance = provenance,
         provenanceReadOnly = false,
         fieldValues = fieldValues,
         fieldParseErrors = parseErrors,
         unmappedHeaders = emptyList(),
     )
 
-    // ---- create --------------------------------------------------------------------------------
+    // ---- create: blank guid ----------------------------------------------------------------------
 
     @Test
-    fun `a row with no id and real content is created`() = runBlocking {
+    fun `a row with no guid and real content is created with a freshly minted guid`() = runBlocking {
         val aspectId = aspect()
         val typeId = recordType(aspectId)
         val fieldId = textField(typeId)
@@ -103,6 +113,52 @@ class MirrorSyncMergeTest {
         assertTrue(outcome.quarantined.isEmpty())
         val stored = db.engineRecordDao().activeByRecordType(typeId)
         assertEquals(1, stored.size)
+        assertTrue("a freshly created record must carry a real, non-blank guid", stored.single().guid.isNotBlank())
+    }
+
+    // ---- create: foreign guid, no local match (the exact case that was broken) -------------------
+
+    @Test
+    fun `a foreign guid with no local match is created locally, preserving the exact guid`() = runBlocking {
+        val aspectId = aspect()
+        val typeId = recordType(aspectId)
+        val fieldId = textField(typeId)
+        val fieldDefs = db.fieldDefDao().forRecordType(typeId)
+
+        // This guid was never created on THIS device - it stands in for a row exported by a
+        // different phone and imported here for the first time. The old, broken behaviour (keyed
+        // by local id) would have quarantined this as "record #<n> no longer exists locally" -
+        // wrong, since it never existed here under any number. The fix: a real CREATE.
+        val foreignGuid = "device-a-abc-123"
+        val sheet = MirrorCodec.ParsedRecordSheet(
+            typeId, "Item", listOf(row(foreignGuid, 5_000L, mapOf(fieldId to "from device A"))),
+        )
+        val outcome = sync.mergeRecordSheet(typeId, fieldDefs, sheet, MirrorStateStore.AspectSyncState())
+
+        assertEquals(1, outcome.created)
+        assertEquals(0, outcome.updated)
+        assertTrue("a foreign-guid create must never be quarantined", outcome.quarantined.isEmpty())
+
+        val stored = db.engineRecordDao().activeByRecordType(typeId).single()
+        assertEquals("the local copy must carry the SAME guid the foreign row stated, never a fresh one", foreignGuid, stored.guid)
+        assertEquals("from device A", PayloadCodec.readString(JSONObject(stored.payload), fieldId))
+    }
+
+    @Test
+    fun `a foreign guid row's own provenance column is preserved on create when present`() = runBlocking {
+        val aspectId = aspect()
+        val typeId = recordType(aspectId)
+        val fieldId = textField(typeId)
+        val fieldDefs = db.fieldDefDao().forRecordType(typeId)
+
+        val sheet = MirrorCodec.ParsedRecordSheet(
+            typeId, "Item",
+            listOf(row("foreign-reconciled-guid", 5_000L, mapOf(fieldId to "x"), provenance = RecordProvenance.DETERMINISTIC)),
+        )
+        sync.mergeRecordSheet(typeId, fieldDefs, sheet, MirrorStateStore.AspectSyncState())
+
+        val stored = db.engineRecordDao().activeByRecordType(typeId).single()
+        assertEquals(RecordProvenance.DETERMINISTIC, stored.provenance)
     }
 
     // ---- update: file newer wins ------------------------------------------------------------------
@@ -116,14 +172,54 @@ class MirrorSyncMergeTest {
         val id = (store.create(typeId, mapOf(fieldId to "old"), RecordProvenance.USER) as RecordStore.WriteResult.Success).recordId
         val existing = db.engineRecordDao().getById(id)!!
 
-        val sheet = MirrorCodec.ParsedRecordSheet(typeId, "Item", listOf(row(id, existing.updatedAt + 10_000, mapOf(fieldId to "new"))))
+        val sheet = MirrorCodec.ParsedRecordSheet(typeId, "Item", listOf(row(existing.guid, existing.updatedAt + 10_000, mapOf(fieldId to "new"))))
         val outcome = sync.mergeRecordSheet(typeId, fieldDefs, sheet, MirrorStateStore.AspectSyncState())
 
         assertEquals(1, outcome.updated)
         assertEquals(0, outcome.created)
         assertTrue(outcome.quarantined.isEmpty())
         val updated = db.engineRecordDao().getById(id)!!
-        assertEquals("new", com.kevin.legion.engine.PayloadCodec.readString(org.json.JSONObject(updated.payload), fieldId))
+        assertEquals("new", PayloadCodec.readString(JSONObject(updated.payload), fieldId))
+    }
+
+    // ---- both sides changed since the last export: the file's newer stated timestamp still wins ---
+
+    @Test
+    fun `both sides changed since the export stamp - the file's newer stated updatedAt wins outright`() = runBlocking {
+        // This is deliberately DIFFERENT from "a local record edited after the last export survives
+        // a stale file-side edit" below: there, the file row's updatedAt was NOT advanced (a plain
+        // Sheets hand edit). Here, the file row's updatedAt WAS legitimately advanced past the
+        // local record's own - the shape a SECOND DEVICE'S in-app edit produces, since that device's
+        // own RecordStore.update call really did bump its row's updatedAt before it was exported.
+        // mergeRecordSheet's own doc comment names this exact scenario as the case fileNewer must
+        // win regardless of localMovedSinceExport - this test asserts that branch directly.
+        val aspectId = aspect()
+        val typeId = recordType(aspectId)
+        val fieldId = textField(typeId)
+        val fieldDefs = db.fieldDefDao().forRecordType(typeId)
+        val id = (store.create(typeId, mapOf(fieldId to "original"), RecordProvenance.USER) as RecordStore.WriteResult.Success).recordId
+        val afterCreate = db.engineRecordDao().getById(id)!!
+        val exportStamp = afterCreate.updatedAt - 1 // export happened just before this record existed
+
+        // LOCAL side changes after the export stamp:
+        store.update(id, mapOf(fieldId to "local-change"), afterCreate.updatedAt + 1_000)
+        val afterLocalEdit = db.engineRecordDao().getById(id)!!
+
+        // FILE side ALSO changed since the export stamp, and with a genuinely newer updatedAt than
+        // local's current value - the other device's own edit, legitimately timestamped.
+        val sheet = MirrorCodec.ParsedRecordSheet(
+            typeId, "Item",
+            listOf(row(afterLocalEdit.guid, afterLocalEdit.updatedAt + 5_000, mapOf(fieldId to "remote-change"))),
+        )
+        val outcome = sync.mergeRecordSheet(
+            typeId, fieldDefs, sheet,
+            MirrorStateStore.AspectSyncState(lastExportAt = exportStamp),
+        )
+
+        assertEquals("the file's stated updatedAt was newer, so it must win even though local ALSO changed since export", 1, outcome.updated)
+        assertEquals(0, outcome.unchanged)
+        val after = db.engineRecordDao().getById(id)!!
+        assertEquals("remote-change", PayloadCodec.readString(JSONObject(after.payload), fieldId))
     }
 
     // ---- unchanged: identical content is a no-op regardless of stated timestamp -----------------
@@ -137,7 +233,7 @@ class MirrorSyncMergeTest {
         val id = (store.create(typeId, mapOf(fieldId to "same"), RecordProvenance.USER) as RecordStore.WriteResult.Success).recordId
         val existing = db.engineRecordDao().getById(id)!!
 
-        val sheet = MirrorCodec.ParsedRecordSheet(typeId, "Item", listOf(row(id, existing.updatedAt - 5_000, mapOf(fieldId to "same"))))
+        val sheet = MirrorCodec.ParsedRecordSheet(typeId, "Item", listOf(row(existing.guid, existing.updatedAt - 5_000, mapOf(fieldId to "same"))))
         val outcome = sync.mergeRecordSheet(typeId, fieldDefs, sheet, MirrorStateStore.AspectSyncState())
 
         assertEquals(0, outcome.updated)
@@ -165,7 +261,7 @@ class MirrorSyncMergeTest {
         // The file row still carries the STALE exported content, with no timestamp advance (a plain
         // hand edit never bumps updatedAt) - this is exactly the "content differs, timestamp doesn't
         // help" case this class's own doc comment describes.
-        val sheet = MirrorCodec.ParsedRecordSheet(typeId, "Item", listOf(row(id, afterCreate.updatedAt, mapOf(fieldId to "exported-value"))))
+        val sheet = MirrorCodec.ParsedRecordSheet(typeId, "Item", listOf(row(afterCreate.guid, afterCreate.updatedAt, mapOf(fieldId to "exported-value"))))
         val outcome = sync.mergeRecordSheet(
             typeId, fieldDefs, sheet,
             MirrorStateStore.AspectSyncState(lastExportAt = exportStamp),
@@ -174,7 +270,7 @@ class MirrorSyncMergeTest {
         assertEquals(0, outcome.updated)
         assertEquals(1, outcome.unchanged) // local wins, file content left unapplied
         val after = db.engineRecordDao().getById(id)!!
-        assertEquals("local-edit-after-export", com.kevin.legion.engine.PayloadCodec.readString(org.json.JSONObject(after.payload), fieldId))
+        assertEquals("local-edit-after-export", PayloadCodec.readString(JSONObject(after.payload), fieldId))
         assertEquals(afterLocalEdit.updatedAt, after.updatedAt)
     }
 
@@ -189,14 +285,14 @@ class MirrorSyncMergeTest {
         val id = (store.create(typeId, mapOf(fieldId to "reconciled-value"), RecordProvenance.DETERMINISTIC) as RecordStore.WriteResult.Success).recordId
         val existing = db.engineRecordDao().getById(id)!!
 
-        val sheet = MirrorCodec.ParsedRecordSheet(typeId, "Item", listOf(row(id, existing.updatedAt + 10_000, mapOf(fieldId to "hand-edited-value"))))
+        val sheet = MirrorCodec.ParsedRecordSheet(typeId, "Item", listOf(row(existing.guid, existing.updatedAt + 10_000, mapOf(fieldId to "hand-edited-value"))))
         val outcome = sync.mergeRecordSheet(typeId, fieldDefs, sheet, MirrorStateStore.AspectSyncState())
 
         assertEquals(0, outcome.updated)
         assertEquals(1, outcome.quarantined.size)
         assertTrue(outcome.quarantined.single().contains("read-only"))
         val after = db.engineRecordDao().getById(id)!!
-        assertEquals("reconciled-value", com.kevin.legion.engine.PayloadCodec.readString(org.json.JSONObject(after.payload), fieldId))
+        assertEquals("reconciled-value", PayloadCodec.readString(JSONObject(after.payload), fieldId))
     }
 
     @Test
@@ -208,7 +304,7 @@ class MirrorSyncMergeTest {
         val id = (store.create(typeId, mapOf(fieldId to "value"), RecordProvenance.DETERMINISTIC) as RecordStore.WriteResult.Success).recordId
         val existing = db.engineRecordDao().getById(id)!!
 
-        val sheet = MirrorCodec.ParsedRecordSheet(typeId, "Item", listOf(row(id, existing.updatedAt, mapOf(fieldId to "value"))))
+        val sheet = MirrorCodec.ParsedRecordSheet(typeId, "Item", listOf(row(existing.guid, existing.updatedAt, mapOf(fieldId to "value"))))
         val outcome = sync.mergeRecordSheet(typeId, fieldDefs, sheet, MirrorStateStore.AspectSyncState())
 
         assertEquals(1, outcome.unchanged)
@@ -354,5 +450,70 @@ class MirrorSyncMergeTest {
         )
         assertEquals(1, warnings.size)
         assertTrue(warnings.single().contains("New Field"))
+    }
+
+    // ---- round trip: created-on-A, imported to B, re-exported from B keeps the same guid ---------
+
+    @Test
+    fun `a record created on device A, imported to device B, re-exports from B with the SAME guid`() = runBlocking {
+        // "Device A": build a record purely as data (never written to THIS test's Room instance -
+        // there is only one CarDatabase in a Robolectric test, so "device A" is simulated by never
+        // calling RecordStore here, only by hand-building the EngineRecord/export shape exactly as
+        // MirrorSync.buildExport would have).
+        val aspectA = Aspect(id = 1, name = "Test", createdAt = 1000, updatedAt = 1000)
+        val recordTypeIdOnA = 10L
+        val fieldIdOnA = 100L
+        val recordTypeA = RecordType(id = recordTypeIdOnA, aspectId = 1, name = "Item", createdAt = 1000, updatedAt = 1000)
+        val fieldDefA = FieldDef(id = fieldIdOnA, recordTypeId = recordTypeIdOnA, name = "Note", type = FieldType.TEXT, position = 0, createdAt = 1000, updatedAt = 1000)
+        val guidFromA = "device-a-" + java.util.UUID.randomUUID().toString()
+        val recordFromA = com.kevin.legion.data.local.EngineRecord(
+            id = 777, // device A's own local id - must NEVER survive onto device B
+            recordTypeId = recordTypeIdOnA, createdAt = 1000, updatedAt = 2000,
+            provenance = RecordProvenance.USER, payload = JSONObject().put(fieldIdOnA.toString(), "born on A").toString(),
+            guid = guidFromA,
+        )
+        val exportFromA = MirrorCodec.MirrorAspectExport(
+            aspectA, listOf(MirrorCodec.MirrorRecordTypeExport(recordTypeA, listOf(fieldDefA), listOf(recordFromA))),
+        )
+        val bytesFromA = MirrorCodec.recordsToWorkbookBytes(exportFromA)
+
+        // "Device B": THIS test's real Room instance, with its OWN local schema (different local
+        // aspect/record-type/field ids on purpose - a real second phone would have its own
+        // AUTOINCREMENT sequence too). Parse A's bytes using device B's schema id mapping by feeding
+        // the parsed row straight into mergeRecordSheet, matching how MirrorSync.importAspectFile
+        // pairs a parsed sheet with the LOCAL fieldDefs of the matching record type.
+        val parsedFromA = MirrorCodec.workbookBytesToParsedWorkbook(bytesFromA)
+        val parsedRow = parsedFromA.recordSheets.single().rows.single()
+        assertEquals(guidFromA, parsedRow.guid)
+
+        val aspectIdOnB = aspect()
+        val typeIdOnB = recordType(aspectIdOnB, "Item")
+        val fieldIdOnB = textField(typeIdOnB, "Note") // a DIFFERENT local id than fieldIdOnA=100, by construction
+        assertNotEquals(fieldIdOnA, fieldIdOnB)
+        val fieldDefsOnB = db.fieldDefDao().forRecordType(typeIdOnB)
+
+        // Re-key the parsed row's fieldValues from A's field id to B's - MirrorSync itself does this
+        // implicitly because the _definitions sheet it reads back is keyed by NAME-matched fields
+        // recovered from the SAME workbook; here it is done explicitly since B's schema was built
+        // independently rather than round-tripped through a shared definitions sheet.
+        val rowOnB = parsedRow.copy(fieldValues = mapOf(fieldIdOnB to parsedRow.fieldValues.getValue(fieldIdOnA)))
+        val sheetOnB = MirrorCodec.ParsedRecordSheet(typeIdOnB, "Item", listOf(rowOnB))
+
+        val outcome = sync.mergeRecordSheet(typeIdOnB, fieldDefsOnB, sheetOnB, MirrorStateStore.AspectSyncState())
+        assertEquals(1, outcome.created)
+        assertTrue(outcome.quarantined.isEmpty())
+
+        val storedOnB = db.engineRecordDao().activeByRecordType(typeIdOnB).single()
+        assertEquals("the SAME guid device A assigned, never a fresh one", guidFromA, storedOnB.guid)
+        assertNotEquals("B's local id must be its own, never A's 777", 777L, storedOnB.id)
+
+        // Now re-export FROM B and confirm the guid survives the round trip unchanged.
+        val exportFromB = MirrorCodec.MirrorAspectExport(
+            Aspect(id = aspectIdOnB, name = "Test", createdAt = 1000, updatedAt = 1000),
+            listOf(MirrorCodec.MirrorRecordTypeExport(db.recordTypeDao().getById(typeIdOnB)!!, fieldDefsOnB, listOf(storedOnB))),
+        )
+        val reExportedFromB = MirrorCodec.workbookBytesToParsedWorkbook(MirrorCodec.recordsToWorkbookBytes(exportFromB))
+        val reExportedRow = reExportedFromB.recordSheets.single().rows.single()
+        assertEquals("re-exporting from B must carry the identical guid, not a new one", guidFromA, reExportedRow.guid)
     }
 }

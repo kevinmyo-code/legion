@@ -1408,3 +1408,51 @@ val MIGRATION_35_36 = object : Migration(35, 36) {
         )
     }
 }
+
+/**
+ * v36 -> v37: `records.guid`, the cross-device identity column - senior review of aspect-engine
+ * ticket 20 (mirror/sync), MUST-FIX 1. See [EngineRecord]'s own doc comment for the defect this
+ * fixes (a per-database `AUTOINCREMENT` id was being matched across two independent phones).
+ *
+ * Three steps, and they must run in this order:
+ * 1. `ALTER TABLE records ADD COLUMN guid TEXT NOT NULL DEFAULT ''` - matches
+ *    `@ColumnInfo(defaultValue = "''")` on [EngineRecord.guid] exactly (same
+ *    `TEXT NOT NULL DEFAULT ''` shape as `vehicles.engine`'s own precedent migration above), so
+ *    Room's post-migration schema validation sees the same default it expects at the SQL level.
+ *    SQLite requires a constant `DEFAULT` for an `ADD COLUMN` against a `NOT NULL` column - it
+ *    cannot itself express "a distinct random value per existing row" in the `ALTER TABLE`
+ *    statement, which is exactly why step 2 exists as a separate pass.
+ * 2. **Backfill**: `UPDATE records SET guid = <uuid-v4-shaped expression> WHERE guid = ''` -
+ *    every pre-existing row gets a REAL, DISTINCT identity, never left at the placeholder `''`
+ *    default (the review's explicit requirement: "no row is ever guid-less"). SQLite evaluates a
+ *    `SET` expression containing `random()`/`randomblob()` freshly for EACH row an `UPDATE`
+ *    touches (it is not a single value computed once for the whole statement), which is what
+ *    makes a plain correlated `UPDATE` sufficient to mint one distinct value per row without a
+ *    loop. The expression is not a certified RFC 4122 UUID (no version/variant bit registry
+ *    lookup, just the same shape) - it only needs to be effectively-unique within this table,
+ *    which 122 bits of `randomblob` easily is.
+ * 3. `CREATE UNIQUE INDEX` on `guid` - matches [EngineRecord]'s `Index(value = ["guid"], unique =
+ *    true)`, and doubles as [com.kevin.legion.data.local.EngineRecordDao.getByGuid]'s lookup index.
+ *
+ * No other table is touched, and this is the only schema change at this version - `createSql`
+ * shape (the `ADD COLUMN`/index text) confirmed against `vehicles.engine`'s and
+ * `advisor_advice.syncId`'s own existing `TEXT NOT NULL DEFAULT ''` precedent in this same file,
+ * per CLAUDE.md sec 5's "copy generated SQL verbatim" discipline - the exact generated
+ * `app/schemas/com.kevin.legion.data.local.CarDatabase/37.json` is committed alongside this file
+ * after a real `compileDebugKotlin -Pnokey` run, and [CarDatabaseMigration36To37Test] is the
+ * instrumented (compiled-not-run, see that test's own doc comment) confirmation.
+ */
+val MIGRATION_36_37 = object : Migration(36, 37) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `records` ADD COLUMN `guid` TEXT NOT NULL DEFAULT ''")
+        db.execSQL(
+            "UPDATE records SET guid = (" +
+                "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || " +
+                "substr(lower(hex(randomblob(2))), 2) || '-' || " +
+                "substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || " +
+                "lower(hex(randomblob(6)))" +
+                ") WHERE guid = ''"
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_records_guid` ON `records` (`guid`)")
+    }
+}

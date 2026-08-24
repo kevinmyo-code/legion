@@ -195,6 +195,9 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
+    // ProcessLifecycleOwner (aspect-engine ticket 20 MUST-FIX 2): real app-foreground/background
+    // triggers for MirrorSync, wired from MirrorLifecycleBinder / MidnightApplication.
+    implementation(libs.lifecycle.process)
     // Single-activity shell (ticket 07): bottom-nav tabs + absorbed sub-routes.
     implementation(libs.navigation.compose)
     // Not used directly by app code. Declared to raise navigation-compose's

@@ -32,20 +32,35 @@ import kotlinx.coroutines.sync.withLock
  * [RecordStore] write and it collapses a burst of edits into one export after
  * [DEBOUNCE_MILLIS] of quiet. [exportNow] runs immediately and is what `onStop`/app-background
  * should call directly (ticket 12 answer point 2: "debounced after writes plus on app background").
+ * **Both triggers are wired for real** (senior review MUST-FIX 2), not just reachable from the
+ * debug settings stub: [com.kevin.legion.engine.mirror.MirrorLifecycleBinder] subscribes
+ * [RecordStore.afterWrite] to [scheduleExport] and hooks [ProcessLifecycleOwner] to call
+ * [exportNow]/[importOnly] on background/foreground, registered from `MidnightApplication`.
  *
- * **Import runs on app foreground and after export** (ticket 13 answer: "offline is out of scope...
- * so import runs on app foreground and after export") - [importAll] is the entry point for both;
- * [exportNow] itself calls it afterward so a device that just pushed its own edits immediately picks
- * up whatever a SECOND device wrote to the same file since this device's last look.
+ * **Import now runs BEFORE export in every export pass** (senior review SHOULD-FIX 3, reversing the
+ * original order). The original shape wrote the workbook straight from Room's current state FIRST
+ * and only imported afterward - which means a hand edit made in Sheets since the last time this
+ * device looked was blind-overwritten by that first write, with the file's own read-back hash then
+ * matching itself, so the trailing import found nothing to merge and the edit was already gone.
+ * [exportAllAndImport] now calls [importAll] first (merging any pending hand edit or foreign-device
+ * change into Room), and only then exports Room's now-merged state - export can never again destroy
+ * content it has not looked at first. [importOnly] remains the separate app-FOREGROUND-only trigger
+ * (ticket 13: "import runs on app foreground and after export" - "after export" is now satisfied by
+ * every export pass importing internally rather than by a distinct trailing step).
  *
  * **The row-level merge is BINDING** (ticket 13's resolution, restated verbatim in ticket 20 item
- * 4): keyed by record id plus updatedAt, latest wins, never whole-file replace. See
- * [mergeRecordSheet]'s own doc comment for the concrete tie-breaking rule this class uses, which is
- * a deliberate, documented interpretation of "latest wins" against a real constraint the ticket
- * does not resolve for me - a hand edit made directly in Sheets never bumps the file's own
- * `updatedAt` cell (nothing in the spreadsheet does that automatically), so "the row's stated
- * timestamp" and "whether the row's content actually changed" are two different signals this class
- * has to reconcile, not one.
+ * 4): keyed by [com.kevin.legion.data.local.EngineRecord.guid] plus updatedAt, latest wins, never
+ * whole-file replace. **Keyed by guid, never by [com.kevin.legion.data.local.EngineRecord.id]**
+ * (senior review MUST-FIX 1) - `id` is a per-database `AUTOINCREMENT` sequence, so a record created
+ * on phone A and a completely unrelated record on phone B can share the same `id` by pure
+ * coincidence; matching on `id` either quarantined a foreign record forever (worded, wrongly, as "no
+ * longer exists locally" when it never existed there under that number to begin with) or could
+ * silently overwrite an unrelated local record. See [mergeRecordSheet]'s own doc comment for the
+ * concrete tie-breaking rule this class uses for "latest wins", which is a deliberate, documented
+ * interpretation of a real constraint the ticket does not resolve for me - a hand edit made directly
+ * in Sheets never bumps the file's own `updatedAt` cell (nothing in the spreadsheet does that
+ * automatically), so "the row's stated timestamp" and "whether the row's content actually changed"
+ * are two different signals this class has to reconcile, not one.
  *
  * **Scope cut, stated plainly rather than silently dropped**: the `_definitions` sheet is exported
  * in full every time (ticket 13: "aspect definitions sync through a definitions sheet... under the
@@ -56,7 +71,11 @@ import kotlinx.coroutines.sync.withLock
  * `ownerPluginId`/`locked` safety) and is out of this ticket's bounded scope - [importAll]'s result
  * surfaces every such row as a named, worded warning rather than silently ignoring it, so nothing is
  * lost quietly; wiring it up is a follow-up ticket. An EXISTING field's name/required/position can
- * still be hand-edited and re-imported today (see [mergeDefinitions]).
+ * still be hand-edited and re-imported today (see [mergeDefinitions]). **The same per-device-id
+ * problem [guid] fixes for records also exists, in theory, for `aspectId`/`recordTypeId`/
+ * `fieldDefId`** - two devices that seeded their own schema independently rather than sharing one
+ * could disagree on those numbers too. Out of THIS review's fix list (MUST-FIX 1 was scoped to
+ * records) and not fixed here; flagged as a known related gap rather than silently left implicit.
  */
 class MirrorSync(private val context: Context) {
 
@@ -119,6 +138,13 @@ class MirrorSync(private val context: Context) {
             return@withLock result
         }
 
+        // Import FIRST (SHOULD-FIX 3, senior review) - see this class's own doc comment for why a
+        // blind export-then-import ordering silently destroyed a not-yet-seen hand edit. Whatever
+        // this pass merges in from the file lands in Room via mergeRecordSheet/mergeDefinitions
+        // BEFORE the export loop below reads Room's current state back out, so the export always
+        // reflects local content plus anything just merged, never overwrites unseen content.
+        val importSummaries = importAll()
+
         val aspects = db.aspectDao().listActive()
         val exported = mutableListOf<String>()
         val exportFailures = mutableMapOf<String, String>()
@@ -140,7 +166,6 @@ class MirrorSync(private val context: Context) {
             }
         }
 
-        val importSummaries = importAll()
         val runResult = MirrorRunResult(System.currentTimeMillis(), exported, exportFailures, importSummaries)
         _lastResult.value = runResult
         runResult
@@ -231,35 +256,46 @@ class MirrorSync(private val context: Context) {
     )
 
     /**
-     * The binding row-level merge for one record type's sheet (ticket 13/20: keyed by record id
-     * plus updatedAt, latest wins, never whole-file replace).
+     * The binding row-level merge for one record type's sheet (ticket 13/20: keyed by
+     * [com.kevin.legion.data.local.EngineRecord.guid] plus updatedAt, latest wins, never
+     * whole-file replace - **never keyed by [com.kevin.legion.data.local.EngineRecord.id]**, senior
+     * review MUST-FIX 1; see this class's own doc comment for the defect that fixed).
      *
-     * **The concrete tie-break, since a plain Sheets cell edit never bumps the file's own
-     * `updatedAt` column** (this class's own doc comment): for a row whose id matches a live local
-     * record,
-     * 1. If the row's field values are IDENTICAL to what is stored locally right now, it is a
-     *    no-op regardless of what the timestamp columns say - there is nothing to merge.
-     * 2. Otherwise the row's content differs from local. If the row's stated `updatedAt` is
-     *    strictly newer than the local record's, the file wins outright (the unambiguous case the
-     *    ticket names).
-     * 3. Otherwise - content differs but the stated timestamp is not newer - this is exactly what a
-     *    hand edit in Sheets looks like (the human changed a cell; nothing changed the timestamp
-     *    cell alongside it). It is treated as a genuine edit and applied, UNLESS the local record's
-     *    own `updatedAt` is newer than [state]'s last export stamp, meaning the LOCAL copy changed
-     *    since this exact file was last generated - in that case local is provably the more recent
-     *    edit and wins, and the file's stale content is left unapplied (it will be corrected on the
-     *    next export).
+     * Three cases for a row, decided by whether [MirrorCodec.ParsedRecordRow.guid] is blank and, if
+     * not, whether it matches a local record:
      *
-     * **Reconciled rows are rejected as read-only** (ticket 12 answer point 4, ticket 20 item 4) -
-     * checked BEFORE any of the above: if the local record's own provenance is `DETERMINISTIC` or
-     * `LLM_RECONCILED`, any content difference at all is quarantined with a worded reason instead of
-     * applied, full stop; un-reconciling only happens through the app's own UI.
+     * 1. **Blank guid** - a genuinely brand-new, hand-added row (no device has ever assigned this
+     *    row an identity). Created through [RecordStore.create] with a freshly minted guid (the
+     *    default [RecordStore.create] already mints when no `guid` argument is passed).
+     * 2. **Non-blank guid, no local match** - "the exact case that was broken" (review's own
+     *    words): a record CREATED ON A DIFFERENT DEVICE, arriving here for the first time. This is
+     *    a CREATE, not a quarantine - [RecordStore.create] is called WITH `guid = row.guid` so the
+     *    local copy carries the SAME identity the originating device assigned, which is what makes
+     *    a later re-export from THIS device round-trip the identical guid rather than minting a
+     *    second one. Provenance is carried over from the row's own provenance column when present
+     *    (a reconciled record born elsewhere stays reconciled locally too), falling back to `USER`
+     *    only when the row carries none.
+     * 3. **Non-blank guid, matches a local record** - the ordinary update/no-op/read-only-reject
+     *    path, unchanged in shape from before this review, just looked up by
+     *    [com.kevin.legion.data.local.EngineRecordDao.getByGuid] instead of a local id:
+     *    - identical field values -> no-op regardless of what the timestamp columns say.
+     *    - the local record's own provenance is `DETERMINISTIC`/`LLM_RECONCILED` and content
+     *      differs -> quarantined, read-only in the mirror (ticket 12 answer point 4).
+     *    - otherwise, **the concrete "latest wins" tie-break**, since a plain Sheets cell edit never
+     *      bumps the file's own `updatedAt` column: if the row's stated `updatedAt` is strictly
+     *      newer than the local record's, the file wins outright (the unambiguous case the ticket
+     *      names, and the one a "both sides changed since the last export" scenario resolves through
+     *      when the OTHER device's edit legitimately advanced its own `updatedAt` past this row's).
+     *      Otherwise - content differs but the stated timestamp is not newer, exactly what a hand
+     *      edit in Sheets looks like - it is applied UNLESS the local record's own `updatedAt` is
+     *      newer than [state]'s last export stamp (the local copy changed since this exact file was
+     *      last generated), in which case local wins and the file's stale content is left unapplied.
      *
-     * **Remote delete**: a local record of this type NOT present among [sheet]'s rows, whose
-     * `updatedAt` is at or before [state]'s last export stamp, existed at the time of that export
-     * and is now missing from the file - the human deleted its row in Sheets - and is trashed via
-     * [RecordStore.delete]. A local record newer than the export stamp was simply never in any
-     * exported copy yet and is left alone.
+     * **Remote delete**: a local record of this type NOT present among [sheet]'s rows (by guid),
+     * whose `updatedAt` is at or before [state]'s last export stamp, existed at the time of that
+     * export and is now missing from the file - the human deleted its row in Sheets - and is
+     * trashed via [RecordStore.delete]. A local record newer than the export stamp was simply never
+     * in any exported copy yet and is left alone.
      */
     internal suspend fun mergeRecordSheet(
         recordTypeId: Long,
@@ -272,7 +308,7 @@ class MirrorSync(private val context: Context) {
         var unchanged = 0
         var trashed = 0
         val quarantined = mutableListOf<String>()
-        val seenIds = mutableSetOf<Long>()
+        val seenGuids = mutableSetOf<String>()
 
         for (row in sheet.rows) {
             if (row.fieldParseErrors.isNotEmpty()) {
@@ -285,9 +321,12 @@ class MirrorSync(private val context: Context) {
                 continue
             }
 
-            if (row.recordId == null) {
-                // Blank id = a hand-added row. A fully blank data row was already dropped by the
-                // codec (physicalCellCount == 0); a row with SOME data but no id is a real create.
+            val existing = row.guid?.let { db.engineRecordDao().getByGuid(it) }
+
+            if (row.guid == null) {
+                // Case 1: blank guid, a genuinely brand-new hand-added row. A fully blank data row
+                // was already dropped by the codec (physicalCellCount == 0); a row with SOME data
+                // but no guid is a real create with a freshly minted identity.
                 if (row.fieldValues.values.all { it == null }) continue
                 val formErrors = GeneratedFormValidation.validate(fieldDefs, row.fieldValues)
                 if (formErrors.isNotEmpty()) {
@@ -301,14 +340,35 @@ class MirrorSync(private val context: Context) {
                 continue
             }
 
-            seenIds += row.recordId
-            val existing = db.engineRecordDao().getById(row.recordId)
-            if (existing == null || existing.deletedAt != null) {
-                quarantined += "row ${row.rowNumber}: record #${row.recordId} " +
-                    (if (existing == null) "no longer exists locally" else "is in trash locally - restore it in the app first")
+            seenGuids += row.guid
+
+            if (existing == null) {
+                // Case 2: a non-blank guid with no local match - a record born on ANOTHER device,
+                // arriving here for the first time. A CREATE that PRESERVES the foreign guid, never
+                // a quarantine and never a fresh identity - see this function's own doc comment.
+                val formErrors = GeneratedFormValidation.validate(fieldDefs, row.fieldValues)
+                if (formErrors.isNotEmpty()) {
+                    quarantined += "row ${row.rowNumber}: " + formErrors.joinToString("; ") { it.message }
+                    continue
+                }
+                val now = row.updatedAt ?: System.currentTimeMillis()
+                when (
+                    val write = recordStore.create(
+                        recordTypeId, row.fieldValues, row.provenance ?: RecordProvenance.USER, now, row.guid,
+                    )
+                ) {
+                    is RecordStore.WriteResult.Success -> created++
+                    is RecordStore.WriteResult.Failure -> quarantined += "row ${row.rowNumber}: ${write.reason}"
+                }
                 continue
             }
 
+            if (existing.deletedAt != null) {
+                quarantined += "row ${row.rowNumber}: record ${row.guid} is in trash locally - restore it in the app first"
+                continue
+            }
+
+            // Case 3: the row matches a live local record.
             val readOnly = existing.provenance == RecordProvenance.DETERMINISTIC ||
                 existing.provenance == RecordProvenance.LLM_RECONCILED
             val existingPayload = org.json.JSONObject(existing.payload)
@@ -321,7 +381,7 @@ class MirrorSync(private val context: Context) {
             if (!contentChanged) { unchanged++; continue }
 
             if (readOnly) {
-                quarantined += "row ${row.rowNumber}: record #${row.recordId} is ${existing.provenance} - " +
+                quarantined += "row ${row.rowNumber}: record ${row.guid} is ${existing.provenance} - " +
                     "reconciled rows are read-only in the mirror, edit it in the app"
                 continue
             }
@@ -337,18 +397,18 @@ class MirrorSync(private val context: Context) {
                 continue
             }
             val now = maxOf(row.updatedAt ?: 0L, existing.updatedAt + 1, System.currentTimeMillis())
-            when (val write = recordStore.update(row.recordId, row.fieldValues, now)) {
+            when (val write = recordStore.update(existing.id, row.fieldValues, now)) {
                 is RecordStore.WriteResult.Success -> updated++
                 is RecordStore.WriteResult.Failure -> quarantined += "row ${row.rowNumber}: ${write.reason}"
             }
         }
 
-        // Remote delete: local active records of this type absent from the file, last touched at
-        // or before the file's own export stamp.
+        // Remote delete: local active records of this type absent from the file (by guid), last
+        // touched at or before the file's own export stamp.
         if (state.lastExportAt != null) {
             val localActive = db.engineRecordDao().activeByRecordType(recordTypeId)
             for (local in localActive) {
-                if (local.id in seenIds) continue
+                if (local.guid in seenGuids) continue
                 if (local.updatedAt <= state.lastExportAt) {
                     recordStore.delete(local.id)
                     trashed++

@@ -5,6 +5,8 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.CompanionProfileStore
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.data.MidnightImport
+import com.kevin.legion.engine.mirror.MirrorFolderPreferences
+import com.kevin.legion.engine.mirror.MirrorLifecycleBinder
 import com.kevin.legion.ledger.LedgerAccountMappingPreferences
 import com.kevin.legion.ledger.LedgerFolderPreferences
 import com.kevin.legion.ledger.LedgerNominatedAccountPreferences
@@ -59,6 +61,11 @@ class MidnightApplication : Application() {
         // HOME's CRED tile balance line (2026-08-18) - same L12 reasoning as the three caches
         // above: must be live before the first Today-tab composition, not just after AriaForegroundService starts.
         LedgerNominatedAccountPreferences.init(this)
+        // The mirror/sync folder connection (aspect-engine ticket 20) - same L12 reasoning as the
+        // caches above: MirrorLifecycleBinder's foreground/background triggers below read this
+        // StateFlow on every app-start/stop, so it must be live before the first one can fire, not
+        // seeded lazily by whoever happens to open MirrorSyncActivity first.
+        MirrorFolderPreferences.init(this)
 
         // Named companion profiles (multi-companion, 2026-08-02): seed one
         // profile from a pre-existing single identity if this install predates
@@ -189,6 +196,17 @@ class MidnightApplication : Application() {
                     com.kevin.legion.advisor.GoalChecklistSync.materializeToday(this@MidnightApplication)
                 }.onFailure { MidnightEvents.appStartWorkFailed("materialize_goal_checklist", it) }
             }
+
+            // The mirror/sync lifecycle triggers (aspect-engine ticket 20, senior review MUST-FIX
+            // 2) - registers RecordStore.afterWrite -> debounced export, and ProcessLifecycleOwner
+            // foreground/background -> import/export. Same gated-block reasoning as every other
+            // entry here: it constructs a MirrorSync, which opens CarDatabase, so it must not run
+            // under Robolectric for the identical race reasons documented above. bind() itself is
+            // synchronous and idempotent (just registers listeners), so it does not need its own
+            // appScope.launch/runCatching wrapper the way one-shot Room WORK above does - nothing
+            // here does I/O until an actual write or lifecycle event fires later.
+            runCatching { MirrorLifecycleBinder.bind(this@MidnightApplication, appScope) }
+                .onFailure { MidnightEvents.appStartWorkFailed("bind_mirror_lifecycle", it) }
 
             // Reconcile the assistant's on/off flag to reality (measured defect, 2026-08-17):
             // AssistantIgnition's persisted flag can read true - and every UI surface built on it

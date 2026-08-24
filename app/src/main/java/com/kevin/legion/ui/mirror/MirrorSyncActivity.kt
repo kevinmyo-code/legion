@@ -43,6 +43,11 @@ import kotlinx.coroutines.launch
  *
  * `adb shell am start -n com.kevin.legion/.ui.mirror.MirrorSyncActivity`
  *
+ * `MirrorFolderPreferences.init` now runs in `MidnightApplication.onCreate` (senior review of
+ * ticket 20, MUST-FIX 2) so `MirrorLifecycleBinder`'s foreground/background triggers see a live
+ * connection state from process start, not just after this activity happens to be opened once -
+ * this activity no longer calls `init` itself.
+ *
  * **This is the FIRST thing to run on the A25** (ticket 20's own instruction: "the on-A25 probe...
  * left owed... is the FIRST thing that must run on the phone"). "Sync now" on a freshly connected
  * folder IS the probe: it creates one xlsx per active aspect, rewrites it via `rwt`, reads it back,
@@ -55,7 +60,6 @@ class MirrorSyncActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        MirrorFolderPreferences.init(applicationContext)
         setContent {
             LegionTheme {
                 Surface(
@@ -97,6 +101,16 @@ private fun MirrorSyncScreen() {
                 "was true at the last sync, not live. Bring your Drive folder in Sheets when you " +
                 "want to hand-edit it.",
             style = MaterialTheme.typography.bodyMedium,
+        )
+        // SHOULD-FIX 4, senior review of ticket 20: the dropdowns/highlighting the spreadsheet
+        // shows are generated for convenience only - fastexcel has no per-cell lock API (see
+        // MirrorCodec's own doc comment) and neither Sheets nor Excel mobile is confirmed to
+        // enforce embedded xlsx validation rules (research 02). Said in words here so this is
+        // never mistaken for real enforcement by whoever is looking at the sheet.
+        Text(
+            "The dropdowns and highlighting in the spreadsheet are a convenience, not a rule - " +
+                "LEGION's own import check is what actually accepts or rejects an edit, every time you sync.",
+            style = MaterialTheme.typography.bodySmall,
         )
 
         Text(

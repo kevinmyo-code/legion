@@ -28,6 +28,13 @@ interface EngineRecordDao {
     @Query("SELECT * FROM records WHERE id = :id")
     suspend fun getById(id: Long): EngineRecord?
 
+    /** Looks a record up by its cross-device [EngineRecord.guid] rather than its per-database
+     * [EngineRecord.id] - the ONLY lookup [com.kevin.legion.engine.mirror.MirrorSync] uses to match
+     * an imported mirror row against a local record. See [EngineRecord]'s own doc comment for why
+     * [id] itself is never safe to match across two phones. */
+    @Query("SELECT * FROM records WHERE guid = :guid")
+    suspend fun getByGuid(guid: String): EngineRecord?
+
     /** Live (non-trashed) records of one type - the shape both list screens and
      * [com.kevin.legion.engine.RecordStore]'s aggregate recompute read against. */
     @Query("SELECT * FROM records WHERE recordTypeId = :recordTypeId AND deletedAt IS NULL ORDER BY id ASC")

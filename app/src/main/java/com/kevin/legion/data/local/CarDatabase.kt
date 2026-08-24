@@ -255,6 +255,11 @@ import androidx.room.RoomDatabase
  * per-record reminder mute, deliberately its own tiny table rather than a `records` column (see
  * [MutedReminder]'s own doc comment for why). See [MIGRATION_35_36] for the schema itself. No
  * other table changes.
+ *
+ * v37 (senior review of aspect-engine ticket 20, MUST-FIX 1): `records.guid` - the cross-device
+ * identity column [EngineRecord]'s own v37 doc comment explains at length. One `ALTER TABLE`, one
+ * backfill `UPDATE` (every pre-existing row gets a real, distinct UUID, never left `''`), one
+ * unique index. See [MIGRATION_36_37] for the schema itself. No other table changes.
  */
 @Database(
     entities = [
@@ -288,7 +293,7 @@ import androidx.room.RoomDatabase
         Aspect::class, RecordType::class, FieldDef::class, EngineRecord::class, WidgetInstance::class,
         MutedReminder::class,
     ],
-    version = 36,
+    version = 37,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -399,7 +404,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 36
+        const val SCHEMA_VERSION = 37
         // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
         // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
@@ -446,7 +451,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_25_26,
                         MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
                         MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34,
-                        MIGRATION_34_35, MIGRATION_35_36,
+                        MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

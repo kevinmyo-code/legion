@@ -9,6 +9,9 @@ import com.kevin.legion.data.local.FieldType
 import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.data.local.RecordType
 import com.kevin.legion.data.local.RecordTypeDao
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import org.json.JSONObject
 
 /** Thirty days, the purge window ticket 03 answer point 4 locked for both aspect archive and
@@ -57,6 +60,29 @@ class RecordStore(
     private val recordTypeDao: RecordTypeDao,
 ) {
 
+    companion object {
+        /** Fires once after every WRITE that actually changed something - a successful [create],
+         * [update], a [delete] that returned [DeleteResult.Trashed], or a [restore] that actually
+         * cleared a tombstone. Never fires for a [WriteResult.Failure], a [DeleteResult.Blocked]/
+         * [DeleteResult.NotFound]/[DeleteResult.AlreadyTrashed], or a no-op [restore].
+         *
+         * **Companion-level, not per-instance** (senior review of ticket 20, MUST-FIX 2) - every
+         * call site (`EngineToolbox`, `GeneratedFormScreen`, `MirrorSync` itself) constructs its
+         * own short-lived [RecordStore] rather than sharing one app-wide instance, so a
+         * per-instance flow would only ever be heard by whichever caller happened to build that
+         * particular instance. A companion-level bus is heard by every subscriber regardless of
+         * which instance did the writing. [com.kevin.legion.engine.mirror.MirrorLifecycleBinder]
+         * is the one production subscriber today, registered from `MidnightApplication` and gated
+         * on a mirror folder being configured - it schedules a debounced mirror export on every
+         * emission (ticket 12 answer point 2: "debounced after writes").
+         *
+         * `extraBufferCapacity` so [tryEmit] from inside a suspend write function never blocks or
+         * drops under ordinary load - this is a fire-and-forget notification, not a queue anything
+         * downstream is required to drain promptly. */
+        private val _afterWrite = MutableSharedFlow<Unit>(extraBufferCapacity = 64)
+        val afterWrite: SharedFlow<Unit> = _afterWrite.asSharedFlow()
+    }
+
     /** What [create]/[update] give back - never a bare `Long`/`Unit`, so a reference-validation
      * failure is a real, worded [Failure] the caller can surface rather than a thrown exception a
      * voice tool would have to translate after the fact (CLAUDE.md §7's "a new tool's failure
@@ -81,12 +107,22 @@ class RecordStore(
      * matching [PayloadCodec.write]'s expectations for that field's [FieldType] - a
      * [FieldType.COMPUTED] entry in [fieldValues] is IGNORED (computed fields are never
      * driver-supplied, only materialized here).
+     *
+     * [guid] defaults to a freshly minted [java.util.UUID] - the ordinary "this is a brand-new
+     * record" case, same as [EngineRecord.guid]'s own Kotlin-level default. The one caller that
+     * ever passes a non-default [guid] is
+     * [com.kevin.legion.engine.mirror.MirrorSync] materializing a record that was CREATED ON A
+     * DIFFERENT DEVICE and is arriving here for the first time via the mirror - that record
+     * already has a real, stable cross-device identity from the device it was born on, and
+     * minting a second, different guid for it here would break the exact round-trip property the
+     * mirror depends on (create on A, import to B, re-export from B must carry the SAME guid).
      */
     suspend fun create(
         recordTypeId: Long,
         fieldValues: Map<Long, Any?>,
         provenance: RecordProvenance,
         now: Long = System.currentTimeMillis(),
+        guid: String = java.util.UUID.randomUUID().toString(),
     ): WriteResult {
         val fieldDefs = fieldDefDao.forRecordType(recordTypeId)
         val recordType = recordTypeDao.getById(recordTypeId)
@@ -111,10 +147,12 @@ class RecordStore(
             provenance = provenance,
             payload = payload.toString(),
             deletedAt = null,
+            guid = guid,
         )
         val id = engineRecordDao.insert(record)
         materializeOwnAggregates(id, fieldDefs, now)
         invalidateParentAggregates(recordTypeId, fieldDefs, payload, now)
+        _afterWrite.tryEmit(Unit)
         return WriteResult.Success(id)
     }
 
@@ -155,6 +193,7 @@ class RecordStore(
         )
         engineRecordDao.update(updated)
         invalidateParentAggregates(existing.recordTypeId, fieldDefs, payload, now)
+        _afterWrite.tryEmit(Unit)
         return WriteResult.Success(recordId)
     }
 
@@ -204,13 +243,17 @@ class RecordStore(
             val fieldDefs = fieldDefDao.forRecordType(changed.recordTypeId)
             invalidateParentAggregates(changed.recordTypeId, fieldDefs, JSONObject(changed.payload), now)
         }
+        _afterWrite.tryEmit(Unit)
         return DeleteResult.Trashed
     }
 
     /** Clears a record's trash tombstone - the record's data was never touched by [delete] in the
      * first place, so this is exactly [EngineRecordDao.restore], nothing more. */
-    suspend fun restore(recordId: Long, now: Long = System.currentTimeMillis()): Boolean =
-        engineRecordDao.restore(recordId, now) > 0
+    suspend fun restore(recordId: Long, now: Long = System.currentTimeMillis()): Boolean {
+        val changed = engineRecordDao.restore(recordId, now) > 0
+        if (changed) _afterWrite.tryEmit(Unit)
+        return changed
+    }
 
     /** The 30-day hard purge (ticket 03 answer point 4). Only ever reaches a record trashed at
      * least [TRASH_RETENTION_MS] ago - restoring before that window elapses is always possible. */

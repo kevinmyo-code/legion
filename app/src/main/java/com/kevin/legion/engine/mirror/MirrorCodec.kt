@@ -22,7 +22,7 @@ import kotlin.streams.asSequence
  * [android.content.Context]; every input is a plain Kotlin value already read out of the engine's
  * tables by the caller ([MirrorSync]). That is deliberate (ticket 20 item 2's "unit-testable
  * without SAF") and it is what [MirrorCodecTest] exercises: records to bytes to rows, bit-exact on
- * ids/cents/dates, with no fake filesystem or Robolectric involved.
+ * guids/cents/dates, with no fake filesystem or Robolectric involved.
  *
  * **No Robolectric needed at all** - fastexcel (both `fastexcel` the writer and `fastexcel-reader`)
  * is plain-JVM, ships no Android asset, and touches no `android.*` API
@@ -44,14 +44,19 @@ import kotlin.streams.asSequence
  * mobile editor"). [MirrorSync]'s import gate is what actually enforces every rule this codec only
  * suggests to whichever editor opens the file.
  *
- * **Fixed header contract** (ticket 20 item 2): row 1 of every record sheet is
- * `id (protected) | createdAt | updatedAt | provenance (protected) | <one column per field>`.
- * Money is a **plain integer-cents number cell**, header suffixed `(cents)` - never a currency
- * format, which invites a decimal edit (research 02 section 5). Dates/datetimes are plain
- * integer-epoch-millis number cells, header suffixed `(epoch ms)`, for the identical reason: an
- * Excel date SERIAL is a display convention this codec deliberately never depends on.
- * [FieldType.COMPUTED] columns are suffixed `(computed, protected)` and are NEVER read back into a
- * write - see [ParsedRecordRow.fieldValues]'s doc.
+ * **Fixed header contract** (ticket 20 item 2, revised by senior review MUST-FIX 1): row 1 of every
+ * record sheet is `guid (protected) | createdAt | updatedAt | provenance (protected) | <one column
+ * per field>`. **There is no `id` column, on purpose** - [EngineRecord.id] is a per-database
+ * `AUTOINCREMENT` primary key, meaningless (and actively dangerous to trust) across two different
+ * phones; see [EngineRecord]'s own doc comment for the defect an earlier version of this file had
+ * when it exported `id` instead. [EngineRecord.guid] is the identity that survives the trip between
+ * devices, so it is the ONLY identity column this codec ever writes or reads. Money is a **plain
+ * integer-cents number cell**, header suffixed `(cents)` - never a currency format, which invites a
+ * decimal edit (research 02 section 5). Dates/datetimes are plain integer-epoch-millis number
+ * cells, header suffixed `(epoch ms)`, for the identical reason: an Excel date SERIAL is a display
+ * convention this codec deliberately never depends on. [FieldType.COMPUTED] columns are suffixed
+ * `(computed, protected)` and are NEVER read back into a write - see [ParsedRecordRow.fieldValues]'s
+ * doc.
  *
  * **fastexcel 0.19.0 exposes only whole-sheet [org.dhatim.fastexcel.Worksheet.protect], no
  * per-cell lock API** - traced by reading `StyleSetter.java`/`Range.java` in the fastexcel source
@@ -64,7 +69,7 @@ import kotlin.streams.asSequence
 object MirrorCodec {
 
     private const val DEFINITIONS_SHEET = "_definitions"
-    private const val COL_ID = 0
+    private const val COL_GUID = 0
     private const val COL_CREATED_AT = 1
     private const val COL_UPDATED_AT = 2
     private const val COL_PROVENANCE = 3
@@ -94,9 +99,12 @@ object MirrorCodec {
      * workbook's `_definitions` sheet - see this object's own doc comment for why that recovery
      * happens internally rather than needing an external schema argument.
      *
-     * [recordId] is null for a row with no `id` cell - a brand-new, hand-added row.
-     * [fieldValues] maps [FieldDef.id] to a value already shaped for
-     * [com.kevin.legion.engine.RecordStore.create]/`update`'s `fieldValues` parameter -
+     * [guid] is null/blank for a row with no `guid` cell - a brand-new, hand-added row, OR a row
+     * whose guid does not (yet) match any local record ([MirrorSync] treats a NON-blank,
+     * NON-matching guid as a foreign record arriving for the first time - a CREATE that PRESERVES
+     * this exact guid, never a fresh one - and only a genuinely blank/absent guid as "mint a new
+     * one", per senior review MUST-FIX 1). [fieldValues] maps [FieldDef.id] to a value already
+     * shaped for [com.kevin.legion.engine.RecordStore.create]/`update`'s `fieldValues` parameter -
      * [FieldType.COMPUTED] fields are NEVER included here (matching [RecordStore]'s own "computed
      * entries in fieldValues are IGNORED" rule - there is nothing to ignore because this codec never
      * puts one there in the first place). [fieldParseErrors] carries a worded reason for any cell
@@ -108,7 +116,7 @@ object MirrorCodec {
      */
     data class ParsedRecordRow(
         val rowNumber: Int,
-        val recordId: Long?,
+        val guid: String?,
         val createdAt: Long?,
         val updatedAt: Long?,
         val provenance: RecordProvenance?,
@@ -202,7 +210,7 @@ object MirrorCodec {
     }
 
     private fun writeRecordSheet(ws: org.dhatim.fastexcel.Worksheet, rte: MirrorRecordTypeExport) {
-        ws.value(0, COL_ID, "id (protected)")
+        ws.value(0, COL_GUID, "guid (protected)")
         ws.value(0, COL_CREATED_AT, "createdAt")
         ws.value(0, COL_UPDATED_AT, "updatedAt")
         ws.value(0, COL_PROVENANCE, "provenance (protected)")
@@ -210,7 +218,7 @@ object MirrorCodec {
 
         rte.records.forEachIndexed { rowIndex, record ->
             val r = rowIndex + 1
-            ws.value(r, COL_ID, record.id.toDouble())
+            ws.value(r, COL_GUID, record.guid)
             ws.value(r, COL_CREATED_AT, record.createdAt.toDouble())
             ws.value(r, COL_UPDATED_AT, record.updatedAt.toDouble())
             val readOnly = record.provenance == RecordProvenance.DETERMINISTIC ||
@@ -431,7 +439,7 @@ object MirrorCodec {
         val parsedRows = mutableListOf<ParsedRecordRow>()
         for (row in rows.drop(1)) {
             if (row.physicalCellCount == 0) continue // fully blank row - never a row, per fastexcel's own semantics
-            val recordId = row.getCellAsNumber(COL_ID).orElse(null)?.toLong()
+            val guid = row.getCellAsString(COL_GUID).orElse(null)?.trim()?.ifBlank { null }
             val createdAt = row.getCellAsNumber(COL_CREATED_AT).orElse(null)?.toLong()
             val updatedAt = row.getCellAsNumber(COL_UPDATED_AT).orElse(null)?.toLong()
             val provenanceRaw = row.getCellAsString(COL_PROVENANCE).orElse(null)
@@ -451,7 +459,7 @@ object MirrorCodec {
             }
             parsedRows += ParsedRecordRow(
                 rowNumber = row.rowNum,
-                recordId = recordId,
+                guid = guid,
                 createdAt = createdAt,
                 updatedAt = updatedAt,
                 provenance = provenance,

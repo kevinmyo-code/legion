@@ -7,7 +7,6 @@ import com.kevin.legion.data.local.FieldType
 import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.data.local.RecordType
 import com.kevin.legion.engine.FieldConfig
-import com.kevin.legion.engine.PayloadCodec
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -16,7 +15,9 @@ import org.junit.Test
 
 /**
  * Codec round-trip coverage - [MirrorCodec.recordsToWorkbookBytes] to
- * [MirrorCodec.workbookBytesToParsedWorkbook], bit-exact on ids/cents/dates, per ticket 20 item 6.
+ * [MirrorCodec.workbookBytesToParsedWorkbook], bit-exact on guids/cents/dates, per ticket 20 item 6
+ * (updated by senior review MUST-FIX 1: the identity column is [EngineRecord.guid], never
+ * [EngineRecord.id] - see [MirrorCodec]'s own doc comment for why).
  *
  * **Plain JVM, no Robolectric, no `@RunWith`** - confirms this class's own doc-comment claim (and
  * research 02's "Test implications") that fastexcel needs no Android shadow, unlike PdfBox-Android.
@@ -33,7 +34,7 @@ class MirrorCodecTest {
         FieldDef(id = id, recordTypeId = recordTypeId, name = name, type = FieldType.TEXT, position = position, required = required, createdAt = now(), updatedAt = now())
 
     @Test
-    fun `records round-trip through workbook bytes bit-exact on ids, cents, and dates`() {
+    fun `records round-trip through workbook bytes bit-exact on guid, cents, and dates`() {
         val recordTypeId = 10L
         val amountFieldId = 100L
         val dueFieldId = 101L
@@ -60,6 +61,7 @@ class MirrorCodecTest {
             searchText = "groceries",
             provenance = RecordProvenance.USER,
             payload = payload.toString(),
+            guid = "guid-42",
         )
 
         val export = MirrorCodec.MirrorAspectExport(
@@ -77,7 +79,7 @@ class MirrorCodecTest {
         assertEquals(1, sheet.rows.size)
 
         val row = sheet.rows.single()
-        assertEquals(42L, row.recordId)
+        assertEquals("guid-42", row.guid)
         assertEquals(now(), row.createdAt)
         assertEquals(now() + 1, row.updatedAt)
         assertEquals(RecordProvenance.USER, row.provenance)
@@ -89,15 +91,39 @@ class MirrorCodecTest {
     }
 
     @Test
+    fun `the local id is never the row's identity - two different local ids, same guid, parse the same`() {
+        // The whole point of MUST-FIX 1: EngineRecord.id is per-database and meaningless across
+        // devices. Two records built with wildly different local ids but the SAME guid must parse
+        // back to identical row identity - the codec never even looks at [EngineRecord.id].
+        val recordTypeId = 10L
+        val recordType = RecordType(id = recordTypeId, aspectId = 1, name = "Transaction", createdAt = now(), updatedAt = now())
+        val fieldDefs = listOf(textField(recordTypeId, 100L, "Note", 0))
+
+        fun recordWithLocalId(localId: Long) = EngineRecord(
+            id = localId, recordTypeId = recordTypeId, createdAt = now(), updatedAt = now(),
+            provenance = RecordProvenance.USER, payload = JSONObject().put("100", "x").toString(), guid = "stable-guid",
+        )
+
+        for (localId in listOf(1L, 99999L)) {
+            val export = MirrorCodec.MirrorAspectExport(
+                aspect(), listOf(MirrorCodec.MirrorRecordTypeExport(recordType, fieldDefs, listOf(recordWithLocalId(localId)))),
+            )
+            val parsed = MirrorCodec.workbookBytesToParsedWorkbook(MirrorCodec.recordsToWorkbookBytes(export))
+            assertEquals("stable-guid", parsed.recordSheets.single().rows.single().guid)
+        }
+    }
+
+    @Test
     fun `DETERMINISTIC and LLM_RECONCILED rows round-trip with the read-only flag set`() {
         val recordTypeId = 20L
         val recordType = RecordType(id = recordTypeId, aspectId = 1, name = "Statement Row", createdAt = now(), updatedAt = now())
         val fieldDefs = listOf(textField(recordTypeId, 200L, "Description", 0))
 
-        fun recordOf(id: Long, provenance: RecordProvenance) = EngineRecord(
-            id = id, recordTypeId = recordTypeId, createdAt = now(), updatedAt = now(),
+        fun recordOf(guid: String, provenance: RecordProvenance) = EngineRecord(
+            recordTypeId = recordTypeId, createdAt = now(), updatedAt = now(),
             provenance = provenance,
             payload = JSONObject().put("200", "coffee").toString(),
+            guid = guid,
         )
 
         val export = MirrorCodec.MirrorAspectExport(
@@ -106,22 +132,22 @@ class MirrorCodecTest {
                 MirrorCodec.MirrorRecordTypeExport(
                     recordType, fieldDefs,
                     listOf(
-                        recordOf(1, RecordProvenance.DETERMINISTIC),
-                        recordOf(2, RecordProvenance.LLM_RECONCILED),
-                        recordOf(3, RecordProvenance.UNRECONCILED),
+                        recordOf("g1", RecordProvenance.DETERMINISTIC),
+                        recordOf("g2", RecordProvenance.LLM_RECONCILED),
+                        recordOf("g3", RecordProvenance.UNRECONCILED),
                     ),
                 ),
             ),
         )
 
         val parsed = MirrorCodec.workbookBytesToParsedWorkbook(MirrorCodec.recordsToWorkbookBytes(export))
-        val byId = parsed.recordSheets.single().rows.associateBy { it.recordId }
+        val byGuid = parsed.recordSheets.single().rows.associateBy { it.guid }
 
-        assertTrue(byId.getValue(1).provenanceReadOnly)
-        assertEquals(RecordProvenance.DETERMINISTIC, byId.getValue(1).provenance)
-        assertTrue(byId.getValue(2).provenanceReadOnly)
-        assertEquals(RecordProvenance.LLM_RECONCILED, byId.getValue(2).provenance)
-        assertTrue("UNRECONCILED is hand-editable, never read-only", !byId.getValue(3).provenanceReadOnly)
+        assertTrue(byGuid.getValue("g1").provenanceReadOnly)
+        assertEquals(RecordProvenance.DETERMINISTIC, byGuid.getValue("g1").provenance)
+        assertTrue(byGuid.getValue("g2").provenanceReadOnly)
+        assertEquals(RecordProvenance.LLM_RECONCILED, byGuid.getValue("g2").provenance)
+        assertTrue("UNRECONCILED is hand-editable, never read-only", !byGuid.getValue("g3").provenanceReadOnly)
     }
 
     @Test
@@ -133,7 +159,7 @@ class MirrorCodecTest {
             FieldDef(id = computedId, recordTypeId = recordTypeId, name = "Total Spend", type = FieldType.COMPUTED, position = 0, createdAt = now(), updatedAt = now()),
         )
         val payload = JSONObject().put(computedId.toString(), 999L)
-        val record = EngineRecord(id = 7, recordTypeId = recordTypeId, createdAt = now(), updatedAt = now(), provenance = RecordProvenance.USER, payload = payload.toString())
+        val record = EngineRecord(id = 7, recordTypeId = recordTypeId, createdAt = now(), updatedAt = now(), provenance = RecordProvenance.USER, payload = payload.toString(), guid = "g7")
 
         val export = MirrorCodec.MirrorAspectExport(aspect(), listOf(MirrorCodec.MirrorRecordTypeExport(recordType, fieldDefs, listOf(record))))
         val parsed = MirrorCodec.workbookBytesToParsedWorkbook(MirrorCodec.recordsToWorkbookBytes(export))
@@ -195,7 +221,7 @@ class MirrorCodecTest {
         val amountFieldId = 600L
         val recordType = RecordType(id = recordTypeId, aspectId = 1, name = "Line", createdAt = now(), updatedAt = now())
         val fieldDefs = listOf(FieldDef(id = amountFieldId, recordTypeId = recordTypeId, name = "Amount", type = FieldType.MONEY_CENTS, position = 0, createdAt = now(), updatedAt = now()))
-        val record = EngineRecord(id = 1, recordTypeId = recordTypeId, createdAt = now(), updatedAt = now(), provenance = RecordProvenance.USER, payload = JSONObject().put(amountFieldId.toString(), 500L).toString())
+        val record = EngineRecord(id = 1, recordTypeId = recordTypeId, createdAt = now(), updatedAt = now(), provenance = RecordProvenance.USER, payload = JSONObject().put(amountFieldId.toString(), 500L).toString(), guid = "g1")
         val export = MirrorCodec.MirrorAspectExport(aspect(), listOf(MirrorCodec.MirrorRecordTypeExport(recordType, fieldDefs, listOf(record))))
 
         val parsed = MirrorCodec.workbookBytesToParsedWorkbook(MirrorCodec.recordsToWorkbookBytes(export))
