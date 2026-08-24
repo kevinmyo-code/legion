@@ -40,6 +40,8 @@ coverage for anything unit-testable without hardware.
 
 Report: verdict per concern (BLOCKING / SHOULD-FIX / NIT), file:line, why, and the minimal
 correction. If the diff is clean, say so plainly - do not invent findings.
+Report findings in priority order; a review with only nits says so plainly instead of inflating them.
+Any file this diff pushes across 1,000 lines gets a SHOULD-FIX naming the decomposition conversation owed.
 
 End with an assumptions ledger: each non-trivial claim tagged `built` / `tested` / `traced` /
 `reasoned` / `on-device`. A `reasoned`-only correctness claim must be labelled, never stated as fact.

@@ -200,6 +200,39 @@ update the commit above.
 Re-fetch `adb/**/SKILL.md` at a newer commit and copy straight over (verbatim). Then update the
 commit above.
 
+## cursor/plugins - thermo-review (1 skill, 2026-08-23)
+
+- Source: https://github.com/cursor/plugins, path
+  `cursor-team-kit/skills/thermo-nuclear-code-quality-review/SKILL.md` (first committed
+  2026-05-21; fetched 2026-08-23)
+- Vendored: 2026-08-23, as `thermo-review/SKILL.md`
+- License: MIT (`cursor-team-kit/LICENSE`, "Copyright (c) 2026 Cursor")
+- What was copied: the SKILL.md methodology only, **adapted**. Scout note:
+  `.scratch/aspect-engine/research/cursor-review-skill-scout.md`.
+
+Adaptations:
+- **Rule 5 rewritten for Kotlin.** Upstream is TypeScript-flavored (`any`/`unknown`/casts).
+  Local version targets `!!`, unchecked casts, platform types leaking past the interop seam,
+  one-off nullable-with-sentinel modes, `runCatching`/broad-catch swallowing into defaults, and
+  unjustified `@Suppress`. The two list items mentioning `any`/`unknown` were retargeted to match.
+- **A LEGION-invariants preamble was ADDED that outranks the rest of the file:** CLAUDE.md §4/§5/§7
+  hard rules outrank any restructure suggestion (surfaced, never demanded); findings carry
+  BLOCKING / SHOULD-FIX / NIT and end with a `traced`/`reasoned`/`tested` assumptions ledger; the
+  skill is the DELIBERATE per-branch pre-merge maintainability pass, never the per-commit
+  senior-dev correctness review, and never a license to demand restructures of code following an
+  approved plan (§8).
+- **The companion Cursor agent file** (`cursor-team-kit/agents/thermo-nuclear-code-quality-review.md`)
+  was **NOT vendored** - Cursor-harness plumbing only; the skill file is self-contained.
+- Upstream's nine canned tone phrases were dropped (repo register is already terse); the tone
+  section's four prose lines were kept. Renamed `thermo-review`; keeps upstream's
+  `disable-model-invocation: true`. "PR" became "branch" throughout (no PR flow here).
+- Two of its ideas were also lifted into `.claude/agents/senior-dev.md` (anti-nit priority
+  ordering; the crossing-1k SHOULD-FIX flag).
+
+### To refresh
+Re-fetch the upstream SKILL.md at a newer commit and diff against the vendored copy - it carries
+heavy local edits (invariants preamble, Kotlin rule 5, dropped phrases) - merge, don't overwrite.
+
 ## Considered but not installed
 - `skydoves/compose-performance-skills` - heavy overlap with the above plus premature tooling
   (baseline profiles, R8 tuning) for this project. Revisit if deep release-mode profiling is needed.
