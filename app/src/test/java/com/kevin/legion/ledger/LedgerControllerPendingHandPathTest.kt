@@ -1,6 +1,5 @@
 package com.kevin.legion.ledger
 
-import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.testutil.RoomTestReset
@@ -43,7 +42,7 @@ class LedgerControllerPendingHandPathTest {
             txnDate = 1_000_000L,
         )
 
-        val rows = CarDatabase.getDatabase(context).ledgerTransactionDao().pendingRows()
+        val rows = LedgerController.pendingTransactions(context)
         assertEquals(1, rows.size)
         val row = rows.single()
         assertEquals("BOFA ****4471", row.accountId)
@@ -72,7 +71,7 @@ class LedgerControllerPendingHandPathTest {
             txnDate = 1_000_000L,
         )
 
-        val row = CarDatabase.getDatabase(context).ledgerTransactionDao().pendingRows().single()
+        val row = LedgerController.pendingTransactions(context).single()
         assertEquals(4250L, row.amountCents)
     }
 }

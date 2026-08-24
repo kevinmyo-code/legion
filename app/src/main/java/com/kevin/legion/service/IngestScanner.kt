@@ -218,16 +218,22 @@ class IngestScanner(private val context: Context) {
         val needsLlm = mutableListOf<StagedFile>()
         var ingestedCount = 0
         var quarantinedCount = 0
+        var engineWriteFailedCount = 0
         for ((index, sf) in stagedList.withIndex()) {
             _state.value = ScanState.ParsingDeterministic(index, stagedList.size, sf.displayName)
             val bytes = sf.cacheFile.readBytes()
             when (val det = StatementDispatcher.dispatchDeterministic(sf.displayName, bytes, sf.accountHint)) {
                 is DeterministicResult.Success -> {
-                    IngestPipeline.commit(
-                        context, sf.driveFileId, treeUri.toString(), sf.displayName,
-                        sf.staged, LedgerIngestResult.Success(det.transactions),
-                    )
-                    ingestedCount++
+                    when (
+                        IngestPipeline.commit(
+                            context, sf.driveFileId, treeUri.toString(), sf.displayName,
+                            sf.staged, LedgerIngestResult.Success(det.transactions),
+                        )
+                    ) {
+                        is IngestPipeline.CommitOutcome.Ingested -> ingestedCount++
+                        is IngestPipeline.CommitOutcome.Quarantined -> quarantinedCount++ // shouldn't happen for a Success result, but exhaustive
+                        is IngestPipeline.CommitOutcome.EngineWriteFailed -> engineWriteFailedCount++
+                    }
                     sf.cacheFile.delete() // cleanup obligation 1: per-entry after consumption
                 }
                 // On the FOLDER path an unmapped account really is a quarantine
@@ -287,6 +293,7 @@ class IngestScanner(private val context: Context) {
                     when (commitOutcome) {
                         is IngestPipeline.CommitOutcome.Ingested -> ingestedCount++
                         is IngestPipeline.CommitOutcome.Quarantined -> quarantinedCount++
+                        is IngestPipeline.CommitOutcome.EngineWriteFailed -> engineWriteFailedCount++
                     }
                     llmPromptTokensUsed += llmOutcome.promptTokens ?: 0
                     llmResponseTokensUsed += llmOutcome.responseTokens ?: 0
@@ -309,6 +316,7 @@ class IngestScanner(private val context: Context) {
                 needsLlmDeclined = needsLlmDeclined,
                 llmPromptTokensUsed = llmPromptTokensUsed,
                 llmResponseTokensUsed = llmResponseTokensUsed,
+                engineWriteFailed = engineWriteFailedCount,
             )
         )
     }

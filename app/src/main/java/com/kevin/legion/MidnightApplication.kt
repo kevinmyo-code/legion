@@ -231,18 +231,22 @@ class MidnightApplication : Application() {
             // Wave 3 of the aspect-engine migration (`.scratch/aspect-engine/issues/21-migration-waves.md`):
             // seeds the built-in Ledger aspect, then copies existing LedgerTransaction rows onto the
             // engine (see EngineDataMigrationWave3's own doc comment - same two-layer idempotency as
-            // Waves 1/2, plus a delete-reconciliation pass every call, including the fast path, so
-            // CLAUDE.md §4 rule 7's "an UNRECONCILED row can never outlive the verified row that
-            // supersedes it" keeps holding on the ENGINE copy too, not just the legacy table).
-            // ADDITIVE-ONLY for the copy half: never touches ledger_transactions/ingested_files,
-            // which stay the live read/write path for `ledger/LedgerController`,
-            // `ledger/IngestPipeline`, and every existing ledger voice tool until this aspect's own
-            // cutover wave (ticket 14 point 2). Wired in from this wave's first landing (Wave 2's
-            // senior review MUST-FIX 1: a migration with zero call sites cannot run on a real
-            // device), same appScope.launch + runCatching isolation as every block in this section.
+            // Waves 1/2).
+            //
+            // Cutover 3 (`docs/architecture/cutover3-2026-08-24.md`): the Ledger aspect is now the
+            // live read/write path (LedgerController/IngestPipeline above are engine-backed), so this
+            // one-time catch-up re-runs the wave 3 copier AND the rule-7 reconciliation pass once, to
+            // pick up any legacy row - or any legacy supersession - that happened between wave 3
+            // landing and this install. Guarded by its OWN completion marker (see
+            // EngineDataMigrationWave3.catchUpOnce's own doc comment), sequenced in the SAME coroutine
+            // after the ordinary copy call for the same reason cutover 2's catch-up is sequenced after
+            // its own wave's call.
             appScope.launch {
                 runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave3.copyLedgerIfNeeded(this@MidnightApplication) }
                     .onFailure { MidnightEvents.appStartWorkFailed("migrate_ledger_wave3", it) }
+
+                runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave3.catchUpOnce(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("cutover3_ledger_catchup", it) }
             }
 
             // Wave 4 of the aspect-engine migration (`.scratch/aspect-engine/issues/21-migration-waves.md`):

@@ -4,6 +4,9 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
+import com.kevin.legion.engine.RecordStore
+import com.kevin.legion.engine.ledger.LedgerAspectSeeder
+import com.kevin.legion.engine.ledger.LedgerRecordBridge
 import com.kevin.legion.testutil.RoomTestReset
 import java.time.YearMonth
 import kotlinx.coroutines.runBlocking
@@ -48,15 +51,29 @@ class LedgerControllerOwnAccountMovementsTest {
         category = category,
     )
 
+    /** Cutover 3: [LedgerController] reads through the engine now - see
+     * [com.kevin.legion.advisor.digest.CredDigestBuilderTest]'s identical helper for the reasoning. */
+    private suspend fun insertEngineTransactions(vararg transactions: LedgerTransaction) {
+        val db = CarDatabase.getDatabase(context)
+        val schema = LedgerAspectSeeder.ensureSeeded(context)
+        val recordStore = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+        for (t in transactions) {
+            recordStore.create(
+                recordTypeId = schema.transaction.recordTypeId,
+                fieldValues = LedgerRecordBridge.fieldValuesFor(t, schema.transaction.fieldIds),
+                provenance = LedgerRecordBridge.provenanceFor(t.ingestMethod),
+                now = t.txnDate,
+                guid = t.syncId,
+            )
+        }
+    }
+
     @Test
     fun `a card payment naming an account actually on file is excluded from spend and disclosed`() = runBlocking {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        dao.insertAll(
-            listOf(
-                // The card's own account, so `accountIdsForCurrency(USD)` will contain it.
-                txn("4111111111117823", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
-                txn("4111111115042", -1300_00, "Online Banking payment to CRD 7823 Confirmation# 0649409616", category = "Shopping"),
-            ),
+        insertEngineTransactions(
+            // The card's own account, so `accountIdsForCurrency(USD)` will contain it.
+            txn("4111111111117823", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
+            txn("4111111115042", -1300_00, "Online Banking payment to CRD 7823 Confirmation# 0649409616", category = "Shopping"),
         )
 
         val result = LedgerController.budgetVsActual(context, LedgerEntity.US, MONTH)
@@ -68,12 +85,9 @@ class LedgerControllerOwnAccountMovementsTest {
 
     @Test
     fun `a Zelle payment to a person is never excluded, even against a real ownAccountIds set`() = runBlocking {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        dao.insertAll(
-            listOf(
-                txn("4111111111117823", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
-                txn("4111111115042", -40_000, "Zelle payment to  R Alan Cole US Conf# b4nb0qacg", category = "Shopping"),
-            ),
+        insertEngineTransactions(
+            txn("4111111111117823", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
+            txn("4111111115042", -40_000, "Zelle payment to  R Alan Cole US Conf# b4nb0qacg", category = "Shopping"),
         )
 
         val result = LedgerController.budgetVsActual(context, LedgerEntity.US, MONTH)
@@ -86,12 +100,9 @@ class LedgerControllerOwnAccountMovementsTest {
 
     @Test
     fun `categoryTransactions reads the same own-account exclusion the budget total used`() = runBlocking {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        dao.insertAll(
-            listOf(
-                txn("4111111111117823", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
-                txn("4111111115042", -1300_00, "Online Banking payment to CRD 7823 Confirmation# 0649409616", category = "Shopping"),
-            ),
+        insertEngineTransactions(
+            txn("4111111111117823", -5_000, "WALMART SUPERCENTER", category = "Shopping"),
+            txn("4111111115042", -1300_00, "Online Banking payment to CRD 7823 Confirmation# 0649409616", category = "Shopping"),
         )
 
         val rows = LedgerController.categoryTransactions(context, LedgerEntity.US, MONTH, "Shopping")

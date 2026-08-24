@@ -67,7 +67,11 @@ object HomeDigestBuilder : DigestBuilder {
         )
 
         val credTargetsByCurrency = LedgerCurrency.values().associateWith { db.budgetTargetDao().currentTargets(it, monthStart) }
-        val credTxnsByCurrency = LedgerCurrency.values().associateWith { db.ledgerTransactionDao().getForCurrencyInRange(it, monthStart, now) }
+        // Cutover 3: reads through LedgerController's engine-backed seam, not the (now-frozen,
+        // zero-writer) legacy ledgerTransactionDao() directly.
+        val credTxnsByCurrency = LedgerCurrency.values().associateWith {
+            com.kevin.legion.ledger.LedgerController.transactionsForCurrencyInRange(context, it, monthStart, now)
+        }
         val credLine = credHeadline(credTargetsByCurrency, credTxnsByCurrency)
 
         val vehicle = VehicleController.currentVehicle(context)
