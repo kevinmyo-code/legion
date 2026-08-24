@@ -78,13 +78,13 @@ object FleetDigestBuilder : DigestBuilder {
         // from AdvisorBriefs' own consumer).
         val mileageLabel = VehicleController.mileageLabel(vehicle, now)
 
-        val items = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val items = com.kevin.legion.vehicle.FleetEngineStore.getForVehicle(context, vehicle.obdMac)
         val unknownNames = items.filter { VehicleController.isUnknown(it) }.map { it.serviceName }
         val nextService = VehicleController.nextService(context, vehicle)
 
         val windowStart = now - WINDOW_PERIODS * MONTH_MS
         val codeEvents = db.codeEventDao().getInRange(vehicle.obdMac, windowStart, now)
-        val recentServices = db.serviceRecordDao().getRecentForVehicle(vehicle.obdMac, 20)
+        val recentServices = com.kevin.legion.vehicle.FleetEngineStore.getRecentForVehicle(context, vehicle.obdMac, 20)
 
         return buildDigestText(
             vehicle = vehicle,

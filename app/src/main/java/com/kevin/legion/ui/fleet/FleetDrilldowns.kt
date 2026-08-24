@@ -1010,7 +1010,10 @@ private fun YearlyWrappedPane(wrapped: YearlyWrapped) {
         )
         DeckRow(label = "Longest", value = wrapped.longestDriveMiles?.let { "%.0f mi".format(it) } ?: "-")
         DeckRow(label = "Codes", value = wrapped.codeEventCount.toString())
-        DeckRow(label = "Services", value = wrapped.serviceCount.toString())
+        // Cutover 4 (docs/architecture/cutover4-2026-08-24.md, senior review SHOULD-FIX): this
+        // count reads the legacy service_records table, which stopped gaining new writers at that
+        // cutover - stated in words rather than rendered as a complete-looking bare number.
+        DeckRow(label = "Services", value = "${wrapped.serviceCount} (may not include recent ones)")
         Text(
             wrapped.narrative,
             style = MaterialTheme.typography.bodySmall,
@@ -1038,7 +1041,11 @@ private fun RecapRow(recap: MonthlyRecap, expanded: Boolean, onToggle: () -> Uni
             tag = if (recap.notable) { { DeckTag("NOTABLE", DeckTagStyle.OUTLINE_MUTED) } } else null,
         )
         Text(
-            "${recap.driveCount} drives · ${recap.codeEventCount} codes · ${recap.serviceCount} services",
+            // Cutover 4 (docs/architecture/cutover4-2026-08-24.md, senior review SHOULD-FIX): the
+            // services figure reads the legacy service_records table, which has zero writers
+            // post-cutover - stated in words here, not a bare glyph with no legend (CLAUDE.md §4
+            // rule 7's "never by colour or a glyph alone" posture, applied to this same shape).
+            "${recap.driveCount} drives · ${recap.codeEventCount} codes · ${recap.serviceCount} services (may be incomplete)",
             style = LegionType.stamp,
             color = sem.faint,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),

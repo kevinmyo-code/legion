@@ -4,6 +4,7 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.testutil.RoomTestReset
 import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.vehicle.FleetEngineStore
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -28,7 +29,9 @@ class LiveToolboxLogServiceCostTest {
     @Before
     fun clearState() = runBlocking {
         RoomTestReset.resetCarDatabaseSingleton()
-        CarDatabase.getDatabase(context).vehicleDao().upsert(
+        // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): a real ENGINE Vehicle record.
+        FleetEngineStore.createVehicle(
+            context,
             Vehicle(
                 obdMac = "V1", name = "Cherokee", make = "Jeep", model = "Cherokee", year = 1998,
                 personaPrompt = "", odometerBaseline = 227_000, confirmed = true,
@@ -44,7 +47,7 @@ class LiveToolboxLogServiceCostTest {
         val result = LiveToolbox.dispatch(context, "log_service", args)
 
         assertTrue(result?.optBoolean("success") == true)
-        val record = CarDatabase.getDatabase(context).serviceRecordDao().getRecentForVehicle("V1", 1).single()
+        val record = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single()
         assertEquals(4599L, record.costCents)
     }
 
@@ -54,7 +57,7 @@ class LiveToolboxLogServiceCostTest {
 
         LiveToolbox.dispatch(context, "log_service", args)
 
-        val record = CarDatabase.getDatabase(context).serviceRecordDao().getRecentForVehicle("V1", 1).single()
+        val record = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single()
         assertNull(record.costCents)
     }
 
@@ -64,7 +67,7 @@ class LiveToolboxLogServiceCostTest {
 
         LiveToolbox.dispatch(context, "log_service", args)
 
-        val record = CarDatabase.getDatabase(context).serviceRecordDao().getRecentForVehicle("V1", 1).single()
+        val record = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single()
         assertNull("a misheard/negative cost must never write a negative charge", record.costCents)
     }
 }

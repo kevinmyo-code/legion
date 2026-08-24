@@ -82,8 +82,7 @@ object VehicleResolver {
             return VehicleMatch.Resolved(VehicleController.currentVehicle(context))
         }
 
-        val dao = CarDatabase.getDatabase(context).vehicleDao()
-        val active = dao.getAll() // non-archived only, see VehicleDao.getAll's own doc
+        val active = FleetEngineStore.getAll(context) // non-archived only, see VehicleDao.getAll's own doc
         val known = active.map { displayName(it) }
 
         tierMatch(active, query) { it.name.equals(query, ignoreCase = true) }
@@ -98,7 +97,7 @@ object VehicleResolver {
         // Nothing in the active roster - see if the driver is asking about a
         // car they archived, so the refusal can say why rather than lying
         // that it doesn't exist.
-        val archived = dao.getAllIncludingArchived()
+        val archived = FleetEngineStore.getAllIncludingArchived(context)
             .filter { it.archived && it.name.equals(query, ignoreCase = true) }
         if (archived.size == 1) {
             return VehicleMatch.Unknown(requested = "$query (archived - it's hidden from the roster)", known = known)

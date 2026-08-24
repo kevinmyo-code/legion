@@ -19,7 +19,6 @@ object BuildSheetController {
     val TYPES = setOf("mod", "part", "repair", "consumable", "other")
 
     private fun dao(context: Context) = CarDatabase.getDatabase(context).buildEntryDao()
-    private fun serviceDao(context: Context) = CarDatabase.getDatabase(context).serviceRecordDao()
 
     /**
      * Logs a build-sheet entry. [cost] is optional (null = no figure logged).
@@ -80,7 +79,7 @@ object BuildSheetController {
      */
     suspend fun totalSpend(context: Context, vehicleId: String? = null): Double {
         val id = VehicleController.vehicleFor(context, vehicleId).obdMac
-        return dao(context).totalSpend(id) + serviceDao(context).totalCost(id) / 100.0
+        return dao(context).totalSpend(id) + FleetEngineStore.totalCostForVehicle(context, id) / 100.0
     }
 
     /**
@@ -96,7 +95,7 @@ object BuildSheetController {
             if (sum > 0) map[type] = sum
         }
         // Cents -> dollars at the boundary, same reasoning as totalSpend above.
-        val maintenance = serviceDao(context).totalCost(id) / 100.0
+        val maintenance = FleetEngineStore.totalCostForVehicle(context, id) / 100.0
         if (maintenance > 0) map["maintenance"] = maintenance
         return map
     }

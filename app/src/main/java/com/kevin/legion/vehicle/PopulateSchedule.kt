@@ -1,7 +1,6 @@
 package com.kevin.legion.vehicle
 
 import android.content.Context
-import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MaintenanceItem
 
 /**
@@ -249,6 +248,6 @@ internal fun buildPopulateDiff(factoryItems: List<MaintenanceItem>, existingItem
  */
 suspend fun loadPopulateDiff(context: Context, vehicle: com.kevin.legion.data.local.Vehicle): PopulateDiff? {
     val factory = VehicleController.fetchFactorySchedule(context, vehicle) ?: return null
-    val existing = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicleIncludingDeleted(vehicle.obdMac)
+    val existing = FleetEngineStore.getForVehicleIncludingDeleted(context, vehicle.obdMac)
     return buildPopulateDiff(factory, existing)
 }

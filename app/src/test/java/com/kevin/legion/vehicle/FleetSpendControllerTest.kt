@@ -34,7 +34,10 @@ class FleetSpendControllerTest {
     }
 
     private suspend fun seedVehicle(odometerBaseline: Int) {
-        db.vehicleDao().upsert(
+        // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): a real ENGINE Vehicle record - every
+        // FleetEngineStore/FleetSpendController read resolves the vehicle by its engine guid.
+        FleetEngineStore.createVehicle(
+            context,
             Vehicle(
                 obdMac = "V1", name = "Cherokee", make = "Jeep", model = "Cherokee", year = 1998,
                 personaPrompt = "", odometerBaseline = odometerBaseline, confirmed = true,
@@ -42,13 +45,19 @@ class FleetSpendControllerTest {
         )
     }
 
+    /** Cutover 4: service_records has zero legacy writers now - every fixture in this file goes
+     * through the SAME insertObserved path a real log_service call uses. */
+    private suspend fun insertRecord(vehicleId: String, serviceName: String, mileage: Int, date: Long, costCents: Long?) {
+        FleetEngineStore.insertObserved(context, vehicleId, serviceName, mileage, date, costCents)
+    }
+
     // --- totalSpent: the coverage figure (CLAUDE.md §4 rule 6) ------------------------------
 
     @Test
     fun `totalSpent reports zero cost-bearing records when nothing has a cost yet`() = runBlocking {
         seedVehicle(227_000)
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_000L, costCents = null))
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Tire Rotation", mileage = 220_000, date = 2_000L, costCents = null))
+        insertRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_000L, costCents = null)
+        insertRecord(vehicleId = "V1", serviceName = "Tire Rotation", mileage = 220_000, date = 2_000L, costCents = null)
 
         val total = FleetSpendController.totalSpent(context, "V1")
 
@@ -61,9 +70,9 @@ class FleetSpendControllerTest {
     @Test
     fun `totalSpent sums only the records that carry a cost, and counts both figures separately`() = runBlocking {
         seedVehicle(227_000)
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_000L, costCents = 4599))
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Tire Rotation", mileage = 220_000, date = 2_000L, costCents = null))
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Air Filter", mileage = 200_000, date = 3_000L, costCents = 2200))
+        insertRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_000L, costCents = 4599)
+        insertRecord(vehicleId = "V1", serviceName = "Tire Rotation", mileage = 220_000, date = 2_000L, costCents = null)
+        insertRecord(vehicleId = "V1", serviceName = "Air Filter", mileage = 200_000, date = 3_000L, costCents = 2200)
 
         val total = FleetSpendController.totalSpent(context, "V1")
 
@@ -75,9 +84,9 @@ class FleetSpendControllerTest {
     @Test
     fun `totalSpent excludes a soft-deleted record entirely`() = runBlocking {
         seedVehicle(227_000)
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_000L, costCents = 4599))
-        val id = db.serviceRecordDao().getRecentForVehicle("V1", 1).single().id
-        db.serviceRecordDao().softDelete(id)
+        insertRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_000L, costCents = 4599)
+        val id = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single().id
+        FleetEngineStore.softDeleteServiceRecord(context, id)
 
         val total = FleetSpendController.totalSpent(context, "V1")
 
@@ -92,7 +101,7 @@ class FleetSpendControllerTest {
     fun `costPerMile refuses when the odometer has never been confirmed, exactly Kevin's real Jeep`() = runBlocking {
         // Kevin's real shape: odometerBaseline == 0.
         seedVehicle(0)
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_000L, costCents = 4599))
+        insertRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_000L, costCents = 4599)
 
         val result = FleetSpendController.costPerMile(context, "V1")
 
@@ -104,7 +113,7 @@ class FleetSpendControllerTest {
     @Test
     fun `costPerMile refuses when the odometer is confirmed but nothing has a cost yet`() = runBlocking {
         seedVehicle(227_000)
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_000L, costCents = null))
+        insertRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_000L, costCents = null)
 
         val result = FleetSpendController.costPerMile(context, "V1")
 
@@ -114,7 +123,7 @@ class FleetSpendControllerTest {
     @Test
     fun `costPerMile computes a real figure once the odometer is confirmed and something has a cost`() = runBlocking {
         seedVehicle(200_000)
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 199_000, date = 1_000L, costCents = 10_000))
+        insertRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 199_000, date = 1_000L, costCents = 10_000)
 
         val result = FleetSpendController.costPerMile(context, "V1")
 
@@ -130,9 +139,9 @@ class FleetSpendControllerTest {
     fun `spendByServiceType groups near-duplicate names onto one canonicalised bucket`() = runBlocking {
         seedVehicle(227_000)
         // Same real duplicate-concept pair ticket 01 counted on Kevin's phone.
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Air Filter", mileage = 200_000, date = 1_000L, costCents = 1500))
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Air Filter Replacement", mileage = 210_000, date = 2_000L, costCents = 2000))
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 220_000, date = 3_000L, costCents = 4599))
+        insertRecord(vehicleId = "V1", serviceName = "Air Filter", mileage = 200_000, date = 1_000L, costCents = 1500)
+        insertRecord(vehicleId = "V1", serviceName = "Air Filter Replacement", mileage = 210_000, date = 2_000L, costCents = 2000)
+        insertRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 220_000, date = 3_000L, costCents = 4599)
 
         val byType = FleetSpendController.spendByServiceType(context, "V1")
 
@@ -146,7 +155,7 @@ class FleetSpendControllerTest {
     @Test
     fun `spendByServiceType excludes records with no cost from every bucket`() = runBlocking {
         seedVehicle(227_000)
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_000L, costCents = null))
+        insertRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 118_374, date = 1_000L, costCents = null)
 
         val byType = FleetSpendController.spendByServiceType(context, "V1")
 
@@ -161,10 +170,10 @@ class FleetSpendControllerTest {
         val year2025 = java.time.LocalDate.of(2025, 6, 1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val year2026a = java.time.LocalDate.of(2026, 2, 1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val year2026b = java.time.LocalDate.of(2026, 8, 1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 200_000, date = year2025, costCents = 3000))
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Tire Rotation", mileage = 210_000, date = year2026a, costCents = 2000))
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Air Filter", mileage = 215_000, date = year2026b, costCents = 1500))
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = "V1", serviceName = "Brake Fluid", mileage = 216_000, date = year2026b, costCents = null))
+        insertRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 200_000, date = year2025, costCents = 3000)
+        insertRecord(vehicleId = "V1", serviceName = "Tire Rotation", mileage = 210_000, date = year2026a, costCents = 2000)
+        insertRecord(vehicleId = "V1", serviceName = "Air Filter", mileage = 215_000, date = year2026b, costCents = 1500)
+        insertRecord(vehicleId = "V1", serviceName = "Brake Fluid", mileage = 216_000, date = year2026b, costCents = null)
 
         val byYear = FleetSpendController.spendByYear(context, "V1")
 

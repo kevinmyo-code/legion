@@ -132,6 +132,14 @@ object MonthlyRecapController {
         val longestDrive = tripMiles.maxOfOrNull { it.value }
         val avgMpg = mpgSamples.takeIf { it.isNotEmpty() }?.let { s -> s.sumOf { it.value } / s.size }
         val codeCount = db.codeEventDao().countInRange(vehicleId, fromMs, toMs)
+        // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): DELIBERATELY left reading the legacy
+        // service_records table, not FleetEngineStore - MonthlyRecap itself is one of the entities
+        // wave4-carve named as deferred to a follow-up wave ("an auto-generated narrative digest...
+        // migrating the derived cassette before the facts it is derived from are even read by
+        // anything post-cutover would be migrating a cache"). Named consequence, not a silent gap:
+        // a service logged after this branch lands (which writes ONLY to the engine, per this
+        // cutover's own ruling table) will under-count here until MonthlyRecap's own follow-up wave
+        // repoints this read at FleetEngineStore too.
         val serviceCount = db.serviceRecordDao().countInRange(vehicleId, fromMs, toMs)
 
         val notableReason = when {
@@ -186,7 +194,14 @@ object MonthlyRecapController {
             if (MpgTrust.SHOW_MPG) avgMpg?.let { append("Average MPG: ${"%.1f".format(it)}. ") }
             longestDrive?.let { append("Longest single drive: ${it.toInt()} miles. ") }
             append("Trouble codes seen: $codeCount. ")
-            append("Services logged: $serviceCount.")
+            // Cutover 4 (docs/architecture/cutover4-2026-08-24.md, senior review SHOULD-FIX): this
+            // still reads the legacy service_records table, which has zero writers post-cutover -
+            // a service logged by voice or by hand now lands only in the engine, so this figure can
+            // undercount a real month's work until MonthlyRecap gets its own follow-up-wave cutover
+            // (ticket 23). Said in the PROMPT itself, not just a UI label - see this function's own
+            // doc above on why a stat withheld only from the screen can still resurface, paraphrased,
+            // in the freeform narrative Gemini writes from it.
+            append("Services logged (may not include the most recent ones): $serviceCount.")
         }
         // Identity from AssistantIdentity, deliberately self-contained rather than
         // injecting the full CompanionProfile persona, matching the other

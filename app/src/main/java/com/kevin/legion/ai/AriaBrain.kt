@@ -325,7 +325,7 @@ class AriaBrain private constructor(context: Context) {
      * more than [BASE_TTL_MS] stale.
      */
     private suspend fun buildFleetFragment(): String? {
-        val vehicles = CarDatabase.getDatabase(appContext).vehicleDao().getAll()
+        val vehicles = com.kevin.legion.vehicle.FleetEngineStore.getAll(appContext)
         if (vehicles.isEmpty()) return null
 
         fun describe(v: com.kevin.legion.data.local.Vehicle): String {

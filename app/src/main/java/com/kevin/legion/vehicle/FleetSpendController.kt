@@ -1,8 +1,6 @@
 package com.kevin.legion.vehicle
 
 import android.content.Context
-import com.kevin.legion.data.local.CarDatabase
-import kotlinx.coroutines.flow.first
 import java.time.Instant
 import java.time.ZoneId
 
@@ -40,11 +38,10 @@ object FleetSpendController {
     data class SpendTotal(val totalCents: Long, val recordsWithCost: Int, val totalRecords: Int)
 
     suspend fun totalSpent(context: Context, vehicleId: String): SpendTotal {
-        val dao = CarDatabase.getDatabase(context).serviceRecordDao()
         return SpendTotal(
-            totalCents = dao.totalCost(vehicleId),
-            recordsWithCost = dao.countWithCost(vehicleId),
-            totalRecords = dao.countForVehicle(vehicleId),
+            totalCents = FleetEngineStore.totalCostForVehicle(context, vehicleId),
+            recordsWithCost = FleetEngineStore.countWithCostForVehicle(context, vehicleId),
+            totalRecords = FleetEngineStore.countForVehicle(context, vehicleId),
         )
     }
 
@@ -78,8 +75,7 @@ object FleetSpendController {
     }
 
     suspend fun costPerMile(context: Context, vehicleId: String): CostPerMile {
-        val db = CarDatabase.getDatabase(context)
-        val vehicle = db.vehicleDao().getByMac(vehicleId)
+        val vehicle = FleetEngineStore.getByMac(context, vehicleId)
             ?: return CostPerMile.Refused("No car on file yet.")
         if (vehicle.odometerBaseline == 0) {
             return CostPerMile.Refused("Odometer hasn't been confirmed yet - say your mileage before cost per mile means anything.")
@@ -111,7 +107,7 @@ object FleetSpendController {
      * nothing to any bucket's sum (it is still counted in [totalSpent]'s own coverage figure).
      */
     suspend fun spendByServiceType(context: Context, vehicleId: String): List<Pair<String, Long>> {
-        val records = CarDatabase.getDatabase(context).serviceRecordDao().getRecordsForVehicle(vehicleId).first()
+        val records = FleetEngineStore.serviceRecordsForVehicle(context, vehicleId)
         val labelByKey = linkedMapOf<String, String>()
         val centsByKey = linkedMapOf<String, Long>()
         for (record in records) {
@@ -134,7 +130,7 @@ object FleetSpendController {
      * first, with no padding for a year that had none.
      */
     suspend fun spendByYear(context: Context, vehicleId: String): List<Pair<Int, Long>> {
-        val records = CarDatabase.getDatabase(context).serviceRecordDao().getRecordsForVehicle(vehicleId).first()
+        val records = FleetEngineStore.serviceRecordsForVehicle(context, vehicleId)
         val centsByYear = sortedMapOf<Int, Long>()
         for (record in records) {
             val cost = record.costCents ?: continue

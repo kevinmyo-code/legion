@@ -78,7 +78,12 @@ class VehicleControllerIdentityWritesTest {
             trim = "Sport 4.0L",
             confirmed = true,
         )
-        dao.upsert(existing)
+        // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): the fixture must create a real
+        // ENGINE Vehicle record, not just the legacy mirror row - FleetEngineStore.setIdentity
+        // (which registerDirect's existing-row branch now calls) resolves the row by its
+        // deterministic engine guid, and a legacy-only fixture would leave that lookup finding
+        // nothing, silently no-opping the identity write this test exists to pin.
+        FleetEngineStore.createVehicle(context, existing)
         ActiveVehicle.select(context, "AA:BB:CC:DD:EE:FF")
 
         VehicleController.registerDirect(context, year = 1998, make = "Jeep", model = "Cherokee")
@@ -132,7 +137,8 @@ class VehicleControllerIdentityWritesTest {
     /** The happy path still works - the guard above must not have broken it. */
     @Test
     fun `setOdometer on a registered car writes the baseline and resets the trip accumulator`() = runBlocking {
-        dao.upsert(
+        FleetEngineStore.createVehicle(
+            context,
             Vehicle(
                 obdMac = "REAL:MAC", name = "Jeep", make = "Jeep", model = "Cherokee", year = 1998,
                 personaPrompt = "", tripMilesSinceBaseline = 40.0,

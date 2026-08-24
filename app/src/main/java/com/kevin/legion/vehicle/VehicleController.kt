@@ -175,8 +175,7 @@ object VehicleController {
         if (year < 1900 || make.isBlank() || model.isBlank())
             return "I need a valid year, make, and model to register the car."
         val vehicleId = ActiveVehicle.current(context)
-        val dao = CarDatabase.getDatabase(context).vehicleDao()
-        val existing = dao.getByMac(vehicleId)
+        val existing = FleetEngineStore.getByMac(context, vehicleId)
         val now = System.currentTimeMillis()
         // Ticket 04's label rule deleted the "this car" sentinel at the source (seedVehicle no
         // longer writes it, and the archived rows that had it are cleared on process start), so
@@ -184,8 +183,10 @@ object VehicleController {
         // removed rather than left to rot.
         val name = existing?.name?.takeIf { it.isNotBlank() } ?: model
         if (existing == null) {
-            // Genuinely new row - nothing to preserve, a real INSERT.
-            dao.upsert(
+            // Genuinely new row - nothing to preserve, a real INSERT (cutover 4: engine-native,
+            // FleetEngineStore.createVehicle writes both the engine record and its legacy mirror).
+            FleetEngineStore.createVehicle(
+                context,
                 Vehicle(
                     obdMac = vehicleId,
                     name = name,
@@ -201,9 +202,9 @@ object VehicleController {
             )
         } else {
             // Existing row: a targeted identity write, not a rebuild - see the
-            // function doc and VehicleDao.setIdentity for why.
-            dao.setIdentity(vehicleId, year, make, model, trim.ifBlank { existing.trim }, name, now)
-            if (engine.isNotBlank()) dao.setEngine(vehicleId, engine, now)
+            // function doc and FleetEngineStore.setIdentity for why.
+            FleetEngineStore.setIdentity(context, vehicleId, year, make, model, trim.ifBlank { existing.trim }, name, now)
+            if (engine.isNotBlank()) FleetEngineStore.setEngine(context, vehicleId, engine, now)
         }
 
         return "Got it, this is the $year $make $model now. No maintenance schedule on file yet - " +
@@ -269,8 +270,7 @@ object VehicleController {
         // moved one layer down. So an unregistered car is TOLD it is
         // unregistered, and given the next step, rather than silently swallowing
         // the number.
-        val written = CarDatabase.getDatabase(context).vehicleDao()
-            .setOdometerBaseline(vehicle.obdMac, miles, now, now)
+        val written = FleetEngineStore.setOdometerBaseline(context, vehicle.obdMac, miles, now, now)
         if (written == 0) {
             return WriteOutcome(
                 false,
@@ -532,7 +532,6 @@ object VehicleController {
      */
     suspend fun logServiceDirect(context: Context, serviceName: String, vehicleId: String? = null, costCents: Long? = null): WriteOutcome {
         val canonical = canonicalizeServiceName(serviceName)
-        val db = CarDatabase.getDatabase(context)
         val vehicle = vehicleFor(context, vehicleId)
         val mileage = currentMileage(vehicle)
         val now = System.currentTimeMillis()
@@ -552,7 +551,7 @@ object VehicleController {
         // is deliberate: writing the ServiceRecord under a guessed name and only then discovering
         // the ambiguity would already be the false-merge / duplicate-row damage this ticket exists
         // to stop.
-        val existingItems = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val existingItems = FleetEngineStore.getForVehicle(context, vehicle.obdMac)
         val match = matchServiceName(serviceName, existingItems.map { it.serviceName })
         if (match is ServiceMatch.Ambiguous) {
             return WriteOutcome(
@@ -567,8 +566,16 @@ object VehicleController {
         // under the matched item's own stored name when one exists, so a
         // hand-typed schedule name and its service history read as the same
         // service; otherwise under the canonical form of what was said.
+        //
+        // Cutover 4: FleetEngineStore.insertObserved writes the OBSERVED ServiceHistory row AND
+        // supersedes any matching ASSERTED anchor in one transaction (ticket 29's unification) - the
+        // engine write itself can now genuinely fail (a reference/validation error), unlike the old
+        // Room insert this replaced, so the result is checked rather than assumed.
         val targetName = matchedName ?: canonical
-        db.serviceRecordDao().insert(ServiceRecord(vehicleId = vehicle.obdMac, serviceName = targetName, mileage = mileage, date = now, costCents = costCents))
+        val insertResult = FleetEngineStore.insertObserved(context, vehicle.obdMac, targetName, mileage, now, costCents)
+        if (insertResult is FleetEngineStore.InsertObservedResult.Failure) {
+            return WriteOutcome(false, "Couldn't log $targetName - ${insertResult.reason}.")
+        }
 
         if (matchedName != null) {
             // Targeted write (ticket 05): touches only the anchor columns - no
@@ -579,7 +586,14 @@ object VehicleController {
             // sequence, and isDue checks neverDone first unconditionally, so
             // leaving it set would read a just-completed service as permanently
             // overdue.
-            val written = db.maintenanceItemDao().setAnchor(vehicle.obdMac, matchedName, mileage, now, now)
+            //
+            // The anchor itself is now DERIVED from ServiceHistory (FleetRecordBridge.projectAnchor) -
+            // the OBSERVED row just inserted above already IS the new anchor on both axes (it is the
+            // highest mileage/latest date on file for this service the instant it lands), so this
+            // call's only remaining job is clearing MaintenanceSchedule.neverDone back to false. Kept
+            // as its own call (rather than folded into insertObserved) because a never-matched new
+            // item (the branch below) has no MaintenanceSchedule row yet to clear it on.
+            val written = FleetEngineStore.setNeverDoneCleared(context, vehicle.obdMac, matchedName, now)
             // matchedName came from a read moments ago; only a concurrent
             // delete/rename between that read and this write can zero it, and
             // ticket 05's no-op law says that must be reported, not assumed.
@@ -604,8 +618,14 @@ object VehicleController {
         // canonical form of what was said - a bad canonicalisation is then
         // visible immediately, not discovered three days later on a database
         // pull the way Kevin's silently-created Brake Fluid/Brake Pads rows were.
-        db.maintenanceItemDao().upsert(
-            MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = canonical, lastDoneMileage = mileage, lastDoneDate = now, neverDone = false)
+        //
+        // lastDoneMileage/lastDoneDate are NOT passed here anymore (cutover 4) - the OBSERVED row
+        // insertObserved just wrote above already projects onto this exact anchor the instant
+        // FleetEngineStore.getForVehicle reads it back; a MaintenanceSchedule row carries no anchor
+        // of its own to set (wave4-carve's headline finding).
+        FleetEngineStore.upsertNewItem(
+            context,
+            MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = canonical, neverDone = false),
         )
         return WriteOutcome(
             true,
@@ -654,13 +674,12 @@ object VehicleController {
             return WriteOutcome(false, "I need something to go on — a mileage, how long ago, a date, or that it's never been done.")
         }
         val canonical = canonicalizeServiceName(serviceName)
-        val db = CarDatabase.getDatabase(context)
         val vehicle = vehicleFor(context, vehicleId)
 
         // Same widened matching as logServiceDirect (ticket 08, widened by ticket 31) - see that
         // function's own comment. A backfill against an item that doesn't exist yet creates one,
         // same as a fresh log; an ambiguous near-miss refuses and asks, before anything is written.
-        val existingItems = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val existingItems = FleetEngineStore.getForVehicle(context, vehicle.obdMac)
         val match = matchServiceName(serviceName, existingItems.map { it.serviceName })
         if (match is ServiceMatch.Ambiguous) {
             return WriteOutcome(
@@ -689,7 +708,7 @@ object VehicleController {
         // is positive). When [date] IS given, only a record at or after THAT
         // date conflicts: an older backfill (e.g. "also did this back in 2021")
         // is not contradicted by a record from today.
-        if (db.serviceRecordDao().hasRecordAtOrAfter(vehicle.obdMac, targetName, date ?: 0L)) {
+        if (FleetEngineStore.hasRecordAtOrAfter(context, vehicle.obdMac, targetName, date ?: 0L)) {
             // The refusal is branched and NAMES THE WAY OUT. Both halves were review findings
             // (2026-08-15): one message covering both cases was factually wrong for `neverDone`
             // (nothing is being moved backward - the anchor is being cleared), and a refusal with
@@ -714,11 +733,13 @@ object VehicleController {
         val merged = mergeBackfillAnchors(base, mileage, milesAgo, date, neverDone, currentMileage(vehicle))
 
         if (matchedName != null) {
-            // Targeted write (ticket 05): touches only the anchor columns.
+            // Targeted write (ticket 05): touches only the anchor columns - now the ASSERTED
+            // ServiceHistory row for this pair (FleetEngineStore.setAnchor), never a second column
+            // on MaintenanceSchedule (wave4-carve's headline finding - there is no second column).
             val written = if (neverDone) {
-                db.maintenanceItemDao().setNeverDone(vehicle.obdMac, targetName, System.currentTimeMillis())
+                FleetEngineStore.setNeverDone(context, vehicle.obdMac, targetName, System.currentTimeMillis())
             } else {
-                db.maintenanceItemDao().setAnchor(vehicle.obdMac, targetName, merged.lastDoneMileage, merged.lastDoneDate, System.currentTimeMillis())
+                FleetEngineStore.setAnchor(context, vehicle.obdMac, targetName, merged.lastDoneMileage, merged.lastDoneDate, System.currentTimeMillis())
             }
             // matchedName came from a read moments ago; a concurrent
             // delete/rename is the only way this zeroes, and ticket 05's no-op
@@ -731,7 +752,7 @@ object VehicleController {
             }
         } else {
             // Genuine insert (ticket 05: upsert survives for this case only).
-            db.maintenanceItemDao().upsert(merged)
+            FleetEngineStore.upsertNewItem(context, merged)
         }
 
         // Ticket 31 decision 2: a REAL date is a precise fact, not the approximation this
@@ -744,9 +765,16 @@ object VehicleController {
         // [logServiceDirect]'s own mileage capture for a record with no explicit one.
         if (date != null && !neverDone) {
             val recordMileage = merged.lastDoneMileage ?: currentMileage(vehicle)
-            db.serviceRecordDao().insert(
-                ServiceRecord(vehicleId = vehicle.obdMac, serviceName = targetName, mileage = recordMileage, date = date, costCents = null),
-            )
+            // insertObserved's own ASSERTED-supersession (instruction 3) then trashes the anchor
+            // row setAnchor just wrote above, in the SAME "one real event explains its own anchor"
+            // shape logServiceDirect uses - a precise, dated backfill both sets the clock and logs
+            // history, and once the real OBSERVED event exists there is nothing left for a
+            // duplicate ASSERTED row to assert. A failure here is reported rather than silently
+            // dropped, same posture as logServiceDirect's own insertObserved call.
+            val insertResult = FleetEngineStore.insertObserved(context, vehicle.obdMac, targetName, recordMileage, date, null)
+            if (insertResult is FleetEngineStore.InsertObservedResult.Failure) {
+                return WriteOutcome(false, "Updated the schedule, but couldn't file $targetName into the history - ${insertResult.reason}.")
+            }
         }
 
         return when {
@@ -804,11 +832,10 @@ object VehicleController {
             return WriteOutcome(false, "I need a mileage interval or a time interval to set - which one?")
         }
         val canonical = canonicalizeServiceName(serviceName)
-        val db = CarDatabase.getDatabase(context)
         val vehicle = vehicleFor(context, vehicleId)
         val now = System.currentTimeMillis()
 
-        val existingItems = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val existingItems = FleetEngineStore.getForVehicle(context, vehicle.obdMac)
         val matchedName = looksLikeExistingItem(serviceName, existingItems.map { it.serviceName })
         val targetName = matchedName ?: canonical
 
@@ -831,7 +858,7 @@ object VehicleController {
             val existing = existingItems.firstOrNull { it.serviceName == targetName }
             val finalMiles = intervalMiles ?: existing?.intervalMiles
             val finalMonths = intervalMonths ?: existing?.intervalMonths
-            val written = db.maintenanceItemDao().setIntervals(vehicle.obdMac, targetName, finalMiles, finalMonths, "CONFIRMED", now)
+            val written = FleetEngineStore.setIntervals(context, vehicle.obdMac, targetName, finalMiles, finalMonths, "CONFIRMED", now)
             if (written == 0) {
                 return WriteOutcome(
                     false,
@@ -839,7 +866,8 @@ object VehicleController {
                 )
             }
         } else {
-            db.maintenanceItemDao().upsert(
+            FleetEngineStore.upsertNewItem(
+                context,
                 MaintenanceItem(
                     vehicleId = vehicle.obdMac, serviceName = targetName,
                     intervalMiles = intervalMiles, intervalMonths = intervalMonths, intervalSource = "CONFIRMED",
@@ -850,7 +878,7 @@ object VehicleController {
         // The read-back itself (ticket 05 decision 2): re-read rather than
         // trust the values just sent, so a write this function's own logic
         // somehow missed can never still be spoken as fact.
-        val after = db.maintenanceItemDao().get(vehicle.obdMac, targetName)
+        val after = FleetEngineStore.get(context, vehicle.obdMac, targetName)
             ?: return WriteOutcome(false, "I set that, but couldn't read it back to confirm - check the schedule when you get a chance.")
 
         val everyPhrase = listOfNotNull(
@@ -879,12 +907,11 @@ object VehicleController {
      * converts a driver-typed dollar string to cents before this is ever invoked.
      */
     suspend fun editServiceRecordDirect(context: Context, id: Long, mileageMiles: Int, costCents: Long?): WriteOutcome {
-        val db = CarDatabase.getDatabase(context)
-        val written = db.serviceRecordDao().editMileageAndCost(id, mileageMiles, costCents)
+        val written = FleetEngineStore.editMileageAndCost(context, id, mileageMiles, costCents)
         if (written == 0) {
             return WriteOutcome(false, "Couldn't save that - the record may have just been deleted.")
         }
-        val after = db.serviceRecordDao().getById(id)
+        val after = FleetEngineStore.getServiceRecordById(context, id)
             ?: return WriteOutcome(false, "Saved, but couldn't read it back to confirm - check the history when you get a chance.")
         val costPhrase = after.costCents?.let { " at $${formatCents(it)}" }.orEmpty()
         return WriteOutcome(true, "Updated ${after.serviceName}: ${after.mileage} miles$costPhrase.")
@@ -897,12 +924,19 @@ object VehicleController {
      * `maintenance_items` delete. Every caller-facing surface must say "on this phone" in words - see
      * the message below and the UI's own wording where this is offered.
      */
+    // Cutover 4: this is now an engine RecordStore.delete (trash, 30-day restorable) rather than the
+    // legacy local-only tombstone ServiceRecordDao.softDelete's own doc warned about
+    // (service_records' Mode.UNION sync could never propagate a deleted=1 flag). The engine mirror
+    // exports every record uniformly, trashed or not excluded from the active read, so this delete
+    // now DOES ride the same cross-device path any other engine write does - the old "doesn't sync,
+    // on this phone only" wording would be a false claim about the new storage layer, so it is
+    // retired here rather than carried forward inaccurately.
     suspend fun deleteServiceRecordDirect(context: Context, id: Long): WriteOutcome {
-        val written = CarDatabase.getDatabase(context).serviceRecordDao().softDelete(id)
+        val written = FleetEngineStore.softDeleteServiceRecord(context, id)
         return if (written == 0) {
             WriteOutcome(false, "Couldn't delete that - it may have already been removed.")
         } else {
-            WriteOutcome(true, "Deleted from this phone. This delete doesn't sync - it won't remove the record from your other phone.")
+            WriteOutcome(true, "Deleted. It's recoverable for 30 days if that was a mistake.")
         }
     }
 
@@ -929,7 +963,7 @@ object VehicleController {
      */
     suspend fun vehicleFor(context: Context, vehicleId: String?): Vehicle {
         val id = vehicleId ?: ActiveVehicle.current(context)
-        return CarDatabase.getDatabase(context).vehicleDao().getByMac(id) ?: seedVehicle(id)
+        return FleetEngineStore.getByMac(context, id) ?: seedVehicle(id)
     }
 
     /**
@@ -953,6 +987,14 @@ object VehicleController {
     // is the vestigial version of it). Rewrite it onto VehicleDao.setIdentity +
     // setOdometerBaseline, or delete it, when 14 is built. Do NOT wire a caller to
     // it as it stands.
+    //
+    // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): DELIBERATELY left calling the legacy
+    // vehicleDao().upsert directly, not rewired onto FleetEngineStore, for the identical reason it
+    // was left alone at ticket 13/14 - it has zero live callers, and "rewrite the dead code while
+    // you're in here" is exactly the kind of unscoped touch that turned a loaded gun into a live
+    // one before. It stays a loaded gun, now aimed at the LEGACY vehicles table only (the engine
+    // Vehicle record for this car is untouched by a call to this function) - still a bug the day a
+    // caller is wired to it, still nobody's job until then.
     suspend fun saveVehicleFacts(
         context: Context,
         make: String,
@@ -998,11 +1040,11 @@ object VehicleController {
     /** "2003 BMW 330i ZHP" from the driver-entered facts (blank parts dropped); "" if nothing set. */
     /** Active (non-archived) car profiles, for the picker and the CARS roster. */
     suspend fun allVehicles(context: Context): List<Vehicle> =
-        CarDatabase.getDatabase(context).vehicleDao().getAll()
+        FleetEngineStore.getAll(context)
 
     /** Every car including archived, for the roster's "Show archived" toggle. */
     suspend fun allVehiclesIncludingArchived(context: Context): List<Vehicle> =
-        CarDatabase.getDatabase(context).vehicleDao().getAllIncludingArchived()
+        FleetEngineStore.getAllIncludingArchived(context)
 
     /**
      * Hides a car from the roster and picker without destroying anything
@@ -1022,12 +1064,11 @@ object VehicleController {
     suspend fun unarchive(context: Context, vehicleId: String) = setArchived(context, vehicleId, false)
 
     private suspend fun setArchived(context: Context, vehicleId: String, archived: Boolean) {
-        val dao = CarDatabase.getDatabase(context).vehicleDao()
         // Existence check only - the write itself is targeted (ticket 13),
         // touching archived only, so it can't clobber a concurrent edit to any
         // other column the way the old read-then-whole-row-write could.
-        dao.getByMac(vehicleId) ?: return
-        dao.setArchived(vehicleId, archived, System.currentTimeMillis())
+        FleetEngineStore.getByMac(context, vehicleId) ?: return
+        FleetEngineStore.setArchived(context, vehicleId, archived, System.currentTimeMillis())
         if (archived && ActiveVehicle.selected(context) == vehicleId) {
             ActiveVehicle.select(context, null)
         }
@@ -1061,7 +1102,6 @@ object VehicleController {
         engine: String = "",
     ): String {
         if (make.isBlank() || model.isBlank()) return "I need at least a make and model to add a car."
-        val dao = CarDatabase.getDatabase(context).vehicleDao()
         // Deliberately NOT VehicleController.label (ticket 04's label rule): this confirms exactly
         // the facts the driver just stated, trim included, right after stating them - dropping trim
         // here would silently discard something they just said, unlike an ambient "which car is
@@ -1071,7 +1111,7 @@ object VehicleController {
 
         // Adding the car you already have on file is a correction, not a second
         // car. Say so rather than quietly growing a duplicate fleet.
-        dao.getAllIncludingArchived().firstOrNull {
+        FleetEngineStore.getAllIncludingArchived(context).firstOrNull {
             it.make.equals(make, true) && it.model.equals(model, true) &&
                 (year < 1900 || it.year == year)
         }?.let {
@@ -1094,7 +1134,7 @@ object VehicleController {
             onboarded = false,
             confirmed = true,
         )
-        dao.upsert(vehicle)
+        FleetEngineStore.createVehicle(context, vehicle)
         // No more automatic applyServiceIntervals call here (ticket 14) - the new row starts with
         // an empty schedule, same as registerDirect.
         val active = currentVehicle(context)
@@ -1123,8 +1163,7 @@ object VehicleController {
         // silently blank it, and an engine-only correction never has to restate the whole identity.
         engine: String? = null,
     ): String {
-        val dao = CarDatabase.getDatabase(context).vehicleDao()
-        val existing = dao.getByMac(vehicleId) ?: return "I couldn't find that car on file."
+        val existing = FleetEngineStore.getByMac(context, vehicleId) ?: return "I couldn't find that car on file."
         val updated = existing.copy(
             year = year?.takeIf { it >= 1900 } ?: existing.year,
             make = make?.takeIf { it.isNotBlank() } ?: existing.make,
@@ -1142,9 +1181,9 @@ object VehicleController {
             // VehicleDao.setIdentity - the odometer, persona and archive state on
             // this row ride along untouched instead of round-tripping through a
             // whole-row upsert of a struct built from a read that could be stale.
-            dao.setIdentity(vehicleId, updated.year, updated.make, updated.model, updated.trim, updated.name, now)
+            FleetEngineStore.setIdentity(context, vehicleId, updated.year, updated.make, updated.model, updated.trim, updated.name, now)
         }
-        if (engineChanged) dao.setEngine(vehicleId, engine!!.trim(), now)
+        if (engineChanged) FleetEngineStore.setEngine(context, vehicleId, engine!!.trim(), now)
         // No more automatic applyServiceIntervals call here (ticket 14) - correcting a car's badge
         // no longer silently re-seeds its schedule. A populate is a deliberate, separate action.
         return "Fixed - that one's a ${label(updated)} now. Its history stayed with it."
@@ -1195,8 +1234,7 @@ object VehicleController {
         decoded: VinDecoder.DecodedVin?,
     ): IdentityWriteResult {
         if (decoded == null || !decoded.isUsable) return IdentityWriteResult.Unusable
-        val dao = CarDatabase.getDatabase(context).vehicleDao()
-        val existing = dao.getByMac(vehicleId) ?: return IdentityWriteResult.NoSuchVehicle
+        val existing = FleetEngineStore.getByMac(context, vehicleId) ?: return IdentityWriteResult.NoSuchVehicle
 
         data class Field(val name: String, val onFile: String, val decodedValue: String?)
         val fields = listOf(
@@ -1233,7 +1271,7 @@ object VehicleController {
         val finalMake = if ("make" in changed) decoded.make else existing.make
         val finalModel = if ("model" in changed) decoded.model else existing.model
         val finalTrim = if ("trim" in changed) decoded.trim else existing.trim
-        val written = dao.applyDecodedIdentity(vehicleId, finalYear, finalMake, finalModel, finalTrim, System.currentTimeMillis())
+        val written = FleetEngineStore.applyDecodedIdentity(context, vehicleId, finalYear, finalMake, finalModel, finalTrim, System.currentTimeMillis())
         // The row existed a moment ago (the getByMac above) but a targeted UPDATE can still touch
         // zero rows if it was archived/removed in between - report that honestly rather than claim
         // Applied for a write that changed nothing (VehicleDao.applyDecodedIdentity's own doc).
@@ -1243,7 +1281,7 @@ object VehicleController {
 
     /** Makes [vehicleId] the car every stored-data tool answers about. */
     suspend fun switchTo(context: Context, vehicleId: String): String {
-        val vehicle = CarDatabase.getDatabase(context).vehicleDao().getByMac(vehicleId)
+        val vehicle = FleetEngineStore.getByMac(context, vehicleId)
             ?: return "I couldn't find that car on file."
         if (vehicle.archived) return "The ${label(vehicle)} is archived - want me to bring it back first?"
         ActiveVehicle.select(context, vehicleId)
@@ -1279,7 +1317,7 @@ object VehicleController {
             onboarded = false,
             confirmed = true,
         )
-        CarDatabase.getDatabase(context).vehicleDao().upsert(vehicle)
+        FleetEngineStore.createVehicle(context, vehicle)
         ActiveVehicle.select(context, id)
         return vehicle
     }
@@ -1501,7 +1539,7 @@ object VehicleController {
      * [ui.fleet.chooseDueAxis] guards it in the render path - see [isDue]'s doc (ticket 15).
      */
     suspend fun dueItems(context: Context, vehicle: Vehicle): List<MaintenanceItem> {
-        val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val items = FleetEngineStore.getForVehicle(context, vehicle.obdMac)
         val mileage = currentMileage(vehicle)
         val now = System.currentTimeMillis()
         return items.filter { isDue(it, mileage, vehicle.odometerBaseline == 0, now) }
@@ -1515,7 +1553,7 @@ object VehicleController {
      * ask rather than assume.
      */
     suspend fun unknownItems(context: Context, vehicle: Vehicle): List<MaintenanceItem> {
-        val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val items = FleetEngineStore.getForVehicle(context, vehicle.obdMac)
         return items.filter { isUnknown(it) }
     }
 
@@ -1581,7 +1619,7 @@ object VehicleController {
 
     /** The soonest-due anchored, not-yet-due item on each axis for [vehicle]. Null if there is nothing to report at all. */
     suspend fun nextService(context: Context, vehicle: Vehicle): NextService? {
-        val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val items = FleetEngineStore.getForVehicle(context, vehicle.obdMac)
         return computeNextService(items, currentMileage(vehicle), System.currentTimeMillis(), vehicle.odometerBaseline)
     }
 
@@ -1594,7 +1632,7 @@ object VehicleController {
     suspend fun markOdometerPrompted(context: Context, vehicle: Vehicle) {
         // Targeted write (ticket 13): touches lastOdometerPromptAt only.
         val now = System.currentTimeMillis()
-        CarDatabase.getDatabase(context).vehicleDao().markOdometerPrompted(vehicle.obdMac, now, now)
+        FleetEngineStore.markOdometerPrompted(context, vehicle.obdMac, now, now)
     }
 
     // (2026-07-19) trackTripMileage was DELETED. It was a separate GPS-only
@@ -1895,7 +1933,7 @@ object VehicleController {
     suspend fun resolveDoneAtDate(context: Context, vehicleId: String, serviceName: String, mileage: Int?, suppliedDate: Long?): Long? {
         if (suppliedDate != null) return suppliedDate
         if (mileage == null) return null
-        return CarDatabase.getDatabase(context).serviceRecordDao().getMostRecentForVehicleAndService(vehicleId, serviceName)?.date
+        return FleetEngineStore.mostRecentForVehicleAndService(context, vehicleId, serviceName)?.date
     }
 
     /**
@@ -2112,6 +2150,6 @@ object VehicleController {
      * unconditionally on every process start rather than tracking a run-once flag.
      */
     suspend fun clearThisCarSentinel(context: Context) {
-        CarDatabase.getDatabase(context).vehicleDao().clearThisCarSentinel(System.currentTimeMillis())
+        FleetEngineStore.clearThisCarSentinel(context, System.currentTimeMillis())
     }
 }

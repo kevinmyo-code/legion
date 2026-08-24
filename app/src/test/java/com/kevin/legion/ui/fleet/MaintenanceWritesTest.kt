@@ -2,7 +2,9 @@ package com.kevin.legion.ui.fleet
 
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MaintenanceItem
+import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.testutil.RoomTestReset
+import com.kevin.legion.vehicle.FleetEngineStore
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -29,8 +31,16 @@ class MaintenanceWritesTest {
     private val db get() = CarDatabase.getDatabase(context)
 
     @Before
-    fun clearState() {
+    fun clearState() = runBlocking {
         RoomTestReset.resetCarDatabaseSingleton()
+        // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): every MaintenanceSchedule/
+        // ServiceHistory write now resolves its vehicle by a real ENGINE record - a bare "V1"
+        // string with no engine Vehicle behind it (this file's old fixture shape) would leave
+        // every write in this file silently no-op'd.
+        FleetEngineStore.createVehicle(
+            context,
+            Vehicle(obdMac = "V1", name = "Test Car", make = "Jeep", model = "Cherokee", year = 1998, personaPrompt = "", confirmed = true),
+        )
     }
 
     // ------------------------------------------------------ writeAddItem: validation branches
@@ -43,7 +53,7 @@ class MaintenanceWritesTest {
         )
         assertFalse(outcome.success)
         assertTrue("Was: ${outcome.message}", outcome.message.contains("name", ignoreCase = true))
-        assertNull(db.maintenanceItemDao().get("V1", ""))
+        assertNull(FleetEngineStore.get(context, "V1", ""))
     }
 
     @Test
@@ -53,7 +63,7 @@ class MaintenanceWritesTest {
             mode = AnchorMode.DONT_KNOW, mileage = null, date = null,
         )
         assertFalse(outcome.success)
-        assertNull(db.maintenanceItemDao().get("V1", "Timing Belt"))
+        assertNull(FleetEngineStore.get(context, "V1", "Timing Belt"))
     }
 
     @Test
@@ -63,7 +73,7 @@ class MaintenanceWritesTest {
             mode = AnchorMode.DONT_KNOW, mileage = null, date = null,
         )
         assertTrue("Was: ${outcome.message}", outcome.success)
-        val created = db.maintenanceItemDao().get("V1", "Timing Belt")
+        val created = FleetEngineStore.get(context, "V1", "Timing Belt")
         assertNotNull(created)
         assertEquals(60_000, created?.intervalMiles)
     }
@@ -75,7 +85,7 @@ class MaintenanceWritesTest {
             mode = AnchorMode.NEVER_DONE, mileage = null, date = null,
         )
         assertTrue("Was: ${outcome.message}", outcome.success)
-        val created = db.maintenanceItemDao().get("V1", "Spark Plugs")
+        val created = FleetEngineStore.get(context, "V1", "Spark Plugs")
         assertEquals(true, created?.neverDone)
     }
 
@@ -94,7 +104,7 @@ class MaintenanceWritesTest {
             mode = AnchorMode.DONT_KNOW, mileage = null, date = null,
         )
         assertTrue("Was: ${outcome.message}", outcome.success)
-        val created = db.maintenanceItemDao().get("V1", typed)
+        val created = FleetEngineStore.get(context, "V1", typed)
         assertNotNull("must be stored under the EXACT typed string as the primary key", created)
         assertEquals(typed, created?.serviceName)
         assertEquals("CONFIRMED", created?.intervalSource)
@@ -107,8 +117,8 @@ class MaintenanceWritesTest {
             mode = AnchorMode.DONT_KNOW, mileage = null, date = null,
         )
         assertTrue(outcome.success)
-        assertNotNull(db.maintenanceItemDao().get("V1", "Differential Fluid"))
-        assertNull(db.maintenanceItemDao().get("V1", "  Differential Fluid  "))
+        assertNotNull(FleetEngineStore.get(context, "V1", "Differential Fluid"))
+        assertNull(FleetEngineStore.get(context, "V1", "  Differential Fluid  "))
     }
 
     // ------------------------------------------------------- writeSetAnchor: zero-row failure
@@ -122,12 +132,12 @@ class MaintenanceWritesTest {
 
     @Test
     fun `writeSetAnchor against an existing item succeeds and writes the anchor`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000))
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000))
 
         val outcome = writeSetAnchor(context, "V1", "Oil Change", AnchorMode.DONE_AT, mileage = 132_400, date = 1_700_000_000_000L)
 
         assertTrue("Was: ${outcome.message}", outcome.success)
-        val after = db.maintenanceItemDao().get("V1", "Oil Change")!!
+        val after = FleetEngineStore.get(context, "V1", "Oil Change")!!
         assertEquals(132_400, after.lastDoneMileage)
         assertEquals(1_700_000_000_000L, after.lastDoneDate)
     }
@@ -137,10 +147,8 @@ class MaintenanceWritesTest {
 
     @Test
     fun `writeSetAnchor DONE_AT with only mileage returns the RESOLVED date, not the form's blank`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change"))
-        db.serviceRecordDao().insert(
-            com.kevin.legion.data.local.ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 227_374, date = 1_723_000_000_000L),
-        )
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change"))
+        FleetEngineStore.insertObserved(context, "V1", "Oil Change", mileage = 227_374, date = 1_723_000_000_000L, costCents = null)
 
         // Mirrors Kevin's own report: mileage typed, date field left blank.
         val outcome = writeSetAnchor(context, "V1", "Oil Change", AnchorMode.DONE_AT, mileage = 227_483, date = null)
@@ -158,7 +166,7 @@ class MaintenanceWritesTest {
 
     @Test
     fun `writeSetAnchor NEVER_DONE and DONT_KNOW report their resolved (empty) anchor, not the caller's raw args`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", lastDoneMileage = 100_000, lastDoneDate = 1_000L))
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", lastDoneMileage = 100_000, lastDoneDate = 1_000L))
 
         // A stale mileage/date is passed in deliberately - NEVER_DONE/DONT_KNOW must ignore it and
         // report what was actually written (null/null), not echo the caller's leftover values.
@@ -186,14 +194,14 @@ class MaintenanceWritesTest {
 
     @Test
     fun `writeDeleteItem against an existing item succeeds and tombstones it`() = runBlocking {
-        db.maintenanceItemDao().upsertStamped(MaintenanceItem(vehicleId = "V1", serviceName = "Cabin Air Filter", intervalMiles = 15_000))
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Cabin Air Filter", intervalMiles = 15_000))
 
         val outcome = writeDeleteItem(context, "V1", "Cabin Air Filter")
 
         assertTrue("Was: ${outcome.message}", outcome.success)
         // Soft-deleted rows are excluded from the normal reader - see
         // MaintenanceItemDao.softDelete's own doc for why this is a tombstone, not a hard delete.
-        assertNull(db.maintenanceItemDao().get("V1", "Cabin Air Filter"))
+        assertNull(FleetEngineStore.get(context, "V1", "Cabin Air Filter"))
     }
 
     // --------------------------------------------------- writeConfirmAll: only SEEDED+interval
@@ -203,9 +211,9 @@ class MaintenanceWritesTest {
         val guess = MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000, intervalSource = "SEEDED")
         val orphan = MaintenanceItem(vehicleId = "V1", serviceName = "Brake Fluid", intervalSource = "SEEDED")
         val confirmed = MaintenanceItem(vehicleId = "V1", serviceName = "Tire Rotation", intervalMiles = 7_500, intervalSource = "CONFIRMED")
-        db.maintenanceItemDao().upsertStamped(guess)
-        db.maintenanceItemDao().upsertStamped(orphan)
-        db.maintenanceItemDao().upsertStamped(confirmed)
+        FleetEngineStore.upsertNewItem(context, guess)
+        FleetEngineStore.upsertNewItem(context, orphan)
+        FleetEngineStore.upsertNewItem(context, confirmed)
 
         // The real call shape: FullScheduleScreen only ever passes confirmableItems(items),
         // never the raw roster - writeConfirmAll itself trusts that filtering rather than
@@ -218,14 +226,14 @@ class MaintenanceWritesTest {
         assertEquals(1, outcomes.size)
         assertTrue("Was: ${outcomes.first().message}", outcomes.first().success)
 
-        val afterGuess = db.maintenanceItemDao().get("V1", "Oil Change")!!
+        val afterGuess = FleetEngineStore.get(context, "V1", "Oil Change")!!
         assertEquals("the confirmed row must flip to CONFIRMED", "CONFIRMED", afterGuess.intervalSource)
         assertEquals("its interval value must survive the confirm untouched", 5_000, afterGuess.intervalMiles)
 
-        val afterOrphan = db.maintenanceItemDao().get("V1", "Brake Fluid")!!
+        val afterOrphan = FleetEngineStore.get(context, "V1", "Brake Fluid")!!
         assertEquals("never passed to writeConfirmAll - must stay SEEDED", "SEEDED", afterOrphan.intervalSource)
 
-        val afterConfirmed = db.maintenanceItemDao().get("V1", "Tire Rotation")!!
+        val afterConfirmed = FleetEngineStore.get(context, "V1", "Tire Rotation")!!
         assertEquals("already CONFIRMED and never passed in - untouched", "CONFIRMED", afterConfirmed.intervalSource)
         assertEquals(7_500, afterConfirmed.intervalMiles)
     }
@@ -233,7 +241,7 @@ class MaintenanceWritesTest {
     @Test
     fun `writeConfirmAll reports a failed outcome for an item that vanished mid-loop, without failing the whole batch`() = runBlocking {
         val guess = MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000, intervalSource = "SEEDED")
-        db.maintenanceItemDao().upsertStamped(guess)
+        FleetEngineStore.upsertNewItem(context, guess)
         // "Ghost Item" is passed to writeConfirmAll but was never actually written to the DB - the
         // same shape as a concurrent delete racing the confirm dialog.
         val ghost = MaintenanceItem(vehicleId = "V1", serviceName = "Ghost Item", intervalMiles = 1_000, intervalSource = "SEEDED")
@@ -248,7 +256,7 @@ class MaintenanceWritesTest {
         // here so a future change to that fallback behaviour is caught by this file, not discovered
         // live.
         assertTrue(outcomes[1].success)
-        val createdGhost = db.maintenanceItemDao().get("V1", "Ghost Item")
+        val createdGhost = FleetEngineStore.get(context, "V1", "Ghost Item")
         assertNotNull(createdGhost)
         assertEquals("CONFIRMED", createdGhost?.intervalSource)
     }
@@ -266,7 +274,7 @@ class MaintenanceWritesTest {
      */
     @Test
     fun `writeAddItem refuses rather than overwriting a row that already exists`() = runBlocking {
-        db.maintenanceItemDao().upsert(
+        FleetEngineStore.upsertNewItem(context, 
             MaintenanceItem(
                 vehicleId = "V1", serviceName = "Tire Rotation",
                 intervalMiles = 6_000, intervalMonths = 6,
@@ -285,7 +293,7 @@ class MaintenanceWritesTest {
             outcome.message.contains("already on the schedule", ignoreCase = true),
         )
 
-        val after = db.maintenanceItemDao().get("V1", "Tire Rotation")!!
+        val after = FleetEngineStore.get(context, "V1", "Tire Rotation")!!
         assertEquals("the existing interval must survive", 6_000, after.intervalMiles)
         assertEquals("and its anchor", 118_483, after.lastDoneMileage)
         assertEquals("and its provenance", "CONFIRMED", after.intervalSource)

@@ -208,7 +208,11 @@ object SyncEngine {
         // on a device - it was structurally unreachable until 7ea4725.
         // Append-only logbook, portable syncId identity.
         Spec("memories", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
-        Spec("service_records", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
+        // "service_records" retired here at cutover 4 (docs/architecture/cutover4-2026-08-24.md) -
+        // same reasoning and the same stated transition consequence as "places" at cutover 1 (see
+        // this file's own class doc). ServiceHistory writes are engine-native now (zero legacy
+        // writers, per that doc's own ruling table) - com.kevin.legion.engine.mirror.MirrorSync is
+        // the live cross-device path. Do not re-add it.
         Spec("build_entries", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         Spec("code_events", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         // code_clear_events (D3, `.scratch/hands-and-senses/issues/01-clear-dtc.md`): append-only
@@ -227,8 +231,21 @@ object SyncEngine {
         // "places" retired here at cutover 1 (2026-08-24) - see this file's own class doc for the
         // full reasoning and the stated transition consequence. Do not re-add it: the live path is
         // com.kevin.legion.engine.mirror.MirrorSync now.
+        //
+        // "vehicles" is KEPT, deliberately, at cutover 4 - unlike "places"/"service_records"/
+        // "maintenance_items", this table is NOT retired: it is still a real, actively-written
+        // legacy mirror (vehicle/FleetEngineStore.kt's own class doc), kept in sync with the engine
+        // Vehicle record for two reasons that are still true post-cutover - OBD-plugin-internal
+        // columns (tripMilesSinceBaseline, lastOdometerPromptAt, archived, etc.) that were
+        // deliberately never carried onto the engine record type (wave4-carve's field mapping), and
+        // TelemetryRecorder.run's own high-frequency write, which still targets this exact table.
+        // This Spec is what carries that mirror - and so those columns - across Kevin's two phones;
+        // removing it would silently strand tripMilesSinceBaseline/archived on whichever phone last
+        // wrote them.
         Spec("vehicles", listOf("obdMac"), Mode.LWW, naturalPk = true),
-        Spec("maintenance_items", listOf("vehicleId", "serviceName"), Mode.LWW, naturalPk = true),
+        // "maintenance_items" retired here at cutover 4 - same reasoning as "service_records" two
+        // lines up. MaintenanceSchedule writes are engine-native now (zero legacy writers). Do not
+        // re-add it.
         Spec("vehicle_specs", listOf("vehicleId"), Mode.LWW, naturalPk = true),
         Spec("chassis_quirks", listOf("quirkId"), Mode.LWW, naturalPk = true),
         // Recaps (light-data cut): autoincrement id + a natural per-period key,

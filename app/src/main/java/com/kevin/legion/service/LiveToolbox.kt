@@ -3148,7 +3148,7 @@ object LiveToolbox {
      * that makes the fleet knowable at all - see its declaration's doc.
      */
     private suspend fun listVehicles(context: Context): JSONObject {
-        val vehicles = CarDatabase.getDatabase(context).vehicleDao().getAll()
+        val vehicles = com.kevin.legion.vehicle.FleetEngineStore.getAll(context)
         val activeId = ActiveVehicle.current(context)
         val connectedId = ObdBluetoothManager.connectedDeviceAddress
         val arr = JSONArray()
@@ -5869,7 +5869,7 @@ object LiveToolbox {
         // displayLabel deliberately - specialist grounding text, see diagnose_codes' comment above.
         val label = VehicleController.displayLabel(vehicle)
 
-        val items = CarDatabase.getDatabase(context).maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val items = com.kevin.legion.vehicle.FleetEngineStore.getForVehicle(context, vehicle.obdMac)
         // Ticket 10: the pre-seeded mileage carries its own bare/estimated-and-caveated label now
         // (VehicleController.mileageLabel), not a raw Int the agent's own prompt had to caption
         // "(estimated)" unconditionally - a confirmed reading with nothing accrued since renders

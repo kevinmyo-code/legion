@@ -113,11 +113,17 @@ class AdvisorProposalExecutorTest {
 
     // --- set_maintenance_item: writes ONLY the interval, never an actual -------------------------
 
+    // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): AdvisorProposalExecutor's
+    // set_maintenance_item now writes/reads through FleetEngineStore, which resolves the vehicle by
+    // a real ENGINE record - VehicleController.currentVehicle's own placeholder (seedVehicle) is
+    // deliberately NEVER persisted (ticket 13), so both tests below must register the vehicle first,
+    // same shape every other fleet fixture in this cutover took.
     @Test
     fun `set_maintenance_item writes only intervalMiles and intervalMonths, leaving lastDone fields untouched`() = runBlocking {
         val vehicle = VehicleController.currentVehicle(context)
-        val db = CarDatabase.getDatabase(context)
-        db.maintenanceItemDao().upsert(
+        com.kevin.legion.vehicle.FleetEngineStore.createVehicle(context, vehicle.copy(make = "Jeep", model = "Cherokee", year = 1998, confirmed = true))
+        com.kevin.legion.vehicle.FleetEngineStore.upsertNewItem(
+            context,
             com.kevin.legion.data.local.MaintenanceItem(
                 vehicleId = vehicle.obdMac,
                 serviceName = "Oil Change",
@@ -133,7 +139,7 @@ class AdvisorProposalExecutorTest {
         val outcome = AdvisorProposalExecutor.execute(context, brief, proposal)
 
         assertTrue(outcome is AdvisorProposalExecutor.ExecuteResult.Ok)
-        val landed = db.maintenanceItemDao().get(vehicle.obdMac, "Oil Change")!!
+        val landed = com.kevin.legion.vehicle.FleetEngineStore.get(context, vehicle.obdMac, "Oil Change")!!
         assertEquals("interval must be updated to the proposed value", 5000, landed.intervalMiles)
         assertEquals(6, landed.intervalMonths)
         assertEquals(
@@ -148,14 +154,14 @@ class AdvisorProposalExecutorTest {
     @Test
     fun `set_maintenance_item on a brand new service creates it with the interval only`() = runBlocking {
         val vehicle = VehicleController.currentVehicle(context)
-        val db = CarDatabase.getDatabase(context)
+        com.kevin.legion.vehicle.FleetEngineStore.createVehicle(context, vehicle.copy(make = "Jeep", model = "Cherokee", year = 1998, confirmed = true))
 
         val brief = AdvisorBriefs.forAspect(AdvisorAspect.FLEET)
         val proposal = """{"op":"set_maintenance_item","serviceName":"Tire Rotation","intervalMiles":6000}"""
         val outcome = AdvisorProposalExecutor.execute(context, brief, proposal)
 
         assertTrue(outcome is AdvisorProposalExecutor.ExecuteResult.Ok)
-        val landed = db.maintenanceItemDao().get(vehicle.obdMac, "Tire Rotation")!!
+        val landed = com.kevin.legion.vehicle.FleetEngineStore.get(context, vehicle.obdMac, "Tire Rotation")!!
         assertEquals(6000, landed.intervalMiles)
         assertNull(landed.intervalMonths)
         assertNull("a freshly created item has no actual work logged against it", landed.lastDoneMileage)

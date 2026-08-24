@@ -220,21 +220,21 @@ object AdvisorProposalExecutor {
         }
 
         val vehicle = VehicleController.currentVehicle(context)
-        val db = CarDatabase.getDatabase(context)
         val now = System.currentTimeMillis()
-        val existing = db.maintenanceItemDao().get(vehicle.obdMac, serviceName)
+        val existing = com.kevin.legion.vehicle.FleetEngineStore.get(context, vehicle.obdMac, serviceName)
         val finalMiles = intervalMiles ?: existing?.intervalMiles
         val finalMonths = intervalMonths ?: existing?.intervalMonths
 
         if (existing != null) {
-            val written = db.maintenanceItemDao().setIntervals(vehicle.obdMac, serviceName, finalMiles, finalMonths, "CONFIRMED", now)
+            val written = com.kevin.legion.vehicle.FleetEngineStore.setIntervals(context, vehicle.obdMac, serviceName, finalMiles, finalMonths, "CONFIRMED", now)
             // The row existed a moment ago (the `get` above); ticket 05's no-op
             // law says a zero here must be reported, never assumed away.
             if (written == 0) {
                 return ExecuteResult.WriteFailed("That item disappeared before I could update it - try proposing again.")
             }
         } else {
-            db.maintenanceItemDao().upsert(
+            com.kevin.legion.vehicle.FleetEngineStore.upsertNewItem(
+                context,
                 MaintenanceItem(
                     vehicleId = vehicle.obdMac, serviceName = serviceName,
                     intervalMiles = finalMiles, intervalMonths = finalMonths, intervalSource = "CONFIRMED",

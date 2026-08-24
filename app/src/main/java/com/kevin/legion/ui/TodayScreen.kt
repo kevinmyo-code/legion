@@ -247,7 +247,7 @@ fun TodayScreen(
         // overdue-first ordering.
         val vehicle = VehicleController.currentVehicle(context)
         val currentMileage = VehicleController.currentMileage(vehicle)
-        val items: List<MaintenanceItem> = db.maintenanceItemDao().getForVehicle(vehicle.obdMac)
+        val items: List<MaintenanceItem> = com.kevin.legion.vehicle.FleetEngineStore.getForVehicle(context, vehicle.obdMac)
 
         // LOG tile: open-task count mirrors HomeDigestBuilder.logHeadline's own filter
         // (undone, unscheduled, non-recurring) - see buildLogTile's own doc for why this is
