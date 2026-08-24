@@ -1,6 +1,6 @@
 package com.kevin.legion.calendar
 
-import com.kevin.legion.calendar.CalendarProvider.GoogleCalendarEvent
+import com.kevin.legion.calendar.OpenerCalendarBriefing.BriefingEvent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -29,10 +29,7 @@ class OpenerCalendarBriefingTest {
         startMs: Long,
         endMs: Long = startMs + 60L * 60L * 1000L,
         allDay: Boolean = false,
-    ) = GoogleCalendarEvent(
-        eventId = id, calendarId = 1L, title = title, startMs = startMs, endMs = endMs,
-        allDay = allDay,
-    )
+    ) = BriefingEvent(title = title, startMs = startMs, endMs = endMs, allDay = allDay)
 
     @Test
     fun `no permission never reads as a clear day`() {

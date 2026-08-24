@@ -1,6 +1,5 @@
 package com.kevin.legion.calendar
 
-import com.kevin.legion.calendar.CalendarProvider.GoogleCalendarEvent
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -28,6 +27,26 @@ import java.util.Locale
  *  - readable and empty -> [NOTHING_SCHEDULED]. An empty day is a real answer.
  *  - readable with events -> the events themselves, closed with "if it is not on this list it does
  *    not exist" so the list reads as exhaustive rather than as an example.
+ *
+ * **2026-08-23 (aspect-engine ticket 19 point 5): the source switched from Google directly to the
+ * central date store** (`.scratch/aspect-engine/issues/05-central-date-database.md` answer point
+ * 4: "agenda is a query... one fact, one place") - the caller
+ * (`service/AriaForegroundService.kt`'s `buildOpenerSituation`) now reads
+ * [com.kevin.legion.engine.dates.DatesAgenda.windowed] instead of
+ * [CalendarProvider.eventsInWindow] directly, and maps the result into [BriefingEvent] before
+ * calling [forOpener]. This class's own logic is unchanged and still three outcomes, never a
+ * silence the model can fill - it just no longer knows or cares whether an event came from Google
+ * or was created inside LEGION.
+ *
+ * **`hasPermission` still reflects Google's OWN read permission, not "is the central store
+ * readable"** (the store is Room; it is always readable). This is a deliberate, conservative
+ * reading of a fork ticket 19 does not fully resolve: a `legion`-sourced event is always a real
+ * fact the app can state safely, but when Google is unreadable the merged agenda can never be
+ * called EXHAUSTIVE - there may be real appointments this device simply cannot see - and
+ * [NO_PERMISSION]'s whole point is refusing to claim more certainty than the app actually has.
+ * The cost, accepted rather than hidden: a legion-created event can go unmentioned in the opener
+ * on a device with calendar permission refused, even though the app fully knows about it. Low
+ * stakes for a one-line greeting; flagged here as a reasoned call, not a locked answer.
  */
 object OpenerCalendarBriefing {
 
@@ -37,6 +56,24 @@ object OpenerCalendarBriefing {
 
     /** At most this many events go into the prompt - a packed day is a greeting, not an agenda. */
     const val MAX_EVENTS = 4
+
+    /**
+     * One agenda item worth mentioning in the opener - deliberately NOT
+     * [CalendarProvider.GoogleCalendarEvent], since the source is now the merged central date
+     * store and an event living entirely inside LEGION was never a Google row to begin with.
+     * [allDay] is not a concept the Dates aspect schema tracks (aspect-engine ticket 19's field
+     * list has no such column - see [com.kevin.legion.engine.dates.DatesAspectSeeder]'s own doc
+     * comment), so it always defaults false here; an imported all-day Google event still renders
+     * with its literal (UTC-midnight) time rather than an "(all day)" label. Known v1 limitation,
+     * not a silent behavior change from before this switch - the old Google-direct path did carry
+     * a real `allDay` bit and this one does not yet.
+     */
+    data class BriefingEvent(
+        val title: String,
+        val startMs: Long,
+        val endMs: Long,
+        val allDay: Boolean = false,
+    )
 
     const val NO_PERMISSION =
         "You cannot see the user's calendar at all right now (calendar permission is not " +
@@ -52,13 +89,13 @@ object OpenerCalendarBriefing {
 
     /**
      * The calendar sentence for the opener. [events] is whatever
-     * [CalendarProvider.eventsInWindow] returned for the next [WINDOW_HOURS]; pass [hasPermission]
-     * `false` to get [NO_PERMISSION] instead, since that query returns an empty list for a refused
-     * permission AND an empty list for a clear day, and those two must never collapse into the
-     * same spoken line.
+     * [com.kevin.legion.engine.dates.DatesAgenda.windowed] returned for the next [WINDOW_HOURS],
+     * mapped to [BriefingEvent]; pass [hasPermission] `false` to get [NO_PERMISSION] instead - see
+     * this class's own doc comment for exactly what [hasPermission] means now that the source is
+     * the merged central store rather than Google directly.
      */
     fun forOpener(
-        events: List<GoogleCalendarEvent>,
+        events: List<BriefingEvent>,
         nowMs: Long,
         zone: ZoneId,
         hasPermission: Boolean,

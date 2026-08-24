@@ -250,6 +250,11 @@ import androidx.room.RoomDatabase
  * `widget_instances` - `gridRow`/`gridCol`/`rowSpan`/`colSpan`, the [com.kevin.legion.ui.grid.GridItem]
  * geometry the production `DeckGrid` pager persists through. See [WidgetInstance]'s own v35 doc
  * comment and [MIGRATION_34_35] for the schema itself. No other table changes.
+ *
+ * v36 (aspect-engine ticket 19, "build the Dates aspect"): `muted_reminders` - a permanent,
+ * per-record reminder mute, deliberately its own tiny table rather than a `records` column (see
+ * [MutedReminder]'s own doc comment for why). See [MIGRATION_35_36] for the schema itself. No
+ * other table changes.
  */
 @Database(
     entities = [
@@ -281,8 +286,9 @@ import androidx.room.RoomDatabase
         ConversationAudit::class,
         WellbeingDigestSchedule::class,
         Aspect::class, RecordType::class, FieldDef::class, EngineRecord::class, WidgetInstance::class,
+        MutedReminder::class,
     ],
-    version = 35,
+    version = 36,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -359,6 +365,10 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun engineRecordDao(): EngineRecordDao
     abstract fun widgetInstanceDao(): WidgetInstanceDao
 
+    /** Per-record reminder mutes (v35, aspect-engine ticket 19, the Dates aspect build) - see
+     * [MutedReminder]'s own doc comment for why this stays outside [com.kevin.legion.engine.RecordStore]'s door. */
+    abstract fun mutedReminderDao(): MutedReminderDao
+
     companion object {
         @Volatile
         private var INSTANCE: CarDatabase? = null
@@ -389,7 +399,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 35
+        const val SCHEMA_VERSION = 36
         // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
         // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
@@ -411,6 +421,8 @@ abstract class CarDatabase : RoomDatabase() {
         // `widget_instances`, ticket 16).
         // 2026-08-23: bumped to 35 alongside `@Database(version=)` in the same edit again
         // (`widget_instances.gridRow`/`gridCol`/`rowSpan`/`colSpan`, ticket 18).
+        // 2026-08-23: bumped to 36 alongside `@Database(version=)` in the same edit again
+        // (`muted_reminders`, aspect-engine ticket 19 - the Dates aspect build).
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -434,7 +446,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_25_26,
                         MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
                         MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34,
-                        MIGRATION_34_35,
+                        MIGRATION_34_35, MIGRATION_35_36,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

@@ -27,6 +27,10 @@ class ExactAlarmPermissionReceiver : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 AlarmScheduler.rescheduleAll(context)
+                // Same re-derive-fresh treatment for the Dates aspect's own single alarm
+                // (aspect-engine ticket 19 point 3) - canScheduleExact() is read fresh inside
+                // armNext() too, so this handles both directions of the permission changing.
+                DatesAlarmScheduler.armNext(context)
             } finally {
                 pending.finish()
             }

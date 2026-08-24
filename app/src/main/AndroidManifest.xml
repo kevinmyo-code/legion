@@ -322,6 +322,19 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Fired only by DatesAlarmScheduler's own single PendingIntent, and the reminder
+             notification's SILENCE action - never by the system, so exported=false, same
+             reasoning as ReminderAlarmReceiver/ReminderActionReceiver above (aspect-engine
+             ticket 19, the Dates aspect build). -->
+        <receiver
+            android:name=".service.DatesReminderAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+        <receiver
+            android:name=".service.DatesReminderActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- Fired only by WellbeingDigestScheduler's own PendingIntent - never by the system, so
              exported=false. goal-plans ticket 05's one alarm for the scheduled wellbeing digest. -->
         <receiver

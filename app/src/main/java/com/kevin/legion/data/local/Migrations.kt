@@ -1390,3 +1390,21 @@ val MIGRATION_34_35 = object : Migration(34, 35) {
         db.execSQL("ALTER TABLE `widget_instances` ADD COLUMN `colSpan` INTEGER NOT NULL DEFAULT 1")
     }
 }
+
+/**
+ * v35 -> v36: `muted_reminders` (aspect-engine ticket 19, the Dates aspect build) - see
+ * [MutedReminder]'s own doc comment for why a reminder mute is its own tiny table rather than a
+ * column on `records`. `createSql` below is PASTED VERBATIM from the kapt-generated
+ * `app/schemas/com.kevin.legion.data.local.CarDatabase/36.json`, not hand-written (CLAUDE.md
+ * sec 5's "copy generated SQL verbatim") - Room's own generator writes the primary key as a
+ * trailing `PRIMARY KEY(recordId)` constraint rather than an inline `INTEGER PRIMARY KEY`
+ * column modifier, which is functionally equivalent SQLite but not textually the same, and this
+ * migration must match what Room's own identity-hash check expects byte for byte.
+ */
+val MIGRATION_35_36 = object : Migration(35, 36) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `muted_reminders` (`recordId` INTEGER NOT NULL, `mutedAt` INTEGER NOT NULL, PRIMARY KEY(`recordId`))"
+        )
+    }
+}

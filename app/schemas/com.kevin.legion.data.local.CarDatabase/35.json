@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 35,
-    "identityHash": "238c8364e8c11609d6130402762546ab",
+    "identityHash": "74434356286204c7d76caf4e874d7c47",
     "entities": [
       {
         "tableName": "service_records",
@@ -3995,7 +3995,7 @@
       },
       {
         "tableName": "widget_instances",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `deviceId` TEXT NOT NULL, `aspectId` INTEGER, `recordTypeId` INTEGER, `widgetType` TEXT NOT NULL, `config` TEXT NOT NULL, `position` INTEGER NOT NULL, `gridRow` INTEGER NOT NULL DEFAULT 0, `gridCol` INTEGER NOT NULL DEFAULT 0, `rowSpan` INTEGER NOT NULL DEFAULT 1, `colSpan` INTEGER NOT NULL DEFAULT 1, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `deviceId` TEXT NOT NULL, `aspectId` INTEGER, `recordTypeId` INTEGER, `widgetType` TEXT NOT NULL, `config` TEXT NOT NULL, `position` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "id",
@@ -4038,34 +4038,6 @@
             "notNull": true
           },
           {
-            "fieldPath": "gridRow",
-            "columnName": "gridRow",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
-          },
-          {
-            "fieldPath": "gridCol",
-            "columnName": "gridCol",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
-          },
-          {
-            "fieldPath": "rowSpan",
-            "columnName": "rowSpan",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "1"
-          },
-          {
-            "fieldPath": "colSpan",
-            "columnName": "colSpan",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "1"
-          },
-          {
             "fieldPath": "createdAt",
             "columnName": "createdAt",
             "affinity": "INTEGER",
@@ -4095,11 +4067,35 @@
             "createSql": "CREATE INDEX IF NOT EXISTS `index_widget_instances_deviceId` ON `${TABLE_NAME}` (`deviceId`)"
           }
         ]
+      },
+      {
+        "tableName": "muted_reminders",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`recordId` INTEGER NOT NULL, `mutedAt` INTEGER NOT NULL, PRIMARY KEY(`recordId`))",
+        "fields": [
+          {
+            "fieldPath": "recordId",
+            "columnName": "recordId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mutedAt",
+            "columnName": "mutedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "recordId"
+          ]
+        }
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '238c8364e8c11609d6130402762546ab')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '74434356286204c7d76caf4e874d7c47')"
     ]
   }
 }

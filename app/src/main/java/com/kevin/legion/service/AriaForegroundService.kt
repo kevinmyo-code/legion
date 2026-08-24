@@ -32,6 +32,7 @@ import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.ai.OnboardingState
 import com.kevin.legion.calendar.CalendarProvider
 import com.kevin.legion.calendar.OpenerCalendarBriefing
+import com.kevin.legion.engine.dates.DatesAgenda
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.RecallCheckResult
 import com.kevin.legion.vehicle.VehicleController
@@ -497,23 +498,20 @@ class AriaForegroundService : Service() {
             sb.append(" - work it into your greeting naturally. ")
         }
 
-        // The real schedule, read straight off the device, so the model never has to fill the gap
-        // itself. Query on IO - this whole builder runs on the service's Main-dispatcher scope and
-        // a ContentResolver query is disk work.
+        // The real schedule, read from the central date store (aspect-engine ticket 19 point 5:
+        // OpenerCalendarBriefing reads the agenda query now, not Google directly - see that
+        // class's own doc comment for what hasCalendar still means and why). Query on IO - this
+        // whole builder runs on the service's Main-dispatcher scope and a Room read is disk work.
         val zone = ZoneId.systemDefault()
         val nowMs = System.currentTimeMillis()
         val hasCalendar = CalendarProvider.hasReadPermission(this)
-        val events = if (hasCalendar) {
-            withContext(Dispatchers.IO) {
-                CalendarProvider.eventsInWindow(
-                    this@AriaForegroundService,
-                    nowMs,
-                    nowMs + OpenerCalendarBriefing.WINDOW_HOURS * 60L * 60L * 1000L,
-                )
-            }
-        } else {
-            emptyList()
-        }
+        val events = withContext(Dispatchers.IO) {
+            DatesAgenda.windowed(
+                this@AriaForegroundService,
+                nowMs,
+                nowMs + OpenerCalendarBriefing.WINDOW_HOURS * 60L * 60L * 1000L,
+            )
+        }.map { OpenerCalendarBriefing.BriefingEvent(title = it.title, startMs = it.dueAt, endMs = it.endAt ?: it.dueAt) }
         sb.append(OpenerCalendarBriefing.forOpener(events, nowMs, zone, hasCalendar))
 
         // Everything below this line is car context, and it is gated on the dongle actually being

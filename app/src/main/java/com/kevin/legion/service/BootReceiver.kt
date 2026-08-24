@@ -56,6 +56,12 @@ class BootReceiver : BroadcastReceiver() {
                 // versa; before this they shared one try and the first thrower ate the second.
                 runCatching { AlarmScheduler.rescheduleAll(context) }
                     .onFailure { MidnightEvents.appStartWorkFailed("boot_reschedule_alarms", it) }
+                // The Dates aspect's own single armed alarm (aspect-engine ticket 19 point 3) -
+                // AlarmManager forgets everything across a reboot, same reason rescheduleAll above
+                // exists, guarded separately for the same "one missed re-arm must not cost any of
+                // the others theirs" reasoning as every block in this receiver.
+                runCatching { DatesAlarmScheduler.armNext(context) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("boot_rearm_dates_reminder", it) }
                 // NOTE: the sitrep used to have its own single alarm here (ticket 22). Ticket 32
                 // (Kevin: "sitreps stay tap only or via voice activation only") retired it -
                 // `SitrepScheduler`/`SitrepAlarmReceiver` are both gone, and nothing re-arms a

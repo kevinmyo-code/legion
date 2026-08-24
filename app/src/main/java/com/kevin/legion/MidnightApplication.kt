@@ -143,6 +143,24 @@ class MidnightApplication : Application() {
                     .onFailure { MidnightEvents.appStartWorkFailed("reschedule_alarms", it) }
             }
 
+            // The built-in Dates aspect (aspect-engine ticket 19): seed it if this is the first
+            // run this schema has ever seen (idempotent - see DatesAspectSeeder.ensureSeeded's own
+            // doc comment), pull in whatever changed on Google since the process last ran (ticket
+            // 19 point 2's "runs on app foreground" - this app-start block IS that trigger, same
+            // "process start doubles as foreground launch" reasoning AssistantIgnition.resumeIfEnabled's
+            // own comment below already uses), then arm the Dates aspect's own single next alarm
+            // against whatever the import (or a purely-legion-authored event) left due soonest.
+            // Three separate try/catch boundaries, same L12 reasoning as every block in this
+            // section: a calendar-import failure must never cost the alarm re-arm, or vice versa.
+            appScope.launch {
+                runCatching { com.kevin.legion.engine.dates.DatesAspectSeeder.ensureSeeded(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("seed_dates_aspect", it) }
+                runCatching { com.kevin.legion.calendar.CalendarImportController.importNow(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("import_google_calendar", it) }
+                runCatching { com.kevin.legion.service.DatesAlarmScheduler.armNext(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("arm_dates_reminder", it) }
+            }
+
             // Ticket 04's label rule (`.scratch/fleet-maintenance/issues/04-one-car-label-rule.md`):
             // the retired "this car" sentinel is a magic value masquerading as user data, and the
             // two rows carrying it are both archived and invisible today - which is exactly why
