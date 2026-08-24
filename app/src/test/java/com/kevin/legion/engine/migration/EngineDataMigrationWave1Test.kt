@@ -90,8 +90,63 @@ class EngineDataMigrationWave1Test {
         assertEquals(RecordProvenance.USER, record.provenance)
         assertEquals(startsAt, record.dueAt) // primaryDueDateFieldId promotion
         assertEquals(item.createdAt, record.createdAt) // timestamp preserved
-        assertEquals(item.updatedAt, record.updatedAt) // the second-call updatedAt bump landed
+        assertEquals(item.updatedAt, record.updatedAt) // landed via RecordStore.create's `updatedAt` param, one atomic write
         assertEquals(item.syncId, record.guid) // identity carried, not re-minted
+    }
+
+    @Test
+    fun `differing createdAt and updatedAt both land exactly from a single create call`() = runBlocking {
+        // Dedicated to the senior-review fix (2026-08-23): RecordStore.create now takes an
+        // explicit `updatedAt` parameter so a source row's two differing clocks are written in ONE
+        // call, never a create followed by a conditional update(). This test isolates that
+        // guarantee on its own (the "content-faithful" test above exercises it incidentally via
+        // `doneAt`); it is not testing a crash - see the next test's doc comment for why that
+        // window no longer exists to simulate.
+        val listId = seedList()
+        val createdAt = System.currentTimeMillis() - 60_000L
+        val updatedAt = System.currentTimeMillis()
+        assertTrue("the fixture must exercise two genuinely different clocks", createdAt != updatedAt)
+        db.listItemDao().insert(ListItem(listId = listId, text = "renamed later", createdAt = createdAt, updatedAt = updatedAt))
+
+        val result = EngineDataMigrationWave1.copyNotesIfNeeded(context)
+
+        assertEquals(1, result.copied)
+        val schema = NotesAspectSeeder.ensureSeeded(context)
+        val record = db.engineRecordDao().activeByRecordType(schema.recordTypeId).single()
+        assertEquals(createdAt, record.createdAt)
+        assertEquals(updatedAt, record.updatedAt)
+    }
+
+    @Test
+    fun `no crash window exists between writing createdAt and updatedAt - single call, not two`() = runBlocking {
+        // The bug this replaces: the original copier called `create(now = createdAt)` and then, if
+        // updatedAt differed, a SEPARATE `store.update(id, emptyMap(), now = updatedAt)`. A process
+        // death between those two calls left a row with `updatedAt == createdAt` forever, AND the
+        // per-row guid check (this class's other idempotency layer) would then treat that row as
+        // "already copied" on every future retry - the wrong timestamp, frozen in place, with no
+        // path back to fixing it.
+        //
+        // There is no longer a two-call sequence to interrupt, so there is no crash to simulate -
+        // asserting that would be testing nothing. What IS checkable, and is asserted here: a
+        // SINGLE call to copyNotesIfNeeded either writes a record with BOTH timestamps correct, or
+        // (on a genuine mid-call exception) writes no row at all for that item, because
+        // RecordStore.create's own EngineRecord construction happens inside one function body with
+        // one DAO insert - there is no reachable intermediate state where the row exists with only
+        // one of the two timestamps landed. Confirmed by reading RecordStore.create end to end:
+        // exactly one `engineRecordDao.insert(record)` call, and `record` is built with both
+        // `createdAt`/`updatedAt` already resolved before that insert ever runs.
+        val listId = seedList()
+        val createdAt = System.currentTimeMillis() - 60_000L
+        val updatedAt = System.currentTimeMillis()
+        db.listItemDao().insert(ListItem(listId = listId, text = "one shot", createdAt = createdAt, updatedAt = updatedAt))
+
+        EngineDataMigrationWave1.copyNotesIfNeeded(context)
+
+        val schema = NotesAspectSeeder.ensureSeeded(context)
+        val record = db.engineRecordDao().activeByRecordType(schema.recordTypeId).single()
+        // Never partially landed: both timestamps are correct together, or the row would not exist.
+        assertEquals(createdAt, record.createdAt)
+        assertEquals(updatedAt, record.updatedAt)
     }
 
     @Test

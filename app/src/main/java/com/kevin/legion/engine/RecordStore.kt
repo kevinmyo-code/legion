@@ -116,6 +116,18 @@ class RecordStore(
      * already has a real, stable cross-device identity from the device it was born on, and
      * minting a second, different guid for it here would break the exact round-trip property the
      * mirror depends on (create on A, import to B, re-export from B must carry the SAME guid).
+     *
+     * [updatedAt] defaults to [now] - the ordinary case, a brand-new record's two clocks starting
+     * equal. It exists as its own parameter (senior review of the Wave 1 migration, 2026-08-23) so
+     * a caller COPYING a pre-existing row with two already-DIFFERENT clocks (`createdAt` at the
+     * source row's original creation, `updatedAt` at its last edit -
+     * [com.kevin.legion.engine.migration.EngineDataMigrationWave1] is the one caller that does
+     * this) can land both in the SAME atomic write, rather than a `create` followed by a
+     * conditional `update` - the two-call version left a real crash window: if the process died
+     * between the two calls, the row existed with `updatedAt == createdAt` forever, and the
+     * per-row `guid` idempotency check (see that migration's own doc comment) would then skip it
+     * as "already copied" on every future retry, silently freezing the wrong timestamp in place.
+     * A single call has no such window - there is nothing to die between.
      */
     suspend fun create(
         recordTypeId: Long,
@@ -123,6 +135,7 @@ class RecordStore(
         provenance: RecordProvenance,
         now: Long = System.currentTimeMillis(),
         guid: String = java.util.UUID.randomUUID().toString(),
+        updatedAt: Long = now,
     ): WriteResult {
         val fieldDefs = fieldDefDao.forRecordType(recordTypeId)
         val recordType = recordTypeDao.getById(recordTypeId)
@@ -140,7 +153,7 @@ class RecordStore(
         val record = EngineRecord(
             recordTypeId = recordTypeId,
             createdAt = now,
-            updatedAt = now,
+            updatedAt = updatedAt,
             dueAt = promotedLong(recordType.primaryDueDateFieldId, payload),
             amountCents = promotedLong(recordType.primaryAmountFieldId, payload),
             searchText = PayloadCodec.buildSearchText(fieldDefs, payload),

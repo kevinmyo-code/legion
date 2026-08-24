@@ -98,22 +98,20 @@ object EngineDataMigrationWave1 {
                 schema.fieldIds.getValue(NotesAspectSeeder.FIELD_MISSED_DISMISSED_AT) to item.missedDismissedAt,
             )
 
-            // RecordStore.create's `now` sets createdAt AND updatedAt to the same value, so a
-            // source row whose two clocks differ needs a second call to preserve updatedAt exactly
-            // - see this object's own class doc.
+            // Both clocks land in ONE atomic write - RecordStore.create's `updatedAt` parameter
+            // (senior review, 2026-08-23) exists for exactly this: a source row whose createdAt
+            // and updatedAt differ is preserved exactly, in a single call, with no window between
+            // two writes for a crash to land in. See this object's own class doc for the shape
+            // that replaced (create, then a conditional update()) and why it was unsafe.
             val result = recordStore.create(
                 recordTypeId = schema.recordTypeId,
                 fieldValues = fieldValues,
                 provenance = RecordProvenance.USER,
                 now = item.createdAt,
                 guid = guid,
+                updatedAt = item.updatedAt,
             )
-            if (result is RecordStore.WriteResult.Success) {
-                if (item.updatedAt != item.createdAt) {
-                    recordStore.update(result.recordId, emptyMap(), now = item.updatedAt)
-                }
-                copied++
-            }
+            if (result is RecordStore.WriteResult.Success) copied++
         }
 
         prefs.edit().putBoolean(KEY_NOTES_COMPLETED, true).apply()
@@ -148,8 +146,8 @@ object EngineDataMigrationWave1 {
                 schema.fieldIds.getValue(PlacesAspectSeeder.FIELD_LONGITUDE) to place.longitude,
             )
 
-            // TaggedPlace has one clock column only (timestamp) - reused for both createdAt and
-            // updatedAt, so no second call is needed here the way copyNotesIfNeeded needs one.
+            // TaggedPlace has one clock column only (timestamp) - `create`'s `updatedAt` defaults
+            // to `now`, so leaving it unset here already reuses the same value for both.
             val result = recordStore.create(
                 recordTypeId = schema.recordTypeId,
                 fieldValues = fieldValues,
