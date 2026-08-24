@@ -3,8 +3,11 @@ package com.kevin.legion.advisor
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.data.local.MealTarget
+import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.data.local.WorkoutPlan
 import com.kevin.legion.data.local.WorkoutPlanItem
+import com.kevin.legion.engine.RecordStore
+import com.kevin.legion.engine.notes.NotesAspectSeeder
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.testutil.RoomTestReset
@@ -28,6 +31,13 @@ import org.robolectric.RuntimeEnvironment
  * touches Room through [NotesController] and this domain's own reconciliation ([GoalChecklistTest])
  * is already covered pure and separately.
  *
+ * **Cutover 1** (`docs/architecture/cutover1-2026-08-24.md`): [NotesController] is now
+ * engine-backed, so every fixture below that used to insert a backdated/pre-ticked `ListItem`
+ * straight into `ListItemDao` now goes through [insertEngineItem] instead - the SAME
+ * [RecordStore] door `NotesController` itself writes through, just with an explicit `now` so a
+ * fixture can still look like an item that genuinely aged into the past. Every read-back that used
+ * to call `db.listItemDao().getById` now calls [NotesController.itemById].
+ *
  * Three things this ticket's own verification names explicitly, each with its own test below:
  * idempotence across repeated same-day runs, that a materialized line is a genuinely tickable
  * one-off item (not refused by [NotesController.tick]'s recurring-item guard), and that the
@@ -49,6 +59,32 @@ class GoalChecklistSyncTest {
                 effectiveFromDateEpoch = dayStartEpoch(now), updatedAt = now,
             ),
         )
+    }
+
+    /** Writes one engine-backed plan-shaped item directly through [RecordStore] - the same door
+     * [NotesController] itself uses - so a fixture can carry an arbitrary `createdAt`/`done`/
+     * `doneAt`/`repeatKind` combination [NotesController.addItem] itself has no parameter for
+     * (it always stamps real wall-clock "now"). Returns the new record's id. */
+    private suspend fun insertEngineItem(
+        text: String,
+        done: Boolean = false,
+        doneAt: Long? = null,
+        sortOrder: Int = 0,
+        createdAt: Long,
+        repeatKind: String? = null,
+    ): Long {
+        val db = CarDatabase.getDatabase(context)
+        val schema = NotesAspectSeeder.ensureSeeded(context)
+        val store = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+        val values = mapOf(
+            schema.fieldIds.getValue(NotesAspectSeeder.FIELD_TEXT) to text,
+            schema.fieldIds.getValue(NotesAspectSeeder.FIELD_DONE) to done,
+            schema.fieldIds.getValue(NotesAspectSeeder.FIELD_DONE_AT) to doneAt,
+            schema.fieldIds.getValue(NotesAspectSeeder.FIELD_SORT_ORDER) to sortOrder,
+            schema.fieldIds.getValue(NotesAspectSeeder.FIELD_REPEAT_KIND) to repeatKind,
+        )
+        val result = store.create(schema.recordTypeId, values, RecordProvenance.USER, now = createdAt)
+        return (result as RecordStore.WriteResult.Success).recordId
     }
 
     /** Every non-deleted [ListItem] this object has ever written, on the one list. */
@@ -113,7 +149,7 @@ class GoalChecklistSyncTest {
         val ticked = NotesController.tick(context, item)
         assertTrue("a one-off item must be accepted by NotesController.tick's guard, not refused", ticked)
 
-        val reread = CarDatabase.getDatabase(context).listItemDao().getById(item.id)
+        val reread = NotesController.itemById(context, item.id)
         assertNotNull(reread)
         assertTrue(reread!!.done)
         assertNotNull("a real done timestamp must exist for currentItems to read back", reread.doneAt)
@@ -153,17 +189,14 @@ class GoalChecklistSyncTest {
         // NotesController.tick itself rather than reimplementing "flip done" on its own - proof
         // the UI path and the voice path are the SAME function, not two that happen to agree today.
         val now = System.currentTimeMillis()
-        val list = NotesController.theList(context)
-        val recurringId = CarDatabase.getDatabase(context).listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "Recurring artifact",
-                repeatKind = "WEEKLY", sortOrder = 0, createdAt = now,
-            ),
+        val recurringId = insertEngineItem(
+            text = GoalChecklistSync.ITEM_PREFIX + "Recurring artifact",
+            repeatKind = "WEEKLY", createdAt = now,
         )
 
         GoalChecklistSync.toggle(context, recurringId)
 
-        val after = CarDatabase.getDatabase(context).listItemDao().getById(recurringId)
+        val after = NotesController.itemById(context, recurringId)
         assertNotNull(after)
         assertFalse("a recurring item must stay un-ticked - NotesController.tick's own guard, not a checkbox-side one", after!!.done)
     }
@@ -176,13 +209,13 @@ class GoalChecklistSyncTest {
         val item = planItems().single()
 
         GoalChecklistSync.toggle(context, item.id)
-        val ticked = CarDatabase.getDatabase(context).listItemDao().getById(item.id)
+        val ticked = NotesController.itemById(context, item.id)
         assertNotNull(ticked)
         assertTrue(ticked!!.done)
         assertNotNull("a real doneAt, matching what NotesController.tick itself stamps", ticked.doneAt)
 
         GoalChecklistSync.toggle(context, item.id)
-        val unticked = CarDatabase.getDatabase(context).listItemDao().getById(item.id)
+        val unticked = NotesController.itemById(context, item.id)
         assertNotNull(unticked)
         assertFalse(unticked!!.done)
     }
@@ -198,19 +231,15 @@ class GoalChecklistSyncTest {
     fun `a plan change today does not touch or untick an already-ticked plan item from a past day`() = runBlocking {
         val now = System.currentTimeMillis()
         val yesterday = now - 24 * 60 * 60 * 1000
-        val list = NotesController.theList(context)
 
         // A row materialized "yesterday" and ticked that day, under whatever plan was in effect
         // then - inserted directly with a backdated createdAt, the same pattern the retention
         // tests above use to look like a row that genuinely aged out of today's window, since
         // NotesController.addItem always stamps the real wall-clock "now" and cannot itself be
         // backdated.
-        val db = CarDatabase.getDatabase(context)
-        val yesterdayItemId = db.listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "Squat: 9 sets this week",
-                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
-            ),
+        val yesterdayItemId = insertEngineItem(
+            text = GoalChecklistSync.ITEM_PREFIX + "Squat: 9 sets this week",
+            done = true, doneAt = yesterday, createdAt = yesterday,
         )
 
         // Today: the plan changes (a meal target now exists where none did before) and
@@ -218,7 +247,7 @@ class GoalChecklistSyncTest {
         givenAMealTarget(now)
         GoalChecklistSync.materializeToday(context, now)
 
-        val reread = db.listItemDao().getById(yesterdayItemId)
+        val reread = NotesController.itemById(context, yesterdayItemId)
         assertNotNull(reread)
         assertTrue(
             "a past day's ticked item must survive a plan change made today - materializeToday's " +
@@ -234,25 +263,19 @@ class GoalChecklistSyncTest {
     @Test
     fun `plan items older than the retention window are trimmed, ticked and un-ticked alike`() = runBlocking {
         val now = System.currentTimeMillis()
-        val list = NotesController.theList(context)
         val longAgo = now - (GoalChecklistSync.RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000
 
         // Two plan items materialized "long ago" and never trimmed since - one ticked that day,
         // one left open, both directly inserted with a backdated createdAt the way an item that
         // genuinely aged past the window would look, since NotesController.addItem always stamps
         // "now".
-        val db = CarDatabase.getDatabase(context)
-        val doneOldId = db.listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "Sleep 8h",
-                done = true, doneAt = longAgo, sortOrder = 0, createdAt = longAgo,
-            ),
+        val doneOldId = insertEngineItem(
+            text = GoalChecklistSync.ITEM_PREFIX + "Sleep 8h",
+            done = true, doneAt = longAgo, createdAt = longAgo,
         )
-        val openOldId = db.listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "Hit 2300 kcal / 180g protein",
-                done = false, sortOrder = 1, createdAt = longAgo,
-            ),
+        val openOldId = insertEngineItem(
+            text = GoalChecklistSync.ITEM_PREFIX + "Hit 2300 kcal / 180g protein",
+            sortOrder = 1, createdAt = longAgo,
         )
 
         // A materialize call today is what triggers the trim (trim-on-write, matching
@@ -260,27 +283,23 @@ class GoalChecklistSyncTest {
         // the trim half of materializeToday even though it derives zero wanted lines.
         GoalChecklistSync.materializeToday(context, now)
 
-        assertNull("the ticked old item must be gone too - the denominator, not just the numerator, is removed", db.listItemDao().getById(doneOldId))
-        assertNull("the un-ticked old item must be gone", db.listItemDao().getById(openOldId))
+        assertNull("the ticked old item must be gone too - the denominator, not just the numerator, is removed", NotesController.itemById(context, doneOldId))
+        assertNull("the un-ticked old item must be gone", NotesController.itemById(context, openOldId))
     }
 
     @Test
     fun `a plan item inside the retention window survives a materialize call`() = runBlocking {
         val now = System.currentTimeMillis()
-        val list = NotesController.theList(context)
         val recent = now - (GoalChecklistSync.RETENTION_DAYS - 1) * 24 * 60 * 60 * 1000
 
-        val db = CarDatabase.getDatabase(context)
-        val recentId = db.listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "Sleep 8h",
-                done = true, doneAt = recent, sortOrder = 0, createdAt = recent,
-            ),
+        val recentId = insertEngineItem(
+            text = GoalChecklistSync.ITEM_PREFIX + "Sleep 8h",
+            done = true, doneAt = recent, createdAt = recent,
         )
 
         GoalChecklistSync.materializeToday(context, now)
 
-        assertNotNull("an item still inside the window must not be swept up by the same trim pass", db.listItemDao().getById(recentId))
+        assertNotNull("an item still inside the window must not be swept up by the same trim pass", NotesController.itemById(context, recentId))
     }
 
     // --- ticket 08: the lazy end-of-day auto-log sweep --------------------------------------------
@@ -314,16 +333,13 @@ class GoalChecklistSyncTest {
             yesterdayDow,
         ).single()
 
-        val list = NotesController.theList(context)
-        val db = CarDatabase.getDatabase(context)
-        val itemId = db.listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + line.text,
-                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
-            ),
+        val itemId = insertEngineItem(
+            text = GoalChecklistSync.ITEM_PREFIX + line.text,
+            done = true, doneAt = yesterday, createdAt = yesterday,
         )
 
         // Three materialize calls, same as three app opens - idempotence is the entire point.
+        val db = CarDatabase.getDatabase(context)
         repeat(3) { GoalChecklistSync.materializeToday(context, now) }
 
         val logs = db.workoutSetLogDao().getRecent(10)
@@ -336,7 +352,7 @@ class GoalChecklistSyncTest {
             yesterday, log.loggedAt,
         )
 
-        val reread = db.listItemDao().getById(itemId)
+        val reread = NotesController.itemById(context, itemId)
         assertNotNull(reread)
         assertTrue("the tick itself must survive the sweep - adherence is not deleted", reread!!.done)
         assertNotNull("loggedAt must now be set - this is the whole idempotence anchor", reread.loggedAt)
@@ -346,29 +362,24 @@ class GoalChecklistSyncTest {
     fun `a ticked past-day meal or sleep line logs nothing`() = runBlocking {
         val now = System.currentTimeMillis()
         val yesterday = now - 24 * 60 * 60 * 1000
-        val list = NotesController.theList(context)
-        val db = CarDatabase.getDatabase(context)
-        val mealItemId = db.listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "Hit 2300 kcal / 180g protein",
-                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
-            ),
+        val mealItemId = insertEngineItem(
+            text = GoalChecklistSync.ITEM_PREFIX + "Hit 2300 kcal / 180g protein",
+            done = true, doneAt = yesterday, createdAt = yesterday,
         )
-        val sleepItemId = db.listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "Sleep 8h",
-                done = true, doneAt = yesterday, sortOrder = 1, createdAt = yesterday,
-            ),
+        val sleepItemId = insertEngineItem(
+            text = GoalChecklistSync.ITEM_PREFIX + "Sleep 8h",
+            done = true, doneAt = yesterday, sortOrder = 1, createdAt = yesterday,
         )
 
         GoalChecklistSync.materializeToday(context, now)
 
+        val db = CarDatabase.getDatabase(context)
         assertTrue(
             "a meal/sleep tick must never invent a workout log - it is not a workout line",
             db.workoutSetLogDao().getRecent(10).isEmpty(),
         )
-        assertNull(db.listItemDao().getById(mealItemId)!!.loggedAt)
-        assertNull(db.listItemDao().getById(sleepItemId)!!.loggedAt)
+        assertNull(NotesController.itemById(context, mealItemId)!!.loggedAt)
+        assertNull(NotesController.itemById(context, sleepItemId)!!.loggedAt)
     }
 
     @Test
@@ -384,17 +395,11 @@ class GoalChecklistSyncTest {
             yesterdayDow,
         ).single()
 
-        val list = NotesController.theList(context)
-        val db = CarDatabase.getDatabase(context)
-        db.listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + line.text,
-                done = false, sortOrder = 0, createdAt = yesterday,
-            ),
-        )
+        insertEngineItem(text = GoalChecklistSync.ITEM_PREFIX + line.text, done = false, createdAt = yesterday)
 
         GoalChecklistSync.materializeToday(context, now)
 
+        val db = CarDatabase.getDatabase(context)
         assertTrue("nothing was ticked, so nothing should have been reported logged", db.workoutSetLogDao().getRecent(10).isEmpty())
     }
 
@@ -402,24 +407,21 @@ class GoalChecklistSyncTest {
     fun `a ticked line whose text no longer matches any current plan derivation is skipped, never guessed`() = runBlocking {
         val now = System.currentTimeMillis()
         val yesterday = now - 24 * 60 * 60 * 1000
-        val list = NotesController.theList(context)
-        val db = CarDatabase.getDatabase(context)
         // No WorkoutPlan/WorkoutPlanItem on file for that week at all - a line whose plan has since
         // changed (or was never a real plan-derived line) has nothing to structurally match against.
-        val itemId = db.listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + "3 sets - Kettlebell swing",
-                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
-            ),
+        val itemId = insertEngineItem(
+            text = GoalChecklistSync.ITEM_PREFIX + "3 sets - Kettlebell swing",
+            done = true, doneAt = yesterday, createdAt = yesterday,
         )
 
         GoalChecklistSync.materializeToday(context, now)
 
+        val db = CarDatabase.getDatabase(context)
         assertTrue(
             "no anchor to match against means no claim - never fabricate exercise/sets for an unmatched line",
             db.workoutSetLogDao().getRecent(10).isEmpty(),
         )
-        assertNull("an unmatched item stays un-swept, available for a later materialize if the plan is restored", db.listItemDao().getById(itemId)!!.loggedAt)
+        assertNull("an unmatched item stays un-swept, available for a later materialize if the plan is restored", NotesController.itemById(context, itemId)!!.loggedAt)
     }
 
     // --- ticket 09: "a ticked workout is one act, not two rows" ---------------------------------
@@ -437,18 +439,15 @@ class GoalChecklistSyncTest {
             yesterdayDow,
         ).single()
 
-        val list = NotesController.theList(context)
-        val db = CarDatabase.getDatabase(context)
-        val itemId = db.listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + line.text,
-                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
-            ),
+        val itemId = insertEngineItem(
+            text = GoalChecklistSync.ITEM_PREFIX + line.text,
+            done = true, doneAt = yesterday, createdAt = yesterday,
         )
 
         GoalChecklistSync.materializeToday(context, now)
+        val db = CarDatabase.getDatabase(context)
         assertEquals("the sweep must have written a log to undo", 1, db.workoutSetLogDao().getRecent(10).size)
-        val sweptItem = db.listItemDao().getById(itemId)!!
+        val sweptItem = NotesController.itemById(context, itemId)!!
         assertNotNull("loggedAt must be stamped before the untick", sweptItem.loggedAt)
 
         NotesController.untick(context, sweptItem)
@@ -457,7 +456,7 @@ class GoalChecklistSyncTest {
             "the phantom set defect: unticking must delete the log the sweep wrote, not leave it behind forever",
             db.workoutSetLogDao().getRecent(10).isEmpty(),
         )
-        val untickedItem = db.listItemDao().getById(itemId)!!
+        val untickedItem = NotesController.itemById(context, itemId)!!
         assertFalse(untickedItem.done)
         assertNull("loggedAt must clear too, so a re-tick is eligible for a fresh sweep", untickedItem.loggedAt)
     }
@@ -483,17 +482,14 @@ class GoalChecklistSyncTest {
         )
         assertTrue(outcome.success)
 
-        val list = NotesController.theList(context)
-        val db = CarDatabase.getDatabase(context)
-        val itemId = db.listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + line.text,
-                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
-            ),
+        val itemId = insertEngineItem(
+            text = GoalChecklistSync.ITEM_PREFIX + line.text,
+            done = true, doneAt = yesterday, createdAt = yesterday,
         )
 
         GoalChecklistSync.materializeToday(context, now)
 
+        val db = CarDatabase.getDatabase(context)
         val logs = db.workoutSetLogDao().getRecent(10)
         assertEquals(
             "a driver who logged it by hand AND ticked the line did one workout, not two",
@@ -502,7 +498,7 @@ class GoalChecklistSyncTest {
         assertNull("the surviving row is the manual one, not a swept duplicate", logs.single().sourceListItemId)
         assertNotNull(
             "the tick still counts as adherence even though nothing new was written",
-            db.listItemDao().getById(itemId)!!.loggedAt,
+            NotesController.itemById(context, itemId)!!.loggedAt,
         )
     }
 
@@ -519,17 +515,14 @@ class GoalChecklistSyncTest {
             yesterdayDow,
         ).single()
 
-        val list = NotesController.theList(context)
-        val db = CarDatabase.getDatabase(context)
-        db.listItemDao().insert(
-            ListItem(
-                listId = list.id, text = GoalChecklistSync.ITEM_PREFIX + line.text,
-                done = true, doneAt = yesterday, sortOrder = 0, createdAt = yesterday,
-            ),
+        insertEngineItem(
+            text = GoalChecklistSync.ITEM_PREFIX + line.text,
+            done = true, doneAt = yesterday, createdAt = yesterday,
         )
 
         GoalChecklistSync.materializeToday(context, now)
 
+        val db = CarDatabase.getDatabase(context)
         assertEquals(1, db.workoutSetLogDao().getRecent(10).size)
     }
 

@@ -73,6 +73,17 @@ object PayloadCodec {
         return if (payload.has(k) && !payload.isNull(k)) payload.optString(k) else null
     }
 
+    /** Reads a [FieldType.BOOLEAN] field, defaulting to [default] when the key is missing or
+     * explicitly null - added for cutover 1 ([com.kevin.legion.notes.NotesController]/
+     * [com.kevin.legion.location.PlaceController] read `done`/etc. as a plain Kotlin `Boolean`,
+     * matching the legacy [com.kevin.legion.data.local.ListItem] entity's own non-nullable
+     * `Boolean` columns, so the bridge never has to thread a `Boolean?` through code the legacy
+     * entity never asked to handle). */
+    fun readBoolean(payload: JSONObject, fieldDefId: Long, default: Boolean = false): Boolean {
+        val k = key(fieldDefId)
+        return if (payload.has(k) && !payload.isNull(k)) payload.optBoolean(k, default) else default
+    }
+
     /** A [FieldType.REFERENCE] field's stored target id, or null if unset. */
     fun readReferenceId(payload: JSONObject, fieldDefId: Long): Long? = readLong(payload, fieldDefId)
 

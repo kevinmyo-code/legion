@@ -52,12 +52,14 @@ object LogDigestBuilder : DigestBuilder {
         val db = CarDatabase.getDatabase(context)
         val now = System.currentTimeMillis()
 
-        val lists = db.itemListDao().getAll(includeArchived = false)
-        val tickableListIds = lists.filter { it.tickable }.map { it.id }.toSet()
-        val allActive = db.listItemDao().allActive()
-        val missed = db.listItemDao().missedItems()
+        // Cutover 1: NotesController is engine-backed now - "the one list" is always tickable
+        // (NotesController.theList's own doc comment), so tickableListIds collapses to its single
+        // id rather than a query across every ItemList row (there has only ever been one live).
+        val tickableListIds = setOf(com.kevin.legion.notes.NotesController.theList(context).id)
+        val allActive = com.kevin.legion.notes.NotesController.allItems(context)
+        val missed = com.kevin.legion.notes.NotesController.missedItems(context)
         val placeReminderCount = db.placeReminderDao().allActive().size
-        val placeTriggerItemCount = db.listItemDao().openWithAnyPlaceTrigger().size
+        val placeTriggerItemCount = com.kevin.legion.notes.NotesController.openWithAnyPlaceTrigger(context).size
 
         val calendarEvents = if (CalendarProvider.hasReadPermission(context)) {
             CalendarProvider.eventsInWindow(context, now, now + CALENDAR_HORIZON_MS)

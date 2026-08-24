@@ -9,6 +9,13 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.service.ReminderAlarmReceiver
 
+// Cutover 1 (`docs/architecture/cutover1-2026-08-24.md`): this file used to write
+// `ListItem.exactDowngraded` and read `ListItemDao.allWithTimeTrigger`/`ListItemSkipDao` directly.
+// Both routes now go through `NotesController`, which is engine-backed - see that object's own
+// class doc. `CarDatabase` is still imported for `listItemSkipDao()`, the one legacy table this
+// wave deliberately keeps a reader on (recurrence's own per-occurrence skip state, plugin-internal,
+// not migrated - `docs/architecture/wave1-carve-2026-08-23.md`).
+
 /**
  * Owns every `AlarmManager` interaction for the notes/lists/calendar domain -
  * `.scratch/notes-lists-calendar/issues/03-android-alarm-mechanism.md`'s Answer, verbatim:
@@ -72,16 +79,14 @@ object AlarmScheduler {
         val am = alarmManager(context)
         val pi = pendingIntentFor(context, item.id)
         val canExact = canScheduleExact(context)
-        val dao = CarDatabase.getDatabase(context).listItemDao()
-        val now = System.currentTimeMillis()
 
         if (item.exact && canExact) {
             am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
-            if (item.exactDowngraded) dao.setExactDowngraded(item.id, false, now)
+            if (item.exactDowngraded) NotesController.setExactDowngraded(context, item.id, false)
         } else {
             am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
             val shouldBeDowngraded = item.exact && !canExact
-            if (item.exactDowngraded != shouldBeDowngraded) dao.setExactDowngraded(item.id, shouldBeDowngraded, now)
+            if (item.exactDowngraded != shouldBeDowngraded) NotesController.setExactDowngraded(context, item.id, shouldBeDowngraded)
         }
     }
 
@@ -100,16 +105,15 @@ object AlarmScheduler {
      */
     suspend fun rescheduleAll(context: Context) {
         val db = CarDatabase.getDatabase(context)
-        val dao = db.listItemDao()
         val now = System.currentTimeMillis()
 
-        for (item in dao.allWithTimeTrigger()) {
+        for (item in NotesController.allWithTimeTrigger(context)) {
             if (item.done) continue
             val startsAt = item.startsAt ?: continue
 
             if (item.repeatKind == null) {
                 if (startsAt < now) {
-                    if (item.missedAt == null) dao.markMissed(item.id, now)
+                    if (item.missedAt == null) NotesController.markMissed(context, item.id)
                     continue
                 }
                 schedule(context, item, startsAt)

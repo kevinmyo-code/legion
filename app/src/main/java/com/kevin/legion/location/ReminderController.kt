@@ -1,8 +1,6 @@
 package com.kevin.legion.location
 
 import android.content.Context
-import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.ItemList
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.notes.NotesController
 
@@ -40,18 +38,19 @@ object ReminderController {
     }
 
     /** Active (not-yet-done) reminders bound to [label], across every list - a reminder isn't
-     * required to live on "Reminders" specifically (a driver can mark any item place-triggered). */
+     * required to live on "Reminders" specifically (a driver can mark any item place-triggered).
+     * Cutover 1: rewired off `ListItemDao` onto [NotesController], which is now engine-backed. */
     suspend fun activeFor(context: Context, label: String): List<ListItem> =
-        CarDatabase.getDatabase(context).listItemDao().openWithPlaceTrigger(normalizeLabel(label))
+        NotesController.openWithPlaceTrigger(context, normalizeLabel(label))
 
     /** All active reminders across every place. */
     suspend fun allActive(context: Context): List<ListItem> =
-        CarDatabase.getDatabase(context).listItemDao().openWithAnyPlaceTrigger()
+        NotesController.openWithAnyPlaceTrigger(context)
 
     /** Marks a reminder acknowledged so it stops surfacing - [NotesController.tick], the same
      * verb any other item's completion goes through. */
     suspend fun markDone(context: Context, id: Long) {
-        val item = CarDatabase.getDatabase(context).listItemDao().getById(id) ?: return
+        val item = NotesController.itemById(context, id) ?: return
         NotesController.tick(context, item)
     }
 

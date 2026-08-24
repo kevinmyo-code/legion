@@ -90,9 +90,11 @@ class AdvisorProposalExecutorTest {
             "a place that normalises to blank must report WriteFailed, never Ok",
             outcome is AdvisorProposalExecutor.ExecuteResult.WriteFailed,
         )
+        // Cutover 1: ReminderController/NotesController are engine-backed - openWithAnyPlaceTrigger
+        // is now com.kevin.legion.notes.NotesController's own read, not ListItemDao's.
         assertTrue(
             "no reminder should have been written under any label",
-            CarDatabase.getDatabase(context).listItemDao().openWithAnyPlaceTrigger().isEmpty(),
+            com.kevin.legion.notes.NotesController.openWithAnyPlaceTrigger(context).isEmpty(),
         )
     }
 
@@ -104,7 +106,7 @@ class AdvisorProposalExecutorTest {
         val outcome = AdvisorProposalExecutor.execute(context, brief, proposal)
 
         assertTrue(outcome is AdvisorProposalExecutor.ExecuteResult.Ok)
-        val landed = CarDatabase.getDatabase(context).listItemDao().openWithAnyPlaceTrigger()
+        val landed = com.kevin.legion.notes.NotesController.openWithAnyPlaceTrigger(context)
         assertEquals(1, landed.size)
         assertEquals("pick up the package", landed.first().text)
     }

@@ -171,4 +171,76 @@ object EngineDataMigrationWave1 {
         runCatching { copyNotesIfNeeded(context) }
         runCatching { copyPlacesIfNeeded(context) }
     }
+
+    // ---------------------------------------------------------------------------- cutover 1 catch-up
+
+    private const val KEY_CUTOVER1_CATCHUP_COMPLETED = "cutover1_catchup_v1_completed"
+
+    /**
+     * Cutover 1's one-time catch-up (`docs/architecture/cutover1-2026-08-24.md`, ticket 22 point
+     * 3): "re-run the wave-1 copier ONCE more (it is idempotent, per-row guid) to catch rows
+     * written to legacy between migration and this install; then write a cutover-complete marker."
+     *
+     * The ordinary [KEY_NOTES_COMPLETED]/[KEY_PLACES_COMPLETED] flags are fast-path SKIPS once set
+     * ([copyNotesIfNeeded]/[copyPlacesIfNeeded] never even query the legacy table again after
+     * completing once) - exactly what makes them wrong for a catch-up rescan. This function clears
+     * BOTH flags (once, guarded by its own [KEY_CUTOVER1_CATCHUP_COMPLETED] marker so it only ever
+     * forces a rescan a single time, not on every app start) and re-runs both copiers - the per-row
+     * `guid` check inside each one is the actual work: any row already copied is recognized and
+     * skipped, and any row written to `list_items`/`places` in the window between wave 1 landing and
+     * this cutover install is picked up for the first time.
+     *
+     * Then rekeys every [com.kevin.legion.data.local.ListItemSkip] row - see
+     * [rekeySkipsToEngineIds]'s own doc comment - and only then sets the completion marker, so a
+     * crash between the copy rescan and the rekey pass leaves the marker unset and the WHOLE catch-up
+     * (copy rescan included) retries next app start rather than silently skipping the rekey.
+     */
+    suspend fun catchUpOnce(context: Context): Boolean {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_CUTOVER1_CATCHUP_COMPLETED, false)) return false
+
+        prefs.edit()
+            .putBoolean(KEY_NOTES_COMPLETED, false)
+            .putBoolean(KEY_PLACES_COMPLETED, false)
+            .apply()
+        copyNotesIfNeeded(context)
+        copyPlacesIfNeeded(context)
+        rekeySkipsToEngineIds(context)
+
+        prefs.edit().putBoolean(KEY_CUTOVER1_CATCHUP_COMPLETED, true).apply()
+        return true
+    }
+
+    /**
+     * [com.kevin.legion.data.local.ListItemSkip.itemId] used to store a legacy
+     * [com.kevin.legion.data.local.ListItem.id] - a per-database integer that means nothing once
+     * `NotesController` stops reading/writing that table (a fresh engine record for the same item
+     * gets its OWN, unrelated, freshly-`AUTOINCREMENT`ed id). Left un-rekeyed, every pre-cutover skip
+     * row would silently stop matching anything, and a previously-skipped recurring occurrence would
+     * reappear - a real correctness regression for the exact feature ticket 04 built. No schema
+     * change needed ([ListItemSkip.itemId] was never anything more specific than "whatever id the
+     * active item store currently assigns this row's item" - cutover just changes which store that
+     * is): this walks every skip row, finds its legacy item's `syncId` (still readable - `list_items`
+     * itself is untouched, only its writers are gone), finds the matching engine record by
+     * [com.kevin.legion.data.local.EngineRecordDao.getByGuid] (wave 1's own copy reused `syncId` as
+     * `guid` - see this object's class doc), and re-points [ListItemSkip.itemId] at that record's id.
+     * A skip whose legacy item or matching engine record cannot be found (deleted, or never
+     * migrated - e.g. it belonged to a tombstoned `ListItem` wave 1 deliberately never copied) is
+     * left alone rather than guessed at; its occurrence-skip is lost, the same accepted cost wave
+     * 1's own "does not copy tombstoned rows" scope cut already accepted for the item itself.
+     */
+    private suspend fun rekeySkipsToEngineIds(context: Context) {
+        val db = CarDatabase.getDatabase(context)
+        val now = System.currentTimeMillis()
+        val skipDao = db.listItemSkipDao()
+        val itemDao = db.listItemDao()
+        val engineDao = db.engineRecordDao()
+
+        for (skip in skipDao.allActive()) {
+            val legacyItem = itemDao.getById(skip.itemId) ?: continue
+            val engineRecord = engineDao.getByGuid(legacyItem.syncId) ?: continue
+            if (engineRecord.id == skip.itemId) continue // already points at the right id (re-run safety)
+            skipDao.rekeyItemId(skip.id, engineRecord.id, now)
+        }
+    }
 }

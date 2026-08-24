@@ -53,6 +53,16 @@ object NotesAspectSeeder {
     const val FIELD_EXACT_DOWNGRADED = "exactDowngraded"
     const val FIELD_MISSED_AT = "missedAt"
     const val FIELD_MISSED_DISMISSED_AT = "missedDismissedAt"
+    /** Cutover 1 addition (`docs/architecture/cutover1-2026-08-24.md`) - the wave 1 carve
+     * deliberately did not carry [com.kevin.legion.data.local.ListItem.loggedAt] onto the engine
+     * (it is `GoalChecklistSync`'s own sweep bookkeeping, not user content), reasoning that was
+     * only true as long as the legacy table stayed the live store. Once `NotesController` stops
+     * writing `list_items` at all, that bookkeeping needs somewhere to live - a NEW field on the
+     * SAME record type, added the way the engine is designed to grow (a `FieldDef` row, not a Room
+     * migration) rather than a schema exception. [NotesAspectSeeder.ensureSeeded] is idempotent at
+     * per-field granularity, so this lands for every existing install on its next seed pass with no
+     * migration of its own. */
+    const val FIELD_LOGGED_AT = "loggedAt"
 
     /** [com.kevin.legion.notes.RepeatKind]'s names, duplicated here as plain strings rather than a
      * dependency on that enum - `engine/` stays independent of `notes/`, matching the engine's own
@@ -135,6 +145,7 @@ object NotesAspectSeeder {
         fieldIds[FIELD_EXACT_DOWNGRADED] = ensureField(FIELD_EXACT_DOWNGRADED, FieldType.BOOLEAN, required = false, position = 17)
         fieldIds[FIELD_MISSED_AT] = ensureField(FIELD_MISSED_AT, FieldType.DATETIME, required = false, position = 18)
         fieldIds[FIELD_MISSED_DISMISSED_AT] = ensureField(FIELD_MISSED_DISMISSED_AT, FieldType.DATETIME, required = false, position = 19)
+        fieldIds[FIELD_LOGGED_AT] = ensureField(FIELD_LOGGED_AT, FieldType.DATETIME, required = false, position = 20)
 
         // startsAt is the reminder clock - wiring it as the promoted dueAt is what makes a Notes
         // item with a time trigger show up in a cross-aspect agenda, same mechanism

@@ -252,7 +252,8 @@ fun TodayScreen(
         // LOG tile: open-task count mirrors HomeDigestBuilder.logHeadline's own filter
         // (undone, unscheduled, non-recurring) - see buildLogTile's own doc for why this is
         // restated here rather than calling that digest builder.
-        val allActiveItems = db.listItemDao().allActive()
+        // Cutover 1: rewired off ListItemDao onto NotesController, which is now engine-backed.
+        val allActiveItems = com.kevin.legion.notes.NotesController.allItems(context)
         val openTaskCount = allActiveItems.count { !it.done && it.startsAt == null && it.repeatKind == null }
         val logHasAnyItems = allActiveItems.isNotEmpty()
         val notesMissedCount = NotesController.missedItems(context).size

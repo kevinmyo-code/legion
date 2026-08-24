@@ -28,7 +28,10 @@ class NotesAspectSeederTest {
     }
 
     @Test
-    fun `first run creates exactly one aspect, one record type, and twenty fields`() = runBlocking {
+    fun `first run creates exactly one aspect, one record type, and twenty-one fields`() = runBlocking {
+        // Cutover 1 (`docs/architecture/cutover1-2026-08-24.md`) added FIELD_LOGGED_AT - loggedAt
+        // needed a home on the engine record once NotesController stopped writing the legacy
+        // ListItem.loggedAt column at all. Twenty was Wave 1's own original count.
         NotesAspectSeeder.ensureSeeded(context)
 
         assertEquals(1, db.aspectDao().listActive().count { it.name == NotesAspectSeeder.ASPECT_NAME })
@@ -36,7 +39,7 @@ class NotesAspectSeederTest {
         val recordTypes = db.recordTypeDao().listByAspect(aspectId)
         assertEquals(1, recordTypes.size)
         val fields = db.fieldDefDao().forRecordType(recordTypes.single().id)
-        assertEquals(20, fields.size)
+        assertEquals(21, fields.size)
     }
 
     @Test
@@ -48,7 +51,7 @@ class NotesAspectSeederTest {
         assertEquals(first.recordTypeId, second.recordTypeId)
         assertEquals(first.fieldIds, second.fieldIds)
         assertEquals(1, db.aspectDao().listActive().count { it.name == NotesAspectSeeder.ASPECT_NAME })
-        assertEquals(20, db.fieldDefDao().forRecordType(second.recordTypeId).size)
+        assertEquals(21, db.fieldDefDao().forRecordType(second.recordTypeId).size)
     }
 
     @Test
