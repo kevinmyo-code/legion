@@ -4,7 +4,7 @@ ticket: "22"
 title: "Cutover per aspect: the engine becomes the read and write path"
 type: task
 status: claimed
-status-detail: "Started 2026-08-24. Cutover 1 (Notes+Places) dispatched."
+status-detail: "Cutover 1 (Notes+Places) MERGED and DATA-VERIFIED on the A25 2026-08-24: 26 migrated + 14 engine-native advisor items = 40 active, zero dupes, zero resurrections; SyncEngine places spec retired per ticket 13; outcome-verb honesty plumbed through both controllers. Owed: Kevin exercising reminders and voice on it. Next: pantry."
 blockers: []
 blocked-by: []
 open-blockers: 0
