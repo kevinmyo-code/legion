@@ -1,0 +1,45 @@
+{
+  "nodes": [
+    {
+      "id": "0d8aade6bbb0a785",
+      "type": "file",
+      "file": ".scratch/hardening/issues/01-ui-screenshot-tests.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ea2bf2d68b8d6f02",
+      "type": "file",
+      "file": ".scratch/hardening/issues/02-sync-channel-v2.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "bb7cae0d6dc99cb0",
+      "type": "file",
+      "file": ".scratch/hardening/issues/03-pre-migration-backup.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "2897c3cee7681766",
+      "type": "file",
+      "file": ".scratch/hardening/issues/04-encryption-at-rest.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    }
+  ],
+  "edges": []
+}
