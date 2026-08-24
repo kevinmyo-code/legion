@@ -70,4 +70,11 @@ data class FileResults(
     val needsLlmDeclined: Int = 0,
     val llmPromptTokensUsed: Int = 0,
     val llmResponseTokensUsed: Int = 0,
+    /** Cutover 3: a gate-passed file whose engine write failed after reconciliation - rolled back
+     * in full, the file is left at [com.kevin.legion.data.local.IngestState.NEW] and re-offered on
+     * the next scan (see [com.kevin.legion.ledger.IngestPipeline.CommitOutcome.EngineWriteFailed]'s
+     * doc comment). Expected to be zero in practice; counted rather than silently folded into
+     * [quarantined] because a quarantine and an engine-write failure are different claims - one
+     * says the DOCUMENT didn't reconcile, the other says a reconciled document couldn't be saved. */
+    val engineWriteFailed: Int = 0,
 )

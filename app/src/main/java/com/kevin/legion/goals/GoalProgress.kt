@@ -1,7 +1,8 @@
 package com.kevin.legion.goals
 
-import com.kevin.legion.data.local.CarDatabase
+import android.content.Context
 import com.kevin.legion.data.local.LedgerCurrency
+import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.plan.TrustTier
 import com.kevin.legion.plan.combinedTier
 
@@ -35,26 +36,30 @@ object GoalProgress {
 
     /**
      * `savings_balance_cents` current value: the sum of every USD account's latest known statement
-     * balance ([com.kevin.legion.data.local.LedgerTransactionDao.latestBalanceCents]), moved
-     * verbatim out of [com.kevin.legion.advisor.digest.CredDigestBuilder]'s former private
-     * `savingsProgress` (same query shape, same [TrustTier] rule: PROVEN only when every
+     * balance, moved verbatim out of [com.kevin.legion.advisor.digest.CredDigestBuilder]'s former
+     * private `savingsProgress` (same query shape, same [TrustTier] rule: PROVEN only when every
      * contributing account has ever cleared a real reconciliation gate,
-     * [com.kevin.legion.data.local.LedgerTransactionDao.hasReconciledRows]). Returns `null` when no
-     * USD account has a known balance at all - nothing to report a figure against, and nothing for
-     * a caller to build a meter or a digest line from.
+     * [com.kevin.legion.ledger.AccountBalance.hasReconciledRows]). Returns `null` when no USD
+     * account has a known balance at all - nothing to report a figure against, and nothing for a
+     * caller to build a meter or a digest line from.
+     *
+     * **Cutover 3** (`docs/architecture/cutover3-2026-08-24.md`): reads through
+     * [LedgerController.accountBalances] - the engine-backed seam - instead of
+     * [com.kevin.legion.data.local.LedgerTransactionDao] directly. Takes [Context] rather than
+     * [com.kevin.legion.data.local.CarDatabase] now, since the controller's public functions are the
+     * only supported door onto ledger data post-cutover.
      */
-    suspend fun savingsBalanceCents(db: CarDatabase): Pair<Long, TrustTier>? {
-        val txnDao = db.ledgerTransactionDao()
-        val usdAccounts = txnDao.allAccountIds().filter { txnDao.currencyForAccount(it) == LedgerCurrency.USD }
-        if (usdAccounts.isEmpty()) return null
+    suspend fun savingsBalanceCents(context: Context): Pair<Long, TrustTier>? {
+        val usdBalances = LedgerController.accountBalances(context).filter { it.currency == LedgerCurrency.USD }
+        if (usdBalances.isEmpty()) return null
         var total = 0L
         var any = false
         val tiers = mutableListOf<TrustTier>()
-        for (accountId in usdAccounts) {
-            val balance = txnDao.latestBalanceCents(accountId) ?: continue
+        for (balance in usdBalances) {
+            val cents = balance.balanceCents ?: continue
             any = true
-            total += balance
-            tiers += if (txnDao.hasReconciledRows(accountId, LedgerCurrency.USD)) TrustTier.PROVEN else TrustTier.REPORTED
+            total += cents
+            tiers += if (balance.hasReconciledRows) TrustTier.PROVEN else TrustTier.REPORTED
         }
         if (!any) return null
         return total to tiers.combinedTier()

@@ -293,10 +293,19 @@ class EngineDataMigrationWave3Test {
         assertTrue("a genuinely complete pass must now set the flag and fast-path every later call", third.alreadyDone)
     }
 
-    // --------------------------------------------------------------- rule 7 transience on the mirror
+    // --------------------------------------------------------------- rule 7 transience, via catchUpOnce
+    //
+    // Cutover 3 (`docs/architecture/cutover3-2026-08-24.md`) moved rule 7's ONGOING supersession
+    // into `ledger/IngestPipeline.commit`'s own engine-side transaction - see that object's doc
+    // comment. `EngineDataMigrationWave3.copyLedgerIfNeeded` no longer runs a reconciliation pass on
+    // every call (Wave 3's original per-call behaviour, retired); [EngineDataMigrationWave3.catchUpOnce]
+    // is now the ONE place that reconciliation still runs, for exactly the historical gap named in
+    // this object's own class doc: legacy-table supersession that happened BEFORE this cutover
+    // branch's `IngestPipeline` took over. These three tests exercise `catchUpOnce` directly instead
+    // of asserting on `copyLedgerIfNeeded`'s own (now narrower) `Result` shape.
 
     @Test
-    fun `rule 7 survives the copy - a legacy-superseded UNRECONCILED row is trashed on the engine side too`() = runBlocking {
+    fun `catchUpOnce trashes an engine-side UNRECONCILED mirror whose legacy row was already superseded`() = runBlocking {
         val accountId = "BOFA-CARD-9999"
         val provisional = txn(
             accountId = accountId, currency = LedgerCurrency.USD, txnDate = 1_000_000L,
@@ -306,31 +315,30 @@ class EngineDataMigrationWave3Test {
 
         val firstCopy = EngineDataMigrationWave3.copyLedgerIfNeeded(context)
         assertEquals(1, firstCopy.copied)
-        assertEquals(0, firstCopy.supersededTrashed)
 
         val schema = LedgerAspectSeeder.ensureSeeded(context)
         val mirrored = db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).single()
         assertEquals(RecordProvenance.UNRECONCILED, mirrored.provenance)
 
-        // Simulate what ledger/IngestPipeline.commit does on the legacy table when a reconciled
-        // statement later covers the same window - exactly the call
-        // IngestPipeline.kt itself makes, not a stand-in for it.
+        // Simulate what the PRE-cutover legacy path used to do (deleteSupersededProvisional still
+        // exists on the DAO as dead code - nothing calls it anymore, but the query itself is
+        // untouched, so it is still a faithful stand-in for "this happened on the legacy table
+        // before this build's IngestPipeline took over").
         val deletedFromLegacy = db.ledgerTransactionDao().deleteSupersededProvisional(accountId, 0L, 2_000_000L)
         assertEquals(1, deletedFromLegacy)
         assertTrue(db.ledgerTransactionDao().getForAccount(accountId).isEmpty())
 
-        // The engine mirror does not know yet - it is only reconciled when the copier runs again.
-        val secondCopy = EngineDataMigrationWave3.copyLedgerIfNeeded(context)
-        assertEquals(0, secondCopy.copied) // nothing NEW to copy
-        assertTrue(secondCopy.alreadyDone) // the additive-copy flag was already set
-        assertEquals(1, secondCopy.supersededTrashed) // but the stale mirror row is caught and trashed
+        // The engine mirror does not know yet - only catchUpOnce reconciles it now.
+        assertEquals(1, db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).size)
+
+        EngineDataMigrationWave3.catchUpOnce(context)
 
         assertEquals(0, db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).size)
         assertEquals(1, db.engineRecordDao().trashedByRecordType(schema.transaction.recordTypeId).size)
     }
 
     @Test
-    fun `rule 7 scoping - a DETERMINISTIC row is never trashed by the reconciliation pass even if its legacy row vanishes`() = runBlocking {
+    fun `rule 7 scoping - a DETERMINISTIC row is never trashed by catchUpOnce even if its legacy row vanishes`() = runBlocking {
         db.ledgerTransactionDao().insertAll(listOf(txn(lineRef = "1", ingestMethod = IngestMethod.DETERMINISTIC)))
         EngineDataMigrationWave3.copyLedgerIfNeeded(context)
 
@@ -338,19 +346,26 @@ class EngineDataMigrationWave3Test {
         // UNRECONCILED-only deleteSupersededProvisional path.
         db.ledgerTransactionDao().deleteAll()
 
-        val second = EngineDataMigrationWave3.copyLedgerIfNeeded(context)
+        EngineDataMigrationWave3.catchUpOnce(context)
 
-        assertEquals(0, second.supersededTrashed) // DETERMINISTIC rows are out of scope - named gap, see the carve doc
         val schema = LedgerAspectSeeder.ensureSeeded(context)
+        // DETERMINISTIC rows are out of scope - named gap, see the carve doc - so the mirror survives
+        // even though its legacy row is gone.
         assertEquals(1, db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).size)
+        assertEquals(0, db.engineRecordDao().trashedByRecordType(schema.transaction.recordTypeId).size)
     }
 
     @Test
-    fun `full run - RecordStore delete on a migrated row is a real restorable trash, not a hard delete`() = runBlocking {
+    fun `catchUpOnce's trash is a real restorable trash, not a hard delete, and runs at most once`() = runBlocking {
         db.ledgerTransactionDao().insertAll(listOf(txn(lineRef = "1", ingestMethod = IngestMethod.UNRECONCILED, accountId = "X-0001")))
         EngineDataMigrationWave3.copyLedgerIfNeeded(context)
         db.ledgerTransactionDao().deleteSupersededProvisional("X-0001", 0L, System.currentTimeMillis() + 1_000_000L)
-        EngineDataMigrationWave3.copyLedgerIfNeeded(context)
+
+        EngineDataMigrationWave3.catchUpOnce(context)
+        // A second call must be a no-op (guarded by its own completion marker) - if it re-ran the
+        // reconciliation pass it would have nothing new to trash anyway, but this pins the guard
+        // itself rather than assuming it from the marker's existence.
+        EngineDataMigrationWave3.catchUpOnce(context)
 
         val schema = LedgerAspectSeeder.ensureSeeded(context)
         val trashed = db.engineRecordDao().trashedByRecordType(schema.transaction.recordTypeId).single()
@@ -359,5 +374,23 @@ class EngineDataMigrationWave3Test {
 
         assertTrue("a rule-7 supersession trash must be restorable, matching RecordStore's own 30-day trash contract", restored)
         assertEquals(1, db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).size)
+    }
+
+    @Test
+    fun `catchUpOnce also picks up a legacy row written after the ordinary copy already completed`() = runBlocking {
+        db.ledgerTransactionDao().insertAll(listOf(txn(lineRef = "1")))
+        val first = EngineDataMigrationWave3.copyLedgerIfNeeded(context)
+        assertEquals(1, first.copied)
+        assertFalse(first.alreadyDone)
+
+        // A row written to the legacy table AFTER the ordinary copy's completion flag was already
+        // set - simulating something that landed between wave 3's original landing and this
+        // cutover branch's install.
+        db.ledgerTransactionDao().insertAll(listOf(txn(lineRef = "2")))
+
+        EngineDataMigrationWave3.catchUpOnce(context)
+
+        val schema = LedgerAspectSeeder.ensureSeeded(context)
+        assertEquals(2, db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).size)
     }
 }

@@ -4,6 +4,9 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
+import com.kevin.legion.engine.RecordStore
+import com.kevin.legion.engine.ledger.LedgerAspectSeeder
+import com.kevin.legion.engine.ledger.LedgerRecordBridge
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -51,15 +54,37 @@ class LedgerTransferGateTest {
         ingestMethod = IngestMethod.DETERMINISTIC,
     )
 
+    /** Cutover 3: [LedgerController] reads through the engine now - see
+     * [com.kevin.legion.advisor.digest.CredDigestBuilderTest]'s identical helper for the reasoning. */
+    private suspend fun insertEngineTransactions(vararg transactions: LedgerTransaction) {
+        val db = CarDatabase.getDatabase(context)
+        val schema = LedgerAspectSeeder.ensureSeeded(context)
+        val recordStore = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+        for (t in transactions) {
+            recordStore.create(
+                recordTypeId = schema.transaction.recordTypeId,
+                fieldValues = LedgerRecordBridge.fieldValuesFor(t, schema.transaction.fieldIds),
+                provenance = LedgerRecordBridge.provenanceFor(t.ingestMethod),
+                now = t.txnDate,
+                guid = t.syncId,
+            )
+        }
+    }
+
+    /** [dao.uncategorizedTransactions()]'s engine-backed successor - every row from BOTH halves of
+     * [LedgerController.uncategorizedTransactionsSplit], which together are the whole `category IS
+     * NULL` pool. */
+    private suspend fun uncategorizedRowCount(): Int {
+        val split = LedgerController.uncategorizedTransactionsSplit(context)
+        return split.real.size + split.transfers.size
+    }
+
     @Test
     fun `a matched transfer pair never reaches the merchant pool`() = runBlocking {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        dao.insertAll(
-            listOf(
-                txn("checking", 130_000, "PAYMENT TO CRD", txnDate = 1_000L),
-                txn("card", -130_000, "PAYMENT FROM CHK", txnDate = 1_000L + 2 * 24L * 60 * 60 * 1000),
-                txn("checking", -5_000, "KROGER #115 CYPRESS TX"),
-            ),
+        insertEngineTransactions(
+            txn("checking", 130_000, "PAYMENT TO CRD", txnDate = 1_000L),
+            txn("card", -130_000, "PAYMENT FROM CHK", txnDate = 1_000L + 2 * 24L * 60 * 60 * 1000),
+            txn("checking", -5_000, "KROGER #115 CYPRESS TX"),
         )
 
         val pool = LedgerController.uncategorizedMerchants(context)
@@ -70,14 +95,11 @@ class LedgerTransferGateTest {
 
     @Test
     fun `a suspected transfer with no matching leg is also kept out of the pool`() = runBlocking {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        dao.insertAll(
-            listOf(
-                // No opposite-account, opposite-amount partner exists anywhere - pass 1 cannot match
-                // this, so only the keyword fallback (pass 2, SUSPECTED_TRANSFER) can flag it.
-                txn("checking", -3_115_676, "MOBILE BANKING PAYMENT TO CRD"),
-                txn("checking", -4_599, "WALMART SUPERCENTER"),
-            ),
+        insertEngineTransactions(
+            // No opposite-account, opposite-amount partner exists anywhere - pass 1 cannot match
+            // this, so only the keyword fallback (pass 2, SUSPECTED_TRANSFER) can flag it.
+            txn("checking", -3_115_676, "MOBILE BANKING PAYMENT TO CRD"),
+            txn("checking", -4_599, "WALMART SUPERCENTER"),
         )
 
         val pool = LedgerController.uncategorizedMerchants(context)
@@ -88,12 +110,9 @@ class LedgerTransferGateTest {
 
     @Test
     fun `no transfer-shaped rows means transfersSkipped is zero and nothing is filtered`() = runBlocking {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        dao.insertAll(
-            listOf(
-                txn("checking", -4_599, "WALMART SUPERCENTER"),
-                txn("checking", -1_200, "PANDA EXPRESS HOUSTON TX"),
-            ),
+        insertEngineTransactions(
+            txn("checking", -4_599, "WALMART SUPERCENTER"),
+            txn("checking", -1_200, "PANDA EXPRESS HOUSTON TX"),
         )
 
         val pool = LedgerController.uncategorizedMerchants(context)
@@ -108,13 +127,10 @@ class LedgerTransferGateTest {
         // The partner (the card's own +130000 leg) is already categorised - proves the pairing
         // window must include ALL rows, not only the still-uncategorised ones, or this leg's
         // partner would be invisible to analyzeTransfers and the pair would never be found.
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        dao.insertAll(
-            listOf(
-                txn("checking", -130_000, "PAYMENT TO CRD", txnDate = 1_000L).copy(category = null),
-                txn("card", 130_000, "PAYMENT FROM CHK", txnDate = 1_000L).copy(category = "Income", categoryPending = false),
-                txn("checking", -5_000, "KROGER #115 CYPRESS TX"),
-            ),
+        insertEngineTransactions(
+            txn("checking", -130_000, "PAYMENT TO CRD", txnDate = 1_000L).copy(category = null),
+            txn("card", 130_000, "PAYMENT FROM CHK", txnDate = 1_000L).copy(category = "Income", categoryPending = false),
+            txn("checking", -5_000, "KROGER #115 CYPRESS TX"),
         )
 
         val pool = LedgerController.uncategorizedMerchants(context)
@@ -138,8 +154,7 @@ class LedgerTransferGateTest {
 
     @Test
     fun `setCategory refuses to write a rule for a transfer-shaped key and touches nothing`() = runBlocking {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        dao.insertAll(listOf(txn("checking", -130_000, "MOBILE BANKING PAYMENT TO CRD")))
+        insertEngineTransactions(txn("checking", -130_000, "MOBILE BANKING PAYMENT TO CRD"))
 
         val result = LedgerController.setCategory(context, "PAYMENT TO CRD", "Subscriptions")
 
@@ -149,14 +164,12 @@ class LedgerTransferGateTest {
         assertTrue("expected no CategoryRule written for a transfer-shaped key", rules.isEmpty())
         // The row itself must also be untouched - a refused correction is a true no-op, not a
         // partial one.
-        val stored = dao.uncategorizedTransactions()
-        assertEquals(1, stored.size)
+        assertEquals(1, uncategorizedRowCount())
     }
 
     @Test
     fun `previewRecategorizeCount reports zero for a transfer-shaped key even though rows would match`() = runBlocking {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        dao.insertAll(listOf(txn("checking", -130_000, "MOBILE BANKING PAYMENT TO CRD")))
+        insertEngineTransactions(txn("checking", -130_000, "MOBILE BANKING PAYMENT TO CRD"))
 
         // A real row DOES contain this substring - proves the zero comes from the refusal, not
         // from the key genuinely matching nothing.
@@ -168,14 +181,11 @@ class LedgerTransferGateTest {
 
     @Test
     fun `uncategorizedTransactionsSplit puts real merchants in real and transfer-shaped rows in transfers`() = runBlocking {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        dao.insertAll(
-            listOf(
-                txn("checking", 130_000, "PAYMENT TO CRD", txnDate = 1_000L),
-                txn("card", -130_000, "PAYMENT FROM CHK", txnDate = 1_000L + 2 * 24L * 60 * 60 * 1000),
-                txn("checking", -5_000, "KROGER #115 CYPRESS TX"),
-                txn("checking", -4_599, "WALMART SUPERCENTER"),
-            ),
+        insertEngineTransactions(
+            txn("checking", 130_000, "PAYMENT TO CRD", txnDate = 1_000L),
+            txn("card", -130_000, "PAYMENT FROM CHK", txnDate = 1_000L + 2 * 24L * 60 * 60 * 1000),
+            txn("checking", -5_000, "KROGER #115 CYPRESS TX"),
+            txn("checking", -4_599, "WALMART SUPERCENTER"),
         )
 
         val split = LedgerController.uncategorizedTransactionsSplit(context)
@@ -187,7 +197,7 @@ class LedgerTransferGateTest {
         // Every row in `real` and every row in `transfers` must, between them, account for the
         // WHOLE uncategorised pool - the exact "count the driver sees must match what the list
         // shows" requirement (CLAUDE.md §4 rule 6's principle applied to this UI count).
-        assertEquals(dao.uncategorizedTransactions().size, split.real.size + split.transfers.size)
+        assertEquals(uncategorizedRowCount(), split.real.size + split.transfers.size)
     }
 
     @Test

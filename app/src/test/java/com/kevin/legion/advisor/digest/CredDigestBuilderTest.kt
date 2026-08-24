@@ -8,6 +8,9 @@ import com.kevin.legion.data.local.IngestedFile
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
+import com.kevin.legion.engine.RecordStore
+import com.kevin.legion.engine.ledger.LedgerAspectSeeder
+import com.kevin.legion.engine.ledger.LedgerRecordBridge
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -73,6 +76,26 @@ class CredDigestBuilderTest {
         categoryPending = categoryPending,
     )
 
+    /** Cutover 3 (`docs/architecture/cutover3-2026-08-24.md`): [CredDigestBuilder] reads through
+     * [com.kevin.legion.ledger.LedgerController], which is now engine-backed - a fixture written
+     * straight to the legacy `ledgerTransactionDao()` is invisible to it. Writes through
+     * [RecordStore] instead, the same door [com.kevin.legion.ledger.IngestPipeline] itself now
+     * writes through. */
+    private suspend fun insertEngineTransactions(vararg transactions: LedgerTransaction) {
+        val db = CarDatabase.getDatabase(context)
+        val schema = LedgerAspectSeeder.ensureSeeded(context)
+        val recordStore = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+        for (t in transactions) {
+            recordStore.create(
+                recordTypeId = schema.transaction.recordTypeId,
+                fieldValues = LedgerRecordBridge.fieldValuesFor(t, schema.transaction.fieldIds),
+                provenance = LedgerRecordBridge.provenanceFor(t.ingestMethod),
+                now = t.txnDate,
+                guid = t.syncId,
+            )
+        }
+    }
+
     @Test
     fun `a month with no ingested coverage reads not logged, never a bare zero`() = runBlocking {
         val digest = builder.build(context)
@@ -86,9 +109,7 @@ class CredDigestBuilderTest {
     fun `provisional row count is a real number even with no coverage at all`() = runBlocking {
         // pendingLoggedAt-style voice-logged rows live in Room independent of any ingested file -
         // PROVISIONAL must never fold into the "nothing imported" not-logged case.
-        CarDatabase.getDatabase(context).ledgerTransactionDao().insertAll(
-            listOf(txn("CARD1234", "voice charge", -2000, ingestMethod = IngestMethod.UNRECONCILED))
-        )
+        insertEngineTransactions(txn("CARD1234", "voice charge", -2000, ingestMethod = IngestMethod.UNRECONCILED))
 
         val digest = builder.build(context)
         val provisionalLine = digest.lines().first { it.startsWith("PROVISIONAL") }
@@ -101,7 +122,7 @@ class CredDigestBuilderTest {
         val db = CarDatabase.getDatabase(context)
         markCovered("BOFA1234")
         db.budgetTargetDao().upsert(BudgetTarget(category = "Groceries", currency = LedgerCurrency.USD, amountCents = 40000, effectiveFromMonthEpoch = monthStart, updatedAt = monthStart))
-        db.ledgerTransactionDao().insertAll(listOf(txn("BOFA1234", "TRADER JOES", -31245, category = "Groceries")))
+        insertEngineTransactions(txn("BOFA1234", "TRADER JOES", -31245, category = "Groceries"))
 
         val digest = builder.build(context)
         val budgetLine = digest.lines().first { it.startsWith("BUDGET") }
@@ -114,7 +135,7 @@ class CredDigestBuilderTest {
         val db = CarDatabase.getDatabase(context)
         markCovered("CARD1234")
         db.budgetTargetDao().upsert(BudgetTarget(category = "Dining", currency = LedgerCurrency.USD, amountCents = 20000, effectiveFromMonthEpoch = monthStart, updatedAt = monthStart))
-        db.ledgerTransactionDao().insertAll(listOf(txn("CARD1234", "PENDING RESTAURANT", -4500, category = "Dining", ingestMethod = IngestMethod.UNRECONCILED)))
+        insertEngineTransactions(txn("CARD1234", "PENDING RESTAURANT", -4500, category = "Dining", ingestMethod = IngestMethod.UNRECONCILED))
 
         val digest = builder.build(context)
         val budgetLine = digest.lines().first { it.startsWith("BUDGET") }
@@ -127,7 +148,7 @@ class CredDigestBuilderTest {
     fun `uncategorised spend is its own loud bucket, real zero when everything is categorised`() = runBlocking {
         val db = CarDatabase.getDatabase(context)
         markCovered("BOFA1234")
-        db.ledgerTransactionDao().insertAll(listOf(txn("BOFA1234", "TRADER JOES", -1000, category = "Groceries")))
+        insertEngineTransactions(txn("BOFA1234", "TRADER JOES", -1000, category = "Groceries"))
 
         val digest = builder.build(context)
         val uncategorizedLine = digest.lines().first { it.startsWith("UNCATEGORIZED") }
@@ -148,7 +169,7 @@ class CredDigestBuilderTest {
                 accountId = "BOFA1234", minTxnDate = monthStart, maxTxnDate = monthStart + 10L * 24 * 60 * 60 * 1000,
             )
         )
-        db.ledgerTransactionDao().insertAll(listOf(txn("BOFA1234", "TRADER JOES", -1000, category = "Groceries")))
+        insertEngineTransactions(txn("BOFA1234", "TRADER JOES", -1000, category = "Groceries"))
 
         val digest = builder.build(context)
         val coverageLine = digest.lines().first { it.startsWith("COVERAGE") }
@@ -161,11 +182,9 @@ class CredDigestBuilderTest {
     fun `top merchants lists the largest spenders by name`() = runBlocking {
         val db = CarDatabase.getDatabase(context)
         markCovered("BOFA1234")
-        db.ledgerTransactionDao().insertAll(
-            listOf(
-                txn("BOFA1234", "AMAZON", -9000, category = "Shopping"),
-                txn("BOFA1234", "STARBUCKS", -500, category = "Dining"),
-            )
+        insertEngineTransactions(
+            txn("BOFA1234", "AMAZON", -9000, category = "Shopping"),
+            txn("BOFA1234", "STARBUCKS", -500, category = "Dining"),
         )
 
         val digest = builder.build(context)
@@ -179,15 +198,13 @@ class CredDigestBuilderTest {
     fun `a savings goal reports its current balance from the latest reconciled statement`() = runBlocking {
         val db = CarDatabase.getDatabase(context)
         markCovered("BOFA1234")
-        db.ledgerTransactionDao().insertAll(
-            listOf(
-                LedgerTransaction(
-                    sourceFile = "test", accountId = "BOFA1234", currency = LedgerCurrency.USD,
-                    txnDate = monthStart + 5 * 24 * 60 * 60 * 1000L, description = "opening balance",
-                    amountCents = 0, balanceCents = 1_250_000L, lineRef = "test:balance",
-                    ingestMethod = IngestMethod.DETERMINISTIC,
-                )
-            )
+        insertEngineTransactions(
+            LedgerTransaction(
+                sourceFile = "test", accountId = "BOFA1234", currency = LedgerCurrency.USD,
+                txnDate = monthStart + 5 * 24 * 60 * 60 * 1000L, description = "opening balance",
+                amountCents = 0, balanceCents = 1_250_000L, lineRef = "test:balance",
+                ingestMethod = IngestMethod.DETERMINISTIC,
+            ),
         )
         db.goalDao().insert(Goal(lineageId = 1, aspect = "cred", statement = "save 30k by 2028", targetValue = 30000.0, unit = "usd", metricKey = "savings_balance_cents"))
 

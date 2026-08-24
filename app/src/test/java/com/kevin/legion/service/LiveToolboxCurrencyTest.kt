@@ -4,6 +4,9 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
+import com.kevin.legion.engine.RecordStore
+import com.kevin.legion.engine.ledger.LedgerAspectSeeder
+import com.kevin.legion.engine.ledger.LedgerRecordBridge
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -32,20 +35,27 @@ class LiveToolboxCurrencyTest {
     }
 
     private suspend fun seedTransaction(accountId: String, currency: LedgerCurrency, balanceCents: Long?) {
-        CarDatabase.getDatabase(context).ledgerTransactionDao().insertAll(
-            listOf(
-                LedgerTransaction(
-                    sourceFile = "eStmt.pdf",
-                    accountId = accountId,
-                    currency = currency,
-                    txnDate = System.currentTimeMillis(),
-                    description = "TEST MERCHANT",
-                    amountCents = -1_000L,
-                    balanceCents = balanceCents,
-                    lineRef = "1",
-                    ingestMethod = IngestMethod.DETERMINISTIC,
-                ),
-            ),
+        val txn = LedgerTransaction(
+            sourceFile = "eStmt.pdf",
+            accountId = accountId,
+            currency = currency,
+            txnDate = System.currentTimeMillis(),
+            description = "TEST MERCHANT",
+            amountCents = -1_000L,
+            balanceCents = balanceCents,
+            lineRef = "1",
+            ingestMethod = IngestMethod.DETERMINISTIC,
+        )
+        // Cutover 3: LedgerController reads through the engine now - a fixture written straight to
+        // the legacy ledgerTransactionDao() is invisible to it.
+        val db = CarDatabase.getDatabase(context)
+        val schema = LedgerAspectSeeder.ensureSeeded(context)
+        RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao()).create(
+            recordTypeId = schema.transaction.recordTypeId,
+            fieldValues = LedgerRecordBridge.fieldValuesFor(txn, schema.transaction.fieldIds),
+            provenance = LedgerRecordBridge.provenanceFor(txn.ingestMethod),
+            now = txn.txnDate,
+            guid = txn.syncId,
         )
     }
 

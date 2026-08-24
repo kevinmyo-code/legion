@@ -203,7 +203,7 @@ private suspend fun resolveMetric(context: Context, goal: Goal): MetricResolutio
     if (goal.metricKey == null || goal.targetValue == null) return null
     val db = CarDatabase.getDatabase(context)
     return when (goal.metricKey) {
-        "savings_balance_cents" -> GoalProgress.savingsBalanceCents(db)?.let { (cents, _) ->
+        "savings_balance_cents" -> GoalProgress.savingsBalanceCents(context)?.let { (cents, _) ->
             // Fraction geometry only - the printed words line below always uses formatCents on the
             // Long [cents] itself, never this Double division (CLAUDE.md §4 rule three).
             MetricResolution.Accumulation(currentCents = cents, fraction = GoalProgress.accumulationProgress(cents / 100.0, goal.targetValue))

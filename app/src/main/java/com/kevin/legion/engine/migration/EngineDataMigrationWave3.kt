@@ -2,10 +2,10 @@ package com.kevin.legion.engine.migration
 
 import android.content.Context
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.engine.RecordStore
 import com.kevin.legion.engine.ledger.LedgerAspectSeeder
+import com.kevin.legion.engine.ledger.LedgerRecordBridge
 
 /**
  * The one-time, idempotent copier that carries Wave 3's live data
@@ -13,79 +13,54 @@ import com.kevin.legion.engine.ledger.LedgerAspectSeeder
  * every [com.kevin.legion.data.local.LedgerTransaction] - onto the engine through
  * [RecordStore], the engine's single write door. **Additive-only for the COPY half**: reads the
  * legacy `ledger_transactions` table, writes new [com.kevin.legion.data.local.EngineRecord] rows;
- * never touches, drops, or mutates the legacy table itself. The old table,
- * `ledger/LedgerController`, `ledger/IngestPipeline`, and every old ledger tool/screen keep working
- * unchanged - cutover (repointing WRITES at [RecordStore]) is a later, per-aspect wave (ticket 14
- * point 2), not this one. Same shape as [EngineDataMigrationWave1]/[EngineDataMigrationWave2] - see
- * those objects' own class docs for the two-layer idempotency reasoning (completion flag + per-row
- * `guid` backstop) this one reuses rather than re-explaining.
+ * never touches, drops, or mutates the legacy table itself.
  *
- * The exact field mapping is `docs/architecture/wave3-carve-2026-08-23.md`. Its headline finding:
- * **[com.kevin.legion.data.local.LedgerTransaction.ingestMethod] maps DIRECTLY onto
+ * **Cutover 3** (`docs/architecture/cutover3-2026-08-24.md`) repointed every WRITE at
+ * [RecordStore] - `ledger/IngestPipeline`'s commit path, `ledger/LedgerController`'s pending-log
+ * write - so this object's job narrows to exactly what its name says: the one-time COPY of
+ * pre-cutover legacy data, plus [catchUpOnce]'s single post-cutover reconciliation pass (see below).
+ * It is no longer the ongoing bridge Wave 3 originally built it as - the legacy `ledger_transactions`
+ * table is now FROZEN (zero writers, per the cutover doc's reader/writer table), so from this branch
+ * forward nothing NEW ever needs copying, and nothing NEW ever supersedes a legacy row either.
+ *
+ * The exact field mapping is `docs/architecture/wave3-carve-2026-08-23.md`, applied through
+ * [LedgerRecordBridge] (extracted at cutover so [com.kevin.legion.ledger.IngestPipeline] and
+ * [com.kevin.legion.ledger.LedgerController] use the identical map, not a second one). Its headline
+ * finding: **[com.kevin.legion.data.local.LedgerTransaction.ingestMethod] maps DIRECTLY onto
  * [RecordProvenance]** - `DETERMINISTIC`/`LLM_RECONCILED`/`UNRECONCILED` are the same three words in
- * both enums, so [provenanceFor] is a plain, exhaustive `when` with no `else` branch and no
- * upgrading/collapsing of any value. A [com.kevin.legion.data.local.LedgerTransaction] Kotlin
- * instance can never carry a fourth `ingestMethod` value in the first place - Room's own enum
- * column handling calls `IngestMethod.valueOf` while reading the row and throws before this copier
- * ever sees it, so "a value this `when` doesn't recognise" is not a runtime case this function has
- * to defend against; it is a compile-time impossibility once the row exists as a Kotlin object.
+ * both enums, so [LedgerRecordBridge.provenanceFor] is a plain, exhaustive `when` with no `else`
+ * branch and no upgrading/collapsing of any value.
  *
- * **This wave adds a THIRD behaviour Wave 1/2 did not need: [reconcileSupersededProvisional].**
- * CLAUDE.md §4 rule 7 requires an [IngestMethod.UNRECONCILED] row to be transient - deleted the
- * moment a reconciled file later covers the same account/dates
+ * **[reconcileSupersededProvisional] - retired from the per-call hot path at cutover, kept for
+ * [catchUpOnce] only.** CLAUDE.md §4 rule 7 requires an [com.kevin.legion.data.local.IngestMethod.UNRECONCILED]
+ * row to be transient - deleted the moment a reconciled file later covers the same account/dates.
+ * Before cutover, that supersession happened on the LEGACY table
  * ([com.kevin.legion.data.local.LedgerTransactionDao.deleteSupersededProvisional], called from
- * `ledger/IngestPipeline.commit`, which keeps operating on the LEGACY table only - see the carve
- * doc's dual-copy plan for why). A purely additive copier (Wave 1/2's shape) cannot mirror a
- * DELETION - it only ever adds rows a `guid` check has not seen yet - so without this pass, an
- * engine-side `UNRECONCILED` row copied from a provisional CSV import would silently outlive its
- * own legacy row once a later reconciled statement superseded and deleted it there, which is
- * exactly the "outlive or double-count against the verified row that supersedes it" failure rule 7
- * exists to prevent. [reconcileSupersededProvisional] closes that gap the only way an additive-only
- * copier can: by comparing the LIVE set of legacy `syncId`s against every engine-side
- * `UNRECONCILED` `Transaction` record and trashing (never hard-deleting - matches
- * [RecordStore.delete]'s own 30-day-restorable trash semantics) any whose legacy row is gone.
- * **Scoped deliberately to [RecordProvenance.UNRECONCILED] only** - a `DETERMINISTIC`/
- * `LLM_RECONCILED` row can also be deleted from the legacy table (a replace-flow re-import, or
- * `LedgerController.purgeAll`), and this wave does NOT propagate those deletions; that gap is named,
- * not silently accepted, in the carve doc's "owed follow-ups" section, because rule 7's specific
- * transience guarantee is the one this migration is obligated to keep true and the one this pass
- * actually keeps true.
+ * `ledger/IngestPipeline.commit`) and a purely additive copier could not mirror that DELETION on its
+ * own, so this pass ran on every single call (including the fast path) to catch up. **Cutover moves
+ * supersession itself into `IngestPipeline.commit`'s own engine-side transaction** - see that
+ * function's doc comment - so a NEWLY superseded provisional row is trashed at write time, in the
+ * SAME transaction as the write that supersedes it, and this reconciliation pass is no longer needed
+ * on every call. It is NOT deleted, because it still has exactly one real job left: catching any
+ * supersession that happened on the legacy table BEFORE this cutover branch's code went live (i.e.
+ * between whenever the engine mirror last ran and the moment this build starts running) - that one
+ * historical gap is what [catchUpOnce] exists to close, once, not on a schedule.
  */
 object EngineDataMigrationWave3 {
     private const val PREFS = "engine_migration_wave3"
     private const val KEY_TRANSACTIONS_COMPLETED = "transactions_completed_v1"
+    private const val KEY_CUTOVER3_CATCHUP_COMPLETED = "cutover3_catchup_v1_completed"
 
     /** [copied] counts only rows actually written this call - a row skipped because its `guid`
-     * already existed (the per-row idempotency backstop) is not counted twice across retries.
-     * [supersededTrashed] counts engine-side [RecordProvenance.UNRECONCILED] rows trashed this call
-     * because their legacy row is now gone (see [reconcileSupersededProvisional]'s doc comment) -
-     * **this can be non-zero even when [alreadyDone] is true**, a deliberate departure from Wave
-     * 1/2's fast-path shape: rule 7's transience guarantee has to keep holding on every call, not
-     * just the first one, because `ledger/IngestPipeline` keeps deleting superseded provisional
-     * rows from the legacy table on every later app run, long after this copier's own completion
-     * flag was set. */
-    data class Result(val copied: Int, val supersededTrashed: Int, val alreadyDone: Boolean)
+     * already existed (the per-row idempotency backstop) is not counted twice across retries. */
+    data class Result(val copied: Int, val alreadyDone: Boolean)
 
     private fun store(db: CarDatabase) = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
-
-    /** [com.kevin.legion.data.local.IngestMethod] -> [RecordProvenance], one-for-one, exhaustive,
-     * no `else`. See this object's own class doc for why a fourth value can never reach this
-     * function. */
-    private fun provenanceFor(ingestMethod: IngestMethod): RecordProvenance = when (ingestMethod) {
-        IngestMethod.DETERMINISTIC -> RecordProvenance.DETERMINISTIC
-        IngestMethod.LLM_RECONCILED -> RecordProvenance.LLM_RECONCILED
-        IngestMethod.UNRECONCILED -> RecordProvenance.UNRECONCILED
-    }
 
     suspend fun copyLedgerIfNeeded(context: Context): Result {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (prefs.getBoolean(KEY_TRANSACTIONS_COMPLETED, false)) {
-            // The additive copy itself is done, but rule 7's transience guarantee is not a
-            // one-time fact - it must keep holding on every call. See this object's own class doc
-            // and [Result]'s own doc comment for why this fast path still runs the reconciliation
-            // pass instead of returning immediately the way Wave 1/2's fast path does.
-            val trashed = reconcileSupersededProvisional(context)
-            return Result(copied = 0, supersededTrashed = trashed, alreadyDone = true)
+            return Result(copied = 0, alreadyDone = true)
         }
 
         val db = CarDatabase.getDatabase(context)
@@ -97,30 +72,12 @@ object EngineDataMigrationWave3 {
         // Same "a check that passes when nothing parsed is not a gate" posture Wave 2's
         // [failedLineItemGuids] applies to migration completeness - every Failure this pass sees is
         // collected explicitly and folded into the completion check below, never re-derived only
-        // from "does a guid now exist", which would miss nothing here (Transaction has no child
-        // record type to lose track of the way Wave 2's LineItem could) but is kept as the same
-        // explicit shape for consistency and because the very next field this class added
-        // ([reconcileSupersededProvisional]) reads engine state that a silent miss here would corrupt.
+        // from "does a guid now exist".
         var anyFailure = false
 
         for (txn in transactions) {
             val guid = txn.syncId
             if (db.engineRecordDao().getByGuid(guid) != null) continue // already copied by an earlier, interrupted pass
-
-            val fieldValues: Map<Long, Any?> = mapOf(
-                schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_SOURCE_FILE) to txn.sourceFile,
-                schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_ACCOUNT_ID) to txn.accountId,
-                schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_CURRENCY) to txn.currency.name,
-                schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_TXN_DATE) to txn.txnDate,
-                schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_DESCRIPTION) to txn.description,
-                schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_AMOUNT) to txn.amountCents,
-                schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_BALANCE) to txn.balanceCents,
-                schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_LINE_REF) to txn.lineRef,
-                schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_SOURCE_FILE_ID) to txn.sourceFileId,
-                schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_CATEGORY) to txn.category,
-                schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_CATEGORY_PENDING) to txn.categoryPending,
-                schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_PENDING_LOGGED_AT) to txn.pendingLoggedAt,
-            )
 
             // Neither LedgerTransaction carries an insert-time clock of its own (no
             // createdAt/updatedAt column) - txnDate is the closest available anchor for "when did
@@ -128,8 +85,8 @@ object EngineDataMigrationWave3 {
             // PantryReceipt.purchaseDate.
             val result = recordStore.create(
                 recordTypeId = schema.transaction.recordTypeId,
-                fieldValues = fieldValues,
-                provenance = provenanceFor(txn.ingestMethod),
+                fieldValues = LedgerRecordBridge.fieldValuesFor(txn, schema.transaction.fieldIds),
+                provenance = LedgerRecordBridge.provenanceFor(txn.ingestMethod),
                 now = txn.txnDate,
                 guid = guid,
             )
@@ -140,9 +97,40 @@ object EngineDataMigrationWave3 {
         }
 
         if (!anyFailure) prefs.edit().putBoolean(KEY_TRANSACTIONS_COMPLETED, true).apply()
+        return Result(copied = copied, alreadyDone = false)
+    }
 
-        val trashed = reconcileSupersededProvisional(context)
-        return Result(copied = copied, supersededTrashed = trashed, alreadyDone = false)
+    /**
+     * The ONE post-cutover reconciliation run (point 4 of the cutover instructions) - re-runs the
+     * additive copy (idempotent, guid-keyed, picks up anything written to the legacy table before
+     * this build's `IngestPipeline` took over) and then [reconcileSupersededProvisional] exactly
+     * once, to trash any engine-side `UNRECONCILED` mirror whose legacy row was already superseded
+     * before cutover. Guarded by its own SharedPreferences marker so it runs at most once ever - same
+     * shape as [EngineDataMigrationWave1.catchUpOnce]/[EngineDataMigrationWave2.catchUpOnce]. Safe to
+     * call from `MidnightApplication.onCreate` alongside the ordinary [copyLedgerIfNeeded] call.
+     *
+     * **No id-space rekey needed here, unlike cutover 1's `ListItemSkip.itemId`** - checked, not
+     * assumed. Grepped this codebase for anything keying off a legacy `LedgerTransaction.id`: nothing
+     * found. `LedgerTransaction.lineRef`/`sourceFileId`/`syncId` are the only cross-referencing
+     * fields any code reads, and none of them is the Room-assigned autoincrement `id` - `syncId`
+     * (the `guid`) is what identity already rides on, exactly the same as cutover 1/2's own precedent
+     * for a genuinely id-space-free entity.
+     */
+    suspend fun catchUpOnce(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_CUTOVER3_CATCHUP_COMPLETED, false)) return
+
+        // Clears the ordinary fast-path flag so copyLedgerIfNeeded does a genuine rescan rather than
+        // taking its own completion shortcut - same "clear then re-run" shape as
+        // EngineDataMigrationWave1.catchUpOnce/EngineDataMigrationWave2.catchUpOnce.
+        prefs.edit().putBoolean(KEY_TRANSACTIONS_COMPLETED, false).apply()
+        copyLedgerIfNeeded(context)
+        reconcileSupersededProvisional(context)
+
+        // Only set the marker once BOTH the rescan and the reconciliation pass above have completed
+        // - a crash between them leaves the marker unset and the whole catch-up retries next start,
+        // same crash-safety shape as every other catchUpOnce in this codebase.
+        prefs.edit().putBoolean(KEY_CUTOVER3_CATCHUP_COMPLETED, true).apply()
     }
 
     /**
@@ -176,8 +164,10 @@ object EngineDataMigrationWave3 {
 
     /** App-start convenience, wrapped so a failure here can never cost anything else - same L12
      * "independent failure mode" reasoning [EngineDataMigrationWave1.runAll]/[EngineDataMigrationWave2.runAll]
-     * already use. */
+     * already use. Runs the ordinary copy AND the one-time [catchUpOnce] reconciliation - both are
+     * idempotent and cheap to call on every app start. */
     suspend fun runAll(context: Context) {
         runCatching { copyLedgerIfNeeded(context) }
+        runCatching { catchUpOnce(context) }
     }
 }

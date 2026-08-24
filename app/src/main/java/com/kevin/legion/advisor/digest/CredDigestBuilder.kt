@@ -63,11 +63,11 @@ class CredDigestBuilder : DigestBuilder {
         val lines = mutableListOf<String>()
         lines += budgetLine(current)
         lines += uncategorizedLine(current)
-        lines += provisionalLine(db, entity, month)
+        lines += provisionalLine(context, entity, month)
         lines += coverageLine(current)
         lines += spendLine(monthly)
         lines += merchantsLine(context, entity, month, current)
-        goalLines(db)?.let { lines += it }
+        goalLines(context, db)?.let { lines += it }
 
         return lines.joinToString("\n")
     }
@@ -113,9 +113,12 @@ class CredDigestBuilder : DigestBuilder {
      * gate) - this table either has such rows or it does not, there is no "unimported" case for a
      * count over rows already in Room.
      */
-    private suspend fun provisionalLine(db: CarDatabase, entity: LedgerEntity, month: YearMonth): String {
+    private suspend fun provisionalLine(context: Context, entity: LedgerEntity, month: YearMonth): String {
         val (start, end) = monthBoundsUtc(month)
-        val rows = db.ledgerTransactionDao().getForCurrencyInRange(entity.currency, start, end)
+        // Cutover 3: reads through LedgerController's engine-backed seam, not the (now-frozen,
+        // zero-writer) legacy ledgerTransactionDao() directly - the pre-cutover reader/writer sweep
+        // caught this bypass (see the cutover doc's ruling table).
+        val rows = LedgerController.transactionsForCurrencyInRange(context, entity.currency, start, end)
         val count = rows.count { it.ingestMethod == IngestMethod.UNRECONCILED }
         val tier = if (count > 0) TrustTier.REPORTED else TrustTier.PROVEN
         return DigestText.withTier(DigestText.line("PROVISIONAL", "$count row${if (count == 1) "" else "s"}"), tier)
@@ -191,9 +194,8 @@ class CredDigestBuilder : DigestBuilder {
      */
     private suspend fun merchantsLine(context: Context, entity: LedgerEntity, month: YearMonth, current: BudgetVsActual): String {
         if (current.coverage.isEmpty()) return DigestText.line("MERCHANTS", DigestText.notLogged())
-        val db = CarDatabase.getDatabase(context)
         val (start, end) = monthBoundsUtc(month)
-        val rows = db.ledgerTransactionDao().getForCurrencyInRange(entity.currency, start, end)
+        val rows = LedgerController.transactionsForCurrencyInRange(context, entity.currency, start, end)
         val expenses = operatingExpenses(entity, rows, rows)
         if (expenses.isEmpty()) return DigestText.line("MERCHANTS", "none")
 
@@ -217,7 +219,7 @@ class CredDigestBuilder : DigestBuilder {
      * **Narrow, reasoned scope** - flagged in the build report as covering the one metric this
      * ticket's source material names, not a general metric-projection engine.
      */
-    private suspend fun goalLines(db: CarDatabase): String? {
+    private suspend fun goalLines(context: Context, db: CarDatabase): String? {
         val goals = db.goalDao().currentGoals(AdvisorAspect.CRED.key)
         if (goals.isEmpty()) return null
         val rendered = goals.map { g ->
@@ -226,7 +228,7 @@ class CredDigestBuilder : DigestBuilder {
                 if (g.deadlineEpoch != null) add("by ${compactDate(g.deadlineEpoch)}")
             }
             val base = (listOf(g.statement) + extras).joinToString(" ")
-            val progress = if (g.metricKey == "savings_balance_cents") GoalProgress.savingsBalanceCents(db) else null
+            val progress = if (g.metricKey == "savings_balance_cents") GoalProgress.savingsBalanceCents(context) else null
             if (progress != null) {
                 // quant-viz ticket 08: this digest line states an absolute cents figure, never a
                 // fraction/% - CredDigestBuilderTest pins this exact string. If a percentage is

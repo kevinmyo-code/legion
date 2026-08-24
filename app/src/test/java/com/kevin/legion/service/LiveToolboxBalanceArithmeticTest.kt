@@ -4,6 +4,9 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
+import com.kevin.legion.engine.RecordStore
+import com.kevin.legion.engine.ledger.LedgerAspectSeeder
+import com.kevin.legion.engine.ledger.LedgerRecordBridge
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ledger.formatMoney
 import com.kevin.legion.testutil.RoomTestReset
@@ -47,33 +50,44 @@ class LiveToolboxBalanceArithmeticTest {
      *   path `log_pending_transaction` calls), of -777 cents
      */
     private suspend fun seedThreeDistinctTerms() {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        dao.insertAll(
-            listOf(
-                LedgerTransaction(
-                    sourceFile = "eStmt.pdf",
-                    accountId = accountId,
-                    currency = LedgerCurrency.USD,
-                    txnDate = 1_000_000L,
-                    description = "OPENING ANCHOR",
-                    amountCents = 100_000L,
-                    balanceCents = 100_000L,
-                    lineRef = "1",
-                    ingestMethod = IngestMethod.DETERMINISTIC,
-                ),
-                LedgerTransaction(
-                    sourceFile = "cardExport.csv",
-                    accountId = accountId,
-                    currency = LedgerCurrency.USD,
-                    txnDate = 2_000_000L,
-                    description = "PROVISIONAL CARD ACTIVITY",
-                    amountCents = 4_321L,
-                    balanceCents = null,
-                    lineRef = "2",
-                    ingestMethod = IngestMethod.UNRECONCILED,
-                ),
+        val db = CarDatabase.getDatabase(context)
+        val schema = LedgerAspectSeeder.ensureSeeded(context)
+        val recordStore = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+        for (t in listOf(
+            LedgerTransaction(
+                sourceFile = "eStmt.pdf",
+                accountId = accountId,
+                currency = LedgerCurrency.USD,
+                txnDate = 1_000_000L,
+                description = "OPENING ANCHOR",
+                amountCents = 100_000L,
+                balanceCents = 100_000L,
+                lineRef = "1",
+                ingestMethod = IngestMethod.DETERMINISTIC,
             ),
-        )
+            LedgerTransaction(
+                sourceFile = "cardExport.csv",
+                accountId = accountId,
+                currency = LedgerCurrency.USD,
+                txnDate = 2_000_000L,
+                description = "PROVISIONAL CARD ACTIVITY",
+                amountCents = 4_321L,
+                balanceCents = null,
+                lineRef = "2",
+                ingestMethod = IngestMethod.UNRECONCILED,
+            ),
+        )) {
+            // Cutover 3: LedgerController reads through the engine now - a fixture written straight
+            // to the legacy ledgerTransactionDao() is invisible to it. Writes through RecordStore
+            // instead, the same door IngestPipeline itself now writes through.
+            recordStore.create(
+                recordTypeId = schema.transaction.recordTypeId,
+                fieldValues = LedgerRecordBridge.fieldValuesFor(t, schema.transaction.fieldIds),
+                provenance = LedgerRecordBridge.provenanceFor(t.ingestMethod),
+                now = t.txnDate,
+                guid = t.syncId,
+            )
+        }
         LedgerController.logPendingTransaction(
             context = context,
             accountId = accountId,

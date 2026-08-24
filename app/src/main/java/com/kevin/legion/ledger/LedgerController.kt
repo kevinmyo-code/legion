@@ -6,10 +6,14 @@ import android.provider.DocumentsContract
 import android.util.Log
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.IngestedFile
+import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
-import com.kevin.legion.data.local.LedgerTransactionDao
 import androidx.room.withTransaction
+import com.kevin.legion.engine.PayloadCodec
+import com.kevin.legion.engine.RecordStore
+import com.kevin.legion.engine.ledger.LedgerAspectSeeder
+import com.kevin.legion.engine.ledger.LedgerRecordBridge
 import com.kevin.legion.ledger.parsers.DeterministicResult
 import com.kevin.legion.ledger.parsers.PdfWords
 import com.kevin.legion.ledger.parsers.StatementDispatcher
@@ -19,12 +23,37 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneOffset
+import org.json.JSONObject
 
 /**
  * Orchestrates ledger statement ingestion - mirrors
  * [com.kevin.legion.vehicle.VehicleController]/
  * [com.kevin.legion.vehicle.BuildSheetController]'s naming and shape.
  * `.claude/plans/wiggly-beaming-quasar.md`.
+ *
+ * **Cutover 3** (`docs/architecture/cutover3-2026-08-24.md`). Every function below keeps its
+ * ORIGINAL signature and return type (`LedgerTransaction`/`AccountBalance`/`BudgetVsActual`/etc,
+ * the legacy Room-row-shaped value objects) so every caller - `ui/LedgerImportActivity`, the Money
+ * tab screens, `service/LiveToolbox.kt`'s ledger tools - flips onto the engine with this file,
+ * unchanged (ADR 0035: "the controller keeps its seam"). What changed is entirely internal: every
+ * read now goes through [RecordStore]/[com.kevin.legion.data.local.EngineRecordDao] against the
+ * Ledger aspect's `Transaction` record type (`docs/architecture/wave3-carve-2026-08-23.md`'s field
+ * mapping, applied through [LedgerRecordBridge] - not a second mapping), and every write
+ * ([logPendingTransaction], [clearPendingTransaction], the category-application functions, and
+ * [importStatement]'s commit path via [IngestPipeline]) goes through [RecordStore] instead of
+ * [com.kevin.legion.data.local.LedgerTransactionDao]. The legacy `ledger_transactions` table has
+ * ZERO writers after this branch - see the cutover doc's reader/writer table.
+ *
+ * **Read volume**: every read function below funnels through [allTransactions], which loads every
+ * active `Transaction` engine record into memory and filters/aggregates in Kotlin rather than SQL -
+ * the same "personal household app's data volume, not an enterprise table scan" tradeoff
+ * [RecordStore]'s own class doc already accepts, and the same one
+ * [com.kevin.legion.pantry.PantryController] already applies to pantry's equivalent reads.
+ *
+ * `ingested_files` (the per-file ingestion ledger), `categories`/`category_rules` (the
+ * classification vocabulary), and `budget_targets` are all **plugin-internal and untouched by this
+ * cutover** - `docs/architecture/wave3-carve-2026-08-23.md`'s carve table already ruled all three
+ * stay off the engine, and nothing here changes that ruling.
  */
 object LedgerController {
     private const val TAG = "LedgerController"
@@ -45,6 +74,45 @@ object LedgerController {
      * say how far the correction actually reached.
      */
     const val MIN_MERCHANT_KEY_LENGTH = 4
+
+    // ---------------------------------------------------------------- engine <-> value-object bridge
+
+    private fun db(context: Context) = CarDatabase.getDatabase(context)
+    private fun store(context: Context): RecordStore {
+        val database = db(context)
+        return RecordStore(database.engineRecordDao(), database.fieldDefDao(), database.recordTypeDao())
+    }
+
+    private suspend fun schema(context: Context) = LedgerAspectSeeder.ensureSeeded(context)
+
+    /**
+     * Every non-trashed `Transaction` record, converted to the legacy [LedgerTransaction] shape via
+     * [LedgerRecordBridge.toTransaction] - the ONE place every read below funnels through, so there
+     * is exactly one query against the engine per read (matching
+     * [com.kevin.legion.pantry.PantryController.allReceipts]'s own precedent).
+     */
+    private suspend fun allTransactions(context: Context): List<LedgerTransaction> {
+        val sch = schema(context)
+        return db(context).engineRecordDao().activeByRecordType(sch.transaction.recordTypeId)
+            .map { LedgerRecordBridge.toTransaction(it, sch.transaction.fieldIds) }
+    }
+
+    /**
+     * Writes one [LedgerTransaction] through [RecordStore] - the shared write shape
+     * [logPendingTransaction] uses. Not used by [IngestPipeline]'s own commit path, which
+     * constructs its own [RecordStore]/schema pair so every write in a multi-row statement commit
+     * participates in the SAME `db.withTransaction` block - see that object's own doc comment.
+     */
+    private suspend fun writeTransaction(context: Context, txn: LedgerTransaction): RecordStore.WriteResult {
+        val sch = schema(context)
+        return store(context).create(
+            recordTypeId = sch.transaction.recordTypeId,
+            fieldValues = LedgerRecordBridge.fieldValuesFor(txn, sch.transaction.fieldIds),
+            provenance = LedgerRecordBridge.provenanceFor(txn.ingestMethod),
+            now = txn.txnDate,
+            guid = txn.syncId,
+        )
+    }
 
     /**
      * Reads [uri] and runs it through [IngestPipeline] as a **one-element
@@ -199,6 +267,13 @@ object LedgerController {
             LedgerImportResult(success = true, message = message, importedCount = outcome.transactionCount)
         }
         is IngestPipeline.CommitOutcome.Quarantined -> LedgerImportResult(success = false, message = outcome.reason)
+        // Cutover 3: a gate-passed statement whose engine write failed after reconciliation - the
+        // whole commit rolled back, nothing landed, told in words rather than as a false success
+        // (CLAUDE.md §7).
+        is IngestPipeline.CommitOutcome.EngineWriteFailed -> LedgerImportResult(
+            success = false,
+            message = "This statement's numbers checked out, but I couldn't save it - try again.",
+        )
     }
 
     /**
@@ -232,14 +307,45 @@ object LedgerController {
             }
         }
 
+    /** Thrown only to force [androidx.room.withTransaction] to roll back the whole write when a
+     * post-gate [RecordStore] write fails inside [commitPlain] - see [IngestPipeline]'s own
+     * `EngineWriteFailedException` for the identical shape. */
+    private class EngineWriteFailedException(val reason: String) : Exception()
+
     private suspend fun commitPlain(
         context: Context,
         fileName: String,
         transactions: List<LedgerTransaction>,
     ): LedgerImportResult {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        val (fresh, skipped) = dedupAgainstExisting(dao, transactions)
-        if (fresh.isNotEmpty()) dao.insertAll(fresh)
+        val existing = dedupAgainstExisting(allTransactions(context), transactions)
+        val fresh = existing.first
+        val skipped = existing.second
+
+        val database = db(context)
+        val sch = schema(context)
+        val recordStore = store(context)
+        try {
+            database.withTransaction {
+                for (txn in fresh) {
+                    val result = recordStore.create(
+                        recordTypeId = sch.transaction.recordTypeId,
+                        fieldValues = LedgerRecordBridge.fieldValuesFor(txn, sch.transaction.fieldIds),
+                        provenance = LedgerRecordBridge.provenanceFor(txn.ingestMethod),
+                        now = txn.txnDate,
+                        guid = txn.syncId,
+                    )
+                    if (result !is RecordStore.WriteResult.Success) {
+                        throw EngineWriteFailedException(
+                            "row '${txn.description}': ${(result as RecordStore.WriteResult.Failure).reason}",
+                        )
+                    }
+                }
+            }
+        } catch (e: EngineWriteFailedException) {
+            Log.w(TAG, "commitPlain: engine write failed after the gate passed, rolled back - ${e.reason}")
+            return LedgerImportResult(success = false, message = "This statement's numbers checked out, but I couldn't save it - try again.")
+        }
+
         val message = buildString {
             append("Imported ${fresh.size} transaction(s) from $fileName.")
             if (skipped > 0) append(" ($skipped already on file, skipped.)")
@@ -248,13 +354,39 @@ object LedgerController {
     }
 
     suspend fun latestBalanceCents(context: Context, accountId: String): Long? =
-        CarDatabase.getDatabase(context).ledgerTransactionDao().latestBalanceCents(accountId)
+        latestBalanceRow(allTransactions(context), accountId)?.balanceCents
 
     suspend fun allAccountIds(context: Context): List<String> =
-        CarDatabase.getDatabase(context).ledgerTransactionDao().allAccountIds()
+        allTransactions(context).map { it.accountId }.distinct()
 
     suspend fun recentTransactions(context: Context, limit: Int = 20): List<LedgerTransaction> =
-        CarDatabase.getDatabase(context).ledgerTransactionDao().getRecent(limit)
+        allTransactions(context).sortedByDescending { it.txnDate }.take(limit)
+
+    /**
+     * Every row of [currency] whose `txnDate` falls in `[fromMs, toMs]`, oldest-first with `id` as
+     * the tie-break - the engine-backed successor to
+     * [com.kevin.legion.data.local.LedgerTransactionDao.getForCurrencyInRange]. Exposed as its own
+     * public function (cutover 3) because `advisor/digest/CredDigestBuilder.kt`/
+     * `advisor/digest/HomeDigestBuilder.kt` called that DAO method directly, bypassing this
+     * controller's seam entirely - a real gap the pre-cutover reader/writer sweep caught (see the
+     * cutover doc's ruling table). Those two builders now call this instead of the (now-frozen,
+     * zero-writer) legacy table.
+     */
+    suspend fun transactionsForCurrencyInRange(context: Context, currency: LedgerCurrency, fromMs: Long, toMs: Long): List<LedgerTransaction> =
+        allTransactions(context)
+            .filter { it.currency == currency && it.txnDate in fromMs..toMs }
+            .sortedWith(compareBy<LedgerTransaction> { it.txnDate }.thenBy { it.id })
+
+    /** The `[latestBalanceCents]`/`[provisionalDeltaCentsAfter]` shared anchor row - the row
+     * `ORDER BY txnDate DESC, id DESC LIMIT 1` used to pick, replicated in Kotlin over [rows]. Both
+     * legacy DAO queries carried the identical `id DESC` tie-break specifically so they would always
+     * agree on which row is the anchor - see [LedgerTransactionDao.latestBalanceCents]'s own (now
+     * historical) doc comment for why that agreement is load-bearing; this single function is what
+     * keeps [accountBalances] reading the SAME anchor for both figures now that both reads funnel
+     * through Kotlin instead of two separate SQL queries. */
+    private fun latestBalanceRow(rows: List<LedgerTransaction>, accountId: String): LedgerTransaction? =
+        rows.filter { it.accountId == accountId && it.balanceCents != null }
+            .maxWithOrNull(compareBy<LedgerTransaction> { it.txnDate }.thenBy { it.id })
 
     /**
      * Per-account balance for ticket 08's balances surface (resolution §5):
@@ -270,50 +402,33 @@ object LedgerController {
      * looked harmless until [ui.LedgerScreen]'s `knownAccountIds` turned out
      * to read straight off this function's result
      * (`state.balances.map { it.accountId }.distinct()`, `LedgerScreen.kt`)
-     * to drive the one-tap "map this folder to an existing account" chips -
-     * an id [groupAccountBalances] absorbed into another cluster stopped
-     * appearing as a chip, silently pushing the driver back onto free-text
-     * entry for an account that already exists. Ticket 12 §5/`BalancesSection`
-     * is explicit that grouping is that composable's own job; callers that
-     * only want the balances-for-display path call [groupAccountBalances]
-     * themselves at the render site (`LedgerScreen.kt`'s `BalancesSection`
-     * call), not here.
+     * to drive the one-tap "map this folder to an existing account" chips - see
+     * [groupAccountBalances]'s own doc comment for the full reasoning.
      */
     suspend fun accountBalances(context: Context): List<AccountBalance> {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        return dao.allAccountIds().map { accountId ->
-            val balanceCents = dao.latestBalanceCents(accountId)
-            // Every id here came from allAccountIds(), so at least one row
-            // exists for it; currencyForAccount can only return null for an
-            // account with zero rows, which requireNotNull turns into a loud
-            // crash rather than a silently wrong currency.
-            val currency = requireNotNull(dao.currencyForAccount(accountId)) {
-                "accountId '$accountId' came from allAccountIds() but has no rows to read a currency from"
-            }
-            // The SAME anchor-date read [AccountBalance.asOfMs] renders (2026-08-18) - one query,
-            // never two, because latestBalanceCents/latestBalanceTxnDate's own doc comments are
-            // explicit the two DAO queries must agree on which row is the anchor. rawAnchorDate is
-            // the query's own nullable result; anchorDate below is that reading with the
-            // Long.MIN_VALUE sentinel folded in for the provisionalDeltaCentsAfter comparison only.
-            val rawAnchorDate = dao.latestBalanceTxnDate(accountId)
-            // No printed balance at all (BofA card statements never print one,
-            // per LedgerTransactionDao.latestBalanceCents's doc comment) means
-            // there is no anchor date either - Long.MIN_VALUE makes "strictly
-            // after" true for every UNRECONCILED row that exists, which is
-            // correct: with nothing printed, every provisional row is unposted
-            // movement, not something a nonexistent balance already covers.
+        val rows = allTransactions(context)
+        return rows.map { it.accountId }.distinct().map { accountId ->
+            val anchorRow = latestBalanceRow(rows, accountId)
+            val balanceCents = anchorRow?.balanceCents
+            // Every id here came from the row set itself, so at least one row exists for it;
+            // currencyForAccount can only be null for an account with zero rows, which
+            // requireNotNull turns into a loud crash rather than a silently wrong currency.
+            val currency = requireNotNull(
+                rows.filter { it.accountId == accountId }.maxByOrNull { it.txnDate }?.currency,
+            ) { "accountId '$accountId' has no rows to read a currency from" }
+            val rawAnchorDate = anchorRow?.txnDate
+            // No printed balance at all (BofA card statements never print one) means there is no
+            // anchor date either - Long.MIN_VALUE makes "strictly after" true for every
+            // UNRECONCILED row that exists, which is correct: with nothing printed, every
+            // provisional row is unposted movement, not something a nonexistent balance covers.
             val anchorDate = rawAnchorDate ?: Long.MIN_VALUE
-            // currency guard (review finding 3): accountId is free text from
-            // the folder-mapping field, so a last-4 suffix match alone can
-            // collide across two genuinely unrelated accounts - see the DAO
-            // query's own doc comment.
-            val provisionalDeltaCents = dao.provisionalDeltaCentsAfter(accountId, currency, anchorDate) ?: 0L
-            // Voice-logged pending transactions - see AccountBalance's own doc
-            // comment for why this is a THIRD figure, summed by its own query
-            // (pendingDeltaCents excludes anything provisionalDeltaCentsAfter
-            // already counts, and vice versa - see both DAO queries' doc
-            // comments), never folded into provisionalDeltaCents itself.
-            val pendingDeltaCents = dao.pendingDeltaCents(accountId, currency) ?: 0L
+            val provisionalDeltaCents = rows.filter {
+                it.ingestMethod == IngestMethod.UNRECONCILED && it.pendingLoggedAt == null &&
+                    sameCard(it.accountId, accountId) && it.currency == currency && it.txnDate > anchorDate
+            }.sumOf { it.amountCents }
+            val pendingDeltaCents = rows.filter {
+                it.pendingLoggedAt != null && sameCard(it.accountId, accountId) && it.currency == currency
+            }.sumOf { it.amountCents }
             AccountBalance(
                 accountId = accountId,
                 currency = currency,
@@ -321,10 +436,9 @@ object LedgerController {
                 asOfMs = rawAnchorDate,
                 provisionalDeltaCents = provisionalDeltaCents,
                 isProvisional = provisionalDeltaCents != 0L,
-                // Review finding 5: "has a printed balance" and "has ever
-                // been reconciled" are different questions - see the DAO
-                // query's doc comment for the BofA card-PDF case this closes.
-                hasReconciledRows = dao.hasReconciledRows(accountId, currency),
+                hasReconciledRows = rows.any {
+                    it.ingestMethod != IngestMethod.UNRECONCILED && sameCard(it.accountId, accountId) && it.currency == currency
+                },
                 pendingDeltaCents = pendingDeltaCents,
                 hasPendingRows = pendingDeltaCents != 0L,
             )
@@ -342,6 +456,10 @@ object LedgerController {
      * statement's own line numbering, which is what [LedgerTransaction.lineRef] is for) - see
      * [LedgerTransaction.pendingLoggedAt]'s doc comment for why the row is still tagged
      * UNRECONCILED without a new [com.kevin.legion.data.local.IngestMethod] constant.
+     *
+     * **Cutover 3**: writes through [RecordStore] now, never
+     * [com.kevin.legion.data.local.LedgerTransactionDao.insertAll]. A single-row create needs no
+     * surrounding `db.withTransaction` the way a multi-row statement commit does.
      */
     suspend fun logPendingTransaction(
         context: Context,
@@ -351,37 +469,46 @@ object LedgerController {
         amountCents: Long,
         txnDate: Long,
     ) {
-        CarDatabase.getDatabase(context).ledgerTransactionDao().insertAll(
-            listOf(
-                LedgerTransaction(
-                    sourceFile = "voice",
-                    accountId = accountId,
-                    currency = currency,
-                    txnDate = txnDate,
-                    description = description,
-                    amountCents = amountCents,
-                    balanceCents = null,
-                    lineRef = "voice:${java.util.UUID.randomUUID()}",
-                    ingestMethod = com.kevin.legion.data.local.IngestMethod.UNRECONCILED,
-                    sourceFileId = null,
-                    pendingLoggedAt = System.currentTimeMillis(),
-                ),
+        writeTransaction(
+            context,
+            LedgerTransaction(
+                sourceFile = "voice",
+                accountId = accountId,
+                currency = currency,
+                txnDate = txnDate,
+                description = description,
+                amountCents = amountCents,
+                balanceCents = null,
+                lineRef = "voice:${java.util.UUID.randomUUID()}",
+                ingestMethod = IngestMethod.UNRECONCILED,
+                sourceFileId = null,
+                pendingLoggedAt = System.currentTimeMillis(),
             ),
         )
     }
 
     /** Every voice-logged pending row, most recently logged first - `list_pending_transactions`'s read. */
     suspend fun pendingTransactions(context: Context): List<LedgerTransaction> =
-        CarDatabase.getDatabase(context).ledgerTransactionDao().pendingRows()
+        allTransactions(context).filter { it.pendingLoggedAt != null }.sortedByDescending { it.pendingLoggedAt }
 
     /**
-     * `clear_pending_transaction`'s write. Returns true only if a row was actually removed - the
-     * DAO's own `AND pendingLoggedAt IS NOT NULL` guard (see [LedgerTransactionDao.deletePendingById]'s
-     * doc comment) means this can never report success for an id that resolved to anything but a
-     * pending row, even if the caller passed the wrong one.
+     * `clear_pending_transaction`'s write. Returns true only if a row was actually removed.
+     *
+     * **Cutover 3**: [id] is now the engine record id (every [LedgerTransaction] this controller
+     * hands back carries `id = EngineRecord.id`, per [LedgerRecordBridge.toTransaction]'s doc
+     * comment). The `AND pendingLoggedAt IS NOT NULL` guard the retired DAO query carried is
+     * replicated here in Kotlin - this can never delete anything but a genuinely pending row, even
+     * if the caller passed the wrong id.
      */
-    suspend fun clearPendingTransaction(context: Context, id: Long): Boolean =
-        CarDatabase.getDatabase(context).ledgerTransactionDao().deletePendingById(id) > 0
+    suspend fun clearPendingTransaction(context: Context, id: Long): Boolean {
+        val database = db(context)
+        val record = database.engineRecordDao().getById(id) ?: return false
+        val sch = schema(context)
+        if (record.recordTypeId != sch.transaction.recordTypeId) return false
+        val pendingLoggedAt = PayloadCodec.readLong(JSONObject(record.payload), sch.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_PENDING_LOGGED_AT))
+        if (pendingLoggedAt == null) return false
+        return store(context).delete(id) is RecordStore.DeleteResult.Trashed
+    }
 
     /**
      * `.scratch/legion-shape/issues/06-budget-versus-actual.md`. Fetches [month]'s rows for
@@ -391,12 +518,12 @@ object LedgerController {
      * [buildBudgetVsActual]. Direct successor to the deleted `profitAndLoss` - same fetch shape,
      * same coverage computation, different pure builder at the end.
      *
-     * **The pairing window is wider than the period, on purpose.** [LedgerTransactionDao.getForCurrencyInRange]
-     * is called ONCE, with the period padded by [PAIRING_WINDOW_DAYS] on each side - not once for
-     * the period and again for the window - because [analyzeTransfers]'s own doc comment is explicit
-     * that only rows actually in the period may ever appear in its output; the wider fetch exists
-     * solely to hand it enough candidate partners to see a transfer whose other leg fell outside the
-     * calendar month.
+     * **The pairing window is wider than the period, on purpose.** [monthPairingWindow]
+     * filters [allTransactions] ONCE, over the period padded by [PAIRING_WINDOW_DAYS] on each side
+     * - not once for the period and again for the window - because [analyzeTransfers]'s own doc
+     * comment is explicit that only rows actually in the period may ever appear in its output; the
+     * wider fetch exists solely to hand it enough candidate partners to see a transfer whose other
+     * leg fell outside the calendar month.
      *
      * **UTC month boundaries throughout**, matching every parser's `atStartOfDay(ZoneOffset.UTC)`
      * convention (CLAUDE.md §3, and MEMORY.md already records a dates-a-day-early bug from a mismatched
@@ -415,30 +542,31 @@ object LedgerController {
         month: YearMonth,
         accountFilter: Set<String>? = null,
     ): BudgetVsActual {
-        val db = CarDatabase.getDatabase(context)
-        val txnDao = db.ledgerTransactionDao()
+        val db = db(context)
         val fileDao = db.ingestedFileDao()
+        val rows = allTransactions(context)
 
         val monthStartMs = monthStartMillis(month)
         val monthEndMs = monthEndMillis(month)
-        val (pairingWindow, inPeriod) = monthPairingWindow(txnDao, entity, month)
+        val (pairingWindow, inPeriod) = monthPairingWindow(rows, entity, month)
 
         val targets = db.budgetTargetDao().currentTargets(entity.currency, monthStartMs)
             .associate { it.category to it.amountCents }
 
-        // Union every INGESTED file's window per accountId, then keep only
-        // the accounts that actually belong to this entity's currency - the
-        // coverage query itself has no currency column to filter on
-        // (IngestedFile carries none, see its own doc comment), so this is
-        // the same per-account currencyForAccount lookup accountBalances
-        // already does above.
+        // Union every INGESTED file's window per accountId (ingested_files stays plugin-internal
+        // legacy, unaffected by this cutover), then keep only the accounts that actually belong to
+        // this entity's currency - the coverage query itself has no currency column to filter on
+        // (IngestedFile carries none, see its own doc comment), so this is the same per-account
+        // currency lookup accountBalances already does above, over the in-memory row set.
+        fun currencyForAccount(accountId: String) = rows.filter { it.accountId == accountId }.maxByOrNull { it.txnDate }?.currency
+
         val coverage = fileDao.coverageInRange(monthStartMs, monthEndMs)
             .groupBy { it.accountId }
-            .mapNotNull { (accountId, rows) ->
-                if (txnDao.currencyForAccount(accountId) != entity.currency) return@mapNotNull null
-                val from = rows.minOf { it.fromMs }
-                val to = rows.maxOf { it.toMs }
-                val windows = rows.map { it.fromMs to it.toMs }
+            .mapNotNull { (accountId, cRows) ->
+                if (currencyForAccount(accountId) != entity.currency) return@mapNotNull null
+                val from = cRows.minOf { it.fromMs }
+                val to = cRows.maxOf { it.toMs }
+                val windows = cRows.map { it.fromMs to it.toMs }
                 AccountCoverage(
                     accountId = accountId,
                     // A REAL interval merge, not `from <= start && to >= end`.
@@ -461,7 +589,7 @@ object LedgerController {
                 )
             }
 
-        val ownAccountIds = txnDao.accountIdsForCurrency(entity.currency).toSet()
+        val ownAccountIds = rows.filter { it.currency == entity.currency }.map { it.accountId }.toSet()
         return buildBudgetVsActual(
             entity, month, inPeriod, pairingWindow, targets, coverage,
             ownAccountIds = ownAccountIds, accountFilter = accountFilter,
@@ -526,9 +654,9 @@ object LedgerController {
         context: Context, entity: LedgerEntity, month: YearMonth, category: String?,
         accountFilter: Set<String>? = null,
     ): List<LedgerTransaction> {
-        val txnDao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        val (pairingWindow, inPeriod) = monthPairingWindow(txnDao, entity, month)
-        val ownAccountIds = txnDao.accountIdsForCurrency(entity.currency).toSet()
+        val rows = allTransactions(context)
+        val (pairingWindow, inPeriod) = monthPairingWindow(rows, entity, month)
+        val ownAccountIds = rows.filter { it.currency == entity.currency }.map { it.accountId }.toSet()
         val expenses = operatingExpenses(entity, inPeriod, pairingWindow, ownAccountIds = ownAccountIds, accountFilter = accountFilter)
         return expenses.filter { it.category == category }.sortedByDescending { it.txnDate }
     }
@@ -549,9 +677,9 @@ object LedgerController {
         context: Context, entity: LedgerEntity, month: YearMonth,
         accountFilter: Set<String>? = null,
     ): List<LedgerTransaction> {
-        val txnDao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        val (pairingWindow, inPeriod) = monthPairingWindow(txnDao, entity, month)
-        val ownAccountIds = txnDao.accountIdsForCurrency(entity.currency).toSet()
+        val rows = allTransactions(context)
+        val (pairingWindow, inPeriod) = monthPairingWindow(rows, entity, month)
+        val ownAccountIds = rows.filter { it.currency == entity.currency }.map { it.accountId }.toSet()
         return operatingExpenses(entity, inPeriod, pairingWindow, ownAccountIds = ownAccountIds, accountFilter = accountFilter)
     }
 
@@ -577,17 +705,19 @@ object LedgerController {
      * [budgetVsActual]'s fetch, factored out so [categoryTransactions] reads the identical rows
      * rather than re-querying with its own copy of the same math - "one definition, one place"
      * applied to the FETCH, not only the pure builder underneath it. See [budgetVsActual]'s own doc
-     * comment for why the pairing window is padded wider than the period itself.
+     * comment for why the pairing window is padded wider than the period itself. [rows] is the
+     * caller's own [allTransactions] read, so a single logical operation never re-reads the engine
+     * twice for one call.
      */
-    private suspend fun monthPairingWindow(
-        txnDao: com.kevin.legion.data.local.LedgerTransactionDao, entity: LedgerEntity, month: YearMonth,
+    private fun monthPairingWindow(
+        rows: List<LedgerTransaction>, entity: LedgerEntity, month: YearMonth,
     ): Pair<List<LedgerTransaction>, List<LedgerTransaction>> {
         val monthStartMs = monthStartMillis(month)
         val monthEndMs = monthEndMillis(month)
         val windowMs = PAIRING_WINDOW_DAYS * 24L * 60 * 60 * 1000
-        val pairingWindow = txnDao.getForCurrencyInRange(
-            entity.currency, monthStartMs - windowMs, monthEndMs + windowMs,
-        )
+        val pairingWindow = rows.filter {
+            it.currency == entity.currency && it.txnDate in (monthStartMs - windowMs)..(monthEndMs + windowMs)
+        }
         val inPeriod = pairingWindow.filter { it.txnDate in monthStartMs..monthEndMs }
         return pairingWindow to inPeriod
     }
@@ -657,14 +787,53 @@ object LedgerController {
      * doc comment for why order matters). Idempotent - only ever touches `category IS NULL` rows,
      * so re-running after a scan that added new transactions costs nothing for rows a rule already
      * claimed. Returns how many rows were newly categorised, for a caller that wants to say so.
+     *
+     * **Cutover 3**: applies each rule inside its own `db.withTransaction`, writing every matched
+     * row through [RecordStore.update] - a multi-row write, so it is wrapped for atomicity the same
+     * way [IngestPipeline]'s commit is, even though a category correction is not itself money-gated.
      */
     suspend fun applyCategoryRules(context: Context): Int {
         val db = CarDatabase.getDatabase(context)
         val rules = db.categoryRuleDao().getAll()
-        val dao = db.ledgerTransactionDao()
         var applied = 0
-        for (rule in rules) applied += dao.applyCategoryRule(rule.substring, rule.category)
+        for (rule in rules) {
+            applied += applyToMatching(context) { it.category == null && it.description.uppercase().contains(rule.substring.uppercase()) }
+                .let { matched -> updateCategoryOnRows(context, matched, rule.category, categoryPending = false) }
+        }
         return applied
+    }
+
+    /** Rows in [allTransactions] satisfying [predicate] - a small helper so every category-application
+     * function below reads the same way. */
+    private suspend fun applyToMatching(context: Context, predicate: (LedgerTransaction) -> Boolean): List<LedgerTransaction> =
+        allTransactions(context).filter(predicate)
+
+    /** Writes [category]/[categoryPending] onto every one of [rows] via [RecordStore.update], all
+     * inside one `db.withTransaction` - the engine-backed successor to every `UPDATE
+     * ledger_transactions SET category = ...` query this cutover retires. Returns how many rows
+     * were actually updated (a [RecordStore.WriteResult.Failure] on any one row is logged and
+     * skipped, never silently dropped from the count - "in words what did NOT happen" applied to a
+     * bulk write, not just a single one). */
+    private suspend fun updateCategoryOnRows(context: Context, rows: List<LedgerTransaction>, category: String, categoryPending: Boolean): Int {
+        if (rows.isEmpty()) return 0
+        val database = db(context)
+        val sch = schema(context)
+        val recordStore = store(context)
+        var updated = 0
+        database.withTransaction {
+            for (row in rows) {
+                val result = recordStore.update(
+                    row.id,
+                    mapOf(
+                        sch.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_CATEGORY) to category,
+                        sch.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_CATEGORY_PENDING) to categoryPending,
+                    ),
+                )
+                if (result is RecordStore.WriteResult.Success) updated++
+                else Log.w(TAG, "updateCategoryOnRows: couldn't update row #${row.id}: ${(result as RecordStore.WriteResult.Failure).reason}")
+            }
+        }
+        return updated
     }
 
     /**
@@ -698,10 +867,10 @@ object LedgerController {
      * different thresholds from the SAME classification - this is not a second opinion on what a
      * transfer is, only a different question asked of the identical answer.
      *
-     * [pairingWindow] is fetched from [LedgerTransactionDao.allTransactions] rather than anything
-     * currency- or month-scoped, because a transfer's matching leg can already carry a category (a
-     * matched pair must exclude BOTH legs, not only the one still uncategorised) or fall outside any
-     * single month's [budgetVsActual] pairing window.
+     * [pairingWindow] is [allTransactions] itself rather than anything currency- or month-scoped,
+     * because a transfer's matching leg can already carry a category (a matched pair must exclude
+     * BOTH legs, not only the one still uncategorised) or fall outside any single month's
+     * [budgetVsActual] pairing window.
      */
     suspend fun uncategorizedMerchants(context: Context): UncategorizedMerchants {
         val split = uncategorizedTransactionsSplit(context)
@@ -734,12 +903,11 @@ object LedgerController {
      * [ExclusionReason.SUSPECTED_TRANSFER] rows count as transfers here.
      */
     suspend fun uncategorizedTransactionsSplit(context: Context): UncategorizedSplit {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        val candidates = dao.uncategorizedTransactions()
+        val rows = allTransactions(context)
+        val candidates = rows.filter { it.category == null }
         if (candidates.isEmpty()) return UncategorizedSplit(emptyList(), emptyList())
 
-        val pairingWindow = dao.allTransactions()
-        val analysis = analyzeTransfers(inPeriod = candidates, pairingWindow = pairingWindow)
+        val analysis = analyzeTransfers(inPeriod = candidates, pairingWindow = rows)
         val transferIds = analysis.excluded.mapTo(mutableSetOf()) { it.txn.id }
 
         val (transfers, real) = candidates.partition { it.id in transferIds }
@@ -775,10 +943,10 @@ object LedgerController {
         val db = CarDatabase.getDatabase(context)
         val categories = db.categoryDao().allNames()
         val outcome = CategoryAgent.guessBatch(merchantKeys, categories)
-        val dao = db.ledgerTransactionDao()
         var rows = 0
         for ((merchantKey, category) in outcome.guesses) {
-            rows += dao.applyCategoryGuess(merchantKey, category)
+            val matched = applyToMatching(context) { it.category == null && it.description.uppercase().contains(merchantKey.uppercase()) }
+            rows += updateCategoryOnRows(context, matched, category, categoryPending = true)
         }
         return CategoryGuessResult(rowsCategorized = rows, merchantsCategorized = outcome.guesses.size)
     }
@@ -790,7 +958,7 @@ object LedgerController {
      * category at all.
      */
     suspend fun pendingCategoryGuesses(context: Context): List<LedgerTransaction> =
-        CarDatabase.getDatabase(context).ledgerTransactionDao().categoryPendingRows()
+        allTransactions(context).filter { it.categoryPending }.sortedByDescending { it.txnDate }
 
     /**
      * `set_category`'s write (ticket B1, 2026-08-07): confirms OR corrects a category for every
@@ -843,11 +1011,12 @@ object LedgerController {
             return CategorySetResult(rowsTouched = 0, merchantsTouched = 0, isNoiseKey = true)
         }
 
-        val txnDao = db.ledgerTransactionDao()
-        val merchantsTouched = txnDao.countDistinctDescriptionsMatching(merchantKey)
-        val rows = txnDao.setCategoryForMerchant(merchantKey, category)
+        val rows = allTransactions(context)
+        val matched = rows.filter { it.description.uppercase().contains(merchantKey) }
+        val merchantsTouched = matched.map { it.description }.distinct().size
+        val rowsTouched = updateCategoryOnRows(context, matched, category, categoryPending = false)
 
-        if (rows > 0) {
+        if (rowsTouched > 0) {
             db.categoryRuleDao().deleteBySubstring(merchantKey)
             db.categoryRuleDao().insert(
                 com.kevin.legion.data.local.CategoryRule(
@@ -855,7 +1024,7 @@ object LedgerController {
                 )
             )
         }
-        return CategorySetResult(rowsTouched = rows, merchantsTouched = merchantsTouched)
+        return CategorySetResult(rowsTouched = rowsTouched, merchantsTouched = merchantsTouched)
     }
 
     /**
@@ -873,7 +1042,7 @@ object LedgerController {
         // Mirrors setCategory's noise-key refusal (2026-08-13) - a preview that shows a real row
         // count for a key [setCategory] would then refuse to act on is a lie by omission.
         if (isBankNoiseKey(merchantKey)) return 0
-        return CarDatabase.getDatabase(context).ledgerTransactionDao().countMatching(merchantKey)
+        return allTransactions(context).count { it.description.uppercase().contains(merchantKey) }
     }
 
     /**
@@ -907,7 +1076,10 @@ object LedgerController {
                 category = category, substring = merchantKey, createdAt = System.currentTimeMillis(),
             )
         )
-        db.ledgerTransactionDao().confirmCategoryGuess(merchantKey, category)
+        val matched = applyToMatching(context) {
+            it.categoryPending && it.category == category && it.description.uppercase().contains(merchantKey.uppercase())
+        }
+        updateCategoryOnRows(context, matched, category, categoryPending = false)
     }
 
     /**
@@ -917,7 +1089,13 @@ object LedgerController {
      * category directly is as confirmed a fact as this record has.
      */
     suspend fun recategorize(context: Context, transactionId: Long, category: String) {
-        CarDatabase.getDatabase(context).ledgerTransactionDao().setCategoryConfirmed(transactionId, category)
+        store(context).update(
+            transactionId,
+            mapOf(
+                schema(context).transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_CATEGORY) to category,
+                schema(context).transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_CATEGORY_PENDING) to false,
+            ),
+        )
     }
 
     /** Reasoned "typical" constants for a short merchant-name-plus-category prompt - see [categoryGuessEstimate]'s doc comment for why these aren't measured. */
@@ -931,9 +1109,9 @@ object LedgerController {
      * its currency, which the caller reads as "nothing to page to" rather than an error.
      */
     suspend fun monthsWithData(context: Context, entity: LedgerEntity): List<YearMonth> {
-        val dao = CarDatabase.getDatabase(context).ledgerTransactionDao()
-        val earliestMs = dao.earliestTxnDate(entity.currency) ?: return emptyList()
-        val latestMs = dao.latestTxnDate(entity.currency) ?: return emptyList()
+        val rows = allTransactions(context).filter { it.currency == entity.currency }
+        val earliestMs = rows.minOfOrNull { it.txnDate } ?: return emptyList()
+        val latestMs = rows.maxOfOrNull { it.txnDate } ?: return emptyList()
         val start = YearMonth.from(Instant.ofEpochMilli(earliestMs).atZone(ZoneOffset.UTC))
         val end = YearMonth.from(Instant.ofEpochMilli(latestMs).atZone(ZoneOffset.UTC))
         val months = mutableListOf<YearMonth>()
@@ -954,12 +1132,18 @@ object LedgerController {
      * caller to report - a destructive action that says nothing about what it
      * destroyed is indistinguishable from one that silently failed.
      *
-     * **Both tables or neither, in one Room transaction.** Dropping only the
-     * transactions leaves `ingested_files` claiming every file is already
-     * INGESTED, so a rescan skips them all and the ledger stays permanently
-     * empty with no way to refill it short of this function again. Dropping
-     * only the file records re-imports every file on the next scan and
-     * `resolveDedup` has no prior rows to count against, so nothing is caught
+     * **Cutover 3**: "every ledger transaction" now means every active engine `Transaction`
+     * record, trashed via [RecordStore.delete] (30-day restorable, matching every other engine
+     * delete in this codebase - a strictly SAFER guarantee than the legacy hard `DELETE`, not a
+     * weaker one) rather than a single `DELETE FROM ledger_transactions`. Both the transaction
+     * trashing loop and the [IngestedFileDao.deleteAll] wipe happen inside ONE `db.withTransaction`
+     * - same "both tables or neither" invariant the legacy version already stated, preserved exactly
+     * across the cutover:
+     *
+     * Dropping only the transactions leaves `ingested_files` claiming every file is already
+     * INGESTED, so a rescan skips them all and the ledger stays permanently empty with no way to
+     * refill it short of this function again. Dropping only the file records re-imports every file
+     * on the next scan and `resolveDedup` has no prior rows to count against, so nothing is caught
      * as a duplicate. Either half alone is worse than neither.
      *
      * **Scope is the ledger aspect and nothing else.** Fleet (vehicles, OBD
@@ -967,16 +1151,22 @@ object LedgerController {
      * and profiles are untouched - which is the whole reason this exists as a
      * function rather than as an app-data wipe.
      *
-     * Not undoable. The caller is responsible for confirming intent before
-     * calling; nothing here asks.
+     * Not undoable BY THE DRIVER-FACING SURFACE - the caller is responsible for confirming intent
+     * before calling; nothing here asks. (A 30-day engine-side trash restore exists as a technical
+     * safety net, but no UI path exposes it for this action.)
      */
     suspend fun purgeAll(context: Context): PurgeResult {
-        val db = CarDatabase.getDatabase(context)
+        val database = db(context)
+        val sch = schema(context)
+        val recordStore = store(context)
         var transactions = 0
         var files = 0
-        db.withTransaction {
-            transactions = db.ledgerTransactionDao().deleteAll()
-            files = db.ingestedFileDao().deleteAll()
+        database.withTransaction {
+            val active = database.engineRecordDao().activeByRecordType(sch.transaction.recordTypeId)
+            for (rec in active) {
+                if (recordStore.delete(rec.id) is RecordStore.DeleteResult.Trashed) transactions++
+            }
+            files = database.ingestedFileDao().deleteAll()
         }
         Log.d(TAG, "purgeAll: dropped $transactions transactions and $files file records")
         return PurgeResult(transactionsDeleted = transactions, filesDeleted = files)
@@ -1024,11 +1214,13 @@ object LedgerController {
      * [LedgerTransaction.accountId] first because a single statement is one
      * account in practice, but this stays correct even if a future producer
      * ever mixes them. Returns the rows to insert and how many were dropped as
-     * duplicates. Only used by [importWithoutRecord] now - [IngestPipeline.commit]
-     * does the equivalent for anything with an [com.kevin.legion.data.local.IngestedFile] record.
+     * duplicates. Only used by [importWithoutRecord]/[commitPlain] now -
+     * [IngestPipeline.commit] does the equivalent for anything with an
+     * [com.kevin.legion.data.local.IngestedFile] record, reading its own engine
+     * snapshot directly rather than through this function.
      */
-    private suspend fun dedupAgainstExisting(
-        dao: LedgerTransactionDao,
+    private fun dedupAgainstExisting(
+        existing: List<LedgerTransaction>,
         incoming: List<LedgerTransaction>,
     ): Pair<List<LedgerTransaction>, Int> {
         val toInsert = mutableListOf<LedgerTransaction>()
@@ -1036,8 +1228,8 @@ object LedgerController {
         for ((accountId, group) in incoming.groupBy { it.accountId }) {
             val minDate = group.minOf { it.txnDate }
             val maxDate = group.maxOf { it.txnDate }
-            val existing = dao.getForAccountInRange(accountId, minDate, maxDate)
-            val resolution = resolveDedup(existing, group)
+            val existingForAccount = existing.filter { it.accountId == accountId && it.txnDate in minDate..maxDate }
+            val resolution = resolveDedup(existingForAccount, group)
             toInsert += resolution.toInsert
             skipped += resolution.duplicatesSkipped
         }
@@ -1194,12 +1386,12 @@ data class AccountBalance(
     val currency: LedgerCurrency,
     val balanceCents: Long?,
     // 2026-08-18 (Kevin: "say when the balance was last known"): the txnDate of the exact row
-    // [balanceCents] was read from, straight off [LedgerTransactionDao.latestBalanceTxnDate] - the
-    // SAME query [accountBalances] already calls for [provisionalDeltaCents]'s anchor, never a
-    // second one, because that query's own doc comment is explicit the two reads must agree on
-    // which row is the anchor. Null is a REAL, DISTINCT state, not "unknown" and not "today": it
-    // means [accountId] has never printed a balance at all (Bank of America's card layout, the same
-    // case [balanceCents] being null already covers) - never render a missing [asOfMs] as current.
+    // [balanceCents] was read from, straight off the same anchor row [accountBalances]'s own
+    // [provisionalDeltaCents] read is computed against - never a second, independently-derived
+    // one, because that would risk the two disagreeing on which row is the anchor. Null is a
+    // REAL, DISTINCT state, not "unknown" and not "today": it means [accountId] has never printed
+    // a balance at all (Bank of America's card layout, the same case [balanceCents] being null
+    // already covers) - never render a missing [asOfMs] as current.
     val asOfMs: Long? = null,
     val provisionalDeltaCents: Long = 0L,
     val isProvisional: Boolean = false,
@@ -1249,9 +1441,8 @@ data class AccountBalance(
  * last-4 (ticket 12 §0) - renders as one row, not two. This is the third of
  * the three places §0 names the suffix relation must be used; the other two
  * (the supersede delete and the per-account provisional-delta sum) are
- * already suffix-aware at the SQL layer, via
- * [LedgerTransactionDao.deleteSupersededProvisional] and
- * [LedgerTransactionDao.provisionalDeltaCentsAfter].
+ * already suffix-aware, now inside [LedgerController]'s own in-memory reads
+ * (cutover 3) rather than at the SQL layer.
  *
  * **Call this at the render site, never inside [LedgerController.accountBalances]**
  * (review finding 4 - spec drift, corrected). Ticket 12 §6 literally says
@@ -1319,9 +1510,9 @@ fun groupAccountBalances(balances: List<AccountBalance>): List<AccountBalance> {
         // pendingDeltaCents does NOT get summed across the cluster the way it
         // might look like it should from provisionalDeltaCents's shape just
         // above - it takes the OPPOSITE fix for a reason specific to its own
-        // query. LedgerTransactionDao.pendingDeltaCents has no per-accountId
-        // date anchor at all, only a suffix+currency match (see that query's
-        // own doc comment for why), so every member of a same-last-4/
+        // query. LedgerTransactionDao.pendingDeltaCents (now retired - see
+        // cutover 3) had no per-accountId date anchor at all, only a
+        // suffix+currency match, so every member of a same-last-4/
         // same-currency cluster already computed the IDENTICAL total in
         // accountBalances() - summing them here would multiply a single
         // driver-logged charge by the cluster's own size. representative's
