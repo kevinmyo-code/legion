@@ -4,7 +4,7 @@ ticket: "22"
 title: "Cutover per aspect: the engine becomes the read and write path"
 type: task
 status: claimed
-status-detail: "Cutovers 1-3 (Notes+Places, Pantry, LEDGER) merged and DATA-VERIFIED on the A25 2026-08-24. Ledger: 161 DETERMINISTIC + 7 UNRECONCILED intact through the flip, zero dupes; the gate commits engine-side atomically with in-transaction rule-7 supersession; the first-launch catch-up race fixed with a positively-tracked migrated-guid set. Owed: a real statement import. Remaining: fleet, then the home flip."
+status-detail: "ALL FOUR aspect cutovers merged and DATA-VERIFIED on the A25 2026-08-24. Fleet: 5 vehicles + 52 schedules + 5 history rows intact, zero dupes, 569 active engine records total; the derived anchor takes both axes from one row (anti-pairing preserved), OBSERVED supersedes ASSERTED in-transaction, ticket-29 drift dead by construction. Remaining: the home-screen flip, then legacy-table drops per aspect after soak."
 blockers: []
 blocked-by: []
 open-blockers: 0
