@@ -32,6 +32,13 @@ If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins 
 
 - **Product:** LEGION, one **Android phone app**. A single voice assistant orchestrating
   **aspects** of life. Not a launcher, not a head-unit product, not a commercial product.
+- **The one-line identity (Kevin, 2026-08-24): a personal-life ERP, queryable and CRUD-able by a
+  voice agent.** Aspects/record types/field defs are the master-data layer (fixed metadata tables,
+  never runtime DDL), records are the transactions, capability plugins are the modules, widgets
+  are the reporting layer, the xlsx mirror is the audit-and-export surface. Three deliberate
+  deviations from real ERP: data trustworthiness is first-class (the §4 gate + provenance), the
+  primary client is a voice agent bound by honesty rules, and the trust model is two adults with
+  BYO everything - so no roles, no tenancy, no approval workflows, ever.
 - **Register: Alfred/JARVIS is a BAND, not a name.** A tool with a personality. Not a mascot, not
   the car. Competent, dry, useful. **CORRECTED 2026-08-16: the voice HAS been written and the
   identity is not global.** `ai/AssistantIdentity.kt` is a resolver (its own doc comment says "No
