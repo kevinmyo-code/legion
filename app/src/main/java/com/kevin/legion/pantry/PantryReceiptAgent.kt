@@ -286,6 +286,13 @@ object PantryReceiptAgent {
                 sourceImagePath = sourceImagePath,
             ),
             items = items,
+            // The gate's own anchors, carried through rather than discarded - cutover 2's owed
+            // follow-up (`docs/architecture/cutover2-2026-08-24.md`). Null exactly when the
+            // receipt itself printed nothing there (see [optionalMoneyCents]'s absent-vs-unreadable
+            // distinction above) - never re-derived or defaulted to zero here.
+            subtotalCents = subtotalCents,
+            taxCents = taxCents,
+            otherChargesCents = otherChargesCents,
         )
     }
 

@@ -214,6 +214,18 @@ class MidnightApplication : Application() {
             appScope.launch {
                 runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave2.copyPantryIfNeeded(this@MidnightApplication) }
                     .onFailure { MidnightEvents.appStartWorkFailed("migrate_pantry_wave2", it) }
+
+                // Cutover 2 (`docs/architecture/cutover2-2026-08-24.md`, ticket 22 point 3): the
+                // Pantry aspect is now the live read/write path (PantryController above is
+                // engine-backed), so this one-time catch-up re-runs the wave 2 copier to pick up any
+                // legacy row written between wave 2 landing and this install. Guarded by its OWN
+                // completion marker (see EngineDataMigrationWave2.catchUpOnce's own doc comment) so
+                // it only ever forces a rescan once. Sequenced in the SAME coroutine, after the call
+                // just above, for the same reason cutover 1's catch-up is sequenced after its own
+                // wave's calls - catchUpOnce clears and re-derives from the exact
+                // KEY_PANTRY_COMPLETED flag that call sets.
+                runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave2.catchUpOnce(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("cutover2_pantry_catchup", it) }
             }
 
             // Wave 3 of the aspect-engine migration (`.scratch/aspect-engine/issues/21-migration-waves.md`):

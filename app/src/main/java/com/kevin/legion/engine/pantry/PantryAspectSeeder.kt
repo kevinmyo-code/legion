@@ -44,6 +44,26 @@ object PantryAspectSeeder {
     const val FIELD_TOTAL = "total"
     const val FIELD_SOURCE_IMAGE_PATH = "sourceImagePath"
 
+    /** Cutover 2 (`docs/architecture/cutover2-2026-08-24.md`), the wave-2-carve-owed follow-up
+     * (`.scratch/aspect-engine/issues/22-cutover-per-aspect.md` open question 2: "persist
+     * subtotal/tax/other so the gate invariant is re-checkable post-hoc"). [PantryReceiptAgent]
+     * already reads these three off the receipt's own print and reconciles against them
+     * (`sum(items) == subtotal`, `subtotal + tax + otherCharges == total`) - before this addition
+     * the gate's WORK was verified but its INPUTS were thrown away the moment the receipt was
+     * written, so nothing later could re-derive "did this actually tie out" without re-running the
+     * whole extraction. All three are optional MONEY_CENTS - not required/locked, since a receipt
+     * legitimately prints no subtotal/tax line (the tax-free-basket branch in
+     * [PantryReceiptAgent]'s own reconciliation) and a migrated pre-cutover row has none at all
+     * (the legacy [com.kevin.legion.data.local.PantryReceipt] entity never carried these columns -
+     * see [com.kevin.legion.engine.migration.EngineDataMigrationWave2]'s own doc comment: historical
+     * rows are correctly anchor-less, never backfilled with a fabricated figure). Added via the
+     * SAME idempotent [ensureField] path every other field in this seeder uses - additive schema
+     * DATA, not a Room migration, reaching Kevin's already-seeded phone the next time this function
+     * runs. */
+    const val FIELD_SUBTOTAL = "subtotal"
+    const val FIELD_TAX = "tax"
+    const val FIELD_OTHER_CHARGES = "otherCharges"
+
     /** [com.kevin.legion.data.local.LedgerCurrency]'s names, duplicated here as plain strings
      * rather than a dependency on that enum - same "engine package never depends on a plugin
      * package" reasoning [com.kevin.legion.engine.notes.NotesAspectSeeder.REPEAT_KIND_OPTIONS]'s
@@ -131,6 +151,10 @@ object PantryAspectSeeder {
         )
         receiptFieldIds[FIELD_TOTAL] = ensureField(receiptTypeId, existingReceiptFields, FIELD_TOTAL, FieldType.MONEY_CENTS, required = true, position = 3)
         receiptFieldIds[FIELD_SOURCE_IMAGE_PATH] = ensureField(receiptTypeId, existingReceiptFields, FIELD_SOURCE_IMAGE_PATH, FieldType.TEXT, required = false, position = 4)
+        // Cutover 2 anchors - see this file's own doc comment on the three constants above.
+        receiptFieldIds[FIELD_SUBTOTAL] = ensureField(receiptTypeId, existingReceiptFields, FIELD_SUBTOTAL, FieldType.MONEY_CENTS, required = false, position = 5)
+        receiptFieldIds[FIELD_TAX] = ensureField(receiptTypeId, existingReceiptFields, FIELD_TAX, FieldType.MONEY_CENTS, required = false, position = 6)
+        receiptFieldIds[FIELD_OTHER_CHARGES] = ensureField(receiptTypeId, existingReceiptFields, FIELD_OTHER_CHARGES, FieldType.MONEY_CENTS, required = false, position = 7)
 
         // total is the receipt's own printed, gate-verified figure - promote it, same shape as
         // NotesAspectSeeder's primaryDueDateFieldId block. First seeder in the repo to set

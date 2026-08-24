@@ -45,6 +45,11 @@ object EngineDataMigrationWave2 {
     private const val PREFS = "engine_migration_wave2"
     private const val KEY_PANTRY_COMPLETED = "pantry_completed_v1"
 
+    /** Guards [catchUpOnce] so it only ever forces a rescan a single time - see that function's own
+     * doc comment. Named `_v1` to match every other wave's catch-up marker convention
+     * ([com.kevin.legion.engine.migration.EngineDataMigrationWave1]'s own `KEY_CUTOVER1_CATCHUP_COMPLETED`). */
+    private const val KEY_CUTOVER2_CATCHUP_COMPLETED = "cutover2_pantry_catchup_v1_completed"
+
     /** [receiptsCopied]/[lineItemsCopied] count only rows actually written this call - a row
      * skipped because its `guid` already existed (the per-row idempotency backstop) is not counted
      * twice across retries. [alreadyDone] is true only when the SharedPreferences fast path
@@ -160,5 +165,39 @@ object EngineDataMigrationWave2 {
      * "independent failure mode" reasoning [EngineDataMigrationWave1.runAll] already uses. */
     suspend fun runAll(context: Context) {
         runCatching { copyPantryIfNeeded(context) }
+    }
+
+    /**
+     * **Cutover 2** (`docs/architecture/cutover2-2026-08-24.md`, ticket 22 point 3): the Pantry
+     * aspect is now the live read/write path (`pantry/PantryController.importReceipt` writes
+     * straight through [com.kevin.legion.engine.RecordStore]), so this one-time catch-up re-runs
+     * [copyPantryIfNeeded] to pick up any legacy `pantry_receipts`/`pantry_line_items` row written
+     * between wave 2 landing and this cutover install - the exact same window
+     * [EngineDataMigrationWave1.catchUpOnce] closes for notes/places, reused here rather than
+     * re-invented. [KEY_PANTRY_COMPLETED] is the ordinary fast-path SKIP once set
+     * ([copyPantryIfNeeded] never even queries the legacy tables again after completing once) -
+     * exactly what makes it wrong for a catch-up rescan, so this clears it first (guarded by its
+     * own [KEY_CUTOVER2_CATCHUP_COMPLETED] marker so it only ever forces a rescan a single time,
+     * not on every app start) and re-runs the copier - its per-row `guid` check does the actual
+     * work: any row already copied is recognized and skipped, any row written in that window is
+     * picked up for the first time.
+     *
+     * **No rekey pass, unlike [EngineDataMigrationWave1.catchUpOnce]'s `ListItemSkip` rekey.**
+     * Traced end to end: nothing in this codebase keys off a legacy [com.kevin.legion.data.local.PantryReceipt.id]/
+     * [com.kevin.legion.data.local.PantryLineItem.id] the way [com.kevin.legion.data.local.ListItemSkip.itemId]
+     * keyed off a legacy `list_items.id`. [com.kevin.legion.data.PantryPhotoStore] - the one other
+     * pantry-adjacent piece of state - is keyed by a save-time millisecond filename, never by a
+     * receipt row id, so there is nothing there to rekey either. Stated in words rather than
+     * silently assumed, per instruction 4's own requirement to say what was found.
+     */
+    suspend fun catchUpOnce(context: Context): Boolean {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_CUTOVER2_CATCHUP_COMPLETED, false)) return false
+
+        prefs.edit().putBoolean(KEY_PANTRY_COMPLETED, false).apply()
+        copyPantryIfNeeded(context)
+
+        prefs.edit().putBoolean(KEY_CUTOVER2_CATCHUP_COMPLETED, true).apply()
+        return true
     }
 }
