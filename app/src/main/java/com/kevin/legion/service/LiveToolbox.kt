@@ -4900,14 +4900,24 @@ object LiveToolbox {
                 )
             }
         }
+        // Senior review, 2026-08-24 (should-fix 3): "untick"/"remove" used to speak success
+        // unconditionally, ignoring whether the engine write actually landed - a §7 outcome-verb
+        // violation. NotesController.untick/removeItem now return a real Boolean; both branches
+        // check it before ever claiming an outcome verb happened.
         "untick" -> {
-            NotesController.untick(context, item)
-            result(true, "Unticked \"${item.text}\" on ${list.name}.")
+            if (NotesController.untick(context, item)) {
+                result(true, "Unticked \"${item.text}\" on ${list.name}.")
+            } else {
+                result(false, "Something went wrong unticking \"${item.text}\" - nothing changed.")
+            }
         }
         // No confirmation on removing one item (ticket 05) - unlike deleting a whole list.
         "remove" -> {
-            NotesController.removeItem(context, item)
-            result(true, "Took \"${item.text}\" off ${list.name}.")
+            if (NotesController.removeItem(context, item)) {
+                result(true, "Took \"${item.text}\" off ${list.name}.")
+            } else {
+                result(false, "Something went wrong removing \"${item.text}\" - it's still there.")
+            }
         }
         "schedule" -> scheduleItem(context, list, item, args)
         "skip" -> {
@@ -4931,7 +4941,10 @@ object LiveToolbox {
      * `setRepeat`/`setExact`'s own doc comments are explicit that chaining on the stale, pre-edit
      * item silently loses whichever field the previous call in this chain just set (ticket 03/04's
      * scheduling maths reads `startsAt`/`repeatKind`/`exact` straight off whatever `ListItem` it's
-     * handed).
+     * handed). **Senior review, 2026-08-24 (should-fix 3):** each of those three now returns
+     * `ListItem?`, null on a failed engine write - this function bails out with a worded
+     * `result(false, ...)` the instant one of them returns null, rather than silently chaining a
+     * stale `current` forward and speaking success anyway (the §7 outcome-verb violation).
      */
     private suspend fun scheduleItem(
         context: Context, list: ItemList, item: com.kevin.legion.data.local.ListItem, args: JSONObject,
@@ -4963,12 +4976,14 @@ object LiveToolbox {
                 .of(date, time ?: java.time.LocalTime.MIDNIGHT)
                 .atZone(zone).toInstant().toEpochMilli()
             current = NotesController.setTime(context, current, startsAt, null, time == null)
+                ?: return result(false, "Something went wrong setting that time on \"${current.text}\" - nothing changed.")
         }
 
         val repeatKindRaw = args.optString("repeat_kind").trim().lowercase()
         if (repeatKindRaw.isNotBlank()) {
             if (repeatKindRaw == "none") {
                 current = NotesController.setRepeat(context, current, null, RepeatEnd.Never)
+                    ?: return result(false, "Something went wrong clearing the repeat on \"${current.text}\" - nothing changed.")
             } else {
                 val every = args.optInt("repeat_every", 1).coerceAtLeast(1)
                 val rule = when (repeatKindRaw) {
@@ -5003,6 +5018,7 @@ object LiveToolbox {
                     else -> RepeatEnd.Never
                 }
                 current = NotesController.setRepeat(context, current, rule, end)
+                    ?: return result(false, "Something went wrong setting that repeat on \"${current.text}\" - nothing changed.")
             }
         }
 
@@ -5013,6 +5029,7 @@ object LiveToolbox {
         if (args.has("exact")) {
             val wantsExact = args.optBoolean("exact")
             current = NotesController.setExact(context, current, wantsExact)
+                ?: return result(false, "Something went wrong setting the exact-alarm flag on \"${current.text}\" - nothing changed.")
             if (wantsExact && current.exactDowngraded) {
                 downgradeNotice = " I can't get exact-alarm permission right now, so it'll fire " +
                     "approximately on time instead - you can grant it in Settings."

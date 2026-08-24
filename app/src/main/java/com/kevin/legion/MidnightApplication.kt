@@ -183,6 +183,20 @@ class MidnightApplication : Application() {
                     .onFailure { MidnightEvents.appStartWorkFailed("migrate_notes_wave1", it) }
                 runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave1.copyPlacesIfNeeded(this@MidnightApplication) }
                     .onFailure { MidnightEvents.appStartWorkFailed("migrate_places_wave1", it) }
+
+                // Cutover 1 (`docs/architecture/cutover1-2026-08-24.md`, ticket 22 point 3): the
+                // Notes/Places aspect is now the live read/write path (NotesController/PlaceController
+                // above are engine-backed), so this one-time catch-up re-runs the wave 1 copier to pick
+                // up any legacy row written between wave 1 landing and this install, then rekeys every
+                // ListItemSkip row onto its item's new engine id. Guarded by its OWN completion marker
+                // (see EngineDataMigrationWave1.catchUpOnce's own doc comment) so it only ever forces a
+                // rescan once. Deliberately sequenced in the SAME coroutine, after the two calls just
+                // above, rather than a second appScope.launch - catchUpOnce clears and re-derives from
+                // the exact KEY_NOTES_COMPLETED/KEY_PLACES_COMPLETED flags those two calls set, and
+                // racing that reset against the calls themselves would be exactly the kind of
+                // "improvise past a real ordering dependency" this codebase's own lessons warn about.
+                runCatching { com.kevin.legion.engine.migration.EngineDataMigrationWave1.catchUpOnce(this@MidnightApplication) }
+                    .onFailure { MidnightEvents.appStartWorkFailed("cutover1_notes_places_catchup", it) }
             }
 
             // Wave 2 of the aspect-engine migration (`.scratch/aspect-engine/issues/21-migration-waves.md`):

@@ -196,7 +196,7 @@ object GoalChecklistSync {
             val itemDayEnd = dayEndEpoch(item.createdAt)
             val alreadyLogged = db.workoutSetLogDao().existingForExerciseInWindow(match.exercise, itemDayStart, itemDayEnd)
             if (alreadyLogged != null) {
-                db.listItemDao().markLogged(item.id, now)
+                NotesController.markLogged(context, item.id, now)
                 continue
             }
 
@@ -216,7 +216,7 @@ object GoalChecklistSync {
             // A failed write leaves loggedAt null, so a LATER sweep retries it - the same "no false
             // success" posture CLAUDE.md §7 asks of every write, applied to a write nobody asked
             // for out loud but that this object is making on the user's behalf.
-            if (outcome.success) db.listItemDao().markLogged(item.id, now)
+            if (outcome.success) NotesController.markLogged(context, item.id, now)
         }
     }
 

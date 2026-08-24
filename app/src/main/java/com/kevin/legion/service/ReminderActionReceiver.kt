@@ -4,7 +4,6 @@ import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.notes.AlarmScheduler
 import com.kevin.legion.notes.NotesController
 import kotlinx.coroutines.CoroutineScope
@@ -39,13 +38,13 @@ class ReminderActionReceiver : BroadcastReceiver() {
      * behaviour when exact permission is refused" (ticket 12) - [AlarmScheduler.schedule] IS that
      * same path, called here exactly as `notes/NotesController` calls it for a driver-set schedule. */
     private suspend fun snooze(context: Context, itemId: Long) {
-        val item = CarDatabase.getDatabase(context).listItemDao().getById(itemId) ?: return
+        val item = NotesController.itemById(context, itemId) ?: return
         AlarmScheduler.schedule(context, item, System.currentTimeMillis() + SNOOZE_INTERVAL_MS)
         dismissNotification(context, itemId)
     }
 
     private suspend fun done(context: Context, itemId: Long) {
-        val item = CarDatabase.getDatabase(context).listItemDao().getById(itemId) ?: return
+        val item = NotesController.itemById(context, itemId) ?: return
         // NotesController.tick refuses a recurring item (ticket 04) - the notification never
         // offers DONE for one in the first place (ReminderAlarmReceiver.postNotification), so
         // reaching here with a recurring item can only mean a stale/replayed intent, and tick()

@@ -78,9 +78,10 @@ object HomeDigestBuilder : DigestBuilder {
             next = VehicleController.nextService(context, vehicle),
         )
 
+        // Cutover 1: rewired off ListItemDao onto NotesController, which is now engine-backed.
         val logLine = logHeadline(
-            allActive = db.listItemDao().allActive(),
-            missed = db.listItemDao().missedItems(),
+            allActive = com.kevin.legion.notes.NotesController.allItems(context),
+            missed = com.kevin.legion.notes.NotesController.missedItems(context),
         )
 
         val goals = db.goalDao().allCurrentGoals()

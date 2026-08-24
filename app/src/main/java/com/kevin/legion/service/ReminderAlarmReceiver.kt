@@ -56,14 +56,15 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
     }
 
     private suspend fun fire(context: Context, itemId: Long) {
-        val dao = CarDatabase.getDatabase(context).listItemDao()
-        val item = dao.getById(itemId) ?: return // deleted out from under the alarm - nothing to fire.
+        // Cutover 1: NotesController.itemById is engine-backed; ListItemDao gains no reader here.
+        val item = com.kevin.legion.notes.NotesController.itemById(context, itemId)
+            ?: return // deleted out from under the alarm - nothing to fire.
         if (item.done) return // ticked (non-recurring only, ticket 04) before the alarm caught up.
 
         if (item.repeatKind != null) rearmNextOccurrence(context, item)
 
-        val list = CarDatabase.getDatabase(context).itemListDao().getById(item.listId)
-        val listName = list?.name ?: "your list"
+        // theList() is a read-only convenience since cutover - see NotesController's own class doc.
+        val listName = com.kevin.legion.notes.NotesController.theList(context).name
 
         // ONE delivery per reminder, never both (ticket 06 call 5, Kevin 2026-08-21). This method
         // used to post the notification AND speak, unconditionally, for the same item - the echo
