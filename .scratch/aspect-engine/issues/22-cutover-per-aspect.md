@@ -3,8 +3,8 @@ map: aspect-engine
 ticket: "22"
 title: "Cutover per aspect: the engine becomes the read and write path"
 type: task
-status: open
-status-detail: ""
+status: claimed
+status-detail: "Started 2026-08-24. Cutover 1 (Notes+Places) dispatched."
 blockers: []
 blocked-by: []
 open-blockers: 0
