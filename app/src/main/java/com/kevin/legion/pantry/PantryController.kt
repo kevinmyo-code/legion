@@ -2,29 +2,143 @@ package com.kevin.legion.pantry
 
 import android.content.Context
 import android.util.Log
+import androidx.room.withTransaction
 import com.kevin.legion.data.PantryPhotoStore
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.EngineRecord
+import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.PantryCurrencyTotal
 import com.kevin.legion.data.local.PantryLineItem
 import com.kevin.legion.data.local.PantryLineItemWithCurrency
 import com.kevin.legion.data.local.PantryReceipt
 import com.kevin.legion.data.local.PantryReceiptSummary
+import com.kevin.legion.data.local.RecordProvenance
+import com.kevin.legion.engine.PayloadCodec
+import com.kevin.legion.engine.RecordStore
+import com.kevin.legion.engine.pantry.PantryAspectSeeder
 import java.io.File
+import org.json.JSONObject
 
 /**
  * Orchestrates receipt-photo ingestion - mirrors
  * [com.kevin.legion.ledger.LedgerController]'s shape.
  * `.claude/plans/wiggly-beaming-quasar.md`.
+ *
+ * **Cutover 2** (`docs/architecture/cutover2-2026-08-24.md`,
+ * `.scratch/aspect-engine/issues/22-cutover-per-aspect.md`). Every function below keeps its
+ * ORIGINAL signature and return type (`PantryReceipt`/`PantryLineItem`/`PantryCurrencyTotal`/
+ * `PantryReceiptSummary` - the legacy Room entity/row shapes) so every caller - `ui/PantryScreen.kt`,
+ * `service/LiveToolbox.kt`'s `list_recent_groceries`/`get_grocery_spend` - flips onto the engine
+ * with this file, unchanged (ADR 0035: "the controller keeps its seam"). What changed is entirely
+ * internal: reads and writes now go through [RecordStore] against the Pantry aspect's `Receipt`/
+ * `LineItem` record types (`docs/architecture/wave2-carve-2026-08-23.md`'s field mapping, reused
+ * verbatim - not reinvented), and every value object this file hands back is assembled in-memory
+ * from an [EngineRecord]'s JSON payload, never a row actually persisted in the legacy
+ * `pantry_receipts`/`pantry_line_items` tables. **Those two tables have ZERO writers from this file
+ * after cutover** - see the cutover doc's reader/writer table for the full grep-proven account.
+ *
+ * **The reconciliation gate moves with it.** [PantryReceiptAgent.parseAndReconcile] is completely
+ * untouched - it still runs entirely upstream of any write, and a [PantryIngestResult.Quarantined]
+ * still causes [importReceipt] to write NOTHING, exactly as before cutover. What changed is only
+ * where a [PantryIngestResult.Success] lands: through [RecordStore.create] inside one
+ * [androidx.room.withTransaction] block (receipt first, then its line items, referencing the
+ * receipt's real engine id), rather than straight `Insert` DAO calls. A `RecordStore` write CAN
+ * fail post-gate (a corrupted field schema, a reference-validation edge) in a way the old plain
+ * `Insert` calls structurally could not - CLAUDE.md §7's outcome-verb rule applies here just as much
+ * as to a voice tool: [importReceipt] never reports success unless every write in the transaction
+ * actually landed, and rolls the whole transaction back rather than leaving a receipt with some but
+ * not all of its line items.
  */
 object PantryController {
     private const val TAG = "PantryController"
 
+    private fun db(context: Context) = CarDatabase.getDatabase(context)
+    private fun store(context: Context): RecordStore {
+        val database = db(context)
+        return RecordStore(database.engineRecordDao(), database.fieldDefDao(), database.recordTypeDao())
+    }
+
+    private suspend fun schema(context: Context) = PantryAspectSeeder.ensureSeeded(context)
+
+    // ---------------------------------------------------------------- engine <-> value-object bridge
+
+    /** Matches `docs/architecture/wave2-carve-2026-08-23.md`'s field mapping table exactly -
+     * nothing here invents a second mapping. Falls back to [LedgerCurrency.USD] only if a stored
+     * currency string somehow doesn't match either enum name - should never happen (the field is a
+     * locked `CHOICE` of exactly `["SGD", "USD"]`), but a read function must still return SOMETHING
+     * rather than throw on a record it can't fully decode. */
+    private fun toReceipt(record: EngineRecord, fieldIds: Map<String, Long>): PantryReceipt {
+        val payload = JSONObject(record.payload)
+        fun s(name: String) = PayloadCodec.readString(payload, fieldIds.getValue(name))
+        fun l(name: String) = PayloadCodec.readLong(payload, fieldIds.getValue(name))
+        val currency = LedgerCurrency.entries.firstOrNull { it.name == s(PantryAspectSeeder.FIELD_CURRENCY) }
+            ?: LedgerCurrency.USD
+        return PantryReceipt(
+            id = record.id,
+            store = s(PantryAspectSeeder.FIELD_STORE).orEmpty(),
+            purchaseDate = l(PantryAspectSeeder.FIELD_PURCHASE_DATE) ?: record.createdAt,
+            currency = currency,
+            totalCents = l(PantryAspectSeeder.FIELD_TOTAL) ?: 0L,
+            sourceImagePath = s(PantryAspectSeeder.FIELD_SOURCE_IMAGE_PATH).orEmpty(),
+            syncId = record.guid,
+        )
+    }
+
+    private fun toLineItem(record: EngineRecord, fieldIds: Map<String, Long>): PantryLineItem {
+        val payload = JSONObject(record.payload)
+        fun s(name: String) = PayloadCodec.readString(payload, fieldIds.getValue(name))
+        fun l(name: String) = PayloadCodec.readLong(payload, fieldIds.getValue(name))
+        fun d(name: String) = PayloadCodec.readDouble(payload, fieldIds.getValue(name))
+        return PantryLineItem(
+            id = record.id,
+            receiptId = PayloadCodec.readReferenceId(payload, fieldIds.getValue(PantryAspectSeeder.FIELD_RECEIPT)) ?: 0L,
+            name = s(PantryAspectSeeder.FIELD_NAME).orEmpty(),
+            quantity = d(PantryAspectSeeder.FIELD_QUANTITY) ?: 1.0,
+            unitPriceCents = l(PantryAspectSeeder.FIELD_UNIT_PRICE),
+            totalPriceCents = l(PantryAspectSeeder.FIELD_TOTAL_PRICE) ?: 0L,
+            caloriesKcal = d(PantryAspectSeeder.FIELD_ESTIMATED_CALORIES_KCAL)?.toInt(),
+            proteinG = d(PantryAspectSeeder.FIELD_ESTIMATED_PROTEIN_G),
+            carbsG = d(PantryAspectSeeder.FIELD_ESTIMATED_CARBS_G),
+            fatG = d(PantryAspectSeeder.FIELD_ESTIMATED_FAT_G),
+            syncId = record.guid,
+        )
+    }
+
+    /** Every non-trashed `Receipt` record, converted - the one place every receipt read below
+     * funnels through, so there is exactly one query against the engine per read. */
+    private suspend fun allReceipts(context: Context): List<PantryReceipt> {
+        val sch = schema(context)
+        return db(context).engineRecordDao().activeByRecordType(sch.receipt.recordTypeId)
+            .map { toReceipt(it, sch.receipt.fieldIds) }
+    }
+
+    /** Every non-trashed `LineItem` record, converted - same shape as [allReceipts]. */
+    private suspend fun allLineItems(context: Context): List<PantryLineItem> {
+        val sch = schema(context)
+        return db(context).engineRecordDao().activeByRecordType(sch.lineItem.recordTypeId)
+            .map { toLineItem(it, sch.lineItem.fieldIds) }
+    }
+
+    // ------------------------------------------------------------------------------------ ingestion
+
+    /** Thrown only to force [androidx.room.withTransaction] to roll back the WHOLE receipt+items
+     * write in [importReceipt] - Room's transaction helper rolls back on a thrown exception, never
+     * on a plain early return, so a partial engine write (receipt landed, a later line item did
+     * not) needs a real throw to undo, not just a guard clause. Caught immediately inside
+     * [importReceipt] and never escapes it. */
+    private class EngineWriteFailedException(val reason: String) : Exception()
+
     /**
      * Reads [imageFile] (already saved via [PantryPhotoStore]), extracts it
      * through [PantryReceiptAgent], and - only on a fully-reconciled result -
-     * inserts the receipt then its line items (stamped with the new receipt's
-     * id), deleting the source photo. On a quarantine, the photo is kept so
-     * the driver can inspect or retry without re-taking it.
+     * writes the receipt then its line items through [RecordStore] inside one
+     * transaction (reference intact, provenance `LLM_RECONCILED`), deleting
+     * the source photo. On a quarantine, the photo is kept so the driver can
+     * inspect or retry without re-taking it. **On a genuine engine-write
+     * failure after the gate already passed** (a real possibility post-cutover
+     * that plain `Insert` calls never had - see this object's class doc), the
+     * whole transaction rolls back, nothing is written, and the caller is told
+     * in words that nothing was saved - never a false success (CLAUDE.md §7).
      */
     suspend fun importReceipt(context: Context, imageFile: File): PantryImportResult {
         val bytes = try {
@@ -37,57 +151,145 @@ object PantryController {
         return when (val result = PantryReceiptAgent.extract(bytes, imageFile.path)) {
             is PantryIngestResult.Quarantined -> PantryImportResult(success = false, message = result.reason)
             is PantryIngestResult.Success -> {
-                val db = CarDatabase.getDatabase(context)
-                val receiptId = db.pantryReceiptDao().insert(result.receipt)
-                db.pantryLineItemDao().insertAll(result.items.map { it.copy(receiptId = receiptId) })
-                PantryPhotoStore.delete(context, imageFile)
-                PantryImportResult(
-                    success = true,
-                    message = "Logged ${result.items.size} item(s) from ${result.receipt.store}.",
-                    itemCount = result.items.size,
-                )
+                val written = writeReceipt(context, result)
+                if (written.success) PantryPhotoStore.delete(context, imageFile)
+                written
             }
         }
     }
 
-    suspend fun recentLineItems(context: Context, limit: Int = 20): List<PantryLineItem> =
-        CarDatabase.getDatabase(context).pantryLineItemDao().getRecent(limit)
+    /**
+     * The network-free half of [importReceipt] - writes an already-gate-passed
+     * [PantryIngestResult.Success] through [RecordStore] inside one transaction (receipt then its
+     * line items, referencing the receipt's real engine id, provenance `LLM_RECONCILED`). Split out
+     * as its own function, mirroring [PantryReceiptAgent.parseAndReconcile]'s own "network-free...
+     * unit-tested directly" split (see that function's doc comment) - [PantryControllerTest]
+     * exercises this directly with a hand-built [PantryIngestResult.Success], with no Gemini key or
+     * network call needed, exactly as [PantryReceiptAgentTest] already does for the gate itself.
+     *
+     * Never called for a [PantryIngestResult.Quarantined] - [importReceipt]'s `when` only reaches
+     * this branch after the gate has already passed, so "quarantine writes nothing" is enforced
+     * structurally (there is no path from a `Quarantined` result to this function at all), not by a
+     * runtime check inside it.
+     */
+    suspend fun writeReceipt(context: Context, result: PantryIngestResult.Success): PantryImportResult {
+        val database = db(context)
+        val sch = schema(context)
+        val recordStore = store(context)
+        var itemCount = 0
+
+        try {
+            database.withTransaction {
+                val receiptResult = recordStore.create(
+                    recordTypeId = sch.receipt.recordTypeId,
+                    fieldValues = mapOf(
+                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_STORE) to result.receipt.store,
+                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_PURCHASE_DATE) to result.receipt.purchaseDate,
+                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_CURRENCY) to result.receipt.currency.name,
+                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_TOTAL) to result.receipt.totalCents,
+                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_SOURCE_IMAGE_PATH) to result.receipt.sourceImagePath,
+                        // Cutover 2's owed anchor persistence - see PantryAspectSeeder's own
+                        // doc comment on these three fields.
+                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_SUBTOTAL) to result.subtotalCents,
+                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_TAX) to result.taxCents,
+                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_OTHER_CHARGES) to result.otherChargesCents,
+                    ),
+                    provenance = RecordProvenance.LLM_RECONCILED,
+                    guid = result.receipt.syncId,
+                )
+                val receiptId = (receiptResult as? RecordStore.WriteResult.Success)?.recordId
+                    ?: throw EngineWriteFailedException(
+                        "receipt: ${(receiptResult as RecordStore.WriteResult.Failure).reason}",
+                    )
+
+                for (item in result.items) {
+                    val itemResult = recordStore.create(
+                        recordTypeId = sch.lineItem.recordTypeId,
+                        fieldValues = mapOf(
+                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_RECEIPT) to receiptId,
+                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_NAME) to item.name,
+                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_QUANTITY) to item.quantity,
+                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_UNIT_PRICE) to item.unitPriceCents,
+                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_TOTAL_PRICE) to item.totalPriceCents,
+                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_ESTIMATED_CALORIES_KCAL) to item.caloriesKcal,
+                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_ESTIMATED_PROTEIN_G) to item.proteinG,
+                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_ESTIMATED_CARBS_G) to item.carbsG,
+                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_ESTIMATED_FAT_G) to item.fatG,
+                        ),
+                        provenance = RecordProvenance.LLM_RECONCILED,
+                        guid = item.syncId,
+                    )
+                    if (itemResult !is RecordStore.WriteResult.Success) {
+                        throw EngineWriteFailedException(
+                            "line item '${item.name}': ${(itemResult as RecordStore.WriteResult.Failure).reason}",
+                        )
+                    }
+                    itemCount++
+                }
+            }
+        } catch (e: EngineWriteFailedException) {
+            Log.w(TAG, "writeReceipt: engine write failed after the gate passed, rolled back - ${e.reason}")
+            return PantryImportResult(
+                success = false,
+                message = "This receipt's numbers checked out, but I couldn't save it - try again.",
+            )
+        }
+
+        return PantryImportResult(
+            success = true,
+            message = "Logged $itemCount item(s) from ${result.receipt.store}.",
+            itemCount = itemCount,
+        )
+    }
+
+    // ------------------------------------------------------------------------------------ reads
+
+    suspend fun recentLineItems(context: Context, limit: Int = 20): List<PantryLineItem> {
+        val receipts = allReceipts(context).associateBy { it.id }
+        return allLineItems(context)
+            .sortedByDescending { receipts[it.receiptId]?.purchaseDate ?: Long.MIN_VALUE }
+            .take(limit)
+    }
 
     /** [recentLineItems], each tagged with its own receipt's currency - see [PantryLineItemWithCurrency]'s doc comment. */
-    suspend fun recentLineItemsWithCurrency(context: Context, limit: Int = 20): List<PantryLineItemWithCurrency> =
-        CarDatabase.getDatabase(context).pantryLineItemDao().getRecentWithCurrency(limit)
+    suspend fun recentLineItemsWithCurrency(context: Context, limit: Int = 20): List<PantryLineItemWithCurrency> {
+        val receipts = allReceipts(context).associateBy { it.id }
+        return allLineItems(context)
+            .sortedByDescending { receipts[it.receiptId]?.purchaseDate ?: Long.MIN_VALUE }
+            .take(limit)
+            .map { PantryLineItemWithCurrency(item = it, currency = receipts[it.receiptId]?.currency ?: LedgerCurrency.USD) }
+    }
 
-    suspend fun totalSpendCents(context: Context): Long =
-        CarDatabase.getDatabase(context).pantryReceiptDao().totalSpendCents()
+    /** Combines every currency into one bare cents figure - kept only for signature compatibility
+     * (see [com.kevin.legion.data.local.PantryReceiptDao.totalSpendCents]'s own pre-cutover doc
+     * comment: "left in place only because nothing besides this new query needs to change it, not
+     * because it's still safe to call on its own"). Prefer [totalSpendCentsByCurrency]. */
+    suspend fun totalSpendCents(context: Context): Long = allReceipts(context).sumOf { it.totalCents }
 
     /** Total grocery spend PER currency, never combined - see [com.kevin.legion.data.local.PantryReceiptDao.totalSpendCentsByCurrency]'s doc comment. */
     suspend fun totalSpendCentsByCurrency(context: Context): List<PantryCurrencyTotal> =
-        CarDatabase.getDatabase(context).pantryReceiptDao().totalSpendCentsByCurrency()
+        allReceipts(context).groupBy { it.currency }.map { (currency, receipts) ->
+            PantryCurrencyTotal(currency = currency, totalCents = receipts.sumOf { it.totalCents })
+        }
 
     /**
      * The [limitReceipts] most recent receipts, each paired with its own line
      * items - what ticket 09's pantry screen (resolution §2, TREATMENT B
      * SEGREGATED) groups by, one receipt per `ON THE RECEIPT` / `ESTIMATED,
-     * NOT ON THE RECEIPT` pair. Composed from [PantryReceiptDao.getRecent] +
-     * [PantryLineItemDao.getForReceipt] rather than a new joined DAO query -
-     * receipt counts are small (personal grocery volume, not a ledger), so
-     * N+1 here costs nothing and avoids widening the DAO surface for a read
-     * only this screen needs.
+     * NOT ON THE RECEIPT` pair.
      */
     suspend fun recentReceiptsWithItems(context: Context, limitReceipts: Int = 10): List<Pair<PantryReceipt, List<PantryLineItem>>> {
-        val db = CarDatabase.getDatabase(context)
-        val receipts = db.pantryReceiptDao().getRecent(limitReceipts)
-        return receipts.map { receipt -> receipt to db.pantryLineItemDao().getForReceipt(receipt.id) }
+        val receipts = allReceipts(context).sortedByDescending { it.purchaseDate }.take(limitReceipts)
+        val items = allLineItems(context).groupBy { it.receiptId }
+        return receipts.map { receipt -> receipt to (items[receipt.id] ?: emptyList()) }
     }
 
     /**
      * Every receipt's date/total/currency (quant-viz ticket 07) - the SPEND panel's monthly bars
-     * need the driver's whole ingestion history, not [recentReceiptsWithItems]'s capped list. See
-     * [com.kevin.legion.data.local.PantryReceiptDao.getAllForCharts]'s doc comment for why this is
-     * a separate, lighter read rather than a widened `recentReceiptsWithItems`.
+     * need the driver's whole ingestion history, not [recentReceiptsWithItems]'s capped list.
      */
     suspend fun allReceiptSummaries(context: Context): List<PantryReceiptSummary> =
-        CarDatabase.getDatabase(context).pantryReceiptDao().getAllForCharts()
+        allReceipts(context).map { PantryReceiptSummary(purchaseDate = it.purchaseDate, totalCents = it.totalCents, currency = it.currency) }
 }
 
 data class PantryImportResult(val success: Boolean, val message: String, val itemCount: Int = 0)

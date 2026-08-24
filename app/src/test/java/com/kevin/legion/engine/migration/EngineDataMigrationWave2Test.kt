@@ -353,4 +353,45 @@ class EngineDataMigrationWave2Test {
         val third = EngineDataMigrationWave2.copyPantryIfNeeded(context)
         assertTrue("a genuinely complete pass must now set the flag and fast-path every later call", third.alreadyDone)
     }
+
+    // ---------------------------------------------------------------------- cutover 2's catchUpOnce
+
+    @Test
+    fun `catchUpOnce picks up a legacy receipt written after the ordinary wave-2 copy already completed`() = runBlocking {
+        // Simulates the real cutover window: wave 2 lands and copies whatever exists, then more
+        // receipts get imported through the still-legacy-backed PantryController before cutover 2's
+        // build reaches the phone.
+        val early = seedReceipt(store = "Before cutover", totalCents = 100L)
+        db.pantryLineItemDao().insertAll(listOf(PantryLineItem(receiptId = early, name = "milk", totalPriceCents = 100L)))
+        EngineDataMigrationWave2.copyPantryIfNeeded(context)
+
+        val late = seedReceipt(store = "Written in the cutover window", totalCents = 200L)
+        db.pantryLineItemDao().insertAll(listOf(PantryLineItem(receiptId = late, name = "eggs", totalPriceCents = 200L)))
+
+        val ran = EngineDataMigrationWave2.catchUpOnce(context)
+
+        assertTrue("the first catch-up call must actually run", ran)
+        val schema = PantryAspectSeeder.ensureSeeded(context)
+        // Both receipts present, count-exact - the early one recognized by guid and skipped, the
+        // late one picked up for the first time.
+        assertEquals(2, db.engineRecordDao().activeByRecordType(schema.receipt.recordTypeId).size)
+        assertEquals(2, db.engineRecordDao().activeByRecordType(schema.lineItem.recordTypeId).size)
+    }
+
+    @Test
+    fun `catchUpOnce is idempotent - a second call is a no-op and never re-copies or duplicates`() = runBlocking {
+        val receiptId = seedReceipt(totalCents = 300L)
+        db.pantryLineItemDao().insertAll(listOf(PantryLineItem(receiptId = receiptId, name = "bread", totalPriceCents = 300L)))
+        EngineDataMigrationWave2.copyPantryIfNeeded(context)
+
+        val first = EngineDataMigrationWave2.catchUpOnce(context)
+        val second = EngineDataMigrationWave2.catchUpOnce(context)
+
+        assertTrue(first)
+        assertFalse("a second catchUpOnce call must be a no-op, guarded by its own completion marker", second)
+
+        val schema = PantryAspectSeeder.ensureSeeded(context)
+        assertEquals(1, db.engineRecordDao().activeByRecordType(schema.receipt.recordTypeId).size)
+        assertEquals(1, db.engineRecordDao().activeByRecordType(schema.lineItem.recordTypeId).size)
+    }
 }

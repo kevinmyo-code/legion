@@ -43,7 +43,7 @@ class PantryAspectSeederTest {
         assertEquals(1, db.aspectDao().listActive().count { it.name == PantryAspectSeeder.ASPECT_NAME })
         assertEquals(1, db.recordTypeDao().listByAspect(first.aspectId).count { it.name == "Receipt" })
         assertEquals(1, db.recordTypeDao().listByAspect(first.aspectId).count { it.name == "LineItem" })
-        assertEquals(5, db.fieldDefDao().forRecordType(first.receipt.recordTypeId).size)
+        assertEquals(8, db.fieldDefDao().forRecordType(first.receipt.recordTypeId).size) // 5 wave-2 fields + cutover 2's 3 anchor fields
         assertEquals(9, db.fieldDefDao().forRecordType(first.lineItem.recordTypeId).size)
     }
 
