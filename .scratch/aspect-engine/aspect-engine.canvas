@@ -51,6 +51,16 @@
       "color": "4"
     },
     {
+      "id": "5b3c4b685a8437e0",
+      "type": "file",
+      "file": ".scratch/aspect-engine/issues/22-cutover-per-aspect.md",
+      "x": 0,
+      "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "8bbdcf51444c8f5e",
       "type": "file",
       "file": ".scratch/aspect-engine/issues/04-computed-fields.md",
@@ -141,6 +151,16 @@
       "color": "4"
     },
     {
+      "id": "9fa6025dab20e343",
+      "type": "file",
+      "file": ".scratch/aspect-engine/issues/23-fleet-deferred-entities.md",
+      "x": 520,
+      "y": 1350,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "edcf9484b081c466",
       "type": "file",
       "file": ".scratch/aspect-engine/issues/07-aspect-clerk-prototype.md",
@@ -208,7 +228,7 @@
       "y": 0,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     }
   ],
   "edges": [
@@ -378,6 +398,13 @@
       "fromNode": "cde28eec35b2949f",
       "fromSide": "right",
       "toNode": "3760c104bb7dd8b0",
+      "toSide": "left"
+    },
+    {
+      "id": "8deb3e14a66e5c9d",
+      "fromNode": "5b3c4b685a8437e0",
+      "fromSide": "right",
+      "toNode": "9fa6025dab20e343",
       "toSide": "left"
     }
   ]
