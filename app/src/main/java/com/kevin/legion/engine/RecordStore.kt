@@ -78,7 +78,46 @@ class RecordStore(
          *
          * `extraBufferCapacity` so [tryEmit] from inside a suspend write function never blocks or
          * drops under ordinary load - this is a fire-and-forget notification, not a queue anything
-         * downstream is required to drain promptly. */
+         * downstream is required to drain promptly.
+         *
+         * **Senior review, 2026-08-24 (SHOULD-FIX, taken as a traced no-op rather than a code
+         * change): every [tryEmit] call below fires INSIDE whatever `db.withTransaction` block the
+         * caller may be running - `ledger/IngestPipeline.commit`'s multi-row statement write is the
+         * hot case cutover 3 introduced, but [PantryController.writeReceipt] already had the same
+         * shape. That means a row this transaction eventually ROLLS BACK can still have already
+         * emitted `afterWrite` before the rollback happens - naively that sounds like it could let
+         * [com.kevin.legion.engine.mirror.MirrorSync] export a row that never actually persisted.
+         * Traced end to end rather than assumed safe:
+         *
+         * 1. **The only production subscriber is [com.kevin.legion.engine.mirror.MirrorLifecycleBinder]**,
+         *    which calls `mirrorSync.scheduleExport()` on every emission - never `exportNow()`
+         *    directly (that path is wired to `ProcessLifecycleOwner.onStop`, an unrelated trigger,
+         *    not this flow).
+         * 2. **`scheduleExport()` unconditionally `delay()`s `DEBOUNCE_MILLIS` (5 seconds,
+         *    `MirrorSync.kt`) before touching Room at all** - the debounce is real, not cosmetic.
+         * 3. **The eventual export reads Room FRESH at read time** (`MirrorSync.buildExport`'s
+         *    `db.engineRecordDao().activeByRecordType(...)`, straight DAO calls) - never a cached
+         *    or captured snapshot from the moment `afterWrite` fired.
+         * 4. **A ledger/pantry multi-row `db.withTransaction` block completes - commits or rolls
+         *    back - in low single-digit milliseconds**, several orders of magnitude under the
+         *    5-second debounce window, so by the time the export's fresh DAO read actually runs the
+         *    enclosing transaction has unconditionally settled one way or the other.
+         * 5. **Independent of timing margin, Room's own transactional isolation means a DAO read
+         *    from outside an in-progress transaction cannot observe that transaction's uncommitted
+         *    writes at all** - the debounce is generous extra headroom, not the load-bearing
+         *    guarantee; the guarantee is that "reader never sees writer's uncommitted state" is a
+         *    basic property of the underlying SQLite transaction Room wraps, not something this
+         *    class has to engineer itself.
+         *
+         * Net: an early-fired signal can, at worst, schedule an export that turns out to have
+         * nothing new to say (the transaction it was reacting to rolled back) - never one that reads
+         * a half-written row. No code change was made here; this is the "verify and document" branch
+         * the review explicitly allowed. Not covered by an automated test - a genuine cross-connection
+         * commit/rollback race is not something Robolectric's single-process SQLite harness can be
+         * trusted to reproduce meaningfully, so asserting on it would be test theater rather than a
+         * real regression guard; this reasoning is `traced`, not `tested`, and should be re-examined
+         * if [MirrorLifecycleBinder] ever grows a subscriber that reacts synchronously instead of via
+         * [MirrorSync]'s debounce. */
         private val _afterWrite = MutableSharedFlow<Unit>(extraBufferCapacity = 64)
         val afterWrite: SharedFlow<Unit> = _afterWrite.asSharedFlow()
     }

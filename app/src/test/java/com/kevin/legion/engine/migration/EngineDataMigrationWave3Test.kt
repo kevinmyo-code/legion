@@ -393,4 +393,71 @@ class EngineDataMigrationWave3Test {
         val schema = LedgerAspectSeeder.ensureSeeded(context)
         assertEquals(2, db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).size)
     }
+
+    // ------------------------------------------------------------- MUST-FIX: first-launch race
+
+    /**
+     * Senior review, 2026-08-24 (MUST-FIX): the exact first-launch race - a user importing a CSV or
+     * voice-logging a pending transaction BEFORE the fire-and-forget `catchUpOnce` coroutine
+     * finishes must never have that legitimate row silently trashed. Simulates the race directly:
+     * an engine-native `UNRECONCILED` row is created (mirroring what `ledger/IngestPipeline.commit`/
+     * `ledger/LedgerController.logPendingTransaction` do post-cutover) with a `guid` that has NEVER
+     * touched the legacy table - `db` here has ZERO legacy rows at all - and `catchUpOnce` is then
+     * run on top of it. Before the MUST-FIX, `reconcileSupersededProvisional`'s old logic
+     * ("guid missing from `allSyncIds()` -> trash") would have trashed this row on sight, since an
+     * engine-native guid is *always* missing from the legacy table by construction. After the fix,
+     * the row survives because it was never a member of the persisted migrated-guid set at all.
+     */
+    @Test
+    fun `catchUpOnce never trashes an engine-native row whose guid was never in the legacy table, even if created before reconcile runs`() = runBlocking {
+        val schema = LedgerAspectSeeder.ensureSeeded(context)
+        val recordStore = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+        val engineNative = txn(lineRef = "voice:pending-1", ingestMethod = IngestMethod.UNRECONCILED)
+        val createResult = recordStore.create(
+            recordTypeId = schema.transaction.recordTypeId,
+            fieldValues = com.kevin.legion.engine.ledger.LedgerRecordBridge.fieldValuesFor(engineNative, schema.transaction.fieldIds),
+            provenance = RecordProvenance.UNRECONCILED,
+            now = engineNative.txnDate,
+            guid = engineNative.syncId,
+        )
+        assertTrue(createResult is RecordStore.WriteResult.Success)
+        assertEquals(1, db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).size)
+        // Sanity: the legacy table genuinely has nothing - this guid was never written there, ever,
+        // matching the post-cutover reality that ledger_transactions has zero writers.
+        assertTrue(db.ledgerTransactionDao().getAll().isEmpty())
+
+        EngineDataMigrationWave3.catchUpOnce(context)
+
+        assertEquals(
+            "an engine-native row must survive catchUpOnce's reconciliation pass regardless of timing",
+            1, db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).size,
+        )
+        assertEquals(0, db.engineRecordDao().trashedByRecordType(schema.transaction.recordTypeId).size)
+    }
+
+    /**
+     * The positive control for the test above - a GENUINELY migrated row (its guid recorded into
+     * the persisted set by [EngineDataMigrationWave3.copyLedgerIfNeeded] because it really did come
+     * from a legacy row) whose legacy backing later disappears is STILL correctly trashed. Without
+     * this the MUST-FIX gate could be papering over a real regression by refusing to trash anything
+     * at all.
+     */
+    @Test
+    fun `catchUpOnce still trashes a genuinely migrated row once its legacy backing disappears, proving the new gate isn't overbroad`() = runBlocking {
+        val accountId = "BOFA-CARD-7777"
+        db.ledgerTransactionDao().insertAll(
+            listOf(txn(accountId = accountId, lineRef = "provisional-migrated", ingestMethod = IngestMethod.UNRECONCILED)),
+        )
+        val first = EngineDataMigrationWave3.copyLedgerIfNeeded(context)
+        assertEquals(1, first.copied)
+
+        db.ledgerTransactionDao().deleteSupersededProvisional(accountId, 0L, System.currentTimeMillis() + 1_000_000L)
+        assertTrue(db.ledgerTransactionDao().getForAccount(accountId).isEmpty())
+
+        EngineDataMigrationWave3.catchUpOnce(context)
+
+        val schema = LedgerAspectSeeder.ensureSeeded(context)
+        assertEquals(0, db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).size)
+        assertEquals(1, db.engineRecordDao().trashedByRecordType(schema.transaction.recordTypeId).size)
+    }
 }
