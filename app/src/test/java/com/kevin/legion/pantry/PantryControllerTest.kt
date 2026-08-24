@@ -2,6 +2,7 @@ package com.kevin.legion.pantry
 
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.DeletePolicy
+import com.kevin.legion.data.local.FieldType
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.PantryLineItem
 import com.kevin.legion.data.local.PantryReceipt
@@ -161,7 +162,9 @@ class PantryControllerTest {
 
     /** Corrupts the `receipt` REFERENCE field's config so every line item's create is rejected
      * ("wrong record type") - same forcing technique `EngineDataMigrationWave2Test` already uses
-     * against the same seam. */
+     * against the same seam. This forces a failure on the LINE ITEM'S OWN create call, AFTER the
+     * receipt's create has already succeeded - see the test below this one for the other half
+     * (the RECEIPT's own create failing, before any line item is ever attempted). */
     private suspend fun corruptReceiptReferenceField(schema: PantryAspectSeeder.Schema) {
         val field = db.fieldDefDao().forRecordType(schema.lineItem.recordTypeId)
             .single { it.id == schema.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_RECEIPT) }
@@ -169,7 +172,7 @@ class PantryControllerTest {
     }
 
     @Test
-    fun `a post-gate engine-write failure rolls back the WHOLE transaction and reports a worded failure, never a false success`() = runBlocking {
+    fun `a post-gate LINE-ITEM create failure rolls back the WHOLE transaction, including the already-created receipt, and reports a worded failure`() = runBlocking {
         val schema = PantryAspectSeeder.ensureSeeded(context)
         corruptReceiptReferenceField(schema)
 
@@ -186,6 +189,47 @@ class PantryControllerTest {
         // The receipt itself has no REFERENCE field and would otherwise have created successfully -
         // the whole point of this test is that its create is ROLLED BACK along with the line item's
         // failure, not left behind as an orphaned receipt with zero items.
+        assertEquals(0, db.engineRecordDao().activeByRecordType(schema.receipt.recordTypeId).size)
+        assertEquals(0, db.engineRecordDao().activeByRecordType(schema.lineItem.recordTypeId).size)
+    }
+
+    /** Corrupts the receipt's OWN `store` field - a plain TEXT field, retyped to REFERENCE - so the
+     * RECEIPT's own `RecordStore.create` call fails, before any line item is ever attempted. The
+     * value handed in for `store` is a `String`, and `RecordStore.validateReferences` rejects a
+     * non-`Number` value for a `REFERENCE` field immediately ("needs a record id, not String"),
+     * with no need for the field's `config` to even describe a valid reference target. This is the
+     * untested other half of the atomicity claim [corruptReceiptReferenceField] doesn't reach: that
+     * test forces the LINE ITEM's create to fail after the receipt already landed; this one forces
+     * the RECEIPT's own create to fail, so the rollback has to undo something that was never
+     * followed by a line-item attempt at all. */
+    private suspend fun corruptStoreFieldToReference(schema: PantryAspectSeeder.Schema) {
+        val field = db.fieldDefDao().forRecordType(schema.receipt.recordTypeId)
+            .single { it.id == schema.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_STORE) }
+        db.fieldDefDao().update(field.copy(type = FieldType.REFERENCE))
+    }
+
+    @Test
+    fun `a post-gate RECEIPT create failure rolls back before any line item is attempted, and reports a worded failure, zero engine records`() = runBlocking {
+        val schema = PantryAspectSeeder.ensureSeeded(context)
+        corruptStoreFieldToReference(schema)
+
+        val result = success(
+            store = "Doomed receipt", totalCents = 500L,
+            items = listOf(
+                PantryLineItem(receiptId = 0, name = "should never be attempted", totalPriceCents = 500L),
+            ),
+        )
+        val outcome = PantryController.writeReceipt(context, result)
+
+        assertFalse("a failed RECEIPT create must never report success", outcome.success)
+        assertTrue(
+            "the failure must be worded, not silent",
+            outcome.message.contains("checked out") && outcome.message.contains("couldn't save"),
+        )
+        assertEquals(0, outcome.itemCount)
+
+        // Zero of BOTH - no receipt (its own create failed) and no line item (never even attempted,
+        // since the receipt's engine id - required by every item's REFERENCE field - never existed).
         assertEquals(0, db.engineRecordDao().activeByRecordType(schema.receipt.recordTypeId).size)
         assertEquals(0, db.engineRecordDao().activeByRecordType(schema.lineItem.recordTypeId).size)
     }
