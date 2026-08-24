@@ -216,8 +216,23 @@ object VoiceGuideData {
                 Entry(name = "set_driver", say = "My name is Kevin", does = "Tells it what to call you.", hands = "Settings > Assistant screen, your name field."),
             ),
         ),
+        Group(
+            title = "Your own trackers",
+            blurb = "Anything you have LEGION track that is not a car, a bank statement, or a receipt - a workout log, a reading list, a habit, whatever you want. Ask for one to be built and it drafts the shape and reads it back before creating anything.",
+            entries = listOf(
+                Entry(name = "list_aspects", say = "What are you tracking for me?", does = "Lists every area it tracks - cars, money, food, and anything you have set up yourself.", hands = "Voice only for now - a dedicated screen for user-authored trackers has not been built yet."),
+                Entry(name = "describe_aspect", say = "What can I log under Workouts?", does = "Reads back what fields one of your trackers has.", hands = "Voice only for now, same as list_aspects."),
+                Entry(name = "query_records", say = "Show me my last few workouts", does = "Finds entries in one of your trackers, optionally narrowed by a value.", hands = "Voice only for now, same as list_aspects."),
+                Entry(name = "create_record", say = "Log bench press, 185 for 5", does = "Writes one new entry into one of your trackers. Only writes what you actually said - never guesses a value.", hands = "Voice only for now, same as list_aspects."),
+                Entry(name = "update_record", say = "Change that to 190 pounds", does = "Changes one or more fields on an entry you already logged.", hands = "Voice only for now, same as list_aspects."),
+                Entry(name = "delete_record", say = "Delete that entry", does = "Removes one entry (into a 30-day recoverable trash) right away, or asks you to confirm first when it would remove several at once.", hands = "Voice only for now, same as list_aspects."),
+                Entry(name = "aspect_clerk", say = "Log three sets of squats at 225, 5 reps each", does = "A helper that works out what to read or write across your trackers for a request with more than one step - finding something first, or logging several things from one sentence. Tells you plainly how much of it actually got written.", hands = "Voice only for now, same as list_aspects."),
+                Entry(name = "create_aspect", say = "Start tracking my reading - book, pages, date finished", does = "Drafts a brand-new tracker from what you describe and reads the shape back to you. Creates nothing until you say yes.", hands = "Voice only for now, same as list_aspects."),
+                Entry(name = "update_aspect", say = "Add a genre field to my reading tracker", does = "Drafts one change to a tracker you already have - a new field, a new category of entry, or a rename - and reads it back. Changes nothing until you say yes.", hands = "Voice only for now, same as list_aspects."),
+            ),
+        ),
     )
 
-    /** Total entries across every group above - 104 as of the last regeneration. */
-    val TOOL_COUNT: Int = 104
+    /** Total entries across every group above - 113 as of the last regeneration. */
+    val TOOL_COUNT: Int = 113
 }

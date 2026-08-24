@@ -2056,6 +2056,12 @@ object LiveToolbox {
             required = listOf("question"),
         ))
 
+        // The nine aspect-engine meta-tools (ticket 17, `EngineToolbox`) - declared directly,
+        // never hidden behind DISPATCHED, since ticket 06's answer is that this surface is meant
+        // to be seen by the live session itself, not routed through a domain dispatcher.
+        val engineDecls = EngineToolbox.declarations()
+        for (i in 0 until engineDecls.length()) fns.put(engineDecls.getJSONObject(i))
+
         return fns
     }
 
@@ -2221,6 +2227,9 @@ object LiveToolbox {
         if (name in CATEGORY_A_TOOLS) {
             refuseIfNotConnectedCar(context, args)?.let { return it }
         }
+        // The nine aspect-engine meta-tools (ticket 17) live in their own file; try them first so
+        // this already-7,000-line `when` never has to grow their branches too.
+        EngineToolbox.dispatch(context, name, args)?.let { return it }
         return when (name) {
             "get_vehicle_data" -> getVehicleData(context, args.optString("metric"))
             "get_codes" -> getCodes(context)

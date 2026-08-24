@@ -25,7 +25,7 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <main>
 <h1>Talking to LEGION</h1>
 <p class="intro">LEGION is a voice assistant for the phone. Hold the button or say the wake word, then just talk. It looks after cars, money, food, training, notes and mail - and it will tell you when it cannot do something rather than guessing.</p>
-<p class="count">104 things it can do by voice.</p>
+<p class="count">113 things it can do by voice.</p>
 <section><h2>Getting started</h2>
 <p class="blurb">The first things worth trying.</p>
 <dl>
@@ -181,6 +181,19 @@ code{background:var(--card);padding:.1em .35em;border-radius:3px;font-size:.9em}
 <dt>&ldquo;Call yourself Alfred&rdquo;</dt><dd>Renames your companion.<span class="hands">By hand: Settings &gt; Assistant screen, name field.</span></dd>
 <dt>&ldquo;Be drier about it&rdquo;</dt><dd>Changes the personality.<span class="hands">By hand: Settings &gt; Assistant screen, personality picker.</span></dd>
 <dt>&ldquo;My name is Kevin&rdquo;</dt><dd>Tells it what to call you.<span class="hands">By hand: Settings &gt; Assistant screen, your name field.</span></dd>
+</dl></section>
+<section><h2>Your own trackers</h2>
+<p class="blurb">Anything you have LEGION track that is not a car, a bank statement, or a receipt - a workout log, a reading list, a habit, whatever you want. Ask for one to be built and it drafts the shape and reads it back before creating anything.</p>
+<dl>
+<dt>&ldquo;What are you tracking for me?&rdquo;</dt><dd>Lists every area it tracks - cars, money, food, and anything you have set up yourself.<span class="hands">By hand: Voice only for now - a dedicated screen for user-authored trackers has not been built yet.</span></dd>
+<dt>&ldquo;What can I log under Workouts?&rdquo;</dt><dd>Reads back what fields one of your trackers has.<span class="hands">By hand: Voice only for now, same as list_aspects.</span></dd>
+<dt>&ldquo;Show me my last few workouts&rdquo;</dt><dd>Finds entries in one of your trackers, optionally narrowed by a value.<span class="hands">By hand: Voice only for now, same as list_aspects.</span></dd>
+<dt>&ldquo;Log bench press, 185 for 5&rdquo;</dt><dd>Writes one new entry into one of your trackers. Only writes what you actually said - never guesses a value.<span class="hands">By hand: Voice only for now, same as list_aspects.</span></dd>
+<dt>&ldquo;Change that to 190 pounds&rdquo;</dt><dd>Changes one or more fields on an entry you already logged.<span class="hands">By hand: Voice only for now, same as list_aspects.</span></dd>
+<dt>&ldquo;Delete that entry&rdquo;</dt><dd>Removes one entry (into a 30-day recoverable trash) right away, or asks you to confirm first when it would remove several at once.<span class="hands">By hand: Voice only for now, same as list_aspects.</span></dd>
+<dt>&ldquo;Log three sets of squats at 225, 5 reps each&rdquo;</dt><dd>A helper that works out what to read or write across your trackers for a request with more than one step - finding something first, or logging several things from one sentence. Tells you plainly how much of it actually got written.<span class="hands">By hand: Voice only for now, same as list_aspects.</span></dd>
+<dt>&ldquo;Start tracking my reading - book, pages, date finished&rdquo;</dt><dd>Drafts a brand-new tracker from what you describe and reads the shape back to you. Creates nothing until you say yes.<span class="hands">By hand: Voice only for now, same as list_aspects.</span></dd>
+<dt>&ldquo;Add a genre field to my reading tracker&rdquo;</dt><dd>Drafts one change to a tracker you already have - a new field, a new category of entry, or a rename - and reads it back. Changes nothing until you say yes.<span class="hands">By hand: Voice only for now, same as list_aspects.</span></dd>
 </dl></section>
 <footer>
 <p><strong>You do not have to say these exactly.</strong> Ask in your own words - the phrases above
