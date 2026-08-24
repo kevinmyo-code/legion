@@ -3,7 +3,22 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
-## START HERE - 2026-08-24 - THE ASPECT ENGINE SHIPPED, ALL DATA MIGRATED
+## START HERE - 2026-08-24 (night) - THE CUTOVER ARC IS COMPLETE
+
+**The engine IS the app, and Kevin approved it on the phone ("i like it").** All five cutovers
+merged and device-verified in one day: Notes+Places, Pantry (anchors now persisted), Ledger (gate
+commits engine-side, atomic with rule-7 supersession), Fleet (anchors derived single-row,
+ticket-29 drift dead by construction), and the home flip (DASHBOARD is MainActivity's start
+destination; WidgetPagerActivity deleted; CLASSIC + per-aspect full-screen buttons keep every old
+capability one tap away). 569 active engine records, zero duplicate guids, legacy tables frozen
+writer-less but NOT dropped (soak first). Every cutover doc: docs/architecture/cutover{1..5}-2026-08-24.md.
+**Known named gap: widgets do not navigate on tap** (generated screens have zero callers) - the
+top follow-up. Then: legacy drops, ticket 23, the Supabase sync build (decided: BYO project,
+sync+push, every push passes the compulsion test), semantic recall (.scratch/ai-craft/02).
+
+---
+
+## PREVIOUS - 2026-08-24 - THE ASPECT ENGINE SHIPPED, ALL DATA MIGRATED
 
 **LEGION's spine is now the aspect engine.** Charted, decided, built, and verified in one
 2026-08-23/24 run: `.scratch/aspect-engine/map.md` (21 of 23 tickets resolved; 17/18/19 `built`

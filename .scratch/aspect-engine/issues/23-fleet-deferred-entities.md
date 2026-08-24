@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["22"]
 blocked-by: ["[[22-cutover-per-aspect]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # Deferred fleet entities onto the engine

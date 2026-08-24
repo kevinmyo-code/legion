@@ -3,12 +3,12 @@ map: aspect-engine
 ticket: "22"
 title: "Cutover per aspect: the engine becomes the read and write path"
 type: task
-status: claimed
-status-detail: "ALL FOUR aspect cutovers merged and DATA-VERIFIED on the A25 2026-08-24. Fleet: 5 vehicles + 52 schedules + 5 history rows intact, zero dupes, 569 active engine records total; the derived anchor takes both axes from one row (anti-pairing preserved), OBSERVED supersedes ASSERTED in-transaction, ticket-29 drift dead by construction. Remaining: the home-screen flip, then legacy-table drops per aspect after soak."
+status: resolved
+status-detail: "Resolved 2026-08-24. All five cutovers merged, device-verified, and the home flip approved by Kevin on the phone: I like it. The engine is the app."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Cutover per aspect: the engine becomes the read and write path
@@ -29,3 +29,23 @@ Open questions each cutover must answer (accumulated from the waves and reviews)
 4. The pager becomes the app home (mission-control default arrangements ship as seeded layouts);
    MainActivity's fate.
 5. get_grocery_spend / spend aggregation needs COMPUTED group-by or a query tool (wave 2 note).
+
+## Answer
+
+Resolved 2026-08-24, all five cutovers in one arc, each senior-reviewed and device-verified:
+
+| Cutover | Verdict path | On-device proof |
+|---|---|---|
+| 1 Notes+Places | BLOCK (SyncEngine raw-SQL places writer) -> fixed | 26+14 rows, zero dupes |
+| 2 Pantry | APPROVE + atomicity test round | 3+26, anchor fields live on the seeded phone |
+| 3 Ledger | BLOCK (catch-up first-launch race) -> guid-set fix | 161+7, provenance 1:1 |
+| 4 Fleet | BLOCK (anchor cross-row pairing) -> single-row rule | 5+52+5, drift dead by construction |
+| 5 Home flip | APPROVE (stale docs fixed at merge) | Cold start clean; **Kevin: "i like it."** |
+
+Every blocking finding was a real bug caught by reading code adversarially; every fix verified on
+the phone by pulling the database, never assumed. 569 active engine records; one write door;
+provenance on every row.
+
+Follow-ups on the board, not owed here: widget tap-through to the generated screens (the named
+gap), legacy-table drops per aspect after soak (own migrations, Drive export first),
+[Deferred fleet entities](23-fleet-deferred-entities.md), the Supabase sync build, semantic recall.

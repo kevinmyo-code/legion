@@ -144,6 +144,9 @@ These are charter decisions, not resolved tickets. Tickets refine them; they do 
   identity and wired auto-sync; **probed live by Kevin on the A25**: real Drive folder, export
   stamped, hash verify clean. Two-phone end-to-end and airplane/reboot cases still open.
 
+- [Cutover per aspect](issues/22-cutover-per-aspect.md) - all five flips done and device-verified;
+  Kevin approved the new home on the phone. The engine IS the app.
+
 ## Not yet specified
 
 - **Aspect templates / sharing.** An aspect definition is data, so it could export/import. Unasked.
