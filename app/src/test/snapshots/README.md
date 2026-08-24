@@ -10,7 +10,7 @@ baseline one of those tests compares its render against.
 
 | File | Test | What it proves |
 |---|---|---|
-| `pager-home-seeded-arrangement.png` | `WidgetPagerHomeScreenshotTest` | The widget pager's HOME page with the seeded default arrangement (agenda / next-due / two stat tiles / quick-add), through the real `WidgetPagerActivity` entry point. |
+| `pager-home-seeded-arrangement.png` | `WidgetPagerHomeScreenshotTest` | The widget pager's HOME page with the seeded default arrangement (agenda / next-due / two stat tiles / quick-add), over a bare `ComponentActivity` with `WidgetPagerRoot` mounted directly (the former `WidgetPagerActivity` was deleted when the pager became the home route). |
 | `deckgrid-edit-mode.png` | `DeckGridEditModeScreenshotTest` | `DeckGrid` in edit mode: the dotted cell-boundary grid, per-card remove/size chips, four fixed `GridItem` fixtures across every `GridPreset` shape. |
 | `generated-list.png` | `GeneratedScreensScreenshotTest` | The generated list screen (`ui/generated/GeneratedListScreen.kt`) over one seeded Dates "Event" record. |
 | `generated-detail.png` | `GeneratedScreensScreenshotTest` | The generated detail screen - every field rendered, provenance in words. |

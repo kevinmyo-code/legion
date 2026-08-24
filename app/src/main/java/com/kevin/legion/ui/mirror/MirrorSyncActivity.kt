@@ -38,8 +38,8 @@ import kotlinx.coroutines.launch
 /**
  * The mirror/sync settings stub (ticket 20 item 5) - pick-folder, sync-now, and last-sync/
  * quarantine state, nothing more. Registered `exported="false"`, no launcher `<intent-filter>`,
- * same debug-entry posture as `.ui.widgets.WidgetPagerActivity` (see that activity's own doc
- * comment for the precedent):
+ * exported only in the debug manifest overlay so adb can launch it for on-device QA (a release
+ * build keeps it unexported):
  *
  * `adb shell am start -n com.kevin.legion/.ui.mirror.MirrorSyncActivity`
  *
