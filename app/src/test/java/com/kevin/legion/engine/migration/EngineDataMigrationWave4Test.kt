@@ -186,6 +186,43 @@ class EngineDataMigrationWave4Test {
     }
 
     @Test
+    fun `a coincidental mileage match with a disagreeing date does NOT explain the anchor - both must match the same row`() = runBlocking {
+        // Senior review regression (2026-08-24): the first cut of the dedup rule OR'd the two axes,
+        // so a single OBSERVED row whose mileage happened to match the anchor's mileage - while its
+        // date genuinely disagreed - was wrongly treated as "explained", silently dropping the
+        // date the driver stated. Both axes must now match the SAME row for it to count.
+        seedVehicle()
+        db.serviceRecordDao().insert(
+            ServiceRecord(vehicleId = "AA:BB:CC:DD:EE:FF", serviceName = "Oil Change", mileage = 118_374, date = 100L),
+        )
+        db.maintenanceItemDao().upsertStamped(
+            MaintenanceItem(
+                vehicleId = "AA:BB:CC:DD:EE:FF", serviceName = "Oil Change", intervalMiles = 5000,
+                lastDoneMileage = 118_374, // matches the OBSERVED row exactly
+                lastDoneDate = 999L, // but the date genuinely disagrees with that same row's date (100L)
+            ),
+        )
+
+        val result = EngineDataMigrationWave4.copyFleetIfNeeded(context)
+
+        assertEquals(2, result.serviceHistoryCopied) // OBSERVED + ASSERTED - the anchor must still land
+        val schema = FleetAspectSeeder.ensureSeeded(context)
+        val rows = db.engineRecordDao().activeByRecordType(schema.serviceHistory.recordTypeId)
+        assertEquals(2, rows.size)
+
+        val assertedRow = rows.single {
+            PayloadCodec.readString(JSONObject(it.payload), schema.serviceHistory.fieldIds.getValue(FleetAspectSeeder.FIELD_SH_KIND)) == "ASSERTED"
+        }
+        val assertedPayload = JSONObject(assertedRow.payload)
+        assertEquals(118_374.0, assertedPayload.getDouble(PayloadCodec.key(schema.serviceHistory.fieldIds.getValue(FleetAspectSeeder.FIELD_SH_MILEAGE))), 0.0001)
+        assertEquals(
+            "the driver-stated date must survive - it must not be silently dropped just because a DIFFERENT axis coincidentally matched",
+            999L,
+            PayloadCodec.readLong(assertedPayload, schema.serviceHistory.fieldIds.getValue(FleetAspectSeeder.FIELD_SH_SERVICE_DATE)),
+        )
+    }
+
+    @Test
     fun `neverDone produces no ServiceHistory row at all`() = runBlocking {
         seedVehicle()
         db.maintenanceItemDao().upsertStamped(

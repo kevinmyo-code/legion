@@ -176,12 +176,18 @@ object EngineDataMigrationWave4 {
      *
      * **The dedup rule, stated exactly (see the carve doc's own section for the full reasoning):**
      * an anchor (`lastDoneMileage`/`lastDoneDate`, at least one non-null) is "explained" - and gets
-     * NO `ASSERTED` row - if any `OBSERVED` row for the same vehicle+service has `mileage ==
-     * lastDoneMileage` (when `lastDoneMileage` is non-null) OR `date == lastDoneDate` (when
-     * `lastDoneDate` is non-null). This is deliberately conservative: it can under-collapse (a
-     * near-miss anchor still gets its own `ASSERTED` row) but it can never merge or silently drop a
-     * fact - see `.scratch/hands-and-senses/issues/29-one-source-for-service-history.md`'s own
-     * warning: "a migration that guesses is worse than one that asks."
+     * NO `ASSERTED` row - if any SINGLE `OBSERVED` row for the same vehicle+service agrees with the
+     * anchor on EVERY axis the anchor actually states (`mileage == lastDoneMileage` when
+     * `lastDoneMileage` is non-null, AND `date == lastDoneDate` when `lastDoneDate` is non-null - a
+     * null anchor axis is vacuously satisfied, since there is nothing on it to contradict). **Both
+     * present axes must match the SAME row** - senior review, 2026-08-24 (MUST-FIX): the first cut
+     * of this rule OR'd the two axes across the whole `sameService` list, so a coincidental mileage
+     * match on one row and an unrelated (or absent) date match on a different row could each satisfy
+     * one half of "explained" independently, silently dropping the axis that never actually matched
+     * anything. This is deliberately conservative: it can under-collapse (a near-miss anchor still
+     * gets its own `ASSERTED` row) but it can never merge two different services' evidence or
+     * silently drop a fact - see `.scratch/hands-and-senses/issues/29-one-source-for-service-history.md`'s
+     * own warning: "a migration that guesses is worse than one that asks."
      */
     private suspend fun copyServiceHistoryForVehicle(
         db: CarDatabase,
@@ -226,10 +232,19 @@ object EngineDataMigrationWave4 {
             val hasAnchor = item.lastDoneMileage != null || item.lastDoneDate != null
             if (!hasAnchor) continue
 
+            // Senior review MUST-FIX (2026-08-24): the previous version OR'd the two axes across
+            // the WHOLE `sameService` list, so a coincidental mileage match on one row and a
+            // coincidental (or absent) date match on a DIFFERENT row could each satisfy one half of
+            // `explained` independently - a two-field anchor was then treated as fully explained
+            // even though no SINGLE observed row actually backs both facts, silently dropping the
+            // date (or mileage) the driver stated with no ASSERTED row to carry it. Both non-null
+            // anchor fields must now match the SAME row - a null anchor field is vacuously
+            // satisfied (there is nothing on that axis to contradict), but a present one must agree
+            // with that row exactly.
             val sameService = serviceRecords.filter { it.serviceName == item.serviceName }
             val explained = sameService.any { sr ->
-                (item.lastDoneMileage != null && sr.mileage == item.lastDoneMileage) ||
-                    (item.lastDoneDate != null && sr.date == item.lastDoneDate)
+                (item.lastDoneMileage == null || sr.mileage == item.lastDoneMileage) &&
+                    (item.lastDoneDate == null || sr.date == item.lastDoneDate)
             }
             if (explained) continue
 
