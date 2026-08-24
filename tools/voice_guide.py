@@ -37,7 +37,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TOOLBOX = ROOT / 'app/src/main/java/com/kevin/legion/service/LiveToolbox.kt'
+# TOOLBOXES (plural, ticket 17): the nine aspect-engine meta-tools live in their own file,
+# `EngineToolbox.kt`, rather than growing the already ~7,100-line `LiveToolbox.kt` further - see
+# that file's own doc comment. Scanning only the original file would silently stop catching drift
+# for anything declared here, which is exactly the failure this whole script exists to prevent.
+TOOLBOXES = [
+    ROOT / 'app/src/main/java/com/kevin/legion/service/LiveToolbox.kt',
+    ROOT / 'app/src/main/java/com/kevin/legion/service/EngineToolbox.kt',
+]
 OUT = ROOT / 'docs/voice.html'
 KOTLIN_OUT = ROOT / 'app/src/main/java/com/kevin/legion/ui/help/VoiceGuideData.kt'
 
@@ -50,8 +57,10 @@ NAME_RE = re.compile(r'name = "([a-z_]+)"')
 
 
 def declared_tools():
-    src = TOOLBOX.read_text(encoding='utf-8')
-    return sorted(set(NAME_RE.findall(src)))
+    names = set()
+    for toolbox in TOOLBOXES:
+        names |= set(NAME_RE.findall(toolbox.read_text(encoding='utf-8')))
+    return sorted(names)
 
 
 def check(tools):

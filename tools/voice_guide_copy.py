@@ -42,6 +42,9 @@ GROUP_BLURBS = {
     "Phone calls": "Needs phone permissions granted in Setup.",
     "Memory": "What it remembers about you, and why it said something.",
     "Settings and control": "Changing how it behaves, by voice.",
+    "Your own trackers": "Anything you have LEGION track that is not a car, a bank statement, or "
+        "a receipt - a workout log, a reading list, a habit, whatever you want. Ask for one to be "
+        "built and it drafts the shape and reads it back before creating anything.",
 }
 
 COPY = {
@@ -174,6 +177,17 @@ COPY = {
     "set_companion_name": ("Call yourself Alfred", "Renames your companion.", "Settings > Assistant screen, name field."),
     "set_personality": ("Be drier about it", "Changes the personality.", "Settings > Assistant screen, personality picker."),
     "set_driver": ("My name is Kevin", "Tells it what to call you.", "Settings > Assistant screen, your name field."),
+
+    # --- Your own trackers ---
+    "list_aspects": ("What are you tracking for me?", "Lists every area it tracks - cars, money, food, and anything you have set up yourself.", "Voice only for now - a dedicated screen for user-authored trackers has not been built yet."),
+    "describe_aspect": ("What can I log under Workouts?", "Reads back what fields one of your trackers has.", "Voice only for now, same as list_aspects."),
+    "query_records": ("Show me my last few workouts", "Finds entries in one of your trackers, optionally narrowed by a value.", "Voice only for now, same as list_aspects."),
+    "create_record": ("Log bench press, 185 for 5", "Writes one new entry into one of your trackers. Only writes what you actually said - never guesses a value.", "Voice only for now, same as list_aspects."),
+    "update_record": ("Change that to 190 pounds", "Changes one or more fields on an entry you already logged.", "Voice only for now, same as list_aspects."),
+    "delete_record": ("Delete that entry", "Removes one entry (into a 30-day recoverable trash) right away, or asks you to confirm first when it would remove several at once.", "Voice only for now, same as list_aspects."),
+    "aspect_clerk": ("Log three sets of squats at 225, 5 reps each", "A helper that works out what to read or write across your trackers for a request with more than one step - finding something first, or logging several things from one sentence. Tells you plainly how much of it actually got written.", "Voice only for now, same as list_aspects."),
+    "create_aspect": ("Start tracking my reading - book, pages, date finished", "Drafts a brand-new tracker from what you describe and reads the shape back to you. Creates nothing until you say yes.", "Voice only for now, same as list_aspects."),
+    "update_aspect": ("Add a genre field to my reading tracker", "Drafts one change to a tracker you already have - a new field, a new category of entry, or a rename - and reads it back. Changes nothing until you say yes.", "Voice only for now, same as list_aspects."),
 }
 
 GROUPS = {
@@ -190,4 +204,5 @@ GROUPS = {
     "Phone calls": ["answer_call", "decline_call", "place_call"],
     "Memory": ["remember", "recall_memory", "why_did_you_say_that"],
     "Settings and control": ["set_companion_name", "set_personality", "set_driver"],
+    "Your own trackers": ["list_aspects", "describe_aspect", "query_records", "create_record", "update_record", "delete_record", "aspect_clerk", "create_aspect", "update_aspect"],
 }

@@ -30,12 +30,22 @@ class VoiceGuideDataTest {
     private val nameRe = Regex("""name = "([a-z_]+)"""")
 
     /** Mirrors `tools/voice_guide.py`'s own `declared_tools()` - every distinct `name = "..."` in
-     * the Kotlin source, independent of which JSONArray it ends up in. */
+     * the Kotlin source, independent of which JSONArray it ends up in. **Two files, not one**
+     * (ticket 17): the nine aspect-engine meta-tools live in `EngineToolbox.kt`, a sibling file
+     * `LiveToolbox` delegates to rather than growing further - see `voice_guide.py`'s own
+     * `TOOLBOXES` list, which this must stay in sync with by hand (this test's own name still says
+     * "LiveToolbox_kt" for that reason - it predates the split and renaming it is out of scope
+     * here). */
     private fun scrapedNamesFromSource(): Set<String> {
-        val src = java.io.File("src/main/java/com/kevin/legion/service/LiveToolbox.kt")
-            .takeIf { it.exists() }
-            ?: java.io.File("app/src/main/java/com/kevin/legion/service/LiveToolbox.kt")
-        return nameRe.findAll(src.readText()).map { it.groupValues[1] }.toSet()
+        fun read(relative: String): String {
+            val src = java.io.File("src/main/java/com/kevin/legion/service/$relative")
+                .takeIf { it.exists() }
+                ?: java.io.File("app/src/main/java/com/kevin/legion/service/$relative")
+            return src.readText()
+        }
+        return (nameRe.findAll(read("LiveToolbox.kt")) + nameRe.findAll(read("EngineToolbox.kt")))
+            .map { it.groupValues[1] }
+            .toSet()
     }
 
     @Test

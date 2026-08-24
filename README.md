@@ -28,7 +28,7 @@ Six life domains plus music control, one voice loop. Tabs: Today, Money, Body, F
 
 <!-- VOICE-SURFACE:START -->
 
-**104 voice tools across 13 domains**, dispatched from one Gemini Live
+**113 voice tools across 14 domains**, dispatched from one Gemini Live
 socket. Every one is declared with a schema and a description written to constrain the
 model rather than to sell the feature.
 
@@ -47,6 +47,7 @@ model rather than to sell the feature.
 | Phone calls | 3 | &ldquo;Answer it&rdquo; |
 | Memory | 3 | &ldquo;Remember that the XJ takes 5W-30&rdquo; |
 | Settings and control | 3 | &ldquo;Call yourself Alfred&rdquo; |
+| Your own trackers | 9 | &ldquo;What are you tracking for me?&rdquo; |
 
 Full list with plain-language descriptions: **[docs/voice.html](docs/voice.html)** -
 generated from `LiveToolbox.kt`, so a tool that exists is on the page or the build fails.
