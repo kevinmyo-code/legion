@@ -3,6 +3,42 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
+## START HERE - 2026-08-24 - THE ASPECT ENGINE SHIPPED, ALL DATA MIGRATED
+
+**LEGION's spine is now the aspect engine.** Charted, decided, built, and verified in one
+2026-08-23/24 run: `.scratch/aspect-engine/map.md` (21 of 23 tickets resolved; 17/18/19 `built`
+owing small on-device verdicts; open: 22 cutover, 23 deferred fleet entities).
+
+- **Room v37.** Engine tables (`aspects`/`record_types`/`field_defs`/`records` + guid identity),
+  `engine/RecordStore.kt` is the ONLY writer of records. 13 field types, computed fields, the
+  reconciliation gate rehomed as engine infrastructure.
+- **ALL legacy aspect data copied onto the engine, additive-only, verified on the A25 by pulling
+  the real DB**: Dates 160 (Google Calendar imports, one-way), Notes 12/12, Places 3/3, Pantry
+  3+26 all `LLM_RECONCILED`, Ledger 161 `DETERMINISTIC` + 7 `UNRECONCILED` (1:1), Fleet 5 vehicles
+  + 52 schedules + 1 OBSERVED + 4 ASSERTED service-history rows. **Old tables and screens still
+  live; NOTHING reads the engine copies yet except the pager/mirror/meta-tools. Cutover is ticket
+  22.** Carve docs: `docs/architecture/wave{1..4}-carve-2026-08-23.md` - read before touching.
+- **The whole-app widget pager exists** (`ui/widgets/WidgetPagerActivity`, debug-exported only,
+  seeded home, real data) but is NOT the app home yet. Grid: preset sizes, launcher semantics,
+  seven on-device feel rounds with Kevin.
+- **Voice: nine engine meta-tools + Flash clerk (silent under 4s, needs grounded date) + Pro
+  schema generator with confirm handshake** live in `service/EngineToolbox.kt`. The 104-tool
+  inventory: `docs/architecture/tool-inventory-2026-08-23.md` (33 die at cutover, 48 survive, 23
+  need a call). Owed: one real voice round-trip.
+- **Mirror/sync: Kevin ran the Drive probe - PASSED** (xlsx per aspect in his picked folder, rwt +
+  hash verify, no quarantine). The xlsx files ARE the two-phone sync channel, row-merge by
+  guid+updatedAt. Second phone never tested.
+- **Owed on-device, small:** a Dates reminder actually firing (exact alarms armed); pager felt
+  verdict in anger; voice round-trip writing a record.
+- **New review muscle:** `/thermo-review` (Cursor's skill, adapted, MIT) + its detection lens
+  wired into senior-dev and bug-hunter. Six Android skill packs vendored (adb/testing/gradle/
+  debugging/security). Standing thermo candidate: `LiveToolbox.kt` (7,106 lines).
+- **Process note that keeps proving itself:** every wave's reviewer found a real bug reading code
+  (unwired migration, partial-copy flag, OR-across-rows fact drop); every UI bug needed the real
+  phone. `BioDigestBuilderTest`'s Monday flake is dead (clock-injectable overload).
+
+---
+
 ## START HERE - 2026-08-20 (late) - WAKE WORD LIVE, MEMORY DE-CARRED
 
 **The wake word works and Kevin has used it.** "hey alfred" opens a turn, the assistant
