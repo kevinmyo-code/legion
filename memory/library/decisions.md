@@ -4573,7 +4573,7 @@ typed tables that already exist. Postgres DDL work is separate and not made chea
    place-triggers, tick/completion history all rebuild on the event type, and existing todos need
    migration.
 
-5. **Google Calendar is DROPPED ENTIRELY (Kevin, 2026-08-25).** Not demoted to import feed—removed.
+5. **Google Calendar is DROPPED ENTIRELY (Kevin, 2026-08-25).** Not demoted to import feed; removed.
    Supersedes ruling 1's "import feed" clause. **Accepted cost:** anything arriving only by import
    (class schedules, the known case) becomes manual entry. The LEGION::v1 description blocks'
    machine-fields-reach-the-model discipline survives; its only consumer does not.
@@ -4628,7 +4628,7 @@ token, no account, no email - only the boolean `sync_enabled`. Google sign-in wo
 from scratch, removing the main argument in its favour.
 
 1. **Sign-in is EMAIL + PASSWORD (Kevin, 2026-08-25).** Chosen over Google OAuth and magic link,
-   both documented traps. Google OAuth needs two Google Cloud OAuth client IDs, one SHA-1-keyed—the
+   both documented traps. Google OAuth needs two Google Cloud OAuth client IDs, one SHA-1-keyed - the
    same trap already open against Drive (clone-and-run fails). Magic link depends on Supabase's
    built-in email: 2 messages/hour, "not meant for production use", no SLA (research ticket 06,
    section 7b, traced 2026-08-25). Email+password touches neither. Clone-and-run needs only
@@ -4640,7 +4640,7 @@ from scratch, removing the main argument in its favour.
    model made explicit. **Accepted cost:** no privacy between the two of you; a note is shared.
 
 3. **Both accounts created in the SUPABASE DASHBOARD; no in-app signup, no invite flow (Kevin,
-   2026-08-25).** Two rows added to `household_members` by hand, once. Zero app code—no signup
+   2026-08-25).** Two rows added to `household_members` by hand, once. Zero app code, no signup
    screen, no household code, no invite email. **Accepted cost:** adding a third person later is a
    dashboard job, not a feature. Consistent with BYO-everything: standing up the project is already
    manual setup.
