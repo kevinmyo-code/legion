@@ -3,7 +3,43 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
-## START HERE - 2026-08-25 - THE HOME FLIP REVERTED, ASPECT-ADD FIXED
+## START HERE - 2026-08-25 (late) - THE BACKEND-ERP PIVOT, GRILLING MID-FLIGHT
+
+**Kevin pivoted: the backend IS the ERP.** Supabase (BYO project per household, never
+Kevin-hosted) becomes the system of record; the Android app becomes ONE consumer; a Windows/laptop
+surface is coming; auth for two users, extensible. This reopens local-Room-primary at Kevin's own
+initiative. Map: `.scratch/backend-erp/` - six tickets, feasibility research RESOLVED (free tier
+fits; one hazard: the 7-day inactivity pause, manual resume; free tier has no backups so the xlsx
+mirror carries recovery).
+
+**RESUME POINT: the root grilling is mid-flight on
+`.scratch/backend-erp/issues/01-what-the-backend-owns.md` - read its "Grilling in progress"
+section.** Three rulings locked (Supabase one master + LEGION keeps its OWN calendar with Google
+demoted to the existing import feed; undated todos get due=tomorrow as an INFERRED fact that never
+nags; the Google-Calendar-projection idea is dead). **Question 4 is PENDING Kevin's answer**:
+todos as Notes records shown through the calendar view (recommended) vs todos as Dates events.
+Then the ticket's own questions 1-5.
+
+Also landed 2026-08-25:
+- **Calendar description blocks merged** (LEGION::v1 sentinel: machine fields reach the model,
+  prose does not) - from Kevin's cross-session patch, plus a JSONObject-wrapping fix.
+- **Home flip reverted to classic** (section below); the revert build is pushed but **NOT yet
+  installed - the A25 dropped off adb**. Install MUST happen from the Kwin laptop (debug keystore
+  lives there; never uninstall to fix a signature mismatch).
+- **Wiki-notes research resolved**: video I3bpdgFJCUY = Ben Holmes's llm-wiki pattern (agent does
+  the gardening nightly; wiki compiled weekly). Mapping: a Note record type on the Notes aspect,
+  enrichment as a SubAgent batch, provenance-separated. `research/wiki-notes-second-brain.md`.
+  Kevin wants this as his notes system - do not lose it.
+- **Cross-interface memory requirement**: companion_memories follows the user to Supabase so
+  Alfred remembers across phone/Windows. On the backend-erp map.
+
+**Standing queue behind the pivot**: widget tap-through (widgets still do not navigate), legacy
+drops (WAIT until the backend arc proves out - dropping local history first would be the bad day),
+ticket 23 (deferred fleet entities), semantic recall (.scratch/ai-craft/02).
+
+---
+
+## PREVIOUS - 2026-08-25 - THE HOME FLIP REVERTED, ASPECT-ADD FIXED
 
 **Classic home is back.** Kevin field-tested the pager as HOME overnight and ruled "kill it, revert
 everything to classic." `LegionRoute.TODAY` is `NavHost`'s `startDestination` and the HOME hard key
