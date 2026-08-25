@@ -39,6 +39,16 @@
       "width": 320,
       "height": 110,
       "color": "4"
+    },
+    {
+      "id": "c0c31cd91a29afbd",
+      "type": "file",
+      "file": ".scratch/hardening/issues/05-ledger-gate-defects.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": []

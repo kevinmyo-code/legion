@@ -845,3 +845,39 @@ patience. The vendored adb skill pack (2026-08-23) now covers this workflow.
 
 **Status:** OPEN until graduated: rule 1 belongs in `compose-state-authoring`'s orbit (a repo-local
 addendum), rule 2 in `TEAM.md`'s dispatch cadence for UI work.
+
+## L33 - A test that re-implements its own sequence is a test of dead code (2026-08-25)
+
+**Found while grounding backend-ERP ticket 03 (traced).** `IngestPipelineProvisionalSupersedeTest` has four androidTest cases, including the sharp one asserting reconciled rows are not dropped as duplicates of the provisional rows they replace. None of them call `IngestPipeline.commit`. Instead they re-implement the sequence in a local `commitLikeIngestPipeline:102-142` against legacy `LedgerTransactionDao.deleteSupersededProvisional` / `insertAll`. The same `IngestPipeline.kt:35-37` declares those methods dead. **Live engine-path coverage of rule 7 is a single test:** `IngestPipelineEngineCommitTest.kt:136`. Rule 7 is the least-covered load-bearing behaviour in the ledger. It LOOKED like the best-covered.
+
+**Root class:** test isolation applied beyond its purpose. An isolated sequence test confirms your understanding of the SPEC. What it does not do is confirm your current implementation USES that path. Same shape as L10/L14 (self-consistent proof space).
+
+**Rule:** When a cutover repoints a write path, the tests that mimic the OLD path become tests of DEAD code and are a liability at every future cutover. Prefer calling the real entry point. When a test cannot (here: CarDatabase's process-wide singleton), that limitation is a scheduled debt not a footnote. Document the cover gap and add a follow-up ticket. A suite where the best-covered feature is unreachable in production cannot see its own blindness.
+
+**Regression check:** a test file named after an internal implementation path (`commitLikeIngestPipeline`) with no comments linking it to its production caller or noting why the internal sequence is tested instead.
+
+**Status:** OPEN. The gap is documented here; fixing it requires a path for testing CarDatabase singletons that does not exist yet (scheduled debt).
+
+## L34 - A narrow catch around a compensating action must cover every exception the block can raise (2026-08-25)
+
+**Found while grounding backend-ERP ticket 03 (reasoned, worth confirming).** `IngestPipeline` (ledger/IngestPipeline.kt) catches only `EngineWriteFailedException` at the transaction scope. Inside the transaction, `fieldIds.getValue(...)` (at lines 335, 373-374) throws `NoSuchElementException` if the field key is absent - and this is not the expected failure mode, so the catch does not fire. The exception escapes uncaught and the compensating write back to `IngestState.NEW` never runs. The file is stranded in its current state (quarantine, hold, or incomplete), unable to recover. A schema mismatch or a late schema change widens this window from microseconds to a network round trip.
+
+**Root class:** specifying a catch block at the wrong granularity. A compensating action's catch must be as wide as the block it guards, not narrower than the errors you happened to anticipate.
+
+**Rule:** When wrapping a block in try/catch to enable a compensating action, verify every line inside the block for exceptions the catch does not cover. If `fieldIds.getValue(key)` is inside, the catch must include `NoSuchElementException` or the method must be moved outside the try (if it is a precondition and it fails, the compensating action is wrong anyway). The catch's exception type is a contract on the BLOCK, not a wish list of things you expect to go wrong.
+
+**Regression check:** a try/catch at transaction scope with a catch narrower than the exceptions inside the block can raise. Also: any `.getValue()` call inside a catch block without a corresponding checked exception.
+
+**Status:** OPEN. Caught by code grounding, not yet fixed. Surfaces in ticket 03 implementation.
+
+## L35 - A reconciliation guard has to be re-applied per extractor, not shared at the gate (2026-08-25)
+
+**Found while grounding backend-ERP ticket 03 (reasoned).** `BofaStatementParser` has no explicit non-empty guard and could vacuously pass a zero-movement statement with zero rows parsed. This is the same class of defect §4 rule 6 was written for, and `BofaCardStatementParser.parseSectionBody:331-346` already closes it. `LedgerStatementAgent.kt:208-210` and the pantry agent both guard explicitly. This one relies on its balance-continuity check. **Ticket 03 ruling 3 retires this parser, so the fix may simply be its deletion** - but if the retirement slips, the gap is real and will recur on any new extractor.
+
+**Root class:** rule 6's guard is applied at the gate aggregate level. Each extractor is responsible for its own internal consistency. A fix in one parser does not protect its siblings because each one implements the gate arithmetic separately. Retiring the parsers eliminates this parser; it does not eliminate the structural pattern.
+
+**Rule:** rule 6 ("every reconciliation layer must be unsatisfiable by an empty or partial extraction") applies per extractor, not just at the gate. When adding a statement parser, verify its own implementation contains a non-empty guard and cannot pass a zero-movement statement. When an LLM produces the extraction format (ruling 3), the format's CSV parse must guard against empty input. The guard is part of the PARSER CONTRACT, not delegated to an outer layer.
+
+**Regression check:** a new reconciliation extractor without an explicit non-empty check or with a section-total check that can pass when zero rows parsed.
+
+**Status:** OPEN. The parser retires before this fix is needed, but the rule applies to every future reconciliation extractor (the CSV format spec in ticket 03's implementation, edge cases in the LLM prompt).

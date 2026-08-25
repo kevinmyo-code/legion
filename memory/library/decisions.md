@@ -4664,6 +4664,28 @@ from scratch, removing the main argument in its favour.
    access token, refresh token, expiry, clear on sign-out. Supabase URL and anon key are NOT
    secrets; they are BYO runtime config entered like the Gemini key, not baked into BuildConfig.
 
+## 2026-08-25 - Backend-ERP grilling: The reconciliation gate when the truth lives remote ([[03-the-gate-server-side]], RESOLVED)
+
+Eight rulings on how ingestion's atomic file-commit migrates when the truth moves from the phone to Postgres.
+
+1. **The file commit becomes ONE atomic Supabase RPC (Kevin, 2026-08-25).** A `commit_statement(jsonb)` function inserts every row, checks the anchors in SQL and `RAISE`s on mismatch, preserving "nothing partial" exactly as `db.withTransaction` does today. PostgREST runs every request in exactly one transaction and cannot hold one open across HTTP requests, so this is the atomic unit migration rule 8 made necessary.
+
+2. **Gate arithmetic runs SERVER-SIDE in the RPC; the phone pre-checks (Kevin, 2026-08-25).** Server is authoritative and unbypassable; the phone keeps its own check as a fast local fail so a bad extraction costs no round trip. Accepted cost: two implementations of the same arithmetic that must not drift. A shared test corpus is the real deliverable that makes this ruling safe rather than the SQL itself.
+
+3. **The deterministic statement parsers are RETIRED. Statements arrive as a CSV in a format LEGION defines, produced by the user's OWN LLM (Kevin, 2026-08-25).** Kevin's own proposal. Dissolves three problems: PdfBox cannot run in Deno, per-bank parsers only covered DBS and BofA (every other bank fell through to LLM path), and the user's LLM masks sensitive data before anything reaches cloud Postgres. **This AMENDS CLAUDE.md §4 rule 1** ("deterministic first where a deterministic path exists"): there is no longer a deterministic extraction path for statements, by choice. Rules 2-7 are untouched.
+
+4. **The format requires THREE independent anchors (Kevin, 2026-08-25).** Ruling 3 creates a risk: an LLM-produced CSV has lines AND total from one nondeterministic process, so a self-consistent hallucination could satisfy a single-anchor check. The format demands printed total, opening balance, and closing balance; the RPC checks `sum(lines) == stated_total` AND `closing - opening == sum(lines)`. An LLM must be consistently wrong across three separately printed numbers. A statement that does not print all three cannot use the format and falls to rule 7 provisional instead.
+
+5. **Account identity is LAST FOUR DIGITS PLUS A NICKNAME, both declared in the CSV (Kevin, 2026-08-25).** Masking destroys the full account ID; last-4 is stable and not sensitive alone, the nickname makes every surface readable. Fits what already exists: `sameCard` already matches on exact equality OR last-4 suffix. **Known weakness carries over unchanged:** two accounts sharing a last-4 collide. The nickname is what disambiguates them, load-bearing not cosmetic.
+
+6. **Rows from the CSV are tagged `LLM_RECONCILED` (Kevin, 2026-08-25).** Provenance describes the data's origin; LEGION's CSV parse is deterministic but an LLM sat in between, so `DETERMINISTIC` would overclaim. Reuses an existing enum value, so no schema change.
+
+7. **Rule 7 supersession runs INSIDE the same RPC (Kevin, 2026-08-25).** Same Postgres transaction as the inserts, exactly as it sits inside `db.withTransaction` today. The three load-bearing properties carry over verbatim: the UNRECONCILED guard (provisional never supersedes anything, including itself); before the dedup read (verified rows don't drop as duplicates of the provisional rows they replace); and inside the transaction. `sameCard`'s suffix relation becomes a SQL predicate - a third definition that must never fold into `dedupKey`.
+
+8. **The RPC is IDEMPOTENT, keyed on the file's content hash (Kevin, 2026-08-25).** This closes the gap ruling 8 opened: with no local queue, a network death after the Postgres commit but before the ack leaves the phone unable to distinguish success from failure. A server-side `ingested_files` row keyed on `contentSha256` makes a repeat call a **successful no-op** rather than a second import. The phone simply retries until it gets a definitive answer. **This is what keeps the outcome-verb rule satisfiable.** `ai/AriaBrain.kt`'s `CANNOT_CLAUSE` is binary - "unsuccessful is the same as no tool at all" - and has no vocabulary for *unknown*. Without idempotency the assistant would face a state it is not equipped to describe honestly. With it, ambiguity resolves by retrying, and the tool result is always real success or real failure. The tool's failure result must still say in words what did not happen, and "not imported" is the only honest wording for an unresolved commit.
+
+**Founding context:** ticket 01 ruling 10 was AMENDED the same session (photo files MAY now leave the device to a private bucket in the household's own Supabase project, because Edge-Function receipt vision cannot work otherwise). OBD live state, wake word / raw audio, and widget layouts stay phone-only.
+
 ## Research update: 2026-08-25 correction filed to `research/06-supabase-feasibility.md`
 
 New section 7b documents the built-in email service limits: 2 messages/hour, "not meant for

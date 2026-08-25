@@ -4,8 +4,8 @@ title: "Map: Hardening - the four named weaknesses"
 charted: 2026-08-24
 charted-by: "Kevin + Fable"
 effort: "`.scratch/hardening/`"
-tickets: 4
-open: 1
+tickets: 5
+open: 2
 status: open
 tags: [map]
 ---
