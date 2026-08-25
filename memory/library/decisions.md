@@ -4702,6 +4702,96 @@ Four rulings on audit surfaces, hand-edit workflows, cache shape, and recovery. 
 
 **One pre-existing hole.** A mirror export that failed offline quarantined the aspect with whatever string SAF produced, swallowed to Log.w in MirrorLifecycleBinder. Retiring the mirror deletes this hole; the lesson generalises to scheduled snapshot: a background data-protection job that fails silently is worse than one that does not exist, because it reports safety it is not providing.
 
+## 2026-08-25 - Backend-ERP grilling: The migration path ([[05-migration-path]], RESOLVED)
+
+Three rulings on SyncEngine phasing, the Notes-to-Dates merge target, and stack proof order. Full
+detail in `.scratch/backend-erp/issues/05-migration-path.md`. Map is now CLOSED: all six tickets
+resolved, nothing built.
+
+1. **`SyncEngine` retires PER-TABLE, as each table's writes move to Postgres (Kevin, 2026-08-25).**
+   The rule that makes it safe: no table is ever in two sync channels at once. Drive's LWW and
+   Postgres would otherwise fight silently over the same rows. Each table leaves the `SyncEngine`
+   registry in the same commit its writes move to Supabase; until then it keeps syncing over Drive
+   so the second phone works during a migration window measured in weeks. `SyncEngine` is deleted
+   when its registry is empty, not before.
+
+2. **The Notes `Item` into Dates `Event` merge happens DIRECTLY in the Supabase typed schema
+   (Kevin, 2026-08-25).** Forced more than chosen: there is no legacy `events` table to fall back
+   to - Dates was born engine-native on 2026-08-23. Ticket 01's repoint-to-existing-tables shortcut
+   covers ledger, pantry, fleet and places but NOT Notes and Dates, whose target must be built new.
+   Accepted cost: 21 fields into 7, with recurrence, skips, place-triggers, second alarm stack, and
+   goal-checklist materializer all rewritten in the same step.
+
+3. **The arc starts with SCHEMA AND AUTH, then aspects smallest-first (Kevin, 2026-08-25).** Chosen
+   over the recommended thin vertical slice. Accepted risk, stated so it is watched for: the stack is
+   unproven until the first aspect lands. Mitigation that costs nothing: run aspects smallest-first,
+   so Places (3 records) is the de-facto proving run and a wrong assumption surfaces against three
+   rows rather than the ledger.
+
+### The constraint graph
+
+Seven hard constraints, each from a resolved ticket. These are not preferences; violating C2, C3
+or C4 loses data.
+
+| # | Constraint | Source |
+|---|---|---|
+| C1 | The Postgres schema is TYPED from the start, so the commit RPC is never written against the generic shape | ticket 03, "engine retirement before or with the RPC" |
+| C2 | Scheduled `DatabaseSnapshot` AND a restore exercised on a device, both BEFORE the mirror is deleted | ticket 04 ruling 4 |
+| C3 | Widen the Google importer, run it unbounded, verify, THEN remove Google | ticket 01 ruling 11 |
+| C4 | The three-anchor CSV import must work BEFORE the statement parsers are removed | ticket 03 ruling 3 |
+| C5 | The keep-alive against the 7-day free-tier pause lands BEFORE the first write cutover | ticket 01 ruling 8 plus research ticket 06 |
+| C6 | Legacy-table drops come last, after the whole arc is proven | pre-existing, sharpened by ticket 01 ruling 7 |
+| C7 | Rule 7's tests must point at production code BEFORE rule 7 is reimplemented in SQL | hardening ticket 05 defect 1 |
+
+**C1 resolved, because it reads like a contradiction and is not.** "Engine retirement before or
+with the RPC" does not mean deleting 15,885 lines in phase one. It means the SERVER schema is typed
+from day one so the RPC is never built to mirror the generic shape. The PHONE's engine retires
+incrementally, one aspect at a time, as each cuts over; the code is deleted only once nothing reads
+it. Retirement and deletion are different events and this ticket separates them deliberately.
+
+**C6 changes meaning under ticket 01 ruling 7.** The phone is going typed, and ticket 01 established
+the engine retired ZERO legacy tables. So most "legacy" tables are not drop candidates at all - they
+are the destination the phone returns to (ledger_transactions, pantry_receipts, vehicles,
+service_records, places). What genuinely gets dropped is much narrower: the four engine metadata
+tables, `widget_instances`' engine coupling, and the truly dead notes-era tables (item_lists,
+car_tasks, place_reminders, and list_items once the Item/Event merge lands). Do not read C6 as
+"drop everything legacy at the end."
+
+### The sequence
+
+Seven phases. Phase 0 is the safety net; phases 1-5 follow in order; phase 6 (deletions) waits
+until the arc is proven. Every phase states what "done" means and nothing advances on an unmet
+verification - that is L11, binding here.
+
+Phase 0 schedules DatabaseSnapshot and exercises a real restore on the A25, fixing defect 1 (pointing
+tests at production code before reimplmenting). Phase 1 lands foundations (supabase-kt, migrations,
+RLS, session/KeyVault fail-closed, the keep-alive). Phase 2 designs the schema and the commit RPC
+per aspect, with the gate arithmetic in SQL. Phase 3 (read-path honesty) extends WidgetDataSource
+with Stale/Unreachable and gives ledger, pantry, fleet a loading and error state. Phase 4 cuts over
+aspects smallest-first (Places, Pantry, Fleet, Notes+Dates, Ledger last) with guid-keyed idempotent
+upload, diff until clean, flip writes, remove tables from SyncEngine registry. Phase 5 widens the
+Google importer and runs one import unbounded before cutting, and stages the three-anchor CSV format
+before removing the statement parsers. Phase 6 deletes: the engine (9,518 + 6,367 lines), the mirror
+(2,200 lines), SyncEngine (once empty), parsers per C4, and genuinely dead tables only per C6.
+
+**Deletion is separated from retirement throughout.** Every rollback depends on the code deleted at
+the end still existing during the middle. That single sentence is the reason this ticket refuses to
+interleave deletion with cutover.
+
+### ADRs written
+
+Two ADRs recorded the migration architecture's standing consequences:
+
+- **[[0038-supabase-as-system-of-record]]** (Kevin, 2026-08-25): BYO Supabase project is the system
+  of record. Supersedes [[0010-drive-appdatafolder-only-store]] but NARROWS, not supersedes,
+  [[0002-no-kevin-hosted-anything]]. The narrowing: its principle was never that no server exists
+  anywhere, it was that nobody has to run and pay for a service for other people. A household's own
+  project is BYO in the same shape as the Gemini key.
+
+- **[[0039-per-aspect-typed-tables]]** (Kevin, 2026-08-25): the phone and server both keep per-aspect
+  typed tables rather than a generic engine shape. Supersedes [[0037-the-aspect-engine-is-the-spine]]
+  (accepted and device-verified exactly one day earlier).
+
 ## Research update: 2026-08-25 correction filed to `research/06-supabase-feasibility.md`
 
 New section 7b documents the built-in email service limits: 2 messages/hour, "not meant for
