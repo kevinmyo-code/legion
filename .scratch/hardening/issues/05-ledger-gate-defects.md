@@ -23,6 +23,15 @@ inferred from the code and not reproduced.
 
 ### 1. Rule 7's test suite has been testing dead code since cutover 3 (`traced`) - the sharpest
 
+**RESOLVED 2026-08-25.** Ported to `app/src/test/.../IngestPipelineProvisionalSupersedeTest.kt`
+(JVM/Robolectric), calling the REAL `IngestPipeline.commit` and asserting against engine records.
+The androidTest file is deleted. Rule 7 now has **5** live tests through the real entry point (the
+pre-existing `IngestPipelineEngineCommitTest.kt:136` plus the 4 ported). Suite verified green
+independently from the JUnit XML: 2,543 tests, 0 failures, 0 errors, 0 skipped.
+**The old file's stated reason for not calling `commit` was obsolete**, not a real constraint -
+`RoomTestReset.resetCarDatabaseSingleton()` already solved the singleton problem and the live
+engine test had been using it since cutover 3.
+
 `androidTest/.../ledger/IngestPipelineProvisionalSupersedeTest` has four cases, including the one
 that asserts the ordering bug directly (`reconciledRowsAreNotDroppedAsDuplicatesOfTheProvisionalRowsTheyReplace`,
 `:178`). **None of them calls `IngestPipeline.commit`.** They re-implement the sequence in a local
@@ -79,7 +88,7 @@ close it on the strength of a plan.
 
 ## Verification
 
-- [ ] Defect 1: the four cases either call `IngestPipeline.commit` or are gone, and rule 7's live
+- [x] Defect 1 (done 2026-08-25): the four cases either call `IngestPipeline.commit` or are gone, and rule 7's live
       coverage is stated in the ticket that closes this.
 - [ ] Defect 2: a test proves the escape before any fix is written; after the fix, a corrupted
       field def leaves the file at `IngestState.NEW`.

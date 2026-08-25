@@ -93,7 +93,10 @@ class IngestPipelineProvisionalSupersedeTest {
             ingestMethod = IngestMethod.DETERMINISTIC,
         )
 
-    private fun staged() = IngestPipeline.StageOutcome.Staged(bytes = ByteArray(0), isReplace = false)
+    private fun staged() = IngestPipeline.StageOutcome.Staged(
+        bytes = ByteArray(0), isReplace = false,
+        previousAccountId = null, previousMinTxnDate = null, previousMaxTxnDate = null,
+    )
 
     private suspend fun activeRowsFor(accountId: String, minDate: Long, maxDate: Long): List<Pair<String, RecordProvenance>> {
         val schema = LedgerAspectSeeder.ensureSeeded(context)
