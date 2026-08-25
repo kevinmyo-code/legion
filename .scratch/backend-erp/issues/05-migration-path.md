@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["01", "02", "03"]
 blocked-by: ["[[01-what-the-backend-owns]]", "[[02-auth-and-identity]]", "[[03-the-gate-server-side]]"]
-open-blockers: 3
+open-blockers: 2
 ready: false
 tags: [ticket]
 ---
