@@ -140,6 +140,13 @@ still existing during the middle. Ruling 8 removed the offline queue, so there i
 a bad cutover behind; per-aspect rollback is stop writing to Supabase, restore the table to the
 `SyncEngine` registry, keep reading Room.
 
+**OWED, DO NOT LOSE: exercise a real `DatabaseSnapshot` RESTORE on the A25.** Kevin released it as
+a Phase 0 gate on 2026-08-25 (the A25 has never been attached to the second machine, `adb devices`
+is empty), over a stated objection - an untested restore is a hope, which is L36's exact shape. It
+is **still owed before the phase 6 mirror deletion**, because deleting the mirror with no proven
+replacement leaves a window with no recovery path at all. **Must be done from the Kwin laptop**
+(debug keystore lives there; never uninstall to fix a signature mismatch).
+
 **RESUME POINT: building, starting at Phase 0.** Nothing in this map has been built - it is six
 resolved decision tickets and a sequence. Deferred deliberately: the eval/screenshot test plan
 (phase 3 changes what every migrated screen renders, so writing it first writes it twice) and the

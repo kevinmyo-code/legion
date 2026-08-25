@@ -125,7 +125,7 @@ or C4 loses data.**
 | # | Constraint | Source |
 |---|---|---|
 | C1 | The Postgres schema is TYPED from the start, so the commit RPC is never written against the generic shape | ticket 03, "engine retirement before or with the RPC" |
-| C2 | Scheduled `DatabaseSnapshot` **and** a restore exercised on a device, both **before** the mirror is deleted | ticket 04 ruling 4 |
+| C2 | Scheduled `DatabaseSnapshot` **and** a restore exercised on a device, both **before** the mirror is deleted. **AMENDED 2026-08-25: the restore is no longer a PHASE 0 gate** (no device on this machine); it remains owed before the phase 6 mirror deletion | ticket 04 ruling 4, as amended |
 | C3 | Widen the Google importer, run it unbounded, verify, **then** remove Google | ticket 01 ruling 11 |
 | C4 | The three-anchor CSV import must work **before** the statement parsers are removed | ticket 03 ruling 3 |
 | C5 | The keep-alive against the 7-day free-tier pause lands **before** the first write cutover | ticket 01 ruling 8 plus research ticket 06 |
@@ -159,8 +159,12 @@ that is L11, and it is binding here.
   `IngestPipeline.commit` or delete it as superseded. Satisfies C7 **before** rule 7 is rewritten in
   SQL. Reimplementing a behaviour whose tests do not run against production code is how it silently
   changes.
-- **Done means:** a restore has actually run on the phone and been observed to work, and rule 7's
-  live coverage is stated in writing.
+- **Done means (as amended 2026-08-25):** the scheduler is built and unit-tested, and rule 7's live
+  coverage is stated in writing. **The restore exercise is deferred, not deleted** - Kevin released
+  it as a phase 0 gate because the A25 is not attached to this machine, over a stated objection.
+  It is now a **named blocking item against phase 6**, and `memory/MEMORY.md` carries it so it is
+  not lost. Anyone reaching phase 6 with this still unmet must stop, per L11: an unmet verification
+  step is a gate, not a footnote.
 
 **Phase 1 - foundations. No data moves.**
 - `supabase-kt`; Supabase URL and anon key as BYO runtime config entered like the Gemini key, never

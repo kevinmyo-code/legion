@@ -88,6 +88,19 @@ recommend yes) vs windowed.
    retire the mirror until the scheduled snapshot and a real restore are both done** - otherwise
    there is a window with no recovery path at all.
 
+   **AMENDED 2026-08-25 by Kevin, later the same day, at the start of Phase 0.** The restore
+   exercise is **no longer a Phase 0 gate**: the scheduler is built now and the arc proceeds
+   without it, because the A25 has never been attached to the second machine (`adb devices` empty)
+   and blocking the whole arc on a device that is not here was judged the wrong trade. **The
+   concern was raised and overruled, which is Kevin's call to make, and it is recorded rather than
+   smoothed over**: an untested restore is a hope, and this is the same shape as the mistake L36
+   was written about one hour earlier.
+
+   **What the amendment does NOT release, unless Kevin says so explicitly:** the restore exercise
+   is still owed **before the mirror is deleted** in phase 6. That gate exists because deleting
+   the mirror with no proven replacement leaves a window with no recovery path at all, and phase 6
+   is weeks away, so nothing is blocked by keeping it. Narrow reading taken deliberately.
+
    Under this model Room is a full replica (ruling 3), so a snapshot of the phone DB is a snapshot
    of everything. Accepted cost, and it should be said in words on the backup screen: it captures
    the replica rather than the server, and it is only as fresh as the last scheduled run.
