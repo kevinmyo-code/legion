@@ -3,7 +3,7 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
-## START HERE - 2026-08-25 (late) - THE BACKEND-ERP PIVOT, GRILLING MID-FLIGHT
+## START HERE - 2026-08-25 (late) - THE BACKEND-ERP PIVOT, TICKET 01 RESOLVED
 
 **Kevin pivoted: the backend IS the ERP.** Supabase (BYO project per household, never
 Kevin-hosted) becomes the system of record; the Android app becomes ONE consumer; a Windows/laptop
@@ -12,13 +12,39 @@ initiative. Map: `.scratch/backend-erp/` - six tickets, feasibility research RES
 fits; one hazard: the 7-day inactivity pause, manual resume; free tier has no backups so the xlsx
 mirror carries recovery).
 
-**RESUME POINT: the root grilling is mid-flight on
-`.scratch/backend-erp/issues/01-what-the-backend-owns.md` - read its "Grilling in progress"
-section.** Three rulings locked (Supabase one master + LEGION keeps its OWN calendar with Google
-demoted to the existing import feed; undated todos get due=tomorrow as an INFERRED fact that never
-nags; the Google-Calendar-projection idea is dead). **Question 4 is PENDING Kevin's answer**:
-todos as Notes records shown through the calendar view (recommended) vs todos as Dates events.
-Then the ticket's own questions 1-5.
+**Ticket 01 is RESOLVED - eleven rulings, all five of its questions answered.** Read
+`.scratch/backend-erp/issues/01-what-the-backend-owns.md` before touching anything here. The four
+that reshape the app, all Kevin's, three of them against the recommendation:
+
+- **Postgres gets PER-ASPECT REAL TABLES**, not the generic shape translated. Enforcement moves
+  server-side into real FKs/CHECKs/RLS.
+- **The phone goes typed with it and the GENERIC ENGINE RETIRES.** Biggest cost in the map: it
+  undoes the 2026-08-24 cutover of one day earlier. **Nothing is deleted until ticket 05
+  sequences it.**
+- **Todos become Dates events.** Note this is a TYPE MERGE, not a re-parenting: todos are the
+  Notes aspect's `Item` type (21 fields, 64 Kotlin files) with recurrence, `list_item_skips`,
+  geofenced place triggers and a second alarm stack attached.
+- **Google Calendar is dropped entirely** - but the ORDER IS BINDING: widen the importer first
+  (description/location/allDay + parse the LEGION::v1 block into real fields, unbounded window),
+  verify, THEN cut. The class metadata lives only in Google descriptions and is never stored;
+  cutting first deletes it permanently.
+
+Also: writes go direct to Postgres with no offline queue (so the ticket-06 keep-alive is now
+load-bearing, not a nicety); reads are cache-first with a visible "as of" required on money;
+OBD live state, wake word/audio, photo files and widget layouts stay phone-only.
+
+**Measured, not guessed** (two scouts, static counts, nothing compiled): the engine is 9,518
+production + 6,367 test lines. **But it retired ZERO legacy tables** - `CarDatabase.kt:265-296`
+still lists all 56 entities, only 6 of them engine, and the waves are additive-only. So ruling 7 is
+largely REPOINTING WRITES BACK to typed tables that still exist, not building a typed layer from
+nothing. Ticket 05 must reconcile-and-repoint per aspect (legacy tables are ~1 day stale for
+whatever cut over on 08-24), never blind-switch.
+
+**RESUME POINT: ticket 05 (migration path)** - it now owns all three retirements (engine, the
+Item-into-Event merge, the Google removal) and their ordering; still blocked on 02/03. Tickets
+02/03/04 (auth, the gate server-side, mirror/cache fate) are the unblocked work. Ticket 04 should
+read ticket 01's footprint section first: the mirror is entirely generic-shape dependent, so
+ruling 7 collapses its `_definitions` layer.
 
 Also landed 2026-08-25:
 - **Calendar description blocks merged** (LEGION::v1 sentinel: machine fields reach the model,

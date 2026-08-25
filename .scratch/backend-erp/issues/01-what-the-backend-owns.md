@@ -146,6 +146,60 @@ the merge should collapse rather than inherit: `engine/dates/DatesAgenda.kt` (sc
 actually use - unions `NotesController` output with live Google events), and
 `engine/WidgetDataSource.kt:118-152` (a third independent `dueAt` scan that **ignores mutes**).
 
+### Engine footprint (measured 2026-08-25 by `find`+`wc`; nothing compiled or run)
+
+What ruling 7 retires, by the line:
+
+| Bucket | Lines |
+|---|---|
+| `engine/` root generic core (13 files, incl. `RecordStore.kt` 546) | 1,624 |
+| 4 metadata entities + DAOs | 433 |
+| `widget_instances` + `muted_reminders` entities/DAOs | 171 |
+| Engine block in `Migrations.kt` (v33->v37) | 177 |
+| Per-aspect seeders + bridges + `DatesAgenda` (9 files) | 1,384 |
+| Migration waves 1-4 | 1,085 |
+| `engine/mirror/` (5 files) | 1,423 |
+| `ui/generated/` (3 screens) | 596 |
+| `ui/widgets/` | 721 |
+| `ui/mirror/MirrorSyncActivity.kt` | 186 |
+| `service/EngineToolbox.kt` - the 9 meta-tools | 1,074 |
+| `vehicle/FleetEngineStore.kt` | 644 |
+| **Production subtotal** | **9,518** |
+| Engine tests (30 files) | 6,367 |
+| **Total** | **15,885** |
+
+Contested and excluded from the headline: `ui/grid/` (1,336) plus `GridEngineTest` (822) - built by
+the same ticket, but the layout math is domain-agnostic and should survive. Widest honest boundary:
+18,043.
+
+Also measured: **93 Kotlin files** reference `RecordStore`/`EngineRecord`/`RecordType` (58 main
+files import `com.kevin.legion.engine.*`); the four metadata tables were built in ONE migration,
+`MIGRATION_33_34` (`data/local/Migrations.kt:1292-1383`); `MIGRATION_36_37` (`records.guid`) exists
+solely because the generic table's `AUTOINCREMENT` id is meaningless across devices, so it retires
+with the shape that caused it. The mirror is **entirely generic-shape dependent** - `MirrorCodec`
+takes Aspect/RecordType/FieldDef/EngineRecord as its vocabulary and writes a `_definitions` sheet
+precisely because the schema lives in rows; with typed tables that whole reflective layer collapses
+(ticket 04 owns the mirror's fate and should read this first).
+
+### The finding that makes ruling 7 far cheaper than it looks
+
+**The engine retired ZERO legacy tables.** `CarDatabase.kt:265-296` still lists all 56 entities and
+only 6 of them are engine; the waves are additive-only and their own KDoc says they never touch,
+drop or mutate a legacy table. `LedgerTransaction`, `PantryReceipt`, `PantryLineItem`, `ListItem`,
+`Vehicle`, `ServiceRecord`, `MaintenanceItem`, `TaggedPlace` and the rest are all still present,
+frozen with zero writers rather than deleted.
+
+So "the phone goes typed" is substantially **repointing writes back to typed tables that already
+exist**, not building a typed layer from nothing. Only ledger (cutover 3) and fleet (cutover 4)
+ever repointed their writes, and fleet's cutover explicitly excludes 14 of the 21 vehicle-domain
+entities (`engine/migration/EngineDataMigrationWave4.kt:24-29`) - meaning most of fleet never left
+the typed tables at all. **Ticket 05 must diff, not assume:** the legacy tables are ~24h stale for
+the aspects that did cut over, so the sequencing is a reconcile-and-repoint, and the engine's
+records stay the source until each diff comes back clean.
+
+This does NOT reduce the Postgres-side work (ruling 6 still needs per-aspect DDL authored), and it
+does not make the Item/Event merge in ruling 4 cheaper. It reduces the Room-side rewrite only.
+
 **`CalendarProvider.kt` is not import-only** - it also writes to Google (`insertEvent:267`,
 `updateEventSeries:307`, `updateEventOccurrence:345`, `deleteEventSeries:379`,
 `deleteEventOccurrence:400`), used by the `addAppointment` tool and `ui/notes/InboxScreen.kt`.
