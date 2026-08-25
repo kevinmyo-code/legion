@@ -161,7 +161,33 @@ verified green on the current tree (2,549 tests, 0 failures, counted from the JU
   `Outcome` with every branch worded, six tests. `DriveSyncScreen` shows last success, the
   "only while the app is open" caveat on BOTH branches, and any failure reason.
 
-**RESUME POINT: Phase 1 (foundations) - or the owed device work first.** Nothing in this map has been built - it is six
+**PHASE 1 IS BUILT, NOT PROVEN (2026-08-25).** All of it compiles, tests green (2,576, 0 failures),
+and `assembleDebug` produces an APK. **Nothing has touched a real Supabase project yet.**
+
+- `supabase/migrations/20260825000100_household_and_rls.sql` - household roster, `security definer`
+  membership helper in a `private` schema (the recursion fix), RLS, and a `public.keepalive()` RPC.
+  **The absence of insert/update/delete policies IS the enforcement** - membership can only be
+  granted in the dashboard. No role column, deliberately.
+- `.github/workflows/supabase-keepalive.yml` - daily cron ping. **Deliberately NOT on the phone:**
+  the pause triggers on no DB activity, and a phone ping only fires when the app is open, which is
+  when there is already activity. Needs secrets `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
+- `backend/` - `SupabaseConfig` (BYO URL + anon key, never `BuildConfig`, NOT in KeyVault since the
+  anon key is not secret), `SupabaseSession` (**fails closed** - throws rather than the plaintext
+  fallback every other secret slot uses), `SupabaseClientProvider`, `SupabaseAuth` (email+password,
+  sealed results including signed-in-but-not-a-member). UI on `KeyScreen`.
+
+**Two build compromises, filed as hardening ticket 06, both verified by real builds:** supabase-kt
+is pinned to **3.6.0** because 3.7.0 needs Kotlin metadata 2.4.0 and this project is Kotlin 2.1.0;
+and Compose is `resolutionStrategy.force`d to 1.7.0 after the new graph drifted it to 1.9.0 and
+broke four screenshot tests. The 1.9.0 requester was never identified.
+
+**OWED BY KEVIN, blocks everything else in Phase 1:**
+1. Apply the migration (`supabase db push`, or paste into the dashboard SQL editor).
+2. Add the two GitHub Actions secrets, then run the workflow manually to prove it.
+3. Create both accounts in the dashboard and insert their `household_members` rows.
+4. Sign in on the phone and confirm the membership check.
+
+**RESUME POINT: the four items above, then Phase 2 (schema + the commit RPC).** Nothing in this map has been built - it is six
 resolved decision tickets and a sequence. Deferred deliberately: the eval/screenshot test plan
 (phase 3 changes what every migrated screen renders, so writing it first writes it twice) and the
 second phone (never attached to this machine; Supabase likely dissolves the merge problem, but that
