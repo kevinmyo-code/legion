@@ -765,7 +765,39 @@ object EngineToolbox {
             )
     }
 
-    private suspend fun commitCreateAspect(db: CarDatabase, draft: JSONObject): JSONObject {
+    /**
+     * Builds a [createAspectSchema]-shaped draft by hand, no LLM call - the same JSON shape
+     * [createAspect]'s schema generator produces, but assembled directly from a driver's own typed
+     * input. This is what makes the pager's own "+" page (`ui/widgets/WidgetPagerScreen.kt`'s
+     * `AddAspectPage`) a REAL create flow rather than a stub: it commits through
+     * [commitCreateAspect], the exact same write path `create_aspect`'s confirm handshake commits
+     * through, so there is one implementation of "aspect + record type + fields go into Room", not
+     * two that could drift apart. Every field drafted here is [com.kevin.legion.data.local.FieldType.TEXT]
+     * and optional except the first, which is required - a driver typing field names by hand has no
+     * UI here for picking a richer type (NUMBER/DATE/CHOICE/etc.), matching this form's own "one
+     * name field, minimal chrome" scope; a driver who wants a richer schema still has the voice path
+     * (`create_aspect`) with its Pro-tier generator.
+     */
+    internal fun manualCreateDraft(aspectName: String, recordTypeName: String, fieldNames: List<String>): JSONObject {
+        val fields = JSONArray()
+        fieldNames.forEachIndexed { index, name ->
+            fields.put(
+                JSONObject()
+                    .put("name", name)
+                    .put("type", "TEXT")
+                    .put("required", index == 0),
+            )
+        }
+        val recordType = JSONObject().put("name", recordTypeName).put("fields", fields)
+        return JSONObject()
+            .put("aspectName", aspectName)
+            .put("recordTypes", JSONArray().put(recordType))
+    }
+
+    /** `internal` (not private) so [manualCreateDraft]'s callers - both `create_aspect`'s own
+     * confirm handshake and the pager's hand-typed "+" page - commit through this ONE write path.
+     * See [manualCreateDraft]'s own doc comment for why a second copy of this logic would be wrong. */
+    internal suspend fun commitCreateAspect(db: CarDatabase, draft: JSONObject): JSONObject {
         val aspectName = draft.optString("aspectName").ifBlank { return result(false, "The draft had no aspect name. Nothing was created.") }
         val now = System.currentTimeMillis()
         val aspectId = db.aspectDao().insert(Aspect(name = aspectName, createdAt = now, updatedAt = now))

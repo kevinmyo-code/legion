@@ -67,13 +67,21 @@ import kotlinx.coroutines.launch
  *
  * [onOpenRoute] is how this composable reaches destinations OUTSIDE itself without owning a
  * [androidx.navigation.NavHostController] of its own - the same shape every other top-level screen
- * in this app's `NavHost` already uses (see `TodayScreen`'s `onOpenBody`/`onOpenFleet` etc.). Two
- * callers: the HOME page's own "CLASSIC" button (`LegionRoute.TODAY` - the old Today panel, which
- * this pager's seeded HOME arrangement is modelled on but does not yet fully replicate, e.g. the
- * ALERTS pane and the media mini-bar tap-through), and each aspect page's "OPEN FULL SCREEN" button
- * for an aspect that still has a richer legacy screen ([legacyRouteForAspect]) - ingestion UIs
- * (ledger/pantry import), OBD live views, and other capabilities the generic engine widgets do not
- * yet carry.
+ * in this app's `NavHost` already uses (see `TodayScreen`'s `onOpenBody`/`onOpenFleet` etc.). One
+ * caller today: each aspect page's "OPEN FULL SCREEN" button for an aspect that still has a richer
+ * legacy screen ([legacyRouteForAspect]) - ingestion UIs (ledger/pantry import), OBD live views,
+ * and other capabilities the generic engine widgets do not yet carry.
+ *
+ * **Demoted from HOME to an opt-in surface 2026-08-25** - Kevin field-tested this pager as the
+ * app's home overnight and ruled "kill it, revert everything to classic"
+ * (`docs/architecture/cutover5-2026-08-24.md`'s postscript). This composable and every capability
+ * behind it (the pager itself, the eight widget kinds, the DeckGrid edit mode, per-aspect pages)
+ * stays in the codebase unchanged - only its reachability changed, from HOME/start-destination down
+ * to a single "DASHBOARD" button on [com.kevin.legion.ui.TodayScreen] - so the seven on-device
+ * grid-feel rounds this pager went through are not orphaned and the pager remains a real hands
+ * path to the aspect engine (ADR 0035). The HOME page's own "CLASSIC" button (the mirror-image
+ * hands path back to Today) is REMOVED - pointless now that TODAY is home again, one tap away by
+ * the back button on anyone who reaches this page at all.
  */
 @Composable
 fun WidgetPagerRoot(onOpenRoute: (String) -> Unit = {}) {
@@ -118,13 +126,9 @@ fun WidgetPagerRoot(onOpenRoute: (String) -> Unit = {}) {
         ) {
             Text("LEGION // DASHBOARD", style = LegionType.stamp, color = LocalLegionSemantics.current.chromeText)
             Row {
-                // The HOME page's own hands path back to the old Today panel (cutover 5) - see
-                // this file's own doc comment on [onOpenRoute] for exactly what it still carries
-                // that the seeded HOME arrangement does not yet replicate. Only on page 0: every
-                // other page has its own "OPEN FULL SCREEN" link instead (see [WidgetPagerPage]).
-                if (pagerState.currentPage == 0) {
-                    DeckButton(text = "CLASSIC", onClick = { onOpenRoute(com.kevin.legion.ui.LegionRoute.TODAY) })
-                }
+                // The HOME page's own "CLASSIC" button back to TODAY was removed 2026-08-25 - TODAY
+                // is the app's home again (see this file's own doc comment), so a hands path FROM
+                // this opt-in surface back TO it is redundant with the system back button.
                 if (pagerState.currentPage < pageCount - 1) {
                     DeckButton(text = if (editMode) "DONE" else "EDIT", onClick = { editMode = !editMode })
                 }
@@ -286,35 +290,94 @@ private fun WidgetContent(dataSource: WidgetDataSource, widget: WidgetInstance, 
     }
 }
 
-/** The trailing "+" page - "creates an aspect" (ticket 18 brief; "stub screen is fine this pass").
- * A real, working create - a name field and a button, writing straight to [com.kevin.legion.data.local.AspectDao] -
- * because a stub that visibly does nothing would contradict CLAUDE.md §7's "say plainly what is not
- * built" posture just as much as a fake success would; this genuinely creates a page, it simply has
- * no further chrome (icon/colour pickers, reordering) beyond the one field the brief calls for. */
+/**
+ * The trailing "+" page - "creates an aspect" (ticket 18 brief). **Was a stub through ticket 18**
+ * (named as such in that ticket's own report): it wrote a bare [Aspect] row and nothing else, with
+ * no [com.kevin.legion.data.local.RecordType] and no [com.kevin.legion.data.local.FieldDef] under
+ * it. That is the "adding an aspect doesn't work" report (Kevin, 2026-08-25) - a driver who tapped
+ * CREATE got a new page that would forever read "NOTHING PLACED ON THIS PAGE YET", because there
+ * was no record type for any widget or voice tool to point at: [EngineToolbox.declarations]'s own
+ * `create_record`/`describe_aspect` tools all key off a record type id, and none existed. The
+ * aspect looked created; nothing about it was actually usable.
+ *
+ * **Real create flow as of 2026-08-25**: aspect name, a starter record type name, and one or more
+ * starter field names, committed through [EngineToolbox.manualCreateDraft] +
+ * [EngineToolbox.commitCreateAspect] - the EXACT same write path `create_aspect`'s voice confirm
+ * handshake commits a Pro-drafted schema through (see [EngineToolbox.manualCreateDraft]'s own doc
+ * comment for why this is one implementation, not a second). A driver who wants richer field types
+ * than plain text still has the voice path; this form's whole scope is getting a genuinely usable
+ * aspect - one record type with at least one field - out of the pager's own "+" page.
+ */
 @Composable
 private fun AddAspectPage(onCreated: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf("") }
+    var aspectName by remember { mutableStateOf("") }
+    var recordTypeName by remember { mutableStateOf("") }
+    // At least one starter field, so the record type this creates is genuinely writable the moment
+    // it exists - see this composable's own doc comment for why a record-type-less aspect was the
+    // bug. A second, optional field slot covers the common "name + one more thing" shape without
+    // building a full repeatable-row editor for a page whose brief only ever asked for "a name field
+    // and a button".
+    var firstFieldName by remember { mutableStateOf("Name") }
+    var secondFieldName by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
     val sem = LocalLegionSemantics.current
-    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+    val canCreate = aspectName.isNotBlank() && recordTypeName.isNotBlank() && firstFieldName.isNotBlank()
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
         Box(Modifier.size(56.dp).border(1.dp, sem.chromeDim), contentAlignment = Alignment.Center) {
             Text("+", style = MaterialTheme.typography.headlineMedium, color = sem.chromeText)
         }
         Text("ADD AN ASPECT", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
-        DeckTextField(value = name, onValueChange = { name = it }, label = "NAME", modifier = Modifier.fillMaxWidth())
+        DeckTextField(value = aspectName, onValueChange = { aspectName = it }, label = "ASPECT NAME", modifier = Modifier.fillMaxWidth())
+        DeckTextField(
+            value = recordTypeName, onValueChange = { recordTypeName = it }, label = "STARTER RECORD TYPE",
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
+        DeckTextField(
+            value = firstFieldName, onValueChange = { firstFieldName = it }, label = "FIRST FIELD",
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
+        DeckTextField(
+            value = secondFieldName, onValueChange = { secondFieldName = it }, label = "SECOND FIELD (OPTIONAL)",
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
+        errorMessage?.let {
+            Text(it, style = LegionType.stamp, color = sem.quarantined, modifier = Modifier.padding(top = 8.dp))
+        }
         DeckButton(
             text = "CREATE",
-            enabled = name.isNotBlank(),
+            enabled = canCreate,
             onClick = {
-                val trimmed = name.trim()
+                val fieldNames = listOfNotNull(
+                    firstFieldName.trim().takeIf { it.isNotBlank() },
+                    secondFieldName.trim().takeIf { it.isNotBlank() },
+                )
                 scope.launch {
                     val db = CarDatabase.getDatabase(context)
-                    val now = System.currentTimeMillis()
-                    val position = db.aspectDao().listActive().size
-                    db.aspectDao().insert(Aspect(name = trimmed, position = position, createdAt = now, updatedAt = now))
-                    name = ""
-                    onCreated()
+                    val draft = com.kevin.legion.service.EngineToolbox.manualCreateDraft(
+                        aspectName = aspectName.trim(),
+                        recordTypeName = recordTypeName.trim(),
+                        fieldNames = fieldNames,
+                    )
+                    val outcome = com.kevin.legion.service.EngineToolbox.commitCreateAspect(db, draft)
+                    // The outcome rule (CLAUDE.md §7): only claim it worked if the write path
+                    // actually reported success - a failure surfaces its own worded message in
+                    // place of silently doing nothing or fabricating a success.
+                    if (outcome.optBoolean("success", false)) {
+                        errorMessage = null
+                        aspectName = ""
+                        recordTypeName = ""
+                        firstFieldName = "Name"
+                        secondFieldName = ""
+                        onCreated()
+                    } else {
+                        errorMessage = outcome.optString("message").ifBlank { "Could not create that aspect." }
+                    }
                 }
             },
             modifier = Modifier.padding(top = 12.dp),
