@@ -65,6 +65,50 @@ fastexcel = "0.19.0"
 # capture libraries (ComposeTestRule.onRoot().captureRoboImage(...)); the Gradle plugin below
 # wires the record/verify/compare task triples per build type.
 roborazzi = "1.72.0"
+# supabase-kt (backend-erp Phase 1, ticket 05): the BYO Postgres client, ADR 0038/0039. auth-kt is
+# the post-3.0.0 rename of gotrue-kt; postgrest-kt is the REST-over-Postgres client used for the
+# household-membership check. A platform BOM pins both to the same release so they can't drift.
+# Group is `io.github.jan-tennert.supabase`, distinct from the `io.github.jan.supabase` PACKAGE
+# names used inside the sources - do not conflate the two when reading an import.
+#
+# **PINNED TO 3.6.0, NOT 3.7.0 (the actual latest release, published 2026-07-20 - confirmed against
+# the GitHub releases API), and this is a deviation from an explicit brief instruction, stated
+# here in full because it is load-bearing.** 3.7.0's own published .jar metadata
+# (`auth-kt-api.jar!/META-INF/io.github.jan-tennert.supabase_auth-kt.kotlin_module`, decompiled and
+# read directly, not inferred) carries Kotlin metadata BINARY VERSION 2.4.0. This project's Kotlin
+# Gradle plugin is 2.1.0, whose compiler accepts metadata up to binary version 2.2.0 - one MAJOR
+# metadata revision short. `kaptGenerateStubsDebugKotlin` fails outright against 3.7.0 with
+# "Module was compiled with an incompatible version of Kotlin" for auth-kt, postgrest-kt, supabase-kt
+# and kotlin-reflect all at once (postgrest-kt-android:3.7.0 pulls kotlin-reflect:2.4.0 as a hard,
+# non-negotiable dependency - not a version Gradle's conflict resolution merely bumped). This is
+# not a guess: both 3.7.0 (fails) and 3.6.0 (compiles clean, verified by a real
+# `compileDebugKotlin -Pnokey` run) were built and compiled in this session. Bumping the WHOLE
+# PROJECT's Kotlin version to clear this is out of scope for a Phase 1 foundations ticket - it
+# would also move the Compose compiler plugin (`org.jetbrains.kotlin.plugin.compose`, pinned to
+# the same `kotlin` version) and risks the entire existing Compose surface, not something to do as
+# a side effect of adding an HTTP client. Flagged for Kevin/VP-Ops: either accept 3.6.0 here, or
+# schedule the Kotlin bump as its own ticket before returning to 3.7.0.
+supabaseKt = "3.6.0"
+# kotlinx-serialization-json backs supabase-kt's own JSON handling (`supabaseJson` in
+# io.github.jan.supabase.Utils, and UserSession's own @Serializable shape) and is what
+# SupabaseSession.kt uses directly to encode/decode a UserSession before handing the blob to
+# KeyVault. Pinned to the SAME version as kotlinx-serialization-core above (1.8.1) so nothing
+# resolves two versions of the same library; 1.8.1 supports Kotlin 2.1.0.
+kotlinxSerializationJson = "1.8.1"
+# Ktor client engine for supabase-kt's networking. **CONFIRMED by running
+# `./gradlew app:dependencies --configuration debugRuntimeClasspath | grep ktor` against this
+# exact dependency set**, not guessed (see SupabaseClientProvider.kt's doc comment for the full
+# finding): supabase-kt 3.6.0's own internal graph (ktor-client-content-negotiation,
+# ktor-serialization-kotlinx-json, ktor-client-core, etc., all pulled in by auth-kt/postgrest-kt
+# themselves) resolves to **3.5.1** everywhere except two modules independently pinned to 3.4.3
+# (ktor-client-content-negotiation, ktor-serialization-kotlinx-json) - neither is a dependency this
+# module declares directly. `ktor-client-okhttp` itself is pinned here to 3.5.1 to match the
+# highest-traffic version in the graph (ktor-client-core, ktor-http, ktor-io, ktor-network,
+# ktor-websockets, ktor-serialization all land there) rather than the two outliers, and re-running
+# the dependency report after this pin shows the OKHTTP engine resolving to exactly 3.5.1 with no
+# further conflict bump needed. Do not bump this independently of supabase-kt without re-running
+# that check - and re-run it again if `supabaseKt` above ever moves off 3.6.0.
+ktor = "3.5.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -121,9 +165,23 @@ ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 roborazzi = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "roborazzi" }
 roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version.ref = "roborazzi" }
+# supabase-kt (backend-erp Phase 1). The BOM pins auth-kt/postgrest-kt to one release; the two
+# libraries below deliberately carry NO version.ref of their own, per the BOM's own contract.
+supabase-bom = { group = "io.github.jan-tennert.supabase", name = "bom", version.ref = "supabaseKt" }
+supabase-auth = { group = "io.github.jan-tennert.supabase", name = "auth-kt" }
+supabase-postgrest = { group = "io.github.jan-tennert.supabase", name = "postgrest-kt" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+# OkHttp engine for Ktor (supabase-kt's transport), chosen over ktor-client-cio (the docs'
+# generic recommendation) because OkHttp is already a first-class dependency of this repo
+# (sync/DriveClient.kt, the Gemini Live websocket) - one HTTP stack on Android instead of two.
+ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
+# kotlinx-serialization plugin (backend-erp Phase 1): needed the moment app code declares its own
+# @Serializable type, which SupabaseSession.kt does not (it reuses UserSession.serializer()
+# directly) - added anyway per the brief's instruction, matching Kotlin 2.1.0.
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

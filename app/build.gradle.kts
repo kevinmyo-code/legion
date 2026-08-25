@@ -10,6 +10,10 @@ plugins {
     // compareRoborazziDebug / verifyRoborazziDebug task triple - see the `roborazzi { }` block
     // below and app/src/test/snapshots/README.md for what each does and when to run it.
     alias(libs.plugins.roborazzi)
+    // backend-erp Phase 1: supabase-kt's Postgrest decode/encode needs a real @Serializable
+    // generator, not just the kotlinx-serialization-core dependency already on the classpath
+    // (that alone gives the runtime types with no annotation processor behind them).
+    alias(libs.plugins.kotlin.serialization)
 }
 
 // Secrets are kept out of source control - set them in local.properties
@@ -209,6 +213,91 @@ kapt {
     }
 }
 
+// backend-erp Phase 1: pins Compose back to the versions this tree ALREADY resolved to before
+// supabase-kt/ktor were added, undoing a real regression their dependency graph introduced.
+//
+// **What broke, traced rather than guessed.** Adding supabase-kt/ktor (this file's `dependencies`
+// block, the supabase-kt entries) made FOUR pre-existing Roborazzi screenshot tests fail with
+// `clickable only supports IndicationNodeFactory instances... The Indication instance provided
+// here was: androidx.compose.material.ripple.PlatformRipple` - a real API-shape break between
+// `androidx.compose.foundation` 1.9.0 (which requires `IndicationNodeFactory`) and
+// `androidx.compose.material` 1.6.7 (whose ripple still implements the OLD `Indication`
+// interface - `material`/`material3` are untouched by this fix, still resolving exactly where the
+// BOM puts them, 1.6.7/1.2.1). Confirmed as a genuine regression, not flakiness: the same four
+// tests pass clean (`./gradlew testDebugUnitTest --tests ...`, exit 0) on the exact same tree with
+// only `app/build.gradle.kts` and `gradle/libs.versions.toml` reverted.
+//
+// **The target version is 1.7.0, NOT compose-bom 2024.05.00's own preferred 1.6.7 - checked, not
+// assumed.** `./gradlew app:dependencyInsight --dependency androidx.compose.ui:ui-test-junit4
+// --configuration debugUnitTestRuntimeClasspath` run against the tree BEFORE supabase-kt was ever
+// added shows this project was ALREADY resolving the whole `androidx.compose.ui` atomic group to
+// 1.7.0, not the BOM's 1.6.7 - `androidx.navigation:navigation-compose:2.8.0` requests
+// `androidx.compose.animation:animation:1.7.0`/`foundation-layout:1.7.0` directly, and atomic-
+// group alignment carries that up to `ui`/`ui-tooling`/`ui-test-junit4`/etc. Forcing to 1.6.7 (the
+// first attempt) compiled, but then failed a SEPARATE build with `No parameter with name
+// 'autoCorrectEnabled' found` in `ui/KeyScreen.kt` and `ui/spotify/SpotifyRows.kt` - real app code
+// already depends on an API `ui-text` only gained after 1.6.7. 1.7.0 is therefore not a
+// conservative-guess downgrade; it is the exact version this codebase already needed and got,
+// before anything in this file existed.
+//
+// **What made it drift to 1.9.0 with supabase-kt/ktor added, per the same dependencyInsight
+// command run AFTER:** conflict resolution reports "between versions 1.9.0, 1.7.0 and 1.6.7", but
+// the insight output shows NO explicit dependency anywhere in the (post-change) graph actually
+// REQUESTING 1.9.0 - every real request still tops out at 1.7.0. The 1.9.0 figure is not traced to
+// a single requester with the tools available here - most likely AGP's cross-variant "consistent
+// resolution" (already documented above, at `kotlinxSerialization`'s catalog entry, as the same
+// mechanism that forced the androidTest classpath to match the app's) pulling a higher
+// `androidx.compose.ui` version in from some OTHER configuration that inherits the new
+// dependencies (an `implementation`-scoped dependency is visible to every derived test/androidTest
+// configuration in AGP's model). **This is a `reasoned`, not `traced`, account of the exact
+// mechanism** - what IS traced and verified is the before/after symptom and that forcing to the
+// pre-existing 1.7.0 removes it (confirmed by re-running the four previously-failing tests green).
+//
+// `resolutionStrategy.force` beats every constraint unconditionally, so this makes the version the
+// tree already needed impossible to silently outrank, regardless of what a future dependency's own
+// graph requests.
+configurations.all {
+    resolutionStrategy {
+        force(
+            "androidx.compose.ui:ui:1.7.0",
+            "androidx.compose.ui:ui-android:1.7.0",
+            "androidx.compose.ui:ui-graphics:1.7.0",
+            "androidx.compose.ui:ui-graphics-android:1.7.0",
+            "androidx.compose.ui:ui-geometry:1.7.0",
+            "androidx.compose.ui:ui-geometry-android:1.7.0",
+            "androidx.compose.ui:ui-text:1.7.0",
+            "androidx.compose.ui:ui-text-android:1.7.0",
+            "androidx.compose.ui:ui-unit:1.7.0",
+            "androidx.compose.ui:ui-unit-android:1.7.0",
+            "androidx.compose.ui:ui-util:1.7.0",
+            "androidx.compose.ui:ui-util-android:1.7.0",
+            "androidx.compose.ui:ui-tooling:1.7.0",
+            "androidx.compose.ui:ui-tooling-android:1.7.0",
+            "androidx.compose.ui:ui-tooling-preview:1.7.0",
+            "androidx.compose.ui:ui-tooling-preview-android:1.7.0",
+            "androidx.compose.ui:ui-tooling-data:1.7.0",
+            "androidx.compose.ui:ui-tooling-data-android:1.7.0",
+            "androidx.compose.ui:ui-test-manifest:1.7.0",
+            "androidx.compose.ui:ui-test:1.7.0",
+            "androidx.compose.ui:ui-test-android:1.7.0",
+            "androidx.compose.ui:ui-test-junit4:1.7.0",
+            "androidx.compose.ui:ui-test-junit4-android:1.7.0",
+            "androidx.compose.runtime:runtime:1.7.0",
+            "androidx.compose.runtime:runtime-android:1.7.0",
+            "androidx.compose.runtime:runtime-saveable:1.7.0",
+            "androidx.compose.runtime:runtime-saveable-android:1.7.0",
+            "androidx.compose.animation:animation:1.7.0",
+            "androidx.compose.animation:animation-android:1.7.0",
+            "androidx.compose.animation:animation-core:1.7.0",
+            "androidx.compose.animation:animation-core-android:1.7.0",
+            "androidx.compose.foundation:foundation:1.7.0",
+            "androidx.compose.foundation:foundation-android:1.7.0",
+            "androidx.compose.foundation:foundation-layout:1.7.0",
+            "androidx.compose.foundation:foundation-layout-android:1.7.0",
+        )
+    }
+}
+
 // Roborazzi (hardening ticket 01) - baselines are committed, one flat directory per the ticket's
 // own instruction ("baselines committed under app/src/test/snapshots/"). Never run the record task
 // from CI or a git hook (ticket item 5, and app/src/test/snapshots/README.md's own instruction) -
@@ -277,6 +366,20 @@ dependencies {
 
     // Custom wake word ("hey <name>"), ported from Midnight AI.
     implementation(libs.vosk.android)
+
+    // supabase-kt (backend-erp Phase 1, .scratch/backend-erp/issues/05-migration-path.md).
+    // BOM first so auth-kt/postgrest-kt below resolve to ONE release with no version.ref of
+    // their own - see gradle/libs.versions.toml's supabaseKt comment for why 3.7.0 and for the
+    // group-vs-package-name gotcha.
+    implementation(platform(libs.supabase.bom))
+    implementation(libs.supabase.auth)
+    implementation(libs.supabase.postgrest)
+    implementation(libs.kotlinx.serialization.json)
+    // Ktor needs an explicit engine on Android rather than relying on ServiceLoader
+    // auto-detection (undocumented/unreliable under R8 - the debug build here never runs R8, but
+    // an explicit engine costs nothing and removes the question). See
+    // backend/SupabaseClientProvider.kt for where this is wired in.
+    implementation(libs.ktor.client.okhttp)
 
     // Media3 session (`.scratch/android-auto/map.md`). CLAUDE.md §3 lists Media3 as deliberately
     // dropped at the pivot - it is back for the Android Auto media surface only

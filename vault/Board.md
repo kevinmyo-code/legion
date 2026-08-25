@@ -21,6 +21,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
 | [[.scratch/hardening/map\|hardening]] | [[03-pre-migration-backup\|03]] | task | Automatic backup before any schema migration |
 | [[.scratch/hardening/map\|hardening]] | [[05-ledger-gate-defects\|05]] | task | Three ledger gate defects found while grounding backend-erp ticket 03 |
+| [[.scratch/hardening/map\|hardening]] | [[06-kotlin-bump-and-compose-pin\|06]] | task | Build debt from backend-erp Phase 1: supabase-kt held back, Compose force-pinned |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
@@ -119,7 +120,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/goal-plans/map\|goal-plans]] | 9 | 8 | [[.scratch/goal-plans/goal-plans.canvas\|open]] |
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 33 | 11 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
-| [[.scratch/hardening/map\|hardening]] | 5 | 2 | [[.scratch/hardening/hardening.canvas\|open]] |
+| [[.scratch/hardening/map\|hardening]] | 6 | 3 | [[.scratch/hardening/hardening.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |

@@ -27,11 +27,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.LaunchedEffect
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiKeyValidator
 import com.kevin.legion.ai.KeyCheck
+import com.kevin.legion.backend.MembershipResult
+import com.kevin.legion.backend.SignInResult
+import com.kevin.legion.backend.SupabaseAuth
+import com.kevin.legion.backend.SupabaseConfig
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -73,6 +79,76 @@ fun KeyScreen(onBack: () -> Unit) {
     var checking by remember { mutableStateOf(false) }
     var showSaveAnyway by remember { mutableStateOf(false) }
     var hasKey by remember { mutableStateOf(GeminiKeyProvider.hasKey()) }
+
+    // --- Supabase project + household sign-in (backend-erp Phase 1) ---
+    // Same paste-and-verify shape as the Gemini key above, one screen per ticket 05's Kevin
+    // call ("one BYO screen, alongside the Gemini key") rather than a second settings route.
+    var supabaseUrlText by remember { mutableStateOf(SupabaseConfig.url(context)) }
+    var supabaseAnonKeyText by remember { mutableStateOf(SupabaseConfig.anonKey(context)) }
+    var supabaseConfigStatus by remember { mutableStateOf<String?>(null) }
+    var supabaseConfigured by remember { mutableStateOf(SupabaseConfig.isConfigured(context)) }
+
+    var emailText by remember { mutableStateOf("") }
+    var passwordText by remember { mutableStateOf("") }
+    var signInChecking by remember { mutableStateOf(false) }
+    var signInStatus by remember { mutableStateOf<String?>(null) }
+    var signInStatusIsError by remember { mutableStateOf(false) }
+    // "unknown" until the first membership check returns - an unread state must never render as
+    // any of the other three (CLAUDE.md sec 1, "unreadable and empty are different sentences").
+    var householdState by remember { mutableStateOf<MembershipResult?>(null) }
+
+    val supabaseAuth = remember { SupabaseAuth(context) }
+
+    suspend fun refreshHouseholdState() {
+        householdState = if (SupabaseConfig.isConfigured(context)) supabaseAuth.isHouseholdMember() else null
+    }
+
+    LaunchedEffect(supabaseConfigured) {
+        if (supabaseConfigured) refreshHouseholdState()
+    }
+
+    fun saveSupabaseConfig() {
+        val saved = SupabaseConfig.save(context, supabaseUrlText, supabaseAnonKeyText)
+        supabaseConfigStatus = if (saved) {
+            "Saved."
+        } else {
+            "That didn't look like a Supabase project URL and anon key - check both fields."
+        }
+        supabaseConfigured = SupabaseConfig.isConfigured(context)
+    }
+
+    fun signIn() {
+        signInChecking = true
+        scope.launch {
+            when (val result = supabaseAuth.signIn(emailText, passwordText)) {
+                SignInResult.Success -> {
+                    signInStatus = "Signed in."
+                    signInStatusIsError = false
+                    passwordText = ""
+                    refreshHouseholdState()
+                }
+                is SignInResult.SucceededButNotPersisted -> {
+                    signInStatus = result.message
+                    signInStatusIsError = true
+                    passwordText = ""
+                    refreshHouseholdState()
+                }
+                is SignInResult.InvalidCredentials -> {
+                    signInStatus = result.message
+                    signInStatusIsError = true
+                }
+                is SignInResult.NetworkUnreachable -> {
+                    signInStatus = result.message
+                    signInStatusIsError = true
+                }
+                SignInResult.NotConfigured -> {
+                    signInStatus = "Save the project URL and anon key above first."
+                    signInStatusIsError = true
+                }
+            }
+            signInChecking = false
+        }
+    }
 
     fun verify() {
         showSaveAnyway = false
@@ -227,6 +303,130 @@ fun KeyScreen(onBack: () -> Unit) {
                         color = if (statusIsError) sem.estimated else sem.faint,
                         modifier = Modifier.padding(horizontal = 12.dp),
                     )
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                // --- Household (Supabase) ---
+                Text(
+                    "Household",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                Text(
+                    "LEGION talks to YOUR OWN Supabase project directly, on your own URL and " +
+                        "key - no server I run. The anon key is not a secret; it is public by " +
+                        "design and safe to paste here.",
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                Spacer(Modifier.height(6.dp))
+
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                    OutlinedTextField(
+                        value = supabaseUrlText,
+                        onValueChange = { supabaseUrlText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrectEnabled = false,
+                            keyboardType = KeyboardType.Uri,
+                        ),
+                        label = { Text("Project URL (https://<ref>.supabase.co)", style = LegionType.stamp) },
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = supabaseAnonKeyText,
+                        onValueChange = { supabaseAnonKeyText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrectEnabled = false,
+                            keyboardType = KeyboardType.Ascii,
+                        ),
+                        label = { Text("Anon key", style = LegionType.stamp) },
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = ::saveSupabaseConfig) {
+                            Text("SAVE", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    supabaseConfigStatus?.let {
+                        Text(it, style = LegionType.stamp, color = sem.faint)
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                    Text(
+                        when (val state = householdState) {
+                            null -> if (supabaseConfigured) "Checking..." else "Not configured yet."
+                            MembershipResult.Member -> "Signed in and on the household roster."
+                            is MembershipResult.NotAMember -> state.message
+                            MembershipResult.NotSignedIn -> "Signed out."
+                            is MembershipResult.NetworkUnreachable -> state.message
+                            MembershipResult.NotConfigured -> "Not configured yet."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when (householdState) {
+                            MembershipResult.Member -> sem.faint
+                            null -> sem.faint
+                            else -> sem.estimated
+                        },
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = emailText,
+                        onValueChange = { emailText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrectEnabled = false,
+                            keyboardType = KeyboardType.Email,
+                        ),
+                        label = { Text("Email", style = LegionType.stamp) },
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = passwordText,
+                        onValueChange = { passwordText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrectEnabled = false,
+                            keyboardType = KeyboardType.Password,
+                        ),
+                        label = { Text("Password", style = LegionType.stamp) },
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(
+                            onClick = ::signIn,
+                            enabled = !signInChecking && emailText.isNotBlank() && passwordText.isNotBlank(),
+                        ) {
+                            Text(
+                                if (signInChecking) "SIGNING IN" else "SIGN IN",
+                                style = LegionType.stamp,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    signInStatus?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (signInStatusIsError) sem.estimated else sem.faint,
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(24.dp))
