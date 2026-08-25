@@ -10,7 +10,14 @@ tags: [adr]
 
 ## Standing
 
-LOCKED. Not reopenable without Kevin.
+LOCKED, and still binding in full. **NARROWED 2026-08-25 by
+[[0038-byo-supabase-is-the-system-of-record]]: not superseded.** A household now runs its own
+Supabase project, which is a backend by the letter of the decision below but not by its principle.
+What this ADR forbids is a service Kevin has to run, pay for, and keep alive for other people. BYO
+Supabase is the same shape as the BYO Gemini key: Kevin operates nothing, and a stranger who clones
+the repo stands up their own project. The clause "no Kevin-hosted anything" is untouched. Read the
+Decision below as amended on one point only, that data also lives in the household's own Postgres,
+never in one of Kevin's.
 
 ## Context
 

@@ -25,7 +25,6 @@ Format and the test for whether something deserves an ADR:
 | 0007 | [[0007-money-as-long-cents\|Money is Long cents, never Double]] | locked | 2026-07-30 | - |
 | 0008 | [[0008-estimates-are-not-facts\|Anything the document does not state is an estimate]] | locked | 2026-07-30 | 2026-08-02 |
 | 0009 | [[0009-provisional-unreconciled-tier\|A source with no anchor may be stored provisionally, never as fact]] | locked | 2026-08-06 | - |
-| 0010 | [[0010-drive-appdatafolder-only-store\|Drive appDataFolder is the only store]] | locked | 2026-07-30 | - |
 | 0011 | [[0011-ledger-sync-union-and-lww\|Ledger tables sync; the append-only blocker was false]] | accepted | 2026-08-02 | - |
 | 0012 | [[0012-saf-folder-access\|Statement folder access is SAF, not a Drive scope]] | accepted | 2026-08-01 | - |
 | 0013 | [[0013-ingested-file-ledger\|The file record is work avoidance, not a correctness barrier]] | accepted | 2026-08-02 | - |
@@ -50,7 +49,8 @@ Format and the test for whether something deserves an ADR:
 | 0034 | [[0034-own-recommendation-engine\|Music discovery is built in-house; Spotify's is unavailable]] | accepted | 2026-08-19 | - |
 | 0035 | [[0035-every-voice-capability-has-a-hands-path\|Every voice capability has a non-voice path]] | accepted | 2026-08-22 | - |
 | 0036 | [[0036-platform-encryption-accepted\|Platform encryption accepted; SQLCipher rejected]] | accepted | 2026-08-24 | - |
-| 0037 | [[0037-the-aspect-engine-is-the-spine\|The aspect engine is the spine]] | accepted | 2026-08-24 | - |
+| 0038 | [[0038-byo-supabase-is-the-system-of-record\|A BYO Supabase project is the system of record]] | accepted | 2026-08-25 | - |
+| 0039 | [[0039-per-aspect-typed-tables\|Per-aspect typed tables; the generic engine retires]] | accepted | 2026-08-25 | - |
 
 ## Superseded
 
@@ -59,5 +59,7 @@ Kept with their original text. What was believed before, and why it changed.
 | # | Decision | Superseded by |
 |---|---|---|
 | 0005 | [[0005-no-llm-extraction\|No LLM extraction from financial documents]] | [[0006-reconciliation-gate\|0006-reconciliation-gate]] |
+| 0010 | [[0010-drive-appdatafolder-only-store\|Drive appDataFolder is the only store]] | [[0038-byo-supabase-is-the-system-of-record\|0038-byo-supabase-is-the-system-of-record]] |
 | 0022 | [[0022-design-language-instrument\|Design language: Instrument on Material 3's machinery]] | [[0023-design-language-mission-control\|0023-design-language-mission-control]] |
 | 0024 | [[0024-no-sentience-claims\|The assistant must never claim feelings or realness]] | [[0025-warmth-allowed-compulsion-banned\|0025-warmth-allowed-compulsion-banned]] |
+| 0037 | [[0037-the-aspect-engine-is-the-spine\|The aspect engine is the spine]] | [[0039-per-aspect-typed-tables\|0039-per-aspect-typed-tables]] |

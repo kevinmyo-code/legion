@@ -1,7 +1,8 @@
 ---
-status: locked
+status: superseded
 decided: 2026-07-30
 decided-by: Kevin
+superseded-by: [0038-byo-supabase-is-the-system-of-record]
 source: "CLAUDE.md §2"
 tags: [adr]
 ---
@@ -10,7 +11,12 @@ tags: [adr]
 
 ## Standing
 
-LOCKED. Not reopenable without Kevin.
+SUPERSEDED 2026-08-25 by [[0038-byo-supabase-is-the-system-of-record]]. Original text kept below.
+
+It was LOCKED, and Kevin reopened it himself on 2026-08-25: the backend is the ERP, the phone is one
+consumer among several, and Drive is no longer the store. Drive keeps exactly one job, carrying
+`DatabaseSnapshot` backups. Note the reason this decision existed is unchanged and still binding
+through [[0002-no-hosted-backend]]: nobody runs a server for anyone else.
 
 ## Context
 

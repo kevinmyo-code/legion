@@ -1,7 +1,8 @@
 ---
-status: accepted
+status: superseded
 decided: 2026-08-24
 decided-by: Kevin
+superseded-by: [0039-per-aspect-typed-tables]
 source: "[[decisions#2026-08-24 - The cutover arc: five decisions in one day]]"
 tags: [adr]
 ---
@@ -9,6 +10,10 @@ tags: [adr]
 # 37. The aspect engine is the spine
 
 ## Standing
+
+SUPERSEDED 2026-08-25 by [[0039-per-aspect-typed-tables]], one day after it was accepted. Original
+text kept below, and it still describes the RUNNING CODE: the engine remains the spine until the
+migration retires it aspect by aspect. Superseded in direction, not yet in fact.
 
 ACCEPTED and BUILT, device-verified. `engine/RecordStore.kt` is the single write door for every
 domain record in the app; every aspect (fleet, ledger, pantry, notes, places, dates) reads and
