@@ -4,10 +4,10 @@ ticket: "05"
 title: "The migration path: 569 records to Postgres without a bad day"
 type: grilling
 status: open
-status-detail: "Now owns three retirements handed down by ticket 01; still blocked on 02/03"
+status-detail: "Owns three retirements handed down by ticket 01; blocked only on 03 now"
 blockers: ["01", "02", "03"]
 blocked-by: ["[[01-what-the-backend-owns]]", "[[02-auth-and-identity]]", "[[03-the-gate-server-side]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---

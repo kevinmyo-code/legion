@@ -5,7 +5,7 @@ charted: 2026-08-25
 charted-by: "Kevin + Fable"
 effort: "`.scratch/backend-erp/`"
 tickets: 6
-open: 6
+open: 3
 status: open
 tags: [map]
 ---
@@ -47,6 +47,18 @@ strictly wider); local-Room-primary (Room becomes a consumer cache); the xlsx mi
   manual resume) - a daily keep-alive defeats it, Pro at $25/mo removes it and adds backups. The
   free tier has no backups, so the xlsx mirror carries recovery. supabase-kt is mature; gate
   commits map to atomic RPCs; Google OAuth repeats the SHA-1 clone-and-run friction.
+
+- [What the backend owns](issues/01-what-the-backend-owns.md) - eleven rulings. Postgres gets
+  per-aspect REAL tables and the phone goes typed with them, so the generic engine retires
+  (9,518 production + 6,367 test lines, but it retired zero legacy tables, so most of the Room-side
+  work is repointing writes back). Todos merge into Dates events. Google Calendar is dropped, in a
+  binding order: widen the importer first, then cut. Writes direct with no offline queue; reads
+  cache-first. All sequencing deferred to ticket 05.
+- [Auth and identity](issues/02-auth-and-identity.md) - email + password (Google OAuth needs an
+  SHA-1-keyed client id; magic link rides a 2-msg/hour not-for-production email service). Household
+  RLS, all users see all rows, no roles ever. Both accounts made in the dashboard, no signup or
+  invite flow. Personas and memories bind to the user, not the device. The session lives in
+  KeyVault and fails closed.
 
 ## Not yet specified
 

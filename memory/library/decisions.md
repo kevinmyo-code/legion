@@ -4547,3 +4547,127 @@ on tap yet (zero callers). Two ADRs recorded the standing consequences:
 SQLCipher - threat model is two adults, no untrusted third party, and SQLCipher would tax the
 pulled-DB debugging workflow this project has repeatedly relied on to find real bugs) and
 [[0037-the-aspect-engine-is-the-spine]] (the cutover arc's standing architectural outcome).
+
+## 2026-08-25 - Backend-ERP grilling: schema, writes, reads, and the engine retirement ([[01-what-the-backend-owns]], RESOLVED)
+
+Eleven rulings from Kevin's answers to the five root questions. Measured cost inventory assembled
+(9,518 production + 6,367 test lines of engine code retire). One critical finding: the engine
+retired zero legacy tables, so "the phone goes typed" is largely repointing writes back to
+typed tables that already exist. Postgres DDL work is separate and not made cheaper by this finding.
+
+1. **Supabase is the ONE master.** The original calendar-projection idea (todos projected into
+   Google Calendar) was superseded: LEGION keeps its own calendar. The Dates aspect moves to
+   Supabase with everything else; every consumer renders its own view over the agenda query. Google
+   Calendar demotes to a one-way import feed.
+
+2. **Undated todos get `due=tomorrow` AS AN INFERRED FACT**, tagged `source:inferred`, rendered as
+   "showing tomorrow (no date set)", rolls forward silently, never goes overdue. Only stated dates
+   may nag. (The reconciliation gate's provenance discipline applied to defaults.)
+
+3. **Calendar-delete semantics: DISSOLVED.** Kevin will not edit or delete in Google Calendar;
+   with the own-calendar ruling there is no projection to edit.
+
+4. **Todos become Dates EVENTS (Kevin, 2026-08-25).** Option chosen over recommending Notes records
+   with `dueAt`. A due thing is a dated thing; one dated record type, not two. This is a TYPE MERGE:
+   21 Note-Item fields collapse into 7 Event fields. **Accepted cost:** recurrence, skips,
+   place-triggers, tick/completion history all rebuild on the event type, and existing todos need
+   migration.
+
+5. **Google Calendar is DROPPED ENTIRELY (Kevin, 2026-08-25).** Not demoted to import feed—removed.
+   Supersedes ruling 1's "import feed" clause. **Accepted cost:** anything arriving only by import
+   (class schedules, the known case) becomes manual entry. The LEGION::v1 description blocks'
+   machine-fields-reach-the-model discipline survives; its only consumer does not.
+
+6. **Postgres gets PER-ASPECT REAL TABLES (Kevin, 2026-08-25).** Chosen over the recommended
+   "move the generic shape as-is" and over generic-plus-references-side-table. Reasoning that won:
+   typed tables put enforcement (FKs/CHECKs/triggers) where it cannot be bypassed by a future
+   consumer. **Accepted cost:** field defs become migrations, a new aspect needs a deploy rather
+   than a metadata row.
+
+7. **The phone goes typed too; the generic engine RETIRES (Kevin, 2026-08-25).** Follow-on fork
+   from ruling 6: with typed tables server-side, either a per-aspect mapper translates to the
+   phone's generic shape, or both ends share one shape. Kevin chose one shape end to end. Room
+   mirrors the per-aspect tables; `records`/`record_types`/`field_defs`, generated forms, generated
+   validation, computed-field machinery all retire with it. **Accepted cost, largest in this map:**
+   this undoes the 2026-08-24 engine cutover, and adding an aspect becomes a Room migration plus a
+   Postgres migration plus hand-written UI. Nothing is deleted until ticket 05 (migration path)
+   sequences the order - a retirement with no sequenced path is how data gets lost.
+
+8. **Write path: DIRECT WRITE, no local queue (Kevin, 2026-08-25).** Chosen over offline-queue-and-push.
+   Writes go straight to Postgres via PostgREST/RPC; failed writes report as failed rather than
+   silently held. **Coheres with ruling 9:** the server is the only writer of truth, so the gate
+   runs in exactly one place and no queued row bypasses it. **Accepted cost:** no offline capture.
+   A dictated note with no signal is not saved. The free tier's 7-day inactivity pause (research
+   ticket 06) becomes hard outage rather than degraded mode; keep-alive becomes load-bearing.
+
+9. **Read path: CACHE-FIRST, refresh in background (Kevin, 2026-08-25).** Room renders immediately;
+   network reconciles behind it. **Consequence:** money figures and reconciliation totals can
+   briefly be stale. CLAUDE.md §4 rule 5 + outcome-verb rule mean a stale figure must carry
+   visible "as of", never bare. Room is written on server ACK, never ahead of it - same door
+   discipline `RecordStore` has today.
+
+10. **Phone-only residue (Kevin, 2026-08-25).** Four things never leave the device: OBD live state
+    (ephemeral, high-frequency); wake word and raw audio buffer; photo files (only extracted records
+    sync); widget layouts and per-device dismissals (`widget_instances`, `muted_reminders` - already
+    deliberately local per engine ruling).
+
+11. **Google exit is WIDENING ONE-TIME IMPORT, then cut (Kevin, 2026-08-25).** Binding order: widen
+    the Dates `Event` type with description/location/allDay fields, parse the LEGION::v1 block into
+    real fields, run one import over an unbounded window, verify it, **only then** remove the Google
+    path. The blocks carry class metadata (course, source, conflict, status) authored IN Google but
+    never by LEGION. They reach only the `read_calendar` voice tool today and are never stored.
+    Cutting Google first deletes them permanently. Side benefit: metadata finally reaches screens
+    and widgets instead of only voice.
+
+## 2026-08-25 - Backend-ERP grilling: Supabase Auth and household RLS ([[02-auth-and-identity]], RESOLVED)
+
+Five rulings on sign-in, visibility, onboarding, personas and session storage. **Correction noted:**
+the ticket premise said "the app already has Google sign-in plumbing for Drive." It does not.
+`sync/DriveAuth.kt` uses the Google Identity Authorization API, not GoogleSignIn; it stores no
+token, no account, no email - only the boolean `sync_enabled`. Google sign-in would require build
+from scratch, removing the main argument in its favour.
+
+1. **Sign-in is EMAIL + PASSWORD (Kevin, 2026-08-25).** Chosen over Google OAuth and magic link,
+   both documented traps. Google OAuth needs two Google Cloud OAuth client IDs, one SHA-1-keyed—the
+   same trap already open against Drive (clone-and-run fails). Magic link depends on Supabase's
+   built-in email: 2 messages/hour, "not meant for production use", no SLA (research ticket 06,
+   section 7b, traced 2026-08-25). Email+password touches neither. Clone-and-run needs only
+   Supabase URL and anon key; rare password resets fit inside 2/hour.
+
+2. **Household visibility: ALL users see ALL rows (Kevin, 2026-08-25).** One `household_members`
+   table; every data table gets RLS checking it via `auth.uid()` through a `security definer` helper
+   (the recursion fix Supabase documents). **No roles, no tenancy.** This is CLAUDE.md §1's trust
+   model made explicit. **Accepted cost:** no privacy between the two of you; a note is shared.
+
+3. **Both accounts created in the SUPABASE DASHBOARD; no in-app signup, no invite flow (Kevin,
+   2026-08-25).** Two rows added to `household_members` by hand, once. Zero app code—no signup
+   screen, no household code, no invite email. **Accepted cost:** adding a third person later is a
+   dashboard job, not a feature. Consistent with BYO-everything: standing up the project is already
+   manual setup.
+
+4. **Personas and memories BIND TO THE USER ACCOUNT (Kevin, 2026-08-25).** Today a profile is a
+   named persona + clock; there is no human-user entity in the app. That changes: Alfred is Kevin's
+   and Dorothy is his wife's, and the persona follows each user to the laptop instead of being
+   whatever that device last picked. Memories gain a user tag so the assistant knows who it is
+   speaking to and who said what. Required by cross-interface-memory (already on the map) and by
+   CLAUDE.md §7 (recalling one person's statement as the other's is unfalsifiable-memory violation).
+   **Visibility model unchanged:** ruling 2 still means both can SEE both sets; tagging is about
+   attribution, not access. **Install-scoped secrets stay install-scoped:** Gemini key, Spotify
+   tokens must never become user-scoped or ride along in synced rows.
+
+5. **The Supabase session lives in KeyVault, but FAILS CLOSED (Kevin, 2026-08-25).** Reuse the
+   existing AES/GCM-under-Keystore vault, with one deliberate departure: **no plaintext fallback**.
+   `CompanionProfile.kt:345` currently stores raw plaintext when encryption fails (head units with
+   flaky keymaster had to degrade). Phone-only kills that reason; a refresh token is a standing
+   credential to all household data. **If Keystore fails, store nothing and require sign-in again.**
+   Copy the Spotify triple shape (`saveSpotifyTokens`/`clearSpotifyTokens`, `CompanionProfile.kt`):
+   access token, refresh token, expiry, clear on sign-out. Supabase URL and anon key are NOT
+   secrets; they are BYO runtime config entered like the Gemini key, not baked into BuildConfig.
+
+## Research update: 2026-08-25 correction filed to `research/06-supabase-feasibility.md`
+
+New section 7b documents the built-in email service limits: 2 messages/hour, "not meant for
+production use", no SLA on delivery or uptime. Source: supabase.com/docs/guides/auth/auth-smtp
+(fetched 2026-08-25). This limit makes magic-link signup unreliable for clone-and-run setup,
+driving ticket 02's ruling 1 (email+password instead). The analysis is already in the ticket
+resolution; the research file now carries the traced source for future reference.

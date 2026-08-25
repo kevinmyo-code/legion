@@ -16,7 +16,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[02-semantic-recall\|02]] | task | Semantic recall: embeddings in a Room column |
 | [[.scratch/ai-craft/map\|ai-craft]] | [[03-durable-jobs\|03]] | task | Durable jobs: agent work that survives process death |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
-| [[.scratch/backend-erp/map\|backend-erp]] | [[02-auth-and-identity\|02]] | grilling | Auth: two users now, more later, no roles ever |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[03-the-gate-server-side\|03]] | grilling | The reconciliation gate when the truth lives remote |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[04-mirror-and-cache-fate\|04]] | grilling | The xlsx mirror and the local cache in a backend world |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
@@ -74,7 +73,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What | Waiting on |
 |---|---|---|---|---|
-| [[.scratch/backend-erp/map\|backend-erp]] | [[05-migration-path\|05]] | grilling | The migration path: 569 records to Postgres without a bad day  waiting on [[02-auth-and-identity\|02]], [[03-the-gate-server-side\|03]] |
+| [[.scratch/backend-erp/map\|backend-erp]] | [[05-migration-path\|05]] | grilling | The migration path: 569 records to Postgres without a bad day  waiting on [[03-the-gate-server-side\|03]] |
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
@@ -111,7 +110,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 4 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
-| [[.scratch/backend-erp/map\|backend-erp]] | 6 | 4 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
+| [[.scratch/backend-erp/map\|backend-erp]] | 6 | 3 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |

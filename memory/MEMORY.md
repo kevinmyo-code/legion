@@ -3,7 +3,7 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
-## START HERE - 2026-08-25 (late) - THE BACKEND-ERP PIVOT, TICKET 01 RESOLVED
+## START HERE - 2026-08-25 (late) - THE BACKEND-ERP PIVOT, TICKETS 01 + 02 RESOLVED
 
 **Kevin pivoted: the backend IS the ERP.** Supabase (BYO project per household, never
 Kevin-hosted) becomes the system of record; the Android app becomes ONE consumer; a Windows/laptop
@@ -40,11 +40,26 @@ largely REPOINTING WRITES BACK to typed tables that still exist, not building a 
 nothing. Ticket 05 must reconcile-and-repoint per aspect (legacy tables are ~1 day stale for
 whatever cut over on 08-24), never blind-switch.
 
-**RESUME POINT: ticket 05 (migration path)** - it now owns all three retirements (engine, the
-Item-into-Event merge, the Google removal) and their ordering; still blocked on 02/03. Tickets
-02/03/04 (auth, the gate server-side, mirror/cache fate) are the unblocked work. Ticket 04 should
-read ticket 01's footprint section first: the mirror is entirely generic-shape dependent, so
-ruling 7 collapses its `_definitions` layer.
+**Ticket 02 (auth) is RESOLVED too - five rulings.** Sign-in is **email + password**: Google OAuth
+needs two client IDs with one keyed to the SHA-1 cert (the trap already open against Drive), and
+magic link rides Supabase's built-in email at **2 msg/hour, "not meant for production", no delivery
+SLA** (now recorded as §7b of the feasibility research). Household RLS, all users see all rows, no
+roles ever. **Both accounts are made in the dashboard** - no signup screen, no invite flow, zero app
+code. **Personas and memories bind to the USER**, not the device, and memories gain a user tag for
+attribution (CLAUDE.md §7: recalling her statement as his is the unfalsifiable-memory failure).
+The Supabase session goes in KeyVault but **fails closed** - no plaintext fallback, unlike every
+other secret slot, because phone-only killed the head-unit reason for it.
+
+**Premise correction worth carrying:** the app has **no Google sign-in**. `sync/DriveAuth.kt` is the
+Authorization API only - one `drive.appdata` scope, no token, no account, no email stored; sign-out
+is a boolean. There is no human-user entity anywhere in the app, and no table has a human owner
+column. Ticket 02's own question text claimed otherwise and was wrong.
+
+**RESUME POINT: ticket 03 (the gate server-side)**, then 04 (mirror/cache fate). Ticket 05
+(migration path) owns all three retirements - engine, the Item-into-Event merge, the Google removal
+- and their ordering; still blocked on 03. Ticket 04 should read ticket 01's footprint section
+first: the mirror is entirely generic-shape dependent, so ruling 7 collapses its `_definitions`
+layer.
 
 Also landed 2026-08-25:
 - **Calendar description blocks merged** (LEGION::v1 sentinel: machine fields reach the model,

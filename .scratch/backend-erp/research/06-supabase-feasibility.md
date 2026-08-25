@@ -140,6 +140,26 @@ https://supabase.com/docs/guides/auth/social-login/auth-google:
   step, not a blocker, but it does not disappear. Alternative that avoids Google Cloud entirely:
   Supabase email/password or magic-link auth, zero Google config. Traced from same doc family.
 
+## 7b. Auth email deliverability (added 2026-08-25, for ticket 02)
+
+https://supabase.com/docs/guides/auth/auth-smtp - the built-in email service, which magic-link and
+email-confirmation flows depend on:
+- **"2 messages per hour"**, plus "significant rate-limits that can change over time".
+- **"not meant for production use"**, with "no SLA guarantee on message delivery or uptime".
+  Supabase names its intended uses as exploring Auth and testing email templates.
+- Raising it requires a **custom SMTP server** (Resend, AWS SES, Postmark, etc.) configured in the
+  Authentication settings; custom SMTP then starts at 30 messages/hour, adjustable.
+
+**Consequence for ticket 02:** magic link is NOT the low-friction option it appears to be. It
+either depends on a service with no delivery guarantee, or it adds a THIRD BYO signup (an email
+provider) on top of Supabase and Gemini. Two adults signing in rarely might live inside 2/hour,
+but standing up two phones and a laptop on the same evening would not, and a magic link that
+silently fails to arrive is an unrecoverable sign-in.
+
+**Email + password sidesteps both traps**: no Google Cloud OAuth clients and no SHA-1 (unlike §7),
+and no email on the hot path (unlike magic link) - the built-in 2/hour service is then only ever
+touched by a password reset, which is rare enough to fit inside it.
+
 ## Verdict
 
 The free tier fits a two-user household ERP on every hard number: 500 MB Postgres dwarfs the
@@ -171,5 +191,7 @@ budget Pro only if a silent pause ever actually bites.
   self-bootstrap over PostgREST impossible: **reasoned**.
 - Realtime Kotlin API and per-table enablement: **traced** (Kotlin reference). Doze killing the
   socket: **reasoned** from Android platform behaviour.
+- Built-in email service at 2 msg/hour, not-for-production, custom-SMTP remedy: **traced**
+  (supabase.com/docs/guides/auth/auth-smtp, fetched 2026-08-25).
 - Google OAuth dual-client-ID requirement and signInWithIdToken flow: **traced** (Supabase
   Google auth guide). SHA-1 clone-and-run friction parallel to the Drive finding: **reasoned**.
