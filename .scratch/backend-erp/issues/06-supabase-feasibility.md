@@ -5,10 +5,10 @@ title: "Supabase feasibility on the real free tier"
 type: research
 status: open
 status-detail: ""
-blockers: ["01"]
-blocked-by: ["[[01-what-the-backend-owns]]"]
-open-blockers: 1
-ready: false
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # Supabase feasibility on the real free tier

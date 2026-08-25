@@ -5,10 +5,10 @@ title: "The migration path: 569 records to Postgres without a bad day"
 type: grilling
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
-open-blockers: 0
-ready: true
+blockers: ["01", "02", "03"]
+blocked-by: ["[[01-what-the-backend-owns]]", "[[02-auth-and-identity]]", "[[03-the-gate-server-side]]"]
+open-blockers: 3
+ready: false
 tags: [ticket]
 ---
 # The migration path: 569 records to Postgres without a bad day

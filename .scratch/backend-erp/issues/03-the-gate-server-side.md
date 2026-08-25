@@ -5,10 +5,10 @@ title: "The reconciliation gate when the truth lives remote"
 type: grilling
 status: open
 status-detail: ""
-blockers: []
-blocked-by: []
-open-blockers: 0
-ready: true
+blockers: ["01"]
+blocked-by: ["[[01-what-the-backend-owns]]"]
+open-blockers: 1
+ready: false
 tags: [ticket]
 ---
 # The reconciliation gate when the truth lives remote

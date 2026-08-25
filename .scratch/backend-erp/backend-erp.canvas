@@ -1,50 +1,10 @@
 {
   "nodes": [
     {
-      "id": "0826d5c94a1739ed",
-      "type": "file",
-      "file": ".scratch/backend-erp/issues/02-auth-and-identity.md",
-      "x": 0,
-      "y": 0,
-      "width": 320,
-      "height": 110,
-      "color": "5"
-    },
-    {
-      "id": "b3083a1fd1bc21cb",
-      "type": "file",
-      "file": ".scratch/backend-erp/issues/03-the-gate-server-side.md",
-      "x": 0,
-      "y": 150,
-      "width": 320,
-      "height": 110,
-      "color": "5"
-    },
-    {
-      "id": "0c04d268856df37b",
-      "type": "file",
-      "file": ".scratch/backend-erp/issues/04-mirror-and-cache-fate.md",
-      "x": 0,
-      "y": 300,
-      "width": 320,
-      "height": 110,
-      "color": "5"
-    },
-    {
-      "id": "83c235c8b8170e80",
-      "type": "file",
-      "file": ".scratch/backend-erp/issues/05-migration-path.md",
-      "x": 0,
-      "y": 450,
-      "width": 320,
-      "height": 110,
-      "color": "5"
-    },
-    {
       "id": "2eba4195e46b0809",
       "type": "file",
       "file": ".scratch/backend-erp/issues/01-what-the-backend-owns.md",
-      "x": 520,
+      "x": 0,
       "y": 0,
       "width": 320,
       "height": 110,
@@ -54,47 +14,94 @@
       "id": "0bca95ed38b262fb",
       "type": "file",
       "file": ".scratch/backend-erp/issues/06-supabase-feasibility.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0826d5c94a1739ed",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/02-auth-and-identity.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "b3083a1fd1bc21cb",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/03-the-gate-server-side.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "0c04d268856df37b",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/04-mirror-and-cache-fate.md",
+      "x": 520,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "83c235c8b8170e80",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/05-migration-path.md",
       "x": 1040,
       "y": 0,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "5"
     }
   ],
   "edges": [
     {
-      "id": "5170775c9cbcc0d3",
-      "fromNode": "0826d5c94a1739ed",
-      "fromSide": "right",
-      "toNode": "2eba4195e46b0809",
-      "toSide": "left"
-    },
-    {
-      "id": "3a82a01de8866403",
-      "fromNode": "b3083a1fd1bc21cb",
-      "fromSide": "right",
-      "toNode": "2eba4195e46b0809",
-      "toSide": "left"
-    },
-    {
-      "id": "a8525a1b50dd5ee4",
-      "fromNode": "0c04d268856df37b",
-      "fromSide": "right",
-      "toNode": "2eba4195e46b0809",
-      "toSide": "left"
-    },
-    {
-      "id": "a36250b6733825d3",
-      "fromNode": "83c235c8b8170e80",
-      "fromSide": "right",
-      "toNode": "2eba4195e46b0809",
-      "toSide": "left"
-    },
-    {
-      "id": "3d65d4c3b9b5bfa9",
+      "id": "26b5ffeb30719b6a",
       "fromNode": "2eba4195e46b0809",
       "fromSide": "right",
-      "toNode": "0bca95ed38b262fb",
+      "toNode": "0826d5c94a1739ed",
+      "toSide": "left"
+    },
+    {
+      "id": "006933d693f1ae22",
+      "fromNode": "2eba4195e46b0809",
+      "fromSide": "right",
+      "toNode": "b3083a1fd1bc21cb",
+      "toSide": "left"
+    },
+    {
+      "id": "0a51bd6cdde22571",
+      "fromNode": "2eba4195e46b0809",
+      "fromSide": "right",
+      "toNode": "0c04d268856df37b",
+      "toSide": "left"
+    },
+    {
+      "id": "d9482cd9d486c90a",
+      "fromNode": "2eba4195e46b0809",
+      "fromSide": "right",
+      "toNode": "83c235c8b8170e80",
+      "toSide": "left"
+    },
+    {
+      "id": "b6230090e3a1f17b",
+      "fromNode": "0826d5c94a1739ed",
+      "fromSide": "right",
+      "toNode": "83c235c8b8170e80",
+      "toSide": "left"
+    },
+    {
+      "id": "b69faae78ad630da",
+      "fromNode": "b3083a1fd1bc21cb",
+      "fromSide": "right",
+      "toNode": "83c235c8b8170e80",
       "toSide": "left"
     }
   ]

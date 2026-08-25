@@ -5,10 +5,10 @@ title: "What the backend owns: schema, truth, and the phone's residual role"
 type: grilling
 status: open
 status-detail: ""
-blockers: ["02", "03", "04", "05"]
-blocked-by: ["[[02-auth-and-identity]]", "[[03-the-gate-server-side]]", "[[04-mirror-and-cache-fate]]", "[[05-migration-path]]"]
-open-blockers: 4
-ready: false
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # What the backend owns: schema, truth, and the phone's residual role
