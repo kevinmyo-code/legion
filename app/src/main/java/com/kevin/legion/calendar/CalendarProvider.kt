@@ -94,6 +94,17 @@ object CalendarProvider {
          * `>= CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR` (500) is writable. Defaults to
          * CONTRIBUTOR so existing fixtures/call sites read as writable unless they say otherwise. */
         val calendarAccessLevel: Int = CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR,
+        /** The event's own `DESCRIPTION`, verbatim and untrimmed, empty when the column is null.
+         * `Instances` inherits it from `EventsColumns` exactly as [recurring]'s `RRULE`/`RDATE` do,
+         * so this costs one more projection column and no second query. Carried because a
+         * description is where an event states what a title has no room for - points, late policy,
+         * and (see `read_calendar`'s own doc) the provenance of the date itself. Defaults empty so
+         * every existing fixture and call site that predates this field keeps compiling, the same
+         * precedent [recurring] and [calendarAccessLevel] already set. */
+        val description: String = "",
+        /** The event's own `EVENT_LOCATION`, empty when null. Same inheritance and same
+         * default-for-compatibility reasoning as [description]. */
+        val location: String = "",
     )
 
     /**
@@ -185,6 +196,8 @@ object CalendarProvider {
             CalendarContract.Instances.RRULE,
             CalendarContract.Instances.RDATE,
             CalendarContract.Instances.CALENDAR_ACCESS_LEVEL,
+            CalendarContract.Instances.DESCRIPTION,
+            CalendarContract.Instances.EVENT_LOCATION,
         )
         val out = mutableListOf<GoogleCalendarEvent>()
         context.contentResolver.query(
@@ -199,6 +212,8 @@ object CalendarProvider {
             val rruleCol = c.getColumnIndexOrThrow(CalendarContract.Instances.RRULE)
             val rdateCol = c.getColumnIndexOrThrow(CalendarContract.Instances.RDATE)
             val accessCol = c.getColumnIndexOrThrow(CalendarContract.Instances.CALENDAR_ACCESS_LEVEL)
+            val descCol = c.getColumnIndexOrThrow(CalendarContract.Instances.DESCRIPTION)
+            val locCol = c.getColumnIndexOrThrow(CalendarContract.Instances.EVENT_LOCATION)
             while (c.moveToNext()) {
                 val calendarId = c.getLong(calIdCol)
                 if (calendarId !in calendarIds) continue
@@ -212,6 +227,8 @@ object CalendarProvider {
                         allDay = c.getInt(allDayCol) != 0,
                         recurring = !c.getString(rruleCol).isNullOrBlank() || !c.getString(rdateCol).isNullOrBlank(),
                         calendarAccessLevel = c.getInt(accessCol),
+                        description = c.getString(descCol).orEmpty(),
+                        location = c.getString(locCol).orEmpty(),
                     ),
                 )
             }

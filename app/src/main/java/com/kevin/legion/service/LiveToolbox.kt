@@ -3109,7 +3109,14 @@ object LiveToolbox {
                         if (event.allDay) com.kevin.legion.util.documentDate(event.endMs)
                         else "${com.kevin.legion.util.shortDate(event.endMs)} ${com.kevin.legion.util.clockTime(event.endMs)}",
                     )
-                    .put("all_day", event.allDay),
+                    .put("all_day", event.allDay)
+                    .also { o ->
+                        val meta = CalendarReadToolLogic.structuredBlock(event.description)
+                        // JSONObject(meta), not the raw Map: Android's org.json serializes an
+                        // unknown Object via toString(), which would ship "{course=X}" not JSON.
+                        if (meta != null) o.put("meta", JSONObject(meta))
+                        if (event.location.isNotBlank()) o.put("location", event.location)
+                    },
             )
         }
         val o = JSONObject().put("success", true).put("count", arr.length()).put("events", arr)
