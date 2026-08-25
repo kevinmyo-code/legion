@@ -5,7 +5,7 @@ charted: 2026-08-25
 charted-by: "Kevin + Fable"
 effort: "`.scratch/backend-erp/`"
 tickets: 6
-open: 2
+open: 1
 status: open
 tags: [map]
 ---
@@ -69,6 +69,14 @@ strictly wider); local-Room-primary (Room becomes a consumer cache); the xlsx mi
   last-4 plus a nickname. Rows tag `LLM_RECONCILED`. Rule-7 supersession stays inside the same
   transaction. Amends CLAUDE.md §4 rule 1, and amends ticket 01's ruling 10 to let receipt photos
   reach Supabase Storage.
+
+- [Mirror and cache fate](issues/04-mirror-and-cache-fate.md) - the xlsx mirror is **retired
+  entirely** (~2,200 lines), and the grounding pass justified it: the import half never
+  round-tripped on a device, and `MirrorSyncActivity` has no in-app navigation at all. Hand-edit
+  reimport dies with it, closing a real hole where a spreadsheet could mint records. The local
+  cache is a **full replica** (569 records, roughly 285 KB). **Recovery moves to a SCHEDULED
+  `DatabaseSnapshot` with a restore actually exercised** - and the mirror must not be deleted until
+  both are done, or there is a window with no recovery at all.
 
 ## Not yet specified
 

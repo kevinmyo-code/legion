@@ -4,9 +4,9 @@ ticket: "05"
 title: "The migration path: 569 records to Postgres without a bad day"
 type: grilling
 status: open
-status-detail: "Owns three retirements handed down by ticket 01; blocked only on 03 now"
-blockers: ["01", "02", "03"]
-blocked-by: ["[[01-what-the-backend-owns]]", "[[02-auth-and-identity]]", "[[03-the-gate-server-side]]"]
+status-detail: "READY. Owns five retirements plus their order, the unruled SyncEngine, and the read-path state vocabulary"
+blockers: ["01", "02", "03", "04"]
+blocked-by: ["[[01-what-the-backend-owns]]", "[[02-auth-and-identity]]", "[[03-the-gate-server-side]]", "[[04-mirror-and-cache-fate]]"]
 open-blockers: 0
 ready: true
 tags: [ticket]
@@ -55,3 +55,36 @@ load-bearing before the first write cutover, not after.
 The pre-existing rule stands and is now sharper: **legacy-table drops wait until the whole backend
 arc is proven.** With ruling 7 in play they may not be drops at all - some of those tables are
 where the phone is going back to.
+
+
+## What tickets 03 and 04 added (2026-08-25)
+
+Two more retirements and one hard ordering constraint land here.
+
+4. **The xlsx mirror is removed** (ticket 04 rulings 1-2), roughly 2,200 lines including its tests.
+   **BINDING ORDER, and this one can lose data if ignored: the scheduled `DatabaseSnapshot` and a
+   real restore exercised on a device must BOTH be done first.** The free tier has zero backup
+   retention, the mirror was the nominated recovery story, and that nomination was already false
+   (its import path never round-tripped). Deleting the mirror before the replacement is proven
+   leaves a window with no recovery path at all.
+5. **The deterministic statement parsers are removed** (ticket 03 ruling 3), replaced by an
+   import of a CSV the user's own LLM produces. Sequence this against the three-anchor format
+   existing: there is no point retiring the parsers before anything can read their replacement.
+
+**The engine retirement should land BEFORE or WITH the commit RPC, not after** (ticket 03). The
+generic shape is precisely why the commit is expensive to move: three full-table reads filtered in
+Kotlin over JSON payloads become ordinary SQL predicates once the tables are typed, and
+`RecordStore`'s per-row fan-out disappears entirely.
+
+**A third sync mechanism is unruled and needs a call here.** `SyncEngine`/`SyncMerge` still does
+row-level merge over ~19 legacy tables through Drive `appDataFolder`, auto-triggered every five
+minutes from `service/AriaForegroundService.kt:216-223` and on `MainActivity.onResume`. Aspect-engine
+ticket 20 declared it retired for record data, **but it retired zero legacy tables, so it is still
+running today**. Ticket 04 ruled on the mirror and kept `DatabaseSnapshot`; nothing has ruled on
+`SyncEngine`. Decide it here.
+
+**Read-path work that ticket 04 identified and nobody owns yet:** ledger, pantry and fleet have no
+loading state and no error state, so an empty screen and a not-yet-loaded screen are the same
+pixels. Local latency hid that; a network round trip turns it into a false assertion, and ticket 01
+ruling 9 (cache-first reads) additionally requires a visible "as of" on money.
+`engine/WidgetDataSource.kt` is the worked example to extend, not a second vocabulary to invent.

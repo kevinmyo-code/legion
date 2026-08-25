@@ -3,7 +3,7 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
-## START HERE - 2026-08-25 (late) - THE BACKEND-ERP PIVOT, TICKETS 01/02/03 RESOLVED
+## START HERE - 2026-08-25 (late) - BACKEND-ERP: EVERY DECISION TICKET RESOLVED, 05 IS NEXT
 
 **Kevin pivoted: the backend IS the ERP.** Supabase (BYO project per household, never
 Kevin-hosted) becomes the system of record; the Android app becomes ONE consumer; a Windows/laptop
@@ -82,10 +82,31 @@ otherwise. OBD live state, wake word/audio and widget layouts stay phone-only.
 back to NEW; (3) `BofaStatementParser` has no non-empty guard and could vacuously pass a
 zero-movement statement.
 
-**RESUME POINT: ticket 04 (mirror/cache fate)** - the last open decision. Read ticket 01's footprint
-section first: the mirror is entirely generic-shape dependent, so ruling 7 collapses its
-`_definitions` layer. Then ticket 05 (migration path), which owns every retirement and its order and
-is now unblocked once 04 lands.
+**Ticket 04 (mirror/cache) is RESOLVED - four rulings, and the grounding justified the boldest one.**
+The **xlsx mirror is retired entirely** (~2,200 lines). Two facts made that cheap: **the import half
+never round-tripped on a device** (export to Drive WAS verified on the A25 2026-08-23; a hand edit
+landing in the app never was), and **`MirrorSyncActivity` has no in-app navigation** - debug-exported
+only, unreachable in a release build. Hand-edit reimport dies with it, closing a real hole: a
+blank-guid row minted a record with provenance `USER`, and a foreign guid was created as-is, so a
+spreadsheet could mint records past the gate. Local cache is a **full replica** (569 records, roughly
+285 KB estimated, three orders of magnitude under the free tier's ceiling).
+
+**Recovery: `sync/DatabaseSnapshot.kt`, SCHEDULED, with a restore actually exercised.** The research
+had nominated the mirror as the recovery story because the free tier has zero backups - **that was
+already false**, resting on the import path that never ran. DatabaseSnapshot is built and reviewed
+(whole-DB gzip to Drive appDataFolder, 3 generations, prunes only after upload confirms) but is
+**manual-only** and **its restore has never been exercised on a device**. **BINDING ORDER: do not
+delete the mirror until the scheduler and a real restore are both done**, or there is a window with
+no recovery at all.
+
+**RESUME POINT: ticket 05 (migration path)** - now the only open ticket on the map, and it owns FIVE
+retirements plus their order: the generic engine, the Notes-Item-into-Dates-Event merge, the Google
+Calendar removal, the xlsx mirror, and the statement parsers. Two more things were pushed onto it:
+**`SyncEngine` is still unruled** (row-level merge over ~19 legacy tables, still auto-running every
+5 minutes from `AriaForegroundService.kt:216-223`, despite ticket 20 declaring it retired - it
+dropped zero tables), and **the read-path state vocabulary** (ledger/pantry/fleet have no loading or
+error state, so empty and not-yet-loaded are the same pixels - a lie once reads go over a network;
+extend `engine/WidgetDataSource.kt`, which already words empty vs not-configured vs error).
 
 Also landed 2026-08-25:
 - **Calendar description blocks merged** (LEGION::v1 sentinel: machine fields reach the model,

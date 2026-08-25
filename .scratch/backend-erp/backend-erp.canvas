@@ -48,7 +48,7 @@
       "y": 300,
       "width": 320,
       "height": 110,
-      "color": "5"
+      "color": "4"
     },
     {
       "id": "83c235c8b8170e80",
@@ -100,6 +100,13 @@
     {
       "id": "b69faae78ad630da",
       "fromNode": "b3083a1fd1bc21cb",
+      "fromSide": "right",
+      "toNode": "83c235c8b8170e80",
+      "toSide": "left"
+    },
+    {
+      "id": "fcb19c1b10696ccb",
+      "fromNode": "0c04d268856df37b",
       "fromSide": "right",
       "toNode": "83c235c8b8170e80",
       "toSide": "left"
