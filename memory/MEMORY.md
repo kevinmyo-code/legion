@@ -3,7 +3,7 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
-## START HERE - 2026-08-25 (late) - THE BACKEND-ERP PIVOT, TICKETS 01 + 02 RESOLVED
+## START HERE - 2026-08-25 (late) - THE BACKEND-ERP PIVOT, TICKETS 01/02/03 RESOLVED
 
 **Kevin pivoted: the backend IS the ERP.** Supabase (BYO project per household, never
 Kevin-hosted) becomes the system of record; the Android app becomes ONE consumer; a Windows/laptop
@@ -55,11 +55,37 @@ Authorization API only - one `drive.appdata` scope, no token, no account, no ema
 is a boolean. There is no human-user entity anywhere in the app, and no table has a human owner
 column. Ticket 02's own question text claimed otherwise and was wrong.
 
-**RESUME POINT: ticket 03 (the gate server-side)**, then 04 (mirror/cache fate). Ticket 05
-(migration path) owns all three retirements - engine, the Item-into-Event merge, the Google removal
-- and their ordering; still blocked on 03. Ticket 04 should read ticket 01's footprint section
-first: the mirror is entirely generic-shape dependent, so ruling 7 collapses its `_definitions`
-layer.
+**Ticket 03 (the gate) is RESOLVED - eight rulings, and it changed a CLAUDE.md rule.** The file
+commit becomes ONE atomic Supabase RPC, **idempotent on `contentSha256`** - that is what closes the
+gap ruling 8 opened, because `CANNOT_CLAUSE` is binary and has no word for "I don't know if it
+landed"; with idempotency the phone retries instead of narrating. Gate arithmetic runs server-side,
+phone pre-checks (two implementations, so they need a shared test corpus).
+
+**The big one: the deterministic statement parsers RETIRE (Kevin's own proposal).** A statement goes
+through the user's OWN LLM, which masks sensitive data and emits a CSV in a format LEGION defines.
+Kills PdfBox, kills the Deno problem, and covers every bank instead of just DBS and BofA. **This
+amends CLAUDE.md §4 rule 1** (amendment written in, marked decided-but-not-built). The gate gets
+STRONGER to compensate: **three anchors** required (printed total, opening, closing), because an
+LLM-produced CSV has lines and total from one process and a single anchor could be satisfied by a
+self-consistent hallucination. Fewer than three anchors means rule-7 provisional. Rows tag
+`LLM_RECONCILED`. Account identity is **last-4 plus a nickname** (last-4 collisions are real;
+the nickname is what disambiguates).
+
+**Ticket 01 ruling 10 was AMENDED the same day: photo files MAY leave the device**, to a private
+bucket in the household's own Supabase project, because Edge-Function receipt vision cannot work
+otherwise. OBD live state, wake word/audio and widget layouts stay phone-only.
+
+**Three pre-existing defects found while grounding ticket 03, all filed there, none introduced:**
+(1) `IngestPipelineProvisionalSupersedeTest`'s four cases have been testing DEAD CODE since cutover
+3 - rule 7's live engine-path coverage is a single test; (2) a schema mismatch throws
+`NoSuchElementException` past the narrow `catch` in `IngestPipeline`, so the file is never written
+back to NEW; (3) `BofaStatementParser` has no non-empty guard and could vacuously pass a
+zero-movement statement.
+
+**RESUME POINT: ticket 04 (mirror/cache fate)** - the last open decision. Read ticket 01's footprint
+section first: the mirror is entirely generic-shape dependent, so ruling 7 collapses its
+`_definitions` layer. Then ticket 05 (migration path), which owns every retirement and its order and
+is now unblocked once 04 lands.
 
 Also landed 2026-08-25:
 - **Calendar description blocks merged** (LEGION::v1 sentinel: machine fields reach the model,

@@ -5,7 +5,7 @@ charted: 2026-08-25
 charted-by: "Kevin + Fable"
 effort: "`.scratch/backend-erp/`"
 tickets: 6
-open: 3
+open: 2
 status: open
 tags: [map]
 ---
@@ -59,6 +59,16 @@ strictly wider); local-Room-primary (Room becomes a consumer cache); the xlsx mi
   RLS, all users see all rows, no roles ever. Both accounts made in the dashboard, no signup or
   invite flow. Personas and memories bind to the user, not the device. The session lives in
   KeyVault and fails closed.
+
+- [The gate when truth lives remote](issues/03-the-gate-server-side.md) - the file commit becomes
+  ONE atomic Supabase RPC, idempotent on the file's content hash so a lost ack can be retried
+  rather than narrated. Gate arithmetic runs server-side with the phone pre-checking. **The
+  deterministic statement parsers retire**: a statement goes through the user's OWN LLM, which
+  masks sensitive data and emits a CSV in a LEGION-defined format carrying THREE anchors (printed
+  total, opening, closing) so a self-consistent hallucination cannot pass. Account identity is
+  last-4 plus a nickname. Rows tag `LLM_RECONCILED`. Rule-7 supersession stays inside the same
+  transaction. Amends CLAUDE.md §4 rule 1, and amends ticket 01's ruling 10 to let receipt photos
+  reach Supabase Storage.
 
 ## Not yet specified
 

@@ -7,8 +7,8 @@ status: open
 status-detail: "Owns three retirements handed down by ticket 01; blocked only on 03 now"
 blockers: ["01", "02", "03"]
 blocked-by: ["[[01-what-the-backend-owns]]", "[[02-auth-and-identity]]", "[[03-the-gate-server-side]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # The migration path: 569 records to Postgres without a bad day

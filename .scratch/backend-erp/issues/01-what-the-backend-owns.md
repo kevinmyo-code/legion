@@ -94,10 +94,18 @@ Rulings so far, Kevin's answers in order:
    on server ACK, never ahead of it - which is the same door discipline `RecordStore` has today.
 10. **Phone-only residue (Kevin, 2026-08-25), answering ticket question 2.** Four things never
     leave the device: OBD live state (ephemeral, high-frequency, meaningless to a laptop - trips
-    and maintenance still sync as records); wake word and any raw audio buffer; photo files (only
-    the extracted records sync, so the laptop surface cannot show a receipt image); widget layouts
-    and per-device dismissals (`widget_instances`, `muted_reminders` - already deliberately local,
-    and `EngineRecord`'s own doc comment gives the reason).
+    and maintenance still sync as records); wake word and any raw audio buffer; ~~photo files~~
+    (see the amendment below); widget layouts and per-device dismissals (`widget_instances`,
+    `muted_reminders` - already deliberately local, and `EngineRecord`'s own doc comment gives the
+    reason).
+
+    **AMENDED the same day, during ticket 03 (Kevin, 2026-08-25): PHOTO FILES MAY LEAVE THE
+    DEVICE.** Ticket 03 moved receipt extraction to a Supabase Edge Function, which cannot work if
+    the image never leaves the phone - the two rulings were in direct contradiction and Kevin
+    resolved it in favour of moving the photos. Receipt images go to a private Supabase Storage
+    bucket in the household's OWN project, so no Kevin-hosted rule is touched; the laptop surface
+    gains the ability to show a receipt, which the original ruling listed as its accepted cost.
+    **The other three stay phone-only, unchanged.**
 11. **Google exit is a WIDENING ONE-TIME IMPORT, then the cut (Kevin, 2026-08-25).** Ruling 5 drops
     Google; this rules how. Measured hazard that forced the question: the `LEGION::v1` description
     blocks carrying class metadata (`course`, `source: canvas_verified`, `conflict`, `status`) are
