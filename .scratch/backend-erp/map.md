@@ -5,8 +5,8 @@ charted: 2026-08-25
 charted-by: "Kevin + Fable"
 effort: "`.scratch/backend-erp/`"
 tickets: 6
-open: 1
-status: open
+open: 0
+status: resolved
 tags: [map]
 ---
 # Map: The backend IS the ERP - Supabase as source of truth, apps as consumers
@@ -77,6 +77,15 @@ strictly wider); local-Room-primary (Room becomes a consumer cache); the xlsx mi
   cache is a **full replica** (569 records, roughly 285 KB). **Recovery moves to a SCHEDULED
   `DatabaseSnapshot` with a restore actually exercised** - and the mirror must not be deleted until
   both are done, or there is a window with no recovery at all.
+
+- [The migration path](issues/05-migration-path.md) - the capstone. **`SyncEngine` retires
+  PER-TABLE**, each table leaving the Drive registry in the same commit its writes move to Postgres,
+  so no table is ever in two sync channels. The **Item-into-Event merge lands directly in the
+  Supabase schema** (forced, not chosen: there is no legacy `events` table to fall back to). Kevin
+  chose schema-and-auth-first over a thin vertical slice, so aspects run **smallest first** and
+  Places is the de-facto proving run. Seven phases, seven hard constraints, and deletion is
+  deliberately separated from retirement because **every rollback depends on the code deleted at
+  the end still existing during the middle.**
 
 ## Not yet specified
 

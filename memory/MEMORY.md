@@ -3,7 +3,7 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
-## START HERE - 2026-08-25 (late) - BACKEND-ERP: EVERY DECISION TICKET RESOLVED, 05 IS NEXT
+## START HERE - 2026-08-25 (late) - BACKEND-ERP IS FULLY DECIDED AND SEQUENCED. BUILDING IS NEXT.
 
 **Kevin pivoted: the backend IS the ERP.** Supabase (BYO project per household, never
 Kevin-hosted) becomes the system of record; the Android app becomes ONE consumer; a Windows/laptop
@@ -99,14 +99,52 @@ already false**, resting on the import path that never ran. DatabaseSnapshot is 
 delete the mirror until the scheduler and a real restore are both done**, or there is a window with
 no recovery at all.
 
-**RESUME POINT: ticket 05 (migration path)** - now the only open ticket on the map, and it owns FIVE
-retirements plus their order: the generic engine, the Notes-Item-into-Dates-Event merge, the Google
-Calendar removal, the xlsx mirror, and the statement parsers. Two more things were pushed onto it:
-**`SyncEngine` is still unruled** (row-level merge over ~19 legacy tables, still auto-running every
-5 minutes from `AriaForegroundService.kt:216-223`, despite ticket 20 declaring it retired - it
-dropped zero tables), and **the read-path state vocabulary** (ledger/pantry/fleet have no loading or
-error state, so empty and not-yet-loaded are the same pixels - a lie once reads go over a network;
-extend `engine/WidgetDataSource.kt`, which already words empty vs not-configured vs error).
+**Ticket 05 is RESOLVED and the map is CLOSED - all six tickets decided.** Three final rulings:
+**`SyncEngine` retires PER-TABLE** (each table leaves the Drive registry in the same commit its
+writes move to Postgres, so no table is ever in two sync channels fighting each other); the
+**Item-into-Event merge lands directly in the Supabase schema** (forced: there is **no legacy
+`events` table** to fall back to, Dates was born engine-native, so ticket 01's repoint-to-existing
+shortcut covers ledger/pantry/fleet/places but NOT Notes/Dates); and Kevin chose **schema-and-auth
+first** over a thin vertical slice, with the accepted risk that the stack is unproven until the
+first aspect lands.
+
+**THE SEQUENCE - seven phases. Do not reorder; C2, C3 and C4 lose data if violated.**
+- **Phase 0, safety net, nothing else starts first:** schedule `DatabaseSnapshot` and **exercise a
+  real restore on the A25**; fix hardening ticket 05 defect 1 so rule 7's tests point at production
+  code BEFORE rule 7 is rewritten in SQL.
+- **Phase 1, foundations:** supabase-kt, committed SQL migrations, `household_members` + RLS helper,
+  email+password with the session failing closed, and the 7-day-pause keep-alive.
+- **Phase 2, schema + the commit RPC:** typed tables, the `events` table absorbing the Item shape,
+  gate arithmetic in SQL, three anchors, rule-7 supersession in-transaction, idempotent on
+  `contentSha256`. The shared gate test corpus is the real deliverable.
+- **Phase 3, read-path honesty, BEFORE any cutover:** loading/error/stale states and the "as of" on
+  money. Extend `WidgetDataSource`'s vocabulary; do not invent a second one.
+- **Phase 4, per-aspect cutover, smallest first:** Places 3 -> Pantry 29 -> Fleet 62 -> Notes+Dates
+  172 (carrying the merge) -> Ledger 168 last. Upload, diff until clean, flip writes, drop that
+  table from the `SyncEngine` registry in the same commit, soak.
+- **Phase 5, interleaved:** widen the Google importer and run it unbounded BEFORE the Notes+Dates
+  cutover; the three-anchor CSV path works BEFORE the parsers come out.
+- **Phase 6, deletions only, last:** engine, mirror (gated on phase 0), `SyncEngine` once its
+  registry is empty, parsers, and only genuinely dead tables.
+
+**Two clarifications that prevent real mistakes.** Ticket 03's "engine retirement before or with the
+RPC" does NOT mean deleting 15,885 lines up front: the SERVER schema is typed from day one so the
+RPC is never built against the generic shape, while the PHONE's engine retires per-aspect and the
+code is deleted only in phase 6. And **"legacy-table drops" no longer means what it used to** -
+ruling 7 sends the phone back to those tables, so `ledger_transactions`, `pantry_receipts`,
+`vehicles`, `service_records` and `places` are the DESTINATION, not drop candidates. Only the engine
+metadata tables and the dead notes-era tables actually get dropped.
+
+**Why deletion is separated from retirement:** every rollback depends on the code deleted at the end
+still existing during the middle. Ruling 8 removed the offline queue, so there is no buffer to hide
+a bad cutover behind; per-aspect rollback is stop writing to Supabase, restore the table to the
+`SyncEngine` registry, keep reading Room.
+
+**RESUME POINT: building, starting at Phase 0.** Nothing in this map has been built - it is six
+resolved decision tickets and a sequence. Deferred deliberately: the eval/screenshot test plan
+(phase 3 changes what every migrated screen renders, so writing it first writes it twice) and the
+second phone (never attached to this machine; Supabase likely dissolves the merge problem, but that
+is `reasoned`, not verified).
 
 Also landed 2026-08-25:
 - **Calendar description blocks merged** (LEGION::v1 sentinel: machine fields reach the model,
