@@ -138,6 +138,15 @@ fun DriveSyncScreen(onBack: () -> Unit) {
     var localRecoveryWorking by remember { mutableStateOf(false) }
     var localRecoveryMessage by remember { mutableStateOf<String?>(null) }
 
+    // Scheduled (automatic) backup status - a SEPARATE fact from the "generations available"
+    // list above. That list is whatever is on Drive right now, backed up by a manual tap OR
+    // ScheduledBackup; these two fields are specifically "did the automatic daily check last
+    // actually succeed, and if not why" - ticket point 3's whole reason for existing: a
+    // background job that fails silently reports safety it is not providing, so this must be
+    // able to say "no backup yet" or name a real failure, never render absence as freshness.
+    var scheduledLastSuccessAt by remember { mutableStateOf<Long?>(null) }
+    var scheduledLastFailureReason by remember { mutableStateOf<String?>(null) }
+
     fun refreshLocalRecoveries() {
         scope.launch { localRecoveries = DatabaseSnapshot.listLocalRecoveries(context) }
     }
@@ -152,6 +161,8 @@ fun DriveSyncScreen(onBack: () -> Unit) {
         syncEnabled = CompanionProfile.isSyncEnabled(context)
         if (syncEnabled) scope.launch { generations = DatabaseSnapshot.listGenerations(context) }
         refreshLocalRecoveries()
+        scheduledLastSuccessAt = com.kevin.legion.sync.ScheduledBackup.lastSuccessAt(context)
+        scheduledLastFailureReason = com.kevin.legion.sync.ScheduledBackup.lastFailureReason(context)
     }
 
     fun formatBackupTime(epochMs: Long): String = "${shortDate(epochMs)} ${clockTime(epochMs)}"
@@ -400,6 +411,38 @@ fun DriveSyncScreen(onBack: () -> Unit) {
                         onBackUpNow = { backupNow() },
                         onBackUpAnywayRequested = backupRefusalReason?.let { { overrideConfirmOpen = true } },
                     )
+
+                    // The automatic daily check's own status - honest about absence, per
+                    // ticket point 3: a background job that fails silently reports safety it
+                    // is not providing, so this is worded plainly rather than left implicit
+                    // from the "generations available" list above (which a manual tap can
+                    // populate even if the scheduled check has never once succeeded).
+                    Text(
+                        // The "only while the app is open" caveat belongs on BOTH branches, not
+                        // just the empty one. A bare date on the succeeded branch lets a five-day-
+                        // old backup read as a daily one, which is the same overstatement this
+                        // block exists to prevent - MIN_INTERVAL_MS is a floor on attempts, never
+                        // a promise of freshness (see ScheduledBackup's own doc comment).
+                        text = if (scheduledLastSuccessAt != null) {
+                            "Automatic backup: last succeeded ${formatBackupTime(scheduledLastSuccessAt!!)}. " +
+                                "Legion checks once a day, only while the app is open."
+                        } else {
+                            "Automatic backup: none yet. Legion checks once a day, only while the app is open."
+                        },
+                        style = LegionType.stamp,
+                        color = sem.faint,
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    scheduledLastFailureReason?.let {
+                        Text(
+                            text = "Last automatic attempt failed: $it",
+                            style = LegionType.stamp,
+                            // ADVISORY (ticket 13 re-home): a background attempt's own result,
+                            // same colour rule the manual-backup/restore messages above use.
+                            color = sem.estimated,
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
 
                     if (generations.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))

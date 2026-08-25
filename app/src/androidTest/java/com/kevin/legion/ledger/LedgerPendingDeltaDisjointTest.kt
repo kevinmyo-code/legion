@@ -19,8 +19,13 @@ import org.junit.runner.RunWith
  * doc comment for why a voice-logged pending row is ALSO tagged `IngestMethod.UNRECONCILED`, which
  * is exactly what makes double-counting possible without the `AND pendingLoggedAt IS NULL` guard
  * added to `provisionalDeltaCentsAfter` alongside `pendingDeltaCents`'s own addition. This needs a
- * real Room database to observe - same posture as [IngestPipelineProvisionalSupersedeTest] - so it
- * lives in `androidTest`, not a plain JVM unit test.
+ * real Room database to observe, so it lives in `androidTest` rather than a plain JVM unit test.
+ *
+ * This used to cite `IngestPipelineProvisionalSupersedeTest` as the same-posture precedent. That
+ * test moved to `src/test` (JVM/Robolectric) on 2026-08-25, hardening ticket 05 defect 1, because
+ * `RoomTestReset.resetCarDatabaseSingleton()` makes `CarDatabase.getDatabase` reachable from
+ * Robolectric. "Needs a real Room database" is therefore NOT on its own a reason to be
+ * instrumented - try Robolectric first before adding to `androidTest`.
  */
 @RunWith(AndroidJUnit4::class)
 class LedgerPendingDeltaDisjointTest {

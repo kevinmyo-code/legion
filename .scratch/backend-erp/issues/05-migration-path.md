@@ -151,7 +151,9 @@ Item/Event merge lands). **Do not read C6 as "drop everything legacy at the end.
 Every phase states what "done" means. Nothing advances on a phase whose verification is unmet -
 that is L11, and it is binding here.
 
-**Phase 0 - the safety net. Nothing else starts until this is done.**
+**Phase 0 - the safety net. Nothing else starts until this is done.** **STATUS 2026-08-25: both
+buildable items DONE** (scheduler built and unit-tested; rule 7's tests repointed at production
+code). The device restore is deferred per Kevin's amendment below and is now a gate on phase 6.
 - Schedule `DatabaseSnapshot` (it is manual-only today; sole callers are three buttons in
   `ui/DriveSyncScreen.kt`) and **exercise a real restore on the A25**. Satisfies C2 early rather
   than late, and protects every phase after it.

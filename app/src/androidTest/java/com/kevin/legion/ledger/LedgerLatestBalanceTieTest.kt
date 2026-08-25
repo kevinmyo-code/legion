@@ -35,7 +35,16 @@ import java.time.ZoneOffset
  *
  * Lives in `androidTest` because it exercises real Room/SQLite ORDER BY
  * semantics, which a JVM test cannot reach - matching the pattern already set
- * by `IngestPipelineProvisionalSupersedeTest` and `LedgerPendingDeltaDisjointTest`.
+ * by `LedgerPendingDeltaDisjointTest`.
+ *
+ * This used to cite `IngestPipelineProvisionalSupersedeTest` as the other
+ * precedent. That test MOVED to `src/test` (JVM/Robolectric) on 2026-08-25,
+ * hardening ticket 05 defect 1, once it turned out that
+ * `RoomTestReset.resetCarDatabaseSingleton()` makes `CarDatabase.getDatabase`
+ * reachable from Robolectric after all. Do not read the old citation as
+ * evidence that a Room-touching test must be instrumented - check whether
+ * Robolectric reaches it first. The reason THIS test stays here is the SQLite
+ * ORDER BY semantics specifically, not Room access in general.
  */
 @RunWith(AndroidJUnit4::class)
 class LedgerLatestBalanceTieTest {

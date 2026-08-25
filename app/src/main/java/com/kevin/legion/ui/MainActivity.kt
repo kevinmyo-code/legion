@@ -218,6 +218,18 @@ class MainActivity : ComponentActivity() {
             com.kevin.legion.location.LocationController.init(applicationContext)
         }.onFailure { com.kevin.legion.MidnightEvents.appStartWorkFailed("resume_init_location", it) }
         SyncEngine.maybeAutoSync(applicationContext)
+        // Scheduled whole-database backup (Phase 0 item 1,
+        // `.scratch/backend-erp/issues/05-migration-path.md`). DatabaseSnapshot.backupNow was
+        // manual-only before this - its only callers were three buttons on DriveSyncScreen - so
+        // a driver who never opened that screen never got a backup. Same app-lifecycle-only shape
+        // as CalendarImportController (no WorkManager); ScheduledBackup.checkNow no-ops
+        // immediately when sync isn't available and is throttled to once per 24h of its own
+        // accord, so this costs nothing on every other resume. Guarded the same way as the two
+        // hooks above: a backup-scheduling failure must degrade to "no backup this time", never
+        // crash a screen unlock.
+        runCatching {
+            com.kevin.legion.sync.ScheduledBackup.checkNow(applicationContext)
+        }.onFailure { com.kevin.legion.MidnightEvents.appStartWorkFailed("resume_scheduled_backup", it) }
         // Silent App Remote re-attach (2026-08-12). App Remote drops on its own whenever the
         // Spotify app is killed or backgrounded long enough, and nothing reconnected it - so
         // after the first drop the link stayed dead for the rest of the process and `play_music`

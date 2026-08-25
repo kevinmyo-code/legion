@@ -27,7 +27,8 @@ inferred from the code and not reproduced.
 (JVM/Robolectric), calling the REAL `IngestPipeline.commit` and asserting against engine records.
 The androidTest file is deleted. Rule 7 now has **5** live tests through the real entry point (the
 pre-existing `IngestPipelineEngineCommitTest.kt:136` plus the 4 ported). Suite verified green
-independently from the JUnit XML: 2,543 tests, 0 failures, 0 errors, 0 skipped.
+independently from the JUnit XML: 2,549 tests, 0 failures, 0 errors, 0 skipped (2,543 at the time
+of the port; 2,549 after Phase 0's ScheduledBackup tests landed alongside it).
 **The old file's stated reason for not calling `commit` was obsolete**, not a real constraint -
 `RoomTestReset.resetCarDatabaseSingleton()` already solved the singleton problem and the live
 engine test had been using it since cutover 3.
