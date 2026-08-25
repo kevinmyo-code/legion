@@ -147,7 +147,21 @@ is **still owed before the phase 6 mirror deletion**, because deleting the mirro
 replacement leaves a window with no recovery path at all. **Must be done from the Kwin laptop**
 (debug keystore lives there; never uninstall to fix a signature mismatch).
 
-**RESUME POINT: building, starting at Phase 0.** Nothing in this map has been built - it is six
+**PHASE 0 IS DONE except the device half (2026-08-25).** Both buildable items landed and are
+verified green on the current tree (2,549 tests, 0 failures, counted from the JUnit XML, plus
+`compileDebugAndroidTestKotlin`):
+- **Rule 7's tests now run against production code.** The four supersede cases had not called
+  `IngestPipeline.commit` since cutover 3; they exercised `deleteSupersededProvisional`, which has
+  zero production callers. Ported to `src/test` (Robolectric) calling the real `commit` and
+  asserting on engine records. Rule 7 went from **1 live test to 5**. The old file's reason for not
+  calling `commit` (the `CarDatabase` singleton) was **obsolete** - `RoomTestReset` already solved
+  it. Closes hardening ticket 05 defect 1, which blocked rewriting rule 7 in SQL at phase 2.
+- **`sync/ScheduledBackup.kt` exists**: app-lifecycle daily check (no WorkManager), called from
+  `MainActivity.onResume`, 24h floor, never passes `overrideGuard`, install-scoped prefs, sealed
+  `Outcome` with every branch worded, six tests. `DriveSyncScreen` shows last success, the
+  "only while the app is open" caveat on BOTH branches, and any failure reason.
+
+**RESUME POINT: Phase 1 (foundations) - or the owed device work first.** Nothing in this map has been built - it is six
 resolved decision tickets and a sequence. Deferred deliberately: the eval/screenshot test plan
 (phase 3 changes what every migrated screen renders, so writing it first writes it twice) and the
 second phone (never attached to this machine; Supabase likely dissolves the merge problem, but that
