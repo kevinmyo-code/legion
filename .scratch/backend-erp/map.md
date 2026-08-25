@@ -50,6 +50,14 @@ strictly wider); local-Room-primary (Room becomes a consumer cache); the xlsx mi
 
 ## Not yet specified
 
+- **The wiki as the notes system** (Kevin, 2026-08-25): two reference videos -
+  youtube.com/watch?v=XNX-1h2K-9U and youtube.com/watch?v=I3bpdgFJCUY - the SECOND one shows the
+  wiki-style notes system Kevin wants as his note-taking model "or something similar". Research
+  fired; do not lose this.
+- **Agent memory persistent across interfaces** (Kevin, 2026-08-25): companion memories must
+  follow the user, not the device - Alfred on the Windows app remembers what Alfred on the phone
+  learned. Implies companion_memories (and the audit trail?) migrate to Supabase with the records.
+
 - **Todo lists into Google Calendar** (Kevin, same message, via the LEGION::v1 description blocks
   just merged): whether the Notes aspect's dated items migrate INTO Google Calendar as their store,
   which reshapes Notes/Dates before or alongside the backend move. Needs its own decision once
