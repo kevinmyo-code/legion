@@ -42,6 +42,12 @@ strictly wider); local-Room-primary (Room becomes a consumer cache); the xlsx mi
 
 ## Decisions so far
 
+- [Supabase feasibility on the real free tier](issues/06-supabase-feasibility.md) - fits the
+  household ERP on every hard limit; the one hazard is the 7-day inactivity pause (data survives,
+  manual resume) - a daily keep-alive defeats it, Pro at $25/mo removes it and adds backups. The
+  free tier has no backups, so the xlsx mirror carries recovery. supabase-kt is mature; gate
+  commits map to atomic RPCs; Google OAuth repeats the SHA-1 clone-and-run friction.
+
 ## Not yet specified
 
 - **Todo lists into Google Calendar** (Kevin, same message, via the LEGION::v1 description blocks
