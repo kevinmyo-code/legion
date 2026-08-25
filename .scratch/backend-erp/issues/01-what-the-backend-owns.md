@@ -3,7 +3,7 @@ map: backend-erp
 ticket: "01"
 title: "What the backend owns: schema, truth, and the phone's residual role"
 type: grilling
-status: open
+status: claimed
 status-detail: ""
 blockers: []
 blocked-by: []

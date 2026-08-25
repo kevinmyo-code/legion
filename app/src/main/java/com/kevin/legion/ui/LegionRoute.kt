@@ -8,13 +8,18 @@ package com.kevin.legion.ui
  * pantry's own read screen moved under Money as a reachable sub-route rather than a tab of its
  * own. Body is entirely new - workouts/meals/bodyweight had a backend and no UI before this.
  *
- * **Cutover 5 (`docs/architecture/cutover5-2026-08-24.md`): `dashboard/` is the new start
- * destination**, hosting the widget pager - `today/` stays a real, fully wired route (reached from
- * the pager's own HOME page) but is no longer the start destination or a hard key.
+ * **Cutover 5 (`docs/architecture/cutover5-2026-08-24.md`) briefly made `dashboard/` the start
+ * destination and HOME hard key's target; REVERTED 2026-08-25** (see that doc's postscript) -
+ * Kevin field-tested the pager overnight and ruled "revert everything to classic". `today/` is the
+ * start destination and HOME hard key's target again, exactly as before cutover 5. `dashboard/`
+ * (the widget pager) STAYS IN THE CODEBASE, reachable as an opt-in surface via a "DASHBOARD" button
+ * on [TODAY] (mirroring how the pager's own now-removed "CLASSIC" button pointed the other way) -
+ * it is not deleted, only demoted, so the pager/widgets/engine screens stay a hands path (ADR 0035)
+ * and the seven on-device grid-feel rounds are not orphaned.
  *
  * ```
- * dashboard/   <- the widget pager, HOME hard key's target (was today/)
- * today/       <- still real; reached from dashboard/'s "CLASSIC" button
+ * today/       <- start destination, HOME hard key's target (reverted 2026-08-25)
+ * dashboard/   <- the widget pager; opt-in, reached from today/'s "DASHBOARD" button
  * money/       + money/import        <- was ledger/import
  *              + money/pantry        <- was the `pantry` tab (PantryScreen), now a sub-route
  *              + money/pantry/import <- was pantry/import
@@ -37,22 +42,23 @@ package com.kevin.legion.ui
  */
 object LegionRoute {
     /**
-     * The app's home as of cutover 5 (`docs/architecture/cutover5-2026-08-24.md`) - the widget
-     * pager, `com.kevin.legion.ui.widgets.WidgetPagerRoot`, hosted as an ordinary [composable]
-     * destination here rather than a second Activity. This is now the [NavHost]'s
-     * `startDestination` and the HOME hard key's target; [TODAY] stays a real, reachable route
-     * (the pager's own HOME page carries a "CLASSIC" button straight to it - see
-     * [WidgetPagerRoot]'s `onOpenRoute` param) but is no longer a hard key or a [TOP_LEVEL] tab,
-     * per ticket 22 point 4's own mapping (TODAY's panes are what [DefaultArrangementSeeder]'s
-     * HOME arrangement is modelled on).
+     * The widget pager, `com.kevin.legion.ui.widgets.WidgetPagerRoot`, hosted as an ordinary
+     * [composable] destination here rather than a second Activity. Cutover 5
+     * (`docs/architecture/cutover5-2026-08-24.md`) briefly made this the [NavHost]'s
+     * `startDestination` and the HOME hard key's target; **reverted 2026-08-25** after Kevin lived
+     * with it overnight and ruled "revert everything to classic" - [TODAY] is the start destination
+     * and HOME hard key's target again. This route is NOT deleted: it stays reachable as an opt-in
+     * surface from [TODAY]'s own "DASHBOARD" button, so the pager/widgets/generic engine screens
+     * remain a hands path (ADR 0035) rather than orphaned code.
      */
     const val DASHBOARD = "dashboard"
 
     /**
-     * Was the start destination and the HOME hard key's target before cutover 5. Still a real,
-     * fully wired [composable] - deep links (`EXTRA_ROUTE`), [onOpenCategory]'s Money drilldown,
-     * the key-settings advisory row, and the media mini-bar tap-through all still work exactly as
-     * before - reached now from [DASHBOARD]'s own "CLASSIC" button rather than from a hard key.
+     * The start destination and the HOME hard key's target (reverted 2026-08-25 to this pre-
+     * cutover-5 shape). Deep links (`EXTRA_ROUTE`), [onOpenCategory]'s Money drilldown, the
+     * key-settings advisory row, and the media mini-bar tap-through all work as always; its own
+     * "DASHBOARD" button opens [DASHBOARD] as an opt-in surface, mirroring how the pager's now-
+     * removed "CLASSIC" button used to point the other way during cutover 5.
      */
     const val TODAY = "today"
 
@@ -189,11 +195,11 @@ object LegionRoute {
      */
     const val SETTINGS_HELP = "settings/help"
 
-    /** The six bottom-nav destinations, in display order. **Cutover 5: [DASHBOARD] replaced
-     * [TODAY] here** - HOME now lights on the widget pager, not the old Today panel (still a real
-     * route, just no longer a tab of its own - see [TODAY]'s own doc comment). Assistant is NOT
-     * one of them - it's a mode, not a place (original resolution §5, still true). */
-    val TOP_LEVEL = listOf(DASHBOARD, MONEY, BODY, FLEET, NOTES, SETTINGS)
+    /** The six bottom-nav destinations, in display order. **Reverted 2026-08-25**: [TODAY] is
+     * HOME again, not [DASHBOARD] - see [DASHBOARD]'s own doc comment for cutover 5's brief flip
+     * and why it was rolled back. Assistant is NOT one of them - it's a mode, not a place (original
+     * resolution §5, still true). */
+    val TOP_LEVEL = listOf(TODAY, MONEY, BODY, FLEET, NOTES, SETTINGS)
 
     /**
      * The top-level tab [route] belongs to, or null if it belongs to none.
@@ -213,7 +219,7 @@ object LegionRoute {
 
     /** Short label for a top-level route's bottom-nav item. */
     fun label(route: String): String = when (route) {
-        DASHBOARD -> "Home"
+        DASHBOARD -> "Dashboard"
         TODAY -> "Today"
         MONEY -> "Money"
         BODY -> "Body"

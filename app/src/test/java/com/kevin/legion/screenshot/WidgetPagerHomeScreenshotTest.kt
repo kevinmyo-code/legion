@@ -40,6 +40,10 @@ import org.robolectric.annotation.GraphicsMode
  * incidentally). The render itself is byte-identical either way: this composable is the exact same
  * production code MainActivity's `composable(LegionRoute.DASHBOARD)` mounts, so the committed PNG
  * baseline is unchanged by this cutover.
+ *
+ * **Re-recorded 2026-08-25 (cutover 5's home flip reverted)**: the HOME page's own "CLASSIC" button
+ * is gone - pointless once `today/` is home again - so the header row now reads just "EDIT" next to
+ * the page title, one button narrower than the cutover-5 baseline. Nothing else in the render moved.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

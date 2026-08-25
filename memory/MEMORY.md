@@ -3,7 +3,25 @@
 Dashboard for LEGION. **MEMORY.md wins for state, CLAUDE.md wins for rules.** Depth lives in the
 library. Under 80 lines. MIDNIGHT_AI: see CLAUDE.md §1.
 
-## START HERE - 2026-08-24 (night) - THE CUTOVER ARC IS COMPLETE
+## START HERE - 2026-08-25 - THE HOME FLIP REVERTED, ASPECT-ADD FIXED
+
+**Classic home is back.** Kevin field-tested the pager as HOME overnight and ruled "kill it, revert
+everything to classic." `LegionRoute.TODAY` is `NavHost`'s `startDestination` and the HOME hard key
+again, exactly the pre-cutover-5 shape. **The pager is NOT deleted** - `LegionRoute.DASHBOARD` stays
+a real route, demoted to an opt-in surface: a single "DASHBOARD" button on `TodayScreen`. The
+pager's own HOME-page "CLASSIC" button is removed (pointless once TODAY is home again).
+**Also fixed: "adding an aspect doesn't work."** The pager's "+" page was exactly the stub ticket 18
+called it - it wrote a bare `Aspect` row with no `RecordType`/`FieldDef`, so a created aspect could
+never hold a record or a widget. Now a real create flow (aspect name, starter record type, 1-2
+starter fields) committed through `EngineToolbox.manualCreateDraft` + `commitCreateAspect` - the
+SAME write path `create_aspect`'s voice confirm handshake uses, one implementation not two.
+Screenshot re-recorded (`pager-home-seeded-arrangement.png`, CLASSIC button gone from the header).
+Full account: `docs/architecture/cutover5-2026-08-24.md`'s postscript. Owed on-device: the real
+launcher tap lands on TODAY; the fixed "+" page produces a genuinely usable aspect on the phone.
+
+---
+
+## PREVIOUS - 2026-08-24 (night) - THE CUTOVER ARC IS COMPLETE
 
 **The engine IS the app, and Kevin approved it on the phone ("i like it").** All five cutovers
 merged and device-verified in one day: Notes+Places, Pantry (anchors now persisted), Ledger (gate

@@ -49,6 +49,7 @@ import com.kevin.legion.notes.endFromItem
 import com.kevin.legion.notes.ruleFromItem
 import com.kevin.legion.sitrep.SitrepBuilder
 import com.kevin.legion.sitrep.SitrepModule
+import com.kevin.legion.ui.common.DeckButton
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.common.DeckTag
@@ -119,7 +120,10 @@ import kotlinx.coroutines.launch
  * [Goal.aspect] ([alertTargetForAspect]); a raised-history row taps through whichever tab owns its
  * [com.kevin.legion.service.ProactiveCategory] ([alertTargetForRaiseCategory]); [MediaMiniBar] taps
  * through [onOpenMedia] (command-center ticket 04's own media control panel, nested under
- * `settings/spotify/media` - see [LegionRoute.SETTINGS_SPOTIFY_MEDIA]'s own doc comment for why).
+ * `settings/spotify/media` - see [LegionRoute.SETTINGS_SPOTIFY_MEDIA]'s own doc comment for why);
+ * a lone "DASHBOARD" row at the top of the list taps through [onOpenDashboard] to the widget
+ * pager, this screen's own opt-in hands path to it since the 2026-08-25 revert of cutover 5's home
+ * flip (see [LegionRoute.DASHBOARD]'s own doc comment).
  * [AreaCard]/[NewsDigestCard] have no tap-through of their own: each IS
  * its own full surface already (a `DeckPane` with its own refresh affordance), so there is no
  * deeper screen to open - "each tile opening its full surface" is satisfied by the tile already
@@ -195,6 +199,10 @@ fun TodayScreen(
      * (`settings/spotify/media`, ticket 04's build). Same "defaults to a no-op" posture as
      * [onOpenKeySettings] above. */
     onOpenMedia: () -> Unit = {},
+    /** The pager's opt-in hands path (2026-08-25 revert of cutover 5's home flip) -
+     * `LegionRoute.DASHBOARD`, mirroring how the pager's own now-removed "CLASSIC" button used to
+     * point back here during the brief window it was HOME. Same "defaults to a no-op" posture. */
+    onOpenDashboard: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(TodayUiState()) }
@@ -334,6 +342,7 @@ fun TodayScreen(
 
     TodayContent(
         state, onOpenNotes, onOpenCategory, onOpenBody, onOpenFleet, onOpenKeySettings, onOpenMedia,
+        onOpenDashboard = onOpenDashboard,
         onRequestCalendarPermission = {
             requestCalendar.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR))
         },
@@ -360,6 +369,7 @@ fun TodayContent(
     onOpenFleet: () -> Unit = {},
     onOpenKeySettings: () -> Unit = {},
     onOpenMedia: () -> Unit = {},
+    onOpenDashboard: () -> Unit = {},
     onRequestCalendarPermission: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
@@ -367,7 +377,7 @@ fun TodayContent(
         if (state.loading) {
             Text("LOADING...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
         } else {
-            TodayListing(state, onOpenNotes, onOpenCategory, onOpenBody, onOpenFleet, onOpenKeySettings, onOpenMedia, onRequestCalendarPermission)
+            TodayListing(state, onOpenNotes, onOpenCategory, onOpenBody, onOpenFleet, onOpenKeySettings, onOpenMedia, onOpenDashboard, onRequestCalendarPermission)
         }
     }
 }
@@ -381,6 +391,7 @@ private fun TodayListing(
     onOpenFleet: () -> Unit,
     onOpenKeySettings: () -> Unit,
     onOpenMedia: () -> Unit,
+    onOpenDashboard: () -> Unit,
     onRequestCalendarPermission: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
@@ -398,6 +409,17 @@ private fun TodayListing(
         }
     }
     LazyColumn(Modifier.fillMaxSize()) {
+        // The pager's own opt-in hands path (2026-08-25 revert of cutover 5's home flip) - a
+        // single row, top of the list, so it never competes with the HERO pane's own whole-pane
+        // click target (onOpenNotes) just below. Mirrors where the pager's own now-removed
+        // "CLASSIC" button used to sit (its header row) without needing this screen to grow a
+        // second header row of its own.
+        item(key = "dashboard-link") {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
+                DeckButton(text = "DASHBOARD", onClick = onOpenDashboard)
+            }
+        }
+
         // ================================================================ HERO: TODAY
 
         // ------------------------------------------------------------ HERO 1/3: next event + clock

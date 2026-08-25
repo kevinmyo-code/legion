@@ -466,11 +466,13 @@ private fun LegionShell(
                 }
                 NavHost(
                     navController = navController,
-                    // The widget pager is the start destination as of cutover 5
-                    // (`docs/architecture/cutover5-2026-08-24.md`) - was TODAY (2026-08-07 brief,
-                    // itself a supersession of FLEET under ticket 07's original four-tab shape).
-                    // See LegionRoute's doc comment for the full before/after route map.
-                    startDestination = LegionRoute.DASHBOARD,
+                    // TODAY is the start destination (2026-08-07 brief, itself a supersession of
+                    // FLEET under ticket 07's original four-tab shape). Cutover 5
+                    // (`docs/architecture/cutover5-2026-08-24.md`) briefly made the widget pager
+                    // (DASHBOARD) the start destination instead; REVERTED 2026-08-25 after Kevin
+                    // lived with it overnight and ruled "revert everything to classic" - see that
+                    // doc's postscript. See LegionRoute's doc comment for the full route map.
+                    startDestination = LegionRoute.TODAY,
                     modifier = Modifier.weight(1f),
                     // Command-center ticket 14: one fade-through, defined once here, no per-route
                     // override anywhere below. `LegionMotion.ROUTE_FADE_MS`/`STANDARD_EASING` are
@@ -486,10 +488,11 @@ private fun LegionShell(
                     popExitTransition = { fadeOut(tween(LegionMotion.ROUTE_FADE_MS, easing = LegionMotion.STANDARD_EASING)) },
                 ) {
             // The widget pager, hosted as an ordinary NavHost destination (cutover 5) - see
-            // WidgetPagerRoot's own doc comment for what onOpenRoute carries out to (the old
-            // TODAY panel from the HOME page's CLASSIC button; a per-aspect legacy screen from
-            // each aspect page's OPEN FULL SCREEN button). WidgetPagerActivity, the debug-only
-            // Activity this composable used to live behind exclusively, is deleted - see the
+            // WidgetPagerRoot's own doc comment for what onOpenRoute carries out to (a per-aspect
+            // legacy screen from each aspect page's OPEN FULL SCREEN button). Demoted from HOME to
+            // an opt-in surface 2026-08-25 - reached only from TODAY's own "DASHBOARD" button now,
+            // never a hard key or the start destination. WidgetPagerActivity, the debug-only
+            // Activity this composable used to live behind exclusively, stays deleted - see the
             // manifest's own comment at the point its <activity> entry used to be.
             composable(LegionRoute.DASHBOARD) {
                 WidgetPagerRoot(onOpenRoute = { route -> navController.navigate(route) { launchSingleTop = true } })
@@ -498,6 +501,12 @@ private fun LegionShell(
                 TodayScreen(
                     onOpenNotes = {
                         navController.navigate(LegionRoute.NOTES) { launchSingleTop = true }
+                    },
+                    // The pager's own hands path (2026-08-25 revert) - opt-in now, not the app's
+                    // home; see LegionRoute.DASHBOARD's own doc comment for why the widget pager
+                    // stays reachable rather than being deleted with the rest of cutover 5's flip.
+                    onOpenDashboard = {
+                        navController.navigate(LegionRoute.DASHBOARD) { launchSingleTop = true }
                     },
                     onOpenCategory = { category ->
                         pendingMoneyCategory = category
@@ -808,12 +817,12 @@ private const val CLOCK_POLL_MS = 60_000L
  * bottom-nav order (which keeps Settings in its list for [LegionRoute.topLevelOf]'s
  * prefix matching elsewhere).
  *
- * **Cutover 5**: HOME's target is [LegionRoute.DASHBOARD] (the widget pager), not
- * [LegionRoute.TODAY] - see [LegionRoute.TOP_LEVEL]'s own updated doc comment. TODAY is still a
- * real route (reached from the pager's own CLASSIC button), it simply no longer has a hard key.
+ * **Cutover 5 briefly pointed HOME at [LegionRoute.DASHBOARD] (the widget pager); reverted
+ * 2026-08-25** - HOME's target is [LegionRoute.TODAY] again, exactly as before that cutover. The
+ * pager stays reachable, just not from a hard key - see [LegionRoute.DASHBOARD]'s own doc comment.
  */
 private val HARD_KEYS = listOf(
-    LegionRoute.DASHBOARD to "HOME",
+    LegionRoute.TODAY to "HOME",
     LegionRoute.BODY to "BIO",
     LegionRoute.NOTES to "LOG",
     LegionRoute.FLEET to "FLEET",
