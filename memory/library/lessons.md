@@ -881,3 +881,19 @@ addendum), rule 2 in `TEAM.md`'s dispatch cadence for UI work.
 **Regression check:** a new reconciliation extractor without an explicit non-empty check or with a section-total check that can pass when zero rows parsed.
 
 **Status:** OPEN. The parser retires before this fix is needed, but the rule applies to every future reconciliation extractor (the CSV format spec in ticket 03's implementation, edge cases in the LLM prompt).
+
+## L36 - When a capability is nominated as a risk mitigation, verify the HALF that actually carries the risk (2026-08-25)
+
+**Found while grilling backend-ERP ticket 04 (Kevin, grilling).** The feasibility research (research/06-supabase-feasibility.md:171-173) nominated "the xlsx mirror / export surface" as the recovery story against free-tier zero backup retention. Mirror export WAS verified on a device (2026-08-23, A25, SAF create/rwt/SHA-256, on-device tested). Mirror import was NOT - only JVM-unit-tested, never round-tripped on a device, no hand-edit workflow ever run by a human. When ruling 04 examined what recovery actually needed, it found the gap was pre-existing: the research cited "the mirror" wholesale as the mitigation without checking which half was actually verified. The risk (data loss on the phone) depends on a working restore path; neither half existed for the phone database at all until DatabaseSnapshot was built. The export was the auditable surface, not the recovery mechanism.
+
+**Claimed (research):** "The mirror provides recovery against zero backup retention, and the export is an audit surface people can inspect."
+
+**Actual:** export = verified on-device. Import = JVM-only. The two halves are different risks. Export is audit-surface (does not restore data). Import is the restoration half (was never tested on device).
+
+**Root class:** a capability built, unit-tested, reviewed, and cited in planning documents as "the answer to a risk" while the actual half of the capability that carries the risk has never been executed. A full feature can pass every gate and still leave its critical half unverified.
+
+**Rule:** when a planning document or research item nominates an existing capability as the mitigation for a named risk, explicitly check which HALF of that capability was verified against reality. Confirm the half that actually blocks the risk (restore, not export; write, not read; undo, not commit). If only the other half was verified, the risk is still open. A feature and its test that passes do not cover a risk until the risk's own critical path runs on device. This is L10 applied to halves rather than wholes.
+
+**Regression check:** a research or planning document that says "capability X is the answer to risk Y" should trace which sub-operation of X was verified and name why that sub-operation is sufficient for Y. If Y is "restore lost data" and X is "export data to a spreadsheet," say explicitly that export is not restoration or flag it for verification.
+
+**Status:** OPEN. Applies to the DatabaseSnapshot recovery path now (scheduling + restore-exercise both owed before mirror retirement per ticket 04 ruling 4). Generalizes to any feature whose verification is incomplete at the risk-critical layer.
