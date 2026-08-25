@@ -50,10 +50,14 @@ strictly wider); local-Room-primary (Room becomes a consumer cache); the xlsx mi
 
 ## Not yet specified
 
-- **The wiki as the notes system** (Kevin, 2026-08-25): two reference videos -
-  youtube.com/watch?v=XNX-1h2K-9U and youtube.com/watch?v=I3bpdgFJCUY - the SECOND one shows the
-  wiki-style notes system Kevin wants as his note-taking model "or something similar". Research
-  fired; do not lose this.
+- **The wiki as the notes system** (Kevin, 2026-08-25). Identified: Ben Holmes's "LLM Knowledge
+  Bases" talk (I3bpdgFJCUY) - the llm-wiki pattern: raw dictated notes, a nightly agent enrichment
+  pass (tags from a registry, wikilinks by grep, idempotency stamp), a weekly wiki-compilation
+  pass. "Obsidian is the IDE; the LLM is the programmer; the wiki is the codebase." Full triage
+  and the LEGION mapping (a Note record type on the Notes aspect, enrichment as a SubAgent batch,
+  provenance-separated from dictated text): research/wiki-notes-second-brain.md. Becomes a ticket
+  once ticket 01 settles where enrichment runs (the Supabase move makes it surface-independent -
+  exactly the failure that forced Holmes to cloud scheduling).
 - **Agent memory persistent across interfaces** (Kevin, 2026-08-25): companion memories must
   follow the user, not the device - Alfred on the Windows app remembers what Alfred on the phone
   learned. Implies companion_memories (and the audit trail?) migrate to Supabase with the records.
