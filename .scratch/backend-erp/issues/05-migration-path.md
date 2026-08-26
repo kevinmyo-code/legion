@@ -162,7 +162,35 @@ code). The device restore is deferred per Kevin's amendment below and is now a g
   SQL. Reimplementing a behaviour whose tests do not run against production code is how it silently
   changes.
 - **Done means (as amended 2026-08-25):** the scheduler is built and unit-tested, and rule 7's live
-  coverage is stated in writing. **The restore exercise is deferred, not deleted** - Kevin released
+  coverage is stated in writing.
+
+**ATTEMPTED ON THE A25, 2026-08-26, AND IT IS BLOCKED BY SOMETHING BIGGER THAN THIS TICKET.**
+The restore exercise cannot be run from the second machine at all, and the reason is worth more
+than the test was:
+
+```
+Couldn't connect: 8: [8] Unknown error [status=UNREGISTERED_ON_API_CONSOLE]
+```
+
+An APK built on the second machine is signed with THAT machine's debug key, whose SHA-1 is not
+registered against `com.kevin.legion` in the Google Cloud OAuth client. Drive authorisation
+therefore fails outright, and `DatabaseSnapshot` backup AND restore both go through Drive, so
+neither can run. **This is CLAUDE.md §2's open finding 1 observed for real** - previously it was
+reasoned about as a hazard for a stranger cloning the repo, and it turns out to bite Kevin's own
+second machine identically.
+
+**Two consequences worth stating plainly:**
+1. **The recovery story is machine-locked.** Only a build signed with the registered key can back
+   up or restore. That is a sharper problem than "the restore is untested", because it means the
+   backup path silently does not exist on any other build - and ticket 04 ruling 4 made this the
+   ONLY recovery path once the xlsx mirror is deleted.
+2. **The unblock is one console entry, not a code change.** This machine's debug SHA-1 is
+   `52:4F:39:23:7E:8B:3B:5B:C2:3A:76:A7:EE:BD:16:ED:82:77:30:07`. Registering it against the
+   package as a second Android OAuth client makes Drive work from here permanently, and makes the
+   restore exercise runnable without the Kwin laptop.
+
+Until one of those happens, the restore exercise stays owed and stays a gate on the phase 6 mirror
+deletion, exactly as ticket 04 ruling 4 set it. **The restore exercise is deferred, not deleted** - Kevin released
   it as a phase 0 gate because the A25 is not attached to this machine, over a stated objection.
   It is now a **named blocking item against phase 6**, and `memory/MEMORY.md` carries it so it is
   not lost. Anyone reaching phase 6 with this still unmet must stop, per L11: an unmet verification

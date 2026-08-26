@@ -56,6 +56,35 @@ class GoogleGrantResolverTest {
     }
 
     @Test
+    fun `an UNREGISTERED_ON_API_CONSOLE message reads as config even under a generic status 8`() {
+        // Observed verbatim on the A25, 2026-08-26, from a build signed with the second machine's
+        // debug key: "8: [8] Unknown error [status=UNREGISTERED_ON_API_CONSOLE]". Status 8 is
+        // CommonStatusCodes.INTERNAL_ERROR, so before this it fell through to UNKNOWN and the
+        // screen printed that raw string instead of the accurate sentence this file already had.
+        val failure = GoogleGrantResolver.diagnose(
+            grant = GoogleGrantResolver.Grant.DRIVE,
+            statusCode = 8,
+            isNetworkException = false,
+            fallbackMessage = "8: [8] Unknown error [status=UNREGISTERED_ON_API_CONSOLE]",
+        )
+        assertEquals(GoogleGrantResolver.FailureCategory.CONFIG, failure.category)
+    }
+
+    @Test
+    fun `a plain status 8 with no marker stays UNKNOWN - 8 is a generic internal error`() {
+        // The other half of the rule above, and the reason the match is on the message rather
+        // than on the code: status 8 on its own says nothing about registration, and relabelling
+        // every internal error as a setup problem would be a worse lie than the one being fixed.
+        val failure = GoogleGrantResolver.diagnose(
+            grant = GoogleGrantResolver.Grant.DRIVE,
+            statusCode = 8,
+            isNetworkException = false,
+            fallbackMessage = "8: [8] Unknown error",
+        )
+        assertEquals(GoogleGrantResolver.FailureCategory.UNKNOWN, failure.category)
+    }
+
+    @Test
     fun `status code 10 wins over the network flag - a real config error is not offline`() {
         val failure = GoogleGrantResolver.diagnose(
             grant = GoogleGrantResolver.Grant.DRIVE,

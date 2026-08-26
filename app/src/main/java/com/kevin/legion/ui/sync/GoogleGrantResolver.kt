@@ -100,6 +100,22 @@ object GoogleGrantResolver {
     private const val STATUS_NETWORK_ERROR = 7
 
     /**
+     * The marker Play Services puts in the MESSAGE, not the status code, when this build's
+     * package plus signing certificate is not registered on the API console.
+     *
+     * **Observed on the A25, 2026-08-26, and it is why this exists.** A build signed with the
+     * second machine's debug key failed with
+     * `8: [8] Unknown error [status=UNREGISTERED_ON_API_CONSOLE]`. Status 8 is
+     * `CommonStatusCodes.INTERNAL_ERROR`, a genuinely generic code, so it fell through to
+     * [FailureCategory.UNKNOWN] and the screen printed that raw string - even though this file
+     * already had the exact right sentence for the situation sitting in the CONFIG branch.
+     *
+     * Matching on the message rather than on status 8 is deliberate: 8 really is generic, and
+     * mapping all of it to CONFIG would relabel unrelated internal errors as a setup problem.
+     */
+    private const val UNREGISTERED_MARKER = "UNREGISTERED_ON_API_CONSOLE"
+
+    /**
      * The line shown for [FailureCategory.NEEDS_CONSENT]: a grant that existed and lapsed or
      * was revoked, distinct from a driver who has simply never connected [grant] yet (that case
      * is [Availability.DISCONNECTED], not a failure at all). This is the fix ticket 06 point 4
@@ -132,7 +148,8 @@ object GoogleGrantResolver {
      * that see it use [needsReauthorisingMessage] directly, never this function.
      */
     fun diagnose(grant: Grant, statusCode: Int?, isNetworkException: Boolean, fallbackMessage: String?): ConnectFailure = when {
-        statusCode == STATUS_DEVELOPER_ERROR -> ConnectFailure(
+        statusCode == STATUS_DEVELOPER_ERROR ||
+            fallbackMessage?.contains(UNREGISTERED_MARKER) == true -> ConnectFailure(
             FailureCategory.CONFIG,
             "This build's package name and signing certificate aren't registered for Google " +
                 "access yet. That's a setup problem with this build, not something retrying " +

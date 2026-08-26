@@ -238,8 +238,26 @@ roster) sees 0**, and **anon is DENIED at the grant level** ("permission denied 
 before RLS is even consulted. That is two independent layers, each demonstrated: the
 `revoke all from anon` in the RLS macro, and the policy itself. Test self-rolled-back.
 
-**Still owed on the phone, and it needs the Kwin laptop** (debug keystore; the A25 has never been
-attached to this machine): install a build and sign in, confirming the three worded states.
+**THE A25 IS NOW REACHABLE FROM THE SECOND MACHINE** over wireless adb, and a build from here is
+installed and running on it (2026-08-26). Uninstall/reinstall was authorised; **all data was pulled,
+verified and restored** - backup with checksums and a README at
+`C:\Users\kevin\legion-device-backup\2026-08-26\`.
+
+**BUT Drive does not work from this machine, and that is a bigger finding than the test it blocked.**
+A build signed with this machine's debug key fails authorisation with
+`8: [8] Unknown error [status=UNREGISTERED_ON_API_CONSOLE]`, because its SHA-1 is not registered
+against `com.kevin.legion`. That is CLAUDE.md §2's open finding 1 observed for real rather than
+reasoned about. **Consequence: the `DatabaseSnapshot` restore exercise cannot run from here**, since
+backup and restore both go through Drive - so it stays owed, and stays a gate on the phase 6 mirror
+deletion.
+
+**One console entry unblocks it.** This machine's debug SHA-1 is
+`52:4F:39:23:7E:8B:3B:5B:C2:3A:76:A7:EE:BD:16:ED:82:77:30:07`; registering it as a second Android
+OAuth client for the package makes Drive work from here permanently.
+
+**Also still owed:** the Gemini key and every other `KeyVault` secret must be re-entered by hand.
+The ciphertext restored fine but the Keystore key that decrypts it died with the uninstall, and the
+app correctly reports "Gemini key: Not set" rather than pretending.
 
 **RESUME POINT: Phase 2's three remaining items** - `commit_receipt` (pantry's RPC, so the gate is
 proven against two anchor shapes not one), the dedup restatement pass, and the shared gate test
