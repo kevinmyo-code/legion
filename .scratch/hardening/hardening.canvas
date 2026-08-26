@@ -59,6 +59,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "e0ec3b2a7871fd7b",
+      "type": "file",
+      "file": ".scratch/hardening/issues/07-data-source-attribution.md",
+      "x": 0,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": []

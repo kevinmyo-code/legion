@@ -4,8 +4,8 @@ title: "Map: AI craft dividends - evals, semantic recall, durable jobs"
 charted: 2026-08-24
 charted-by: "Kevin + Fable"
 effort: "`.scratch/ai-craft/`"
-tickets: 3
-open: 2
+tickets: 4
+open: 3
 status: open
 tags: [map]
 ---

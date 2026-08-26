@@ -29,6 +29,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "e224b001c27a0522",
+      "type": "file",
+      "file": ".scratch/ai-craft/issues/04-voice-latency.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "5"
     }
   ],
   "edges": []
