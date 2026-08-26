@@ -220,14 +220,38 @@ Delivered:
 - `20260825000600_commit_statement_rpc.sql` - the ledger commit RPC.
 
 **OWED before phase 4's ledger cutover, both recorded rather than glossed:**
-1. **`commit_receipt`, the pantry equivalent.** Pantry is the other gated aspect and exercises a
-   different anchor shape (items sum to subtotal; subtotal plus tax plus other equals total, with a
-   collapse when no subtotal is printed). The gate is proven against one case, not two, until it
-   exists.
-2. **The dedup restatement pass.** `commit_statement` implements the tuple match that
-   `LedgerDedup.resolveDedup` starts from, but NOT the overlapping-window logic using
-   `IngestedFileDao.enumeratedWindows` that tells a genuine duplicate from a bank restating a
-   period. Without it, a restated period double-counts.
+1. ~~`commit_receipt`, the pantry equivalent.~~ **DONE 2026-08-25, applied and verified live.**
+   All seven branches exercised on the real project: valid COMMITTED, repeat ALREADY_COMMITTED,
+   empty items QUARANTINED (rule 6), anchor 1 broken QUARANTINED, anchor 2 broken QUARANTINED, and
+   both sides of the no-subtotal collapse. The gate is now proven against two genuinely different
+   anchor shapes rather than one. Note it deliberately has NO dedup pass: a receipt is one physical
+   document photographed once, two identical items on it are two real rows, and idempotency on
+   `content_sha256` already prevents the only duplication that can occur.
+2. ~~The dedup restatement pass.~~ **DONE 2026-08-25, applied and verified live.**
+   `private.ledger_resolve_dedup` is a faithful port of `LedgerDedup.resolveDedup`: two passes over
+   a shared depleting credit pool, exact strict-key matches first with no window condition, then
+   loose (description-dropped) matches only inside dates another committed statement already
+   enumerated. Windows derive from ACTUAL first/last transaction dates, never the printed period.
+
+   **Verified on the real project against the scenario this exists for**: the July PDF wording
+   `PURCHASE 0706 VPN24.ME EDINBURGH 00` and the mid-cycle CSV wording
+   `VPN24.ME 07/06 PURCHASE EDINBURGH 00` for the same transaction. In-window: dropped, counted as
+   a restatement. Same rewording outside any window: inserted, so the relaxation is not global.
+   Two identical lines in one statement: both inserted, because intra-file twins are real
+   purchases and collapsing them is the original bug the function exists to fix.
+
+   **A schema bug of mine that the port exposed, now fixed.** `LedgerAccountIdentity.kt` forbids
+   folding `sameCard`'s last-four suffix match into the dedup key, because a checking account
+   ending in the same four digits would absorb a card's rows. Ticket 03 ruling 5 then made the
+   stored identity last-four plus nickname, so keying on `account_last4` alone would have
+   reintroduced that exact bug through the schema rather than the predicate. **The key is now the
+   (last4, nickname) pair**, restoring plain equality on a full identity. The nickname is
+   load-bearing, not a label.
+
+   One accepted divergence, documented in the migration: Kotlin's `uppercase()` is Locale.ROOT with
+   full Unicode one-to-many mapping, Postgres `upper()` is collation-driven and is not. Harmless for
+   ASCII bank descriptions, and the failure direction is known - a divergence causes a false
+   NON-match, which double-counts.
 
 **Also owed, and it is this phase's real deliverable per ticket 03 ruling 2:** the shared gate test
 corpus. Two implementations of the same arithmetic now exist, Kotlin and SQL, and nothing yet proves
