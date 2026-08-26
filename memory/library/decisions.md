@@ -4799,3 +4799,16 @@ production use", no SLA on delivery or uptime. Source: supabase.com/docs/guides/
 (fetched 2026-08-25). This limit makes magic-link signup unreliable for clone-and-run setup,
 driving ticket 02's ruling 1 (email+password instead). The analysis is already in the ticket
 resolution; the research file now carries the traced source for future reference.
+
+## 2026-08-25 - Backend-ERP Phase 2 migrations applied to production (HomeERPBackend, live project)
+
+Six Phase 2 migrations applied to the real Supabase project (HomeERPBackend, ref gccxiqusqxkjmjmaadpz, org HomeERP, us-east-1, free tier) via dashboard SQL editor. All migrations verified by querying the database:
+
+- 12 tables all RLS-enabled with a policy per aspect (dates, notes, places, pantry, ledger, fleet)
+- Immutability trigger proven live: gated UPDATE blocked, gated DELETE blocked, provisional DELETE allowed (rule 7 requirement)
+- commit_statement function proven live: COMMITTED on first call, ALREADY_COMMITTED on repeat (content_sha256 idempotency), QUARANTINED for each of: empty extracted rows, wrong total, wrong closing balance
+- Every test case rolled itself back via a deliberate RAISE and all tables confirmed back at 0 rows
+
+Dashboard path bypasses migration history tracking, so any future CLI use against this project requires `supabase migration repair` rather than re-running the initial migrations. See L37 for the lesson on dashboard deployment verification.
+
+**Related:** L37 (success indicator persistence) and its regression discipline.

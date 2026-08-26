@@ -182,10 +182,28 @@ code). The device restore is deferred per Kevin's amendment below and is now a g
   nothing for a non-member, and the keep-alive has survived one full week without a pause.
 
 **Phase 2 - the schema and the RPC. Still nothing writing from the app.**
-**STATUS 2026-08-25: schema DONE, ledger RPC DONE, two items OWED.** Six migrations, 64 statements,
-all parsing through `tools/sql_check.py` (pglast, which wraps Postgres's own grammar). **Nothing has
-been applied to a real project, and plpgsql function bodies are opaque to the parser, so every
-function body here is unproven.**
+**STATUS 2026-08-25: APPLIED AND VERIFIED ON THE REAL PROJECT.** All six migrations ran against
+`HomeERPBackend` (project ref `gccxiqusqxkjmjmaadpz`, org HomeERP, AWS us-east-1, free tier), via
+the dashboard SQL editor.
+
+**Verified by querying the database, not by reading a success panel:**
+- **12 tables**, every one with `relrowsecurity = true` and exactly one policy. Supabase's editor
+  offered "Run without RLS" vs "Run and enable RLS" and **without** was the correct choice: its
+  static analysis cannot see `private.apply_household_rls()` being called inside a `do $$` block,
+  and letting it inject its own statements would have added SQL nobody reviewed.
+- **The immutability trigger works.** A live test on `receipts`/`ledger_transactions`: gated UPDATE
+  BLOCKED, gated DELETE BLOCKED, provisional (UNRECONCILED) DELETE ALLOWED. That last one is the
+  one rule 7 depends on, and it is now proven rather than argued.
+- **`commit_statement` behaves.** A valid statement returned `COMMITTED` with 3 rows inserted; the
+  same payload again returned `ALREADY_COMMITTED` with 0 inserted (idempotency on `content_sha256`
+  is real); an empty `lines` array returned `QUARANTINED` (rule 6); a wrong stated total and a
+  wrong closing balance each returned `QUARANTINED`.
+- Every test wrapped itself in a final `raise` so the transaction rolled back. **All nine tables
+  confirmed at 0 rows afterwards** - no test data survived in Kevin's database.
+
+**Migration history is bypassed.** The dashboard path does not record migrations, which Supabase
+warns can break a later `supabase db push`. The files are committed and idempotent, so the fix when
+the CLI is first used is `supabase migration repair`, not a re-run.
 
 Delivered:
 - `20260825000200_conventions.sql` - provenance enum, the immutability trigger for gated tables,

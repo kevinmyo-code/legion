@@ -897,3 +897,19 @@ addendum), rule 2 in `TEAM.md`'s dispatch cadence for UI work.
 **Regression check:** a research or planning document that says "capability X is the answer to risk Y" should trace which sub-operation of X was verified and name why that sub-operation is sufficient for Y. If Y is "restore lost data" and X is "export data to a spreadsheet," say explicitly that export is not restoration or flag it for verification.
 
 **Status:** OPEN. Applies to the DatabaseSnapshot recovery path now (scheduling + restore-exercise both owed before mirror retirement per ticket 04 ruling 4). Generalizes to any feature whose verification is incomplete at the risk-critical layer.
+
+## L37 - A success indicator in a UI persists from the previous action, not the current one (2026-08-25)
+
+**Found while applying backend-ERP Phase 2 migrations to the real Supabase project via the dashboard SQL editor, 2026-08-25.**
+
+Loaded migration 2 into the editor, pressed Ctrl+Enter, saw "Success. No rows returned" in the results panel, and reported migration 2 as applied. It had not run at all. The keypress never reached the editor; the panel was still displaying migration 1's result from the previous run. Error only surfaced when migration 3 failed with `type "public.provenance" does not exist` - a type migration 2 was supposed to create. Diagnostic query against `pg_type` and `pg_proc` then confirmed exactly which objects existed and which did not.
+
+**Root class:** a success indicator is evidence that SOMETHING succeeded, never evidence that YOUR action ran. A results panel, a toast, a green tick - all persist from the previous action and none is bound to the request just made. Same shape as L10 (a grep-clean result is not a done result) and L36 (verify the half that actually carries the risk), now at the UI layer: the signal you see is not the signal your action produced.
+
+**Tell:** switching from keyboard shortcut to clicking the actual Run button made the difference. The destructive-operations confirmation dialog appeared for the click and had not appeared for the keypress. A missing side effect is a signal that the action did not happen.
+
+**Rule:** When an action's effect is checkable, check the effect rather than the indicator. For a database migration: query the catalog for the objects the statement was supposed to create. For a UI operation: check whether a side effect that should have fired actually did. Dashboard path bypasses migration history, so CLI use needs `supabase migration repair` rather than a re-run if you discover a migration was skipped.
+
+**Regression check:** a database setup or deployment documented as "dashboard SQL editor" without a verification step that queries the target to confirm the objects exist.
+
+**Status:** CLOSED. Applies to backend-ERP Phase 2 deployment and any future dashboard-based migrations. The lesson is recorded here for future database work.

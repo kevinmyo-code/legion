@@ -187,10 +187,20 @@ broke four screenshot tests. The 1.9.0 requester was never identified.
 3. Create both accounts in the dashboard and insert their `household_members` rows.
 4. Sign in on the phone and confirm the membership check.
 
-**PHASE 2 SCHEMA IS WRITTEN (2026-08-25), NOT APPLIED.** Six migrations under
-`supabase/migrations/`, 64 statements, all parsing via `python tools/sql_check.py` (pglast wraps
-Postgres's own grammar). **plpgsql bodies are opaque to that parser, so every function body is
-unproven**, and no Postgres has run any of it.
+**PHASE 2 SCHEMA IS APPLIED AND VERIFIED ON THE REAL PROJECT (2026-08-25).** Six migrations ran against
+`HomeERPBackend` (ref `gccxiqusqxkjmjmaadpz`, org HomeERP, us-east-1, free tier) through the
+dashboard SQL editor. **12 tables, every one RLS-enabled with a policy**, confirmed by querying
+`pg_class`/`pg_policy` rather than by trusting the editor's success panel.
+
+**The two things a local parser could never check are now proven on real Postgres.** The
+immutability trigger: gated UPDATE blocked, gated DELETE blocked, provisional DELETE allowed (rule
+7 needs that last one). And `commit_statement`: valid payload COMMITTED with 3 rows, the same
+payload again ALREADY_COMMITTED with 0 rows, empty lines QUARANTINED (rule 6), wrong total
+QUARANTINED, wrong closing balance QUARANTINED. Every test ended in a deliberate `raise` so it
+rolled back; all tables verified back at 0 rows.
+
+**Migration history is bypassed** by the dashboard path. First CLI use needs
+`supabase migration repair`, not a re-run - the files are idempotent.
 
 Ten tables. Kevin's three rulings encoded: **immutable for gated aspects** (ledger, pantry) and
 editable for authored ones; **header-plus-lines** so a line cannot exist without the anchor it was
@@ -215,9 +225,15 @@ the gate is proven against two anchor shapes not one); the dedup **restatement p
 corpus**, which is ticket 03 ruling 2's real deliverable - two implementations of the same
 arithmetic now exist and nothing proves they agree.
 
-**RESUME POINT: apply the migrations to the real project** (`supabase db push`, or paste each file
-in order into the dashboard SQL editor), which is what turns all of the above from written into
-proven. The four Phase 1 items below are still owed and come first. Nothing in this map has been built - it is six
+**STILL OWED BY KEVIN, and Phase 1 cannot close without them:** the two GitHub Actions secrets
+(`SUPABASE_URL`, `SUPABASE_ANON_KEY`) plus one manual workflow run to prove the keep-alive; both
+accounts created in the dashboard with their `household_members` rows; and a sign-in on the phone.
+Note the schema gives clients NO write path to `household_members` by construction, so adding
+members is dashboard-only.
+
+**RESUME POINT: Phase 2's three remaining items** - `commit_receipt` (pantry's RPC, so the gate is
+proven against two anchor shapes not one), the dedup restatement pass, and the shared gate test
+corpus, which is now writable because the SQL actually runs. Nothing in this map has been built - it is six
 resolved decision tickets and a sequence. Deferred deliberately: the eval/screenshot test plan
 (phase 3 changes what every migrated screen renders, so writing it first writes it twice) and the
 second phone (never attached to this machine; Supabase likely dissolves the merge problem, but that
