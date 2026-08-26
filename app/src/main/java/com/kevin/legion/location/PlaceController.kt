@@ -2,6 +2,9 @@ package com.kevin.legion.location
 
 import android.content.Context
 import android.location.Location
+import com.kevin.legion.backend.PlacesBackend
+import com.kevin.legion.backend.SupabaseClientProvider
+import com.kevin.legion.backend.SupabasePlacesBackend
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.EngineRecord
 import com.kevin.legion.data.local.RecordProvenance
@@ -28,9 +31,41 @@ import org.json.JSONObject
  * in place rather than always creating a second row, reproducing [TaggedPlace.label]'s old
  * `@PrimaryKey`/`OnConflictStrategy.REPLACE` upsert semantics by hand, since the engine has no
  * column-level uniqueness mechanism (`RecordStore`'s own class doc).
+ *
+ * **Backend-erp Phase 4, aspect 1 of 5** (`.scratch/backend-erp/issues/05-migration-path.md`).
+ * DUAL-PATH, per C1: "retirement and deletion are different events". Every function now checks
+ * [backend] first:
+ * - **Not configured** (no Supabase project saved): the ENGINE path above, completely unchanged -
+ *   this is what keeps a stranger's clone-and-run build working with zero setup, and what keeps
+ *   Kevin's own phone working before he signs into a project.
+ * - **Configured**: reads come from the Room [TaggedPlace] replica (cache-first, ticket 01 ruling
+ *   9 - and it must work with no network, since [currentLabel] sits on the geofencing/assistant
+ *   hot path); writes go straight to the server (ruling 8, no local queue) and the replica is
+ *   written **only on a genuine server ACK** - never ahead of it, never on a failure. A failed
+ *   remote write is reported as failed in words (the same §7 outcome-verb discipline the engine
+ *   path already honours below) and leaves Room completely untouched.
  */
 object PlaceController {
     private const val MATCH_RADIUS_M = 150f
+
+    /**
+     * Test seam: settable from a unit test so a [PlacesBackend] fake can be injected without a
+     * real [SupabaseClientProvider] / network. Defaults to null, meaning "resolve normally" -
+     * production code never sets this.
+     */
+    @Volatile
+    internal var backendOverride: PlacesBackend? = null
+
+    /** Resolves the active backend, or null when Supabase is not configured (the signal every
+     * function below branches on). Never performs network I/O itself - it only builds a client
+     * wrapper; the actual request happens in whichever [PlacesBackend] call the caller makes. */
+    private fun backend(context: Context): PlacesBackend? {
+        backendOverride?.let { return it }
+        val client = SupabaseClientProvider.get(context) ?: return null
+        return SupabasePlacesBackend(client)
+    }
+
+    private fun placeDao(context: Context) = CarDatabase.getDatabase(context).placeDao()
 
     private fun store(context: Context): RecordStore {
         val db = CarDatabase.getDatabase(context)
@@ -69,6 +104,25 @@ object PlaceController {
         val loc = LocationController.state.value
             ?: return "I don't have a GPS lock yet, so I can't pin this spot. Give it a sec and try again."
 
+        val backend = backend(context)
+        if (backend != null) {
+            val remote = backend.upsert(label, loc.latitude, loc.longitude).getOrElse {
+                return "Something went wrong pinning that spot - it didn't save. Try again in a sec."
+            }
+            // Room is written ONLY here, after a genuine server ACK (ticket 01 ruling 9) - never
+            // ahead of it, and never on the failure branch above.
+            placeDao(context).upsert(
+                TaggedPlace(
+                    label = remote.label,
+                    latitude = remote.latitude,
+                    longitude = remote.longitude,
+                    timestamp = remote.updatedAtMs,
+                    deleted = remote.deleted,
+                )
+            )
+            return ackFor(label)
+        }
+
         val sch = schema(context)
         val fieldValues = mapOf(
             sch.fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL) to label,
@@ -95,6 +149,17 @@ object PlaceController {
      * or if the delete itself did not actually land (same §7 fix as [tagPlace]). */
     suspend fun forgetPlace(context: Context, rawLabel: String): String {
         val label = normalizeLabel(rawLabel) ?: return "I'm not sure which place you mean."
+
+        val backend = backend(context)
+        if (backend != null) {
+            val didDelete = backend.softDelete(label).getOrElse {
+                return "I found \"$label\" but couldn't remove it just now - nothing was deleted."
+            }
+            if (!didDelete) return "I don't have a saved place called \"$label\"."
+            placeDao(context).delete(label)
+            return forgetAck(label)
+        }
+
         val sch = schema(context)
         val existing = activeRecords(context).firstOrNull {
             PayloadCodec.readString(JSONObject(it.payload), sch.fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL)) == label
@@ -107,6 +172,13 @@ object PlaceController {
      * delete - false for "no such label" and for a write that did not actually land, same §7 fix as
      * [tagPlace]/[forgetPlace]. */
     suspend fun forget(context: Context, label: String): Boolean {
+        val backend = backend(context)
+        if (backend != null) {
+            val didDelete = backend.softDelete(label).getOrElse { return false }
+            if (didDelete) placeDao(context).delete(label)
+            return didDelete
+        }
+
         val sch = schema(context)
         val existing = activeRecords(context).firstOrNull {
             PayloadCodec.readString(JSONObject(it.payload), sch.fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL)) == label
@@ -114,15 +186,18 @@ object PlaceController {
         return store(context).delete(existing.id) is RecordStore.DeleteResult.Trashed
     }
 
-    /** All saved places (used by the UI list). */
+    /** All saved places (used by the UI list). Configured: reads the Room replica, never the
+     * network - cache-first (ticket 01 ruling 9). Unconfigured: the unchanged engine path. */
     suspend fun all(context: Context): List<TaggedPlace> {
+        if (backend(context) != null) return placeDao(context).getAll()
         val sch = schema(context)
         return activeRecords(context).map { toTaggedPlace(it, sch.fieldIds) }
     }
 
     /**
      * The label of the saved place the driver is currently within
-     * [MATCH_RADIUS_M] of (nearest wins), or null.
+     * [MATCH_RADIUS_M] of (nearest wins), or null. Reads whatever [all] returns - never performs
+     * network I/O itself, configured or not, since this sits on the geofencing/assistant hot path.
      */
     suspend fun currentLabel(context: Context): String? {
         val loc = LocationController.state.value ?: return null
