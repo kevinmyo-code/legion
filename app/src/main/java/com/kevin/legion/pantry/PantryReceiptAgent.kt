@@ -232,49 +232,18 @@ object PantryReceiptAgent {
         // this check - they're not verifiable against anything on the
         // receipt. See this object's doc comment for why it reconciles
         // against the SUBTOTAL rather than the grand total.
-        val money = { cents: Long -> "${currency.name} ${formatCents(cents)}" }
         val itemsTotal = items.sumOf { it.totalPriceCents }
-        val taxTotal = taxCents ?: 0L
-        val otherTotal = otherChargesCents ?: 0L
-
-        if (subtotalCents != null) {
-            // Anchor 1: the items are all of, and only, what the subtotal covers.
-            if (itemsTotal != subtotalCents) {
-                val missing = subtotalCents - itemsTotal
-                return PantryIngestResult.Quarantined(
-                    "This receipt's ${items.size} extracted items come to ${money(itemsTotal)}, but it " +
-                        "prints a subtotal of ${money(subtotalCents)} - ${money(kotlin.math.abs(missing))} " +
-                        (if (missing > 0) "is missing, so an item was probably not read. " else "too much was read. ") +
-                        "Couldn't verify the numbers, so nothing was saved. Try a clearer photo."
-                )
-            }
-            // Anchor 2: subtotal, tax and any other printed charge account for
-            // the grand total with nothing left over.
-            val computed = subtotalCents + taxTotal + otherTotal
-            if (computed != totalCents) {
-                return PantryIngestResult.Quarantined(
-                    "This receipt's own figures don't tie out: a subtotal of ${money(subtotalCents)} " +
-                        "plus ${money(taxTotal)} tax" +
-                        (if (otherTotal != 0L) " plus ${money(otherTotal)} in other charges" else "") +
-                        " lands at ${money(computed)}, not the ${money(totalCents)} it prints as the " +
-                        "total. Couldn't verify the numbers, so nothing was saved. Try a clearer photo."
-                )
-            }
-        } else {
-            // No printed subtotal to split the check on, so the two anchors
-            // collapse into one. Still a real gate: the items plus every
-            // printed non-item charge must account for the total exactly.
-            val computed = itemsTotal + taxTotal + otherTotal
-            if (computed != totalCents) {
-                return PantryIngestResult.Quarantined(
-                    "This receipt's ${items.size} extracted items come to ${money(itemsTotal)}" +
-                        (if (taxTotal != 0L) " plus ${money(taxTotal)} tax" else "") +
-                        (if (otherTotal != 0L) " plus ${money(otherTotal)} in other charges" else "") +
-                        ", which lands at ${money(computed)}, not the ${money(totalCents)} it prints " +
-                        "as the total. Couldn't verify the numbers, so nothing was saved. " +
-                        "Try a clearer photo."
-                )
-            }
+        val reconciliationReason = reconciliationFailure(
+            itemCount = items.size,
+            itemsTotalCents = itemsTotal,
+            subtotalCents = subtotalCents,
+            taxCents = taxCents,
+            otherChargesCents = otherChargesCents,
+            totalCents = totalCents,
+            currency = currency,
+        )
+        if (reconciliationReason != null) {
+            return PantryIngestResult.Quarantined(reconciliationReason)
         }
 
         return PantryIngestResult.Success(
@@ -312,5 +281,70 @@ object PantryReceiptAgent {
         } catch (e: Exception) {
             throw UnreadableFigureException(field, token)
         }
+    }
+
+    /**
+     * The two-anchor arithmetic itself, extracted out of [parseAndReconcile] so
+     * `backend.PantryReconcile`'s migration verification pass can re-check an already-written
+     * receipt's STORED figures against the exact same rule this object enforces at extraction
+     * time (backend-erp ticket 05: "find it, do not re-implement it") - rather than a second copy
+     * of this arithmetic drifting out of step with this one. `supabase/migrations/
+     * 20260825000700_commit_receipt_rpc.sql`'s `commit_receipt` is the THIRD implementation of this
+     * same rule (ticket 03 ruling 2 accepted that duplication on condition of a shared test corpus);
+     * this function is what keeps the two Kotlin call sites from being a fourth and fifth.
+     *
+     * Returns null when [itemsTotalCents] and the printed anchors reconcile exactly; otherwise the
+     * same wording [parseAndReconcile] would have quarantined with. Takes the already-summed
+     * [itemsTotalCents] and [itemCount] rather than the item list itself, so a caller reconstructing
+     * a stored receipt (which has no reason to rebuild [PantryLineItem] objects to re-check its own
+     * numbers) can call this directly off its own stored figures.
+     */
+    fun reconciliationFailure(
+        itemCount: Int,
+        itemsTotalCents: Long,
+        subtotalCents: Long?,
+        taxCents: Long?,
+        otherChargesCents: Long?,
+        totalCents: Long,
+        currency: LedgerCurrency,
+    ): String? {
+        val money = { cents: Long -> "${currency.name} ${formatCents(cents)}" }
+        val taxTotal = taxCents ?: 0L
+        val otherTotal = otherChargesCents ?: 0L
+
+        if (subtotalCents != null) {
+            // Anchor 1: the items are all of, and only, what the subtotal covers.
+            if (itemsTotalCents != subtotalCents) {
+                val missing = subtotalCents - itemsTotalCents
+                return "This receipt's $itemCount extracted items come to ${money(itemsTotalCents)}, but it " +
+                    "prints a subtotal of ${money(subtotalCents)} - ${money(kotlin.math.abs(missing))} " +
+                    (if (missing > 0) "is missing, so an item was probably not read. " else "too much was read. ") +
+                    "Couldn't verify the numbers, so nothing was saved. Try a clearer photo."
+            }
+            // Anchor 2: subtotal, tax and any other printed charge account for
+            // the grand total with nothing left over.
+            val computed = subtotalCents + taxTotal + otherTotal
+            if (computed != totalCents) {
+                return "This receipt's own figures don't tie out: a subtotal of ${money(subtotalCents)} " +
+                    "plus ${money(taxTotal)} tax" +
+                    (if (otherTotal != 0L) " plus ${money(otherTotal)} in other charges" else "") +
+                    " lands at ${money(computed)}, not the ${money(totalCents)} it prints as the " +
+                    "total. Couldn't verify the numbers, so nothing was saved. Try a clearer photo."
+            }
+        } else {
+            // No printed subtotal to split the check on, so the two anchors
+            // collapse into one. Still a real gate: the items plus every
+            // printed non-item charge must account for the total exactly.
+            val computed = itemsTotalCents + taxTotal + otherTotal
+            if (computed != totalCents) {
+                return "This receipt's $itemCount extracted items come to ${money(itemsTotalCents)}" +
+                    (if (taxTotal != 0L) " plus ${money(taxTotal)} tax" else "") +
+                    (if (otherTotal != 0L) " plus ${money(otherTotal)} in other charges" else "") +
+                    ", which lands at ${money(computed)}, not the ${money(totalCents)} it prints " +
+                    "as the total. Couldn't verify the numbers, so nothing was saved. " +
+                    "Try a clearer photo."
+            }
+        }
+        return null
     }
 }

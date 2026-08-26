@@ -3,6 +3,10 @@ package com.kevin.legion.pantry
 import android.content.Context
 import android.util.Log
 import androidx.room.withTransaction
+import com.kevin.legion.backend.CommitOutcome
+import com.kevin.legion.backend.PantryBackend
+import com.kevin.legion.backend.SupabaseClientProvider
+import com.kevin.legion.backend.SupabasePantryBackend
 import com.kevin.legion.data.PantryPhotoStore
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.EngineRecord
@@ -16,7 +20,9 @@ import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.RecordStore
 import com.kevin.legion.engine.pantry.PantryAspectSeeder
+import com.kevin.legion.ledger.IngestPipeline
 import java.io.File
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -48,6 +54,26 @@ import org.json.JSONObject
  * as to a voice tool: [importReceipt] never reports success unless every write in the transaction
  * actually landed, and rolls the whole transaction back rather than leaving a receipt with some but
  * not all of its line items.
+ *
+ * **Backend-erp Phase 4, aspect 2 of 5** (`.scratch/backend-erp/issues/05-migration-path.md`).
+ * DUAL-PATH, exactly [com.kevin.legion.location.PlaceController]'s shape - every function checks
+ * [backend] first:
+ * - **Not configured**: the ENGINE path above, completely unchanged - clone-and-run with zero
+ *   Supabase setup still works.
+ * - **Configured**: reads come from the Room [PantryReceipt]/[PantryLineItem] replica (cache-first,
+ *   ticket 01 ruling 9); writes go straight to the server. **Two distinct write paths, kept apart
+ *   on purpose:** a NEW receipt import always goes through [PantryBackend.commitReceipt], so
+ *   CLAUDE.md §4's gate runs server-side exactly once - [importReceipt] never inserts a receipt
+ *   directly when configured, because that would bypass the gate. The one-time migration upload of
+ *   receipts already gated on-device is [com.kevin.legion.backend.PantryReconcile]'s job, entirely
+ *   separate, keyed on `origin_guid` rather than the RPC. Room is written **only on a genuine server
+ *   ACK**, never ahead of it, never on a failure - a failed write is reported as failed in words and
+ *   leaves Room untouched (CLAUDE.md §7).
+ *
+ * **Photos stay on the device in this ticket.** `photo_object_path` is left NULL server-side;
+ * [PantryPhotoStore] is unchanged. Supabase Storage is not installed
+ * ([com.kevin.legion.backend.SupabaseClientProvider] only installs Auth and Postgrest) and wiring
+ * it is its own piece of work, owed separately.
  */
 object PantryController {
     private const val TAG = "PantryController"
@@ -57,6 +83,24 @@ object PantryController {
         val database = db(context)
         return RecordStore(database.engineRecordDao(), database.fieldDefDao(), database.recordTypeDao())
     }
+
+    /** Test seam: settable from a unit test so a [PantryBackend] fake can be injected without a
+     * real [SupabaseClientProvider] / network - same mechanism as
+     * [com.kevin.legion.location.PlaceController.backendOverride]. Defaults to null, meaning
+     * "resolve normally"; production code never sets this. */
+    @Volatile
+    internal var backendOverride: PantryBackend? = null
+
+    /** Resolves the active backend, or null when Supabase is not configured - the signal every
+     * function below branches on. Never performs network I/O itself. */
+    private fun backend(context: Context): PantryBackend? {
+        backendOverride?.let { return it }
+        val client = SupabaseClientProvider.get(context) ?: return null
+        return SupabasePantryBackend(client)
+    }
+
+    private fun receiptDao(context: Context) = db(context).pantryReceiptDao()
+    private fun lineItemDao(context: Context) = db(context).pantryLineItemDao()
 
     private suspend fun schema(context: Context) = PantryAspectSeeder.ensureSeeded(context)
 
@@ -104,16 +148,20 @@ object PantryController {
         )
     }
 
-    /** Every non-trashed `Receipt` record, converted - the one place every receipt read below
-     * funnels through, so there is exactly one query against the engine per read. */
+    /** Every receipt - the one place every receipt read below funnels through. **Configured**:
+     * reads the Room replica, never the network - cache-first (ticket 01 ruling 9). **Unconfigured**:
+     * every non-trashed engine `Receipt` record, converted; exactly one query against the engine
+     * per read, as before cutover 2. */
     private suspend fun allReceipts(context: Context): List<PantryReceipt> {
+        if (backend(context) != null) return receiptDao(context).getAll()
         val sch = schema(context)
         return db(context).engineRecordDao().activeByRecordType(sch.receipt.recordTypeId)
             .map { toReceipt(it, sch.receipt.fieldIds) }
     }
 
-    /** Every non-trashed `LineItem` record, converted - same shape as [allReceipts]. */
+    /** Every line item - same cache-first/engine split as [allReceipts]. */
     private suspend fun allLineItems(context: Context): List<PantryLineItem> {
+        if (backend(context) != null) return lineItemDao(context).getAll()
         val sch = schema(context)
         return db(context).engineRecordDao().activeByRecordType(sch.lineItem.recordTypeId)
             .map { toLineItem(it, sch.lineItem.fieldIds) }
@@ -139,6 +187,13 @@ object PantryController {
      * that plain `Insert` calls never had - see this object's class doc), the
      * whole transaction rolls back, nothing is written, and the caller is told
      * in words that nothing was saved - never a false success (CLAUDE.md §7).
+     *
+     * **Configured**: the gate-passed [PantryIngestResult.Success] goes to
+     * [PantryBackend.commitReceipt] instead of [writeReceipt] - CLAUDE.md §4's gate then runs a
+     * SECOND time, server-side, against `public.commit_receipt` (ticket 05's "two distinct write
+     * paths, and keeping them distinct is the point": a NEW import always goes through the RPC, so
+     * the server-side gate is never bypassed by a direct insert). [writeReceipt] itself is
+     * untouched and stays the unconfigured path's writer.
      */
     suspend fun importReceipt(context: Context, imageFile: File): PantryImportResult {
         val bytes = try {
@@ -151,7 +206,12 @@ object PantryController {
         return when (val result = PantryReceiptAgent.extract(bytes, imageFile.path)) {
             is PantryIngestResult.Quarantined -> PantryImportResult(success = false, message = result.reason)
             is PantryIngestResult.Success -> {
-                val written = writeReceipt(context, result)
+                val backend = backend(context)
+                val written = if (backend != null) {
+                    commitReceiptRemote(context, backend, bytes, result)
+                } else {
+                    writeReceipt(context, result)
+                }
                 if (written.success) PantryPhotoStore.delete(context, imageFile)
                 written
             }
@@ -240,6 +300,107 @@ object PantryController {
             message = "Logged $itemCount item(s) from ${result.receipt.store}.",
             itemCount = itemCount,
         )
+    }
+
+    /**
+     * The CONFIGURED half of [importReceipt] - commits [result] through [PantryBackend.commitReceipt]
+     * and writes the Room replica only on [CommitOutcome.Committed], the one branch that hands back
+     * a real server id (ticket 01 ruling 9: never ahead of a genuine ACK). [CommitOutcome.Quarantined]
+     * is the gate refusing, not a transport failure, and is reported with the SAME wording
+     * [PantryReceiptAgent] would have produced for identical figures - never as "something went
+     * wrong". [CommitOutcome.AlreadyCommitted] is a retried request that already landed; per that
+     * outcome's own doc comment the server hands back no id for it, so this cannot write a fresh
+     * Room row here either - the gap closes on the next [com.kevin.legion.backend.PantryReconcile]
+     * pass or replica refresh, not by inventing one.
+     *
+     * `internal`, not `private` - the network-free half of the CONFIGURED path, exercised directly
+     * by `PantryControllerBackendTest` with a [com.kevin.legion.backend.PantryBackend] fake, same
+     * posture as [writeReceipt] being the network-free half of the unconfigured one.
+     */
+    internal suspend fun commitReceiptRemote(
+        context: Context,
+        backend: PantryBackend,
+        bytes: ByteArray,
+        result: PantryIngestResult.Success,
+    ): PantryImportResult {
+        val payload = buildCommitReceiptPayload(bytes, result)
+        val outcome = backend.commitReceipt(payload).getOrElse {
+            Log.w(TAG, "commitReceiptRemote: request failed - ${it.message}")
+            return PantryImportResult(
+                success = false,
+                message = "This receipt's numbers checked out, but I couldn't reach the server to save it - try again.",
+            )
+        }
+
+        return when (outcome) {
+            is CommitOutcome.Quarantined -> PantryImportResult(success = false, message = outcome.reason)
+            is CommitOutcome.AlreadyCommitted -> PantryImportResult(
+                success = true,
+                message = "This receipt was already logged.",
+            )
+            is CommitOutcome.Committed -> {
+                // Room is written ONLY here, after a genuine server ACK - never ahead of it.
+                val localReceiptId = receiptDao(context).insert(
+                    PantryReceipt(
+                        store = result.receipt.store,
+                        purchaseDate = result.receipt.purchaseDate,
+                        currency = result.receipt.currency,
+                        totalCents = result.receipt.totalCents,
+                        sourceImagePath = result.receipt.sourceImagePath,
+                        syncId = outcome.receiptId,
+                    ),
+                )
+                lineItemDao(context).insertAll(result.items.map { it.copy(receiptId = localReceiptId) })
+                PantryImportResult(
+                    success = true,
+                    message = "Logged ${result.items.size} item(s) from ${result.receipt.store}.",
+                    itemCount = result.items.size,
+                )
+            }
+        }
+    }
+
+    /**
+     * The JSON body `public.commit_receipt(payload jsonb)` expects
+     * (`supabase/migrations/20260825000700_commit_receipt_rpc.sql`), built from a gate-passed
+     * [result] - [content_sha256] is what makes the RPC idempotent, computed with the exact same
+     * [IngestPipeline.sha256] the ledger ingestion path already uses, over the same photo [bytes]
+     * that were handed to [PantryReceiptAgent]. Lives here rather than in `backend/` because it is
+     * the one place that already holds a [PantryIngestResult.Success] in this exact shape -
+     * [PantryBackend.commitReceipt] stays free of any pantry-package type (see that function's own
+     * doc comment).
+     */
+    private fun buildCommitReceiptPayload(bytes: ByteArray, result: PantryIngestResult.Success): String {
+        val itemsArray = JSONArray()
+        for (item in result.items) {
+            itemsArray.put(
+                JSONObject().apply {
+                    put("name", item.name)
+                    put("quantity", item.quantity)
+                    put("unit_price_cents", item.unitPriceCents ?: JSONObject.NULL)
+                    put("total_price_cents", item.totalPriceCents)
+                    put("estimated_calories_kcal", item.caloriesKcal ?: JSONObject.NULL)
+                    put("estimated_protein_g", item.proteinG ?: JSONObject.NULL)
+                    put("estimated_carbs_g", item.carbsG ?: JSONObject.NULL)
+                    put("estimated_fat_g", item.fatG ?: JSONObject.NULL)
+                },
+            )
+        }
+        val purchaseDateStr = java.time.Instant.ofEpochMilli(result.receipt.purchaseDate)
+            .atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
+        val root = JSONObject().apply {
+            put("content_sha256", IngestPipeline.sha256(bytes))
+            put("store", result.receipt.store)
+            put("purchase_date", purchaseDateStr)
+            put("currency", result.receipt.currency.name)
+            put("total_cents", result.receipt.totalCents)
+            put("subtotal_cents", result.subtotalCents ?: JSONObject.NULL)
+            put("tax_cents", result.taxCents ?: JSONObject.NULL)
+            put("other_charges_cents", result.otherChargesCents ?: JSONObject.NULL)
+            put("items", itemsArray)
+            put("provenance", RecordProvenance.LLM_RECONCILED.name)
+        }
+        return root.toString()
     }
 
     // ------------------------------------------------------------------------------------ reads

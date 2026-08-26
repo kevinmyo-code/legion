@@ -48,6 +48,13 @@ interface PantryReceiptDao {
      */
     @Query("SELECT purchaseDate, totalCents, currency FROM pantry_receipts")
     suspend fun getAllForCharts(): List<PantryReceiptSummary>
+
+    /** Wipes the replica clean before [com.kevin.legion.backend.PantryReconcile] refills it - see
+     * [PantryLineItemDao.deleteAllForReplicaRefresh]'s doc comment for why a full clear-and-refill,
+     * not an upsert, is what makes the migration job idempotent here. Never called from the regular
+     * read/write path. */
+    @Query("DELETE FROM pantry_receipts")
+    suspend fun deleteAllForReplicaRefresh()
 }
 
 /** [PantryReceiptDao.totalSpendCentsByCurrency]'s row shape. */
