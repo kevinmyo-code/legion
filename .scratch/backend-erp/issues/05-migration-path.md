@@ -83,11 +83,39 @@ ticket 20 declared it retired for record data, **but it retired zero legacy tabl
 running today**. Ticket 04 ruled on the mirror and kept `DatabaseSnapshot`; nothing has ruled on
 `SyncEngine`. Decide it here.
 
-**Read-path work that ticket 04 identified and nobody owns yet:** ledger, pantry and fleet have no
-loading state and no error state, so an empty screen and a not-yet-loaded screen are the same
-pixels. Local latency hid that; a network round trip turns it into a false assertion, and ticket 01
-ruling 9 (cache-first reads) additionally requires a visible "as of" on money.
-`engine/WidgetDataSource.kt` is the worked example to extend, not a second vocabulary to invent.
+**Read-path work that ticket 04 identified and nobody owns yet.**
+
+**CORRECTED 2026-08-26, and the correction narrows the job.** This paragraph used to claim the three
+screens "have no loading state and no error state, so an empty screen and a not-yet-loaded screen
+are the same pixels". **The loading half of that is wrong.** All three already carry
+`loading: Boolean = true` and render a screen-level indicator (`LedgerScreen.kt:1026`,
+`PantryScreen.kt:120`, `FleetScreen.kt:815`), and `FleetUiState.odometerUnset` even defaults to
+`true` specifically so a not-yet-loaded state cannot open the miles axis. I wrote the original from
+a summary and did not check it.
+
+What is ACTUALLY missing, all traced:
+
+- **No error channel anywhere, and this is worse than what was originally described.** None of the
+  three load effects has a `try`/`catch`, so a Room or bundled-asset throw propagates out of the
+  `LaunchedEffect` and CRASHES rather than surfacing as a state.
+- **The ledger money tiles have no loading gate.** The month effect (`:387-407`) never touches
+  `loading`, so `budgetVsActual == null` means both "this month is reloading" and "no data": the
+  hero regresses to `"..."`/`"loading"` while the tiles beside it still show the previous month's
+  figures.
+- **No screen records when its load completed**, which is the missing datum for a cache-first
+  "as of".
+- **Pantry has no reload path at all** (`LaunchedEffect(Unit)` fires once, ever), so a failed load
+  cannot even be retried.
+- **Zero Roborazzi coverage** on any of the three.
+
+**Two "as of" facts exist and must not be conflated.** `AccountBalance.asOfMs`, already rendered at
+`ui/ledger/LedgerRows.kt:196`, is the DOCUMENT's date: the statement said this balance held on the
+15th. Ruling 9's "as of" is when THIS DEVICE last read its copy. Both can be true at once, they
+answer different questions, and the phase 3 work touches only the second.
+
+`engine/WidgetDataSource.kt` remains the vocabulary to extend rather than duplicate: it already
+splits loading (a null sentinel), not-configured, empty-in-words and error, each with its own
+colour (`EngineWidgets.kt` uses `ghost` / `faint` / `quarantined`).
 
 ## Resolution (2026-08-25) - three rulings and the sequence
 
