@@ -243,7 +243,26 @@ installed and running on it (2026-08-26). Uninstall/reinstall was authorised; **
 verified and restored** - backup with checksums and a README at
 `C:\Users\kevin\legion-device-backup\2026-08-26\`.
 
-**BUT Drive does not work from this machine, and that is a bigger finding than the test it blocked.**
+**RESOLVED, and the restore test finally ran. Phase 0 is genuinely complete.** Kevin registered this
+machine's SHA-1 as a second Android OAuth client, Drive authorised, and backup plus restore were
+both exercised on the A25.
+
+**The restore failed on its first ever run, which is why running it mattered.** `DriveClient` set
+only `callTimeout(60s)`; OkHttp does not derive per-operation timeouts from that, so read stayed at
+the 10s default and a multi-MB download died waiting for Drive to start streaming, with 50s of
+budget unused. **Uploads were never affected** - the backup half ran for weeks, the restore half had
+never run once. L36 exactly: the untested half was the broken half, on the only recovery path.
+Fixed with explicit connect 15 / read 60 / write 60 / call 120.
+
+**After the fix, verified**: restore clean, `pre_restore_*.db` safety copy written as promised, and
+the database checked afterwards at `integrity: ok`, schema 37, **578 records** with provenance split
+unchanged, 168 legacy ledger rows, 71 list items, 5 vehicles.
+
+**`ScheduledBackup` also proved itself on hardware**, both directions: it recorded a real failure in
+words while Drive was unauthorised, then ran automatically and succeeded once it was ("Automatic
+backup: last succeeded Aug 25, 22:19").
+
+**The historical finding, kept because it still binds any UNREGISTERED machine:**
 A build signed with this machine's debug key fails authorisation with
 `8: [8] Unknown error [status=UNREGISTERED_ON_API_CONSOLE]`, because its SHA-1 is not registered
 against `com.kevin.legion`. That is CLAUDE.md §2's open finding 1 observed for real rather than

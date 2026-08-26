@@ -44,8 +44,26 @@ import java.util.concurrent.TimeUnit
  */
 class DriveClient(private val accessToken: String) {
 
+    /**
+     * **Observed failing on the A25, 2026-08-26, on the FIRST ever real restore attempt.**
+     * `callTimeout` alone was set here, and it does not raise OkHttp's per-operation defaults:
+     * connect, read and write each stay at 10 seconds. Downloading a whole-database backup (a few
+     * MB gzipped) meant waiting on Drive to start streaming, that wait exceeded the 10 second READ
+     * timeout, and the restore died with `SocketTimeoutException` out of `Http2Stream.takeHeaders`
+     * while the 60 second call budget still had 50 seconds left.
+     *
+     * Uploads were unaffected and had been working for weeks, which is why this survived: the
+     * backup half is exercised regularly and the restore half had never once been run.
+     *
+     * The timeouts below are sized for a multi-megabyte whole-database transfer rather than for
+     * the small per-table NDJSON files ordinary sync moves. `callTimeout` stays the outer bound on
+     * the whole call so a stalled transfer still cannot hang forever.
+     */
     private val client = OkHttpClient.Builder()
-        .callTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(120, TimeUnit.SECONDS)
         .build()
 
     /** A remote file's identity plus Drive's per-file revision counter (B20). */

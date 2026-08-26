@@ -189,8 +189,33 @@ second machine identically.
    package as a second Android OAuth client makes Drive work from here permanently, and makes the
    restore exercise runnable without the Kwin laptop.
 
-Until one of those happens, the restore exercise stays owed and stays a gate on the phase 6 mirror
-deletion, exactly as ticket 04 ruling 4 set it. **The restore exercise is deferred, not deleted** - Kevin released
+**RESOLVED THE SAME DAY.** Kevin registered this machine's SHA-1 as a second Android OAuth client
+against `com.kevin.legion`, Drive authorised, and the restore was exercised end to end on the A25.
+
+**It failed the first time, which is the entire point of having run it.**
+`DriveClient` set only `callTimeout(60s)`, and OkHttp does not derive its per-operation timeouts
+from that: connect, read and write each stayed at the 10 second default. Downloading a
+multi-megabyte whole-database backup meant waiting on Drive to begin streaming, that wait blew the
+READ timeout, and the restore died with `SocketTimeoutException` out of `Http2Stream.takeHeaders`
+while 50 seconds of the call budget were still unused.
+
+**Uploads were never affected, which is exactly why it survived.** The backup half runs regularly
+and had worked for weeks; the restore half had never once been run. That is L36 in its purest
+form: the untested half was the broken half, on the only recovery path there is.
+
+**What the app got right, and it is worth recording as well as the bug.** It failed BEFORE touching
+the database, left it byte-identical, and said so in words ("Couldn't download that backup."). The
+confirmation dialog states exactly what will be replaced, that a local copy is taken first, and
+that nothing does this automatically.
+
+**After the fix** (explicit connect 15s / read 60s / write 60s, `callTimeout` 120s as the outer
+bound): restore ran clean, wrote `files/pre_restore_backups/pre_restore_*.db` as promised, and the
+database verified afterwards at `integrity: ok`, schema 37, **578 records** with the provenance
+split unchanged (430 DETERMINISTIC, 29 LLM_RECONCILED, 7 UNRECONCILED, 107 USER), 168 legacy ledger
+rows, 71 list items, 5 vehicles, 4 places.
+
+**Phase 0 is now genuinely complete, and the phase 6 gate is satisfied**: the recovery path is no
+longer a hope. **The restore exercise is deferred, not deleted** - Kevin released
   it as a phase 0 gate because the A25 is not attached to this machine, over a stated objection.
   It is now a **named blocking item against phase 6**, and `memory/MEMORY.md` carries it so it is
   not lost. Anyone reaching phase 6 with this still unmet must stop, per L11: an unmet verification
