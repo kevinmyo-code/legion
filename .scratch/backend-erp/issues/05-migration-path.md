@@ -456,9 +456,15 @@ dispatch, exits 0 when secrets are absent so a fork accumulates no red runs, fai
 non-2xx rather than reporting a safety it is not providing). **What is NOT established is whether
 the two repo secrets are set or whether the workflow has ever completed a run** - `gh` is not
 installed on the second machine, so neither could be checked from here. Under ruling 8 there is no
-offline queue, so a paused project is a hard outage, not a degraded mode. **Owed by Kevin, before
-any aspect soaks:** set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in Settings -> Secrets and variables
--> Actions, then run the workflow once by hand and confirm it goes green.
+offline queue, so a paused project is a hard outage, not a degraded mode. **CLOSED 2026-08-26, and the "owed" framing was wrong - Kevin had already done it.** Verified in
+his browser: both `SUPABASE_URL` and `SUPABASE_ANON_KEY` exist as repository secrets, and the
+workflow has two green runs - a manual one on 2026-08-25 and a SCHEDULED one at 02:42 today, which
+is the one that proves the cron itself fires rather than just the button.
+
+The chain that makes green meaningful here, since it is not obvious: the workflow exits 0 with a
+message when the secrets are ABSENT, so a green run alone proves nothing. But the secrets are
+present, and the script fails loudly on any non-2xx precisely so it cannot report a safety it is
+not providing. Green + secrets present therefore does mean a real 2xx from the project.
 
 **BLOCKER for phases 4b-4e, found 2026-08-26 while checking the natural key per aspect as the
 correction above advises. PLACES IS THE ONLY ASPECT WHOSE UPLOAD IS IDEMPOTENT TODAY.** The full
@@ -521,8 +527,12 @@ decided, with the traps that make them non-obvious rather than clerical:
 
 Places is unaffected and proceeds now.
 
-**RESOLVED 2026-08-26 by `supabase/migrations/20260826000100_origin_guid.sql` (written, parse-checked,
-NOT YET APPLIED - Kevin applies it by hand).** The fix is not five semantic natural keys, because
+**RESOLVED 2026-08-26 by `supabase/migrations/20260826000100_origin_guid.sql`. APPLIED to the live
+project the same day and verified independently** - not by reading the SQL editor's own "Success"
+panel, which is exactly what produced L37, but by a follow-up query against `information_schema`
+joined to `pg_indexes`: all six tables return `origin_guid` present with `has_unique_index = true`.
+What was applied is the repo file's 12 DDL statements; its leading comment block is documentation
+and was not pasted. The fix is not five semantic natural keys, because
 that approach does not survive contact with the data: `receipt_line_items` has no natural key even
 in principle (two identical lines on one receipt are legitimately two rows, so any key over
 receipt/name/price would COLLAPSE two real rows into one - and silently losing a line item is
