@@ -421,8 +421,19 @@ is the first time these paths fire in anger.
 Notes+Dates (172, together, carrying the merge) → Ledger (168, last).** Ledger is last because it is
 money and because it depends on phase 5's CSV path.
 
+**CORRECTED 2026-08-26, at the start of phase 4: "guid-keyed" is wrong for the schema that was
+actually applied.** No table in `supabase/migrations/` has a `guid` column. The schema keys on
+NATURAL keys throughout - `places.label`, `ingested_files.content_sha256` (named in its own comment
+as the commit RPC's idempotency key), `statements (ingested_file_id, account_last4)`,
+`maintenance_schedules (vehicle_id, service_name)`, `event_skips (event_id, skip_date)`. Room v37's
+`records.guid` is the GENERIC ENGINE's cross-device identity column, and the engine is precisely
+what ruling 7 retires, so it does not follow the data across. Idempotency per aspect is therefore
+by that aspect's natural key, and **an aspect whose rows have no natural key needs one chosen before
+its upload step can be idempotent** - check this per aspect rather than assuming, since the
+remaining four are not all as clean as `places.label`.
+
 Each aspect follows the identical shape, and it is a reconcile-and-repoint, never a blind switch:
-1. Upload, guid-keyed and idempotent, so a re-run is free.
+1. Upload, keyed on that aspect's natural key and idempotent, so a re-run is free.
 2. **Diff until clean.** Engine records remain the truth until the diff is clean. The legacy typed
    tables are roughly a day stale for whatever cut over on 2026-08-24, so this is a real
    reconciliation, not a formality.
@@ -431,6 +442,69 @@ Each aspect follows the identical shape, and it is a reconcile-and-repoint, neve
 5. Soak before starting the next aspect.
 - **Done, per aspect, means:** the diff is clean, writes land server-side, the phone renders from
   the replica, and no table is in two sync channels.
+
+**Two findings from starting phase 4 on places, 2026-08-26.**
+
+**Places is further along than this plan assumed: step 4 is already done for it.** `places` was
+removed from the `SyncEngine` registry at the 2026-08-24 engine cutover, and `SyncEngine.kt`'s own
+class doc explains why at length. So the places cutover is steps 1-3 and 5 only. Check the registry
+per aspect before treating step 4 as outstanding work.
+
+**The keep-alive is wired but UNVERIFIED, and ruling 8 makes it load-bearing rather than a nicety.**
+`.github/workflows/supabase-keepalive.yml` exists and is correct on inspection (daily cron, manual
+dispatch, exits 0 when secrets are absent so a fork accumulates no red runs, fails loudly on a
+non-2xx rather than reporting a safety it is not providing). **What is NOT established is whether
+the two repo secrets are set or whether the workflow has ever completed a run** - `gh` is not
+installed on the second machine, so neither could be checked from here. Under ruling 8 there is no
+offline queue, so a paused project is a hard outage, not a degraded mode. **Owed by Kevin, before
+any aspect soaks:** set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in Settings -> Secrets and variables
+-> Actions, then run the workflow once by hand and confirm it goes green.
+
+**BLOCKER for phases 4b-4e, found 2026-08-26 while checking the natural key per aspect as the
+correction above advises. PLACES IS THE ONLY ASPECT WHOSE UPLOAD IS IDEMPOTENT TODAY.** The full
+constraint inventory, read out of `supabase/migrations/`:
+
+| Table | Enforced unique key |
+|---|---|
+| `places` | `label` |
+| `ingested_files` | `content_sha256` |
+| `statements` | `(ingested_file_id, account_last4)` |
+| `event_skips` | `(event_id, skip_date)` |
+| `maintenance_schedules` | `(vehicle_id, service_name)` |
+| `events` | `google_event_id`, **partial** - only where it is not null |
+| `ledger_transactions` | **none** |
+| `receipts` | **none** |
+| `receipt_line_items` | **none** |
+| `vehicles` | **none** |
+| `service_history` | **none** |
+
+Step 1 says the upload is idempotent "so a re-run is free", and step 2 ("diff until clean") assumes
+re-runs actually happen. With no unique constraint there is nothing for an upsert to conflict
+against, so **a second run of the ledger upload inserts every row again**. Duplicated money rows
+during the migration of the money aspect is the worst outcome this sequence could produce, and it
+would pass a naive row-count diff in exactly the wrong direction.
+
+The intent was there and only the constraint is missing: `ledger_transactions.line_ref` is
+documented in its own column comment as "what makes a re-import recognisably the same line rather
+than a new one". It simply has no unique index behind it.
+
+**This must be resolved by a migration before the pantry cutover, not during it.** Keys still to be
+decided, with the traps that make them non-obvious rather than clerical:
+
+- **`ledger_transactions`** - the natural key is `(statement_id, line_ref)`, but `statement_id` is
+  NULL by design for rule-7 provisional rows and voice-logged pending charges, and Postgres treats
+  NULLs as DISTINCT in a unique index, so those rows would still duplicate freely. Needs either
+  `nulls not distinct` (PG15+, believed available on Supabase but **not verified**) or a second
+  partial index carrying a different key for the header-less rows.
+- **`receipts`** - `(ingested_file_id)` works only for receipts that came from a file; a
+  photographed receipt may have none.
+- **`receipt_line_items`** - has NO natural key even in principle. Two identical lines on one
+  receipt are legitimate (the same item scanned twice), so this needs an explicit line index, or
+  children must be replaced wholesale inside the parent receipt's transaction.
+- **`vehicles`** - `name` is the candidate; confirm it is genuinely unique per household first.
+- **`service_history`** - undecided.
+
+Places is unaffected and proceeds now.
 
 **Phase 5 - the Google exit and the CSV path. Interleaved, not appended.**
 - **Before the Notes+Dates cutover:** widen the importer with description/location/allDay, parse the
