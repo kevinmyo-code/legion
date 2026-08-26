@@ -214,6 +214,26 @@ that makes ingestion trustworthy, and it is not negotiable per-feature.
    provisional rows in that window are deleted, so an unverified row can never outlive or
    double-count against the verified one that supersedes it.
 
+   **AMENDED 2026-08-26 (Kevin), and the amendment is deliberately narrow.** Condition 1 above
+   requires DETERMINISTIC extraction. Three pantry receipts turned out to be unverifiable for a
+   different reason: they were gated correctly at ingestion, but the legacy `pantry_receipts` table
+   only ever had `totalCents` - no subtotal/tax/other columns - so **the gate's own inputs were
+   never persisted and the check cannot be reproduced from storage.** The photos are gone, so
+   re-extraction is impossible.
+
+   Such rows MAY be stored provisionally under rule 7's other three conditions (UNRECONCILED tag,
+   said in words on every surface, superseded when a real anchor arrives). **The amendment covers
+   rows already extracted and stored, never a new ingestion path** - it does not license choosing an
+   LLM for rows you know cannot be gated, which is what condition 1 exists to forbid.
+
+   **The unexplained amount is stored in its own column and never as tax.** `tax := total - sum(lines)`
+   would make `sum(lines) + tax = total` true by construction, turning the anchor into an identity -
+   rule 6's failure shape - and would silently absorb a genuinely missed line item. `receipts.unaccounted_cents`
+   names it for what it is, is never summed into an anchor, and a non-null value forces
+   `UNRECONCILED` by check constraint. The real anchor arrives later: matching the receipt total
+   against a ledger transaction from the bank statement, which is external and falsifiable in a way
+   the receipt's own arithmetic no longer is.
+
    This narrows what "commit" means. It does not widen what "verified" means. Rule 2's real claim is
    that nothing partial is written **as fact**, and a row the app openly reports as unverified is
    not being asserted as fact. The failure this guards against is not storing a weak row - it is
