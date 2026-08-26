@@ -480,9 +480,24 @@ constraint inventory, read out of `supabase/migrations/`:
 
 Step 1 says the upload is idempotent "so a re-run is free", and step 2 ("diff until clean") assumes
 re-runs actually happen. With no unique constraint there is nothing for an upsert to conflict
-against, so **a second run of the ledger upload inserts every row again**. Duplicated money rows
-during the migration of the money aspect is the worst outcome this sequence could produce, and it
-would pass a naive row-count diff in exactly the wrong direction.
+against, so a second run of a bulk upload inserts every row again.
+
+**NARROWED the same day, because the first version of this entry overstated it for ledger.** The
+ongoing INGEST path is already protected, and by two mechanisms rather than a constraint:
+`commit_statement` upserts `ingested_files` `on conflict (content_sha256)`, so re-committing the
+same file is idempotent at the file level, and `private.ledger_resolve_dedup` (migration 0800) is a
+real two-pass depleting-credit-pool dedup that exists precisely to stop overlapping statements
+double-counting. Neither is a generic upsert key, and **neither one covers a bulk migration upload
+of rows that are already in the engine** - those have no source file to conflict on and do not pass
+through the RPC at all. So the exposure is the one-time phase 4 upload, not the steady state.
+
+That reframes the ledger question rather than removing it: **either the ledger migration upload is
+routed through `commit_statement` per original statement - which needs the original files and their
+three anchors, and may simply not be possible for history already ingested under the old path - or
+it needs a key of its own.** Deciding which is the first thing the ledger cutover has to settle, and
+it is why ledger is sequenced last.
+
+For the other three the exposure is plain, with no RPC standing in front of them.
 
 The intent was there and only the constraint is missing: `ledger_transactions.line_ref` is
 documented in its own column comment as "what makes a re-import recognisably the same line rather
