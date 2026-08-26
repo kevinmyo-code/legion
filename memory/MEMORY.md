@@ -225,11 +225,21 @@ the gate is proven against two anchor shapes not one); the dedup **restatement p
 corpus**, which is ticket 03 ruling 2's real deliverable - two implementations of the same
 arithmetic now exist and nothing proves they agree.
 
-**STILL OWED BY KEVIN, and Phase 1 cannot close without them:** the two GitHub Actions secrets
-(`SUPABASE_URL`, `SUPABASE_ANON_KEY`) plus one manual workflow run to prove the keep-alive; both
-accounts created in the dashboard with their `household_members` rows; and a sign-in on the phone.
-Note the schema gives clients NO write path to `household_members` by construction, so adding
-members is dashboard-only.
+**PHASE 1 IS DONE except the phone.** Secrets set and the keep-alive workflow run manually and
+concluded success (2026-08-26 00:48Z, `workflow_dispatch`), so the daily 07:00 UTC cron is live.
+
+**ONE user for now (Kevin, 2026-08-25).** The household model is unchanged, it simply has one
+member; adding the second is a dashboard job whenever he wants it, and the schema gives clients no
+write path to `household_members` by construction.
+
+**RLS is proven in BOTH directions despite there being one account**, by impersonating a JWT `sub`
+rather than needing a second real user: member sees 1 row, **non-member (valid JWT, not on the
+roster) sees 0**, and **anon is DENIED at the grant level** ("permission denied for table places")
+before RLS is even consulted. That is two independent layers, each demonstrated: the
+`revoke all from anon` in the RLS macro, and the policy itself. Test self-rolled-back.
+
+**Still owed on the phone, and it needs the Kwin laptop** (debug keystore; the A25 has never been
+attached to this machine): install a build and sign in, confirming the three worded states.
 
 **RESUME POINT: Phase 2's three remaining items** - `commit_receipt` (pantry's RPC, so the gate is
 proven against two anchor shapes not one), the dedup restatement pass, and the shared gate test
