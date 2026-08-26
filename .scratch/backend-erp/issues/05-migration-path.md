@@ -417,8 +417,18 @@ Making it testable needs an extracted, injectable load function per screen - a r
 done here and not pretended to be. **Phase 4 is where that bill comes due**, since a remote read
 is the first time these paths fire in anger.
 
-**Phase 4 - per-aspect cutover, smallest first.** Order: **Places (3) → Pantry (29) → Fleet (62) →
-Notes+Dates (172, together, carrying the merge) → Ledger (168, last).** Ledger is last because it is
+**Phase 4 - per-aspect cutover, smallest first.** Order: **Places (3) -> Pantry (29) -> Fleet (62) ->
+Notes+Dates (172, together, carrying the merge) -> Ledger (168, last).**
+
+**REORDERED 2026-08-26: FLEET IS SKIPPED, Notes+Dates takes its slot.** Fleet turned out not to fit
+this phase's shape at all - it spans 15 phone tables and the server has 3, and `drives` has no
+server home despite ruling 10 saying trips sync. Filed as
+`.scratch/backend-erp/issues/06-fleet-has-no-server-home.md`; it needs rulings, not execution.
+
+**The lesson worth carrying to the remaining aspects.** This order was set by RECORD COUNT, which
+measures how much data moves and says nothing about how many distinct TABLES need a server home.
+Places was 3 records in 1 table; fleet is 62 records across 15. Those are different questions and
+only the first was asked when this sequence was written. Ledger is last because it is
 money and because it depends on phase 5's CSV path.
 
 **CORRECTED 2026-08-26, at the start of phase 4: "guid-keyed" is wrong for the schema that was

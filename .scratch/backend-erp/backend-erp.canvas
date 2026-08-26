@@ -11,11 +11,21 @@
       "color": "4"
     },
     {
+      "id": "9d4ec4bf49268aa9",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/06-fleet-has-no-server-home.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "0bca95ed38b262fb",
       "type": "file",
       "file": ".scratch/backend-erp/issues/06-supabase-feasibility.md",
       "x": 0,
-      "y": 150,
+      "y": 300,
       "width": 320,
       "height": 110,
       "color": "4"
