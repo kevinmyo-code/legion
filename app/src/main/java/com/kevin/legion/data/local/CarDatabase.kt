@@ -302,7 +302,7 @@ import androidx.room.RoomDatabase
         MutedReminder::class,
         EventReplica::class, EventSkipReplica::class,
     ],
-    version = 38,
+    version = 39,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -474,6 +474,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
                         MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34,
                         MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38,
+                        MIGRATION_38_39,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

@@ -24,24 +24,34 @@ object PantryReconcile {
 
     /**
      * @param engineCount how many active engine `Receipt` records this aspect had, BEFORE the
-     *   local re-check below removes any of them from the upload set.
+     *   local re-check below sorts them into reconciling / unreconciled-but-uploaded / rejected.
      * @param uploaded how many of the RECONCILING receipts were genuinely NEW server-side this run
      *   (a re-run reporting `0` is the expected, idempotent outcome per ticket 05 phase 4 step 1 -
      *   unlike [PlacesReconcile.Report.uploaded], which counts every successful upsert call because
      *   places are mutable, [PantryBackend.uploadMigratedReceipt] returns `false` for "already
      *   migrated", and that `false` does NOT increment this count). A failed upload still
      *   short-circuits into [Result.failure] rather than returning a report with a lower count.
-     * @param skippedUnreconciled one entry per stored receipt whose figures no longer reconcile
-     *   against [PantryReceiptAgent]'s own arithmetic when re-checked locally - CLAUDE.md section 4
-     *   rule 2's "nothing partial is ever written" applied to a migration: such a receipt is
-     *   reported here and never uploaded, never silently folded into [uploaded].
+     * @param uploadedUnreconciled one entry per stored receipt whose figures fall SHORT of the
+     *   printed total when re-checked against [PantryReceiptAgent]'s own arithmetic - CLAUDE.md
+     *   section 4 rule 7's 2026-08-26 amendment (ticket 08). **Renamed from `skippedUnreconciled`,
+     *   because these rows are no longer skipped** - they are uploaded with
+     *   `provenance = 'UNRECONCILED'` and a non-null `unaccounted_cents`, same as [uploaded]'s
+     *   count, but reported here SEPARATELY so a caller can never mistake one for an ordinary
+     *   reconciling row. A re-run's idempotency here rides on
+     *   [PantryBackend.uploadMigratedReceipt]'s own existing-row check, exactly like [uploaded].
+     * @param rejectedOveraccounted one entry per stored receipt whose lines sum to MORE than the
+     *   printed total - a different and more alarming shape than falling short (money the receipt
+     *   did not charge would be invented as an "explanation"), so unlike [uploadedUnreconciled]
+     *   these are never uploaded at all, same posture the old `skippedUnreconciled` had for every
+     *   failure shape before this ticket.
      * @param serverCountAfter the server's active receipt count after the upload.
      * @param replicaCountAfter the Room replica's active receipt count after being refreshed from
      *   the server's active set.
      * @param onlyOnEngine `records.guid`s the engine has (reconciling or not) that the server does
-     *   not - non-empty after a clean run only for entries also present in [skippedUnreconciled]
-     *   (a receipt that failed its local re-check is never uploaded, so it is expected to show up
-     *   here rather than being hidden).
+     *   not - non-empty after a clean run only for entries also present in
+     *   [rejectedOveraccounted] (an over-accounted receipt is never uploaded, so it is expected to
+     *   show up here rather than being hidden; an entry in [uploadedUnreconciled] IS uploaded, so
+     *   it does not appear here).
      * @param onlyOnServer `origin_guid`s the server has that the engine does not - a migrated row
      *   whose engine original has since vanished, or a stale engine read. Server rows created
      *   directly through [PantryBackend.commitReceipt] carry no `origin_guid` and are correctly
@@ -51,15 +61,19 @@ object PantryReconcile {
     data class Report(
         val engineCount: Int,
         val uploaded: Int,
-        val skippedUnreconciled: List<String>,
+        val uploadedUnreconciled: List<String>,
+        val rejectedOveraccounted: List<String>,
         val serverCountAfter: Int,
         val replicaCountAfter: Int,
         val onlyOnEngine: List<String>,
         val onlyOnServer: List<String>,
     ) {
-        /** True only when every reconciling engine receipt landed on the server and nothing is
-         * left over on either side. A non-empty [skippedUnreconciled] always keeps this false -
-         * a receipt this migration refused to trust is not a clean diff, it is a named exception. */
+        /** True only when every reconciling AND every unreconciled-but-uploaded engine receipt
+         * landed on the server and nothing is left over on either side. A non-empty
+         * [rejectedOveraccounted] always keeps this false - an over-accounted receipt this
+         * migration refused to trust is not a clean diff, it is a named exception. An
+         * [uploadedUnreconciled] entry does NOT keep this false on its own - it genuinely landed
+         * on the server, just under a different provenance. */
         val isClean: Boolean get() = onlyOnEngine.isEmpty() && onlyOnServer.isEmpty()
     }
 
@@ -94,9 +108,21 @@ object PantryReconcile {
      * a receipt's stored total/subtotal/tax/items came from an LLM extraction that, however
      * unlikely, could have been hand-edited or corrupted since. Re-running the gate here turns this
      * migration into a verification pass rather than a bulk trust exercise (CLAUDE.md section 4
-     * rule 2 is exactly why this is not optional). **Never a hard abort** - a receipt that fails
-     * this re-check is reported in [Report.skippedUnreconciled] and the run continues, so one bad
-     * receipt does not block the rest.
+     * rule 2 is exactly why this is not optional). **Never a hard abort.**
+     *
+     * **AMENDED 2026-08-26 (CLAUDE.md section 4 rule 7, ticket 08).** A receipt that fails the
+     * re-check is no longer a uniform skip. Its OWN shortfall decides what happens:
+     * - `totalCents > sum(lines)`: the receipt charged more than its lines explain - the exact
+     *   shape of the three real rows this ticket exists for (a legacy table with no subtotal/tax
+     *   columns, so the gate's own anchors were never persisted). Uploaded anyway, tagged
+     *   `provenance = 'UNRECONCILED'` with `unaccounted_cents` set to the residual, reported in
+     *   [Report.uploadedUnreconciled] - never silently folded into [Report.uploaded].
+     * - `totalCents <= sum(lines)`: a different and more alarming shape (money the lines claim that
+     *   the receipt never charged, or - rarer - some other anchor failing while items and total
+     *   already agree). Never uploaded, and never explained away with a negative or zero
+     *   `unaccounted_cents` (the column's own check constraint forbids zero, and a negative value
+     *   would silently hide an overcounted receipt as an undercounted one). Reported in
+     *   [Report.rejectedOveraccounted].
      */
     suspend fun run(context: Context, backend: PantryBackend): Result<Report> {
         val db = CarDatabase.getDatabase(context)
@@ -150,8 +176,13 @@ object PantryReconcile {
         }
 
         // The owed re-check, ahead of any network call - see this function's own doc comment.
+        // Three outcomes, never two: a receipt either reconciles cleanly (uploaded as
+        // LLM_RECONCILED, unaccountedCents null), falls short (uploaded anyway as UNRECONCILED
+        // with the residual named), or its lines exceed its total (rejected outright - see the
+        // doc comment above for why that shape is never given an unaccounted_cents value).
         val reconciling = mutableListOf<EngineReceipt>()
-        val skipped = mutableListOf<String>()
+        val unreconciledShortfall = mutableListOf<Pair<EngineReceipt, Long>>()
+        val rejected = mutableListOf<String>()
         for (receipt in engineReceipts) {
             val currency = LedgerCurrency.entries.firstOrNull { it.name == receipt.currency } ?: LedgerCurrency.USD
             val itemsTotal = receipt.items.sumOf { it.totalPriceCents }
@@ -164,44 +195,74 @@ object PantryReconcile {
                 totalCents = receipt.totalCents,
                 currency = currency,
             )
-            if (failure != null) {
-                skipped.add("${receipt.store} (${receipt.guid}): $failure")
-            } else {
+            if (failure == null) {
                 reconciling.add(receipt)
+                continue
+            }
+            // The residual is deliberately computed from totalCents and the line items alone,
+            // never from [failure]'s wording or from subtotal/tax - it is the one number rule 7's
+            // amendment authorises storing, and it must stand on the same two anchors the ticket
+            // names (printed total, captured lines), nothing else.
+            val shortfall = receipt.totalCents - itemsTotal
+            if (shortfall > 0) {
+                unreconciledShortfall.add(receipt to shortfall)
+            } else {
+                // shortfall <= 0: lines meet or exceed the total while some OTHER anchor still
+                // failed. Never uploaded, and never given a zero or negative unaccounted_cents -
+                // see this function's own doc comment.
+                rejected.add("${receipt.store} (${receipt.guid}): $failure")
             }
         }
 
+        // Shared by both upload loops below - the only difference between a reconciling receipt
+        // and an unreconciled-shortfall one is [unaccountedCents], never the line-item shape.
+        fun toMigrated(receipt: EngineReceipt, unaccountedCents: Long?) = MigratedReceipt(
+            originGuid = receipt.guid,
+            store = receipt.store,
+            purchaseDateEpochMs = receipt.purchaseDateEpochMs,
+            currency = receipt.currency,
+            totalCents = receipt.totalCents,
+            subtotalCents = receipt.subtotalCents,
+            taxCents = receipt.taxCents,
+            otherChargesCents = receipt.otherChargesCents,
+            unaccountedCents = unaccountedCents,
+            lines = receipt.items.map { item ->
+                MigratedReceiptLine(
+                    originGuid = item.guid,
+                    name = item.name,
+                    quantity = item.quantity,
+                    unitPriceCents = item.unitPriceCents,
+                    totalPriceCents = item.totalPriceCents,
+                    estimatedCaloriesKcal = item.estimatedCaloriesKcal,
+                    estimatedProteinG = item.estimatedProteinG,
+                    estimatedCarbsG = item.estimatedCarbsG,
+                    estimatedFatG = item.estimatedFatG,
+                )
+            },
+        )
+
         var uploaded = 0
         for (receipt in reconciling) {
-            val migrated = MigratedReceipt(
-                originGuid = receipt.guid,
-                store = receipt.store,
-                purchaseDateEpochMs = receipt.purchaseDateEpochMs,
-                currency = receipt.currency,
-                totalCents = receipt.totalCents,
-                subtotalCents = receipt.subtotalCents,
-                taxCents = receipt.taxCents,
-                otherChargesCents = receipt.otherChargesCents,
-                lines = receipt.items.map { item ->
-                    MigratedReceiptLine(
-                        originGuid = item.guid,
-                        name = item.name,
-                        quantity = item.quantity,
-                        unitPriceCents = item.unitPriceCents,
-                        totalPriceCents = item.totalPriceCents,
-                        estimatedCaloriesKcal = item.estimatedCaloriesKcal,
-                        estimatedProteinG = item.estimatedProteinG,
-                        estimatedCarbsG = item.estimatedCarbsG,
-                        estimatedFatG = item.estimatedFatG,
-                    )
-                },
-            )
+            val migrated = toMigrated(receipt, unaccountedCents = null)
             // Unlike PlacesReconcile's upsert (always a meaningful write, mutable rows), a `false`
             // here means "already migrated on a previous run" - a real no-op, not a fresh upload,
             // so it must not inflate [uploaded] on a re-run (see Report.uploaded's own doc comment).
             val wasNewUpload = backend.uploadMigratedReceipt(migrated)
                 .getOrElse { return Result.failure(it) }
             if (wasNewUpload) uploaded++
+        }
+
+        val uploadedUnreconciled = mutableListOf<String>()
+        for ((receipt, shortfall) in unreconciledShortfall) {
+            val migrated = toMigrated(receipt, unaccountedCents = shortfall)
+            // Same idempotency shape as the loop above - a re-run against an already-migrated
+            // unreconciled row is still a no-op, not a re-report.
+            backend.uploadMigratedReceipt(migrated).getOrElse { return Result.failure(it) }
+            uploadedUnreconciled.add(
+                "${receipt.store} (${receipt.guid}): uploaded UNRECONCILED, ${receipt.currency} " +
+                    "${shortfall}c unaccounted for (total ${receipt.totalCents}c, lines " +
+                    "${receipt.totalCents - shortfall}c).",
+            )
         }
 
         val serverReceipts = backend.fetchActiveReceipts().getOrElse { return Result.failure(it) }
@@ -221,6 +282,8 @@ object PantryReconcile {
                         totalCents = serverReceipt.totalCents,
                         sourceImagePath = "",
                         syncId = serverReceipt.serverId,
+                        provenance = serverReceipt.provenance,
+                        unaccountedCents = serverReceipt.unaccountedCents,
                     ),
                 )
                 db.pantryLineItemDao().insertAll(
@@ -248,7 +311,8 @@ object PantryReconcile {
             Report(
                 engineCount = engineReceipts.size,
                 uploaded = uploaded,
-                skippedUnreconciled = skipped,
+                uploadedUnreconciled = uploadedUnreconciled,
+                rejectedOveraccounted = rejected,
                 serverCountAfter = serverReceipts.size,
                 replicaCountAfter = db.pantryReceiptDao().getAll().size,
                 onlyOnEngine = (engineGuids - serverGuids).sorted(),

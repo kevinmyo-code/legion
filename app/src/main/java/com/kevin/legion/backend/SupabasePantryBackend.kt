@@ -10,6 +10,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
 
 private const val RECEIPTS_TABLE = "receipts"
@@ -25,6 +26,8 @@ private data class ReceiptRowDto(
     @SerialName("total_cents") val totalCents: Long,
     @SerialName("created_at") val createdAt: String,
     @SerialName("origin_guid") val originGuid: String? = null,
+    val provenance: String,
+    @SerialName("unaccounted_cents") val unaccountedCents: Long? = null,
 ) {
     fun toRemoteReceipt(lines: List<ReceiptLineRowDto>) = RemoteReceipt(
         serverId = id,
@@ -38,6 +41,8 @@ private data class ReceiptRowDto(
         totalCents = totalCents,
         createdAtMs = OffsetDateTime.parse(createdAt).toInstant().toEpochMilli(),
         originGuid = originGuid,
+        provenance = provenance,
+        unaccountedCents = unaccountedCents,
         lines = lines.map { it.toRemoteReceiptLine() },
     )
 }
@@ -71,7 +76,14 @@ private data class ReceiptLineRowDto(
  * `deletedAt`-style required-null trick needed here (unlike [PlaceUpsertDto]) - this is a genuine
  * INSERT, never an upsert-with-conflict, because the gated tables' immutability trigger blocks the
  * UPDATE half of an upsert outright. See [SupabasePantryBackend.uploadMigratedReceipt]'s own doc
- * comment for why a select-then-insert replaces Places' onConflict upsert here. */
+ * comment for why a select-then-insert replaces Places' onConflict upsert here.
+ *
+ * **No `unaccountedCents` field.** `receipts.unaccounted_cents` must never be SENT at all for a
+ * healthy receipt - not even as an explicit JSON null - because the column's own check constraint
+ * (`20260826000300_receipt_unaccounted.sql`) treats "present and non-null" as the trigger for
+ * `provenance = 'UNRECONCILED'`; a data class field always serializes, explicit-null included, so
+ * [SupabasePantryBackend.uploadMigratedReceipt] builds that one key by hand with `buildJsonObject`
+ * instead of adding it here. */
 @Serializable
 private data class ReceiptInsertDto(
     val store: String,
@@ -174,6 +186,16 @@ class SupabasePantryBackend(private val client: SupabaseClient) : PantryBackend 
      * the UPDATE half of any upsert outright. So this selects first - a row with [MigratedReceipt.originGuid]
      * already present means a previous run already migrated it, and the correct action is to touch
      * nothing and report `false`, not to attempt (and fail) an update.
+     *
+     * **AMENDED 2026-08-26.** [MigratedReceipt.unaccountedCents] non-null means this receipt failed
+     * [com.kevin.legion.backend.PantryReconcile]'s local re-check and its gap could never be
+     * re-verified (CLAUDE.md section 4 rule 7's amendment, ticket 08) - it is inserted anyway, with
+     * `provenance = 'UNRECONCILED'` instead of `'LLM_RECONCILED'`, both on the header AND its lines
+     * so a query never has to join back to the parent to know a line came off an unverified
+     * receipt. `unaccounted_cents` is added to the outgoing JSON by hand rather than through
+     * [ReceiptInsertDto] - see that class's own doc comment for why a plain nullable field would
+     * send an explicit `null` for every ordinary receipt, which the column's check constraint
+     * treats identically to a real (if zero) value.
      */
     override suspend fun uploadMigratedReceipt(receipt: MigratedReceipt): Result<Boolean> =
         translating("upload a migrated receipt") {
@@ -187,20 +209,37 @@ class SupabasePantryBackend(private val client: SupabaseClient) : PantryBackend 
             val purchaseDateStr = java.time.Instant.ofEpochMilli(receipt.purchaseDateEpochMs)
                 .atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
 
+            // Null on every ordinary receipt; see this function's own doc comment for why it can
+            // never simply be another field on ReceiptInsertDto.
+            val provenance = if (receipt.unaccountedCents != null) "UNRECONCILED" else "LLM_RECONCILED"
+
+            val insertJson = Json.encodeToJsonElement(
+                ReceiptInsertDto(
+                    store = receipt.store,
+                    purchaseDate = purchaseDateStr,
+                    currency = receipt.currency,
+                    totalCents = receipt.totalCents,
+                    subtotalCents = receipt.subtotalCents,
+                    taxCents = receipt.taxCents,
+                    otherChargesCents = receipt.otherChargesCents,
+                    provenance = provenance,
+                    originGuid = receipt.originGuid,
+                ),
+            ).let { encoded ->
+                val base = encoded as JsonObject
+                val unaccounted = receipt.unaccountedCents
+                if (unaccounted == null) {
+                    base
+                } else {
+                    buildJsonObject {
+                        base.forEach { (key, value) -> put(key, value) }
+                        put("unaccounted_cents", unaccounted)
+                    }
+                }
+            }
+
             val inserted = client.postgrest.from(RECEIPTS_TABLE)
-                .insert(
-                    ReceiptInsertDto(
-                        store = receipt.store,
-                        purchaseDate = purchaseDateStr,
-                        currency = receipt.currency,
-                        totalCents = receipt.totalCents,
-                        subtotalCents = receipt.subtotalCents,
-                        taxCents = receipt.taxCents,
-                        otherChargesCents = receipt.otherChargesCents,
-                        provenance = "LLM_RECONCILED",
-                        originGuid = receipt.originGuid,
-                    ),
-                ) { select() }
+                .insert(insertJson) { select() }
                 .decodeSingle<ReceiptRowDto>()
 
             if (receipt.lines.isNotEmpty()) {
@@ -216,7 +255,7 @@ class SupabasePantryBackend(private val client: SupabaseClient) : PantryBackend 
                             estimatedProteinG = line.estimatedProteinG,
                             estimatedCarbsG = line.estimatedCarbsG,
                             estimatedFatG = line.estimatedFatG,
-                            provenance = "LLM_RECONCILED",
+                            provenance = provenance,
                             originGuid = line.originGuid,
                         )
                     },

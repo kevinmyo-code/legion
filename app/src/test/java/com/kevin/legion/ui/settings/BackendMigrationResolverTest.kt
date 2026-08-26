@@ -112,24 +112,44 @@ class BackendMigrationResolverTest {
     // ------------------------------------------------------------------- report rendering: pantry
 
     @Test
-    fun `pantry report names skippedUnreconciled as an expected exception, not an error`() {
+    fun `pantry report names rejectedOveraccounted as an expected exception, not an error`() {
         val report = PantryReconcile.Report(
             engineCount = 2, uploaded = 1,
-            skippedUnreconciled = listOf("Costco (guid-1): totals do not reconcile"),
+            uploadedUnreconciled = emptyList(),
+            rejectedOveraccounted = listOf("Costco (guid-1): totals do not reconcile"),
             serverCountAfter = 1, replicaCountAfter = 1,
             onlyOnEngine = listOf("guid-1"), onlyOnServer = emptyList(),
         )
         val lines = BackendMigrationResolver.renderPantryReport(report)
-        val skippedLine = lines.first { it.contains("Costco") }
-        assertTrue(skippedLine.contains("on purpose"))
-        assertTrue(skippedLine.contains("not an error"))
+        val rejectedLine = lines.first { it.contains("Costco") }
+        assertTrue(rejectedLine.contains("on purpose"))
+        assertTrue(rejectedLine.contains("not an error"))
         assertTrue(lines.any { it.contains("guid-1") && it.contains("Only on this device") })
+    }
+
+    @Test
+    fun `pantry report words an uploaded-unreconciled receipt as uploaded but unverified, distinct from a rejected one`() {
+        val report = PantryReconcile.Report(
+            engineCount = 1, uploaded = 0,
+            uploadedUnreconciled = listOf("Walmart (guid-2): uploaded UNRECONCILED, USD 802c unaccounted for (total 12886c, lines 12084c)."),
+            rejectedOveraccounted = emptyList(),
+            serverCountAfter = 1, replicaCountAfter = 1,
+            onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
+        )
+        val lines = BackendMigrationResolver.renderPantryReport(report)
+        val unverifiedLine = lines.first { it.contains("Walmart") }
+        assertTrue(unverifiedLine.contains("UNVERIFIED"))
+        assertTrue(unverifiedLine.contains("uploaded"))
+        // Never worded the same as a rejection - a reader must be able to tell "present but
+        // unverified" from "missing entirely" from the sentence alone.
+        assertTrue(!unverifiedLine.contains("never uploaded"))
     }
 
     @Test
     fun `clean pantry report is clean`() {
         val report = PantryReconcile.Report(
-            engineCount = 2, uploaded = 2, skippedUnreconciled = emptyList(),
+            engineCount = 2, uploaded = 2,
+            uploadedUnreconciled = emptyList(), rejectedOveraccounted = emptyList(),
             serverCountAfter = 2, replicaCountAfter = 2,
             onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
         )

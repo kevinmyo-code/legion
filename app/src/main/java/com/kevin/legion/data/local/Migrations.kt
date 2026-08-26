@@ -1478,3 +1478,25 @@ val MIGRATION_37_38 = object : Migration(37, 38) {
         )
     }
 }
+
+/**
+ * v38 -> v39: `pantry_receipts` gains `provenance` and `unaccountedCents` (CLAUDE.md section 4
+ * rule 7's 2026-08-26 amendment, ticket 08 - `.scratch/backend-erp/issues/
+ * 08-receipts-whose-anchors-were-never-stored.md`). Two additive `ALTER TABLE ADD COLUMN`s,
+ * nothing existing touched: `provenance` gets a `NOT NULL DEFAULT 'LLM_RECONCILED'` so every
+ * pre-existing row reads as the healthy value it always was, and `unaccountedCents` stays
+ * nullable with no default, matching [PantryReceipt]'s own Kotlin default of `null`. SQL below is
+ * PASTED VERBATIM from the kapt-generated `app/schemas/com.kevin.legion.data.local.CarDatabase/
+ * 39.json` after a real `compileDebugKotlin -Pnokey` run, per CLAUDE.md sec 5's "copy generated
+ * SQL verbatim" discipline - not hand-written, same posture as every migration above this one.
+ */
+val MIGRATION_38_39 = object : Migration(38, 39) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "ALTER TABLE `pantry_receipts` ADD COLUMN `provenance` TEXT NOT NULL DEFAULT 'LLM_RECONCILED'"
+        )
+        db.execSQL(
+            "ALTER TABLE `pantry_receipts` ADD COLUMN `unaccountedCents` INTEGER DEFAULT NULL"
+        )
+    }
+}

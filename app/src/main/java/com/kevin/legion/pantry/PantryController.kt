@@ -430,7 +430,13 @@ object PantryController {
     /** Total grocery spend PER currency, never combined - see [com.kevin.legion.data.local.PantryReceiptDao.totalSpendCentsByCurrency]'s doc comment. */
     suspend fun totalSpendCentsByCurrency(context: Context): List<PantryCurrencyTotal> =
         allReceipts(context).groupBy { it.currency }.map { (currency, receipts) ->
-            PantryCurrencyTotal(currency = currency, totalCents = receipts.sumOf { it.totalCents })
+            PantryCurrencyTotal(
+                currency = currency,
+                totalCents = receipts.sumOf { it.totalCents },
+                // See PantryCurrencyTotal's own doc comment: this total is unverified as a whole
+                // the moment ANY receipt behind it is (CLAUDE.md section 4 rule 7 condition 3).
+                hasUnreconciled = receipts.any { it.unaccountedCents != null },
+            )
         }
 
     /**

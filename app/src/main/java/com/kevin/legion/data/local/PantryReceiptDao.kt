@@ -37,7 +37,11 @@ interface PantryReceiptDao {
      * left in place only because nothing besides this new query needs to change it, not because
      * it's still safe to call on its own.
      */
-    @Query("SELECT currency, COALESCE(SUM(totalCents), 0) AS totalCents FROM pantry_receipts GROUP BY currency")
+    @Query(
+        "SELECT currency, COALESCE(SUM(totalCents), 0) AS totalCents, " +
+            "MAX(CASE WHEN unaccountedCents IS NOT NULL THEN 1 ELSE 0 END) AS hasUnreconciled " +
+            "FROM pantry_receipts GROUP BY currency",
+    )
     suspend fun totalSpendCentsByCurrency(): List<PantryCurrencyTotal>
 
     /**
@@ -57,8 +61,20 @@ interface PantryReceiptDao {
     suspend fun deleteAllForReplicaRefresh()
 }
 
-/** [PantryReceiptDao.totalSpendCentsByCurrency]'s row shape. */
-data class PantryCurrencyTotal(val currency: LedgerCurrency, val totalCents: Long)
+/**
+ * [PantryReceiptDao.totalSpendCentsByCurrency]'s row shape.
+ *
+ * [hasUnreconciled] is computed by [com.kevin.legion.pantry.PantryController.totalSpendCentsByCurrency]
+ * in Kotlin, not by [PantryReceiptDao.totalSpendCentsByCurrency]'s own SQL (which this repo does
+ * not call from production - the controller re-derives every total in memory so the same code path
+ * covers both the Room replica and the unconfigured engine read). `true` means at least one receipt
+ * folded into [totalCents] carries a non-null [PantryReceipt.unaccountedCents] - CLAUDE.md section 4
+ * rule 7 condition 3's "every surface that renders one says so in words" applies to this AGGREGATE
+ * exactly as much as to the receipt itself: a total that silently mixes verified and unverified
+ * money is the failure the rule forbids, so every renderer of this type must say so when this is
+ * true, never render the figure as if every receipt behind it settled cleanly.
+ */
+data class PantryCurrencyTotal(val currency: LedgerCurrency, val totalCents: Long, val hasUnreconciled: Boolean = false)
 
 /** [PantryReceiptDao.getAllForCharts]'s row shape - one receipt's date/total/currency, nothing else. */
 data class PantryReceiptSummary(val purchaseDate: Long, val totalCents: Long, val currency: LedgerCurrency)

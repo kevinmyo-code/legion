@@ -3789,6 +3789,12 @@ object LiveToolbox {
      * exactly one currency is on file, so an older caller reading those two legacy keys gets a
      * real answer in the common single-currency case rather than a silently wrong combined sum;
      * `byCurrency` is the field every new caller should read.
+     *
+     * **AMENDED 2026-08-26 (CLAUDE.md section 4 rule 7 condition 3, ticket 08).** `unverifiedNote`
+     * is present ONLY when at least one currency's total includes a receipt that couldn't be
+     * fully re-checked ([com.kevin.legion.data.local.PantryCurrencyTotal.hasUnreconciled]) - the
+     * model is expected to relay this in words when it speaks the total, the same way it already
+     * must for an "estimate" macro figure. Never a silent flag the model can drop.
      */
     private suspend fun getGrocerySpend(context: Context): JSONObject {
         val totals = PantryController.totalSpendCentsByCurrency(context)
@@ -3798,6 +3804,15 @@ object LiveToolbox {
         if (totals.size == 1) {
             o.put("total", totals[0].totalCents / 100.0)
             o.put("currency", totals[0].currency.name)
+        }
+        val unverifiedCurrencies = totals.filter { it.hasUnreconciled }.map { it.currency.name }
+        if (unverifiedCurrencies.isNotEmpty()) {
+            o.put(
+                "unverifiedNote",
+                "At least one receipt behind the ${unverifiedCurrencies.joinToString(" and ")} " +
+                    "total couldn't be fully verified against its own numbers - mention that the " +
+                    "figure isn't confirmed accurate when you report it.",
+            )
         }
         return o
     }

@@ -35,6 +35,16 @@ data class RemoteReceiptLine(
  * [commitReceipt], set only on a row [uploadMigratedReceipt] wrote. [PantryReconcile]'s diff reads
  * it to tell "not yet migrated" apart from "created directly against the server".
  */
+/**
+ * [unaccountedCents] is `receipts.unaccounted_cents`
+ * (`supabase/migrations/20260826000300_receipt_unaccounted.sql`) - null on every healthy row.
+ * Non-null means this receipt charged more than its captured lines explain and could not be
+ * re-verified (CLAUDE.md section 4 rule 7's 2026-08-26 amendment); [provenance] will read
+ * `"UNRECONCILED"` on exactly those rows, by the server's own check constraint, so the two fields
+ * always agree. **Never fold [unaccountedCents] into any anchor arithmetic** - it is the residual
+ * the gate could not explain, not a fact to reconcile against. Every surface rendering a receipt
+ * where this is non-null must say so in words (rule 7 condition 3).
+ */
 data class RemoteReceipt(
     val serverId: String,
     val store: String,
@@ -43,6 +53,8 @@ data class RemoteReceipt(
     val totalCents: Long,
     val createdAtMs: Long,
     val originGuid: String?,
+    val provenance: String,
+    val unaccountedCents: Long?,
     val lines: List<RemoteReceiptLine>,
 )
 
@@ -70,8 +82,15 @@ data class MigratedReceiptLine(
  * receipt's own `records.guid`; every field here is a figure that already passed
  * [com.kevin.legion.pantry.PantryReceiptAgent]'s gate at extraction time, so this upload is a
  * verification-and-transfer, not a second gate pass - [PantryReconcile] re-runs the gate's own
- * arithmetic locally before ever constructing one of these, and a receipt that fails that re-check
- * never becomes a [MigratedReceipt] at all.
+ * arithmetic locally before ever constructing one of these.
+ *
+ * **AMENDED 2026-08-26 (CLAUDE.md section 4 rule 7, the same amendment as
+ * `receipts.unaccounted_cents`).** A receipt that fails [PantryReconcile]'s re-check no longer
+ * disqualifies itself from [MigratedReceipt] entirely - it becomes one WITH [unaccountedCents]
+ * set, so [SupabasePantryBackend.uploadMigratedReceipt] can insert it as `UNRECONCILED` rather
+ * than silently dropping it. [unaccountedCents] is null on every ordinary (reconciling) receipt;
+ * it is the one field on this type that must NEVER be fed back into [PantryReceiptAgent]'s
+ * arithmetic - it is the residual that arithmetic could not explain, not a new anchor.
  */
 data class MigratedReceipt(
     val originGuid: String,
@@ -82,6 +101,7 @@ data class MigratedReceipt(
     val subtotalCents: Long?,
     val taxCents: Long?,
     val otherChargesCents: Long?,
+    val unaccountedCents: Long?,
     val lines: List<MigratedReceiptLine>,
 )
 

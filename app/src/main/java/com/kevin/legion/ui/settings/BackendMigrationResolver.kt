@@ -89,9 +89,14 @@ object BackendMigrationResolver {
         add(if (report.isClean) "Clean - every place matches on both sides." else "Not clean yet - see the lines above.")
     }
 
-    /** [PantryReconcile.Report] in plain words. [PantryReconcile.Report.skippedUnreconciled] is
-     * rendered as a named, expected exception (per that report's own doc comment), never lumped
-     * in with the onlyOnEngine/onlyOnServer diff lines below it. */
+    /** [PantryReconcile.Report] in plain words.
+     *
+     * **AMENDED 2026-08-26 (ticket 08).** [PantryReconcile.Report.uploadedUnreconciled] is rendered
+     * as its own line - these rows DID upload, unlike [PantryReconcile.Report.rejectedOveraccounted]
+     * which did not, and the two must never be worded alike or a reader would not be able to tell
+     * an unverified-but-present receipt from a genuinely missing one. This wording is also what
+     * CLAUDE.md section 4 rule 7 condition 3 means by "every surface says so in words" for the
+     * migration report specifically. */
     fun renderPantryReport(report: PantryReconcile.Report): List<String> = buildList {
         add(
             "Engine had ${report.engineCount} ${plural(report.engineCount, "receipt")}; " +
@@ -101,10 +106,18 @@ object BackendMigrationResolver {
             "Server now has ${report.serverCountAfter} ${plural(report.serverCountAfter, "receipt")}; " +
                 "the on-device replica now has ${report.replicaCountAfter}.",
         )
-        if (report.skippedUnreconciled.isNotEmpty()) {
+        if (report.uploadedUnreconciled.isNotEmpty()) {
             add(
-                "Skipped, on purpose (not an error) - these no longer reconcile against their " +
-                    "own arithmetic and were never uploaded: ${report.skippedUnreconciled.joinToString("; ")}.",
+                "Uploaded but UNVERIFIED - these receipts charge more than their captured lines " +
+                    "explain and could not be re-checked, so they were uploaded as unreconciled " +
+                    "rather than dropped: ${report.uploadedUnreconciled.joinToString("; ")}.",
+            )
+        }
+        if (report.rejectedOveraccounted.isNotEmpty()) {
+            add(
+                "Rejected, on purpose (not an error) - these receipts' captured lines add up to " +
+                    "more than the printed total and were never uploaded: " +
+                    "${report.rejectedOveraccounted.joinToString("; ")}.",
             )
         }
         if (report.onlyOnEngine.isNotEmpty()) {

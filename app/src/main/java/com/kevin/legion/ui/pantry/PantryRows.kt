@@ -124,6 +124,13 @@ fun PantryOpsStatusRow(receiptCount: Int?) {
  * every line item against the receipt's own printed total before anything is written), so nothing
  * here carries an estimate label - that stays exclusively on the macro rows in
  * [PantryReceiptSection], which this panel never touches.
+ *
+ * **AMENDED 2026-08-26 (CLAUDE.md section 4 rule 7 condition 3, ticket 08).** A [currencyTotals]
+ * entry can now be [PantryCurrencyTotal.hasUnreconciled] - at least one receipt behind that total
+ * charged more than its captured lines explain. The rule is explicit that this must be said IN
+ * WORDS, never by colour alone, so a caveat sentence renders directly under any such currency's
+ * [DeckRow] - [LocalLegionSemantics.quarantined] tints it on top of the words, it never stands in
+ * for them.
  */
 @Composable
 fun PantrySpendPanel(
@@ -145,6 +152,15 @@ fun PantrySpendPanel(
         } else {
             for (total in currencyTotals) {
                 DeckRow(label = total.currency.name, value = formatMoney(total.totalCents, total.currency))
+                if (total.hasUnreconciled) {
+                    Text(
+                        "includes at least one receipt that couldn't be fully verified - this " +
+                            "${total.currency.name} total is not confirmed accurate",
+                        style = LegionType.stamp,
+                        color = sem.quarantined,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
             }
             val charted = chartCurrency(allReceipts)
             if (charted != null) {
@@ -209,6 +225,12 @@ internal fun formatMacros(item: PantryLineItem): String {
  * accent. Item rows stay outside [DeckRow] (see [PantryDashedHairline]'s doc comment: an
  * extracted product name is content, not a field label) but pick up the same dashed separator
  * [DeckRow] itself uses for its top rule, so the two row styles in this pane read as one family.
+ *
+ * **AMENDED 2026-08-26 (CLAUDE.md section 4 rule 7 condition 3, ticket 08).** A non-null
+ * [PantryReceipt.unaccountedCents] means this receipt charged more than its captured lines
+ * explain and could never be re-verified (the source photo is gone). Said in words directly
+ * under the total - the one place a reader looks first - never left to
+ * [LocalLegionSemantics.quarantined]'s tint alone.
  */
 @Composable
 fun PantryReceiptSection(receipt: PantryReceipt, items: List<PantryLineItem>) {
@@ -220,6 +242,17 @@ fun PantryReceiptSection(receipt: PantryReceipt, items: List<PantryLineItem>) {
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         )
+        val unaccounted = receipt.unaccountedCents
+        if (unaccounted != null) {
+            Text(
+                "Unverified: ${formatMoney(unaccounted, receipt.currency)} of this total isn't " +
+                    "explained by the items below. The original photo is gone, so this couldn't " +
+                    "be re-checked - it will be confirmed against the bank statement instead.",
+                style = MaterialTheme.typography.bodySmall,
+                color = sem.quarantined,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
 
         SectionHeader("ON THE RECEIPT")
         for (item in items) {

@@ -81,6 +81,10 @@ class PantryControllerBackendTest {
                     totalCents = receipt.totalCents,
                     createdAtMs = System.currentTimeMillis(),
                     originGuid = receipt.originGuid,
+                    // Mirrors SupabasePantryBackend's real rule: a non-null unaccountedCents is
+                    // exactly what forces UNRECONCILED, both in the DB check constraint and here.
+                    provenance = if (receipt.unaccountedCents != null) "UNRECONCILED" else "LLM_RECONCILED",
+                    unaccountedCents = receipt.unaccountedCents,
                     lines = receipt.lines.map {
                         RemoteReceiptLine(
                             name = it.name,
@@ -244,8 +248,11 @@ class PantryControllerBackendTest {
 
         assertEquals(1, report.engineCount)
         assertEquals(1, report.uploaded)
-        assertTrue(report.skippedUnreconciled.isEmpty())
+        assertTrue(report.uploadedUnreconciled.isEmpty())
+        assertTrue(report.rejectedOveraccounted.isEmpty())
         assertTrue(report.isClean)
+        assertEquals("LLM_RECONCILED", backend.serverReceipts.single().provenance)
+        assertEquals(null, backend.serverReceipts.single().unaccountedCents)
         assertEquals(1, db.pantryReceiptDao().getAll().size)
         assertEquals("Costco", db.pantryReceiptDao().getAll().single().store)
     }
@@ -281,27 +288,63 @@ class PantryControllerBackendTest {
     }
 
     @Test
-    fun `a stored engine receipt whose figures no longer reconcile is reported, NOT uploaded, and shows up one-sided rather than being folded into clean`() = runBlocking {
+    fun `a stored engine receipt that charges more than its lines explain uploads UNRECONCILED with the residual, and is reported separately`() = runBlocking {
         // Written honestly (gate passed at write time), then hand-corrupted at the engine level to
-        // simulate a stored figure going stale - exactly what the local re-check exists to catch.
+        // simulate the exact real-world shape ticket 08 exists for: a total that no longer matches
+        // its lines, with no subtotal/tax anchor stored to explain the gap.
         val guid = writeEngineReceipt(success(store = "Costco", totalCents = 5000L, items = listOf(
             PantryLineItem(receiptId = 0, name = "bulk rice", totalPriceCents = 5000L),
         )))
         val sch = PantryAspectSeeder.ensureSeeded(context)
         val record = db.engineRecordDao().activeByRecordType(sch.receipt.recordTypeId).single { it.guid == guid }
         val recordStore = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
-        recordStore.update(record.id, mapOf(sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_TOTAL) to 9999L))
+        recordStore.update(record.id, mapOf(sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_TOTAL) to 5802L))
+
+        val backend = FakePantryBackend()
+        val report = PantryReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(1, report.engineCount)
+        // Uploaded, not counted in the ordinary [uploaded] count - a different provenance entirely.
+        assertEquals(0, report.uploaded)
+        assertEquals(1, report.uploadedUnreconciled.size)
+        assertTrue(report.uploadedUnreconciled.single().contains("Costco"))
+        assertTrue(report.uploadedUnreconciled.single().contains("802"))
+        assertTrue(report.rejectedOveraccounted.isEmpty())
+        val serverReceipt = backend.serverReceipts.single()
+        assertEquals("UNRECONCILED", serverReceipt.provenance)
+        assertEquals(802L, serverReceipt.unaccountedCents)
+        // A receipt this ticket explicitly authorises DID land server-side, so it is no longer a
+        // one-sided diff - unlike the old skip behaviour, this receipt's guid does NOT show up
+        // here even though it is unreconciled.
+        assertTrue(report.onlyOnEngine.isEmpty())
+        assertTrue(report.onlyOnServer.isEmpty())
+        assertTrue(report.isClean)
+    }
+
+    @Test
+    fun `a stored engine receipt whose lines exceed its total is rejected outright, never given a negative or zero unaccounted_cents`() = runBlocking {
+        val guid = writeEngineReceipt(success(store = "Costco", totalCents = 5000L, items = listOf(
+            PantryLineItem(receiptId = 0, name = "bulk rice", totalPriceCents = 5000L),
+        )))
+        val sch = PantryAspectSeeder.ensureSeeded(context)
+        val record = db.engineRecordDao().activeByRecordType(sch.receipt.recordTypeId).single { it.guid == guid }
+        val recordStore = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+        // The total now reads LOWER than the lines it is supposed to cover - the lines claim more
+        // money than the receipt actually charged.
+        recordStore.update(record.id, mapOf(sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_TOTAL) to 4000L))
 
         val backend = FakePantryBackend()
         val report = PantryReconcile.run(context, backend).getOrThrow()
 
         assertEquals(1, report.engineCount)
         assertEquals(0, report.uploaded)
-        assertEquals(1, report.skippedUnreconciled.size)
-        assertTrue(report.skippedUnreconciled.single().contains("Costco"))
+        assertTrue(report.uploadedUnreconciled.isEmpty())
+        assertEquals(1, report.rejectedOveraccounted.size)
+        assertTrue(report.rejectedOveraccounted.single().contains("Costco"))
         assertTrue(db.pantryReceiptDao().getAll().isEmpty())
-        // The skipped receipt's guid must show up as a genuine one-sided diff entry, not vanish
-        // into a falsely-clean report - "reported, not silently folded in".
+        assertTrue(backend.serverReceipts.isEmpty())
+        // Never uploaded at all - the rejected receipt's guid must show up as a genuine one-sided
+        // diff entry, not vanish into a falsely-clean report.
         assertEquals(listOf(guid), report.onlyOnEngine)
         assertTrue(report.onlyOnServer.isEmpty())
         assertFalse(report.isClean)
