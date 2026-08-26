@@ -652,12 +652,16 @@ private fun LegionShell(
             composable(LegionRoute.SETTINGS_PROACTIVE_SPEECH) {
                 com.kevin.legion.ui.settings.ProactiveSpeechScreen(onBack = { navController.popBackStack() })
             }
+            composable(LegionRoute.SETTINGS_BACKEND_MIGRATION) {
+                com.kevin.legion.ui.settings.BackendMigrationScreen(onBack = { navController.popBackStack() })
+            }
             composable(LegionRoute.SETTINGS_CONNECTIONS) {
                 com.kevin.legion.ui.settings.ConnectionsScreen(
                     onBack = { navController.popBackStack() },
                     onOpenKeyScreen = { navController.navigate(LegionRoute.SETTINGS_KEY) },
                     onOpenGoogleAccess = { navController.navigate(LegionRoute.SETTINGS_GOOGLE) },
                     onOpenSpotify = { navController.navigate(LegionRoute.SETTINGS_SPOTIFY) },
+                    onOpenBackendMigration = { navController.navigate(LegionRoute.SETTINGS_BACKEND_MIGRATION) },
                 )
             }
             composable(LegionRoute.SETTINGS_DATA_PRIVACY) {

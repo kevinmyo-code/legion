@@ -131,6 +131,15 @@ object LegionRoute {
     const val SETTINGS_DRIVE_SYNC = "settings/drive-sync"
 
     /**
+     * Backend-erp Phase 4's hands path for [com.kevin.legion.backend.PlacesReconcile]/
+     * [com.kevin.legion.backend.PantryReconcile]/[com.kevin.legion.backend.EventsReconcile] - see
+     * `ui/settings/BackendMigrationScreen.kt`'s own doc comment. Reached from
+     * [SETTINGS_CONNECTIONS], same shape as [SETTINGS_DRIVE_SYNC] being reached from
+     * [SETTINGS_GOOGLE].
+     */
+    const val SETTINGS_BACKEND_MIGRATION = "settings/backend-migration"
+
+    /**
      * The driver's own editor for [com.kevin.legion.advisor.PrimingTopic]'s four bodies of
      * doctrine (2026-08-18) - see [com.kevin.legion.ui.companions.PlaybookScreen]. The list-to-
      * editor drill-down inside it is internal Compose state, same posture [NOTES]'s own doc

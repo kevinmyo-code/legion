@@ -48,6 +48,7 @@ fun ConnectionsScreen(
     onOpenKeyScreen: () -> Unit,
     onOpenGoogleAccess: () -> Unit,
     onOpenSpotify: () -> Unit,
+    onOpenBackendMigration: () -> Unit,
 ) {
     val context = LocalContext.current
 
@@ -132,6 +133,18 @@ fun ConnectionsScreen(
                 // row because that is the other place media transport shows up: Spotify playback
                 // works without this grant, pause/skip do not.
                 MediaTransportAccessBanner(hasAccess = hasMediaAccess)
+
+                // Backend-erp Phase 4's hands path (`ui/settings/BackendMigrationScreen.kt`) -
+                // the trigger for the three reconciles, which otherwise have zero production
+                // callers despite being built and tested. Lives here rather than under the
+                // Household section of the Gemini key screen because it is an action, not a
+                // credential.
+                Spacer(Modifier.height(8.dp))
+                SettingsNavRow(
+                    label = "Backend migration",
+                    status = "Upload places, pantry, and notes+dates to your Supabase project.",
+                    onClick = onOpenBackendMigration,
+                )
 
                 Spacer(Modifier.height(24.dp))
             }
