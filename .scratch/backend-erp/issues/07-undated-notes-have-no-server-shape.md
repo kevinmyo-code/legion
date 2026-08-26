@@ -25,6 +25,28 @@ shape never required. **The fields all survived; a whole class of ROW did not.**
 Ticket 01 ruling 4 said todos become Dates events, and that is right for a todo with a due date. The
 ruling did not distinguish "a todo due Thursday" from "milk", and the schema quietly did.
 
+## MEASURED 2026-08-26, against Kevin's real restored database
+
+Counted directly off the phone's engine records (592 total, restored from the Drive backup), so
+these are actual figures, not an estimate:
+
+| Record type | Total | Dated | **Undated** |
+|---|---|---|---|
+| Notes `Item` | 56 | 3 | **53 (95%)** |
+| Dates `Event` | 269 | 269 | 0 |
+
+**Under `starts_at NOT NULL`, the Notes+Dates reconcile uploads 272 rows and silently leaves behind
+53 - ninety-five per cent of everything Kevin has actually authored in this aspect.**
+
+The 269 Events being uniformly dated is not the reassurance it looks like. `Dates.Event` has no live
+writer except the Google Calendar importer, which ticket 01 ruling 5 is REMOVING, so that column is
+full precisely because a soon-to-be-deleted integration filled it. Strip the import and the aspect
+is 56 rows, 53 of them unrepresentable.
+
+**This turns option 1 from a preference into the only defensible answer.** A merged table that
+cannot hold 95% of the live data is not a merge; the "one required pair" design intent was written
+against the Event shape and never tested against the Item shape it was merging with.
+
 ## How big the affected class is
 
 Not an edge case. Traced while building:
@@ -71,7 +93,7 @@ though it were stated. A guessed due date would be exactly that.
 3. **A sentinel date.** Rejected on sight, recorded so nobody proposes it again: it stores a fact
    the user never stated, which is the thing section 4 rule 5 exists to forbid.
 
-**Recommendation: option 1.** It is the only one that keeps a single list in a single store, and the
+**Recommendation: option 1, and the measurement above makes it close to forced.** It is the only one that keeps a single list in a single store, and the
 cost is a null-ordering policy in a handful of queries rather than a distributed-state problem. If
 taken, the migration's "one required pair" comment must be corrected in the same commit, because it
 would then be documenting an intent the schema no longer has.
