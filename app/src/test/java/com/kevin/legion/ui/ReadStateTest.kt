@@ -122,4 +122,47 @@ class ReadStateTest {
         assertTrue(fresh.isFirstLoad)
         assertNull(readStateLine(fresh, nowMs = t0))
     }
+
+    // ------------------------------------------------------------------ failureReason
+
+    @Test
+    fun `a real message is used as-is`() {
+        assertEquals("no connection", failureReason(java.io.IOException("no connection")))
+    }
+
+    @Test
+    fun `a null message falls back to the class name`() {
+        assertEquals("IllegalStateException", failureReason(IllegalStateException()))
+    }
+
+    @Test
+    fun `a blank message is treated as missing, not rendered as an empty sentence`() {
+        // "Refresh failed:  " with nothing after the colon reads as a bug, not as an error.
+        assertEquals("IllegalStateException", failureReason(IllegalStateException("   ")))
+    }
+
+    @Test
+    fun `an anonymous exception class with no message still yields something sayable`() {
+        // The hole in `t.message ?: t::class.simpleName`: an anonymous subclass has a null
+        // simpleName on the JVM, so the chain can bottom out at null without the final literal.
+        val anonymous = object : RuntimeException() {}
+        assertNull("precondition: this class really is anonymous", anonymous::class.simpleName)
+        assertEquals("unknown error", failureReason(anonymous))
+    }
+
+    @Test
+    fun `whatever failureReason returns is never empty, so the wording never dangles`() {
+        val cases = listOf(
+            java.io.IOException("boom"),
+            IllegalStateException(),
+            IllegalStateException(""),
+            object : RuntimeException() {},
+        )
+        for (t in cases) {
+            val reason = failureReason(t)
+            assertTrue("empty reason for $t", reason.isNotBlank())
+            val line = readStateLine(ReadState(loading = false, loadedAtMs = t0, failure = reason), nowMs = t0)
+            assertTrue(line!!.text.trim().endsWith(reason))
+        }
+    }
 }

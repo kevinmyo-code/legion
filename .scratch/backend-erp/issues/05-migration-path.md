@@ -387,6 +387,36 @@ remote.**
 - **Done means:** with the network off, every migrated surface says what it does not know rather
   than rendering a blank as a fact.
 
+**BUILT 2026-08-26, and review of the build found two defects worth recording, because both are
+the shape that would otherwise be rediscovered on the phone.**
+
+1. **A cleared `read.loading` is not a cleared `loading`.** The first cut set only the new
+   `ReadState.loading` false on failure and left each screen's pre-existing `loading` flag true,
+   so a failed FIRST load rendered an eternal "Loading..." directly beneath a banner saying the
+   read had failed - two contradictory claims, one screen. The rule that resolves it: **`loading`
+   is read status, not data.** Kevin's ruling is to keep the DATA on a failed refresh; continuing
+   to claim to be loading is not keeping data, it is a second false assertion.
+2. **A new flag with no failure path is a new way to get stuck.** `monthLoading` was added to split
+   the ledger's "reloading" from "no data", but its effect was left unwrapped while the reload
+   effect beside it was guarded - so a throw there still crashed the tab, and short of a crash the
+   flag stuck true and pinned the money tiles at "loading" forever. **Every flag set true before a
+   suspending call needs the path that sets it false when that call throws**, added in the same
+   change, not later.
+
+`failureReason(Throwable)` was extracted at the same time: the fallback chain was written inline
+four times, and `t.message ?: t::class.simpleName` has a real hole - an anonymous exception class
+has a null `simpleName` on the JVM - so it is now one function with a test that constructs exactly
+that case, rather than four copies of an expression nobody had exercised.
+
+**What is tested and what is not, stated plainly.** The wording rules (`readStateLine`), the age
+formatting, the `failureReason` fallbacks including the anonymous-class hole, and the ledger tile
+split are all covered by real tests, and both worded states have Roborazzi snapshots. **The
+`runCatching` wiring itself is traced, not tested**: none of the three load effects is reachable
+from a JVM test, because each is inline in a `@Composable` and reaches Room through a `Context`.
+Making it testable needs an extracted, injectable load function per screen - a real refactor, not
+done here and not pretended to be. **Phase 4 is where that bill comes due**, since a remote read
+is the first time these paths fire in anger.
+
 **Phase 4 - per-aspect cutover, smallest first.** Order: **Places (3) → Pantry (29) → Fleet (62) →
 Notes+Dates (172, together, carrying the merge) → Ledger (168, last).** Ledger is last because it is
 money and because it depends on phase 5's CSV path.

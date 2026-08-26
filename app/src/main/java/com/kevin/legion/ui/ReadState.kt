@@ -114,3 +114,21 @@ fun compactAge(ageMs: Long): String {
     val days = hours / 24
     return if (days == 1L) "a day" else "$days days"
 }
+
+/**
+ * The one derivation of a user-facing reason from a caught [Throwable], shared by every screen's
+ * load effect. Extracted because it was written out four times inline, and because the fallback
+ * chain has a real hole worth pinning in a test rather than reasoning about: an anonymous or
+ * lambda-derived exception class has a NULL `simpleName` on the JVM, so `t.message ?:
+ * t::class.simpleName` alone can still yield null. A blank message is treated the same as a
+ * missing one - " " renders as an empty sentence after "Refresh failed:", which reads as a bug.
+ *
+ * The result is pasted into [readStateLine]'s wording, so it must never be empty.
+ */
+fun failureReason(t: Throwable): String {
+    val message = t.message?.trim()
+    if (!message.isNullOrEmpty()) return message
+    val name = t::class.simpleName?.trim()
+    if (!name.isNullOrEmpty()) return name
+    return "unknown error"
+}

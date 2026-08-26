@@ -167,6 +167,10 @@ import com.kevin.legion.location.PlaceController
  */
 data class FleetUiState(
     val loading: Boolean = true,
+    // Backend-erp phase 3 (`.scratch/backend-erp/issues/05-migration-path.md`): what this screen
+    // knows about its own last read - additive next to `loading` above, which every existing
+    // render branch (the `if (state.loading)` in FleetContent included) still keys off unchanged.
+    val read: ReadState = ReadState(),
     val vehicleLabel: String = "",
     /**
      * The bare number half of [VehicleController.mileageLabel] - "227,900 mi" (confirmed) or "about
@@ -413,6 +417,14 @@ fun FleetScreen(
     }
 
     LaunchedEffect(reloadKey) {
+        // Backend-erp phase 3: this whole body had no try/catch at all, so a Room or asset-IO
+        // throw (DtcDescriptions' disk read included) propagated straight out of the
+        // LaunchedEffect and crashed the tab. Wrapped in runCatching rather than a try/catch
+        // around the assignment, so the AWAIT-FIRST/COPY-ONCE discipline the comment below
+        // describes is unchanged: every suspend call still resolves into a local val, and the
+        // FleetUiState(...) construction that reads them is still the single last expression of
+        // the block, now also the runCatching block's return value.
+        runCatching {
         val vehicle = VehicleController.currentVehicle(context)
         val currentMileage = VehicleController.currentMileage(vehicle)
         val db = CarDatabase.getDatabase(context)
@@ -492,8 +504,9 @@ fun FleetScreen(
         // local val before this single, non-suspending assignment - the L15
         // fix from commit 4fd241e, carried into the merged screen rather than
         // re-introduced by accident when DRIVES' new reads were added.
-        state = FleetUiState(
+        FleetUiState(
             loading = false,
+            read = ReadState(loading = false, loadedAtMs = System.currentTimeMillis(), failure = null),
             // Ticket 04's label rule: the one rule, every surface, screen and speech alike - see
             // VehicleController.label's own doc. VehicleController.displayLabel never read `name`
             // at all, which is how RENAME could visibly do nothing on this exact pane.
@@ -542,6 +555,17 @@ fun FleetScreen(
             allServiceRecords = allServiceRecords,
             spendView = buildFleetSpendView(spendTotal, spendPerMile, spendByType, spendByYear),
         )
+        }.onSuccess { updated ->
+            state = updated
+        }.onFailure { t ->
+            com.kevin.legion.MidnightEvents.appStartWorkFailed("fleet_load", t)
+            // Kevin's ruling, 2026-08-26: keep whatever data is already on screen, say the refresh
+            // failed alongside it. Never touch a data field here - only `read` changes.
+            state = state.copy(
+                loading = false,
+                read = state.read.copy(loading = false, failure = failureReason(t)),
+            )
+        }
     }
 
     // connectionState is the live signal (collected reactively); everything
@@ -811,6 +835,10 @@ fun FleetContent(
             ) {
                 Text("FLEET", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
             }
+
+            // Backend-erp phase 3: a stale/failed-read notice, right under the title, never below
+            // the fold - visible whether or not `state.loading`'s own branch below fires.
+            ReadStateBanner(state.read, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
 
             if (state.loading) {
                 Text("LOADING...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))

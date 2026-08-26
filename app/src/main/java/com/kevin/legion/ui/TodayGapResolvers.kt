@@ -349,8 +349,17 @@ fun compactMoneyHero(cents: Long, currency: LedgerCurrency): String {
  */
 data class CredTileData(val hero: String, val caption: String)
 
-fun buildCredTile(budget: BudgetVsActual?, monthLabel: String): CredTileData {
-    if (budget == null) return CredTileData(hero = "...", caption = "loading")
+fun buildCredTile(budget: BudgetVsActual?, monthLabel: String, monthLoading: Boolean = false): CredTileData {
+    // Backend-erp phase 3, item 4: `budget == null` used to mean both "still loading" and
+    // "genuinely nothing to show" (no months with data at all). `monthLoading` tells them apart -
+    // see LedgerUiState.monthLoading's own doc for where it is set.
+    if (budget == null) {
+        return if (monthLoading) {
+            CredTileData(hero = "...", caption = "loading")
+        } else {
+            CredTileData(hero = "NO DATA", caption = "nothing to show yet")
+        }
+    }
     if (budget.lines.isEmpty() && budget.allOperatingSpendCents == 0L) {
         return CredTileData(hero = "NOT LOGGED", caption = "no spend $monthLabel")
     }

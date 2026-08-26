@@ -290,6 +290,26 @@ class TodayGapResolversTest {
         assertEquals("spent so far", tile.caption)
     }
 
+    /**
+     * Backend-erp phase 3, item 4: `budget == null` used to mean both "the month effect is
+     * mid-flight" and "genuinely nothing to show" - indistinguishable to a caller. `monthLoading`
+     * is the new tell; these two tests pin both branches so the split cannot silently collapse
+     * back into one wording.
+     */
+    @Test
+    fun `CRED tile - null budget while monthLoading reads as reloading, not empty`() {
+        val tile = buildCredTile(null, "AUG", monthLoading = true)
+        assertEquals("...", tile.hero)
+        assertEquals("loading", tile.caption)
+    }
+
+    @Test
+    fun `CRED tile - null budget with monthLoading false reads as genuinely empty, not reloading`() {
+        val tile = buildCredTile(null, "AUG", monthLoading = false)
+        assertEquals("NO DATA", tile.hero)
+        assertEquals("nothing to show yet", tile.caption)
+    }
+
     private fun aug(day: Int): Long = LocalDate.of(2026, 8, day).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 
     /**

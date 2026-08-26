@@ -137,6 +137,10 @@ private data class CategoryDrilldownSelection(val category: String?)
 
 data class LedgerUiState(
     val loading: Boolean = true,
+    // Backend-erp phase 3 (`.scratch/backend-erp/issues/05-migration-path.md`): what this screen
+    // knows about its own last read, and the words it owes the user because of it. Additive next
+    // to `loading` above - every existing render branch keyed off `loading` is untouched.
+    val read: ReadState = ReadState(),
     val transactions: List<LedgerTransaction> = emptyList(),
     val balances: List<AccountBalance> = emptyList(),
     val quarantined: List<IngestedFile> = emptyList(),
@@ -157,6 +161,12 @@ data class LedgerUiState(
     val pnlMonthsWithData: List<YearMonth> = emptyList(),
     val pnlMonth: YearMonth? = null,
     val budgetVsActual: BudgetVsActual? = null,
+    // Backend-erp phase 3, item 4: the month effect below never touched `loading`, so
+    // `budgetVsActual == null` used to mean BOTH "this month is reloading" and "no data at all" -
+    // indistinguishable to buildCredTile/buildBudgetTile. True for the duration of that one effect,
+    // false once it lands (success OR failure - a failed reload is not a loading state, it is a
+    // failed one, and `read.failure` carries that instead).
+    val monthLoading: Boolean = false,
     // quant-viz ticket 10: the Money tab's two always-on hero graphics. `spendTrend` is the SAME
     // list `SpendTrendDrilldown` renders (loaded eagerly here, not lazily behind opening that
     // drilldown, since the sparkline needs it visible on the tab face) - see the reload effect's
@@ -324,58 +334,77 @@ fun LedgerScreen(
     var moneyAccountFilterId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(reloadNonce) {
-        val months = LedgerController.monthsWithData(context, LedgerEntity.US)
-        // Resolve the default once months become known, and re-resolve if a
-        // purge or a scan made the currently-picked month stop existing -
-        // never leave the picker parked on a month with nothing to page to.
-        if (pnlMonth == null || pnlMonth !in months) pnlMonth = months.lastOrNull()
-        // BUG FOUND ON DEVICE (Kevin's US BUDGET section rendering as nothing despite 144 real
-        // transactions, 2026-08-07): Kotlin evaluates `state.copy(...)`'s RECEIVER (`state`) before
-        // its arguments, so a suspend call inside the argument list suspends AFTER `state` is
-        // already captured. This effect and the `pnlMonth`/`reloadNonce` effect right below it are
-        // both keyed to fire together, and whichever one's suspend calls finish LAST wins, silently
-        // clobbering whatever the other had just written into the SAME `state` var (here,
-        // `pnlMonthsWithData`, which the budget section's render gate needs non-empty). Await every
-        // suspend call into a local val FIRST, then do exactly one non-suspending `state = state.copy(...)`.
-        // The next field added to this copy call MUST follow the same shape, or this bug returns.
-        val transactions = LedgerController.recentTransactions(context)
-        val balances = LedgerController.accountBalances(context)
-        val quarantined = LedgerController.quarantinedFiles(context)
-        val pending = LedgerController.pendingTransactions(context)
-        val pendingCategoryGuesses = LedgerController.pendingCategoryGuesses(context)
-        // Command-center ticket 11: pending advisor proposals for the CRED aspect only - this
-        // screen has no reach into BIO/LOG/FLEET/HOME's own proposals, each of which belongs on
-        // its own aspect screen.
-        val pendingProposals = com.kevin.legion.advisor.AdvisorProposalHandPath.pendingProposals(
-            context, com.kevin.legion.advisor.AdvisorAspect.CRED,
-        )
-        // quant-viz ticket 10: loaded HERE, eagerly, rather than lazily behind `showSpendTrend` -
-        // the Money tab face's sparkline needs it visible without opening the drilldown.
-        // `SpendTrendDrilldown` below reuses this SAME field (its default 24-month range, unchanged
-        // from before this ticket) rather than re-fetching - one load, not two. The tab-face
-        // sparkline itself narrows to the ticket's own "up-to-12 months" at its OWN call site
-        // (`BudgetSection`'s `spendTrend.takeLast(12)`), not by shrinking what this reload keeps.
-        val spendTrend = LedgerController.monthlySpendTrend(context, LedgerEntity.US)
-        // 2026-08-18 fix: the third CATEGORIZE list - see `LedgerUiState.uncategorized`'s own
-        // comment. Loaded eagerly here (not lazily behind opening the CATEGORIZE drilldown) so
-        // HOME/CRED-level counts and the drilldown's own list can never observe two different
-        // moments in time.
-        val uncategorizedSplit = LedgerController.uncategorizedTransactionsSplit(context)
-        val categoryNames = LedgerController.allCategories(context).map { it.name }
-        state = state.copy(
-            loading = false,
-            transactions = transactions,
-            balances = balances,
-            quarantined = quarantined,
-            pnlMonthsWithData = months,
-            pending = pending,
-            pendingCategoryGuesses = pendingCategoryGuesses,
-            pendingProposals = pendingProposals,
-            spendTrend = spendTrend,
-            uncategorized = uncategorizedSplit.real,
-            uncategorizedTransfers = uncategorizedSplit.transfers,
-            categoryNames = categoryNames,
-        )
+        // Backend-erp phase 3: this whole body used to have no try/catch at all, so a Room or
+        // asset-IO throw propagated straight out of the LaunchedEffect and crashed the tab. Wrapped
+        // in runCatching rather than a try/catch around the assignment, so the AWAIT-FIRST/COPY-ONCE
+        // discipline the comment below still describes is unchanged: every suspend call still
+        // resolves into a local val, and the state.copy(...) that reads them is still the single
+        // last expression of the block, now just also the runCatching block's return value.
+        runCatching {
+            val months = LedgerController.monthsWithData(context, LedgerEntity.US)
+            // Resolve the default once months become known, and re-resolve if a
+            // purge or a scan made the currently-picked month stop existing -
+            // never leave the picker parked on a month with nothing to page to.
+            if (pnlMonth == null || pnlMonth !in months) pnlMonth = months.lastOrNull()
+            // BUG FOUND ON DEVICE (Kevin's US BUDGET section rendering as nothing despite 144 real
+            // transactions, 2026-08-07): Kotlin evaluates `state.copy(...)`'s RECEIVER (`state`) before
+            // its arguments, so a suspend call inside the argument list suspends AFTER `state` is
+            // already captured. This effect and the `pnlMonth`/`reloadNonce` effect right below it are
+            // both keyed to fire together, and whichever one's suspend calls finish LAST wins, silently
+            // clobbering whatever the other had just written into the SAME `state` var (here,
+            // `pnlMonthsWithData`, which the budget section's render gate needs non-empty). Await every
+            // suspend call into a local val FIRST, then do exactly one non-suspending `state = state.copy(...)`.
+            // The next field added to this copy call MUST follow the same shape, or this bug returns.
+            val transactions = LedgerController.recentTransactions(context)
+            val balances = LedgerController.accountBalances(context)
+            val quarantined = LedgerController.quarantinedFiles(context)
+            val pending = LedgerController.pendingTransactions(context)
+            val pendingCategoryGuesses = LedgerController.pendingCategoryGuesses(context)
+            // Command-center ticket 11: pending advisor proposals for the CRED aspect only - this
+            // screen has no reach into BIO/LOG/FLEET/HOME's own proposals, each of which belongs on
+            // its own aspect screen.
+            val pendingProposals = com.kevin.legion.advisor.AdvisorProposalHandPath.pendingProposals(
+                context, com.kevin.legion.advisor.AdvisorAspect.CRED,
+            )
+            // quant-viz ticket 10: loaded HERE, eagerly, rather than lazily behind `showSpendTrend` -
+            // the Money tab face's sparkline needs it visible without opening the drilldown.
+            // `SpendTrendDrilldown` below reuses this SAME field (its default 24-month range, unchanged
+            // from before this ticket) rather than re-fetching - one load, not two. The tab-face
+            // sparkline itself narrows to the ticket's own "up-to-12 months" at its OWN call site
+            // (`BudgetSection`'s `spendTrend.takeLast(12)`), not by shrinking what this reload keeps.
+            val spendTrend = LedgerController.monthlySpendTrend(context, LedgerEntity.US)
+            // 2026-08-18 fix: the third CATEGORIZE list - see `LedgerUiState.uncategorized`'s own
+            // comment. Loaded eagerly here (not lazily behind opening the CATEGORIZE drilldown) so
+            // HOME/CRED-level counts and the drilldown's own list can never observe two different
+            // moments in time.
+            val uncategorizedSplit = LedgerController.uncategorizedTransactionsSplit(context)
+            val categoryNames = LedgerController.allCategories(context).map { it.name }
+            state.copy(
+                loading = false,
+                transactions = transactions,
+                balances = balances,
+                quarantined = quarantined,
+                pnlMonthsWithData = months,
+                pending = pending,
+                pendingCategoryGuesses = pendingCategoryGuesses,
+                pendingProposals = pendingProposals,
+                spendTrend = spendTrend,
+                uncategorized = uncategorizedSplit.real,
+                uncategorizedTransfers = uncategorizedSplit.transfers,
+                categoryNames = categoryNames,
+                read = ReadState(loading = false, loadedAtMs = System.currentTimeMillis(), failure = null),
+            )
+        }.onSuccess { updated ->
+            state = updated
+        }.onFailure { t ->
+            com.kevin.legion.MidnightEvents.appStartWorkFailed("ledger_load", t)
+            // Kevin's ruling, 2026-08-26: keep whatever data is already on screen, say the refresh
+            // failed alongside it. Never touch a data field here - only `read` changes.
+            state = state.copy(
+                loading = false,
+                read = state.read.copy(loading = false, failure = failureReason(t)),
+            )
+        }
     }
 
     // Separate from the reload effect above so paging the month picker
@@ -386,12 +415,17 @@ fun LedgerScreen(
     // leaving a stale P&L on screen next to an emptied transaction list.
     LaunchedEffect(pnlMonth, reloadNonce, moneyAccountFilterId) {
         val month = pnlMonth
+        // Backend-erp phase 3, item 4: without this, `budgetVsActual == null` meant BOTH "this
+        // effect is mid-flight" and "genuinely nothing to show", and buildCredTile/buildBudgetTile
+        // could not tell those apart. Set true for the duration of this effect only.
+        state = state.copy(monthLoading = true)
         // moneyAccountFilterId is the SELECTED cluster's representative accountId; sameCard (via
         // LedgerController.budgetVsActual -> buildBudgetVsActual -> matchesAccountFilter) is what
         // actually resolves it against every stored variant of that physical account, so passing
         // just the one representative id here is enough - see matchesAccountFilter's own doc
         // comment. `null` means ALL, unchanged from before this toggle existed.
         val accountFilter = moneyAccountFilterId?.let { setOf(it) }
+        runCatching {
         // See the reload effect above's comment: await first, copy once, non-suspending.
         val budget = if (month != null) LedgerController.budgetVsActual(context, LedgerEntity.US, month, accountFilter) else null
         // quant-viz ticket 10: the daily-bars hero graphic's own load, keyed the SAME as `budget`
@@ -403,7 +437,20 @@ fun LedgerScreen(
             budgetVsActual = budget,
             pnlMonth = month,
             monthDailyExpenses = monthExpenses,
+            monthLoading = false,
         )
+        }.onFailure { t ->
+            // This effect was left bare when the reload effect above was wrapped, which made
+            // `monthLoading` - introduced in the same change - a flag that could stick true
+            // forever and pin the money tiles at "loading". A throw here also crashed the tab,
+            // the same defect phase 3 exists to remove. Clear the flag, keep the figures already
+            // on screen, and say the refresh failed through the same one banner.
+            com.kevin.legion.MidnightEvents.appStartWorkFailed("ledger_month_load", t)
+            state = state.copy(
+                monthLoading = false,
+                read = state.read.copy(failure = failureReason(t)),
+            )
+        }
     }
 
     // A scan writes straight to Room via IngestScanner/IngestPipeline - this
@@ -974,6 +1021,12 @@ fun LedgerContent(
                 }
             }
 
+            // Backend-erp phase 3: a stale/failed-read notice, placed right under the title, never
+            // below the fold - see readStateLine's own doc for why silence is correct otherwise.
+            item(key = "money-read-state") {
+                ReadStateBanner(state.read, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
+            }
+
             item(key = "money-folder-connection") {
                 FolderConnectionRow(
                     folder = state.folder,
@@ -1154,7 +1207,7 @@ private fun LazyListScope.ledgerListingItems(
         // `ui.common.DeckTiles.kt`'s own doc comment for why a bare `Row(IntrinsicSize.Min)`
         // cannot be substituted (it crashes on-device against a DeckPane child).
         item(key = "tile-row-budget-balances") {
-            val budgetTile = buildBudgetTile(state.budgetVsActual)
+            val budgetTile = buildBudgetTile(state.budgetVsActual, state.monthLoading)
             val groupedBalances = groupAccountBalances(state.balances)
             val balancesTile = buildBalancesTile(groupedBalances)
             EqualHeightRow(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalGap = 9.dp) {
@@ -1233,7 +1286,7 @@ private fun SpendPane(
 ) {
     val sem = LocalLegionSemantics.current
     val month = state.pnlMonth
-    val credTile = buildCredTile(state.budgetVsActual, month?.let(::ledgerSweepMonthLabel).orEmpty())
+    val credTile = buildCredTile(state.budgetVsActual, month?.let(::ledgerSweepMonthLabel).orEmpty(), state.monthLoading)
     DeckPane(header = "Spend", modifier = Modifier.clickable(onClick = onOpenTrend)) {
         if (month != null) {
             Row(
@@ -1380,8 +1433,16 @@ private fun AccountFilterRow(
  */
 private data class BudgetTileData(val hero: String, val caption: String)
 
-private fun buildBudgetTile(budget: BudgetVsActual?): BudgetTileData {
-    if (budget == null) return BudgetTileData(hero = "...", caption = "loading")
+private fun buildBudgetTile(budget: BudgetVsActual?, monthLoading: Boolean = false): BudgetTileData {
+    // Backend-erp phase 3, item 4: same split as buildCredTile above - null means either
+    // "reloading" or "genuinely nothing to show", and only monthLoading can tell them apart.
+    if (budget == null) {
+        return if (monthLoading) {
+            BudgetTileData(hero = "...", caption = "loading")
+        } else {
+            BudgetTileData(hero = "NO DATA", caption = "nothing to show yet")
+        }
+    }
     if (budget.lines.isEmpty()) return BudgetTileData(hero = "NONE", caption = "no categories yet - see budget")
     val overCount = budget.lines.count { it.gap.target > 0L && it.gap.gap < 0L }
     return if (overCount > 0) {

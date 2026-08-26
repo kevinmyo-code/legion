@@ -73,20 +73,49 @@ data class PantryUiState(
     // (deliberately NOT [receipts], which is capped) backs the monthly bar chart.
     val currencyTotals: List<PantryCurrencyTotal> = emptyList(),
     val allReceiptSummaries: List<PantryReceiptSummary> = emptyList(),
+    // Backend-erp phase 3: what this screen knows about its own last read - additive next to
+    // `loading` above, which every existing render branch still keys off unchanged.
+    val read: ReadState = ReadState(),
 )
 
 @Composable
 fun PantryScreen(onOpenImport: () -> Unit) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(PantryUiState()) }
+    // Backend-erp phase 3, item 5: this screen had NO reload path at all before this - the single
+    // `LaunchedEffect(Unit)` fired once ever, so a failed load could never be retried. Bumping this
+    // re-keys the effect below, the same shape LedgerScreen's/FleetScreen's own reloadNonce/reloadKey
+    // already use. No UI button is wired to it yet - none exists nearby to hang one off, per the
+    // brief - so today only a fresh recomposition of this composable (a tab re-entry) can bump it;
+    // this just makes retrying POSSIBLE rather than adding an affordance that isn't asked for.
+    var reloadNonce by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
-        state = PantryUiState(
-            loading = false,
-            receipts = PantryController.recentReceiptsWithItems(context),
-            currencyTotals = PantryController.totalSpendCentsByCurrency(context),
-            allReceiptSummaries = PantryController.allReceiptSummaries(context),
-        )
+    LaunchedEffect(reloadNonce) {
+        // Backend-erp phase 3: this body had no try/catch at all, so a Room throw propagated
+        // straight out of the LaunchedEffect and crashed the tab. See LedgerScreen's own reload
+        // effect for the identical shape and reasoning.
+        runCatching {
+            val receipts = PantryController.recentReceiptsWithItems(context)
+            val currencyTotals = PantryController.totalSpendCentsByCurrency(context)
+            val allReceiptSummaries = PantryController.allReceiptSummaries(context)
+            PantryUiState(
+                loading = false,
+                receipts = receipts,
+                currencyTotals = currencyTotals,
+                allReceiptSummaries = allReceiptSummaries,
+                read = ReadState(loading = false, loadedAtMs = System.currentTimeMillis(), failure = null),
+            )
+        }.onSuccess { updated ->
+            state = updated
+        }.onFailure { t ->
+            com.kevin.legion.MidnightEvents.appStartWorkFailed("pantry_load", t)
+            // Kevin's ruling, 2026-08-26: keep whatever data is already on screen, say the refresh
+            // failed alongside it. Never touch a data field here - only `read` changes.
+            state = state.copy(
+                loading = false,
+                read = state.read.copy(loading = false, failure = failureReason(t)),
+            )
+        }
     }
 
     PantryContent(state = state, onOpenImport = onOpenImport)
@@ -108,6 +137,9 @@ fun PantryContent(state: PantryUiState, onOpenImport: () -> Unit) {
                     Text("IMPORT", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
                 }
             }
+            // Backend-erp phase 3: stale/failed-read notice, right under the title, never below
+            // the fold.
+            ReadStateBanner(state.read, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
             PantryOpsStatusRow(receiptCount = if (state.loading) null else state.receipts.size)
             if (!state.loading) {
                 PantrySpendPanel(
