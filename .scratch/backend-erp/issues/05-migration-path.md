@@ -306,10 +306,35 @@ Delivered:
    ASCII bank descriptions, and the failure direction is known - a divergence causes a false
    NON-match, which double-counts.
 
-**Also owed, and it is this phase's real deliverable per ticket 03 ruling 2:** the shared gate test
-corpus. Two implementations of the same arithmetic now exist, Kotlin and SQL, and nothing yet proves
-they agree. That corpus is what makes ruling 2 safe rather than a hope, and it cannot be written
-until the SQL has actually run somewhere.
+~~**Also owed, and it is this phase's real deliverable per ticket 03 ruling 2:** the shared gate test
+corpus.~~ **DONE 2026-08-26. PHASE 2 IS COMPLETE.**
+
+`app/src/test/resources/gate-corpus.json` is the single source of truth for what the gate must do.
+Both sides read the same file rather than being compared against each other: `GateCorpusTest.kt`
+checks it from Kotlin, and `tools/gate_corpus_sql.py` emits the identical cases as SQL
+(`supabase/tests/gate_corpus.sql`, generated and committed following this repo's existing pattern
+for `adr-index.md` and `Board.md`, because there is no local Postgres).
+
+**Result: 4 Kotlin tests green, and the SQL side reported `GATE CORPUS: all 13 cases agree.
+(rolled back)` against the live project.** Verified afterwards at 0 rows in every table.
+
+Thirteen cases. The ones that carry weight are the ones a careless corpus omits: an empty extraction
+whose stated figures are all zero, which satisfies every anchor on nothing at all; a statement whose
+lines sum to the printed total but whose balances disagree, which a single-anchor gate waves through
+and which is precisely why ruling 4 demands three printed figures; a genuinely zero-movement month
+WITH real lines, guarding against over-correcting rule 6 into refusing legitimate zero sums; both
+halves of pantry's no-subtotal collapse; and absurd macro estimates that must not move the result,
+because a receipt never prints calories.
+
+Two meta-tests guard the corpus itself: one fails if either aspect stops exercising both outcomes
+(an all-COMMITTED corpus passes against a gate that never refuses), the other fails if nobody keeps
+a case of the exact self-satisfying-zero shape rule 6 exists for.
+
+**Honest scope.** The phone's own pre-check does not exist yet - ruling 3 retires the parsers for a
+CSV path that is unbuilt - so there is no Kotlin gate function to call. What the Kotlin side asserts
+is that every case follows from its own numbers, which makes the corpus self-verifying and is the
+same arithmetic the SQL implements. When the pre-check lands it plugs into the same corpus and the
+comparison becomes direct. That is stated in the test file itself so nobody mistakes it for more.
 - Per-aspect typed tables for every aspect, with `provenance` a real column and a server-side
   `ingested_files` equivalent keyed on `contentSha256`.
 - The `events` table absorbing the Item shape (ruling 2 designs it here, one shape, once).

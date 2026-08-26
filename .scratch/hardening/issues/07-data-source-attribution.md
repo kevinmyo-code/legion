@@ -3,12 +3,12 @@ map: hardening
 ticket: "07"
 title: "Attribution owed on two data sources LEGION already ships"
 type: task
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Credits shipped on the Data and privacy screen; the lint remains optional"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Attribution owed on two data sources LEGION already ships
@@ -39,9 +39,23 @@ API key or billing", which is exactly the framing that makes it easy to forget i
 live. A grep for `tomtom` across `ui/` returns **nothing**, so the credit appears nowhere the user
 can see it.
 
+## RESOLVED 2026-08-26
+
+Credits ship on the **Data and privacy** screen, which already answers "where does what you see come
+from, and what is kept". A dedicated route was considered and rejected for tonight: it needs
+`LegionRoute` plus NavHost wiring, and that is more surface than a credit list warrants when it
+could not be eyeballed on the phone before landing.
+
+Shipped: "Weather data by Open-Meteo.com, used under CC BY 4.0", "Traffic flow data (c) TomTom", and
+a courtesy line covering the US public-domain feeds (USGS, NWS, FEMA, NIFC).
+
+**The lint is NOT done and stays open as the interesting half.** A list nobody is forced to update
+goes stale the first time someone adds a feed in a hurry, which is exactly how these two came to be
+missing. `voice_guide.py` failing on a tool with no copy is the pattern to copy.
+
 ## Fix
 
-- [ ] One attribution surface, reachable from settings. A short list, each credit a real link:
+- [x] One attribution surface, reachable from settings. A short list, each credit a real link:
       "Weather data by Open-Meteo.com", "Traffic flow data © TomTom", plus anything else with terms
       (check USGS, NWS, FEMA, NIFC and AirNow from the location-intelligence map - most are US
       public domain and ask only for courtesy credit, but confirm rather than assume).

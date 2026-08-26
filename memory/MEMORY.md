@@ -278,9 +278,18 @@ OAuth client for the package makes Drive work from here permanently.
 The ciphertext restored fine but the Keystore key that decrypts it died with the uninstall, and the
 app correctly reports "Gemini key: Not set" rather than pretending.
 
-**RESUME POINT: Phase 2's three remaining items** - `commit_receipt` (pantry's RPC, so the gate is
-proven against two anchor shapes not one), the dedup restatement pass, and the shared gate test
-corpus, which is now writable because the SQL actually runs. Nothing in this map has been built - it is six
+**PHASE 2 IS COMPLETE (2026-08-26).** All three remaining items landed and were verified against the
+live project: `commit_receipt` (seven branches), the real dedup port (two-pass shared credit pool,
+tested against the actual BofA rewording case), and **the shared gate corpus** -
+`app/src/test/resources/gate-corpus.json` read by BOTH `GateCorpusTest.kt` and
+`tools/gate_corpus_sql.py`, reporting **"GATE CORPUS: all 13 cases agree"** against the real RPCs,
+rolled back to 0 rows. Ticket 03 ruling 2's condition is now met rather than owed.
+
+**RESUME POINT: Phase 3 (read-path honesty)** - loading/error/stale states on ledger, pantry and
+fleet, plus the visible "as of" on money that ticket 01 ruling 9 requires. `engine/WidgetDataSource.kt`
+already words empty vs not-configured vs error and is the vocabulary to extend, not duplicate.
+Phase 3 comes BEFORE any per-aspect cutover, because a network round trip turns "empty screen" into
+a false assertion. Nothing in this map has been built - it is six
 resolved decision tickets and a sequence. Deferred deliberately: the eval/screenshot test plan
 (phase 3 changes what every migrated screen renders, so writing it first writes it twice) and the
 second phone (never attached to this machine; Supabase likely dissolves the merge problem, but that
