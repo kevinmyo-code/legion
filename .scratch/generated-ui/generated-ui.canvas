@@ -1,0 +1,104 @@
+{
+  "nodes": [
+    {
+      "id": "173caabb6c5fb8fa",
+      "type": "file",
+      "file": ".scratch/generated-ui/issues/01-the-response-schema.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "db4451f1fa882275",
+      "type": "file",
+      "file": ".scratch/generated-ui/issues/04-adr-0035-amendment.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "0ce4d60a0798c339",
+      "type": "file",
+      "file": ".scratch/generated-ui/issues/06-what-the-pc-surface-constrains.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "d1e656cbed2981d4",
+      "type": "file",
+      "file": ".scratch/generated-ui/issues/07-harvest-generated-screens.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3bd257da247aad90",
+      "type": "file",
+      "file": ".scratch/generated-ui/issues/02-the-tool-binding-contract.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "de41a93ff68a8c23",
+      "type": "file",
+      "file": ".scratch/generated-ui/issues/05-the-phone-shell.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "067e980bee991a74",
+      "type": "file",
+      "file": ".scratch/generated-ui/issues/03-the-renderer.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "0e858bd842c18963",
+      "fromNode": "173caabb6c5fb8fa",
+      "fromSide": "right",
+      "toNode": "3bd257da247aad90",
+      "toSide": "left"
+    },
+    {
+      "id": "28114a3d9ee57bc2",
+      "fromNode": "173caabb6c5fb8fa",
+      "fromSide": "right",
+      "toNode": "067e980bee991a74",
+      "toSide": "left"
+    },
+    {
+      "id": "ecd8a35198a7078a",
+      "fromNode": "3bd257da247aad90",
+      "fromSide": "right",
+      "toNode": "067e980bee991a74",
+      "toSide": "left"
+    },
+    {
+      "id": "90bcd29eaeeb354d",
+      "fromNode": "db4451f1fa882275",
+      "fromSide": "right",
+      "toNode": "de41a93ff68a8c23",
+      "toSide": "left"
+    }
+  ]
+}
