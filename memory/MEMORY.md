@@ -187,7 +187,37 @@ broke four screenshot tests. The 1.9.0 requester was never identified.
 3. Create both accounts in the dashboard and insert their `household_members` rows.
 4. Sign in on the phone and confirm the membership check.
 
-**RESUME POINT: the four items above, then Phase 2 (schema + the commit RPC).** Nothing in this map has been built - it is six
+**PHASE 2 SCHEMA IS WRITTEN (2026-08-25), NOT APPLIED.** Six migrations under
+`supabase/migrations/`, 64 statements, all parsing via `python tools/sql_check.py` (pglast wraps
+Postgres's own grammar). **plpgsql bodies are opaque to that parser, so every function body is
+unproven**, and no Postgres has run any of it.
+
+Ten tables. Kevin's three rulings encoded: **immutable for gated aspects** (ledger, pantry) and
+editable for authored ones; **header-plus-lines** so a line cannot exist without the anchor it was
+checked against; **all six aspects** at once, including the Item-into-Event merge (21 fields plus 7
+into one `events` table, nothing dropped, plus `event_skips`).
+
+Two design points worth not re-deriving: the immutability trigger blocks every UPDATE and blocks
+DELETE **except on UNRECONCILED**, because rule 7 defines provisional rows as never asserted as fact
+and transient - freezing them would stop rule 7 running at all. And there is deliberately **no
+`reversed_by` column**, since setting one would require updating an immutable row; a reversal
+carries `reversal_of` and "is this reversed" is a lookup.
+
+`commit_statement` is the gate in SQL: rule 6's non-empty check FIRST (a zero-line extraction sails
+through every anchor when the statement's own figures are zero), then the three anchors, then rule 7
+supersession BEFORE the dedup read, then the lines. **Idempotent on `content_sha256`.** It returns
+QUARANTINED rather than raising on a gate failure, deliberately: a raise would roll back the
+quarantine record too, and the prohibition is on partial DATA, never on recording a rejection.
+
+**OWED, all three recorded on ticket 05 rather than glossed:** `commit_receipt` (pantry's RPC, so
+the gate is proven against two anchor shapes not one); the dedup **restatement pass** using
+`enumeratedWindows`, without which a restated period double-counts; and the **shared gate test
+corpus**, which is ticket 03 ruling 2's real deliverable - two implementations of the same
+arithmetic now exist and nothing proves they agree.
+
+**RESUME POINT: apply the migrations to the real project** (`supabase db push`, or paste each file
+in order into the dashboard SQL editor), which is what turns all of the above from written into
+proven. The four Phase 1 items below are still owed and come first. Nothing in this map has been built - it is six
 resolved decision tickets and a sequence. Deferred deliberately: the eval/screenshot test plan
 (phase 3 changes what every migrated screen renders, so writing it first writes it twice) and the
 second phone (never attached to this machine; Supabase likely dissolves the merge problem, but that

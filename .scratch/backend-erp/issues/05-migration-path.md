@@ -182,6 +182,39 @@ code). The device restore is deferred per Kevin's amendment below and is now a g
   nothing for a non-member, and the keep-alive has survived one full week without a pause.
 
 **Phase 2 - the schema and the RPC. Still nothing writing from the app.**
+**STATUS 2026-08-25: schema DONE, ledger RPC DONE, two items OWED.** Six migrations, 64 statements,
+all parsing through `tools/sql_check.py` (pglast, which wraps Postgres's own grammar). **Nothing has
+been applied to a real project, and plpgsql function bodies are opaque to the parser, so every
+function body here is unproven.**
+
+Delivered:
+- `20260825000200_conventions.sql` - provenance enum, the immutability trigger for gated tables,
+  `updated_at` for authored ones, the household RLS macro, server-side `ingested_files` with
+  `content_sha256` unique.
+- `20260825000300_aspect_ledger_pantry.sql` - `statements` + `ledger_transactions`, `receipts` +
+  `receipt_line_items`. Header-plus-lines, all three anchors NOT NULL on the header, and a CHECK
+  tying `statement_id` nullability to provenance so the schema itself says a provisional row was
+  never checked against anything.
+- `20260825000400_aspect_dates_notes_merged.sql` - the Item-into-Event merge, 21 fields plus 7 into
+  one `events` table with nothing dropped, plus `event_skips`.
+- `20260825000500_aspect_places_fleet.sql` - `places`, `vehicles`, `service_history`,
+  `maintenance_schedules`. The engine's BLOCK delete policy becomes real `ON DELETE RESTRICT`.
+- `20260825000600_commit_statement_rpc.sql` - the ledger commit RPC.
+
+**OWED before phase 4's ledger cutover, both recorded rather than glossed:**
+1. **`commit_receipt`, the pantry equivalent.** Pantry is the other gated aspect and exercises a
+   different anchor shape (items sum to subtotal; subtotal plus tax plus other equals total, with a
+   collapse when no subtotal is printed). The gate is proven against one case, not two, until it
+   exists.
+2. **The dedup restatement pass.** `commit_statement` implements the tuple match that
+   `LedgerDedup.resolveDedup` starts from, but NOT the overlapping-window logic using
+   `IngestedFileDao.enumeratedWindows` that tells a genuine duplicate from a bank restating a
+   period. Without it, a restated period double-counts.
+
+**Also owed, and it is this phase's real deliverable per ticket 03 ruling 2:** the shared gate test
+corpus. Two implementations of the same arithmetic now exist, Kotlin and SQL, and nothing yet proves
+they agree. That corpus is what makes ruling 2 safe rather than a hope, and it cannot be written
+until the SQL has actually run somewhere.
 - Per-aspect typed tables for every aspect, with `provenance` a real column and a server-side
   `ingested_files` equivalent keyed on `contentSha256`.
 - The `events` table absorbing the Item shape (ruling 2 designs it here, one shape, once).
