@@ -521,6 +521,30 @@ decided, with the traps that make them non-obvious rather than clerical:
 
 Places is unaffected and proceeds now.
 
+**RESOLVED 2026-08-26 by `supabase/migrations/20260826000100_origin_guid.sql` (written, parse-checked,
+NOT YET APPLIED - Kevin applies it by hand).** The fix is not five semantic natural keys, because
+that approach does not survive contact with the data: `receipt_line_items` has no natural key even
+in principle (two identical lines on one receipt are legitimately two rows, so any key over
+receipt/name/price would COLLAPSE two real rows into one - and silently losing a line item is
+strictly worse than duplicating one, since the gate would then fail a document that was extracted
+correctly). `ledger_transactions` has `line_ref` but a NULL `statement_id` on exactly the rule-7
+provisional rows, so the weakest-provenance rows would be the free-to-duplicate ones.
+
+Instead the upload keys on the identity the data ALREADY HAS. Every row being uploaded is an engine
+record today, and Room v37's `MIGRATION_36_37` backfilled `records.guid` for every pre-existing row
+- "no row is ever guid-less", in its own words. A nullable, unique `origin_guid text` on each aspect
+table records which engine record a row came from; rows born after the cutover leave it NULL, and
+Postgres treats NULLs as distinct, so post-cutover rows never collide.
+
+**This does not reintroduce the engine shape that ruling 7 retires.** Ruling 7 retires `records`,
+`record_types`, `field_defs`, the payload jsonb and the generated UI. A text column recording where
+a row came from is the same kind of fact as `provenance`, and it stays meaningful after the engine
+is deleted: it is what lets anyone ask later whether a row predates the cutover.
+
+Not added to `places` (`label` is already unique). No semantic constraints added either - whether
+two cars may share a name is a product decision that can fail against existing data, and none of
+that is checkable from a machine with no access to the project.
+
 **Phase 5 - the Google exit and the CSV path. Interleaved, not appended.**
 - **Before the Notes+Dates cutover:** widen the importer with description/location/allDay, parse the
   `LEGION::v1` block into real fields, run one import over an **unbounded** window, verify. Then
