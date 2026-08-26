@@ -1,0 +1,181 @@
+{
+  "_comment": [
+    "THE SHARED GATE CORPUS. Ticket 03 ruling 2's actual deliverable.",
+    "",
+    "Ruling 2 accepted TWO implementations of the same reconciliation arithmetic - a Kotlin",
+    "pre-check on the phone and the SQL inside the commit RPCs - on one condition: that something",
+    "proves they agree. This file is that something. It is the single source of truth for what the",
+    "gate must do, and both sides are checked against it rather than against each other.",
+    "",
+    "Every case states its own arithmetic explicitly so a reader can verify the expectation by",
+    "hand. If a case's `expect` disagrees with its own numbers, the case is wrong, not the code.",
+    "",
+    "Consumed by:",
+    "  app/src/test/java/com/kevin/legion/ledger/GateCorpusTest.kt  (the Kotlin side)",
+    "  tools/gate_corpus_sql.py                                     (emits SQL for the RPC side)",
+    "",
+    "WHAT THIS DOES NOT YET COVER, stated so its absence is not mistaken for coverage: the phone's",
+    "own pre-check does not exist yet (ticket 03 ruling 2 specifies it; the CSV import path that",
+    "would host it is unbuilt). Until it does, the Kotlin side here verifies the ARITHMETIC each",
+    "case asserts, which is the same arithmetic both implementations must produce. When the",
+    "pre-check lands it plugs into the same corpus and the comparison becomes direct."
+  ],
+
+  "ledger": [
+    {
+      "name": "valid three-anchor statement commits",
+      "why": "sum(-450, 300000, -150000) = 149550 = stated_total; 649550 - 500000 = 149550. Both anchors hold.",
+      "expect": "COMMITTED",
+      "stated_total_cents": 149550,
+      "opening_balance_cents": 500000,
+      "closing_balance_cents": 649550,
+      "lines": [
+        {"txn_date": "2026-07-03", "description": "COFFEE", "amount_cents": -450},
+        {"txn_date": "2026-07-11", "description": "SALARY", "amount_cents": 300000},
+        {"txn_date": "2026-07-20", "description": "RENT", "amount_cents": -150000}
+      ]
+    },
+    {
+      "name": "empty extraction quarantines even when every figure is zero",
+      "why": "RULE 6. sum of no rows is 0, and closing - opening is 0, so BOTH anchors are satisfied by nothing at all. This is how a card statement once passed with four dropped interest rows, and it only held because interest was zero that month. The non-empty check must run BEFORE the arithmetic.",
+      "expect": "QUARANTINED",
+      "stated_total_cents": 0,
+      "opening_balance_cents": 500000,
+      "closing_balance_cents": 500000,
+      "lines": []
+    },
+    {
+      "name": "lines that do not sum to the stated total quarantine",
+      "why": "sum = 149550, stated = 999. Anchor 1 fails.",
+      "expect": "QUARANTINED",
+      "stated_total_cents": 999,
+      "opening_balance_cents": 500000,
+      "closing_balance_cents": 649550,
+      "lines": [
+        {"txn_date": "2026-07-03", "description": "COFFEE", "amount_cents": -450},
+        {"txn_date": "2026-07-11", "description": "SALARY", "amount_cents": 300000},
+        {"txn_date": "2026-07-20", "description": "RENT", "amount_cents": -150000}
+      ]
+    },
+    {
+      "name": "balance movement disagreeing with the line sum quarantines",
+      "why": "sum = 149550 and stated = 149550, so anchor 1 PASSES. But closing - opening = 1 - 500000, which does not. This is the case a single-anchor gate would wave through, and the reason ruling 4 requires three printed figures rather than one.",
+      "expect": "QUARANTINED",
+      "stated_total_cents": 149550,
+      "opening_balance_cents": 500000,
+      "closing_balance_cents": 1,
+      "lines": [
+        {"txn_date": "2026-07-03", "description": "COFFEE", "amount_cents": -450},
+        {"txn_date": "2026-07-11", "description": "SALARY", "amount_cents": 300000},
+        {"txn_date": "2026-07-20", "description": "RENT", "amount_cents": -150000}
+      ]
+    },
+    {
+      "name": "a single line that ties out commits",
+      "why": "The degenerate but legal case. sum = -899 = stated; 99101 - 100000 = -899.",
+      "expect": "COMMITTED",
+      "stated_total_cents": -899,
+      "opening_balance_cents": 100000,
+      "closing_balance_cents": 99101,
+      "lines": [
+        {"txn_date": "2026-06-10", "description": "VPN24.ME", "amount_cents": -899}
+      ]
+    },
+    {
+      "name": "a genuinely zero-movement month with a real line commits",
+      "why": "Guards against over-correcting rule 6 into refusing legitimate zero sums. Two lines that cancel: sum = 0 = stated, and closing equals opening. There IS an extraction here, so the gate must accept it.",
+      "expect": "COMMITTED",
+      "stated_total_cents": 0,
+      "opening_balance_cents": 500000,
+      "closing_balance_cents": 500000,
+      "lines": [
+        {"txn_date": "2026-07-05", "description": "CHARGE", "amount_cents": -2500},
+        {"txn_date": "2026-07-06", "description": "REFUND", "amount_cents": 2500}
+      ]
+    }
+  ],
+
+  "pantry": [
+    {
+      "name": "valid receipt with a printed subtotal commits",
+      "why": "items 450 + 700 = 1150 = subtotal. subtotal 1150 + tax 92 + other 0 = 1242 = total. Both anchors hold.",
+      "expect": "COMMITTED",
+      "total_cents": 1242,
+      "subtotal_cents": 1150,
+      "tax_cents": 92,
+      "items": [
+        {"name": "MILK", "quantity": 1, "total_price_cents": 450, "estimated_calories_kcal": 620},
+        {"name": "BREAD", "quantity": 2, "total_price_cents": 700}
+      ]
+    },
+    {
+      "name": "empty item list quarantines",
+      "why": "RULE 6 again, in pantry's shape.",
+      "expect": "QUARANTINED",
+      "total_cents": 1242,
+      "subtotal_cents": 1150,
+      "tax_cents": 92,
+      "items": []
+    },
+    {
+      "name": "items not summing to the printed subtotal quarantines",
+      "why": "ANCHOR 1. items = 1150, subtotal claims 1300. An item was probably not read.",
+      "expect": "QUARANTINED",
+      "total_cents": 1392,
+      "subtotal_cents": 1300,
+      "tax_cents": 92,
+      "items": [
+        {"name": "MILK", "quantity": 1, "total_price_cents": 450},
+        {"name": "BREAD", "quantity": 2, "total_price_cents": 700}
+      ]
+    },
+    {
+      "name": "subtotal plus tax not reaching the printed total quarantines",
+      "why": "ANCHOR 2. items tie to the subtotal, but 1150 + 92 = 1242, not the 9999 printed.",
+      "expect": "QUARANTINED",
+      "total_cents": 9999,
+      "subtotal_cents": 1150,
+      "tax_cents": 92,
+      "items": [
+        {"name": "MILK", "quantity": 1, "total_price_cents": 450},
+        {"name": "BREAD", "quantity": 2, "total_price_cents": 700}
+      ]
+    },
+    {
+      "name": "no printed subtotal, figures tie, commits",
+      "why": "THE COLLAPSE CASE. With no subtotal the two anchors become one: items 1150 + tax 92 = 1242 = total.",
+      "expect": "COMMITTED",
+      "total_cents": 1242,
+      "subtotal_cents": null,
+      "tax_cents": 92,
+      "items": [
+        {"name": "MILK", "quantity": 1, "total_price_cents": 450},
+        {"name": "BREAD", "quantity": 2, "total_price_cents": 700}
+      ]
+    },
+    {
+      "name": "no printed subtotal, figures do not tie, quarantines",
+      "why": "The other half of the collapse. Without this case a bug that always accepted the no-subtotal branch would pass the corpus.",
+      "expect": "QUARANTINED",
+      "total_cents": 1,
+      "subtotal_cents": null,
+      "tax_cents": 92,
+      "items": [
+        {"name": "MILK", "quantity": 1, "total_price_cents": 450},
+        {"name": "BREAD", "quantity": 2, "total_price_cents": 700}
+      ]
+    },
+    {
+      "name": "macro estimates never affect the gate",
+      "why": "SECTION 4 RULE 5. A receipt never prints calories, so they are a model's guess and are excluded from every anchor. These figures are deliberately absurd; the case must still commit on its money alone.",
+      "expect": "COMMITTED",
+      "total_cents": 1242,
+      "subtotal_cents": 1150,
+      "tax_cents": 92,
+      "items": [
+        {"name": "MILK", "quantity": 1, "total_price_cents": 450, "estimated_calories_kcal": 999999, "estimated_protein_g": 4242},
+        {"name": "BREAD", "quantity": 2, "total_price_cents": 700, "estimated_calories_kcal": -1}
+      ]
+    }
+  ]
+}
