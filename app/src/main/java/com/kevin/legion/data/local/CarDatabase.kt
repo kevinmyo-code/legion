@@ -260,6 +260,14 @@ import androidx.room.RoomDatabase
  * identity column [EngineRecord]'s own v37 doc comment explains at length. One `ALTER TABLE`, one
  * backfill `UPDATE` (every pre-existing row gets a real, distinct UUID, never left `''`), one
  * unique index. See [MIGRATION_36_37] for the schema itself. No other table changes.
+ *
+ * v38 (backend-erp Phase 4, aspect 4 of 5 - Notes+Dates cut over together, carrying the merge,
+ * `.scratch/backend-erp/issues/05-migration-path.md`): `events_replica` + `event_skips_replica` -
+ * the Room replica of `public.events`/`public.event_skips`
+ * (`supabase/migrations/20260825000400_aspect_dates_notes_merged.sql`). See [EventReplica]'s own
+ * doc comment for the field mapping and for why [EventReplica.id] is a local surrogate rather than
+ * the server's own uuid. Two additive `CREATE TABLE`s, nothing existing touched. See
+ * [MIGRATION_37_38] for the schema itself.
  */
 @Database(
     entities = [
@@ -292,8 +300,9 @@ import androidx.room.RoomDatabase
         WellbeingDigestSchedule::class,
         Aspect::class, RecordType::class, FieldDef::class, EngineRecord::class, WidgetInstance::class,
         MutedReminder::class,
+        EventReplica::class, EventSkipReplica::class,
     ],
-    version = 37,
+    version = 38,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -374,6 +383,13 @@ abstract class CarDatabase : RoomDatabase() {
      * [MutedReminder]'s own doc comment for why this stays outside [com.kevin.legion.engine.RecordStore]'s door. */
     abstract fun mutedReminderDao(): MutedReminderDao
 
+    /** The Notes+Dates merge's Room replica (v38, backend-erp Phase 4) - see [EventReplica]'s own
+     * doc comment. Populated only by [com.kevin.legion.backend.EventsReconcile] and the CONFIGURED
+     * write path in `notes/NotesController.kt`/`engine/dates/DatesAgenda.kt`; read by both when a
+     * Supabase project is configured. */
+    abstract fun eventReplicaDao(): EventReplicaDao
+    abstract fun eventSkipReplicaDao(): EventSkipReplicaDao
+
     companion object {
         @Volatile
         private var INSTANCE: CarDatabase? = null
@@ -404,7 +420,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 37
+        const val SCHEMA_VERSION = 38
         // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
         // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
@@ -428,6 +444,12 @@ abstract class CarDatabase : RoomDatabase() {
         // (`widget_instances.gridRow`/`gridCol`/`rowSpan`/`colSpan`, ticket 18).
         // 2026-08-23: bumped to 36 alongside `@Database(version=)` in the same edit again
         // (`muted_reminders`, aspect-engine ticket 19 - the Dates aspect build).
+        // 2026-08-26: bumped to 38 alongside `@Database(version=)` in the same edit again
+        // (`events_replica`/`event_skips_replica`, backend-erp Phase 4 - Notes+Dates merge). Note
+        // the jump from 36 straight to 38 in THIS constant's own comment trail - v37
+        // (`records.guid`) never got an entry here either, the exact drift this constant's doc
+        // comment predicts and calls harmless; `@Database(version=)` itself is the number that
+        // actually governs Room and it went 36 -> 37 -> 38 in order.
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -451,7 +473,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_25_26,
                         MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
                         MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34,
-                        MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37,
+                        MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

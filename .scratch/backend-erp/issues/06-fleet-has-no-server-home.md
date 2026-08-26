@@ -50,21 +50,37 @@ partial cutover that moves `vehicles` to Postgres while `drives` stays on the ph
 and its children in two different systems, which is the split-brain the reconcile-and-repoint shape
 exists to avoid.
 
-## What has to be decided, and by whom
+## RULED 2026-08-26 (Kevin): two of the four are settled
+
+**1. `drives` sync.** Built the same day: `supabase/migrations/20260826000200_fleet_drives.sql`,
+applied to the live project and verified (RLS on, one policy, one trigger - identical to `vehicles`
+and `service_history`). **Keyed on `sync_id`, not `origin_guid`**, because drives are NOT engine
+records - `FleetAspectSeeder` defines only Vehicle, ServiceHistory and MaintenanceSchedule, so
+`Drive.syncId` was already the portable identity and there was nothing to invent.
+
+Two details caught while writing it, both worth keeping: `provenance` defaults to `DETERMINISTIC`,
+NOT `OBSERVED` - `OBSERVED` is a `kind` value on `service_history` and is not in the `provenance`
+enum at all, so the first draft would have failed on apply. And `gallons` is nullable with no zero
+default, carrying `Drive.gallons`' own rule forward: unknown fuel and no fuel are different facts
+and must not collapse, or MPG lies.
+
+**2. `monthly_recaps` and `yearly_wrapped` RECOMPUTE from drives.** No server tables for them. **The
+arithmetic was deliberately NOT written server-side**, and that restraint is the point:
+`vehicle/MonthlyRecapController.kt` and `vehicle/MpgTrust.kt` already implement it, and transcribing
+it into SQL unchecked would create two implementations of one calculation with nothing proving they
+agree - the exact hazard CLAUDE.md section 4 rule 1 and ticket 03 ruling 2 exist to prevent. Whether
+the recap becomes a view, an RPC, or stays a phone-side computation over synced drives is its own
+step, and if it goes server-side it needs a shared corpus the way the gate did.
+
+## Still to be decided, and by whom
 
 These are product and modelling calls, not execution:
 
-1. **`drives`** - a server table, matching ruling 10. Needs its own shape decided (and note `Drive`
-   already carries a `syncId`, so it has a natural upload key without `origin_guid`).
-2. **The four diagnostic/observation tables** (`code_events`, `code_clear_events`, `oil_analyses`,
+1. **The four diagnostic/observation tables** (`code_events`, `code_clear_events`, `oil_analyses`,
    `chassis_quirks`) - do these follow drives to the server, or are they OBD residue that stays with
    `obd_samples`? They are not high-frequency the way samples are, which is the reason ruling 10
    gave for keeping samples local, so the ruling does not settle them either way.
-3. **`monthly_recaps` and `yearly_wrapped` are DERIVED aggregates.** The ERP framing in CLAUDE.md
-   section 1 makes widgets the reporting layer over transactions, which argues they should be
-   recomputed from `drives` server-side rather than migrated as rows. That is a real simplification
-   if taken, and a real amount of work if not.
-4. **`vehicle_specs`, `build_entries`, `car_tasks`, `drive_reassignments`** - undecided, and each is
+2. **`vehicle_specs`, `build_entries`, `car_tasks`, `drive_reassignments`** - undecided, and each is
    small enough that the answer is probably "carry it", but none should be assumed.
 
 ## Why this was not caught earlier

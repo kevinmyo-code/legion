@@ -1456,3 +1456,25 @@ val MIGRATION_36_37 = object : Migration(36, 37) {
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_records_guid` ON `records` (`guid`)")
     }
 }
+
+/**
+ * v37 -> v38: `events_replica` + `event_skips_replica` (backend-erp Phase 4, aspect 4 of 5 -
+ * Notes+Dates merged - see [EventReplica]'s own doc comment for the shape). Two additive
+ * `CREATE TABLE`s, nothing existing touched. `createSql`/index text below is PASTED VERBATIM from
+ * the kapt-generated `app/schemas/com.kevin.legion.data.local.CarDatabase/38.json` after a real
+ * `compileDebugKotlin -Pnokey` run, per CLAUDE.md sec 5's "copy generated SQL verbatim" discipline -
+ * not hand-written, same posture as every migration above this one in the file.
+ */
+val MIGRATION_37_38 = object : Migration(37, 38) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `events_replica` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `serverId` TEXT NOT NULL, `title` TEXT NOT NULL, `startsAt` INTEGER NOT NULL, `endsAt` INTEGER, `allDay` INTEGER NOT NULL, `location` TEXT, `notes` TEXT, `source` TEXT NOT NULL, `googleEventId` TEXT, `done` INTEGER NOT NULL, `doneAt` INTEGER, `sortOrder` INTEGER, `triggerPlaceLabel` TEXT, `repeatKind` TEXT, `repeatEvery` INTEGER, `repeatDaysOfWeek` TEXT, `repeatDay` INTEGER, `repeatMonth` INTEGER, `repeatEndKind` TEXT, `repeatEndDate` INTEGER, `repeatEndCount` INTEGER, `exact` INTEGER NOT NULL, `exactDowngraded` INTEGER NOT NULL, `missedAt` INTEGER, `missedDismissedAt` INTEGER, `loggedAt` INTEGER, `updatedAtMs` INTEGER NOT NULL, `deleted` INTEGER NOT NULL DEFAULT 0)"
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_events_replica_serverId` ON `events_replica` (`serverId`)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `event_skips_replica` (`eventServerId` TEXT NOT NULL, `skipDateEpochMs` INTEGER NOT NULL, PRIMARY KEY(`eventServerId`, `skipDateEpochMs`))"
+        )
+    }
+}

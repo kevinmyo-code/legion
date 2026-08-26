@@ -31,6 +31,16 @@
       "color": "4"
     },
     {
+      "id": "5cbac0decd6119ec",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/07-undated-notes-have-no-server-shape.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "0826d5c94a1739ed",
       "type": "file",
       "file": ".scratch/backend-erp/issues/02-auth-and-identity.md",
