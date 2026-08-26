@@ -41,6 +41,35 @@ regression and the thing most likely to be dismissed as flakiness when it does.
 
 ### 2. Compose is held at 1.7.0 by `resolutionStrategy.force` (`traced` symptom, `reasoned` cause)
 
+**RESOLVED 2026-08-26, and the resolution reversed the diagnosis. The force was not a fix; it was
+the bug.**
+
+Installing the APK on the A25 crashed it instantly, every launch:
+`java.lang.NoSuchMethodError: No interface method shouldExecute(ZI)Z in class
+androidx.compose.runtime.Composer`. Kotlin 2.1.0's Compose compiler emits calls against a 1.9-era
+runtime; the force pinned the runtime to 1.7.0, which has no such method.
+
+**The real root cause predates the backend arc entirely.** `compose-bom` was `2024.05.00`, i.e.
+Compose 1.6.7 and material3 1.2.1, against a Kotlin 2.1.0 compiler.
+`navigation-compose:2.8.0` dragging `ui` up to 1.7.0 masked the gap just enough to boot. So when
+supabase-kt/ktor shifted resolution to 1.9.0, that was **correct** and was accidentally repairing a
+latent mismatch. Forcing it back is what broke the app.
+
+The four screenshot-test failures that motivated the force were `material` 1.6.7's ripple not
+implementing foundation 1.9.0's `IndicationNodeFactory` - a signal that **material needed to move
+forward too**, not that `ui` should move back.
+
+**Fix applied:** the force block is deleted and `composeBom` moves to `2025.09.00`, which resolves
+the whole stack coherently (runtime 1.9.1, verified by `dependencyInsight`).
+
+**The lesson, which is the part worth keeping.** `assembleDebug` succeeded, 2,576 unit tests were
+green, and the screenshot tests passed - all while the app could not start. Compiling is not
+running, and a green suite is not a working app. Only installing it caught this. That is L11's
+"verification steps are gates" and it is exactly what this ticket meant by calling an untraced
+`force` a silencer: it silenced a real incompatibility for weeks.
+
+### 2b. ORIGINAL TEXT, kept because the reasoning was good and the conclusion was wrong
+
 Adding supabase-kt/ktor drifted the `androidx.compose.ui` atomic group to 1.9.0, which broke four
 pre-existing Roborazzi screenshot tests: `androidx.compose.foundation` 1.9.0 requires
 `IndicationNodeFactory`, and `androidx.compose.material` 1.6.7's ripple still implements the older
