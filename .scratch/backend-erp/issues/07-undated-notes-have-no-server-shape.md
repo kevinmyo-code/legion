@@ -80,6 +80,23 @@ right call and it is worth stating why: ruling 2's inferred-tomorrow default is 
 rendering rule, and CLAUDE.md section 4 rule 5 forbids storing something the source never stated as
 though it were stated. A guessed due date would be exactly that.
 
+## RULED 2026-08-26 (Kevin): option 1. Applied.
+
+`supabase/migrations/20260826000400_events_starts_at_nullable.sql`, applied to the live project and
+verified: `events.starts_at` is nullable, `title` is still NOT NULL.
+
+**What it does not license.** An undated item is stored as NULL, never as a guessed date. Ruling 2's
+inferred-tomorrow is a READ-SIDE rendering rule; storing it would assert something the user never
+said (section 4 rule 5). And `starts_at` is the agenda's sort key, so **every ordering query over
+this table now needs an explicit null policy** - `NULLS LAST` is the intent, decided at each query
+site rather than baked into the column.
+
+**Still to build, and it is the part that was blocked:** `EventsReconcile` must stop skipping
+undated items and upload them with a null start, and the `NotesController` rewire can now proceed -
+the per-item "which store does this live in" fork that made it undecidable is gone, because both
+dated and undated items have one home. Deliberately NOT started while another agent is mid-flight
+in the pantry files; a Room replica change for the nullable start would collide with its migration.
+
 ## The options
 
 1. **`starts_at` becomes NULLABLE.** Smallest change. An undated item is a row with a null start,
