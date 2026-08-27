@@ -285,7 +285,40 @@ tested against the actual BofA rewording case), and **the shared gate corpus** -
 `tools/gate_corpus_sql.py`, reporting **"GATE CORPUS: all 13 cases agree"** against the real RPCs,
 rolled back to 0 rows. Ticket 03 ruling 2's condition is now met rather than owed.
 
-**RESUME POINT: Phase 3 (read-path honesty)** - loading/error/stale states on ledger, pantry and
+**RESUME POINT (updated 2026-08-26, late): Phase 4 aspect 5 - the FLEET CUTOVER, ticket 10.**
+Places, Pantry and Notes+Dates are all cut over. Ledger is last. Phase 3 is DONE (`bea1cef`,
+`9a7fa57`).
+
+**Notes+Dates landed 2026-08-26** (tickets 11 + 07's build half), four commits:
+- `b17bc88` - **a live defect, not a hazard**: `EventsReconcile` wiped the replica one line before
+  the id-preserving upsert, so EVERY reconcile reminted EVERY local id. That id is an alarm
+  `PendingIntent` request code and a soft FK from `list_item_skips`, `workout_set_logs` and
+  `muted_reminders`. Kevin ruled CARRY THE ENGINE ID, so the id is derived and cannot drift; no
+  rekey and no alarm re-arm at cutover. Two-pass refill, ordering load-bearing. No test caught the
+  original because the idempotence test asserted COUNTS, never ids.
+- `e91a296` - the dual-path rewire, plus a worse defect found under it: `uploadMigratedEvent`
+  inserted without `created_at` and took Postgres's `now()`, so at cutover all 56 notes would read
+  as created that moment, resetting `GoalChecklistSync`'s "already materialized today" gate and
+  every `LogDigestBuilder` staleness bucket. Room v40 -> **v41**.
+- `c79da08` - the agenda finally implements ticket 01 ruling 2. **53 of 56 Notes items were
+  invisible to it.** Undated renders as tomorrow, says "(showing tomorrow, no date set)" in words,
+  and is EXCLUDED from `nextUnmuted` structurally - an inferred date must never fire an alarm.
+- `ccb868a` - ticket 09's wording half, plus a live bug: `GeneratedFormScreen` rendered "PHOTO ON
+  FILE" from a non-null path without touching the disk.
+
+**Ticket 08 was already built** (`c0101cf`) and its status was merely stale - a built feature sitting
+on the board as unstarted work, section 12's trap from the other direction.
+
+**OWED ON THE PHONE, do not lose:** a reminder set BEFORE the notes cutover still firing AFTER it.
+`AlarmScheduler` has ZERO tests repo-wide and the `PendingIntent` request-code contract is exercised
+by nothing. `CarDatabaseMigration40To41Test` is written but has never been RUN. The configured Notes
+path has never touched a real Supabase project.
+
+**Still open on this map:** ticket 10 (fleet cutover, the largest remaining build), ticket 09's
+Supabase Storage half (until it lands the receipt photos have NO durable copy anywhere), ledger
+cutover, phase 5 (widen the Google importer BEFORE the Notes cut), phase 6 deletions.
+
+**PREVIOUS RESUME POINT: Phase 3 (read-path honesty)** - loading/error/stale states on ledger, pantry and
 fleet, plus the visible "as of" on money that ticket 01 ruling 9 requires. `engine/WidgetDataSource.kt`
 already words empty vs not-configured vs error and is the vocabulary to extend, not duplicate.
 Phase 3 comes BEFORE any per-aspect cutover, because a network round trip turns "empty screen" into

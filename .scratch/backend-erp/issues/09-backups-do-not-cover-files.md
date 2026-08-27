@@ -84,3 +84,27 @@ recorded in ticket 08.
 
 Never run `connected*` Gradle tasks against Kevin's daily-driver phone. They uninstall. An emulator
 is the place for instrumentation tests, and `installDebug` is what puts a build on the real device.
+
+## THE WORDING HALF IS BUILT 2026-08-26 (`ccb868a`). The ticket stays OPEN for the Storage half.
+
+Both surfaces now say the backup is database-only: `DriveSyncRows.DatabaseBackupRow` carries the
+caveat the same way it already carries "only while the app is open", and `DriveBackupResolver`'s
+restore and local-recovery confirmations say images are not covered BEFORE the user commits.
+
+**Item 3's distinction turned out to be representable already, and checking it found a live bug.**
+A blank `sourceImagePath` genuinely means "never had a photo on this device" - `PantryReconcile`
+writes `""` for a receipt whose bytes live in Supabase Storage - while a non-blank path with no file
+at it means "had one, now gone". `EngineWidgets.PhotoWidget` already distinguished them correctly.
+**`GeneratedFormScreen`'s `FieldType.PHOTO` did not:** it rendered "PHOTO ON FILE" from a non-null
+path string alone, never touching the disk, so after any restore or reinstall it asserted a photo
+that was not there. Fixed via `ui/generated/PhotoFieldResolver.kt`, a plain injectable-check
+function so the three states and their wording are unit-testable rather than buried in a composable.
+
+That bug is the same shape as the failure this ticket is about: a check satisfiable without the
+thing it protects being present. The count-based restore verification passed while every path
+dangled; the form screen's null-check passed while every file was gone.
+
+**Still owed, and why the ticket stays open:** receipt photos to Supabase Storage (ticket 01 ruling
+10 as amended). Storage is not installed in `SupabaseClientProvider` today and pantry's cutover
+deliberately left `photo_object_path` NULL. Until that lands, the photos have NO durable copy
+anywhere - the wording is honest about the gap, it does not close it.
