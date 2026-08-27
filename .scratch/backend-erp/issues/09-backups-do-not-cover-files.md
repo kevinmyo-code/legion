@@ -37,7 +37,35 @@ verified record COUNTS and integrity, which were genuinely correct. A count-base
 dangling path. That is the same blind spot as section 4 rule 6, one layer out: the check was
 satisfiable without the thing it was meant to protect being present.
 
-## What to decide and build
+## RULED 2026-08-26: database-only, said in words, with photos made durable elsewhere
+
+Kevin delegated this ("go with your recommendations"). My call, on his authority:
+
+**`DatabaseSnapshot` stays database-only and does NOT grow to cover `files/`.** Two reasons, and the
+second is the stronger one:
+
+1. The snapshot's generation guard, pre-restore aside and single-`.db.gz` naming are load-bearing
+   and were verified once already on a real device. Turning it into a multi-file archive puts all of
+   that back in play to solve a problem that has a better answer.
+2. **Ruling 10 as amended already sends receipt photos to Supabase Storage.** Once that lands, the
+   photos are durable in the household's own project - replicated, restorable, and reachable from
+   the laptop surface, which the original ruling listed as the whole point. A second copy inside a
+   Drive backup would be redundant storage of the same bytes on the free tier.
+
+**But it must SAY it is database-only.** The restore screen and the backup screen both need to state
+that images are not covered, and a restored row whose file is missing must render as missing IN
+WORDS rather than as a broken image or a silent blank - the same posture as section 4 rule 7
+condition 3. A backup that quietly restores rows pointing at nothing is a backup reporting a safety
+it is not providing, which is the failure ticket 04 named.
+
+**Sequencing:** this ticket now depends on the Supabase Storage work, and the two should be done
+together. Doing the wording half alone is still worth it and can go first, because it is true today
+and will stay true.
+
+**What this does NOT fix:** the three receipt photos already destroyed. Nothing does. That loss is
+recorded in ticket 08.
+
+## Superseded: what was open
 
 1. **Does the backup carry `files/` at all?** Photos are the bulk of what would move and the free
    tier's storage is finite. "Database only, and say so" is a legitimate answer - but then it must

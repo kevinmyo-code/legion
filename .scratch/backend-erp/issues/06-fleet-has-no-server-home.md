@@ -72,7 +72,41 @@ agree - the exact hazard CLAUDE.md section 4 rule 1 and ticket 03 ruling 2 exist
 the recap becomes a view, an RPC, or stays a phone-side computation over synced drives is its own
 step, and if it goes server-side it needs a shared corpus the way the gate did.
 
-## Still to be decided, and by whom
+## RULED 2026-08-26: the remaining tables
+
+Kevin delegated these ("go with your recommendations"), so they are my calls made on his authority
+and are open to reversal. The reasoning is written out so a reversal has something to argue with.
+
+**The four diagnostic/observation tables SYNC: `code_events`, `code_clear_events`, `oil_analyses`,
+`chassis_quirks`.** Ruling 10 keeps `obd_samples` local for a stated reason - ephemeral and
+high-frequency - and none of these four is either. A stored DTC, the fact that codes were cleared on
+a date, and an oil analysis are per-vehicle HISTORICAL FACTS: low-volume, individually meaningful,
+and exactly the shape of a record the laptop surface would want. `chassis_quirks` is reference data
+rather than observation, and syncs for a different reason: it is small, shared across devices, and
+pointless to re-derive per phone.
+
+**`vehicle_specs` and `build_entries` SYNC.** `vehicle_specs` is vehicle master data in the ERP
+framing - it belongs beside `vehicles`, not in a second store. `build_entries` is user-authored
+content, which is the clearest possible case for durability.
+
+**`drive_reassignments` SYNCS, and it must land in the same wave as `drives`.** It is a correction
+log over drives; splitting a fact from its corrections across two systems is the split-brain this
+whole phase exists to avoid.
+
+**`car_tasks` FOLDS INTO `events`, and does not get its own table.** Ruling 4 already decided todos
+become Dates events, and a car task is a todo that happens to name a vehicle. A second todo table
+would be exactly the duplication ruling 4 removed. **Consequence to honour:** `events` needs a way
+to reference a vehicle, which it has no column for today. That is a small additive migration and it
+should be done as part of the fleet cutover, not bolted on afterwards.
+
+**Net effect on the schema:** fleet needs new server tables for `code_events`, `code_clear_events`,
+`oil_analyses`, `chassis_quirks`, `vehicle_specs`, `build_entries` and `drive_reassignments`, plus a
+vehicle reference on `events`. `drives` already exists. `obd_samples`, `monthly_recaps` and
+`yearly_wrapped` deliberately get nothing - the first stays local, the other two are recomputed.
+
+Fleet is now fully decided and unblocked. It is the largest remaining build in the arc.
+
+## Superseded: what was open
 
 These are product and modelling calls, not execution:
 
