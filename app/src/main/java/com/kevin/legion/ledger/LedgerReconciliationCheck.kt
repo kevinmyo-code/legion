@@ -1,5 +1,7 @@
 package com.kevin.legion.ledger
 
+import com.kevin.legion.data.local.IngestMethod
+
 /**
  * Outcome of [LedgerReconciliationCheck.check]. Mirrors `public.commit_statement`'s two possible
  * results (`supabase/migrations/20260825000600_commit_statement_rpc.sql`) - [Committed] and
@@ -39,13 +41,26 @@ sealed class LedgerGateOutcome {
  * exactly how a real BofA card statement once passed with four silently dropped interest rows,
  * and it only held because interest was zero that month. The non-empty check must run before any
  * arithmetic, never as a side effect of the arithmetic failing to find anything to disagree with.
+ *
+ * **AMENDED 2026-08-27, ticket 12's "RULED" section.** [statedTotalCents] is nullable now: no bank
+ * format Kevin holds prints one combined total, and demanding a number that was never printed is
+ * not a stronger gate, it is an unsatisfiable one. A `null` total is accepted ONLY when
+ * [provenance] is [IngestMethod.DETERMINISTIC] - the balance-delta check below is still mandatory
+ * either way, so this never drops below two read anchors (opening, closing), it only makes the
+ * third conditional on the extraction being code rather than a model. An `LLM_RECONCILED` payload
+ * missing its total is still quarantined: ruling 4's three-anchor requirement is unchanged for the
+ * path it was written about (a self-consistent hallucination can satisfy a single-anchor check;
+ * that risk is specific to a nondeterministic extraction and does not apply here). A parser must
+ * never pass `sum(lines)` as [statedTotalCents] to dodge this - that would make anchor 1 an
+ * identity, section 4 rule 6's failure shape again.
  */
 object LedgerReconciliationCheck {
     fun check(
         amountsCents: List<Long>,
-        statedTotalCents: Long,
+        statedTotalCents: Long?,
         openingBalanceCents: Long,
         closingBalanceCents: Long,
+        provenance: IngestMethod = IngestMethod.LLM_RECONCILED,
     ): LedgerGateOutcome {
         if (amountsCents.isEmpty()) {
             return LedgerGateOutcome.Quarantined(
@@ -56,7 +71,19 @@ object LedgerReconciliationCheck {
 
         val sum = amountsCents.sum()
 
-        if (sum != statedTotalCents) {
+        if (statedTotalCents == null) {
+            // The scope guard (the amendment's load-bearing half): only a DETERMINISTIC
+            // extraction may qualify on two anchors. Anything else missing a printed total is
+            // exactly the unverifiable shape ruling 4 exists to refuse.
+            if (provenance != IngestMethod.DETERMINISTIC) {
+                return LedgerGateOutcome.Quarantined(
+                    "This statement states no printed total, and only a deterministically parsed " +
+                        "statement can qualify without one. Nothing was imported.",
+                )
+            }
+            // else: no anchor 1 to check - this statement's bank never prints one. Fall through
+            // to the balance-delta check, which is still mandatory.
+        } else if (sum != statedTotalCents) {
             return LedgerGateOutcome.Quarantined(
                 "Lines sum to $sum cents but the statement states a total of $statedTotalCents " +
                     "cents. Nothing was imported.",

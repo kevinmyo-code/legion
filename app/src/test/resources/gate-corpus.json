@@ -20,7 +20,6 @@
     "case asserts, which is the same arithmetic both implementations must produce. When the",
     "pre-check lands it plugs into the same corpus and the comparison becomes direct."
   ],
-
   "ledger": [
     {
       "name": "valid three-anchor statement commits",
@@ -30,10 +29,23 @@
       "opening_balance_cents": 500000,
       "closing_balance_cents": 649550,
       "lines": [
-        {"txn_date": "2026-07-03", "description": "COFFEE", "amount_cents": -450},
-        {"txn_date": "2026-07-11", "description": "SALARY", "amount_cents": 300000},
-        {"txn_date": "2026-07-20", "description": "RENT", "amount_cents": -150000}
-      ]
+        {
+          "txn_date": "2026-07-03",
+          "description": "COFFEE",
+          "amount_cents": -450
+        },
+        {
+          "txn_date": "2026-07-11",
+          "description": "SALARY",
+          "amount_cents": 300000
+        },
+        {
+          "txn_date": "2026-07-20",
+          "description": "RENT",
+          "amount_cents": -150000
+        }
+      ],
+      "provenance": "DETERMINISTIC"
     },
     {
       "name": "empty extraction quarantines even when every figure is zero",
@@ -42,7 +54,8 @@
       "stated_total_cents": 0,
       "opening_balance_cents": 500000,
       "closing_balance_cents": 500000,
-      "lines": []
+      "lines": [],
+      "provenance": "DETERMINISTIC"
     },
     {
       "name": "lines that do not sum to the stated total quarantine",
@@ -52,10 +65,23 @@
       "opening_balance_cents": 500000,
       "closing_balance_cents": 649550,
       "lines": [
-        {"txn_date": "2026-07-03", "description": "COFFEE", "amount_cents": -450},
-        {"txn_date": "2026-07-11", "description": "SALARY", "amount_cents": 300000},
-        {"txn_date": "2026-07-20", "description": "RENT", "amount_cents": -150000}
-      ]
+        {
+          "txn_date": "2026-07-03",
+          "description": "COFFEE",
+          "amount_cents": -450
+        },
+        {
+          "txn_date": "2026-07-11",
+          "description": "SALARY",
+          "amount_cents": 300000
+        },
+        {
+          "txn_date": "2026-07-20",
+          "description": "RENT",
+          "amount_cents": -150000
+        }
+      ],
+      "provenance": "DETERMINISTIC"
     },
     {
       "name": "balance movement disagreeing with the line sum quarantines",
@@ -65,10 +91,23 @@
       "opening_balance_cents": 500000,
       "closing_balance_cents": 1,
       "lines": [
-        {"txn_date": "2026-07-03", "description": "COFFEE", "amount_cents": -450},
-        {"txn_date": "2026-07-11", "description": "SALARY", "amount_cents": 300000},
-        {"txn_date": "2026-07-20", "description": "RENT", "amount_cents": -150000}
-      ]
+        {
+          "txn_date": "2026-07-03",
+          "description": "COFFEE",
+          "amount_cents": -450
+        },
+        {
+          "txn_date": "2026-07-11",
+          "description": "SALARY",
+          "amount_cents": 300000
+        },
+        {
+          "txn_date": "2026-07-20",
+          "description": "RENT",
+          "amount_cents": -150000
+        }
+      ],
+      "provenance": "DETERMINISTIC"
     },
     {
       "name": "a single line that ties out commits",
@@ -78,8 +117,13 @@
       "opening_balance_cents": 100000,
       "closing_balance_cents": 99101,
       "lines": [
-        {"txn_date": "2026-06-10", "description": "VPN24.ME", "amount_cents": -899}
-      ]
+        {
+          "txn_date": "2026-06-10",
+          "description": "VPN24.ME",
+          "amount_cents": -899
+        }
+      ],
+      "provenance": "DETERMINISTIC"
     },
     {
       "name": "a genuinely zero-movement month with a real line commits",
@@ -89,12 +133,108 @@
       "opening_balance_cents": 500000,
       "closing_balance_cents": 500000,
       "lines": [
-        {"txn_date": "2026-07-05", "description": "CHARGE", "amount_cents": -2500},
-        {"txn_date": "2026-07-06", "description": "REFUND", "amount_cents": 2500}
+        {
+          "txn_date": "2026-07-05",
+          "description": "CHARGE",
+          "amount_cents": -2500
+        },
+        {
+          "txn_date": "2026-07-06",
+          "description": "REFUND",
+          "amount_cents": 2500
+        }
+      ],
+      "provenance": "DETERMINISTIC"
+    },
+    {
+      "name": "deterministic two-anchor statement with no printed total commits",
+      "why": "AMENDMENT (ticket 12, RULED 2026-08-27). stated_total_cents is null because this bank prints none. provenance is DETERMINISTIC, so anchor 1 is skipped. Anchor 2 still holds: 649550 - 500000 = 149550 = sum(-450, 300000, -150000).",
+      "expect": "COMMITTED",
+      "provenance": "DETERMINISTIC",
+      "stated_total_cents": null,
+      "opening_balance_cents": 500000,
+      "closing_balance_cents": 649550,
+      "lines": [
+        {
+          "txn_date": "2026-07-03",
+          "description": "COFFEE",
+          "amount_cents": -450
+        },
+        {
+          "txn_date": "2026-07-11",
+          "description": "SALARY",
+          "amount_cents": 300000
+        },
+        {
+          "txn_date": "2026-07-20",
+          "description": "RENT",
+          "amount_cents": -150000
+        }
       ]
+    },
+    {
+      "name": "deterministic two-anchor statement whose delta check fails quarantines",
+      "why": "Same shape as the case above, but closing_balance_cents is wrong: 1 - 500000 does not equal the line sum of 149550. With no stated total to check, anchor 2 is the ONLY anchor left, and it must still be enforced.",
+      "expect": "QUARANTINED",
+      "provenance": "DETERMINISTIC",
+      "stated_total_cents": null,
+      "opening_balance_cents": 500000,
+      "closing_balance_cents": 1,
+      "lines": [
+        {
+          "txn_date": "2026-07-03",
+          "description": "COFFEE",
+          "amount_cents": -450
+        },
+        {
+          "txn_date": "2026-07-11",
+          "description": "SALARY",
+          "amount_cents": 300000
+        },
+        {
+          "txn_date": "2026-07-20",
+          "description": "RENT",
+          "amount_cents": -150000
+        }
+      ]
+    },
+    {
+      "name": "LLM-reconciled statement missing its stated total quarantines (the amendment's scope guard)",
+      "why": "The load-bearing half of the 2026-08-27 amendment: the two-anchor allowance is scoped to DETERMINISTIC extraction only. This statement has no stated_total_cents but is LLM_RECONCILED, so it is refused outright even though its balance delta ties out (649550 - 500000 = 149550 = sum).",
+      "expect": "QUARANTINED",
+      "provenance": "LLM_RECONCILED",
+      "stated_total_cents": null,
+      "opening_balance_cents": 500000,
+      "closing_balance_cents": 649550,
+      "lines": [
+        {
+          "txn_date": "2026-07-03",
+          "description": "COFFEE",
+          "amount_cents": -450
+        },
+        {
+          "txn_date": "2026-07-11",
+          "description": "SALARY",
+          "amount_cents": 300000
+        },
+        {
+          "txn_date": "2026-07-20",
+          "description": "RENT",
+          "amount_cents": -150000
+        }
+      ]
+    },
+    {
+      "name": "deterministic statement with no printed total and zero lines still quarantines under rule 6",
+      "why": "RULE 6, in the new no-total shape. With stated_total_cents null, provenance DETERMINISTIC, and zero lines, sum is 0 and closing - opening is 0, so anchor 2 alone would be satisfied by nothing at all if the empty check did not run first.",
+      "expect": "QUARANTINED",
+      "provenance": "DETERMINISTIC",
+      "stated_total_cents": null,
+      "opening_balance_cents": 500000,
+      "closing_balance_cents": 500000,
+      "lines": []
     }
   ],
-
   "pantry": [
     {
       "name": "valid receipt with a printed subtotal commits",
@@ -104,8 +244,17 @@
       "subtotal_cents": 1150,
       "tax_cents": 92,
       "items": [
-        {"name": "MILK", "quantity": 1, "total_price_cents": 450, "estimated_calories_kcal": 620},
-        {"name": "BREAD", "quantity": 2, "total_price_cents": 700}
+        {
+          "name": "MILK",
+          "quantity": 1,
+          "total_price_cents": 450,
+          "estimated_calories_kcal": 620
+        },
+        {
+          "name": "BREAD",
+          "quantity": 2,
+          "total_price_cents": 700
+        }
       ]
     },
     {
@@ -125,8 +274,16 @@
       "subtotal_cents": 1300,
       "tax_cents": 92,
       "items": [
-        {"name": "MILK", "quantity": 1, "total_price_cents": 450},
-        {"name": "BREAD", "quantity": 2, "total_price_cents": 700}
+        {
+          "name": "MILK",
+          "quantity": 1,
+          "total_price_cents": 450
+        },
+        {
+          "name": "BREAD",
+          "quantity": 2,
+          "total_price_cents": 700
+        }
       ]
     },
     {
@@ -137,8 +294,16 @@
       "subtotal_cents": 1150,
       "tax_cents": 92,
       "items": [
-        {"name": "MILK", "quantity": 1, "total_price_cents": 450},
-        {"name": "BREAD", "quantity": 2, "total_price_cents": 700}
+        {
+          "name": "MILK",
+          "quantity": 1,
+          "total_price_cents": 450
+        },
+        {
+          "name": "BREAD",
+          "quantity": 2,
+          "total_price_cents": 700
+        }
       ]
     },
     {
@@ -149,8 +314,16 @@
       "subtotal_cents": null,
       "tax_cents": 92,
       "items": [
-        {"name": "MILK", "quantity": 1, "total_price_cents": 450},
-        {"name": "BREAD", "quantity": 2, "total_price_cents": 700}
+        {
+          "name": "MILK",
+          "quantity": 1,
+          "total_price_cents": 450
+        },
+        {
+          "name": "BREAD",
+          "quantity": 2,
+          "total_price_cents": 700
+        }
       ]
     },
     {
@@ -161,8 +334,16 @@
       "subtotal_cents": null,
       "tax_cents": 92,
       "items": [
-        {"name": "MILK", "quantity": 1, "total_price_cents": 450},
-        {"name": "BREAD", "quantity": 2, "total_price_cents": 700}
+        {
+          "name": "MILK",
+          "quantity": 1,
+          "total_price_cents": 450
+        },
+        {
+          "name": "BREAD",
+          "quantity": 2,
+          "total_price_cents": 700
+        }
       ]
     },
     {
@@ -173,8 +354,19 @@
       "subtotal_cents": 1150,
       "tax_cents": 92,
       "items": [
-        {"name": "MILK", "quantity": 1, "total_price_cents": 450, "estimated_calories_kcal": 999999, "estimated_protein_g": 4242},
-        {"name": "BREAD", "quantity": 2, "total_price_cents": 700, "estimated_calories_kcal": -1}
+        {
+          "name": "MILK",
+          "quantity": 1,
+          "total_price_cents": 450,
+          "estimated_calories_kcal": 999999,
+          "estimated_protein_g": 4242
+        },
+        {
+          "name": "BREAD",
+          "quantity": 2,
+          "total_price_cents": 700,
+          "estimated_calories_kcal": -1
+        }
       ]
     }
   ]

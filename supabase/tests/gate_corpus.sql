@@ -58,6 +58,38 @@ begin
     failures := failures || E'\n  LEDGER a genuinely zero-movement month with a real line commits: expected COMMITTED, got ' || coalesce(actual, 'null');
   end if;
 
+  -- ledger: deterministic two-anchor statement with no printed total commits
+  r := public.commit_statement('{"content_sha256": "corpus-ledger-6", "account_last4": "1234", "account_nickname": "corpus", "currency": "USD", "provenance": "DETERMINISTIC", "stated_total_cents": null, "opening_balance_cents": 500000, "closing_balance_cents": 649550, "lines": [{"txn_date": "2026-07-03", "description": "COFFEE", "amount_cents": -450, "line_ref": "corpus-6-0"}, {"txn_date": "2026-07-11", "description": "SALARY", "amount_cents": 300000, "line_ref": "corpus-6-1"}, {"txn_date": "2026-07-20", "description": "RENT", "amount_cents": -150000, "line_ref": "corpus-6-2"}]}'::jsonb);
+  actual := r ->> 'outcome';
+  checked := checked + 1;
+  if actual <> 'COMMITTED' then
+    failures := failures || E'\n  LEDGER deterministic two-anchor statement with no printed total commits: expected COMMITTED, got ' || coalesce(actual, 'null');
+  end if;
+
+  -- ledger: deterministic two-anchor statement whose delta check fails quarantines
+  r := public.commit_statement('{"content_sha256": "corpus-ledger-7", "account_last4": "1234", "account_nickname": "corpus", "currency": "USD", "provenance": "DETERMINISTIC", "stated_total_cents": null, "opening_balance_cents": 500000, "closing_balance_cents": 1, "lines": [{"txn_date": "2026-07-03", "description": "COFFEE", "amount_cents": -450, "line_ref": "corpus-7-0"}, {"txn_date": "2026-07-11", "description": "SALARY", "amount_cents": 300000, "line_ref": "corpus-7-1"}, {"txn_date": "2026-07-20", "description": "RENT", "amount_cents": -150000, "line_ref": "corpus-7-2"}]}'::jsonb);
+  actual := r ->> 'outcome';
+  checked := checked + 1;
+  if actual <> 'QUARANTINED' then
+    failures := failures || E'\n  LEDGER deterministic two-anchor statement whose delta check fails quarantines: expected QUARANTINED, got ' || coalesce(actual, 'null');
+  end if;
+
+  -- ledger: LLM-reconciled statement missing its stated total quarantines (the amendment's scope guard)
+  r := public.commit_statement('{"content_sha256": "corpus-ledger-8", "account_last4": "1234", "account_nickname": "corpus", "currency": "USD", "provenance": "LLM_RECONCILED", "stated_total_cents": null, "opening_balance_cents": 500000, "closing_balance_cents": 649550, "lines": [{"txn_date": "2026-07-03", "description": "COFFEE", "amount_cents": -450, "line_ref": "corpus-8-0"}, {"txn_date": "2026-07-11", "description": "SALARY", "amount_cents": 300000, "line_ref": "corpus-8-1"}, {"txn_date": "2026-07-20", "description": "RENT", "amount_cents": -150000, "line_ref": "corpus-8-2"}]}'::jsonb);
+  actual := r ->> 'outcome';
+  checked := checked + 1;
+  if actual <> 'QUARANTINED' then
+    failures := failures || E'\n  LEDGER LLM-reconciled statement missing its stated total quarantines (the amendment''s scope guard): expected QUARANTINED, got ' || coalesce(actual, 'null');
+  end if;
+
+  -- ledger: deterministic statement with no printed total and zero lines still quarantines under rule 6
+  r := public.commit_statement('{"content_sha256": "corpus-ledger-9", "account_last4": "1234", "account_nickname": "corpus", "currency": "USD", "provenance": "DETERMINISTIC", "stated_total_cents": null, "opening_balance_cents": 500000, "closing_balance_cents": 500000, "lines": []}'::jsonb);
+  actual := r ->> 'outcome';
+  checked := checked + 1;
+  if actual <> 'QUARANTINED' then
+    failures := failures || E'\n  LEDGER deterministic statement with no printed total and zero lines still quarantines under rule 6: expected QUARANTINED, got ' || coalesce(actual, 'null');
+  end if;
+
   -- pantry: valid receipt with a printed subtotal commits
   r := public.commit_receipt('{"content_sha256": "corpus-pantry-0", "store": "CORPUS", "purchase_date": "2026-07-15", "currency": "SGD", "provenance": "LLM_RECONCILED", "total_cents": 1242, "subtotal_cents": 1150, "tax_cents": 92, "items": [{"name": "MILK", "quantity": 1, "total_price_cents": 450, "estimated_calories_kcal": 620}, {"name": "BREAD", "quantity": 2, "total_price_cents": 700}]}'::jsonb);
   actual := r ->> 'outcome';

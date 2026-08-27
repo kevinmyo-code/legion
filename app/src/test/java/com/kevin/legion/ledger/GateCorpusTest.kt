@@ -1,5 +1,6 @@
 package com.kevin.legion.ledger
 
+import com.kevin.legion.data.local.IngestMethod
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -54,11 +55,17 @@ class GateCorpusTest {
     private fun ledgerOutcome(case: JSONObject): String {
         val lines = case.getJSONArray("lines")
         val amounts = (0 until lines.length()).map { lines.getJSONObject(it).getLong("amount_cents") }
+        // A case with no "provenance" key defaults to DETERMINISTIC - every pre-amendment case in
+        // the corpus is a three-anchor DETERMINISTIC statement and was never made to say so
+        // explicitly; the amendment's new cases DO say so, because their outcome depends on it.
+        val provenance = IngestMethod.valueOf(case.optString("provenance", "DETERMINISTIC"))
+        val statedTotal = if (case.isNull("stated_total_cents")) null else case.getLong("stated_total_cents")
         val outcome = LedgerReconciliationCheck.check(
             amountsCents = amounts,
-            statedTotalCents = case.getLong("stated_total_cents"),
+            statedTotalCents = statedTotal,
             openingBalanceCents = case.getLong("opening_balance_cents"),
             closingBalanceCents = case.getLong("closing_balance_cents"),
+            provenance = provenance,
         )
         return when (outcome) {
             is LedgerGateOutcome.Committed -> "COMMITTED"
@@ -138,7 +145,11 @@ class GateCorpusTest {
         for (i in 0 until ledger.length()) {
             val case = ledger.getJSONObject(i)
             val emptyLines = case.getJSONArray("lines").length() == 0
-            val anchorsWouldPass = case.getLong("stated_total_cents") == 0L &&
+            // A null stated_total_cents (the 2026-08-27 no-printed-total shape) can never be the
+            // "all figures are zero" case this test pins - a null anchor is either skipped or an
+            // outright scope-guard refusal, never a zero it could coincidentally equal.
+            val statedTotalIsZero = !case.isNull("stated_total_cents") && case.getLong("stated_total_cents") == 0L
+            val anchorsWouldPass = statedTotalIsZero &&
                 case.getLong("closing_balance_cents") == case.getLong("opening_balance_cents")
             if (emptyLines && anchorsWouldPass) {
                 assertEquals("that case must quarantine", "QUARANTINED", case.getString("expect"))

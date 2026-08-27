@@ -59,13 +59,19 @@ def build() -> str:
     ]
 
     for i, case in enumerate(corpus.get("ledger", [])):
+        # A case with no "provenance" key is a pre-amendment (2026-08-27) three-anchor case and
+        # defaults to DETERMINISTIC, same default GateCorpusTest.kt uses - the two sides must agree
+        # on what an absent key means, not just on what an explicit one means.
+        # "stated_total_cents" may be JSON null now (ticket 12's amendment): a bank that prints no
+        # combined total. `.get()` rather than `[...]` passes that null straight through to the
+        # payload, which is exactly what `commit_statement` must see to exercise its own null branch.
         payload = {
             "content_sha256": f"corpus-ledger-{i}",
             "account_last4": "1234",
             "account_nickname": "corpus",
             "currency": "USD",
-            "provenance": "DETERMINISTIC",
-            "stated_total_cents": case["stated_total_cents"],
+            "provenance": case.get("provenance", "DETERMINISTIC"),
+            "stated_total_cents": case.get("stated_total_cents"),
             "opening_balance_cents": case["opening_balance_cents"],
             "closing_balance_cents": case["closing_balance_cents"],
             "lines": [
