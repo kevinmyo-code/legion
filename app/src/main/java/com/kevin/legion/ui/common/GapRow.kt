@@ -121,19 +121,56 @@ fun GapRow(data: GapRowData, modifier: Modifier = Modifier, onClick: (() -> Unit
 }
 
 /**
- * The empty-state counterpart to [GapRow] - ticket brief: "an empty row must say what to do, in
- * the interface's voice, naming the voice command... never a blank, never a zero, never 'no data'."
- * [message] is expected to end with the exact spoken command in quotes, e.g. `say "set a grocery
- * budget"` - callers own the copy, this just lays it out consistently with [GapRow]'s row rhythm
- * (same padding, same faint ink) so a panel mixing populated and empty rows doesn't visually jump.
+ * The empty-state counterpart to [GapRow] - "an empty row must say what to do... never a blank,
+ * never a zero, never 'no data'." Laid out on [GapRow]'s row rhythm (same padding, same faint ink)
+ * so a panel mixing populated and empty rows doesn't visually jump.
+ *
+ * **The hierarchy inverted (command-center ticket 13 finding 3), and the reversal is deliberate.**
+ * This row's ORIGINAL brief said the message must name the voice command, and every caller duly
+ * ended its copy with `say "log a meal"`. That brief predates [ADR 0035]
+ * (`docs/adr/0035-every-voice-capability-has-a-hands-path.md`), which made the BUTTON the reliable
+ * path precisely because voice is the one that fails - a loud car, a sleeping person, a wake word
+ * that does not fire, a mic that opens deaf. Teaching the failing path in the largest text on an
+ * empty screen, with the working one small underneath, taught the wrong lesson. So:
+ *
+ * - [actionLabel] + [onAction] render as the row's PRIMARY affordance, in the accent ink.
+ * - [voiceHint] renders BELOW it as a secondary caption, `or say: "log a meal"`.
+ *
+ * **Both are optional and the old two-argument shape still works**, unchanged, for the rows that
+ * genuinely have no hands path to offer yet - ADR 0035 is a rule about capabilities, and a row
+ * whose capability has no dialog yet should say so by omission rather than by rendering a button
+ * that does nothing. Passing [voiceHint] without [actionLabel] is legal and simply renders the
+ * hint as the only guidance, which is the honest shape for a voice-only capability.
  */
 @Composable
-fun GapEmptyRow(label: String, message: String, modifier: Modifier = Modifier) {
+fun GapEmptyRow(
+    label: String,
+    message: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+    voiceHint: String? = null,
+) {
     val sem = LocalLegionSemantics.current
     Column(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp)) {
         Text(label, style = MaterialTheme.typography.bodyMedium, color = sem.faint)
         Spacer(Modifier.height(2.dp))
         Text(message, style = MaterialTheme.typography.bodySmall, color = sem.faint)
+        if (actionLabel != null && onAction != null) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                actionLabel,
+                style = LegionType.stamp,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable(onClick = onAction).padding(vertical = 4.dp),
+            )
+        }
+        if (voiceHint != null) {
+            Spacer(Modifier.height(2.dp))
+            // Lower-cased "or say:" on purpose - a second stamp in full caps would read as a second
+            // button rather than as the aside it is.
+            Text("or say: “$voiceHint”", style = LegionType.stamp, color = sem.ghost)
+        }
     }
 }
 
@@ -231,7 +268,10 @@ private fun PreviewGapEmptyBudget() = LegionTheme {
     Surface {
         GapEmptyRow(
             label = "Groceries",
-            message = "No budget set yet - say \"set a $500 budget for groceries\", for example.",
+            message = "No budget set yet.",
+            actionLabel = "+ SET BUDGET",
+            onAction = {},
+            voiceHint = "set a $500 budget for groceries",
         )
     }
 }
@@ -242,7 +282,10 @@ private fun PreviewGapEmptyMeal() = LegionTheme {
     Surface {
         GapEmptyRow(
             label = "Calories today",
-            message = "Not logged yet - say \"log a meal\" and describe what you ate.",
+            message = "Not logged yet.",
+            actionLabel = "+ LOG MEAL",
+            onAction = {},
+            voiceHint = "log a meal",
         )
     }
 }

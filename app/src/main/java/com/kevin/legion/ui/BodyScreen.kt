@@ -456,7 +456,13 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
             DeckPane(header = "MASS", modifier = Modifier.clickable { onOpenPane(BodyDrilldown.Mass) }) {
                 val latest = state.latestBodyweight
                 if (latest == null) {
-                    GapEmptyRow(label = "Bodyweight", message = "Nothing logged yet - say \"log my weight\" and a number.")
+                    GapEmptyRow(
+                        label = "Bodyweight",
+                        message = "Nothing logged yet.",
+                        actionLabel = "+ LOG WEIGHT",
+                        onAction = { showLogWeight = true },
+                        voiceHint = "log my weight",
+                    )
                 } else {
                     Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                         // MASS's hero is a VALUE, mint like every other reading in the app (ticket
@@ -652,7 +658,11 @@ private fun BodyMassDrilldown(
             }
             Hairline()
             when {
-                history.isEmpty() -> GapEmptyRow(label = "History", message = "Nothing logged yet - say \"log my weight\" and a number.")
+                history.isEmpty() -> GapEmptyRow(
+                    label = "History",
+                    message = "Nothing logged yet.",
+                    voiceHint = "log my weight",
+                )
                 else -> LazyColumn(Modifier.fillMaxSize()) {
                     items(history, key = { "weight-${it.id}" }) { log ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -704,7 +714,11 @@ private fun BodyIntakeDrilldown(
             }
             Hairline()
             when {
-                history.isEmpty() -> GapEmptyRow(label = "History", message = "Nothing logged yet - say \"log a meal\" and describe what you ate.")
+                history.isEmpty() -> GapEmptyRow(
+                    label = "History",
+                    message = "Nothing logged yet.",
+                    voiceHint = "log a meal",
+                )
                 else -> LazyColumn(Modifier.fillMaxSize()) {
                     items(history, key = { "meal-${it.id}" }) { log ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -756,7 +770,11 @@ private fun BodySleepDrilldown(
             }
             Hairline()
             when {
-                history.isEmpty() -> GapEmptyRow(label = "History", message = "Nothing logged yet - say \"I slept 7 hours\" (or however long).")
+                history.isEmpty() -> GapEmptyRow(
+                    label = "History",
+                    message = "Nothing logged yet.",
+                    voiceHint = "I slept 7 hours",
+                )
                 else -> LazyColumn(Modifier.fillMaxSize()) {
                     items(history, key = { "sleep-${it.id}" }) { log ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -796,7 +814,8 @@ private fun BodyTrainingExerciseListDrilldown(
                 loading -> Text("Loading...", style = LegionType.stamp, color = sem.ghost, modifier = Modifier.padding(12.dp))
                 exercises.isEmpty() -> GapEmptyRow(
                     label = "Exercises",
-                    message = "Nothing logged yet - say \"three sets of squats at 225\" (or however you did it).",
+                    message = "Nothing logged yet.",
+                    voiceHint = "three sets of squats at 225",
                 )
                 else -> LazyColumn(Modifier.fillMaxSize()) {
                     items(exercises, key = { it.exercise }) { entry ->
