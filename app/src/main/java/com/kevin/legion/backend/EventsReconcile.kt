@@ -84,7 +84,12 @@ object EventsReconcile {
         val isClean: Boolean get() = onlyOnEngine.isEmpty() && onlyOnServer.isEmpty()
     }
 
-    private data class EngineEvent(val guid: String, val fields: EventFields, val skipDatesEpochMs: List<Long> = emptyList())
+    /** @param engineRecordId the engine's own `records.id` this row came from - carried through so
+     * the refilled replica row can be minted at THAT id rather than a fresh autoincrement one. See
+     * this file's own `run` for why: [com.kevin.legion.data.local.EventReplica.id] is load-bearing
+     * (alarm request codes, notification ids, soft foreign keys), and a wholesale replica refresh
+     * used to remint every one of them on every reconcile. */
+    private data class EngineEvent(val guid: String, val engineRecordId: Long, val fields: EventFields, val skipDatesEpochMs: List<Long> = emptyList())
 
     suspend fun run(context: Context, backend: EventsBackend): Result<Report> {
         val db = CarDatabase.getDatabase(context)
@@ -103,6 +108,7 @@ object EventsReconcile {
             val start = l(DatesAspectSeeder.FIELD_START) ?: return@mapNotNull null
             EngineEvent(
                 guid = record.guid,
+                engineRecordId = record.id,
                 fields = EventFields(
                     title = title,
                     startsAtMs = start,
@@ -133,6 +139,7 @@ object EventsReconcile {
 
             EngineEvent(
                 guid = record.guid,
+                engineRecordId = record.id,
                 fields = EventFields(
                     title = text,
                     startsAtMs = startsAt,
@@ -183,10 +190,29 @@ object EventsReconcile {
 
         val serverEvents = backend.fetchActive().getOrElse { return Result.failure(it) }
 
+        // Kevin's ruling 2026-08-26 (ticket 11): carry the engine id into the replica instead of
+        // letting the wholesale refresh below remint one for every row. guid -> engine records.id,
+        // built from `reconciling` (both aspects) so either origin resolves.
+        val engineIdByGuid = reconciling.associate { it.guid to it.engineRecordId }
+
         db.eventReplicaDao().deleteAllForReplicaRefresh()
         db.eventSkipReplicaDao().deleteAllForReplicaRefresh()
-        for (row in serverEvents) {
-            db.eventReplicaDao().upsert(row.toReplica())
+
+        // Rows WITH a carried id are refilled first, and this ordering is load-bearing rather than
+        // tidy. The table was just emptied, so an ancestor-less row (created after the cutover on
+        // another surface, no `origin_guid`) autoincrements from 1 and can land on precisely the id
+        // a not-yet-processed migrated row needs to carry. `upsert`'s collision guard then does the
+        // safe thing and hands the migrated row a fresh id instead - which is exactly the alarm
+        // orphaning the carry exists to prevent, arrived at by a different route. Seating every
+        // derivable id before any id is allocated removes the contest instead of adjudicating it:
+        // an ancestor-less row has nothing pointing at its local id yet, so it is the one that can
+        // afford to move.
+        val (carried, ancestorless) = serverEvents.partition { row ->
+            row.originGuid?.let { engineIdByGuid.containsKey(it) } == true
+        }
+        for (row in carried + ancestorless) {
+            val carriedId = row.originGuid?.let { engineIdByGuid[it] } ?: 0L
+            db.eventReplicaDao().upsert(row.toReplica(id = carriedId))
             val skips = backend.fetchSkips(row.serverId).getOrElse { return Result.failure(it) }
             for (skipMs in skips) {
                 db.eventSkipReplicaDao().insert(
@@ -212,8 +238,13 @@ object EventsReconcile {
         )
     }
 
-    /** [RemoteEvent] -> [EventReplica], field for field - the Room side of the same shape. */
-    private fun RemoteEvent.toReplica() = EventReplica(
+    /** [RemoteEvent] -> [EventReplica], field for field - the Room side of the same shape.
+     * @param id the id to mint this row at, when known - a carried engine `records.id` for a row
+     * that has one, or 0 to let [EventReplicaDao.upsert] autoincrement (a post-cutover row with no
+     * engine ancestor). Kept as a parameter rather than mutated at each call site so the mapping
+     * from "which id" stays in the one place ([run]'s `engineIdByGuid` lookup). */
+    private fun RemoteEvent.toReplica(id: Long = 0) = EventReplica(
+        id = id,
         serverId = serverId,
         title = title,
         startsAt = startsAtMs,

@@ -31,6 +31,20 @@ import androidx.room.Update
  * server key split, adapted for a table where the LOCAL key (not the server one) is what the rest
  * of the app depends on staying put.
  *
+ * **CORRECTED 2026-08-26 (ticket 11, `.scratch/backend-erp/issues/11-notes-write-path-rewire.md`):
+ * the paragraph above describes the UPDATE branch only, and until this fix the INSERT branch
+ * defeated it completely.** [com.kevin.legion.backend.EventsReconcile.run] deletes every replica
+ * row before refilling it (a wholesale refresh, not a diff), which means [getByServerId] inside
+ * [upsert] always returns null during a refill and EVERY row took the INSERT branch - reminting
+ * every local [id] on every single reconcile, not just on first sync. [id] is now DERIVED rather
+ * than autoincrement-allocated wherever a source is known: [com.kevin.legion.backend.EventsReconcile]
+ * looks the carried id up from the originating engine record's `records.id` (via `origin_guid`)
+ * and hands it to [EventReplica] before the insert. A derived id cannot drift between reconciles
+ * because it is not chosen by SQLite at all, it is read back out of the same engine row every
+ * time - that is what makes it safe for [com.kevin.legion.notes.AlarmScheduler] to keep pointing
+ * at it. A row with no engine ancestor (no `origin_guid`, or one absent from the current engine
+ * set) still autoincrements a fresh id, which is correct: there is nothing to derive it from.
+ *
  * [deleted] mirrors the server's `deleted_at IS NOT NULL`, matching [TaggedPlace.deleted]'s own
  * soft-delete-mirror convention - active reads filter `deleted = 0` here exactly as they do there.
  *
@@ -153,15 +167,36 @@ interface EventReplicaDao {
  * posture (only [com.kevin.legion.backend.PantryReconcile]'s multi-table receipt+lines refill
  * needs a real transaction). Returns the local [EventReplica.id] the row now has, so a caller can
  * hand it straight to [com.kevin.legion.notes.AlarmScheduler] or a `ListItem.id`.
+ *
+ * **Three branches, in order, added 2026-08-26 (ticket 11) for [row]'s incoming [EventReplica.id]
+ * (0 = "no id known", set by [com.kevin.legion.backend.EventsReconcile.toReplica]'s default):**
+ * 1. A row already exists for [EventReplica.serverId] - unchanged from before. The EXISTING local
+ *    id wins even if [row] carries a different one, because an established id must never move,
+ *    not even to a "more correct" carried one - anything already pointing at it (a scheduled
+ *    alarm, a soft foreign key) would break.
+ * 2. No existing row, and [row]'s carried id is non-zero AND unoccupied ([getById] returns null
+ *    for it) - insert AT that id. This is the new branch: it is what lets a wholesale replica
+ *    refresh put a migrated row back at its originating engine record's id instead of an
+ *    autoincremented one.
+ * 3. Otherwise - no carried id, or the carried id collides with a row already sitting on it -
+ *    insert with `id = 0` and let SQLite autoincrement. **The collision guard matters on its own:**
+ *    a post-cutover row with no engine ancestor autoincrements freely and can legitimately land on
+ *    any id, including one a not-yet-processed migrated row wants to carry. Clobbering that row
+ *    (silently reassigning or deleting it) would be strictly worse than handing the migrated row a
+ *    fresh id instead - the whole point of carrying the id is to avoid rekeying an EXISTING
+ *    consumer's reference, and there is no existing consumer for a row that has not been inserted
+ *    yet. A fresh id here costs nothing; a stolen id would cost the other row's own alarm/reference.
  */
 suspend fun EventReplicaDao.upsert(row: EventReplica): Long {
     val existing = getByServerId(row.serverId)
-    return if (existing != null) {
+    if (existing != null) {
         update(row.copy(id = existing.id))
-        existing.id
-    } else {
-        insert(row.copy(id = 0))
+        return existing.id
     }
+    if (row.id != 0L && getById(row.id) == null) {
+        return insert(row)
+    }
+    return insert(row.copy(id = 0))
 }
 
 @Dao

@@ -278,6 +278,99 @@ class EventsReconcileTest {
     }
 
     @Test
+    fun `a refilled replica row carries the originating engine record's own id, not a fresh autoincrement one`() = runBlocking {
+        val dentistEngineId = createDatesEvent("Dentist", startMs = 50_000L)
+        val milkEngineId = createNotesItem("Buy milk", startsAt = 60_000L)
+        val backend = FakeEventsBackend()
+
+        EventsReconcile.run(context, backend).getOrThrow()
+
+        val replica = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        val dentist = replica.single { it.title == "Dentist" }
+        val milk = replica.single { it.title == "Buy milk" }
+        assertEquals("the replica id must equal the engine records.id it came from, not a reminted one", dentistEngineId, dentist.id)
+        assertEquals("the replica id must equal the engine records.id it came from, not a reminted one", milkEngineId, milk.id)
+    }
+
+    @Test
+    fun `ids are stable across two reconciles - this is the regression test for the wholesale-refresh remint defect`() = runBlocking {
+        createDatesEvent("Dentist", startMs = 50_000L)
+        createNotesItem("Buy milk", startsAt = 60_000L)
+        val backend = FakeEventsBackend()
+
+        EventsReconcile.run(context, backend).getOrThrow()
+        val idsAfterFirst = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+            .associate { it.serverId to it.id }
+
+        EventsReconcile.run(context, backend).getOrThrow()
+        val idsAfterSecond = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+            .associate { it.serverId to it.id }
+
+        // Before the fix, EventsReconcile.run wipes events_replica and refills it from scratch on
+        // EVERY call (`deleteAllForReplicaRefresh` immediately precedes the upsert loop), so
+        // EventReplicaDao.upsert's getByServerId lookup always misses and every row reminted a
+        // fresh autoincremented id on every single reconcile - exactly the defect ticket 11 exists
+        // to fix. A caller holding onto `ListItem.id` (an AlarmManager PendingIntent request code,
+        // a notification id, a soft foreign key from list_item_skips/muted_reminders) would have
+        // that id silently invalidated under it by the very next background reconcile.
+        assertEquals("id-per-serverId must be identical across two reconciles, not just the counts", idsAfterFirst, idsAfterSecond)
+    }
+
+    @Test
+    fun `a server-only row with no origin_guid still gets a sane autoincremented id and does not throw`() = runBlocking {
+        val backend = FakeEventsBackend()
+        // Created directly against the server, never through uploadMigratedEvent - originGuid is
+        // null, same as anything written post-cutover through EventsBackend.upsert. There is no
+        // engine ancestor to derive an id from, so it must fall through to autoincrement rather
+        // than throwing on a null lookup.
+        backend.upsert(serverId = null, fields = EventFields(title = "Standalone", startsAtMs = 5_000L))
+
+        val report = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertTrue(report.isClean)
+        val replica = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        val standalone = replica.single { it.title == "Standalone" }
+        assertTrue("a row with no engine ancestor must still get a real, non-zero local id", standalone.id != 0L)
+    }
+
+    @Test
+    fun `a row with a derivable id is seated before any id is allocated, so the carry wins and the ancestor-less row moves instead`() = runBlocking {
+        // The contest this test exists to settle. The orphan has an origin_guid that resolves to
+        // NOTHING in the current engine set (its engine original was deleted, or never existed
+        // here), so it cannot derive an id and must autoincrement. It is given insertion order
+        // AHEAD of the real engine record's upload, so a naive single-pass refill over the
+        // just-emptied table would seat it on id 1 first - precisely the id the real record
+        // (records.id = 1, first row in a fresh engine table) needs to carry.
+        //
+        // Getting this wrong is not a cosmetic id shuffle. `upsert`'s collision guard would
+        // correctly decline to clobber the orphan and hand the Dentist row a fresh id, which is
+        // the exact alarm orphaning the carry exists to prevent, reached by a different route.
+        // The two-pass refill removes the contest rather than adjudicating it.
+        val backend = FakeEventsBackend()
+        backend.uploadMigratedEvent(
+            MigratedEvent(originGuid = "no-longer-in-engine", fields = EventFields(title = "Orphaned migrated row", startsAtMs = 1_000L)),
+        )
+        val dentistEngineId = createDatesEvent("Dentist", startMs = 50_000L)
+        assertEquals(1L, dentistEngineId)
+
+        EventsReconcile.run(context, backend).getOrThrow()
+
+        val replica = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        assertEquals("both rows must survive - neither clobbers the other", 2, replica.size)
+        val orphan = replica.single { it.title == "Orphaned migrated row" }
+        val dentist = replica.single { it.title == "Dentist" }
+        assertEquals(
+            "the Dentist row has a derivable id and must be seated at it, even though the orphan was ahead of it in server order",
+            dentistEngineId,
+            dentist.id,
+        )
+        assertTrue(
+            "the orphan has nothing pointing at its local id yet, so it is the row that can afford to move",
+            orphan.id != dentistEngineId && orphan.id != 0L,
+        )
+    }
+
+    @Test
     fun `never deletes or trashes either engine record type - the engine stays the truth until the diff is clean`() = runBlocking {
         createDatesEvent("Dentist", startMs = 50_000L)
         createNotesItem("Buy milk", startsAt = 60_000L)
