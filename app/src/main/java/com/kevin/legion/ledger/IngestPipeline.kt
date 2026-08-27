@@ -74,6 +74,38 @@ object IngestPipeline {
         documentId.replaceFirst(Regex("^acc=[^;]*;"), "")
 
     /**
+     * Inverse of [stripAccountPrefix] - reattaches the `acc=N;` prefix a stored
+     * [com.kevin.legion.data.local.IngestedFile.driveFileId] had stripped off, so the id can be
+     * turned back into a document URI [android.provider.DocumentsContract] will actually resolve.
+     *
+     * **The reason this function has to exist at all**: `driveFileId` is a KEY, not an ADDRESS.
+     * [stripAccountPrefix] drops the prefix so the same physical Drive file hashes to the same key
+     * across a second signed-in local account (ticket 03's rationale, unchanged, still correct) -
+     * but Drive's own SAF provider only ever recognizes a document id WITH that prefix attached.
+     * A live folder scan never notices this split because [com.kevin.legion.service.IngestScanner]
+     * opens bytes with the child's original, unstripped `documentId` and only strips the copy it
+     * writes to the database. [ReingestDryRun] rebuilds a document URI FROM the stored (stripped)
+     * key, so it has to put the prefix back on before calling
+     * [android.provider.DocumentsContract.buildDocumentUriUsingTree], or every file reads as
+     * UNREACHABLE against a real, valid SAF grant - confirmed on-device 2026-08-27, 107/107 files.
+     *
+     * [treeDocumentId] is [android.provider.DocumentsContract.getTreeDocumentId] of the SAME tree
+     * URI the file was scanned under - the prefix is derived from the live grant, never hardcoded,
+     * because a non-Drive SAF provider (local storage, another cloud app) prints no `acc=` prefix
+     * at all and there is nothing correct to invent for it. Two guards keep this idempotent rather
+     * than merely "usually right":
+     * - if [treeDocumentId] itself carries no `acc=` prefix, [documentId] is returned unchanged -
+     *   there is nothing to reattach, and fabricating one would address a file that does not exist;
+     * - if [documentId] already carries a prefix (an already-full id passed in by mistake, or a
+     *   future caller that stopped stripping), it is returned unchanged rather than double-prefixed.
+     */
+    fun reattachAccountPrefix(documentId: String, treeDocumentId: String): String {
+        val prefixMatch = Regex("^acc=[^;]*;").find(treeDocumentId) ?: return documentId
+        if (documentId.startsWith("acc=")) return documentId
+        return prefixMatch.value + documentId
+    }
+
+    /**
      * Whether [displayName]/[mimeType] is a file this pipeline will even
      * attempt to read - the gate before a single byte is fetched. **Not
      * "accept everything"**: an unrecognized file must still land

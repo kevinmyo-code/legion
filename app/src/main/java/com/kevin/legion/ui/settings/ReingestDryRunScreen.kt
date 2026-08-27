@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.ledger.IngestPipeline
 import com.kevin.legion.ledger.ReingestDryRun
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.theme.LegionType
@@ -93,11 +94,24 @@ fun ReingestDryRunScreen(onBack: () -> Unit) {
  * SAF byte reader for [ReingestDryRun.ByteReader] - the exact "open by tree + document id, null
  * on any failure, never throw" contract [com.kevin.legion.service.IngestScanner]'s own private
  * `openBytes` uses, so this reuses that shape rather than inventing a second one.
+ *
+ * **`driveFileId` is a stored KEY, not the ADDRESS [DocumentsContract] needs** -
+ * [IngestPipeline.stripAccountPrefix] removed its `acc=N;` prefix before it was ever written to
+ * `ingested_files`. [IngestPipeline.reattachAccountPrefix] puts it back on, derived from THIS
+ * tree's own document id, before the URI is built - see that function's own doc for why a live
+ * scan never hits this (it opens bytes with the file's original unstripped id and only stores the
+ * stripped copy) and this dry run does. Skipping this step is exactly what made every one of 107
+ * real files on-device read as UNREACHABLE against a valid, persisted SAF grant.
  */
 private fun safReader(context: Context) = ReingestDryRun.ByteReader { driveFileId, treeUri, _ ->
     withContext(Dispatchers.IO) {
         try {
-            val docUri = DocumentsContract.buildDocumentUriUsingTree(Uri.parse(treeUri), driveFileId)
+            val tree = Uri.parse(treeUri)
+            val fullDocumentId = IngestPipeline.reattachAccountPrefix(
+                driveFileId,
+                DocumentsContract.getTreeDocumentId(tree),
+            )
+            val docUri = DocumentsContract.buildDocumentUriUsingTree(tree, fullDocumentId)
             context.contentResolver.openInputStream(docUri)?.use { it.readBytes() }
         } catch (e: Exception) {
             Log.w("ReingestDryRunScreen", "read failed for $driveFileId: ${e.message}")

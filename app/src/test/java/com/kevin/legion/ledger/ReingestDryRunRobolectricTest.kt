@@ -1,9 +1,12 @@
 package com.kevin.legion.ledger
 
+import android.net.Uri
+import android.provider.DocumentsContract
 import com.kevin.legion.ledger.parsers.PdfWords
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -56,5 +59,38 @@ class ReingestDryRunRobolectricTest {
         val reports = ReingestDryRun.run(listOf(input), ReingestDryRun.ByteReader { _, _, _ -> bytes })
 
         assertEquals(ReingestDryRun.FileOutcome.NeedsLlm, reports.single().outcome)
+    }
+
+    /**
+     * Regression test for the on-device bug (2026-08-27, 107/107 files UNREACHABLE against a
+     * valid, persisted SAF grant): `ingested_files.driveFileId` is stored with its `acc=N;`
+     * prefix STRIPPED ([IngestPipeline.stripAccountPrefix], ticket 03), but
+     * [DocumentsContract.buildDocumentUriUsingTree] only resolves the FULL, prefixed id. This
+     * mirrors [com.kevin.legion.ui.settings.ReingestDryRunScreen]'s `safReader` exactly - build the
+     * document URI from the stripped stored id via [IngestPipeline.reattachAccountPrefix], and
+     * assert on the URI's own document id, not just on a byte read succeeding, so a future "looks
+     * read-only, still builds the wrong URI" regression cannot pass silently.
+     */
+    @Test
+    fun `building a document URI from a stripped stored id reattaches the tree's account prefix`() {
+        val fullDocumentId = "acc=1;doc=encoded=o_GGpalKBAfTlOkt93tJoIsI7YFNkl6XCfyg_e8xx5M5xaqOppo="
+        val treeUri = DocumentsContract.buildTreeDocumentUri("com.google.android.apps.docs.storage", fullDocumentId)
+
+        // What actually gets stored: the prefix stripped off, exactly as IngestScanner does before
+        // the write to ingested_files.
+        val storedDriveFileId = IngestPipeline.stripAccountPrefix(fullDocumentId)
+        assertNotEquals(fullDocumentId, storedDriveFileId)
+
+        // The fixed path: reattach the prefix FROM the tree's own document id, then build.
+        val fixedDocUri = DocumentsContract.buildDocumentUriUsingTree(
+            treeUri,
+            IngestPipeline.reattachAccountPrefix(storedDriveFileId, DocumentsContract.getTreeDocumentId(treeUri)),
+        )
+        assertEquals(fullDocumentId, DocumentsContract.getDocumentId(fixedDocUri))
+
+        // The bug: building straight off the stored (stripped) id produces a document id Drive
+        // does not recognize - this is the exact failure that read every file as UNREACHABLE.
+        val buggyDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, storedDriveFileId)
+        assertNotEquals(fullDocumentId, DocumentsContract.getDocumentId(buggyDocUri))
     }
 }
