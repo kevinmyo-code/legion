@@ -69,6 +69,16 @@
       "width": 320,
       "height": 110,
       "color": "4"
+    },
+    {
+      "id": "da6d2dd3e8561c56",
+      "type": "file",
+      "file": ".scratch/hardening/issues/13-the-suite-is-green-by-luck.md",
+      "x": 0,
+      "y": 1050,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": []
