@@ -84,6 +84,24 @@ class BackendMigrationResolverTest {
         assertEquals("couldn't reach the server", reason)
     }
 
+    @Test
+    fun `disabledReason words a still-restoring session distinctly from a confirmed sign-out`() {
+        val stillRestoring = BackendMigrationResolver.disabledReason(
+            BackendMigrationResolver.Readiness.NOT_READY,
+            MembershipResult.Indeterminate("Still checking - the session is taking a moment to restore. Try again shortly."),
+        )
+        val notSignedIn = BackendMigrationResolver.disabledReason(
+            BackendMigrationResolver.Readiness.NOT_READY,
+            MembershipResult.NotSignedIn,
+        )
+
+        assertEquals(
+            "Still checking - the session is taking a moment to restore. Try again shortly.",
+            stillRestoring,
+        )
+        assertTrue(stillRestoring != notSignedIn)
+    }
+
     // ------------------------------------------------------------------- report rendering: places
 
     @Test

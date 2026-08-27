@@ -8,6 +8,7 @@ import io.github.jan.supabase.exceptions.RestException
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import java.io.IOException
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 
 /** Outcome of [SupabaseAuth.signIn]. Every failure branch says in words what did not happen -
@@ -58,6 +59,20 @@ sealed interface MembershipResult {
      * [NotAMember] on purpose: an unreachable network must never be reported as "not a member". */
     data class NetworkUnreachable(val message: String) : MembershipResult
 
+    /**
+     * **The other confusing state, found on Kevin's phone 2026-08-26.** supabase-kt's Auth plugin
+     * restores a stored session ASYNCHRONOUSLY after the client is constructed
+     * ([SupabaseAuthGateway.awaitSessionReady]'s doc comment has the mechanism). On a cold process
+     * the restore can still be running when this check is asked, and [SupabaseAuthGateway.currentUserId]
+     * would read null in that window even though a real signed-in session is about to land - the
+     * exact shape of [NotSignedIn], but false. This branch says the honest third thing: the app
+     * could not yet tell, distinct from both "definitely signed in" and "definitely signed out",
+     * and reached only after waiting bounded time for the restore to settle one way or the other
+     * (never reused for a genuine network failure - that stays [NetworkUnreachable], because the
+     * network was never the problem here).
+     */
+    data class Indeterminate(val message: String) : MembershipResult
+
     /** No project URL / anon key saved yet. */
     data object NotConfigured : MembershipResult
 }
@@ -90,7 +105,36 @@ class AuthNetworkException(message: String) : Exception(message)
 interface SupabaseAuthGateway {
     suspend fun signInWithPassword(email: String, password: String)
     suspend fun signOut()
+
+    /**
+     * **Racy by construction on a cold process - see [awaitSessionReady].** supabase-kt's Auth
+     * plugin restores a session it previously persisted to disk ASYNCHRONOUSLY after the client
+     * object exists, so on a freshly-started process this can read null for a real, signed-in
+     * account simply because the restore has not finished yet. [SupabaseAuth.isHouseholdMember]
+     * calls [awaitSessionReady] first specifically so it never reads this mid-restore; any NEW
+     * caller of this method directly must do the same or inherit the same false-negative window.
+     * [SupabaseAuth.currentUserId] (the one existing direct caller, traced 2026-08-26) does not
+     * await and is therefore still exposed to this race - see its own doc comment for why that is
+     * currently a documented hazard rather than a fixed one.
+     */
     fun currentUserId(): String?
+
+    /**
+     * Waits (bounded by [timeoutMillis]) for the Auth plugin to finish restoring whatever session
+     * it had persisted to disk, so a caller that then reads [currentUserId] gets a settled answer
+     * rather than racing the restore. In supabase-kt 3.6.0 this is backed by
+     * `Auth.awaitInitialization()`, which suspends until `Auth.sessionStatus` leaves
+     * `SessionStatus.Initializing` for `Authenticated`, `NotAuthenticated`, or `RefreshFailure` -
+     * confirmed by decompiling the cached 3.6.0 `auth-kt` aar (`javap -p Auth.class`), not assumed
+     * from the library's docs.
+     *
+     * Returns true once settled (whichever way), false if [timeoutMillis] elapsed while the
+     * restore was still running - a genuinely signed-out session settles to `NotAuthenticated`
+     * almost immediately, so a slow return here means the restore itself is stuck, not that
+     * nobody is signed in. The default implementation is `true` (already settled) so a fake that
+     * has no restore step to simulate does not need to override this.
+     */
+    suspend fun awaitSessionReady(timeoutMillis: Long = SUPABASE_SESSION_READY_TIMEOUT_MS): Boolean = true
 
     /**
      * Row count of `household_members` visible to the CURRENT caller. Per the migration's own
@@ -100,6 +144,11 @@ interface SupabaseAuthGateway {
      */
     suspend fun householdRosterSize(): Int
 }
+
+/** Bound on [SupabaseAuthGateway.awaitSessionReady]'s wait, so a stuck restore freezes a settings
+ * screen for at most this long rather than hanging it. 3 seconds: generous for a local-disk
+ * session restore, short enough that a real user notices a wait rather than a freeze. */
+private const val SUPABASE_SESSION_READY_TIMEOUT_MS = 3_000L
 
 /**
  * Wraps a real [SupabaseClient]'s Auth/Postgrest plugins as a [SupabaseAuthGateway], translating
@@ -144,6 +193,15 @@ private class LiveSupabaseAuthGateway(
     }
 
     override fun currentUserId(): String? = client.auth.currentUserOrNull()?.id
+
+    override suspend fun awaitSessionReady(timeoutMillis: Long): Boolean =
+        withTimeoutOrNull(timeoutMillis) {
+            // awaitInitialization() suspends until sessionStatus leaves Initializing; it does not
+            // throw for a genuine sign-out (that settles to NotAuthenticated, which counts as
+            // "ready" here) so this is not wrapped in translating() - there is no network call of
+            // its own to translate, it is only waiting on the plugin's own restore coroutine.
+            client.auth.awaitInitialization()
+        } != null
 
     override suspend fun householdRosterSize(): Int = translating {
         client.postgrest.from("household_members")
@@ -211,12 +269,32 @@ class SupabaseAuth(
         }
     }
 
-    /** The signed-in user's Supabase id, or null if nothing is configured or nobody is signed in. */
+    /**
+     * The signed-in user's Supabase id, or null if nothing is configured or nobody is signed in.
+     *
+     * **Known hazard, not fixed here (traced 2026-08-26): this can race the async session
+     * restore the same way [isHouseholdMember] used to** - see
+     * [SupabaseAuthGateway.currentUserId]'s doc comment for the mechanism. This function is `fun`,
+     * not `suspend`, so it has no way to await [SupabaseAuthGateway.awaitSessionReady] first. It
+     * is left unchanged rather than silently made `suspend` because that would be a breaking
+     * signature change for a hazard that, as of this trace, has no live caller to break: nothing
+     * in `ui/` or elsewhere calls this method directly (only [isHouseholdMember], below, calls the
+     * gateway's version). If a future caller needs a reliable answer on a cold process, it should
+     * go through [isHouseholdMember] (which does await) rather than this method.
+     */
     fun currentUserId(): String? = gatewayProvider(context)?.currentUserId()
 
     /** See [MembershipResult] for what each branch means. */
     suspend fun isHouseholdMember(): MembershipResult {
         val gateway = gatewayProvider(context) ?: return MembershipResult.NotConfigured
+        if (!gateway.awaitSessionReady()) {
+            // The restore is still running after a bounded wait - report the honest third state
+            // rather than guessing NotSignedIn, which is exactly the false statement this branch
+            // exists to stop making (found on Kevin's phone 2026-08-26, see MembershipResult.Indeterminate).
+            return MembershipResult.Indeterminate(
+                "Still checking - the session is taking a moment to restore. Try again shortly."
+            )
+        }
         gateway.currentUserId() ?: return MembershipResult.NotSignedIn
         return try {
             val rosterSize = gateway.householdRosterSize()

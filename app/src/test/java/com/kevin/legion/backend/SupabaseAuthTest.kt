@@ -2,6 +2,7 @@ package com.kevin.legion.backend
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -32,6 +33,7 @@ class SupabaseAuthTest {
         var userId: String? = null,
         var rosterSize: Int = 0,
         var rosterThrows: Throwable? = null,
+        var sessionReady: Boolean = true,
     ) : SupabaseAuthGateway {
         var signOutCalled = false
 
@@ -46,10 +48,42 @@ class SupabaseAuthTest {
 
         override fun currentUserId(): String? = userId
 
+        override suspend fun awaitSessionReady(timeoutMillis: Long): Boolean = sessionReady
+
         override suspend fun householdRosterSize(): Int {
             rosterThrows?.let { throw it }
             return rosterSize
         }
+    }
+
+    /**
+     * Models the real cold-start race this file's task is about: [currentUserId] reads null
+     * until [awaitSessionReady] has been called and completes, at which point the restored
+     * session becomes visible - the shape of supabase-kt's async session restore, not the
+     * always-immediately-decided [FakeGateway]. Used to prove [SupabaseAuth.isHouseholdMember]
+     * awaits before deciding, rather than reading [currentUserId] first.
+     */
+    private class SlowRestoreGateway(private val userIdOnceReady: String, private val rosterSize: Int) :
+        SupabaseAuthGateway {
+        private var settled = false
+
+        override suspend fun signInWithPassword(email: String, password: String) = Unit
+        override suspend fun signOut() = Unit
+        override fun currentUserId(): String? = if (settled) userIdOnceReady else null
+        override suspend fun awaitSessionReady(timeoutMillis: Long): Boolean {
+            settled = true
+            return true
+        }
+        override suspend fun householdRosterSize(): Int = rosterSize
+    }
+
+    /** Models a restore that never settles inside the caller's bound. */
+    private class NeverReadyGateway : SupabaseAuthGateway {
+        override suspend fun signInWithPassword(email: String, password: String) = Unit
+        override suspend fun signOut() = Unit
+        override fun currentUserId(): String? = null
+        override suspend fun awaitSessionReady(timeoutMillis: Long): Boolean = false
+        override suspend fun householdRosterSize(): Int = 0
     }
 
     private fun authWith(gateway: SupabaseAuthGateway?) =
@@ -125,6 +159,39 @@ class SupabaseAuthTest {
         assertTrue(result is MembershipResult.NotAMember)
         val message = (result as MembershipResult.NotAMember).message
         assertTrue(message.contains("not on the household roster"))
+    }
+
+    @Test
+    fun `isHouseholdMember awaits a still-initializing session instead of reporting NotSignedIn`() = runBlocking {
+        // The regression this task fixes: currentUserId() alone reads null on a cold process
+        // whose session restore has not finished, and the old code returned NotSignedIn on that
+        // null without ever giving the restore a chance to settle. SlowRestoreGateway only
+        // reveals the real user id after awaitSessionReady has been called.
+        val gateway = SlowRestoreGateway(userIdOnceReady = "user-1", rosterSize = 2)
+
+        val result = authWith(gateway).isHouseholdMember()
+
+        assertEquals(MembershipResult.Member, result)
+    }
+
+    @Test
+    fun `isHouseholdMember whose session never settles reports the honest indeterminate branch, not NotSignedIn`() = runBlocking {
+        val gateway = NeverReadyGateway()
+
+        val result = authWith(gateway).isHouseholdMember()
+
+        assertTrue(result is MembershipResult.Indeterminate)
+        assertFalse(result is MembershipResult.NotSignedIn)
+    }
+
+    @Test
+    fun `isHouseholdMember with a genuinely settled sign-out still reports NotSignedIn promptly`() = runBlocking {
+        // sessionReady = true by default: a real sign-out settles to NotAuthenticated almost
+        // immediately, so this path must not become slow or wrong just because the settled-check
+        // now exists.
+        val gateway = FakeGateway(userId = null, sessionReady = true)
+
+        assertEquals(MembershipResult.NotSignedIn, authWith(gateway).isHouseholdMember())
     }
 
     @Test

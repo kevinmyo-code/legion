@@ -63,6 +63,10 @@ object BackendMigrationResolver {
             is MembershipResult.NotAMember -> membership.message
             MembershipResult.NotSignedIn -> "Not signed in - sign in on the Gemini key screen first."
             is MembershipResult.NetworkUnreachable -> membership.message
+            // Worded distinctly from NotSignedIn on purpose - this is the "still restoring the
+            // session, do not know yet" state (see MembershipResult.Indeterminate's doc comment),
+            // never the same sentence as a confirmed sign-out.
+            is MembershipResult.Indeterminate -> membership.message
             MembershipResult.NotConfigured, null ->
                 "Not configured - add your Supabase project URL and anon key on the Gemini key " +
                     "screen first."

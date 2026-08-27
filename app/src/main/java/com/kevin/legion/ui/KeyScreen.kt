@@ -372,6 +372,7 @@ fun KeyScreen(onBack: () -> Unit) {
                             is MembershipResult.NotAMember -> state.message
                             MembershipResult.NotSignedIn -> "Signed out."
                             is MembershipResult.NetworkUnreachable -> state.message
+                            is MembershipResult.Indeterminate -> state.message
                             MembershipResult.NotConfigured -> "Not configured yet."
                         },
                         style = MaterialTheme.typography.bodySmall,
