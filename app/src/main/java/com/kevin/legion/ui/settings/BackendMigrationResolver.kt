@@ -1,6 +1,7 @@
 package com.kevin.legion.ui.settings
 
 import com.kevin.legion.backend.EventsReconcile
+import com.kevin.legion.backend.FleetReconcile
 import com.kevin.legion.backend.MembershipResult
 import com.kevin.legion.backend.PantryReconcile
 import com.kevin.legion.backend.PlacesReconcile
@@ -170,6 +171,94 @@ object BackendMigrationResolver {
             add("Only on the server, not on this device: ${report.onlyOnServer.joinToString(", ")}.")
         }
         add(if (report.isClean) "Clean - everything matches on both sides." else "Not clean yet - see the lines above.")
+    }
+
+    /**
+     * [FleetReconcile.Report] in plain words - ten tables, so this earns different structure from
+     * the three siblings above rather than ten copies of their line shape.
+     *
+     * **Fleet is a PROJECTION, never worded as a cutover** (`.scratch/backend-erp/issues/
+     * 14-a-vehicle-row-is-co-owned.md`, "RULED 2026-08-27: option 3"). Places/pantry/notes+dates
+     * really do move the read to the replica once clean; fleet never does - the phone goes on
+     * reading its own tables and Drive goes on syncing fleet between the two phones, both
+     * unconditionally, forever. Saying "clean" here must never read like "migrated" does on the
+     * other three rows, so the first line states the projection's actual shape before any number
+     * appears, and no line below it uses the word "migrated".
+     *
+     * **[FleetReconcile.ServiceHistoryReport.skippedUnresolvedVehicle] and its seven table-level
+     * twins are named in words, never folded into a bare count.** A skipped row is a diagnostic or
+     * a drive whose parent vehicle has not reached the server yet - the reconcile refuses to guess
+     * which vehicle it belongs to, because a wrong guess would attribute a drive to the wrong car.
+     * Collapsing that into "3 skipped" would read like an error; it is a deliberate refusal to
+     * mis-parent, and the sentence says so.
+     *
+     * **A table with nothing to upload and a table where everything was already on the server read
+     * differently on purpose** - [compactFleetTableLine]'s first branch - because the first means
+     * "you have none of this data" and the second means "this run genuinely changed nothing", and
+     * collapsing both into "0 uploaded" would erase that distinction.
+     */
+    fun renderFleetReport(report: FleetReconcile.Report): List<String> {
+        val skipped = report.serviceHistory.skippedUnresolvedVehicle +
+            report.drive.skippedUnresolvedVehicle +
+            report.codeEvent.skippedUnresolvedVehicle +
+            report.codeClearEvent.skippedUnresolvedVehicle +
+            report.oilAnalysis.skippedUnresolvedVehicle +
+            report.vehicleSpec.skippedUnresolvedVehicle +
+            report.buildEntry.skippedUnresolvedVehicle +
+            report.driveReassignment.skippedUnresolvedVehicle
+
+        return buildList {
+            add(
+                "This is a one-way export to your own Supabase project, for the laptop surface and " +
+                    "for durability - it is not a cutover. The phone keeps reading its own fleet " +
+                    "tables, and Drive keeps syncing fleet between your two phones, unchanged by " +
+                    "anything below.",
+            )
+            add(if (report.isClean) "Overall: clean - every table matches the server." else "Overall: NOT clean - see the tables below.")
+            add(compactFleetTableLine("Vehicles", report.vehicle.engineCount, report.vehicle.uploaded, report.vehicle.isClean, report.vehicle.onlyOnEngine, report.vehicle.onlyOnServer))
+            add(compactFleetTableLine("Service history", report.serviceHistory.engineCount, report.serviceHistory.uploaded, report.serviceHistory.isClean, report.serviceHistory.onlyOnEngine, report.serviceHistory.onlyOnServer))
+            add(compactFleetTableLine("Drives", report.drive.sourceCount, report.drive.uploaded, report.drive.isClean, report.drive.onlyOnSource, report.drive.onlyOnServer))
+            add(compactFleetTableLine("Code events", report.codeEvent.sourceCount, report.codeEvent.uploaded, report.codeEvent.isClean, report.codeEvent.onlyOnSource, report.codeEvent.onlyOnServer))
+            add(compactFleetTableLine("Code-clear events", report.codeClearEvent.sourceCount, report.codeClearEvent.uploaded, report.codeClearEvent.isClean, report.codeClearEvent.onlyOnSource, report.codeClearEvent.onlyOnServer))
+            add(compactFleetTableLine("Oil analyses", report.oilAnalysis.sourceCount, report.oilAnalysis.uploaded, report.oilAnalysis.isClean, report.oilAnalysis.onlyOnSource, report.oilAnalysis.onlyOnServer))
+            add(compactFleetTableLine("Chassis quirks", report.chassisQuirk.sourceCount, report.chassisQuirk.uploaded, report.chassisQuirk.isClean, report.chassisQuirk.onlyOnSource, report.chassisQuirk.onlyOnServer))
+            add(compactFleetTableLine("Vehicle specs", report.vehicleSpec.sourceCount, report.vehicleSpec.uploaded, report.vehicleSpec.isClean, report.vehicleSpec.onlyOnSource, report.vehicleSpec.onlyOnServer))
+            add(compactFleetTableLine("Build entries", report.buildEntry.sourceCount, report.buildEntry.uploaded, report.buildEntry.isClean, report.buildEntry.onlyOnSource, report.buildEntry.onlyOnServer))
+            add(compactFleetTableLine("Drive reassignments", report.driveReassignment.sourceCount, report.driveReassignment.uploaded, report.driveReassignment.isClean, report.driveReassignment.onlyOnSource, report.driveReassignment.onlyOnServer))
+            if (skipped.isNotEmpty()) {
+                add(
+                    "Held back, not uploaded: ${skipped.size} ${plural(skipped.size, "row")} whose car " +
+                        "has not reached the server yet. Not an error - guessing the wrong car would " +
+                        "attribute a drive or a diagnostic to the wrong vehicle, so these wait rather " +
+                        "than guess. Run this again once Vehicles is clean: ${skipped.joinToString("; ")}.",
+                )
+            }
+        }
+    }
+
+    /** One compact line per fleet table for [renderFleetReport]. [count] is that table's
+     * on-device row total, distinct from "clean" (server agrees) so a reader can tell "nothing to
+     * export" from "everything already matched" from "this run changed something", three different
+     * facts a single number cannot carry. */
+    private fun compactFleetTableLine(
+        label: String,
+        count: Int,
+        uploaded: Int,
+        isClean: Boolean,
+        onlyOnSource: List<String>,
+        onlyOnServer: List<String>,
+    ): String {
+        val base = when {
+            count == 0 -> "$label: none on this device."
+            uploaded == 0 -> "$label: $count on this device, already all on the server."
+            else -> "$label: $count on this device, $uploaded uploaded this run."
+        }
+        if (isClean) return "$base Clean."
+        val detail = buildString {
+            if (onlyOnSource.isNotEmpty()) append(" Only on this device: ${onlyOnSource.joinToString(", ")}.")
+            if (onlyOnServer.isNotEmpty()) append(" Only on the server: ${onlyOnServer.joinToString(", ")}.")
+        }
+        return "$base NOT clean.$detail"
     }
 
     /**

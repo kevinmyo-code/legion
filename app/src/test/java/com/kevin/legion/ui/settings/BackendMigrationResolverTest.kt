@@ -1,6 +1,7 @@
 package com.kevin.legion.ui.settings
 
 import com.kevin.legion.backend.EventsReconcile
+import com.kevin.legion.backend.FleetReconcile
 import com.kevin.legion.backend.MembershipResult
 import com.kevin.legion.backend.PantryReconcile
 import com.kevin.legion.backend.PlacesReconcile
@@ -214,5 +215,112 @@ class BackendMigrationResolverTest {
         assertTrue(message.contains("network unreachable"))
         assertTrue(message.contains("safe to run again", ignoreCase = true))
         assertTrue(message.contains("Nothing on this device was changed"))
+    }
+
+    // ------------------------------------------------------------------- report rendering: fleet
+
+    /** A clean, fully-synced fleet report - every table already matches, nothing skipped. Tests
+     * that need a one-sided or skipped-row report copy this and override just what they need. */
+    private fun cleanFleetReport(): FleetReconcile.Report {
+        val syncId = FleetReconcile.SyncIdReport(
+            sourceCount = 1, uploaded = 0, skippedUnresolvedVehicle = emptyList(),
+            serverCountAfter = 1, replicaCountAfter = 1, onlyOnSource = emptyList(), onlyOnServer = emptyList(),
+        )
+        return FleetReconcile.Report(
+            vehicle = FleetReconcile.VehicleReport(
+                engineCount = 2, uploaded = 0, serverCountAfter = 2, replicaCountAfter = 2,
+                onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
+            ),
+            serviceHistory = FleetReconcile.ServiceHistoryReport(
+                engineCount = 5, uploaded = 0, skippedUnresolvedVehicle = emptyList(),
+                serverCountAfter = 5, replicaCountAfter = 5, onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
+            ),
+            drive = FleetReconcile.DriveReport(
+                sourceCount = 3, uploaded = 0, skippedUnresolvedVehicle = emptyList(),
+                serverCountAfter = 3, replicaCountAfter = 3, onlyOnSource = emptyList(), onlyOnServer = emptyList(),
+            ),
+            codeEvent = syncId,
+            codeClearEvent = syncId,
+            oilAnalysis = syncId,
+            chassisQuirk = FleetReconcile.ChassisQuirkReport(
+                sourceCount = 1, uploaded = 0, serverCountAfter = 1, replicaCountAfter = 1,
+                onlyOnSource = emptyList(), onlyOnServer = emptyList(),
+            ),
+            vehicleSpec = FleetReconcile.VehicleSpecReport(
+                sourceCount = 1, uploaded = 0, skippedUnresolvedVehicle = emptyList(),
+                serverCountAfter = 1, replicaCountAfter = 1, onlyOnSource = emptyList(), onlyOnServer = emptyList(),
+            ),
+            buildEntry = syncId,
+            driveReassignment = syncId,
+        )
+    }
+
+    @Test
+    fun `a clean fleet report leads with clean and never claims a cutover`() {
+        val lines = BackendMigrationResolver.renderFleetReport(cleanFleetReport())
+        assertTrue(lines.any { it.contains("Overall: clean") })
+        // Every other reconcile row on this screen really does move the read to the replica once
+        // clean; fleet never does. If any line uses "migrated" a reader would reasonably conclude
+        // the read path changed, which ticket 14's ruling explicitly says it does not.
+        assertTrue(lines.none { it.contains("migrated", ignoreCase = true) })
+        assertTrue(lines.any { it.contains("not a cutover") })
+        assertTrue(lines.any { it.contains("Drive keeps syncing fleet") })
+    }
+
+    @Test
+    fun `skipped-unresolved-vehicle rows are named in words, not just counted`() {
+        val report = cleanFleetReport().copy(
+            serviceHistory = cleanFleetReport().serviceHistory.copy(
+                skippedUnresolvedVehicle = listOf("Oil change (guid-sh-1): vehicle not yet migrated"),
+            ),
+            drive = cleanFleetReport().drive.copy(
+                skippedUnresolvedVehicle = listOf("sync-drive-9: vehicle not yet migrated"),
+            ),
+        )
+        val lines = BackendMigrationResolver.renderFleetReport(report)
+        val skippedLine = lines.first { it.contains("Held back") }
+        assertTrue(skippedLine.contains("2 rows"))
+        assertTrue(skippedLine.contains("not an error", ignoreCase = true) || skippedLine.contains("Not an error"))
+        assertTrue(skippedLine.contains("wrong vehicle") || skippedLine.contains("wrong car"))
+        assertTrue(skippedLine.contains("Oil change (guid-sh-1)"))
+        assertTrue(skippedLine.contains("sync-drive-9"))
+    }
+
+    @Test
+    fun `a fleet table with nothing to upload reads differently from one already fully synced`() {
+        val emptyVehicleReport = cleanFleetReport().copy(
+            vehicle = FleetReconcile.VehicleReport(
+                engineCount = 0, uploaded = 0, serverCountAfter = 0, replicaCountAfter = 0,
+                onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
+            ),
+        )
+        val lines = BackendMigrationResolver.renderFleetReport(emptyVehicleReport)
+        val vehicleLine = lines.first { it.startsWith("Vehicles:") }
+        val serviceHistoryLine = lines.first { it.startsWith("Service history:") }
+        assertTrue(vehicleLine.contains("none on this device"))
+        assertTrue(serviceHistoryLine.contains("already all on the server"))
+        assertTrue(vehicleLine != serviceHistoryLine)
+    }
+
+    @Test
+    fun `an unclean fleet table names the actual one-sided rows`() {
+        val report = cleanFleetReport().copy(
+            drive = cleanFleetReport().drive.copy(onlyOnServer = listOf("sync-9f2")),
+        )
+        val lines = BackendMigrationResolver.renderFleetReport(report)
+        val driveLine = lines.first { it.startsWith("Drives:") }
+        assertTrue(driveLine.contains("NOT clean"))
+        assertTrue(driveLine.contains("sync-9f2"))
+        assertTrue(lines.any { it.contains("Overall: NOT clean") })
+    }
+
+    @Test
+    fun `renderFailure for a fleet run reads the same as every other row's failure`() {
+        // Fleet shares renderFailure with places/pantry/events on purpose - a failed run is a
+        // failed run regardless of aspect, and the wording already covers "some rows may already
+        // be there" for any upload loop that can fail partway through.
+        val message = BackendMigrationResolver.renderFailure("couldn't reach the server")
+        assertTrue(message.contains("Did not finish"))
+        assertTrue(message.contains("couldn't reach the server"))
     }
 }

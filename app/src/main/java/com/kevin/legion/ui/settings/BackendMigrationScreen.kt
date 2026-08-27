@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.kevin.legion.backend.EventsReconcile
+import com.kevin.legion.backend.FleetReconcile
 import com.kevin.legion.backend.MembershipResult
 import com.kevin.legion.backend.PantryReconcile
 import com.kevin.legion.backend.PlacesReconcile
@@ -34,6 +35,7 @@ import com.kevin.legion.backend.SupabaseAuth
 import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabaseConfig
 import com.kevin.legion.backend.SupabaseEventsBackend
+import com.kevin.legion.backend.SupabaseFleetBackend
 import com.kevin.legion.backend.SupabasePantryBackend
 import com.kevin.legion.backend.SupabasePlacesBackend
 import com.kevin.legion.ui.common.DeckScreenHeader
@@ -75,6 +77,7 @@ fun BackendMigrationScreen(onBack: () -> Unit) {
     var places by remember { mutableStateOf(ReconcileRowUiState()) }
     var pantry by remember { mutableStateOf(ReconcileRowUiState()) }
     var events by remember { mutableStateOf(ReconcileRowUiState()) }
+    var fleet by remember { mutableStateOf(ReconcileRowUiState()) }
 
     // Re-checked on every resume, same reasoning as ConnectionsScreen/KeyScreen: coming back
     // from the Gemini key screen having just configured or signed in is exactly the moment this
@@ -134,6 +137,26 @@ fun BackendMigrationScreen(onBack: () -> Unit) {
         }
     }
 
+    // Fleet is a PROJECTION, not a cutover (ticket 14's ruling) - the write path (waves 1-4) was
+    // built and had zero callers. This makes it reachable so the export can actually run and be
+    // diffed. It touches no fleet read: the phone keeps reading its own tables, and Drive keeps
+    // syncing fleet between the two phones exactly as it does today.
+    fun runFleet() {
+        fleet = fleet.copy(running = true, resultLines = null, failure = null)
+        scope.launch {
+            val client = SupabaseClientProvider.get(context)
+            if (client == null) {
+                fleet = fleet.copy(running = false, failure = BackendMigrationResolver.renderFailure("Supabase is not configured"))
+                return@launch
+            }
+            val result = FleetReconcile.run(context, SupabaseFleetBackend(client))
+            fleet = result.fold(
+                onSuccess = { report -> ReconcileRowUiState(resultLines = BackendMigrationResolver.renderFleetReport(report)) },
+                onFailure = { t -> ReconcileRowUiState(failure = BackendMigrationResolver.renderFailure(failureReason(t))) },
+            )
+        }
+    }
+
     val readiness = BackendMigrationResolver.readiness(configured, membership)
     val disabledReason = BackendMigrationResolver.disabledReason(readiness, membership)
 
@@ -144,10 +167,12 @@ fun BackendMigrationScreen(onBack: () -> Unit) {
             places = places,
             pantry = pantry,
             events = events,
+            fleet = fleet,
         ),
         onRunPlaces = ::runPlaces,
         onRunPantry = ::runPantry,
         onRunEvents = ::runEvents,
+        onRunFleet = ::runFleet,
         onBack = onBack,
     )
 }
@@ -169,6 +194,7 @@ data class BackendMigrationUiState(
     val places: ReconcileRowUiState,
     val pantry: ReconcileRowUiState,
     val events: ReconcileRowUiState,
+    val fleet: ReconcileRowUiState,
 )
 
 /** Plain state-plus-callbacks content - previewable with no Android services. */
@@ -178,6 +204,7 @@ fun BackendMigrationContent(
     onRunPlaces: () -> Unit,
     onRunPantry: () -> Unit,
     onRunEvents: () -> Unit,
+    onRunFleet: () -> Unit,
     onBack: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
@@ -248,6 +275,19 @@ fun BackendMigrationContent(
                     onRun = onRunEvents,
                 )
 
+                Spacer(Modifier.height(16.dp))
+                BackendMigrationRow(
+                    label = "Fleet",
+                    description = "Exports your fleet data to your Supabase project for the " +
+                        "laptop surface and for durability. This is a PROJECTION, not a cutover - " +
+                        "the phone keeps reading its own fleet tables and Drive keeps syncing " +
+                        "fleet between your two phones, unchanged.",
+                    enabled = ready,
+                    disabledReason = if (ready) null else state.disabledReason,
+                    row = state.fleet,
+                    onRun = onRunFleet,
+                )
+
                 Spacer(Modifier.height(24.dp))
             }
         }
@@ -310,10 +350,12 @@ private fun BackendMigrationContentNotConfiguredPreview() {
                 places = ReconcileRowUiState(),
                 pantry = ReconcileRowUiState(),
                 events = ReconcileRowUiState(),
+                fleet = ReconcileRowUiState(),
             ),
             onRunPlaces = {},
             onRunPantry = {},
             onRunEvents = {},
+            onRunFleet = {},
             onBack = {},
         )
     }
@@ -338,10 +380,12 @@ private fun BackendMigrationContentReadyPreview() {
                 events = ReconcileRowUiState(
                     failure = BackendMigrationResolver.renderFailure("couldn't reach the server"),
                 ),
+                fleet = ReconcileRowUiState(),
             ),
             onRunPlaces = {},
             onRunPantry = {},
             onRunEvents = {},
+            onRunFleet = {},
             onBack = {},
         )
     }
@@ -365,10 +409,23 @@ private fun BackendMigrationContentOneSidedPreview() {
                 ),
                 pantry = ReconcileRowUiState(),
                 events = ReconcileRowUiState(),
+                fleet = ReconcileRowUiState(
+                    resultLines = listOf(
+                        "This is a one-way export to your own Supabase project, for the laptop " +
+                            "surface and for durability - it is not a cutover. The phone keeps " +
+                            "reading its own fleet tables, and Drive keeps syncing fleet between " +
+                            "your two phones, unchanged by anything below.",
+                        "Overall: NOT clean - see the tables below.",
+                        "Vehicles: 2 on this device, already all on the server. Clean.",
+                        "Service history: 5 on this device, 1 uploaded this run. Clean.",
+                        "Drives: 12 on this device, already all on the server. NOT clean. Only on the server: sync-9f2.",
+                    ),
+                ),
             ),
             onRunPlaces = {},
             onRunPantry = {},
             onRunEvents = {},
+            onRunFleet = {},
             onBack = {},
         )
     }
