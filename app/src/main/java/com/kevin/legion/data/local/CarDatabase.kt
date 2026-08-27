@@ -302,7 +302,7 @@ import androidx.room.RoomDatabase
         MutedReminder::class,
         EventReplica::class, EventSkipReplica::class,
     ],
-    version = 40,
+    version = 41,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -420,7 +420,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 40
+        const val SCHEMA_VERSION = 41
         // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
         // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
@@ -480,7 +480,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
                         MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34,
                         MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38,
-                        MIGRATION_38_39, MIGRATION_39_40,
+                        MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

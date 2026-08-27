@@ -111,6 +111,7 @@ object EventsReconcile {
                 engineRecordId = record.id,
                 fields = EventFields(
                     title = title,
+                    createdAtMs = record.createdAt,
                     startsAtMs = start,
                     endsAtMs = l(DatesAspectSeeder.FIELD_END),
                     allDay = false,
@@ -142,6 +143,7 @@ object EventsReconcile {
                 engineRecordId = record.id,
                 fields = EventFields(
                     title = text,
+                    createdAtMs = record.createdAt,
                     startsAtMs = startsAt,
                     endsAtMs = l(NotesAspectSeeder.FIELD_ENDS_AT),
                     allDay = b(NotesAspectSeeder.FIELD_ALL_DAY, default = true),
@@ -247,6 +249,7 @@ object EventsReconcile {
         id = id,
         serverId = serverId,
         title = title,
+        createdAt = createdAtMs,
         startsAt = startsAtMs,
         endsAt = endsAtMs,
         allDay = allDay,
@@ -282,6 +285,7 @@ object EventsReconcile {
  * value for every field. */
 private fun EventFields(
     title: String,
+    createdAtMs: Long?,
     startsAtMs: Long?,
     endsAtMs: Long?,
     allDay: Boolean,
@@ -291,6 +295,7 @@ private fun EventFields(
     googleEventId: String?,
 ) = EventFields(
     title = title,
+    createdAtMs = createdAtMs,
     startsAtMs = startsAtMs,
     endsAtMs = endsAtMs,
     allDay = allDay,

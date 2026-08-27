@@ -144,7 +144,7 @@ repeat. Commit map and ticket changes like any other file.
 | Voice AI | Gemini Live WebSocket STS | `service/GeminiLiveSession.kt`, server VAD, half-duplex |
 | Sub-agents | Gemini Flash REST | `ai/SubAgent.kt`, one-shot + bounded investigate loop; now also takes an optional inline image part (`imageBytes`/`imageMimeType`) for pantry vision |
 | BYO key | Paste + 1-token validation ping | Ping is `ai/GeminiKeyValidator.kt` (`VALID`/`INVALID_KEY`/`NETWORK_ERROR`); storage is `ai/KeyVault.kt` (Keystore AES/GCM) via `CompanionProfile.saveGeminiKey`; resolution is `ai/GeminiKeyProvider.kt`. Direct to Google, no proxy |
-| Local DB | Room **v37** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). 60 entities (verified by counting `::class` in `CarDatabase.kt`'s `entities = [...]`), chain complete through `MIGRATION_36_37` (`records.guid`, the cross-device identity column, 2026-08-24); all real verbatim generated-SQL migrations with `exportSchema` |
+| Local DB | Room **v41** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). Chain complete through `MIGRATION_40_41` (`events_replica.createdAt`, closing the gap that let a migrated Notes/Dates row's server-side `created_at` default to the migration's own run time instead of the note's real age, 2026-08-26); all real verbatim generated-SQL migrations with `exportSchema` |
 | OBD | ELM327 Bluetooth RFCOMM + BLE | Unchanged from Midnight AI |
 | Music | Spotify App Remote as the SPINE (`media/SpotifyController`, connection held in the FGS - ADR 0032) + Web API name resolution (`media/SpotifyWebApi`, own library first) + generic MediaSession transport fallback (`media/MusicController`) | BYO Spotify client ID (ADR 0033). `MusicRouter`/`MusicSource`/mixtapes all retired |
 | Location | Android `Geocoder` | The Mapbox-backed `NavGeocoder`, embedded nav, and the phone-to-head-unit GPS beacon are all gone |
@@ -245,7 +245,7 @@ anchored to external, falsifiable reality.
 
 ---
 
-## 5. Data Layer (Room v37)
+## 5. Data Layer (Room v41)
 
 Additive migrations only, verbatim generated SQL, `exportSchema = true`, schema JSON committed
 under `app/schemas/`, no destructive fallback on upgrade.
@@ -266,11 +266,22 @@ under `app/schemas/`, no destructive fallback on upgrade.
   unique index, the cross-device identity column senior review of the mirror/sync ticket flagged
   as a MUST-FIX (a per-database `AUTOINCREMENT` id was being matched across two independent
   phones). 2026-08-24.
+- **v38 through v40** - not itemized here (backend-erp Phase 4, aspect 4 of 5, Notes+Dates merged:
+  `events_replica`/`event_skips_replica` land at v38, `events_replica.startsAt` widens to nullable
+  at v40 - see [MIGRATION_39_40]'s own doc comment for that one's create/copy/drop/rename shape).
+- **v41** - `events_replica` gains `createdAt` (`INTEGER NOT NULL DEFAULT 0`), a plain additive
+  `ALTER TABLE ADD COLUMN` - `.scratch/backend-erp/issues/11-notes-write-path-rewire.md`'s own
+  follow-up. Closes a real defect, not a cosmetic gap: `SupabaseEventsBackend.uploadMigratedEvent`
+  used to insert with no `created_at` at all, silently taking Postgres's own `default now()`, so
+  every migrated Notes/Dates row's creation time became the moment the one-time migration ran
+  rather than the note's real age - `GoalChecklistSync`'s "already materialized today" gate and
+  `LogDigestBuilder`'s FRESH/AGING/STALE age buckets both key entirely off this field. 2026-08-26.
 
 `data/local/Migrations.kt` is the authority, and the entity roster grouped by aspect is in
-`docs/architecture/c3-data.md`. **CORRECTED 2026-08-18, and again 2026-08-24:** this section said
-v21 for weeks while the code was at v25, then said v34 while the code was at v37, and
-`CarDatabase.kt`'s own KDoc still says 15 in one place. Read the code before quoting a version -
+`docs/architecture/c3-data.md`. **CORRECTED 2026-08-18, and again 2026-08-24, and again
+2026-08-26:** this section said v21 for weeks while the code was at v25, then said v34 while the
+code was at v37, then said v37 while the code was at v41, and `CarDatabase.kt`'s own KDoc still
+says 15 in one place. Read the code before quoting a version -
 `sed -n '/version = /p' data/local/CarDatabase.kt` is the one-line way to check.
 
 **Widening an enum stored as TEXT is not a migration.** `LedgerTransaction.ingestMethod` and

@@ -22,6 +22,14 @@ package com.kevin.legion.backend
 data class RemoteEvent(
     val serverId: String,
     val title: String,
+    /** `public.events.created_at`, `timestamptz not null default now()` - the row's real creation
+     * instant, never re-derived from when a sync or migration happened to run.
+     * [com.kevin.legion.backend.EventsReconcile] carries the ORIGINATING engine record's own
+     * [com.kevin.legion.data.local.EngineRecord.createdAt] through [EventFields.createdAtMs] into
+     * [MigratedEvent.fields] for exactly this reason - a migrated row's `created_at` must read as
+     * the note's real age, not the moment the one-time upload ran. See [EventsReconcile]'s own
+     * class doc for the defect this closes. */
+    val createdAtMs: Long,
     val startsAtMs: Long?,
     val endsAtMs: Long?,
     val allDay: Boolean,
@@ -58,15 +66,29 @@ data class RemoteEvent(
 
 /**
  * Every writable column on `public.events` EXCEPT the ones an upsert never sets directly ([id]/
- * `origin_guid`/`created_at`/`updated_at`/`deleted_at`/`provenance` - the last five are server- or
- * ack-side facts, not caller intent). Shared by [EventsBackend.upsert]'s create and update
- * branches, and by [EventsReconcile]'s merge of the two engine record shapes into one - see that
- * object's own doc comment for exactly how a Dates `Event` and a Notes `Item` each become one of
- * these.
+ * `origin_guid`/`updated_at`/`deleted_at`/`provenance` - these four are server- or ack-side facts,
+ * not caller intent). Shared by [EventsBackend.upsert]'s create and update branches, and by
+ * [EventsReconcile]'s merge of the two engine record shapes into one - see that object's own doc
+ * comment for exactly how a Dates `Event` and a Notes `Item` each become one of these.
+ *
+ * **`created_at` is the one exception to "caller intent"** - [createdAtMs] is nullable and
+ * defaults to null (see that property's own doc comment) precisely because a caller usually has no
+ * real intent about it at all; the field exists so [EventsReconcile] and a live edit CAN state a
+ * real value when they have one, not because every write must supply one.
  */
 data class EventFields(
     val title: String,
     val startsAtMs: Long?,
+    /** The row's real creation instant, when the caller has one - null means "unknown, let the
+     * server's own `created_at default now()` decide" (an ordinary live [EventsBackend.upsert]
+     * create has nothing truer to offer than "now" anyway). [EventsReconcile] always supplies a
+     * real, non-null value here (the originating [com.kevin.legion.data.local.EngineRecord]'s own
+     * [com.kevin.legion.data.local.EngineRecord.createdAt]) precisely because "unknown" is NOT
+     * true for a migrated row - it has a real prior creation time and asserting ignorance of it
+     * would be the same kind of invented-by-omission fact CLAUDE.md section 4 rule 5 forbids. See
+     * `SupabaseEventsBackend`'s `EventUpsertDto.createdAt` for how a null here is kept OFF the wire
+     * on write, rather than sent as a literal JSON null into a `NOT NULL` column. */
+    val createdAtMs: Long? = null,
     val endsAtMs: Long? = null,
     val allDay: Boolean = false,
     val location: String? = null,

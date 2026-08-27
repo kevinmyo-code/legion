@@ -98,6 +98,20 @@ data class EventReplica(
      * ruling 9), same role as [RemotePlace.updatedAtMs]/[TaggedPlace.timestamp]. */
     val updatedAtMs: Long,
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    /**
+     * The server's own `created_at` (`public.events.created_at`, `timestamptz NOT NULL DEFAULT
+     * now()`) - v40 -> v41, `.scratch/backend-erp/issues/11-notes-write-path-rewire.md`'s own
+     * follow-up. **This is NOT cosmetic.** [com.kevin.legion.notes.NotesController.allItems] is
+     * the funnel [com.kevin.legion.advisor.GoalChecklistSync]'s "already materialized today" gate
+     * and [com.kevin.legion.advisor.digest.LogDigestBuilder]'s FRESH/AGING/STALE age buckets both
+     * read through, and both key entirely off [com.kevin.legion.data.local.ListItem.createdAt] -
+     * before this column existed there was nothing to map that field FROM on the configured
+     * (replica) read path. `DEFAULT 0` on the additive column is a schema-validity placeholder for
+     * pre-existing rows only; every row written after this column exists carries a real value -
+     * see [com.kevin.legion.backend.EventsReconcile.toReplica] and
+     * [com.kevin.legion.notes.NotesController]'s own `applyChange`/mapper for the two writers.
+     */
+    @ColumnInfo(defaultValue = "0") val createdAt: Long = 0,
 )
 
 /**

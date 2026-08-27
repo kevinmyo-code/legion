@@ -31,10 +31,27 @@ private fun parseDateOrNull(s: String?): Long? = s?.let { LocalDate.parse(it).at
  * clearing a trigger, removing a repeat rule) would leave the OLD value sitting server-side
  * untouched. Forcing every field onto the wire on every write reproduces whole-row-replace
  * semantics, matching EventFields's own "every writable column, always" contract.
+ *
+ * **`created_at` is the one deliberate exception** - see that field's own doc comment just below
+ * for why a `NOT NULL` column needs the opposite defaulting rule from everything else here.
  */
 @Serializable
 private data class EventUpsertDto(
     val title: String,
+    // The ONE deliberate exception to this class's own "always on the wire" rule stated above.
+    // `created_at` is `timestamptz NOT NULL default now()` - unlike every other nullable column
+    // here, a null value is not a legal write, so this field CANNOT follow the no-default
+    // convention: a required `String?` with no default is still serialized as a literal JSON
+    // `null` by kotlinx-serialization (only a DEFAULTED property gets dropped when
+    // encodeDefaults = false, and null counts as its own default), which would send `"created_at":
+    // null` straight into a NOT NULL column and fail the write outright - "hoping" it would be
+    // dropped, rather than checking, is exactly the mistake this default exists to prevent.
+    // Giving it `= null` means EventFields.createdAtMs == null (an ordinary live create with no
+    // known prior creation time) OMITS the key entirely, so Postgres's own `default now()` decides
+    // on INSERT and an UPDATE leaves the existing value untouched - both the correct behaviour.
+    // EventsReconcile.uploadMigratedEvent always supplies a real value here (the originating
+    // engine record's own createdAt), so a migrated row's `created_at` is never left to default.
+    @SerialName("created_at") val createdAt: String? = null,
     // Nullable (backend-erp ticket 07, RULED 2026-08-26 option 1): a genuinely dateless Notes
     // Item is an ordinary row now, never a guessed date. Deliberately no "= null" default -
     // see this file's own class doc for why every writable column must always be present on
@@ -68,6 +85,7 @@ private data class EventUpsertDto(
     companion object {
         fun from(fields: EventFields, originGuid: String? = null) = EventUpsertDto(
             title = fields.title,
+            createdAt = tsOrNull(fields.createdAtMs),
             startsAt = tsOrNull(fields.startsAtMs),
             endsAt = tsOrNull(fields.endsAtMs),
             allDay = fields.allDay,
@@ -102,6 +120,7 @@ private data class EventUpsertDto(
 private data class EventRowDto(
     val id: String,
     val title: String,
+    @SerialName("created_at") val createdAt: String,
     // Nullable, mirroring EventUpsertDto.startsAt's own comment - a genuinely dateless Notes
     // Item round-trips as a null starts_at, never a guessed one.
     @SerialName("starts_at") val startsAt: String? = null,
@@ -135,6 +154,7 @@ private data class EventRowDto(
     fun toRemoteEvent() = RemoteEvent(
         serverId = id,
         title = title,
+        createdAtMs = parseTs(createdAt),
         startsAtMs = parseTsOrNull(startsAt),
         endsAtMs = parseTsOrNull(endsAt),
         allDay = allDay,

@@ -73,9 +73,16 @@ class EventsReconcileTest {
             return Result.success(true)
         }
 
+        // Mirrors public.events.created_at's real behaviour: a caller-supplied value (a migrated
+        // row's real prior creation time, or an update echoing its own unchanged createdAt) wins;
+        // failing that, an EXISTING row keeps its own createdAt untouched (an update omitting the
+        // column server-side); only a genuinely new row with nothing supplied gets "now" (the
+        // clock, standing in for Postgres's own `default now()`) - the exact server behaviour the
+        // uploadMigratedEvent fix exists to avoid relying on.
         private fun EventFields.toRemote(id: String, originGuid: String?) = RemoteEvent(
             serverId = id,
             title = title,
+            createdAtMs = createdAtMs ?: rows[id]?.createdAtMs ?: ++clock,
             startsAtMs = startsAtMs,
             endsAtMs = endsAtMs,
             allDay = allDay,
@@ -147,6 +154,45 @@ class EventsReconcileTest {
         if (repeatEvery != null) values[sch.fieldIds.getValue(NotesAspectSeeder.FIELD_REPEAT_EVERY)] = repeatEvery
         val result = store.create(sch.recordTypeId, values, RecordProvenance.USER)
         return (result as RecordStore.WriteResult.Success).recordId
+    }
+
+    /**
+     * The assertion whose absence would have shipped the defect the coordinator caught:
+     * [SupabaseEventsBackend.uploadMigratedEvent] used to insert with no `created_at` at all,
+     * silently taking Postgres's own `default now()` - meaning every migrated row's creation time
+     * became "the moment the migration ran" rather than the note's real age. [GoalChecklistSync]'s
+     * "already materialized today" gate and [LogDigestBuilder]'s FRESH/AGING/STALE buckets both key
+     * off exactly this field, so a wrong value here is not cosmetic. [FakeEventsBackend.toRemote]
+     * reproduces the real bug shape faithfully: an omitted `createdAtMs` becomes the fake's own
+     * migration-time `clock`, standing in for the server's `now()` - so this test fails before the
+     * [EventsReconcile] fix (which threads `record.createdAt` through) and passes after it.
+     */
+    @Test
+    fun `uploadMigratedEvent carries the engine record's real createdAt, not the migration moment`() = runBlocking {
+        val dentistId = createDatesEvent("Dentist", startMs = 50_000L)
+        val db = CarDatabase.getDatabase(context)
+        val originalCreatedAt = db.engineRecordDao().getById(dentistId)!!.createdAt
+        val backend = FakeEventsBackend()
+        // Stand in for "the migration ran much later than the note was created" - if the fix
+        // regresses, the uploaded row's createdAt would read as (approximately) this clock instead
+        // of the real, much-earlier originalCreatedAt.
+        backend.clock = 999_999_000L
+
+        EventsReconcile.run(context, backend).getOrThrow()
+
+        val dentist = backend.rows.values.single { it.title == "Dentist" }
+        assertEquals(
+            "a migrated row's created_at must be the engine record's own creation time, not the migration run's clock",
+            originalCreatedAt,
+            dentist.createdAtMs,
+        )
+        assertTrue(
+            "must not have fallen through to the fake's migration-time clock stand-in",
+            dentist.createdAtMs != backend.clock,
+        )
+
+        val replicaRow = db.eventReplicaDao().getAllActive().single { it.title == "Dentist" }
+        assertEquals(originalCreatedAt, replicaRow.createdAt)
     }
 
     @Test

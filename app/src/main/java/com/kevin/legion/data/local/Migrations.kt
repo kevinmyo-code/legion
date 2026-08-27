@@ -1579,3 +1579,33 @@ val MIGRATION_39_40 = object : Migration(39, 40) {
         )
     }
 }
+
+/**
+ * v40 -> v41: `events_replica` gains `createdAt` (`INTEGER NOT NULL DEFAULT 0`) -
+ * `.scratch/backend-erp/issues/11-notes-write-path-rewire.md`'s own follow-up, mirroring
+ * `public.events.created_at` (`timestamptz NOT NULL default now()`,
+ * `supabase/migrations/20260825000400_aspect_dates_notes_merged.sql`) finally being exposed
+ * through the `RemoteEvent`/`EventFields`/`EventUpsertDto`/`EventRowDto` seam.
+ *
+ * **Not cosmetic.** [com.kevin.legion.notes.NotesController.allItems] is the read funnel
+ * [com.kevin.legion.advisor.GoalChecklistSync]'s "already materialized today" idempotency gate and
+ * [com.kevin.legion.advisor.digest.LogDigestBuilder]'s FRESH/AGING/STALE age buckets both read
+ * through, and both key entirely off [com.kevin.legion.data.local.ListItem.createdAt] - before
+ * this column existed on the replica there was nowhere for the configured (server-backed) read
+ * path to source that field from at all.
+ *
+ * A plain `ALTER TABLE ADD COLUMN` suffices here (unlike [MIGRATION_39_40]'s create/copy/drop/
+ * rename dance for `startsAt`) because this is a genuinely NEW, additive column, not a
+ * `NOT NULL` -> nullable widening SQLite has no direct syntax for. `DEFAULT 0` is a schema-validity
+ * placeholder for the handful of rows that predate this column (there are none in production yet -
+ * the events aspect has no installed base - but the column must still declare a constant default
+ * to satisfy SQLite's `ADD COLUMN ... NOT NULL` requirement, same reasoning
+ * [MIGRATION_37_38]'s `records.guid` comment gives at length). Every row written after this
+ * migration carries a real value - see [com.kevin.legion.backend.EventsReconcile.toReplica] and
+ * `com.kevin.legion.notes.NotesController`'s own configured-path writer, the two producers.
+ */
+val MIGRATION_40_41 = object : Migration(40, 41) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `events_replica` ADD COLUMN `createdAt` INTEGER NOT NULL DEFAULT 0")
+    }
+}
