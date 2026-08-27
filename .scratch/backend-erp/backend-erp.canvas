@@ -91,6 +91,16 @@
       "color": "1"
     },
     {
+      "id": "284e750563448b12",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/14-a-vehicle-row-is-co-owned.md",
+      "x": 0,
+      "y": 1350,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "0826d5c94a1739ed",
       "type": "file",
       "file": ".scratch/backend-erp/issues/02-auth-and-identity.md",

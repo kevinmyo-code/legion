@@ -1,0 +1,80 @@
+---
+type: decision
+status: open
+blocked_by: []
+map: backend-erp
+---
+
+# A vehicle row is co-owned, and every prior cutover assumed rows are not
+
+**Found 2026-08-27 attempting the fleet dual path. It is not a gap in the work so far - it is a
+shape the earlier aspects never had, and the pattern being copied cannot express it.**
+
+## What stopped
+
+Places, pantry and notes all cut over the same way: the server owns the whole row, so a configured
+read serves the replica and a configured write goes to the server and lands in the replica on ACK.
+Fleet cannot do that, for two independent reasons.
+
+**1. There is no live write primitive, and that was deliberate.** `FleetBackend` has only
+`uploadMigratedVehicle`/`uploadMigratedServiceHistory` - insert-only, guarded by an `origin_guid`
+existence check, built for the one-time migration replay. `FleetBackend.kt:44` says so outright, and
+wave 1's own commit message called the absence a deliberate scope decision rather than an oversight.
+
+There is also no natural key to upsert against. `places.label` is `UNIQUE`, which is exactly what
+makes `PlacesBackend.upsert` a single find-or-create round trip. `vehicles` has no such column:
+`20260826000100_origin_guid.sql` explicitly rejected a unique `vehicles.name` as a real product
+decision that could not be validated from a machine with no project access. The only unique column
+is `origin_guid`, and that same migration's header calls it **"migration PROVENANCE, not identity"**.
+Repurposing it as the live-write key is a decision, not an implementation detail.
+
+**2. And this is the deeper one: a `Vehicle` row is CO-OWNED.**
+
+`VehicleReplica` carries what the server owns - name, make, model, year, trim, engine, confirmed,
+odometer baseline. The legacy `Vehicle` also carries columns the server deliberately does NOT have,
+because ticket 01 ruling 10 kept them phone-only: `personaPrompt`, `voiceName`, `personaTraits`,
+`archived`, `onboarded`, `lastOdometerPromptAt`, `tripMilesSinceBaseline`.
+
+**Those are not vestigial. Measured by grep across `ui/` and `vehicle/`:** `archived` is read 15
+times, `tripMilesSinceBaseline` 5, `onboarded` 3. A configured read served from the replica drops
+them, and the roster UI breaks outright.
+
+That is a sharper failure than the notes cutover's. There the read returned rows it should not have
+and a sweep acted on them. Here the read would return rows MISSING COLUMNS the caller depends on -
+not a false positive, a structural hole.
+
+## Why no amount of care in the dual path fixes it
+
+Every prior aspect's row had ONE owner. A vehicle has two: the household's Supabase project owns its
+identity and specs, and this specific phone owns its persona, its archive state and its telemetry
+accumulators. No single-table read can serve both, and the replica was never built to.
+
+## The options, none chosen - this is Kevin's call
+
+1. **A local sidecar for the phone-owned columns**, joined on read: the replica supplies the server's
+   fields, a small local table supplies persona/archive/telemetry, and the read composes them. Keeps
+   ruling 10 intact (phone-only data stays phone-only) at the cost of a join and a new table.
+2. **Widen the server schema to carry them.** Simplest to read, and it contradicts ruling 10 - which
+   kept OBD live state, persona and widget layouts phone-only on purpose. Reopening that is a real
+   decision, not a shortcut.
+3. **Fleet reads stay legacy-primary permanently**, and the replica is only ever a diff and audit
+   surface - fleet syncs to Postgres for the laptop surface and for durability, but the phone keeps
+   reading its own tables. Cheapest, and it means fleet never really "cuts over" in the sense the
+   other four aspects did.
+
+**The live-write identity key is a second, smaller decision** riding on the same ticket: reuse
+`origin_guid` despite its own migration comment disclaiming that use, or add a purpose-built key.
+
+## What is safe to build before the ruling
+
+Nothing that changes a fleet READ. The upload path (waves 1-4) is complete and inert, and can be
+made runnable from the migration screen so the data lands server-side and can be diffed - that is
+useful, reversible, and touches no read. Everything past that waits.
+
+## Sequencing consequence
+
+`.scratch/backend-erp/issues/10-fleet-cutover.md`'s "done means" bar - writes land server-side, the
+phone renders from the replica, every fleet table out of the `SyncEngine` registry - **cannot be met
+until this is ruled.** And the registry drops in particular must not happen: ruling 05 ties each drop
+to the commit its writes move, and fleet writes have not moved. Dropping now would leave those
+tables with no sync channel at all, silently.
