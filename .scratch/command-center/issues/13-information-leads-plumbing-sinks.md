@@ -4,7 +4,7 @@ ticket: "13"
 title: "The information leads, the plumbing sinks"
 type: build
 status: open
-status-detail: ""
+status-detail: "3 of 5 findings done (4, 2, 3); 1 and 5 not started. GapEmptyRowTest written but never run - see Handoff."
 blockers: []
 blocked-by: []
 open-blockers: 0
@@ -71,6 +71,76 @@ header drops its clock (the status line already owns it).
 - Empty vs unreadable sentences survive every move.
 - Verified by BEFORE/AFTER screenshots off the phone, not by adjectives - the before set already
   exists in the scratchpad.
+
+## Handoff, 2026-08-26 - findings 4, 2, 3 done; 1 and 5 not started
+
+Picked up mid-effort. Read this before restarting: two of five findings are fully verified, one is
+committed with a named owed step, two are untouched.
+
+| Finding | State | Commit |
+|---|---|---|
+| 4 sparklines at low N | **DONE**, suite green (2,656 tests, 0 failures) | `af9db89` |
+| 2 prose as furniture | **DONE**, `HelpRowTest` 4/4 green | `11f4d57` |
+| 3 empty-state hierarchy | **BUILT**, production compiled green, `GapEmptyRowTest` never run | `66287c2` |
+| 1 Money leads with plumbing | **NOT STARTED** | - |
+| 5 row-grammar drift | **NOT STARTED** | - |
+
+### Why finding 3's test never ran, and what to do about it first
+
+Two agents shared this working tree and its `app/build/` while the backend arc was in flight.
+Gradle assumes one writer per build directory. Six distinct infrastructure failures, none of them
+either agent's code: an unresolved `MIGRATION_40_41` mid-edit, an `EventReplica` constructor
+mismatch against its generated DAO mid-edit, a vanished `in-progress-results-*.bin`, a locked
+`caches-jvm`, the build daemon stopped twice by the other process, and finally an OOM with the
+build directory cleaned underneath the run.
+
+**First action on resuming: run `./gradlew testDebugUnitTest -Pnokey --tests
+"com.kevin.legion.ui.common.*"`.** `GapEmptyRowTest` is written and has never executed. Do not
+treat finding 3 as resolved until it does. If the backend arc is still live, take a git worktree so
+each side has its own build directory rather than fighting over one.
+
+### What finding 4 established that 1 and 5 should reuse
+
+The rule went into the COMPONENT, not into the callers - `DECK_SPARKLINE_MIN_POINTS` and
+`deckSparklineHasShape()` in `ui/common/DeckCharts.kt`, with `DeckSparkline` returning above its
+`Canvas` so it occupies no space at all. `FleetDrilldowns` had already solved this correctly for
+monthly recaps and nobody else knew. Finding 5's formatters want exactly the same treatment: one
+formatter per fact family in a shared file, so weights and set lines and clocks cannot drift apart
+again per-screen.
+
+### A constraint findings 1 and 5 must not break
+
+Finding 2 nearly collapsed three things it should not have. **A trust disclosure is not furniture.**
+The estimate lines in `ui/ledger/LedgerScanRows.kt` and the unreconciled/lost-photo disclosure in
+`ui/pantry/PantryRows.kt` stay permanently visible - CLAUDE.md sec 4 rules 5 and 7 require them said
+on the surface, in words, always. Putting one behind a tap is not a hierarchy change, it is a
+quieter lie. Most other long-prose candidates turned out to be empty states, which get worse when
+collapsed, not better.
+
+The same applies to finding 1's re-rank: `money-read-state` is placed under the title "never below
+the fold" on purpose, and `ScanStatusSection` is coupled to the empty-state condition below it
+(a "nothing here" message beside a live progress bar reads as contradictory). Re-rank the three the
+finding names - folder connection, account mapping, nomination - and leave those two where they are.
+The Money tab's current item order, for reference:
+
+`money-title-row` / `money-read-state` / `money-folder-connection` / `money-account-mapping` /
+`money-nominated-account` / `money-hairline-and-scan-status` / loading-empty-listing / `goals` /
+`spend-pane` / `tile-row-budget-balances` / `activity-header`
+
+### Follow-up this effort surfaced, not in the original five
+
+**The Body drilldowns offer `DEL` by hand but no `ADD`.** A weight log can be deleted by touch and
+created only by voice, which is an ADR 0035 gap in its own right. Finding 3 could not close it: the
+dialog state lives in `BodyPanelList` while the drilldowns are invoked from `BodyScreen`, so a
+button needs that state hoisted across two composables. That is a refactor, not a hierarchy fix.
+It wants its own ticket.
+
+### Still owed on the phone, for all five findings
+
+The ticket's own rule - "verified by BEFORE/AFTER screenshots off the phone, not by adjectives".
+The before set exists in the scratchpad. **The A25 has never been attached to this machine**
+(CLAUDE.md sec 6), so no finding here has been seen running. That is a gate on this ticket, not a
+footnote (L11).
 
 ## Verification
 
