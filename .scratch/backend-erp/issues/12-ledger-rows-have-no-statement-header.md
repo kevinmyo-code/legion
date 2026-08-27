@@ -173,3 +173,30 @@ whose delta check fails - so the two implementations stay proven to agree rather
 existing.
 
 **This is what unblocks the ledger cutover**, and with it the last aspect in phase 4.
+
+## APPLIED AND PROVEN ON THE LIVE PROJECT 2026-08-27
+
+`20260827000200_events_kind.sql` and `20260827000300_commit_statement_deterministic_two_anchor.sql`
+both applied to `HomeERPBackend` through the dashboard editor. Verified from the catalog rather than
+the success panel:
+
+| check | result |
+|---|---|
+| `events.kind` column exists | yes |
+| `statements.stated_total_cents` nullable | YES |
+| `statements_total_only_null_if_deterministic` constraint | present |
+| `events.kind` check constraint (reminder/appointment) | present |
+
+**The corpus was then run against the real RPCs and reported `GATE CORPUS: all 17 cases agree.
+(rolled back)`.** That is the amendment proven end to end on live Postgres, not merely in Kotlin:
+the deterministic two-anchor commit, the delta-check quarantine, the rule 6 zero-line quarantine,
+and - the one that matters most - **the LLM_RECONCILED-missing-total quarantine, which is the scope
+guard**. Had the relaxation leaked to the LLM path, that case would have committed and the corpus
+would have named it.
+
+Rollback verified by querying afterwards rather than trusting the RAISE: `statements` 0,
+`ledger_transactions` 0, `ingested_files` 0, and **zero rows whose `content_sha256` starts with
+`corpus-`**. The three `receipts` rows are Kevin's real pantry data, untouched.
+
+**Ticket 03 ruling 2's condition now holds for the amendment too:** the Kotlin pre-check and the SQL
+gate are proven to agree, on the new branch as well as the old, by one corpus both sides read.
