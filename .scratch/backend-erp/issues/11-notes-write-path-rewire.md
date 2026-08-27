@@ -136,3 +136,40 @@ resolving - but likely is not verified.
 
 Also owed: `CarDatabaseMigration40To41Test` has not been RUN (it needs a device), and the
 configured Notes path has never touched a real Supabase project.
+
+## INCIDENT, 2026-08-26: the sweep marked 51 deleted todos "missed"
+
+The "never touched a real Supabase project" line above stopped being true the moment Kevin's phone
+picked up `e91a296`. First launch of that build ran `AlarmScheduler.rescheduleAll`'s normal
+start-up sweep, which walked `events_replica` and called `NotesController.markMissed` on every row
+whose `startsAt` had passed. His home screen went from "1 missed" to "51 missed" in the same
+second.
+
+**Evidence, traced off a read-only pull of the live database:**
+- The 51 rows carry `missedAt` stamped 08:37:19-08:37:21 on 2026-08-26, sequential, one per row -
+  the exact moment that build first launched. Nothing else touches `missedAt` at that cadence.
+- The engine has `missedAt` on exactly one Notes `Item`; the Dates `Event` record type has no
+  `missedAt` field at all. So all 51 values were minted at sweep time, not carried from the engine.
+- All 106 `source='legion'` replica rows carry `sortOrder`, which only `EventsReconcile`'s Notes
+  branch ever sets - so all 106 are Notes Items, not Dates Events. **The engine holds only 56
+  active Items.** The other 50 are todos Kevin deleted on the phone: the engine soft-deletes them,
+  `EventsReconcile` never propagates that deletion to the server, and the replica keeps serving
+  them back as live rows on every refetch.
+
+So the sweep read 50 historical, already-deleted todos plus 1 genuinely overdue one, and told
+Kevin he had missed all 51, today, in a live write to his own Supabase project.
+
+**Fixed in this pass:** `AlarmScheduler.rescheduleAll` no longer calls `markMissed` at all on the
+configured (replica-backed) path - see that function's own doc comment and
+`AlarmScheduler.shouldSweepMarkMissed`. Under-claiming (a real overdue reminder loses its missed
+badge on a configured install until this is ruled properly) on purpose: a withheld badge is a much
+smaller harm than 51 invented ones written to a server. **Kevin's live rows were left untouched** -
+clearing them is his call, and needed this fix in place first regardless.
+
+**NOT fixed here, and UNRULED:** `EventsReconcile` never propagates an engine-side deletion to the
+server at all, in either direction - a deleted todo simply stays live in `events_replica` forever,
+resurrected by the next refill. This is the actual root cause; the sweep guard above only stops
+this one symptom (retroactive missed-marking) from writing to the server. Fixing the propagation
+itself needs a ruling on whether the phone is allowed to delete rows on the server, which is not a
+call to make inside a bugfix - ticket 04's mirror-reimport hole is the standing cautionary
+precedent for a client deleting or resurrecting server state without that ruling in hand first.

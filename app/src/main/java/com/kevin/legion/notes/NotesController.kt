@@ -107,6 +107,12 @@ object NotesController {
         return SupabaseEventsBackend(client)
     }
 
+    /** Public sibling of [backend] that only exposes the yes/no, never the backend instance
+     * itself - [AlarmScheduler.rescheduleAll] needs to know which path it is walking (engine vs.
+     * replica) without needing an [EventsBackend] to call anything on. See that function's own
+     * doc comment for why the answer changes what the start-up sweep is allowed to do. */
+    fun isBackendConfigured(context: Context): Boolean = backend(context) != null
+
     /** Name of the one and only list - see [theList]. Kept as a name rather than dropped because
      * the row still has a `name` column and a sync peer still reads it. */
     const val LIST_NAME = "List"

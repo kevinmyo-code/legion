@@ -206,6 +206,33 @@ class NotesControllerBackendTest {
     }
 
     @Test
+    fun `configured start-up sweep never calls markMissed - the 2026-08-26 incident guard`() = runBlocking {
+        // Real-world shape of the incident (see AlarmScheduler.rescheduleAll's own doc comment
+        // and .scratch/backend-erp/issues/11-notes-write-path-rewire.md): an item whose startsAt
+        // is long in the past and whose missedAt is still null, exactly what the replica served
+        // back for 50 deleted-on-phone-but-not-on-server todos plus one genuinely overdue one.
+        val backend = FakeEventsBackend()
+        NotesController.backendOverride = backend
+        val item = NotesController.addItem(context, listId = 1L, text = "long overdue")
+        NotesController.setTime(context, item, startsAt = 1_000L, endsAt = null, allDay = false)
+        backend.upsertCalls = 0 // isolate the sweep's own writes from addItem/setTime's setup calls
+
+        AlarmScheduler.rescheduleAll(context)
+
+        assertEquals(
+            "the sweep must not write to the backend at all on the configured path",
+            0,
+            backend.upsertCalls,
+        )
+        val reread = NotesController.itemById(context, item.id)
+        assertEquals(
+            "missedAt must stay null - the app must not assert a miss it never held",
+            null,
+            reread?.missedAt,
+        )
+    }
+
+    @Test
     fun `removeItem on a failed softDelete does not delete the replica row and does not report success`() = runBlocking {
         val backend = FakeEventsBackend()
         NotesController.backendOverride = backend

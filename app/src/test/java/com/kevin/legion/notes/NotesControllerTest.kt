@@ -134,6 +134,23 @@ class NotesControllerTest {
     }
 
     @Test
+    fun `unconfigured start-up sweep still marks a genuinely overdue item missed`() = runBlocking {
+        // Regression guard in the OTHER direction from NotesControllerBackendTest's incident test:
+        // AlarmScheduler.shouldSweepMarkMissed must not silently disable the real feature for the
+        // majority of installs that carry no Supabase configuration at all. NotesController.backend
+        // resolves to null here (no backendOverride, no Supabase project configured in the test
+        // environment), so this exercises the same unconfigured/engine path production runs on.
+        val list = NotesController.theList(context)
+        val item = NotesController.addItem(context, list.id, "genuinely overdue")
+        NotesController.setTime(context, item, startsAt = 1_000L, endsAt = null, allDay = false)
+
+        AlarmScheduler.rescheduleAll(context)
+
+        val reread = NotesController.itemById(context, item.id)
+        assertTrue("an overdue one-off item must still be marked missed", reread?.missedAt != null)
+    }
+
+    @Test
     fun `markLogged is readable back off the engine record - the new loggedAt field`() = runBlocking {
         val list = NotesController.theList(context)
         val item = NotesController.addItem(context, list.id, "Plan: swept line")

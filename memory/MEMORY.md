@@ -285,6 +285,64 @@ tested against the actual BofA rewording case), and **the shared gate corpus** -
 `tools/gate_corpus_sql.py`, reporting **"GATE CORPUS: all 13 cases agree"** against the real RPCs,
 rolled back to 0 rows. Ticket 03 ruling 2's condition is now met rather than owed.
 
+## 2026-08-27 - THE SCHEMA IS LIVE, AND A REGRESSION I CAUSED IS OPEN
+
+**Fleet's server schema is APPLIED AND VERIFIED** (`b628802`). All three outstanding migrations ran
+against `HomeERPBackend` through the dashboard, driven by browser automation at Kevin's request.
+Verified by querying `pg_class`/`pg_policy`, not the success panel: 8 tables, RLS on, one policy
+each, `anon` revoked at the GRANT level, `authenticated` granted. `events.vehicle_id` (uuid) and
+`events.structured_meta` (jsonb) confirmed.
+
+**Trap for next time:** the editor warns "creates tables without enabling RLS" because
+`apply_household_rls` runs inside an `execute format` its analyzer cannot read. **"Run without RLS"
+is the correct button** - it means "do not append Supabase's own statements". The other option
+silently diverges the live schema from the committed file.
+
+**OPEN AND MINE: 51 rows on Kevin's live project were falsely marked missed.** `e91a296` made
+`NotesController` read the replica when configured, so `AlarmScheduler`'s start-up sweep saw the
+merged 325-row events table instead of 56 Notes Items and marked 51 historical rows missed, writing
+through to Supabase. Home went from "1 missed" to "51 missed". Stamped 08:37:19-08:37:21, sequential
+- the exact moment the build first launched. **The data was not cleared: that is Kevin's call and
+needs the guard landed first, or the next sweep re-marks them.**
+
+**Two consequences of ruling 4's merge that the ticket never followed through**, both unruled:
+1. **No discriminator** between "a reminder LEGION owns" and "an appointment in the same table".
+   `source='legion'` does NOT work - all 106 legion rows carry `sortOrder`, so all are Notes Items.
+2. **`EventsReconcile` never propagates an engine deletion to the server.** The engine holds 56
+   active Items; the server holds 106. The other 50 are todos Kevin deleted, resurrected by the
+   replica refill and served back as live reminders. Needs a ruling on whether the phone may delete
+   server rows; ticket 04's mirror-reimport hole is the cautionary precedent.
+
+**LEDGER RE-INGESTION (ticket 12) - dry run RUN on the A25, three findings:**
+- **The SAF folder grants died with the `connectedAndroidTest` uninstall**, same as the receipt
+  photos and the Keystore key. `dumpsys` showed zero persisted grants for LEGION on a device listing
+  409 for other packages.
+- **Re-granting restores them exactly.** Re-picked `Bank Statements/USA Bank Statements` and the tree
+  URI matched a saved one character for character. Drive document ids are stable.
+- **`connect()` deliberately releases the previous grant**, so the app holds ONE folder at a time.
+  Kevin's 107 files span FOUR folders, so re-ingestion is four sequential passes, and each makes the
+  previous folder unreachable again.
+- **A bug the dry run found in itself:** `ingested_files.driveFileId` is a KEY, not an ADDRESS -
+  `stripAccountPrefix` removes Drive's `acc=N;` so the key stays stable across accounts, and
+  `IngestScanner` opens bytes with the FULL id. The dry run used the stored key as an address.
+  Fixed (`reattachAccountPrefix`), **still owed a real on-device re-run.**
+
+**NO BANK FORMAT PRINTS A COMBINED TOTAL** (`c53b167`). Every one prints per-section figures instead,
+so `statedTotalCents` is null for every bank parser and only the LLM-produced CSV can supply all
+three anchors. `BofaStatementParser` went from zero anchors to two real ones. **Open question for
+Kevin:** ruling 4 demanded three anchors for an LLM-produced CSV where lines and total share one
+nondeterministic source. A deterministically parsed bank PDF is not that case. Does it qualify on
+two read anchors plus `closing - opening == sum(lines)`, or fall to rule 7 provisional?
+
+**Ledger wave 1 (`0b53bd2`) uploads ONLY provisional rows.** The verified history cannot go up:
+`ledger_txn_header_matches_provenance` needs a `statements` header whose anchors were never
+persisted. Ticket 08's defect at the scale of the whole ledger.
+
+**Also today:** ticket 08 was already built and merely stale; ticket 09's wording half landed
+(`ccb868a`) plus a live bug where `GeneratedFormScreen` claimed "PHOTO ON FILE" from a path it never
+checked; the Google importer was widened (`6e36ef1`) with two defects found on review that would
+have silently dropped what it rescued.
+
 **RESUME POINT (updated 2026-08-26, late): Phase 4 aspect 5 - the FLEET CUTOVER, ticket 10.**
 Places, Pantry and Notes+Dates are all cut over. Ledger is last. Phase 3 is DONE (`bea1cef`,
 `9a7fa57`).

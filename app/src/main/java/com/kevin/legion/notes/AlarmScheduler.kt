@@ -102,10 +102,25 @@ object AlarmScheduler {
      * Safe to call from all three of its callers back to back: nothing here depends on which
      * caller invoked it, and re-scheduling an already-correctly-scheduled item is a no-op cost
      * (same `PendingIntent`, same target time, `AlarmManager` just replaces it with itself).
+     *
+     * **INCIDENT, 2026-08-26 (real device, `.scratch/backend-erp/issues/11-notes-write-path-rewire.md`).**
+     * The Notes write-path cutover (`e91a296`) put this sweep on top of the Supabase replica for a
+     * configured install. `EventsReconcile` never propagates an engine-side deletion to the server
+     * (a separate, unruled gap - see that ticket), so a phone with 50 deleted todos still carried
+     * 50 "live" rows in `events_replica`. The very first sweep on the new build walked all 50,
+     * found their `startsAt` long in the past, and called [NotesController.markMissed] on every
+     * one - writing 51 brand-new `missedAt` timestamps straight to Kevin's live Supabase project in
+     * about two seconds. **The app told him he had missed 51 reminders he never held** - the exact
+     * shape CLAUDE.md section 7's outcome-verb rule forbids for speech, now caught doing it to
+     * data. [shouldSweepMarkMissed] is the guard: on the configured path this sweep schedules
+     * or skips, but never asserts a miss, because it cannot tell a genuinely-overdue row from one
+     * the replica is only serving back because a deletion never made it to the server. Do not
+     * remove this as dead defensiveness - it is the fix for a real write that already happened.
      */
     suspend fun rescheduleAll(context: Context) {
         val db = CarDatabase.getDatabase(context)
         val now = System.currentTimeMillis()
+        val backendConfigured = NotesController.isBackendConfigured(context)
 
         for (item in NotesController.allWithTimeTrigger(context)) {
             if (item.done) continue
@@ -113,7 +128,9 @@ object AlarmScheduler {
 
             if (item.repeatKind == null) {
                 if (startsAt < now) {
-                    if (item.missedAt == null) NotesController.markMissed(context, item.id)
+                    if (item.missedAt == null && shouldSweepMarkMissed(backendConfigured)) {
+                        NotesController.markMissed(context, item.id)
+                    }
                     continue
                 }
                 schedule(context, item, startsAt)
@@ -126,4 +143,15 @@ object AlarmScheduler {
             }
         }
     }
+
+    /**
+     * Pure decision behind the incident guard documented on [rescheduleAll] - split out so the
+     * rule ("never retroactively mark missed on the replica-backed path") is testable without an
+     * `AlarmManager`/`PendingIntent`, neither of which this file otherwise lets a plain JVM test
+     * near. `false` on the configured path is under-claiming on purpose (CLAUDE.md section 7): a
+     * missed badge the app silently withholds is a far smaller harm than one it invented and wrote
+     * to a server, and it is the direction to err in while `EventsReconcile`'s deletion-propagation
+     * gap (the actual root cause) stays unruled.
+     */
+    internal fun shouldSweepMarkMissed(backendConfigured: Boolean): Boolean = !backendConfigured
 }
