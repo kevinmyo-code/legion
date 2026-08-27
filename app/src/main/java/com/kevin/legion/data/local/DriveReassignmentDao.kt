@@ -26,4 +26,10 @@ interface DriveReassignmentDao {
      */
     @Query("DELETE FROM drive_reassignments WHERE updatedAt < :cutoff")
     suspend fun purgeOlderThan(cutoff: Long)
+
+    /** Looks a reassignment rule up by its portable [DriveReassignment.syncId] - the
+     * insert-if-absent replica check [com.kevin.legion.backend.FleetReconcile] uses, same role
+     * `CodeEventDao.getBySyncId` plays for `CodeEvent`. */
+    @Query("SELECT * FROM drive_reassignments WHERE syncId = :syncId LIMIT 1")
+    suspend fun getBySyncId(syncId: String): DriveReassignment?
 }

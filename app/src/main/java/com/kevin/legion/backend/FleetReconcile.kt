@@ -1,14 +1,17 @@
 package com.kevin.legion.backend
 
 import android.content.Context
+import com.kevin.legion.data.local.BuildEntry
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ChassisQuirk
 import com.kevin.legion.data.local.CodeClearEvent
 import com.kevin.legion.data.local.CodeEvent
 import com.kevin.legion.data.local.Drive
+import com.kevin.legion.data.local.DriveReassignment
 import com.kevin.legion.data.local.OilAnalysis
 import com.kevin.legion.data.local.ServiceHistoryReplica
 import com.kevin.legion.data.local.VehicleReplica
+import com.kevin.legion.data.local.VehicleSpec
 import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.fleet.FleetAspectSeeder
 import com.kevin.legion.engine.fleet.FleetRecordBridge
@@ -102,6 +105,41 @@ import org.json.JSONObject
  * never persisted, never an alarm request code, never synced. Insert-if-absent-by-syncId (mirroring
  * [DriveDao.getBySyncId]) is therefore sufficient; there is nothing here shaped like
  * [com.kevin.legion.data.local.EventReplica]'s alarm-request-code exposure.
+ *
+ * **This wave (backend-erp ticket 10, the last three tables): `vehicle_specs`, `build_entries`,
+ * `drive_reassignments`.** All three reuse their legacy Room table as their own replica, no
+ * migration needed - checked the same way wave 2/3 checked their own id exposure:
+ * [com.kevin.legion.data.local.BuildEntry.id] is read in exactly one place outside its own DAO
+ * (`ui/fleet/BuildSheetScreen.kt`'s `items(currentEntries, key = { it.id })` Compose list key, the
+ * same in-memory-only shape [CodeEvent.id]'s own paragraph above already established is safe), and
+ * [com.kevin.legion.data.local.DriveReassignment.id] has no reader at all outside its own DAO.
+ * Neither is an alarm request code or a synced value, so insert-if-absent-by-syncId is sufficient
+ * for both, same as the four tables above.
+ *
+ * `vehicle_specs` follows [ChassisQuirk]'s REPLACE-per-key shape rather than an insert-if-absent
+ * one - one row per vehicle, [com.kevin.legion.data.local.VehicleSpec]'s own local
+ * `@PrimaryKey val vehicleId` already carries REPLACE-on-conflict semantics
+ * (`VehicleSpecDao.upsertStamped`), so re-decoding a VIN and re-uploading the merged row is
+ * expected to overwrite the server row wholesale, not to be treated as a duplicate. Unlike
+ * `chassis_quirks` it DOES have a vehicle to resolve, through the same `guidByObdMac` ->
+ * `serverIdByOriginGuid` chain as everything else in this file - a spec whose vehicle has not
+ * migrated yet is skipped, not uploaded with a guessed parent.
+ *
+ * `build_entries` follows [Drive]'s insert-if-absent-by-syncId shape exactly - user-authored,
+ * never edited once logged (`BuildEntryDao`'s own doc comment on why `delete` is dormant), same
+ * "no update, no delete, so a repost is always free" posture. `Double` dollars ([BuildEntry.cost])
+ * become `Long` cents at this upload boundary (CLAUDE.md section 3) via [dollarsToCentsOrNull],
+ * rounding to the nearest cent rather than truncating - a straight `(it * 100).toLong()` would
+ * silently drop a cent on a value like `19.995`, where float multiplication alone already leaves
+ * `1999.9999999999998` sitting under the truncation boundary.
+ *
+ * **`drive_reassignments` is ticket 10's own "matters most" table**, and the only one in this wave
+ * with TWO vehicle references to resolve per row - the car a window is CURRENTLY attributed to and
+ * the car it should be attributed to instead. Both must resolve or the whole row is skipped: a
+ * reassignment that uploaded with one leg guessed would misattribute a drive to the wrong car,
+ * which is precisely the fact this table exists to correct, not a value this reconcile is willing
+ * to approximate. It ships in the same aspect-engine cutover as `drives` (already live since wave
+ * 1) so a fact and its correction never sit in two different systems, per ticket 06's ruling.
  */
 object FleetReconcile {
 
@@ -112,6 +150,16 @@ object FleetReconcile {
     // oil_analyses is the one table that diverges - see OilAnalysisUpload's own doc comment.
     private const val PROVENANCE_DETERMINISTIC = "DETERMINISTIC"
     private const val PROVENANCE_USER = "USER"
+
+    /** [BuildEntry.cost] is `Double` dollars; `build_entries.cost_cents` is `Long` cents. Rounds to
+     * the nearest cent rather than truncating - `(it * 100).toLong()` would silently drop a cent on
+     * a value like `19.995`, which float multiplication alone already leaves at
+     * `1999.9999999999998`, under the truncation boundary. Costs are never negative here (the
+     * server column's own `cost_cents >= 0` check, and [BuildSheetController.add]'s only caller
+     * never passes a negative figure), so "round half up" and "round half to even" agree in
+     * practice - `Math.round` was picked for being the obvious one-line choice, not for tie-breaking
+     * behaviour that never actually gets exercised. */
+    private fun dollarsToCentsOrNull(dollars: Double?): Long? = dollars?.let { Math.round(it * 100.0) }
 
 
     /** @param engineCount active engine `Vehicle` records this device had.
@@ -210,6 +258,26 @@ object FleetReconcile {
         val isClean: Boolean get() = onlyOnSource.isEmpty() && onlyOnServer.isEmpty()
     }
 
+    /** `vehicle_specs` follows [ChassisQuirkReport]'s REPLACE shape (a re-run's `uploaded` count
+     * does not drop to 0 the way [VehicleReport.uploaded]'s check-then-insert count does) but,
+     * unlike chassis quirks, DOES have a vehicle to resolve per row - so it also carries
+     * [skippedUnresolvedVehicle], the same third bucket [ServiceHistoryReport] and [DriveReport]
+     * use. [onlyOnSource]/[onlyOnServer] compare server-uuid identity, not `vehicleId` (obdMac)
+     * directly - a source spec only enters that comparison once its vehicle has actually resolved,
+     * mirroring [ServiceHistoryReport]'s own "a skipped row is excluded from the diff, not a diff
+     * failure" reasoning. */
+    data class VehicleSpecReport(
+        val sourceCount: Int,
+        val uploaded: Int,
+        val skippedUnresolvedVehicle: List<String>,
+        val serverCountAfter: Int,
+        val replicaCountAfter: Int,
+        val onlyOnSource: List<String>,
+        val onlyOnServer: List<String>,
+    ) {
+        val isClean: Boolean get() = onlyOnSource.isEmpty() && onlyOnServer.isEmpty()
+    }
+
     data class Report(
         val vehicle: VehicleReport,
         val serviceHistory: ServiceHistoryReport,
@@ -218,9 +286,17 @@ object FleetReconcile {
         val codeClearEvent: SyncIdReport,
         val oilAnalysis: SyncIdReport,
         val chassisQuirk: ChassisQuirkReport,
+        val vehicleSpec: VehicleSpecReport,
+        /** `build_entries` - same [SyncIdReport] shape as [codeEvent]/[oilAnalysis], reused rather
+         * than a bespoke type because the fields are identical. */
+        val buildEntry: SyncIdReport,
+        /** `drive_reassignments` - same [SyncIdReport] shape; [SyncIdReport.skippedUnresolvedVehicle]
+         * here means "either leg's vehicle" per this object's own class doc. */
+        val driveReassignment: SyncIdReport,
     ) {
         val isClean: Boolean get() = vehicle.isClean && serviceHistory.isClean && drive.isClean &&
-            codeEvent.isClean && codeClearEvent.isClean && oilAnalysis.isClean && chassisQuirk.isClean
+            codeEvent.isClean && codeClearEvent.isClean && oilAnalysis.isClean && chassisQuirk.isClean &&
+            vehicleSpec.isClean && buildEntry.isClean && driveReassignment.isClean
     }
 
     private data class EngineVehicle(
@@ -731,6 +807,227 @@ object FleetReconcile {
             onlyOnServer = (serverChassisQuirkIds - sourceChassisQuirkIds).sorted(),
         )
 
+        // ---- VehicleSpec ------------------------------------------------------------------------
+        // vehicle_specs has no independent syncId (SyncEngine.kt's naturalPk = true entry keys it
+        // on vehicleId itself) - a genuine REPLACE-per-vehicle table, same shape as chassis_quirks
+        // but WITH a vehicle to resolve, using the same guidByObdMac -> serverIdByOriginGuid chain
+        // built for Drives above (ticket 10's "no second resolver" instruction).
+        val sourceVehicleSpecs = db.vehicleSpecDao().getAll()
+        var vehicleSpecsUploaded = 0
+        val skippedVehicleSpecs = mutableListOf<String>()
+        val resolvedVehicleSpecServerIds = mutableSetOf<String>()
+        for (spec in sourceVehicleSpecs) {
+            val vehicleServerId = guidByObdMac[spec.vehicleId]?.let { serverIdByOriginGuid[it] }
+            if (vehicleServerId == null) {
+                skippedVehicleSpecs.add("${spec.vehicleId}: vehicle not yet migrated")
+                continue
+            }
+            resolvedVehicleSpecServerIds.add(vehicleServerId)
+            backend.upsertVehicleSpec(
+                VehicleSpecUpload(
+                    vehicleServerId = vehicleServerId,
+                    vin = spec.vin,
+                    engineCylinders = spec.engineCylinders,
+                    displacementL = spec.displacementL,
+                    engineHp = spec.engineHp,
+                    engineConfig = spec.engineConfig,
+                    fuelType = spec.fuelType,
+                    transmissionStyle = spec.transmissionStyle,
+                    transmissionSpeeds = spec.transmissionSpeeds,
+                    driveType = spec.driveType,
+                    bodyClass = spec.bodyClass,
+                    doors = spec.doors,
+                    series = spec.series,
+                    vehicleType = spec.vehicleType,
+                    manufacturer = spec.manufacturer,
+                    plantCity = spec.plantCity,
+                    plantCountry = spec.plantCountry,
+                    paintColor = spec.paintColor,
+                    paintCode = spec.paintCode,
+                    buildNotes = spec.buildNotes,
+                    // 0L is the phone's "never decoded" sentinel (VehicleSpec.decodedAt's own doc
+                    // comment) - a real null crosses the wire instead, same posture as
+                    // ChassisQuirk's -1 sentinels above.
+                    decodedAtMs = spec.decodedAt.takeIf { it != 0L },
+                    provenance = PROVENANCE_DETERMINISTIC,
+                ),
+            ).getOrElse { return Result.failure(it) }
+            vehicleSpecsUploaded++
+        }
+
+        val serverVehicleSpecs = backend.fetchVehicleSpecs().getOrElse { return Result.failure(it) }
+        for (row in serverVehicleSpecs) {
+            val vehicleObdMac = guidByServerId[row.vehicleServerId]?.let { obdMacByGuid[it] } ?: continue
+            // A genuine REPLACE-on-conflict refill, matching ChassisQuirk's - the local
+            // vehicle_specs table already carries these local REPLACE semantics
+            // (VehicleSpecDao.upsertStamped), so a wholesale field-for-field overwrite here is
+            // correct, not a clobber. upsertStamped (not upsert) is used deliberately - the
+            // server's own updated_at is carried forward as this row's clock, not overwritten with
+            // the local device's current time.
+            db.vehicleSpecDao().upsertStamped(
+                VehicleSpec(
+                    vehicleId = vehicleObdMac,
+                    vin = row.vin,
+                    engineCylinders = row.engineCylinders,
+                    displacementL = row.displacementL,
+                    engineHp = row.engineHp,
+                    engineConfig = row.engineConfig,
+                    fuelType = row.fuelType,
+                    transmissionStyle = row.transmissionStyle,
+                    transmissionSpeeds = row.transmissionSpeeds,
+                    driveType = row.driveType,
+                    bodyClass = row.bodyClass,
+                    doors = row.doors,
+                    series = row.series,
+                    vehicleType = row.vehicleType,
+                    manufacturer = row.manufacturer,
+                    plantCity = row.plantCity,
+                    plantCountry = row.plantCountry,
+                    paintColor = row.paintColor,
+                    paintCode = row.paintCode,
+                    buildNotes = row.buildNotes,
+                    decodedAt = row.decodedAtMs ?: 0L,
+                    updatedAt = row.updatedAtMs,
+                ),
+            )
+        }
+
+        val serverVehicleSpecServerIds = serverVehicleSpecs.map { it.vehicleServerId }.toSet()
+        val vehicleSpecReport = VehicleSpecReport(
+            sourceCount = sourceVehicleSpecs.size,
+            uploaded = vehicleSpecsUploaded,
+            skippedUnresolvedVehicle = skippedVehicleSpecs,
+            serverCountAfter = serverVehicleSpecs.size,
+            replicaCountAfter = db.vehicleSpecDao().getAll().size,
+            onlyOnSource = (resolvedVehicleSpecServerIds - serverVehicleSpecServerIds).sorted(),
+            onlyOnServer = (serverVehicleSpecServerIds - resolvedVehicleSpecServerIds).sorted(),
+        )
+
+        // ---- BuildEntry -------------------------------------------------------------------------
+        // Same obdMac -> guid -> server uuid chain as every table above, and the same insert-if-
+        // absent-by-syncId replica shape Drive/CodeEvent use - see this object's own class doc for
+        // why BuildEntry.id needs no id-preserving upsert.
+        val sourceBuildEntries = db.buildEntryDao().getAllForUpload()
+        var buildEntriesUploaded = 0
+        val skippedBuildEntries = mutableListOf<String>()
+        for (entry in sourceBuildEntries) {
+            val vehicleServerId = guidByObdMac[entry.vehicleId]?.let { serverIdByOriginGuid[it] }
+            if (vehicleServerId == null) {
+                skippedBuildEntries.add("${entry.syncId}: vehicle not yet migrated")
+                continue
+            }
+            backend.upsertBuildEntry(
+                BuildEntryUpload(
+                    syncId = entry.syncId,
+                    vehicleServerId = vehicleServerId,
+                    entryType = entry.type,
+                    title = entry.title,
+                    vendor = entry.vendor,
+                    partNumber = entry.partNumber,
+                    // Double dollars -> Long cents, CLAUDE.md section 3 - see dollarsToCentsOrNull's
+                    // own doc comment for the rounding decision.
+                    costCents = dollarsToCentsOrNull(entry.cost),
+                    loggedAtMs = entry.date,
+                    mileage = entry.mileage,
+                    notes = entry.notes,
+                    provenance = PROVENANCE_USER,
+                ),
+            ).getOrElse { return Result.failure(it) }
+            buildEntriesUploaded++
+        }
+
+        val serverBuildEntries = backend.fetchActiveBuildEntries().getOrElse { return Result.failure(it) }
+        for (row in serverBuildEntries) {
+            val vehicleObdMac = guidByServerId[row.vehicleServerId]?.let { obdMacByGuid[it] } ?: continue
+            if (db.buildEntryDao().getBySyncId(row.syncId) == null) {
+                db.buildEntryDao().insert(
+                    BuildEntry(
+                        vehicleId = vehicleObdMac,
+                        type = row.entryType,
+                        title = row.title,
+                        vendor = row.vendor,
+                        partNumber = row.partNumber,
+                        // Long cents -> Double dollars, the reverse of the upload conversion above.
+                        cost = row.costCents?.let { it / 100.0 },
+                        date = row.loggedAtMs,
+                        mileage = row.mileage,
+                        notes = row.notes,
+                        syncId = row.syncId,
+                    ),
+                )
+            }
+        }
+
+        val sourceBuildEntrySyncIds = sourceBuildEntries.map { it.syncId }.toSet()
+        val serverBuildEntrySyncIds = serverBuildEntries.map { it.syncId }.toSet()
+        val buildEntryReport = SyncIdReport(
+            sourceCount = sourceBuildEntries.size,
+            uploaded = buildEntriesUploaded,
+            skippedUnresolvedVehicle = skippedBuildEntries,
+            serverCountAfter = serverBuildEntries.size,
+            replicaCountAfter = db.buildEntryDao().getAllForUpload().size,
+            onlyOnSource = (sourceBuildEntrySyncIds - serverBuildEntrySyncIds).sorted(),
+            onlyOnServer = (serverBuildEntrySyncIds - sourceBuildEntrySyncIds).sorted(),
+        )
+
+        // ---- DriveReassignment --------------------------------------------------------------------
+        // The one table in this wave with TWO vehicle references to resolve - ticket 10 names this
+        // the serious case, not a cosmetic one: a reassignment naming an unresolved OLD or NEW
+        // vehicle is skipped WHOLESALE, never uploaded with one leg guessed, because that would
+        // misattribute a drive to the wrong car, exactly the fact this table exists to correct.
+        val sourceDriveReassignments = db.driveReassignmentDao().getAll()
+        var driveReassignmentsUploaded = 0
+        val skippedDriveReassignments = mutableListOf<String>()
+        for (rule in sourceDriveReassignments) {
+            val fromServerId = guidByObdMac[rule.vehicleId]?.let { serverIdByOriginGuid[it] }
+            val toServerId = guidByObdMac[rule.newVehicleId]?.let { serverIdByOriginGuid[it] }
+            if (fromServerId == null || toServerId == null) {
+                skippedDriveReassignments.add("${rule.syncId}: vehicle not yet migrated")
+                continue
+            }
+            backend.upsertDriveReassignment(
+                DriveReassignmentUpload(
+                    syncId = rule.syncId,
+                    vehicleServerId = fromServerId,
+                    newVehicleServerId = toServerId,
+                    fromAtMs = rule.fromMs,
+                    toAtMs = rule.toMs,
+                    provenance = PROVENANCE_USER,
+                ),
+            ).getOrElse { return Result.failure(it) }
+            driveReassignmentsUploaded++
+        }
+
+        val serverDriveReassignments = backend.fetchActiveDriveReassignments().getOrElse { return Result.failure(it) }
+        for (row in serverDriveReassignments) {
+            val fromObdMac = guidByServerId[row.vehicleServerId]?.let { obdMacByGuid[it] } ?: continue
+            val toObdMac = guidByServerId[row.newVehicleServerId]?.let { obdMacByGuid[it] } ?: continue
+            if (db.driveReassignmentDao().getBySyncId(row.syncId) == null) {
+                db.driveReassignmentDao().insert(
+                    DriveReassignment(
+                        syncId = row.syncId,
+                        vehicleId = fromObdMac,
+                        fromMs = row.fromAtMs,
+                        toMs = row.toAtMs,
+                        newVehicleId = toObdMac,
+                        updatedAt = row.updatedAtMs,
+                    ),
+                )
+            }
+        }
+
+        val sourceDriveReassignmentSyncIds = sourceDriveReassignments.map { it.syncId }.toSet()
+        val serverDriveReassignmentSyncIds = serverDriveReassignments.map { it.syncId }.toSet()
+        val driveReassignmentReport = SyncIdReport(
+            sourceCount = sourceDriveReassignments.size,
+            uploaded = driveReassignmentsUploaded,
+            skippedUnresolvedVehicle = skippedDriveReassignments,
+            serverCountAfter = serverDriveReassignments.size,
+            replicaCountAfter = db.driveReassignmentDao().getAll().size,
+            onlyOnSource = (sourceDriveReassignmentSyncIds - serverDriveReassignmentSyncIds).sorted(),
+            onlyOnServer = (serverDriveReassignmentSyncIds - sourceDriveReassignmentSyncIds).sorted(),
+        )
+
         return Result.success(
             Report(
                 vehicleReport,
@@ -740,6 +1037,9 @@ object FleetReconcile {
                 codeClearEventReport,
                 oilAnalysisReport,
                 chassisQuirkReport,
+                vehicleSpecReport,
+                buildEntryReport,
+                driveReassignmentReport,
             ),
         )
     }

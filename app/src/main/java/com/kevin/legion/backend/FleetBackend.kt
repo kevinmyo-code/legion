@@ -354,23 +354,180 @@ data class ChassisQuirkUpload(
 )
 
 /**
- * The Phase 4 fleet seam for `vehicles`, `service_history`, `drives` (wave 1) plus
- * `code_events`, `code_clear_events`, `oil_analyses` and `chassis_quirks` (this wave) -
+ * A `public.vehicle_specs` row as Postgres reports it (this wave's migration). **[vehicleServerId]
+ * IS the primary key, not a separate row id** - `vehicle_id uuid primary key references
+ * public.vehicles (id)`, one row per vehicle, matching [com.kevin.legion.data.local.VehicleSpec]'s
+ * own `@PrimaryKey val vehicleId` and its DAO's REPLACE-on-conflict local semantics. No
+ * `deleted_at` column (the table's own comment: it is a per-vehicle encyclopedia entry, refreshed in
+ * place, not a soft-deletable fact log) - so unlike every `syncId`-keyed sibling in this file there is
+ * no `deleted` field here either.
+ *
+ * [decodedAtMs] is `null` for "never decoded" - [com.kevin.legion.data.local.VehicleSpec.decodedAt]'s
+ * `0L` sentinel is translated to a real absence by [FleetReconcile] before this type is ever
+ * constructed, same posture as [RemoteChassisQuirk.mileageLow]'s `-1`.
+ */
+data class RemoteVehicleSpec(
+    val vehicleServerId: String,
+    val vin: String,
+    val engineCylinders: Int?,
+    val displacementL: Double?,
+    val engineHp: Int?,
+    val engineConfig: String,
+    val fuelType: String,
+    val transmissionStyle: String,
+    val transmissionSpeeds: String,
+    val driveType: String,
+    val bodyClass: String,
+    val doors: Int?,
+    val series: String,
+    val vehicleType: String,
+    val manufacturer: String,
+    val plantCity: String,
+    val plantCountry: String,
+    val paintColor: String,
+    val paintCode: String,
+    val buildNotes: String,
+    val decodedAtMs: Long?,
+    val provenance: String,
+    val updatedAtMs: Long,
+)
+
+/** One [com.kevin.legion.data.local.VehicleSpec] row, ready for [FleetBackend.upsertVehicleSpec] -
+ * a genuine REPLACE-on-conflict by [vehicleServerId], always writing every column, matching
+ * [ChassisQuirkUpload]'s "content can legitimately change between calls" posture (a re-decode
+ * refreshing the vPIC fields is exactly that kind of legitimate change). [provenance] is asserted
+ * by [FleetReconcile], same "the phone asserts it explicitly" posture as [CodeEventUpload] - always
+ * `"DETERMINISTIC"` per the migration file's header: mostly a machine VIN decode, the three manual
+ * paint/notes columns notwithstanding. */
+data class VehicleSpecUpload(
+    val vehicleServerId: String,
+    val vin: String,
+    val engineCylinders: Int?,
+    val displacementL: Double?,
+    val engineHp: Int?,
+    val engineConfig: String,
+    val fuelType: String,
+    val transmissionStyle: String,
+    val transmissionSpeeds: String,
+    val driveType: String,
+    val bodyClass: String,
+    val doors: Int?,
+    val series: String,
+    val vehicleType: String,
+    val manufacturer: String,
+    val plantCity: String,
+    val plantCountry: String,
+    val paintColor: String,
+    val paintCode: String,
+    val buildNotes: String,
+    val decodedAtMs: Long?,
+    val provenance: String,
+)
+
+/**
+ * A `public.build_entries` row as Postgres reports it (this wave's migration). [costCents] is
+ * `Long` cents (CLAUDE.md section 3) - [com.kevin.legion.data.local.BuildEntry.cost] is a `Double`
+ * of DOLLARS on the phone (that class's own doc comment records why it was left that way rather
+ * than migrated alongside `ServiceRecord.costCents`), so the dollars-to-cents conversion happens at
+ * this upload boundary, in [FleetReconcile] for the same testability reason as every other
+ * conversion in this wave. `null` means the driver logged what was done with no dollar figure,
+ * never `0`, which would assert it was free.
+ */
+data class RemoteBuildEntry(
+    val serverId: String,
+    val syncId: String,
+    val vehicleServerId: String,
+    val entryType: String,
+    val title: String,
+    val vendor: String,
+    val partNumber: String,
+    val costCents: Long?,
+    val loggedAtMs: Long,
+    val mileage: Int?,
+    val notes: String,
+    val provenance: String,
+    val updatedAtMs: Long,
+    val deleted: Boolean,
+)
+
+/** One [com.kevin.legion.data.local.BuildEntry] row, ready for [FleetBackend.upsertBuildEntry] -
+ * same "genuine upsert by natural key, nothing to check for first" shape as [DriveUpload]: the phone
+ * never edits a build entry once logged (`BuildEntryDao`'s own doc comment on why `delete` is
+ * dormant), so every call here is either a fresh insert or a harmless re-post of identical data.
+ * [provenance] is asserted by [FleetReconcile] - always `"USER"`, a driver-authored logbook line, per
+ * the migration file's own header. */
+data class BuildEntryUpload(
+    val syncId: String,
+    val vehicleServerId: String,
+    val entryType: String,
+    val title: String,
+    val vendor: String,
+    val partNumber: String,
+    val costCents: Long?,
+    val loggedAtMs: Long,
+    val mileage: Int?,
+    val notes: String,
+    val provenance: String,
+)
+
+/**
+ * A `public.drive_reassignments` row as Postgres reports it (this wave's migration). A correction
+ * RULE over `drives`, not a mutation of the drives themselves - see
+ * [com.kevin.legion.data.local.DriveReassignment]'s own class doc for why a rule, not a re-key, is
+ * the only safe shape given `drives`' UNION sync semantics. [vehicleServerId] names the car the
+ * window is CURRENTLY (mis)attributed to, [newVehicleServerId] the car it should be attributed to
+ * instead - ticket 10 calls a lost or mis-parented row here the serious case, not a cosmetic one,
+ * because it is the record of a drive having been attributed to the wrong car.
+ */
+data class RemoteDriveReassignment(
+    val serverId: String,
+    val syncId: String,
+    val vehicleServerId: String,
+    val newVehicleServerId: String,
+    val fromAtMs: Long,
+    val toAtMs: Long,
+    val provenance: String,
+    val updatedAtMs: Long,
+    val deleted: Boolean,
+)
+
+/** One [com.kevin.legion.data.local.DriveReassignment] row, ready for
+ * [FleetBackend.upsertDriveReassignment] - same upsert-by-syncId shape as [BuildEntryUpload].
+ * [provenance] is asserted by [FleetReconcile] - always `"USER"`, a correction a person made in the
+ * car manager UI, per the migration file's own header. */
+data class DriveReassignmentUpload(
+    val syncId: String,
+    val vehicleServerId: String,
+    val newVehicleServerId: String,
+    val fromAtMs: Long,
+    val toAtMs: Long,
+    val provenance: String,
+)
+
+/**
+ * The Phase 4 fleet seam for `vehicles`, `service_history`, `drives` (wave 1), `code_events`,
+ * `code_clear_events`, `oil_analyses`, `chassis_quirks` (wave 3), and `vehicle_specs`,
+ * `build_entries`, `drive_reassignments` (this wave, the last three tables) -
  * `.scratch/backend-erp/issues/10-fleet-cutover.md`. Mirrors [PlacesBackend]/[EventsBackend]'s shape
  * exactly: narrow, no [io.github.jan.supabase.SupabaseClient] in any signature, every function
- * returns [Result] rather than throwing or returning a nullable. `vehicle_specs`, `build_entries`
- * and `drive_reassignments` are deliberately NOT here - a later wave, per ticket 10's own scope note.
+ * returns [Result] rather than throwing or returning a nullable. Every fleet table now has a server
+ * home.
  *
  * **The identity split that makes this interface interesting.** `vehicles` and `service_history`
  * are engine records (`FleetAspectSeeder` defines Vehicle, ServiceHistory, MaintenanceSchedule), so
  * they upload keyed on `origin_guid` from `records.guid`, exactly like [EventsBackend.uploadMigratedEvent]/
- * [PantryBackend.uploadMigratedReceipt]. `drives`, `code_events`, `code_clear_events` and
- * `oil_analyses` are NOT engine records - each already carried its own portable `syncId` before any
- * of this existed (confirmed against `sync/SyncEngine.kt`'s registry and each `@Entity`), so all four
- * upsert by that natural key instead, exactly like [PlacesBackend.upsert]'s `label`. `chassis_quirks`
- * is a THIRD shape again: household-shared reference data keyed on its own natural `quirkId`, with no
- * `vehicleServerId` at all. Three identity shapes in one aspect, because the aspect genuinely has
- * three, not because this interface picked one arbitrarily.
+ * [PantryBackend.uploadMigratedReceipt]. `drives`, `code_events`, `code_clear_events`,
+ * `oil_analyses`, `build_entries` and `drive_reassignments` are NOT engine records - each already
+ * carried its own portable `syncId` before any of this existed (confirmed against
+ * `sync/SyncEngine.kt`'s registry and each `@Entity`), so all six upsert by that natural key instead,
+ * exactly like [PlacesBackend.upsert]'s `label`. `chassis_quirks` is a THIRD shape: household-shared
+ * reference data keyed on its own natural `quirkId`, with no `vehicleServerId` at all. `vehicle_specs`
+ * is a FOURTH shape again - keyed on its own natural `vehicleId` (`SyncEngine.kt`'s `naturalPk = true`
+ * entry), one row per vehicle, `vehicle_id` doubling as both primary key and the foreign key to
+ * `vehicles.id` - so unlike `chassis_quirks` it DOES carry a `vehicleServerId`, but unlike the six
+ * `syncId`-keyed tables that id IS the whole identity, not a parallel key alongside a separate row id.
+ * Four identity shapes in one aspect, because the aspect genuinely has four, not because this
+ * interface picked one arbitrarily.
  */
 interface FleetBackend {
     /** Every active (not soft-deleted) vehicle, server-side. Used to refresh a Room replica once
@@ -439,6 +596,35 @@ interface FleetBackend {
      * every column, per [ChassisQuirkUpload]'s own doc comment on why this table cannot use
      * insert-if-absent the way [upsertCodeEvent] and its siblings do. */
     suspend fun upsertChassisQuirk(quirk: ChassisQuirkUpload): Result<RemoteChassisQuirk>
+
+    /** Every vehicle_spec row, server-side (no `deleted_at` filter - see [RemoteVehicleSpec]'s own
+     * doc comment for why this table has no such column). Used to refresh the Room replica (the
+     * `vehicle_specs` table itself, which already plays this dual role locally via
+     * `VehicleSpecDao.upsertStamped`'s `OnConflictStrategy.REPLACE`). */
+    suspend fun fetchVehicleSpecs(): Result<List<RemoteVehicleSpec>>
+
+    /** Upserts by [VehicleSpecUpload.vehicleServerId] (`vehicle_specs.vehicle_id`'s own PK/FK) - a
+     * genuine REPLACE-on-conflict, always overwriting every column, same posture as
+     * [upsertChassisQuirk]. */
+    suspend fun upsertVehicleSpec(spec: VehicleSpecUpload): Result<RemoteVehicleSpec>
+
+    /** Every active (not soft-deleted) build-sheet entry, server-side. Used to refresh the Room
+     * replica (the `build_entries` table itself - same "no separate replica table needed" reasoning
+     * as [fetchActiveDrives]). Never called from a hot-path read. */
+    suspend fun fetchActiveBuildEntries(): Result<List<RemoteBuildEntry>>
+
+    /** Upserts by [BuildEntryUpload.syncId] (`build_entries.sync_id`'s own unique constraint) - same
+     * "no update, no delete, so a repost is always free" posture as [upsertDrive]. */
+    suspend fun upsertBuildEntry(entry: BuildEntryUpload): Result<RemoteBuildEntry>
+
+    /** Every active (not soft-deleted) drive-reassignment correction, server-side. Same replica role
+     * as [fetchActiveBuildEntries]. */
+    suspend fun fetchActiveDriveReassignments(): Result<List<RemoteDriveReassignment>>
+
+    /** Upserts by [DriveReassignmentUpload.syncId] - same shape as [upsertBuildEntry]. A client
+     * retry of an already-applied correction is a legitimate no-op re-post, per the migration file's
+     * own comment on why this table carries no CHECK against naming the same vehicle twice. */
+    suspend fun upsertDriveReassignment(reassignment: DriveReassignmentUpload): Result<RemoteDriveReassignment>
 }
 
 /** Thrown (wrapped in [Result.failure]) by [SupabaseFleetBackend] for every failure branch - owned

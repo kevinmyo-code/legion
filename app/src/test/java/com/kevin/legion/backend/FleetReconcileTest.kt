@@ -1,13 +1,16 @@
 package com.kevin.legion.backend
 
+import com.kevin.legion.data.local.BuildEntry
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ChassisQuirk
 import com.kevin.legion.data.local.CodeClearEvent
 import com.kevin.legion.data.local.CodeEvent
 import com.kevin.legion.data.local.Drive
+import com.kevin.legion.data.local.DriveReassignment
 import com.kevin.legion.data.local.OilAnalysis
 import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.data.local.Vehicle
+import com.kevin.legion.data.local.VehicleSpec
 import com.kevin.legion.engine.RecordStore
 import com.kevin.legion.engine.fleet.FleetAspectSeeder
 import com.kevin.legion.engine.fleet.FleetRecordBridge
@@ -41,6 +44,9 @@ class FleetReconcileTest {
         val codeClearEvents = mutableMapOf<String, RemoteCodeClearEvent>() // keyed by syncId
         val oilAnalyses = mutableMapOf<String, RemoteOilAnalysis>() // keyed by syncId
         val chassisQuirks = mutableMapOf<String, RemoteChassisQuirk>() // keyed by quirkId
+        val vehicleSpecs = mutableMapOf<String, RemoteVehicleSpec>() // keyed by vehicleServerId
+        val buildEntries = mutableMapOf<String, RemoteBuildEntry>() // keyed by syncId
+        val driveReassignments = mutableMapOf<String, RemoteDriveReassignment>() // keyed by syncId
         var clock = 1_000L
         private var vehicleCounter = 0
         private var serviceHistoryCounter = 0
@@ -48,6 +54,8 @@ class FleetReconcileTest {
         private var codeEventCounter = 0
         private var codeClearEventCounter = 0
         private var oilAnalysisCounter = 0
+        private var buildEntryCounter = 0
+        private var driveReassignmentCounter = 0
 
         /** Set to make the NEXT [uploadMigratedVehicle] call fail - the short-circuit test's hook. */
         var failNextVehicleUpload = false
@@ -55,6 +63,10 @@ class FleetReconcileTest {
         /** Set to make the NEXT [upsertCodeEvent] call fail - the four-new-tables short-circuit
          * test's hook, mirroring [failNextVehicleUpload]'s shape one section down. */
         var failNextCodeEventUpload = false
+
+        /** Set to make the NEXT [upsertBuildEntry] call fail - this wave's own short-circuit test
+         * hook, mirroring [failNextCodeEventUpload]'s shape. */
+        var failNextBuildEntryUpload = false
 
         override suspend fun fetchActiveVehicles(): Result<List<RemoteVehicle>> =
             Result.success(vehicles.values.filterNot { it.deleted })
@@ -244,6 +256,92 @@ class FleetReconcileTest {
             chassisQuirks[quirk.quirkId] = row
             return Result.success(row)
         }
+
+        override suspend fun fetchVehicleSpecs(): Result<List<RemoteVehicleSpec>> =
+            Result.success(vehicleSpecs.values.toList())
+
+        override suspend fun upsertVehicleSpec(spec: VehicleSpecUpload): Result<RemoteVehicleSpec> {
+            val row = RemoteVehicleSpec(
+                vehicleServerId = spec.vehicleServerId,
+                vin = spec.vin,
+                engineCylinders = spec.engineCylinders,
+                displacementL = spec.displacementL,
+                engineHp = spec.engineHp,
+                engineConfig = spec.engineConfig,
+                fuelType = spec.fuelType,
+                transmissionStyle = spec.transmissionStyle,
+                transmissionSpeeds = spec.transmissionSpeeds,
+                driveType = spec.driveType,
+                bodyClass = spec.bodyClass,
+                doors = spec.doors,
+                series = spec.series,
+                vehicleType = spec.vehicleType,
+                manufacturer = spec.manufacturer,
+                plantCity = spec.plantCity,
+                plantCountry = spec.plantCountry,
+                paintColor = spec.paintColor,
+                paintCode = spec.paintCode,
+                buildNotes = spec.buildNotes,
+                decodedAtMs = spec.decodedAtMs,
+                // Records what the reconcile actually sent - same posture as the code_events fake's
+                // own comment above.
+                provenance = spec.provenance,
+                updatedAtMs = ++clock,
+            )
+            // A genuine REPLACE-on-conflict, matching SupabaseFleetBackend.upsertVehicleSpec's real
+            // ON CONFLICT(vehicle_id) DO UPDATE - always overwrites, same shape as chassis quirks.
+            vehicleSpecs[spec.vehicleServerId] = row
+            return Result.success(row)
+        }
+
+        override suspend fun fetchActiveBuildEntries(): Result<List<RemoteBuildEntry>> =
+            Result.success(buildEntries.values.filterNot { it.deleted })
+
+        override suspend fun upsertBuildEntry(entry: BuildEntryUpload): Result<RemoteBuildEntry> {
+            if (failNextBuildEntryUpload) {
+                failNextBuildEntryUpload = false
+                return Result.failure(FleetBackendException("simulated transport failure"))
+            }
+            val existing = buildEntries[entry.syncId]
+            val row = RemoteBuildEntry(
+                serverId = existing?.serverId ?: "build_entry-${++buildEntryCounter}",
+                syncId = entry.syncId,
+                vehicleServerId = entry.vehicleServerId,
+                entryType = entry.entryType,
+                title = entry.title,
+                vendor = entry.vendor,
+                partNumber = entry.partNumber,
+                costCents = entry.costCents,
+                loggedAtMs = entry.loggedAtMs,
+                mileage = entry.mileage,
+                notes = entry.notes,
+                provenance = entry.provenance,
+                updatedAtMs = ++clock,
+                deleted = false,
+            )
+            buildEntries[entry.syncId] = row
+            return Result.success(row)
+        }
+
+        override suspend fun fetchActiveDriveReassignments(): Result<List<RemoteDriveReassignment>> =
+            Result.success(driveReassignments.values.filterNot { it.deleted })
+
+        override suspend fun upsertDriveReassignment(reassignment: DriveReassignmentUpload): Result<RemoteDriveReassignment> {
+            val existing = driveReassignments[reassignment.syncId]
+            val row = RemoteDriveReassignment(
+                serverId = existing?.serverId ?: "drive_reassignment-${++driveReassignmentCounter}",
+                syncId = reassignment.syncId,
+                vehicleServerId = reassignment.vehicleServerId,
+                newVehicleServerId = reassignment.newVehicleServerId,
+                fromAtMs = reassignment.fromAtMs,
+                toAtMs = reassignment.toAtMs,
+                provenance = reassignment.provenance,
+                updatedAtMs = ++clock,
+                deleted = false,
+            )
+            driveReassignments[reassignment.syncId] = row
+            return Result.success(row)
+        }
     }
 
     @Before
@@ -412,6 +510,42 @@ class FleetReconcileTest {
                     costHigh = costHigh,
                 ),
             ),
+        )
+    }
+
+    private suspend fun createVehicleSpec(
+        vehicleId: String,
+        vin: String = "1J4FF68S6WL123456",
+        engineCylinders: Int? = 6,
+        decodedAt: Long = 0L,
+    ) {
+        CarDatabase.getDatabase(context).vehicleSpecDao().upsertStamped(
+            VehicleSpec(vehicleId = vehicleId, vin = vin, engineCylinders = engineCylinders, decodedAt = decodedAt),
+        )
+    }
+
+    private suspend fun createBuildEntry(
+        vehicleId: String,
+        syncId: String,
+        type: String = "mod",
+        title: String = "Lift kit",
+        cost: Double? = 19.995,
+        date: Long = 1_000L,
+    ) {
+        CarDatabase.getDatabase(context).buildEntryDao().insert(
+            BuildEntry(vehicleId = vehicleId, type = type, title = title, cost = cost, date = date, syncId = syncId),
+        )
+    }
+
+    private suspend fun createDriveReassignment(
+        vehicleId: String,
+        newVehicleId: String,
+        syncId: String,
+        fromMs: Long = 1_000L,
+        toMs: Long = 2_000L,
+    ) {
+        CarDatabase.getDatabase(context).driveReassignmentDao().insert(
+            DriveReassignment(syncId = syncId, vehicleId = vehicleId, fromMs = fromMs, toMs = toMs, newVehicleId = newVehicleId),
         )
     }
 
@@ -818,5 +952,233 @@ class FleetReconcileTest {
         assertEquals(1, db.codeClearEventDao().getAllForUpload().size)
         assertEquals(1, db.oilAnalysisDao().getAllForUpload().size)
         assertEquals(1, db.chassisQuirkDao().count())
+    }
+
+    // ---- This wave: vehicle_specs / build_entries / drive_reassignments ---------------------------
+
+    @Test
+    fun `the last three tables map field-for-field, with the correct provenance per table`() = runBlocking {
+        val obdMac = "AA:11:BB:22:CC:33"
+        val newObdMac = "DD:44:EE:55:FF:66"
+        createEngineVehicle(obdMac)
+        createEngineVehicle(newObdMac, name = "Wagoneer", make = "Jeep", model = "Wagoneer", year = 2001)
+        createLegacyVehicle(obdMac)
+        createLegacyVehicle(newObdMac)
+        createVehicleSpec(vehicleId = obdMac, vin = "1J4FF68S6WL654321", engineCylinders = 6, decodedAt = 5_000L)
+        createBuildEntry(vehicleId = obdMac, syncId = "build-1", type = "mod", title = "Lift kit", cost = 249.5)
+        createDriveReassignment(vehicleId = obdMac, newVehicleId = newObdMac, syncId = "reassign-1", fromMs = 1_000L, toMs = 2_000L)
+        val backend = FakeFleetBackend()
+
+        val report = FleetReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(1, report.vehicleSpec.uploaded)
+        val specRow = backend.vehicleSpecs.values.single()
+        assertEquals("1J4FF68S6WL654321", specRow.vin)
+        assertEquals(6, specRow.engineCylinders)
+        assertEquals(5_000L, specRow.decodedAtMs)
+        assertEquals("DETERMINISTIC", specRow.provenance)
+
+        assertEquals(1, report.buildEntry.uploaded)
+        val buildRow = backend.buildEntries.values.single()
+        assertEquals("mod", buildRow.entryType)
+        assertEquals("Lift kit", buildRow.title)
+        assertEquals(24_950L, buildRow.costCents)
+        assertEquals("USER", buildRow.provenance)
+
+        assertEquals(1, report.driveReassignment.uploaded)
+        val reassignRow = backend.driveReassignments.values.single()
+        val fromVehicleServerId = backend.vehicles.values.single { it.name == "Jeep" }.serverId
+        val toVehicleServerId = backend.vehicles.values.single { it.name == "Wagoneer" }.serverId
+        assertEquals(fromVehicleServerId, reassignRow.vehicleServerId)
+        assertEquals(toVehicleServerId, reassignRow.newVehicleServerId)
+        assertEquals(1_000L, reassignRow.fromAtMs)
+        assertEquals(2_000L, reassignRow.toAtMs)
+        assertEquals("USER", reassignRow.provenance)
+
+        assertTrue(report.isClean)
+    }
+
+    @Test
+    fun `the 0L decodedAt sentinel becomes a real NULL on the wire, and comes back as 0L`() = runBlocking {
+        val obdMac = "00:11:22:33:44:55"
+        createEngineVehicle(obdMac)
+        createLegacyVehicle(obdMac)
+        createVehicleSpec(vehicleId = obdMac, decodedAt = 0L)
+        val backend = FakeFleetBackend()
+
+        FleetReconcile.run(context, backend).getOrThrow()
+
+        assertNull(backend.vehicleSpecs.getValue(backend.vehicles.values.single().serverId).decodedAtMs)
+
+        // And the round trip back into the local replica must restore 0L, not leave a real null
+        // sitting in a column VehicleSpec.decodedAt declares non-nullable with a 0L default.
+        val local = CarDatabase.getDatabase(context).vehicleSpecDao().get(obdMac)
+        assertEquals(0L, local?.decodedAt)
+    }
+
+    @Test
+    fun `dollars round to the nearest cent rather than truncating`() = runBlocking {
+        val obdMac = "66:77:88:99:AA:BB"
+        createEngineVehicle(obdMac)
+        createLegacyVehicle(obdMac)
+        // 19.995 dollars: float multiplication alone leaves 100 * 19.995 = 1999.9999999999998,
+        // which a plain truncating (it * 100).toLong() would floor to 1999 cents - a full cent
+        // short of the real value. Math.round must land on 2000.
+        createBuildEntry(vehicleId = obdMac, syncId = "build-rounding", cost = 19.995)
+        val backend = FakeFleetBackend()
+
+        FleetReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(2_000L, backend.buildEntries.getValue("build-rounding").costCents)
+    }
+
+    @Test
+    fun `cents come back as dollars for a build entry this device only ever saw server-side`() = runBlocking {
+        // Unlike the round-trip tests above (which never overwrite an already-present local row -
+        // insert-if-absent, per this object's own class doc), this fixture puts the row on the FAKE
+        // BACKEND directly, never locally, so the reconcile's download branch is what has to create
+        // it - exercising the cents -> dollars conversion for real rather than trivially agreeing
+        // with a local value nothing touched.
+        val obdMac = "13:57:9B:DF:24:68"
+        createEngineVehicle(obdMac)
+        createLegacyVehicle(obdMac)
+        val backend = FakeFleetBackend()
+        // Prime the vehicle mapping first so the fixture below can name a real server vehicle id.
+        FleetReconcile.run(context, backend).getOrThrow()
+        val vehicleServerId = backend.vehicles.values.single().serverId
+        backend.upsertBuildEntry(
+            BuildEntryUpload(
+                syncId = "build-server-only",
+                vehicleServerId = vehicleServerId,
+                entryType = "part",
+                title = "Oil filter",
+                vendor = "",
+                partNumber = "",
+                costCents = 2_000L,
+                loggedAtMs = 1_000L,
+                mileage = null,
+                notes = "",
+                provenance = "USER",
+            ),
+        )
+
+        FleetReconcile.run(context, backend).getOrThrow()
+
+        val local = CarDatabase.getDatabase(context).buildEntryDao().getBySyncId("build-server-only")
+        assertEquals(20.0, local?.cost!!, 0.0001)
+    }
+
+    @Test
+    fun `a null cost survives as null rather than becoming 0 cents`() = runBlocking {
+        val obdMac = "CC:DD:EE:FF:00:11"
+        createEngineVehicle(obdMac)
+        createLegacyVehicle(obdMac)
+        createBuildEntry(vehicleId = obdMac, syncId = "build-no-cost", cost = null)
+        val backend = FakeFleetBackend()
+
+        FleetReconcile.run(context, backend).getOrThrow()
+
+        assertNull(backend.buildEntries.getValue("build-no-cost").costCents)
+        val local = CarDatabase.getDatabase(context).buildEntryDao().getBySyncId("build-no-cost")
+        assertNull(local?.cost)
+    }
+
+    @Test
+    fun `a drive reassignment naming an unresolved NEW vehicle is skipped entirely, never uploaded with one leg guessed`() = runBlocking {
+        val obdMac = "12:34:56:78:9A:BC"
+        createEngineVehicle(obdMac)
+        createLegacyVehicle(obdMac)
+        // newVehicleId names a car with no engine record at all - the "not yet migrated" case.
+        createDriveReassignment(vehicleId = obdMac, newVehicleId = "unregistered-obd-mac", syncId = "reassign-orphan-new")
+        val backend = FakeFleetBackend()
+
+        val report = FleetReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(1, report.driveReassignment.sourceCount)
+        assertEquals(0, report.driveReassignment.uploaded)
+        assertEquals(1, report.driveReassignment.skippedUnresolvedVehicle.size)
+        assertTrue(backend.driveReassignments.isEmpty())
+    }
+
+    @Test
+    fun `a re-run of the last three tables is idempotent - identity is stable, not just counts`() = runBlocking {
+        val obdMac = "FE:DC:BA:98:76:54"
+        val newObdMac = "12:34:AB:CD:EF:01"
+        createEngineVehicle(obdMac)
+        createEngineVehicle(newObdMac, name = "Wagoneer", make = "Jeep", model = "Wagoneer", year = 2001)
+        createLegacyVehicle(obdMac)
+        createLegacyVehicle(newObdMac)
+        createVehicleSpec(vehicleId = obdMac)
+        createBuildEntry(vehicleId = obdMac, syncId = "build-idempotent")
+        createDriveReassignment(vehicleId = obdMac, newVehicleId = newObdMac, syncId = "reassign-idempotent")
+        val backend = FakeFleetBackend()
+
+        FleetReconcile.run(context, backend).getOrThrow()
+        val vehicleServerId = backend.vehicles.values.single { it.name == "Jeep" }.serverId
+        val specServerIdAfterFirst = backend.vehicleSpecs.getValue(vehicleServerId).vehicleServerId
+        val buildServerIdAfterFirst = backend.buildEntries.getValue("build-idempotent").serverId
+        val reassignServerIdAfterFirst = backend.driveReassignments.getValue("reassign-idempotent").serverId
+
+        val second = FleetReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(specServerIdAfterFirst, backend.vehicleSpecs.getValue(vehicleServerId).vehicleServerId)
+        assertEquals(buildServerIdAfterFirst, backend.buildEntries.getValue("build-idempotent").serverId)
+        assertEquals(reassignServerIdAfterFirst, backend.driveReassignments.getValue("reassign-idempotent").serverId)
+        assertEquals(1, backend.vehicleSpecs.size)
+        assertEquals(1, backend.buildEntries.size)
+        assertEquals(1, backend.driveReassignments.size)
+
+        assertEquals(1, second.vehicleSpec.uploaded) // REPLACE upsert, same "count never drops to 0" posture as chassis quirks
+        assertEquals(1, second.buildEntry.uploaded)
+        assertEquals(1, second.driveReassignment.uploaded)
+        assertTrue(second.isClean)
+
+        val db = CarDatabase.getDatabase(context)
+        assertEquals(1, db.vehicleSpecDao().getAll().size)
+        assertEquals(1, db.buildEntryDao().getAllForUpload().size)
+        assertEquals(1, db.driveReassignmentDao().getAll().size)
+    }
+
+    @Test
+    fun `a failed build-entry upload short-circuits before drive reassignments are attempted`() = runBlocking {
+        val obdMac = "AB:CD:EF:01:23:45"
+        val newObdMac = "45:23:01:EF:CD:AB"
+        createEngineVehicle(obdMac)
+        createEngineVehicle(newObdMac, name = "Wagoneer", make = "Jeep", model = "Wagoneer", year = 2001)
+        createLegacyVehicle(obdMac)
+        createLegacyVehicle(newObdMac)
+        createBuildEntry(vehicleId = obdMac, syncId = "build-fails")
+        createDriveReassignment(vehicleId = obdMac, newVehicleId = newObdMac, syncId = "reassign-never-attempted")
+        val backend = FakeFleetBackend()
+        backend.failNextBuildEntryUpload = true
+
+        val result = FleetReconcile.run(context, backend)
+
+        assertTrue(result.isFailure)
+        assertTrue(backend.buildEntries.isEmpty())
+        // Never ran, because the failure happened on build_entries, which this reconcile visits
+        // before drive_reassignments - a partial upload must never be reported as a low count.
+        assertTrue(backend.driveReassignments.isEmpty())
+    }
+
+    @Test
+    fun `the reconcile never deletes or trashes a vehicle_specs, build_entries or drive_reassignments source row`() = runBlocking {
+        val obdMac = "98:76:54:32:10:AA"
+        val newObdMac = "AA:10:32:54:76:98"
+        createEngineVehicle(obdMac)
+        createEngineVehicle(newObdMac, name = "Wagoneer", make = "Jeep", model = "Wagoneer", year = 2001)
+        createLegacyVehicle(obdMac)
+        createLegacyVehicle(newObdMac)
+        createVehicleSpec(vehicleId = obdMac)
+        createBuildEntry(vehicleId = obdMac, syncId = "build-survives")
+        createDriveReassignment(vehicleId = obdMac, newVehicleId = newObdMac, syncId = "reassign-survives")
+        val backend = FakeFleetBackend()
+
+        FleetReconcile.run(context, backend).getOrThrow()
+
+        val db = CarDatabase.getDatabase(context)
+        assertEquals(1, db.vehicleSpecDao().getAll().size)
+        assertEquals(1, db.buildEntryDao().getAllForUpload().size)
+        assertEquals(1, db.driveReassignmentDao().getAll().size)
     }
 }

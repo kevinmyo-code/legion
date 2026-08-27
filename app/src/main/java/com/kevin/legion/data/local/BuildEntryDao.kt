@@ -40,4 +40,17 @@ interface BuildEntryDao {
     /** Total entries for a vehicle - ticket 09's FLEET "NOT BUILT YET" block needs a real count, not a hardcoded one. */
     @Query("SELECT COUNT(*) FROM build_entries WHERE vehicleId = :vehicleId")
     suspend fun countForVehicle(vehicleId: String): Int
+
+    /** Every build entry on file, across all vehicles - the [com.kevin.legion.backend.FleetReconcile]
+     * upload source, mirroring `CodeEventDao.getAllForUpload`'s role for a table with no
+     * engine-record counterpart. */
+    @Query("SELECT * FROM build_entries")
+    suspend fun getAllForUpload(): List<BuildEntry>
+
+    /** Looks a build entry up by its portable [BuildEntry.syncId] - the insert-if-absent replica
+     * check [com.kevin.legion.backend.FleetReconcile] uses, same role `CodeEventDao.getBySyncId`
+     * plays for `CodeEvent`. A build entry is never edited once logged (this DAO's own doc comment
+     * on why `delete` is dormant), so "already present" is reason enough to skip re-inserting. */
+    @Query("SELECT * FROM build_entries WHERE syncId = :syncId LIMIT 1")
+    suspend fun getBySyncId(syncId: String): BuildEntry?
 }

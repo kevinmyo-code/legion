@@ -21,6 +21,9 @@ private const val CODE_EVENTS_TABLE = "code_events"
 private const val CODE_CLEAR_EVENTS_TABLE = "code_clear_events"
 private const val OIL_ANALYSES_TABLE = "oil_analyses"
 private const val CHASSIS_QUIRKS_TABLE = "chassis_quirks"
+private const val VEHICLE_SPECS_TABLE = "vehicle_specs"
+private const val BUILD_ENTRIES_TABLE = "build_entries"
+private const val DRIVE_REASSIGNMENTS_TABLE = "drive_reassignments"
 
 // codes/freeze_frame/codes_after are jsonb server-side but raw JSON TEXT at the FleetBackend
 // interface boundary (see RemoteCodeEvent's own doc comment) - these two helpers are the one place
@@ -434,11 +437,190 @@ private data class ChassisQuirkRowDto(
     )
 }
 
+/** The wire shape for [SupabaseFleetBackend.upsertVehicleSpec]. Every column always present, no
+ * defaults - same "this is a full REPLACE, not a partial PATCH" reasoning as [ChassisQuirkUpsertDto].
+ * `decoded_at` is the one nullable field here: [jsonOrNull]'s sibling [tsOrNull] does the
+ * `null`-when-never-decoded translation, sourced from [VehicleSpecUpload.decodedAtMs]. */
+@Serializable
+private data class VehicleSpecUpsertDto(
+    @SerialName("vehicle_id") val vehicleId: String,
+    val vin: String,
+    @SerialName("engine_cylinders") val engineCylinders: Int?,
+    @SerialName("displacement_l") val displacementL: Double?,
+    @SerialName("engine_hp") val engineHp: Int?,
+    @SerialName("engine_config") val engineConfig: String,
+    @SerialName("fuel_type") val fuelType: String,
+    @SerialName("transmission_style") val transmissionStyle: String,
+    @SerialName("transmission_speeds") val transmissionSpeeds: String,
+    @SerialName("drive_type") val driveType: String,
+    @SerialName("body_class") val bodyClass: String,
+    val doors: Int?,
+    val series: String,
+    @SerialName("vehicle_type") val vehicleType: String,
+    val manufacturer: String,
+    @SerialName("plant_city") val plantCity: String,
+    @SerialName("plant_country") val plantCountry: String,
+    @SerialName("paint_color") val paintColor: String,
+    @SerialName("paint_code") val paintCode: String,
+    @SerialName("build_notes") val buildNotes: String,
+    @SerialName("decoded_at") val decodedAt: String?,
+    val provenance: String,
+)
+
+/** The wire shape read back off `public.vehicle_specs` for every operation. No `deleted_at` -
+ * see [RemoteVehicleSpec]'s own doc comment for why this table has none. */
+@Serializable
+private data class VehicleSpecRowDto(
+    @SerialName("vehicle_id") val vehicleId: String,
+    val vin: String = "",
+    @SerialName("engine_cylinders") val engineCylinders: Int? = null,
+    @SerialName("displacement_l") val displacementL: Double? = null,
+    @SerialName("engine_hp") val engineHp: Int? = null,
+    @SerialName("engine_config") val engineConfig: String = "",
+    @SerialName("fuel_type") val fuelType: String = "",
+    @SerialName("transmission_style") val transmissionStyle: String = "",
+    @SerialName("transmission_speeds") val transmissionSpeeds: String = "",
+    @SerialName("drive_type") val driveType: String = "",
+    @SerialName("body_class") val bodyClass: String = "",
+    val doors: Int? = null,
+    val series: String = "",
+    @SerialName("vehicle_type") val vehicleType: String = "",
+    val manufacturer: String = "",
+    @SerialName("plant_city") val plantCity: String = "",
+    @SerialName("plant_country") val plantCountry: String = "",
+    @SerialName("paint_color") val paintColor: String = "",
+    @SerialName("paint_code") val paintCode: String = "",
+    @SerialName("build_notes") val buildNotes: String = "",
+    @SerialName("decoded_at") val decodedAt: String? = null,
+    val provenance: String,
+    @SerialName("updated_at") val updatedAt: String,
+) {
+    fun toRemoteVehicleSpec() = RemoteVehicleSpec(
+        vehicleServerId = vehicleId,
+        vin = vin,
+        engineCylinders = engineCylinders,
+        displacementL = displacementL,
+        engineHp = engineHp,
+        engineConfig = engineConfig,
+        fuelType = fuelType,
+        transmissionStyle = transmissionStyle,
+        transmissionSpeeds = transmissionSpeeds,
+        driveType = driveType,
+        bodyClass = bodyClass,
+        doors = doors,
+        series = series,
+        vehicleType = vehicleType,
+        manufacturer = manufacturer,
+        plantCity = plantCity,
+        plantCountry = plantCountry,
+        paintColor = paintColor,
+        paintCode = paintCode,
+        buildNotes = buildNotes,
+        decodedAtMs = parseTsOrNull(decodedAt),
+        provenance = provenance,
+        updatedAtMs = parseTs(updatedAt),
+    )
+}
+
+/** The wire shape for [SupabaseFleetBackend.upsertBuildEntry]. `cost_cents` is already converted
+ * (dollars -> cents) by the time [FleetReconcile] builds a [BuildEntryUpload] - this DTO only
+ * carries the already-cents `Long` across the wire, CLAUDE.md section 3. */
+@Serializable
+private data class BuildEntryUpsertDto(
+    @SerialName("sync_id") val syncId: String,
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("entry_type") val entryType: String,
+    val title: String,
+    val vendor: String,
+    @SerialName("part_number") val partNumber: String,
+    @SerialName("cost_cents") val costCents: Long?,
+    @SerialName("logged_at") val loggedAt: String,
+    val mileage: Int?,
+    val notes: String,
+    val provenance: String,
+)
+
+/** The wire shape read back off `public.build_entries` for every operation. */
+@Serializable
+private data class BuildEntryRowDto(
+    val id: String,
+    @SerialName("sync_id") val syncId: String,
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("entry_type") val entryType: String,
+    val title: String,
+    val vendor: String = "",
+    @SerialName("part_number") val partNumber: String = "",
+    @SerialName("cost_cents") val costCents: Long? = null,
+    @SerialName("logged_at") val loggedAt: String,
+    val mileage: Int? = null,
+    val notes: String = "",
+    val provenance: String,
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("deleted_at") val deletedAt: String? = null,
+) {
+    fun toRemoteBuildEntry() = RemoteBuildEntry(
+        serverId = id,
+        syncId = syncId,
+        vehicleServerId = vehicleId,
+        entryType = entryType,
+        title = title,
+        vendor = vendor,
+        partNumber = partNumber,
+        costCents = costCents,
+        loggedAtMs = parseTs(loggedAt),
+        mileage = mileage,
+        notes = notes,
+        provenance = provenance,
+        updatedAtMs = parseTs(updatedAt),
+        deleted = deletedAt != null,
+    )
+}
+
+/** The wire shape for [SupabaseFleetBackend.upsertDriveReassignment]. Two vehicle references, not
+ * one - see [RemoteDriveReassignment]'s own doc comment for why a correction rule needs both the
+ * current and the corrected car. */
+@Serializable
+private data class DriveReassignmentUpsertDto(
+    @SerialName("sync_id") val syncId: String,
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("new_vehicle_id") val newVehicleId: String,
+    @SerialName("from_at") val fromAt: String,
+    @SerialName("to_at") val toAt: String,
+    val provenance: String,
+)
+
+/** The wire shape read back off `public.drive_reassignments` for every operation. */
+@Serializable
+private data class DriveReassignmentRowDto(
+    val id: String,
+    @SerialName("sync_id") val syncId: String,
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("new_vehicle_id") val newVehicleId: String,
+    @SerialName("from_at") val fromAt: String,
+    @SerialName("to_at") val toAt: String,
+    val provenance: String,
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("deleted_at") val deletedAt: String? = null,
+) {
+    fun toRemoteDriveReassignment() = RemoteDriveReassignment(
+        serverId = id,
+        syncId = syncId,
+        vehicleServerId = vehicleId,
+        newVehicleServerId = newVehicleId,
+        fromAtMs = parseTs(fromAt),
+        toAtMs = parseTs(toAt),
+        provenance = provenance,
+        updatedAtMs = parseTs(updatedAt),
+        deleted = deletedAt != null,
+    )
+}
+
 /**
  * [FleetBackend]'s real implementation over Postgrest, against `public.vehicles`,
  * `public.service_history`, `public.drives` (`supabase/migrations/20260825000500_aspect_places_fleet.sql`,
  * `supabase/migrations/20260826000200_fleet_drives.sql`) and `public.code_events`,
- * `public.code_clear_events`, `public.oil_analyses`, `public.chassis_quirks`
+ * `public.code_clear_events`, `public.oil_analyses`, `public.chassis_quirks`, `public.vehicle_specs`,
+ * `public.build_entries`, `public.drive_reassignments`
  * (`supabase/migrations/20260826000600_fleet_diagnostics_specs_build.sql`). This is the deliberately
  * untested seam in the fleet cutover, same posture as [SupabasePlacesBackend]/[SupabaseEventsBackend] -
  * exercising it for real needs a live project. [FleetBackend] is the fake-friendly interface; every
@@ -706,5 +888,116 @@ class SupabaseFleetBackend(private val client: SupabaseClient) : FleetBackend {
                 }
                 .decodeSingle<ChassisQuirkRowDto>()
                 .toRemoteChassisQuirk()
+        }
+
+    override suspend fun fetchVehicleSpecs(): Result<List<RemoteVehicleSpec>> =
+        translating("load your vehicle specs") {
+            // No deleted_at filter - vehicle_specs has no such column (see RemoteVehicleSpec's own
+            // doc comment).
+            client.postgrest.from(VEHICLE_SPECS_TABLE)
+                .select()
+                .decodeList<VehicleSpecRowDto>()
+                .map { it.toRemoteVehicleSpec() }
+        }
+
+    override suspend fun upsertVehicleSpec(spec: VehicleSpecUpload): Result<RemoteVehicleSpec> =
+        translating("save that vehicle's spec sheet") {
+            client.postgrest.from(VEHICLE_SPECS_TABLE)
+                .upsert(
+                    VehicleSpecUpsertDto(
+                        vehicleId = spec.vehicleServerId,
+                        vin = spec.vin,
+                        engineCylinders = spec.engineCylinders,
+                        displacementL = spec.displacementL,
+                        engineHp = spec.engineHp,
+                        engineConfig = spec.engineConfig,
+                        fuelType = spec.fuelType,
+                        transmissionStyle = spec.transmissionStyle,
+                        transmissionSpeeds = spec.transmissionSpeeds,
+                        driveType = spec.driveType,
+                        bodyClass = spec.bodyClass,
+                        doors = spec.doors,
+                        series = spec.series,
+                        vehicleType = spec.vehicleType,
+                        manufacturer = spec.manufacturer,
+                        plantCity = spec.plantCity,
+                        plantCountry = spec.plantCountry,
+                        paintColor = spec.paintColor,
+                        paintCode = spec.paintCode,
+                        buildNotes = spec.buildNotes,
+                        decodedAt = tsOrNull(spec.decodedAtMs),
+                        provenance = spec.provenance,
+                    ),
+                ) {
+                    onConflict = "vehicle_id"
+                    select()
+                }
+                .decodeSingle<VehicleSpecRowDto>()
+                .toRemoteVehicleSpec()
+        }
+
+    override suspend fun fetchActiveBuildEntries(): Result<List<RemoteBuildEntry>> =
+        translating("load your build sheet") {
+            client.postgrest.from(BUILD_ENTRIES_TABLE)
+                .select {
+                    filter { filter("deleted_at", FilterOperator.IS, "null") }
+                }
+                .decodeList<BuildEntryRowDto>()
+                .map { it.toRemoteBuildEntry() }
+        }
+
+    override suspend fun upsertBuildEntry(entry: BuildEntryUpload): Result<RemoteBuildEntry> =
+        translating("save that build-sheet entry") {
+            client.postgrest.from(BUILD_ENTRIES_TABLE)
+                .upsert(
+                    BuildEntryUpsertDto(
+                        syncId = entry.syncId,
+                        vehicleId = entry.vehicleServerId,
+                        entryType = entry.entryType,
+                        title = entry.title,
+                        vendor = entry.vendor,
+                        partNumber = entry.partNumber,
+                        costCents = entry.costCents,
+                        loggedAt = Instant.ofEpochMilli(entry.loggedAtMs).toString(),
+                        mileage = entry.mileage,
+                        notes = entry.notes,
+                        provenance = entry.provenance,
+                    ),
+                ) {
+                    onConflict = "sync_id"
+                    select()
+                }
+                .decodeSingle<BuildEntryRowDto>()
+                .toRemoteBuildEntry()
+        }
+
+    override suspend fun fetchActiveDriveReassignments(): Result<List<RemoteDriveReassignment>> =
+        translating("load your drive-reassignment corrections") {
+            client.postgrest.from(DRIVE_REASSIGNMENTS_TABLE)
+                .select {
+                    filter { filter("deleted_at", FilterOperator.IS, "null") }
+                }
+                .decodeList<DriveReassignmentRowDto>()
+                .map { it.toRemoteDriveReassignment() }
+        }
+
+    override suspend fun upsertDriveReassignment(reassignment: DriveReassignmentUpload): Result<RemoteDriveReassignment> =
+        translating("save that drive-reassignment correction") {
+            client.postgrest.from(DRIVE_REASSIGNMENTS_TABLE)
+                .upsert(
+                    DriveReassignmentUpsertDto(
+                        syncId = reassignment.syncId,
+                        vehicleId = reassignment.vehicleServerId,
+                        newVehicleId = reassignment.newVehicleServerId,
+                        fromAt = Instant.ofEpochMilli(reassignment.fromAtMs).toString(),
+                        toAt = Instant.ofEpochMilli(reassignment.toAtMs).toString(),
+                        provenance = reassignment.provenance,
+                    ),
+                ) {
+                    onConflict = "sync_id"
+                    select()
+                }
+                .decodeSingle<DriveReassignmentRowDto>()
+                .toRemoteDriveReassignment()
         }
 }
