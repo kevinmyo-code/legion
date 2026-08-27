@@ -130,3 +130,46 @@ a printed total because their banks do not print one.
 So: does a DETERMINISTIC statement qualify with two read anchors plus the balance-delta check, or
 does it fall to rule 7 provisional for want of a third that its bank never printed? Ruling 4 did not
 contemplate this case; it was written about the CSV path.
+
+## RULED 2026-08-27: a DETERMINISTIC statement qualifies on two READ anchors plus the balance delta.
+
+Delegated to me; open to reversal, and this one amends a Kevin ruling so it deserves the most
+scrutiny of the four.
+
+**Ruling 4 demanded three anchors for a precisely stated reason:** an LLM-produced CSV has its lines
+AND its total from ONE nondeterministic process, so a self-consistent hallucination could satisfy a
+single-anchor check - section 4 rule 6's failure shape in a new place. Three separately printed
+numbers force the model to be consistently wrong three times.
+
+**That reasoning does not transfer to a deterministically parsed bank PDF, and the parser fix proved
+the case is unavoidable rather than merely inconvenient.** No bank format prints a single combined
+total - DBS prints separate withdrawal and deposit totals, BofA prints per-section figures. So the
+third anchor does not exist to be read, for any statement Kevin owns or will own.
+
+The risk profile is also different in kind. The lines and the printed balances come off the document
+by code, with no model anywhere in the path. `closing - opening == sum(lines)` is a real, external,
+falsifiable check against two numbers the BANK printed - not the document agreeing with itself
+through one nondeterministic step. Section 4 rule 1's "deterministic first" preference exists
+precisely because that path is more trustworthy, and it would be perverse to hold it to a bar only
+the less trustworthy path can clear.
+
+**So:** a statement whose extraction is DETERMINISTIC, which yields a read opening balance, a read
+closing balance, and satisfies `closing - opening == sum(lines)`, commits as `DETERMINISTIC`.
+`stated_total_cents` is genuinely NULL and is recorded as such rather than synthesised - a parser
+must never return `sum(lines)` as the stated total, which would make the check an identity.
+
+**Unchanged, and these are the load-bearing halves:**
+- **The LLM CSV path still requires all three.** Ruling 4 stands exactly as written for the path it
+  was written about. This amendment is scoped to deterministic extraction and nothing else.
+- **Two anchors is the floor, not a discount.** A deterministic statement yielding fewer than two
+  read anchors still falls to rule 7 provisional. `BofaCardCsvStatementParser` prints nothing and
+  stays provisional, permanently and correctly.
+- Rules 2 through 7 are untouched.
+
+**Server consequence:** `commit_statement` currently requires all three. It needs a deterministic
+branch accepting two plus the delta check, and `statements.stated_total_cents` must become nullable.
+The gate corpus gains cases for the new branch - a passing two-anchor deterministic statement AND one
+whose delta check fails - so the two implementations stay proven to agree rather than merely both
+existing.
+
+**This is what unblocks the ledger cutover**, and with it the last aspect in phase 4.

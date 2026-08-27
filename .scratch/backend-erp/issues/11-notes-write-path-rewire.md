@@ -173,3 +173,46 @@ this one symptom (retroactive missed-marking) from writing to the server. Fixing
 itself needs a ruling on whether the phone is allowed to delete rows on the server, which is not a
 call to make inside a bugfix - ticket 04's mirror-reimport hole is the standing cautionary
 precedent for a client deleting or resurrecting server state without that ruling in hand first.
+
+## RULED 2026-08-27, both open questions. Delegated to me; open to reversal.
+
+### 1. The discriminator: `events.kind`, set at upload from the originating record type
+
+The merged table needs to say what a row IS, because `NotesController` owns reminders and must not
+own appointments. `source='legion'` cannot do it - all 106 legion-source rows are Notes Items, and a
+legion-AUTHORED calendar event would be indistinguishable from a todo.
+
+**Add `kind text not null default 'reminder' check (kind in ('reminder','appointment'))`.** The
+reconcile sets it from the record type it read: a Notes `Item` is a `reminder`, a Dates `Event` is an
+`appointment`. The Google importer writes `appointment`.
+
+**Why a stored column rather than a derived rule:** the phone is what knows which record type a row
+came from, and after ruling 7 retires the engine that knowledge exists nowhere else. Deriving it
+later from shape - "has a sortOrder, therefore a todo" - is the kind of inference that works until
+the day it does not, and this is the column that decides whether an alarm fires.
+
+`NotesController`'s list and alarm reads filter `kind = 'reminder'`. That is what lets the start-up
+sweep guard from `6eb2c2b` come back off: the sweep was blocked because the read was wrong, and once
+the read is right the sweep is safe again. **Remove the guard in the same commit that lands the
+filter, not before and not after** - a guard left in place over a fixed read is dead code that
+someone eventually deletes without knowing what it was for.
+
+Default `'reminder'` is deliberate: a row whose origin is unknown is treated as something the app
+owns, which is the conservative direction. An appointment wrongly treated as a reminder is visible
+and annoying; a reminder wrongly treated as an appointment silently never fires.
+
+### 2. Deletion propagation: the reconcile soft-deletes what it uploaded and no longer has
+
+**Bounded by `origin_guid`, and that bound is the whole safety argument.** After the upload pass,
+any server row that HAS an `origin_guid` whose engine record is now trashed or absent gets
+`deleted_at` set. A row with a NULL `origin_guid` is never touched by this - it was created
+somewhere else (the laptop, a future surface) and this phone has no standing to delete it.
+
+Ticket 04's caution was a spreadsheet minting records past the gate - unbounded authority flowing
+INTO the system from an unverifiable source. This is the opposite and it is bounded: the phone can
+only retract rows it can prove it created, identified by the very column that records it created
+them. Soft delete, never hard, so the retraction is itself auditable.
+
+Without this, the 50 todos Kevin deleted stay live on the server forever and come back through every
+replica refill - which is the actual root cause of the 51 false "missed", not the sweep that reported
+them.

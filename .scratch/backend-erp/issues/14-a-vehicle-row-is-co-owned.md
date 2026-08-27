@@ -78,3 +78,42 @@ phone renders from the replica, every fleet table out of the `SyncEngine` regist
 until this is ruled.** And the registry drops in particular must not happen: ruling 05 ties each drop
 to the commit its writes move, and fleet writes have not moved. Dropping now would leave those
 tables with no sync channel at all, silently.
+
+## RULED 2026-08-27: option 3. Fleet is a PROJECTION, not a cutover.
+
+Kevin delegated this ("go end to end with recommendations. i trust u and its low stakes data"), so
+this is my call made on his authority and it is open to reversal. The reasoning is written out so a
+reversal has something to argue with.
+
+**Fleet reads stay legacy-primary. The Postgres tables are a one-way projection for the laptop
+surface and for durability, not a sync channel.**
+
+Why not option 2 (widen the server schema): ruling 10 kept persona, OBD live state and telemetry
+phone-only for stated reasons. Reopening that to solve a read-path inconvenience trades a
+deliberate boundary for convenience.
+
+Why not option 1 (local sidecar joined on read): it adds a table and a join to buy the phone
+something it already has. The phone is where fleet data originates - the dongle, the drives, the
+odometer. Reading it back from a replica of itself is motion without benefit.
+
+**What the projection actually buys, stated plainly so it is not mistaken for a full cutover:** the
+laptop surface can READ fleet data, and the data is durable in the household's own Postgres. What it
+does NOT buy: a fleet edit made on the laptop reaching the phone. If that is ever wanted, this
+ruling is the thing to reverse, and option 1 is the way to reverse it.
+
+**Consequence for ruling 05, and it is a real amendment.** Phase 4's "done means" bar - writes land
+server-side, the phone renders from the replica, every fleet table out of the `SyncEngine` registry -
+does not apply to fleet. **Fleet KEEPS its SyncEngine registry entries**, because Drive remains the
+channel that syncs fleet between two phones. That is not the two-channels-fighting case ruling 05
+forbids: Postgres is write-only from the phone here, an export rather than a second source of truth,
+so there is nothing for the two to disagree about. If fleet ever becomes bidirectional, the registry
+drops come back onto the table along with option 1.
+
+**The live-write identity question dissolves with this ruling.** A projection needs no live
+upsert-by-natural-key: the reconcile's `origin_guid`-keyed insert-if-absent is exactly the right
+primitive for a one-way export, and `origin_guid` keeps the meaning its own migration gave it.
+
+**What to build:** make `FleetReconcile` reachable (a `runFleet` action on the migration screen,
+beside places/pantry/events), so the projection can actually be run and diffed. Nothing touches a
+fleet read. `VehicleReplica`/`ServiceHistoryReplica` stay as the diff-and-audit surface they already
+are, which is what wave 2 built them to be.
