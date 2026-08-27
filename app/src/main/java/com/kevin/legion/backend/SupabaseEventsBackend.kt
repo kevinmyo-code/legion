@@ -35,7 +35,11 @@ private fun parseDateOrNull(s: String?): Long? = s?.let { LocalDate.parse(it).at
 @Serializable
 private data class EventUpsertDto(
     val title: String,
-    @SerialName("starts_at") val startsAt: String,
+    // Nullable (backend-erp ticket 07, RULED 2026-08-26 option 1): a genuinely dateless Notes
+    // Item is an ordinary row now, never a guessed date. Deliberately no "= null" default -
+    // see this file's own class doc for why every writable column must always be present on
+    // the wire, a clear-to-null included.
+    @SerialName("starts_at") val startsAt: String?,
     @SerialName("ends_at") val endsAt: String?,
     @SerialName("all_day") val allDay: Boolean,
     val location: String?,
@@ -64,7 +68,7 @@ private data class EventUpsertDto(
     companion object {
         fun from(fields: EventFields, originGuid: String? = null) = EventUpsertDto(
             title = fields.title,
-            startsAt = Instant.ofEpochMilli(fields.startsAtMs).toString(),
+            startsAt = tsOrNull(fields.startsAtMs),
             endsAt = tsOrNull(fields.endsAtMs),
             allDay = fields.allDay,
             location = fields.location,
@@ -98,7 +102,9 @@ private data class EventUpsertDto(
 private data class EventRowDto(
     val id: String,
     val title: String,
-    @SerialName("starts_at") val startsAt: String,
+    // Nullable, mirroring EventUpsertDto.startsAt's own comment - a genuinely dateless Notes
+    // Item round-trips as a null starts_at, never a guessed one.
+    @SerialName("starts_at") val startsAt: String? = null,
     @SerialName("ends_at") val endsAt: String? = null,
     @SerialName("all_day") val allDay: Boolean = false,
     val location: String? = null,
@@ -129,7 +135,7 @@ private data class EventRowDto(
     fun toRemoteEvent() = RemoteEvent(
         serverId = id,
         title = title,
-        startsAtMs = parseTs(startsAt),
+        startsAtMs = parseTsOrNull(startsAt),
         endsAtMs = parseTsOrNull(endsAt),
         allDay = allDay,
         location = location,

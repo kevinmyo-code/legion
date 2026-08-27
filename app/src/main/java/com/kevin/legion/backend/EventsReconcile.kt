@@ -20,40 +20,47 @@ import org.json.JSONObject
  * until [Report.isClean] - deleting the engine's copy is a LATER phase (phase 6).
  *
  * **The merge decision this file has to make, stated plainly (task brief's own ask).** `public.events`
- * declares exactly one required pair: `title` and `starts_at` (both `NOT NULL`). A Dates `Event`
- * record always has both - [DatesAspectSeeder.FIELD_START] is itself `required = true`. A Notes
- * `Item` record does NOT - a plain checklist entry with no time trigger at all has
- * [NotesAspectSeeder.FIELD_STARTS_AT] null, and CLAUDE.md's own estimate/anchor discipline forbids
- * inventing a fact the source record does not state (the same principle ticket 01 ruling 2 already
- * applied to a related but READ-side case: an undated todo may be RENDERED as "showing tomorrow",
- * but that inferred default is explicitly never stored as if it were a real date, and storage is
- * exactly what this migration would be doing). **The safest option, and the one this file takes:
- * a Notes `Item` with no `startsAt` is not uploaded at all.** It is reported in
- * [Report.skippedUndated], the run continues for every other record, and the item stays exactly
- * where it already lives - on the engine, read the unchanged way, until either it gains a date or
- * a later ticket revisits whether "one merged table" can also hold a genuinely dateless row (it
- * cannot, today, without either a schema change loosening `starts_at` or a policy decision to
- * synthesize one - and CLAUDE.md forbids the second outright). This mirrors
- * [PantryReconcile.Report.skippedUnreconciled]'s own precedent: a named, counted exception is not
- * a silent drop, and a non-empty list here is an EXPECTED steady state for as long as undated
- * checklist items exist, not a bug to chase to zero.
+ * declared exactly one required pair, `title` and `starts_at` (both `NOT NULL`), and a Notes `Item`
+ * record does not always have the second - a plain checklist entry with no time trigger at all has
+ * [NotesAspectSeeder.FIELD_STARTS_AT] null. **RULED 2026-08-26 (Kevin), ticket 07: `starts_at` is
+ * now NULLABLE server-side** (`supabase/migrations/20260826000400_events_starts_at_nullable.sql`,
+ * applied and verified against the live project - `title` is still `NOT NULL`). Measured against
+ * Kevin's real database, 53 of 56 Notes `Item` rows have no start date, so the old "skip it"
+ * posture below was leaving behind 95% of everything this aspect actually holds.
+ *
+ * **An undated Notes `Item` is now an ordinary row: uploaded with a null `starts_at`, never a
+ * guessed one.** CLAUDE.md section 4 rule 5 forbids inventing a fact the source record does not
+ * state (the same principle ticket 01 ruling 2 already applied to a related but READ-side case: an
+ * undated todo may be RENDERED as "showing tomorrow", but that inferred default is never stored as
+ * if it were real, and storage is exactly what synthesizing a date here would be). Storing NULL,
+ * not a sentinel and not a guess, is what keeps this within rule 5 while still giving the row a
+ * home. [Report.uploadedUndated] is a plain count of how many uploaded rows this run are undated -
+ * useful information, not an exception, and it does NOT hold [Report.isClean] false, same posture
+ * [PantryReconcile.Report.uploadedUnreconciled] already established for its own renamed
+ * once-was-an-exception field.
+ *
+ * **`starts_at` is the agenda's sort key, so nullable means every ordering query needs an explicit
+ * null policy.** The policy is NULLS LAST (a dated item outranks an undated one on a timeline) -
+ * see [com.kevin.legion.data.local.EventReplica]'s own doc comment for why that has to be spelled
+ * out by hand rather than relying on the `NULLS LAST` keyword.
  */
 object EventsReconcile {
 
     /**
      * @param datesEngineCount how many active Dates `Event` engine records existed.
-     * @param notesEngineCount how many active Notes `Item` engine records existed, BEFORE
-     *   [skippedUndated] removes the dateless ones from the upload set.
+     * @param notesEngineCount how many active Notes `Item` engine records existed.
      * @param uploaded how many of the reconciling records were genuinely NEW server-side this run
      *   (idempotent re-run reports 0 new, matching [PantryReconcile.Report.uploaded]'s own
      *   "already migrated" semantics - see [EventsBackend.uploadMigratedEvent]'s doc comment).
-     * @param skippedUndated one entry per Notes `Item` with no `startsAt` - see this object's own
-     *   class doc for why these are never uploaded, never invented a date for.
+     * @param uploadedUndated a plain COUNT of how many of [uploaded]'s rows this run are Notes
+     *   `Item`s with no `startsAt` - stored with a null `starts_at`, never a guessed one. Renamed
+     *   from the old `skippedUndated` (a list, held [isClean] false, was never uploaded at all) now
+     *   that ticket 07's ruling makes an undated item an ordinary row - see this object's own class
+     *   doc.
      * @param serverCountAfter the server's active event count after the upload.
      * @param replicaCountAfter the Room replica's active event count after being refreshed.
      * @param onlyOnEngine `records.guid`s the engine has (from either aspect, reconciling or not)
-     *   that the server does not - non-empty after a clean run only for guids also present in
-     *   [skippedUndated] (same posture as [PantryReconcile.Report.onlyOnEngine]).
+     *   that the server does not - same posture as [PantryReconcile.Report.onlyOnEngine].
      * @param onlyOnServer `origin_guid`s the server has that the engine does not - a migrated row
      *   whose engine original has since vanished, or a stale engine read. A row created directly
      *   through [EventsBackend.upsert] carries no `origin_guid` and is correctly excluded from this
@@ -63,17 +70,18 @@ object EventsReconcile {
         val datesEngineCount: Int,
         val notesEngineCount: Int,
         val uploaded: Int,
-        val skippedUndated: List<String>,
+        val uploadedUndated: Int,
         val serverCountAfter: Int,
         val replicaCountAfter: Int,
         val onlyOnEngine: List<String>,
         val onlyOnServer: List<String>,
     ) {
         /** True only when every reconciling engine record landed on the server and nothing is
-         * left over on either side. A non-empty [skippedUndated] always keeps this false - an
-         * undated item this migration refused to invent a date for is not a clean diff, it is a
-         * named, expected exception (see this file's own class doc). */
-        val isClean: Boolean get() = onlyOnEngine.isEmpty() && onlyOnServer.isEmpty() && skippedUndated.isEmpty()
+         * left over on either side. [uploadedUndated] does NOT keep this false on its own - an
+         * undated item genuinely lands on the server now, it is just reported separately so a
+         * caller can never mistake it for a dated row (same posture
+         * [PantryReconcile.Report.isClean]'s own doc comment states for `uploadedUnreconciled`). */
+        val isClean: Boolean get() = onlyOnEngine.isEmpty() && onlyOnServer.isEmpty()
     }
 
     private data class EngineEvent(val guid: String, val fields: EventFields, val skipDatesEpochMs: List<Long> = emptyList())
@@ -109,9 +117,8 @@ object EventsReconcile {
         }
 
         // ---- Notes aspect Item records: the merge. See this object's own class doc for the
-        // undated-record ruling.
+        // undated-record ruling - a null startsAt is uploaded as-is, never invented.
         val itemRecords = db.engineRecordDao().activeByRecordType(notesSch.recordTypeId)
-        val skippedUndated = mutableListOf<String>()
         val noteEvents = itemRecords.mapNotNull { record ->
             val payload = JSONObject(record.payload)
             fun s(name: String) = PayloadCodec.readString(payload, notesSch.fieldIds.getValue(name))
@@ -121,10 +128,6 @@ object EventsReconcile {
 
             val text = s(NotesAspectSeeder.FIELD_TEXT) ?: return@mapNotNull null
             val startsAt = l(NotesAspectSeeder.FIELD_STARTS_AT)
-            if (startsAt == null) {
-                skippedUndated.add("$text (${record.guid})")
-                return@mapNotNull null
-            }
 
             val skips = db.listItemSkipDao().skippedDatesForItem(record.id)
 
@@ -164,6 +167,7 @@ object EventsReconcile {
         val reconciling = dateEvents + noteEvents
 
         var uploaded = 0
+        var uploadedUndated = 0
         for (engineEvent in reconciling) {
             val migrated = MigratedEvent(
                 originGuid = engineEvent.guid,
@@ -171,7 +175,10 @@ object EventsReconcile {
                 skipDatesEpochMs = engineEvent.skipDatesEpochMs,
             )
             val wasNewUpload = backend.uploadMigratedEvent(migrated).getOrElse { return Result.failure(it) }
-            if (wasNewUpload) uploaded++
+            if (wasNewUpload) {
+                uploaded++
+                if (engineEvent.fields.startsAtMs == null) uploadedUndated++
+            }
         }
 
         val serverEvents = backend.fetchActive().getOrElse { return Result.failure(it) }
@@ -196,7 +203,7 @@ object EventsReconcile {
                 datesEngineCount = dateEvents.size,
                 notesEngineCount = itemRecords.size,
                 uploaded = uploaded,
-                skippedUndated = skippedUndated,
+                uploadedUndated = uploadedUndated,
                 serverCountAfter = serverEvents.size,
                 replicaCountAfter = db.eventReplicaDao().getAllActive().size,
                 onlyOnEngine = (engineGuids - serverGuids).sorted(),
@@ -244,7 +251,7 @@ object EventsReconcile {
  * value for every field. */
 private fun EventFields(
     title: String,
-    startsAtMs: Long,
+    startsAtMs: Long?,
     endsAtMs: Long?,
     allDay: Boolean,
     location: String?,

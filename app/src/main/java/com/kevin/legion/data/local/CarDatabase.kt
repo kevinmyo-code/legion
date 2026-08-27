@@ -302,7 +302,7 @@ import androidx.room.RoomDatabase
         MutedReminder::class,
         EventReplica::class, EventSkipReplica::class,
     ],
-    version = 39,
+    version = 40,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -420,7 +420,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 38
+        const val SCHEMA_VERSION = 40
         // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
         // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
@@ -450,6 +450,12 @@ abstract class CarDatabase : RoomDatabase() {
         // (`records.guid`) never got an entry here either, the exact drift this constant's doc
         // comment predicts and calls harmless; `@Database(version=)` itself is the number that
         // actually governs Room and it went 36 -> 37 -> 38 in order.
+        // 2026-08-26: bumped to 40 alongside `@Database(version=)` in the same edit again
+        // (`events_replica.startsAt` widened to nullable, backend-erp ticket 07's "RULED
+        // 2026-08-26: option 1" - a genuinely dateless Notes `Item` gets a null start, never a
+        // guessed one). Note the jump from 38 straight to 40 here too - v39
+        // (`pantry_receipts.provenance`/`.unaccountedCents`, ticket 08) never got an entry in
+        // THIS constant's own comment trail either, same benign drift the doc above predicts.
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -474,7 +480,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
                         MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34,
                         MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38,
-                        MIGRATION_38_39,
+                        MIGRATION_38_39, MIGRATION_39_40,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

@@ -181,7 +181,7 @@ class EventsReconcileTest {
     }
 
     @Test
-    fun `a Notes Item with no startsAt is never uploaded and is reported, not silently dropped`() = runBlocking {
+    fun `a Notes Item with no startsAt is uploaded with a null start, not skipped`() = runBlocking {
         createNotesItem("Call the vet")
         createNotesItem("Buy milk", startsAt = 60_000L)
         val backend = FakeEventsBackend()
@@ -189,11 +189,49 @@ class EventsReconcileTest {
         val report = EventsReconcile.run(context, backend).getOrThrow()
 
         assertEquals(2, report.notesEngineCount)
-        assertEquals(1, report.uploaded)
-        assertEquals(1, report.skippedUndated.size)
-        assertTrue(report.skippedUndated.single().contains("Call the vet"))
-        assertFalse("an undated item leaves the diff non-clean, on purpose", report.isClean)
-        assertTrue(backend.rows.values.none { it.title == "Call the vet" })
+        assertEquals(2, report.uploaded)
+        assertEquals(1, report.uploadedUndated)
+        assertTrue("an undated item is an ordinary row now, not an exception", report.isClean)
+
+        val vet = backend.rows.values.single { it.title == "Call the vet" }
+        assertEquals(null, vet.startsAtMs)
+
+        val replicaVet = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive().single { it.title == "Call the vet" }
+        assertEquals(null, replicaVet.startsAt)
+    }
+
+    @Test
+    fun `isClean is still false for a genuine one-sided row left over on the server`() = runBlocking {
+        createDatesEvent("Dentist", startMs = 50_000L)
+        val backend = FakeEventsBackend()
+        // Simulate a migrated row whose engine original has since vanished - onlyOnServer.
+        backend.uploadMigratedEvent(
+            MigratedEvent(originGuid = "ghost-guid", fields = EventFields(title = "Ghost", startsAtMs = 1_000L)),
+        )
+
+        val report = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertFalse("a row on the server with no matching engine guid is a genuine diff, not the undated exception", report.isClean)
+        assertTrue(report.onlyOnServer.contains("ghost-guid"))
+    }
+
+    @Test
+    fun `getAllActive orders dated rows before undated ones - NULLS LAST, not SQLite's default NULLS FIRST`() = runBlocking {
+        createNotesItem("undated task")
+        createDatesEvent("later dated thing", startMs = 90_000L)
+        createNotesItem("earlier dated thing", startsAt = 10_000L)
+        val backend = FakeEventsBackend()
+
+        EventsReconcile.run(context, backend).getOrThrow()
+
+        val ordered = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        assertEquals(3, ordered.size)
+        // Both dated rows, earliest first, ahead of the undated one - never the raw SQLite
+        // default of NULLS FIRST, which would float "undated task" to the head of the list.
+        assertEquals("earlier dated thing", ordered[0].title)
+        assertEquals("later dated thing", ordered[1].title)
+        assertEquals("undated task", ordered[2].title)
+        assertEquals(null, ordered[2].startsAt)
     }
 
     @Test

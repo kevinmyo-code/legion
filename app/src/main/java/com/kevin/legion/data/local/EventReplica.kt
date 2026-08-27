@@ -33,6 +33,20 @@ import androidx.room.Update
  *
  * [deleted] mirrors the server's `deleted_at IS NOT NULL`, matching [TaggedPlace.deleted]'s own
  * soft-delete-mirror convention - active reads filter `deleted = 0` here exactly as they do there.
+ *
+ * **[startsAt] is nullable (v39 -> v40, backend-erp ticket 07, "RULED 2026-08-26: option 1").**
+ * `public.events.starts_at` was widened to nullable on the live project
+ * (`supabase/migrations/20260826000400_events_starts_at_nullable.sql`) so a genuinely dateless
+ * Notes `Item` (measured 53 of 56 real rows) has somewhere to live - see [MIGRATION_39_40]'s own
+ * doc comment for the schema change and [EventsReconcile]'s class doc for why this is now an
+ * ordinary row rather than a skipped one. **A null [startsAt] is never a guessed date** - it means
+ * the source record stated none, and CLAUDE.md section 4 rule 5 forbids storing an inferred one.
+ * **NULLS LAST is the ordering policy** for every read that sorts by this column: a dated item
+ * outranks an undated one on a timeline. SQLite's own default for `ORDER BY x ASC` is NULLS FIRST
+ * (the opposite), and minSdk 24's bundled SQLite predates the `NULLS LAST` keyword (added upstream
+ * in 3.30), so [EventReplicaDao.getAllActive] spells the policy out with the portable
+ * `ORDER BY (startsAt IS NULL), startsAt ASC` idiom rather than relying on syntax this app's oldest
+ * supported device cannot parse.
  */
 @Entity(
     tableName = "events_replica",
@@ -42,7 +56,7 @@ data class EventReplica(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val serverId: String,
     val title: String,
-    val startsAt: Long,
+    val startsAt: Long?,
     val endsAt: Long? = null,
     val allDay: Boolean = false,
     val location: String? = null,
@@ -91,8 +105,13 @@ data class EventSkipReplica(
 
 @Dao
 interface EventReplicaDao {
-    /** Active (not tombstoned) events - what every read in the CONFIGURED path renders from. */
-    @Query("SELECT * FROM events_replica WHERE deleted = 0")
+    /** Active (not tombstoned) events - what every read in the CONFIGURED path renders from.
+     * **Ordered NULLS LAST on [EventReplica.startsAt]** (see that field's own doc comment for why
+     * this app cannot use the `NULLS LAST` keyword directly): `(startsAt IS NULL)` evaluates to
+     * `0` for a dated row and `1` for an undated one, so ordering by that boolean first, then by
+     * the timestamp itself, puts every dated row ahead of every undated one without inventing an
+     * order among the dated rows or the undated ones beyond "earliest first". */
+    @Query("SELECT * FROM events_replica WHERE deleted = 0 ORDER BY (startsAt IS NULL), startsAt ASC")
     suspend fun getAllActive(): List<EventReplica>
 
     /** Every row including tombstones - used only by

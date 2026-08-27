@@ -1500,3 +1500,82 @@ val MIGRATION_38_39 = object : Migration(38, 39) {
         )
     }
 }
+
+/**
+ * v39 -> v40: `events_replica.startsAt` widens from `INTEGER NOT NULL` to nullable `INTEGER`
+ * (backend-erp ticket 07, "RULED 2026-08-26: option 1" -
+ * `.scratch/backend-erp/issues/07-undated-notes-have-no-server-shape.md`), mirroring
+ * `public.events.starts_at` going nullable server-side
+ * (`supabase/migrations/20260826000400_events_starts_at_nullable.sql`). A genuinely dateless Notes
+ * `Item` (measured 53 of 56 real rows) now has a row to live in rather than being skipped by
+ * [com.kevin.legion.backend.EventsReconcile] - see that object's own class doc and
+ * [EventReplica]'s own doc comment for the NULLS LAST ordering policy this column now needs
+ * everywhere it is sorted on.
+ *
+ * SQLite has no `ALTER COLUMN`, so widening `NOT NULL` away cannot be a plain `ALTER TABLE ADD
+ * COLUMN` - this is the standard create-new-table / copy / drop / rename sequence, same shape
+ * [MIGRATION_19_20] used for `service_records.cost` -> `.costCents`. Every column and value is
+ * carried over UNCHANGED (this is a type-nullability widening, not a data transform), and the
+ * unique index on `serverId` is dropped along with the old table (SQLite indexes do not survive a
+ * `DROP TABLE`) and recreated on the new one. SQL below is PASTED VERBATIM from the kapt-generated
+ * `app/schemas/com.kevin.legion.data.local.CarDatabase/40.json`'s `events_replica` `createSql`
+ * (with `${TABLE_NAME}` resolved to the real table name) after a real `compileDebugKotlin -Pnokey`
+ * run, per CLAUDE.md sec 5's "copy generated SQL verbatim" discipline - not hand-written, same
+ * posture as every migration above this one. `event_skips_replica` is untouched: it has no
+ * `startsAt` column and no dependency on this one's identity.
+ */
+val MIGRATION_39_40 = object : Migration(39, 40) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `events_replica_new` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`serverId` TEXT NOT NULL, " +
+                "`title` TEXT NOT NULL, " +
+                "`startsAt` INTEGER, " +
+                "`endsAt` INTEGER, " +
+                "`allDay` INTEGER NOT NULL, " +
+                "`location` TEXT, " +
+                "`notes` TEXT, " +
+                "`source` TEXT NOT NULL, " +
+                "`googleEventId` TEXT, " +
+                "`done` INTEGER NOT NULL, " +
+                "`doneAt` INTEGER, " +
+                "`sortOrder` INTEGER, " +
+                "`triggerPlaceLabel` TEXT, " +
+                "`repeatKind` TEXT, " +
+                "`repeatEvery` INTEGER, " +
+                "`repeatDaysOfWeek` TEXT, " +
+                "`repeatDay` INTEGER, " +
+                "`repeatMonth` INTEGER, " +
+                "`repeatEndKind` TEXT, " +
+                "`repeatEndDate` INTEGER, " +
+                "`repeatEndCount` INTEGER, " +
+                "`exact` INTEGER NOT NULL, " +
+                "`exactDowngraded` INTEGER NOT NULL, " +
+                "`missedAt` INTEGER, " +
+                "`missedDismissedAt` INTEGER, " +
+                "`loggedAt` INTEGER, " +
+                "`updatedAtMs` INTEGER NOT NULL, " +
+                "`deleted` INTEGER NOT NULL DEFAULT 0)"
+        )
+        db.execSQL(
+            "INSERT INTO `events_replica_new` (" +
+                "`id`, `serverId`, `title`, `startsAt`, `endsAt`, `allDay`, `location`, `notes`, " +
+                "`source`, `googleEventId`, `done`, `doneAt`, `sortOrder`, `triggerPlaceLabel`, " +
+                "`repeatKind`, `repeatEvery`, `repeatDaysOfWeek`, `repeatDay`, `repeatMonth`, " +
+                "`repeatEndKind`, `repeatEndDate`, `repeatEndCount`, `exact`, `exactDowngraded`, " +
+                "`missedAt`, `missedDismissedAt`, `loggedAt`, `updatedAtMs`, `deleted`) " +
+                "SELECT `id`, `serverId`, `title`, `startsAt`, `endsAt`, `allDay`, `location`, `notes`, " +
+                "`source`, `googleEventId`, `done`, `doneAt`, `sortOrder`, `triggerPlaceLabel`, " +
+                "`repeatKind`, `repeatEvery`, `repeatDaysOfWeek`, `repeatDay`, `repeatMonth`, " +
+                "`repeatEndKind`, `repeatEndDate`, `repeatEndCount`, `exact`, `exactDowngraded`, " +
+                "`missedAt`, `missedDismissedAt`, `loggedAt`, `updatedAtMs`, `deleted` " +
+                "FROM `events_replica`"
+        )
+        db.execSQL("DROP TABLE `events_replica`")
+        db.execSQL("ALTER TABLE `events_replica_new` RENAME TO `events_replica`")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_events_replica_serverId` ON `events_replica` (`serverId`)"
+        )
+    }
+}

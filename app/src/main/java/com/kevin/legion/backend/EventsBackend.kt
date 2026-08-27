@@ -11,11 +11,18 @@ package com.kevin.legion.backend
  * [updatedAtMs] is the server's own `updated_at` - the "as of" clock for the cache-first read path
  * (ticket 01 ruling 9), same role as [RemotePlace.updatedAtMs]. Unlike [RemoteReceipt], events are
  * AUTHORED not gated, so this DOES get bumped on every edit.
+ *
+ * [startsAtMs] is nullable (backend-erp ticket 07, "RULED 2026-08-26: option 1") - `starts_at` was
+ * widened to nullable server-side (`supabase/migrations/20260826000400_events_starts_at_nullable.sql`)
+ * because a genuinely dateless Notes `Item` (measured 53 of 56 real rows) has no date to state. A
+ * null here is never a guessed one; see [EventsReconcile]'s class doc for the merge ruling and
+ * [com.kevin.legion.data.local.EventReplica]'s own doc comment for the NULLS LAST ordering policy
+ * this column now requires everywhere it is sorted on.
  */
 data class RemoteEvent(
     val serverId: String,
     val title: String,
-    val startsAtMs: Long,
+    val startsAtMs: Long?,
     val endsAtMs: Long?,
     val allDay: Boolean,
     val location: String?,
@@ -59,7 +66,7 @@ data class RemoteEvent(
  */
 data class EventFields(
     val title: String,
-    val startsAtMs: Long,
+    val startsAtMs: Long?,
     val endsAtMs: Long? = null,
     val allDay: Boolean = false,
     val location: String? = null,

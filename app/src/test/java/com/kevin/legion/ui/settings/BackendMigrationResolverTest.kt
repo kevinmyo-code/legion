@@ -160,27 +160,27 @@ class BackendMigrationResolverTest {
     // ------------------------------------------------------------------- report rendering: events
 
     @Test
-    fun `events report names skippedUndated as an expected exception, and reports both engine counts`() {
+    fun `events report names uploadedUndated as an informational count, and reports both engine counts`() {
         val report = EventsReconcile.Report(
             datesEngineCount = 2, notesEngineCount = 3, uploaded = 4,
-            skippedUndated = listOf("Buy milk (guid-9)"),
+            uploadedUndated = 1,
             serverCountAfter = 4, replicaCountAfter = 4,
-            onlyOnEngine = listOf("guid-9"), onlyOnServer = emptyList(),
+            onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
         )
         val lines = BackendMigrationResolver.renderEventsReport(report)
         assertTrue(lines[0].contains("2") && lines[0].contains("3"))
-        val skippedLine = lines.first { it.contains("Buy milk") }
-        assertTrue(skippedLine.contains("on purpose"))
-        assertTrue(skippedLine.contains("no date"))
-        // skippedUndated keeps isClean false even with a matching onlyOnEngine explanation.
-        assertTrue(lines.last().contains("Not clean"))
+        val undatedLine = lines.first { it.contains("no date") }
+        assertTrue(undatedLine.contains("1"))
+        assertTrue(!undatedLine.contains("never uploaded"))
+        // uploadedUndated does NOT keep isClean false - the row genuinely landed on the server.
+        assertTrue(lines.last().contains("Clean"))
     }
 
     @Test
     fun `clean events report is clean`() {
         val report = EventsReconcile.Report(
             datesEngineCount = 1, notesEngineCount = 0, uploaded = 1,
-            skippedUndated = emptyList(), serverCountAfter = 1, replicaCountAfter = 1,
+            uploadedUndated = 0, serverCountAfter = 1, replicaCountAfter = 1,
             onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
         )
         val lines = BackendMigrationResolver.renderEventsReport(report)

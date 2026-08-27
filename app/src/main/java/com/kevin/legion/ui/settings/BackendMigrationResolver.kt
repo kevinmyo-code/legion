@@ -129,9 +129,14 @@ object BackendMigrationResolver {
         add(if (report.isClean) "Clean - every reconciling receipt matches on both sides." else "Not clean yet - see the lines above.")
     }
 
-    /** [EventsReconcile.Report] in plain words. [EventsReconcile.Report.skippedUndated] is
-     * rendered as a named, expected exception (per that report's own doc comment) - a non-empty
-     * list there is a steady state, not a bug to chase to zero. */
+    /** [EventsReconcile.Report] in plain words.
+     *
+     * **AMENDED 2026-08-26 (ticket 07): an undated Notes `Item` is an ordinary uploaded row now**,
+     * not a skipped exception - `starts_at` was widened to nullable server-side and
+     * [EventsReconcile.Report.uploadedUndated] is a plain count, informational only, rendered
+     * without affecting the clean verdict. Same posture [renderPantryReport] already applies to
+     * [PantryReconcile.Report.uploadedUnreconciled]: a row that genuinely uploaded is worded
+     * differently from one that did not. */
     fun renderEventsReport(report: EventsReconcile.Report): List<String> = buildList {
         add(
             "Engine had ${report.datesEngineCount} dated ${plural(report.datesEngineCount, "event")} and " +
@@ -142,10 +147,10 @@ object BackendMigrationResolver {
             "Server now has ${report.serverCountAfter} ${plural(report.serverCountAfter, "row")}; " +
                 "the on-device replica now has ${report.replicaCountAfter}.",
         )
-        if (report.skippedUndated.isNotEmpty()) {
+        if (report.uploadedUndated > 0) {
             add(
-                "Skipped, on purpose (not an error) - these have no date and were never uploaded: " +
-                    "${report.skippedUndated.joinToString("; ")}.",
+                "Of those, ${report.uploadedUndated} ${plural(report.uploadedUndated, "item")} " +
+                    "with no date - uploaded anyway, with no start time, never a guessed one.",
             )
         }
         if (report.onlyOnEngine.isNotEmpty()) {
