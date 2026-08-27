@@ -28,6 +28,24 @@ Build the renderer once 01 and 02 are settled:
 - Screenshot tests via Roborazzi for each component, plus the refusal states. The refusal states
   matter more than the happy path: they are what the user sees when the model is wrong.
 
+## Prior art
+
+**Read [[generated-ui-harvest-2026-08-26]] before building this.** `ui/generated/`'s three screens
+(596 lines, retired by [[0039-per-aspect-typed-tables]], deleted by backend-erp phase 6) already
+solved four of the problems on this ticket, and the harvest doc records what transfers and what
+must not be ported by habit. The four that matter most here:
+
+- **An exhaustive `when` with no `else` branch** over the type set, so a new type is a compile
+  error at every render site rather than a silent blank.
+- **Two-layer validation where the cheap layer never claims sufficiency** - a pure, offline,
+  Robolectric-free check for fast per-field feedback, the authoritative check at the single write
+  door, and both surfaced in the same worded banner.
+- **Four distinct worded failure states** (unconfigured, configured-but-empty, not-found,
+  could-not-save) - never a crash, never a blank, and an empty result never rendered as the same
+  sentence as a broken one.
+- **Provenance in words and a computed error rendered rather than swallowed**, applied specifically
+  because a generated surface is where those rules get forgotten.
+
 ## Verification
 
 - [ ] A payload with an unknown component renders a worded refusal and nothing else.

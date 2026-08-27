@@ -3,12 +3,12 @@ map: generated-ui
 ticket: "07"
 title: "Harvest ui/generated/ before backend-erp phase 6 deletes it"
 type: task
-status: open
-status-detail: "TIME-BOXED: must happen before backend-erp phase 6"
+status: resolved
+status-detail: "Harvested 2026-08-26 to docs/architecture/generated-ui-harvest-2026-08-26.md, before phase 6"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # Harvest ui/generated/ before backend-erp phase 6 deletes it
@@ -36,13 +36,27 @@ the next person rebuilds the same lessons from scratch.
 
 ## What to do
 
-- [ ] Read all three files and write down what transfers: the field-type-to-editor mapping table,
+- [x] Read all three files and write down what transfers: the field-type-to-editor mapping table,
       the validation layering, and how each handles a shape it does not recognise.
-- [ ] Record it where the renderer's builder will actually find it - ticket 03 on this map, or a
+- [x] Record it where the renderer's builder will actually find it - ticket 03 on this map, or a
       short doc under `docs/architecture/`. Not a comment in a file that is about to be deleted.
-- [ ] Note explicitly what does NOT transfer, so nobody ports the data-schema coupling by habit.
+- [x] Note explicitly what does NOT transfer, so nobody ports the data-schema coupling by habit.
 
 ## Verification
 
-- [ ] The harvest doc exists and ticket 03 links to it.
-- [ ] Done BEFORE backend-erp phase 6. If phase 6 arrives first, this ticket blocks it.
+- [x] The harvest doc exists and ticket 03 links to it.
+- [x] Done BEFORE backend-erp phase 6 (backend-erp was at phase 1 on 2026-08-26).
+
+## Resolution (2026-08-26)
+
+Harvested to `docs/architecture/generated-ui-harvest-2026-08-26.md`; ticket 03 gained a **Prior
+art** section linking it. Section 5 of the doc is the explicit do-not-port list.
+
+**One thing worth knowing beyond the ticket's ask.** `tools/docs_check.py` resolves backticked
+package-relative Kotlin paths in `docs/` and fails on any that do not exist. The three harvested
+files are scheduled for deletion, so the harvest doc names them **un-backticked on purpose** and
+says why at the top. Backticking them would have planted a `docs_check` failure timed to fire
+exactly when phase 6 landed. `python tools/docs_check.py` green after the write.
+
+Phase 6 is the last phase of backend-erp and that arc was at phase 1 on this date, so this was
+done with margin rather than against the deadline.
