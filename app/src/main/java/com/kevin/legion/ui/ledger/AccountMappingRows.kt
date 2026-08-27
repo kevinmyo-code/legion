@@ -27,6 +27,7 @@ import androidx.compose.foundation.clickable
 import com.kevin.legion.ledger.AccountBalance
 import com.kevin.legion.ledger.DiscoveredAccountFolder
 import com.kevin.legion.ledger.maskedAccountLabel
+import com.kevin.legion.ui.common.HelpRow
 import com.kevin.legion.ui.common.SectionHeader
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
@@ -56,15 +57,18 @@ fun AccountMappingSection(
     onAssign: (folderId: String, accountId: String?) -> Unit,
 ) {
     if (folders.isEmpty()) return
-    val sem = LocalLegionSemantics.current
     Column(Modifier.fillMaxWidth()) {
         SectionHeader("ACCOUNT FOLDERS")
-        Text(
+        // Command-center ticket 13 finding 2: this paragraph used to render permanently, in
+        // doc-comment register, above the mapping rows it explains - read once, scrolled past
+        // forever. The words are unchanged; only their housing is. It is a mapping RULE, not a
+        // provenance disclosure, which is what makes it eligible to collapse at all - the estimate
+        // and unreconciled lines elsewhere in ledger/pantry stay permanently visible, because
+        // CLAUDE.md sec 4 rules 5 and 7 require those to be said on the surface, in words, always.
+        HelpRow(
             "A file that doesn't state its own account (a CSV export) takes the account mapped to " +
                 "the folder it's in. A file's own printed account always wins over this.",
-            style = MaterialTheme.typography.bodySmall,
-            color = sem.faint,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            label = "HOW MAPPING WORKS",
         )
         folders.forEach { folder ->
             AccountFolderRow(
@@ -100,12 +104,14 @@ fun NominatedAccountSection(
     val sem = LocalLegionSemantics.current
     Column(Modifier.fillMaxWidth()) {
         SectionHeader("NOMINATED ACCOUNT")
-        Text(
+        // Finding 2 again, same reasoning as AccountMappingSection above: this explains a RULE
+        // (why LEGION asks rather than guessing), it does not disclose the trustworthiness of any
+        // figure, so it collapses. The per-account "no balance ever printed for this account" line
+        // on each row below is the opposite case and stays permanently visible.
+        HelpRow(
             "HOME's CRED tile shows this one account's balance - LEGION can't tell a cash account " +
                 "from a card, so it never guesses which one.",
-            style = MaterialTheme.typography.bodySmall,
-            color = sem.faint,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            label = "WHY NOMINATE ONE",
         )
         balances.forEach { balance ->
             NominatedAccountRow(
