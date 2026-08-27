@@ -1,6 +1,6 @@
 ---
 type: build
-status: open
+status: built
 blocked_by: []
 map: backend-erp
 ---
@@ -102,3 +102,37 @@ explicit "what it does not license" clause of ticket 07's own ruling.
 Kevin's recollection when asked was that he had ruled every item would be dated; the record says
 option 1, `starts_at` nullable, applied. Both are reconcilable: every item DISPLAYS a date,
 storage keeps NULL. Recorded here because the difference is the whole ruling.
+
+## BUILT 2026-08-26 - three commits, suite green, one thing owed on the phone
+
+- `b17bc88` derive the replica's local id instead of reminting it every reconcile
+- `e91a296` the dual-path rewire itself, plus the `createdAt` defect found under it
+- `c79da08` the agenda shows an undated item as tomorrow, and says so in words
+
+Suite 2,676, 0 failures. `compileDebugKotlin` and `compileDebugAndroidTestKotlin` green, both
+`-Pnokey`. Room v40 -> v41 (additive, verbatim generated SQL, schema JSON committed, migration
+test written but NOT RUN - same posture as `CarDatabaseMigration39To40Test`).
+
+**A second defect was found under the first, and it is the one that would have shipped.**
+`SupabaseEventsBackend.uploadMigratedEvent` inserted without `created_at`, taking Postgres's own
+`default now()`. At cutover every migrated row's creation time would have become the migration
+moment: `GoalChecklistSync`'s "already materialized today" gate (`:109`) would read all 56 notes as
+created today, and `LogDigestBuilder`'s FRESH/AGING/STALE buckets would all reset. Found by tracing
+why the replica mapper had no source for `ListItem.createdAt`, not by a failing test. No test would
+have caught it, because nothing asserted the value survived the round trip. One does now.
+
+**The inferred instant is `now + 24h`, not a calendar midnight.** A judgment call, recorded because
+the ruling does not dictate it: no timezone needed, always ahead of now, lands on calendar tomorrow
+in every case except a near-midnight DST spring-forward. The rendered text never shows the date, so
+the only thing affected is sort position.
+
+## OWED ON THE PHONE, not claimed as done
+
+**A reminder set before the cutover still fires after it.** This ticket's own verification bar, and
+a green unit suite cannot settle it. `AlarmScheduler` has ZERO tests repo-wide and the
+`PendingIntent` request-code contract is exercised by nothing at all. Kevin's carry-the-engine-id
+ruling is what makes it likely to hold - the id space never changes, so an armed alarm keeps
+resolving - but likely is not verified.
+
+Also owed: `CarDatabaseMigration40To41Test` has not been RUN (it needs a device), and the
+configured Notes path has never touched a real Supabase project.
