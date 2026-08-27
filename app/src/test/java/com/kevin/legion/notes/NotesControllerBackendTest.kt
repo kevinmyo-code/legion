@@ -1,11 +1,14 @@
 package com.kevin.legion.notes
 
 import com.kevin.legion.backend.EventFields
+import com.kevin.legion.backend.EventKind
 import com.kevin.legion.backend.EventsBackend
 import com.kevin.legion.backend.EventsBackendException
 import com.kevin.legion.backend.MigratedEvent
 import com.kevin.legion.backend.RemoteEvent
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.EventReplica
+import com.kevin.legion.data.local.upsert
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -97,6 +100,7 @@ class NotesControllerBackendTest {
             notes = notes,
             structuredMeta = structuredMeta,
             source = source,
+            kind = kind,
             googleEventId = googleEventId,
             done = done,
             doneAtMs = doneAtMs,
@@ -199,6 +203,46 @@ class NotesControllerBackendTest {
     }
 
     @Test
+    fun `configured reads exclude an appointment sitting in the same replica table - ticket 11's 2026-08-27 kind filter`() = runBlocking {
+        val backend = FakeEventsBackend()
+        NotesController.backendOverride = backend
+        val reminder = NotesController.addItem(context, listId = 1L, text = "a real reminder")
+        // Seeded directly, the same shape a real EventsReconcile refill leaves behind for a Dates
+        // Event/Google import - events_replica holds both kinds merged into one table, and this
+        // file must never hand one back as a ListItem it owns (the 2026-08-26 incident's other
+        // root cause, alongside AlarmScheduler's own sweep - see that file's rescheduleAll doc).
+        val db = CarDatabase.getDatabase(context)
+        db.eventReplicaDao().upsert(
+            EventReplica(
+                id = 0,
+                serverId = "appointment-1",
+                title = "Dentist",
+                startsAt = 90_000L,
+                source = "legion",
+                kind = EventKind.APPOINTMENT,
+                updatedAtMs = 1L,
+                createdAt = 1L,
+            ),
+        )
+
+        val all = NotesController.allItems(context)
+        val appointmentId = db.eventReplicaDao().getByServerId("appointment-1")!!.id
+
+        assertEquals("only the reminder must come back, never the appointment", 1, all.size)
+        assertEquals("a real reminder", all.single().text)
+        assertEquals(
+            "itemById must refuse an id that resolves to an appointment, not just allItems",
+            null,
+            NotesController.itemById(context, appointmentId),
+        )
+        assertEquals(
+            "the reminder itself must still resolve normally",
+            "a real reminder",
+            NotesController.itemById(context, reminder.id)?.text,
+        )
+    }
+
+    @Test
     fun `skipOccurrence round-trips through the backend into the skip replica`() = runBlocking {
         val backend = FakeEventsBackend()
         NotesController.backendOverride = backend
@@ -213,29 +257,28 @@ class NotesControllerBackendTest {
     }
 
     @Test
-    fun `configured start-up sweep never calls markMissed - the 2026-08-26 incident guard`() = runBlocking {
-        // Real-world shape of the incident (see AlarmScheduler.rescheduleAll's own doc comment
-        // and .scratch/backend-erp/issues/11-notes-write-path-rewire.md): an item whose startsAt
-        // is long in the past and whose missedAt is still null, exactly what the replica served
-        // back for 50 deleted-on-phone-but-not-on-server todos plus one genuinely overdue one.
+    fun `configured start-up sweep marks a genuine overdue reminder missed - the 2026-08-26 incident, fixed for real`() = runBlocking {
+        // The 2026-08-26 incident's REAL fix (ticket 11's 2026-08-27 ruling): the sweep withheld
+        // every missed-mark on a configured install as a stopgap, because the read it walked could
+        // not tell a genuinely-overdue reminder from a deleted todo the server never heard about.
+        // Both root causes are fixed now (events.kind + EventsReconcile's deletion propagation),
+        // so the read this sweep walks is correct by construction and the stopgap is gone - a real
+        // overdue reminder is marked missed on a configured install again, same as unconfigured.
+        // The negative half of this incident's regression test (an APPOINTMENT must never be
+        // touched) lives in AlarmSchedulerTest, which seeds the replica with both kinds directly
+        // and asserts on both in one place - "unmistakable" per this ticket's own verification bar.
         val backend = FakeEventsBackend()
         NotesController.backendOverride = backend
-        val item = NotesController.addItem(context, listId = 1L, text = "long overdue")
+        val item = NotesController.addItem(context, listId = 1L, text = "genuinely overdue")
         NotesController.setTime(context, item, startsAt = 1_000L, endsAt = null, allDay = false)
-        backend.upsertCalls = 0 // isolate the sweep's own writes from addItem/setTime's setup calls
 
         AlarmScheduler.rescheduleAll(context)
 
-        assertEquals(
-            "the sweep must not write to the backend at all on the configured path",
-            0,
-            backend.upsertCalls,
-        )
         val reread = NotesController.itemById(context, item.id)
         assertEquals(
-            "missedAt must stay null - the app must not assert a miss it never held",
-            null,
-            reread?.missedAt,
+            "a real overdue reminder must be marked missed on the configured path too, now that the read is correct",
+            true,
+            reread?.missedAt != null,
         )
     }
 

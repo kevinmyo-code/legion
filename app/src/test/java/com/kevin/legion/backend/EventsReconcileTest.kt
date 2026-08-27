@@ -91,6 +91,7 @@ class EventsReconcileTest {
             notes = notes,
             structuredMeta = structuredMeta,
             source = source,
+            kind = kind,
             googleEventId = googleEventId,
             done = done,
             doneAtMs = doneAtMs,
@@ -248,6 +249,31 @@ class EventsReconcileTest {
     }
 
     /**
+     * Ticket 11's 2026-08-27 ruling #1, and the fix for the 2026-08-26 incident's OTHER root
+     * cause (`events.kind` did not exist, so `NotesController`'s read could not tell a reminder
+     * from an appointment merged into the same table). Both the server row AND the replica row
+     * must carry the right value - a mismatch between the two would silently defeat
+     * `NotesController.allEngineItems`'s `getActiveByKind` filter.
+     */
+    @Test
+    fun `a Notes Item uploads kind reminder, a Dates Event uploads kind appointment`() = runBlocking {
+        createDatesEvent("Dentist", startMs = 50_000L)
+        createNotesItem("Buy milk", startsAt = 60_000L)
+        val backend = FakeEventsBackend()
+
+        EventsReconcile.run(context, backend).getOrThrow()
+
+        val dentist = backend.rows.values.single { it.title == "Dentist" }
+        val milk = backend.rows.values.single { it.title == "Buy milk" }
+        assertEquals(EventKind.APPOINTMENT, dentist.kind)
+        assertEquals(EventKind.REMINDER, milk.kind)
+
+        val replica = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        assertEquals(EventKind.APPOINTMENT, replica.single { it.title == "Dentist" }.kind)
+        assertEquals(EventKind.REMINDER, replica.single { it.title == "Buy milk" }.kind)
+    }
+
+    /**
      * The assertion whose absence let the coordinator-caught defect ship: this file's own Dates
      * `Event` branch used to hardcode `allDay = false` for every row regardless of what the engine
      * field actually held, so an all-day Google import silently uploaded as a timed one. Without
@@ -311,19 +337,86 @@ class EventsReconcileTest {
         assertEquals(null, replicaVet.startsAt)
     }
 
+    /**
+     * SUPERSEDED 2026-08-27 by ticket 11's ruling #2 - this scenario used to be reported as a
+     * genuine `onlyOnServer` diff and left lingering server-side forever. It is now the exact case
+     * the deletion propagation pass exists to clean up: a server row whose `origin_guid` names an
+     * engine record that is not (or is no longer) in the active set gets soft-deleted, so the
+     * "leftover" disappears from `onlyOnServer` by being retracted rather than by being ignored.
+     * See `a server row whose origin_guid names a trashed engine record is soft-deleted, never a
+     * lingering onlyOnServer diff` below for the replacement.
+     */
     @Test
-    fun `isClean is still false for a genuine one-sided row left over on the server`() = runBlocking {
+    fun `isClean stays true - a one-sided server row is now retracted, not left as a lingering diff`() = runBlocking {
         createDatesEvent("Dentist", startMs = 50_000L)
         val backend = FakeEventsBackend()
-        // Simulate a migrated row whose engine original has since vanished - onlyOnServer.
+        // Simulate a migrated row whose engine original has since vanished.
         backend.uploadMigratedEvent(
             MigratedEvent(originGuid = "ghost-guid", fields = EventFields(title = "Ghost", startsAtMs = 1_000L)),
         )
 
         val report = EventsReconcile.run(context, backend).getOrThrow()
 
-        assertFalse("a row on the server with no matching engine guid is a genuine diff, not the undated exception", report.isClean)
-        assertTrue(report.onlyOnServer.contains("ghost-guid"))
+        assertTrue(
+            "the ghost row is retracted (soft-deleted) this run, so it is no longer a lingering diff",
+            report.isClean,
+        )
+        assertTrue(
+            "onlyOnServer must not report a row this same run just retracted",
+            report.onlyOnServer.isEmpty(),
+        )
+        assertEquals(1, report.deletedOnServer)
+        assertTrue("the ghost row must actually be soft-deleted server-side", backend.rows.getValue("server-0").deleted)
+    }
+
+    @Test
+    fun `a server row whose origin_guid names a trashed engine record is soft-deleted, never a lingering onlyOnServer diff`() = runBlocking {
+        val db = CarDatabase.getDatabase(context)
+        val store = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+        val itemId = createNotesItem("Buy milk", startsAt = 60_000L)
+        val backend = FakeEventsBackend()
+        EventsReconcile.run(context, backend).getOrThrow()
+        val serverIdBeforeTrash = backend.rows.values.single { it.title == "Buy milk" }.serverId
+        assertFalse("must not be deleted yet - the engine record is still active", backend.rows.getValue(serverIdBeforeTrash).deleted)
+
+        // Trash the engine record - the phone-side "I deleted this todo" action.
+        store.delete(itemId)
+
+        val report = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(1, report.deletedOnServer)
+        assertTrue(
+            "a server row whose origin_guid names a now-trashed engine record must be soft-deleted",
+            backend.rows.getValue(serverIdBeforeTrash).deleted,
+        )
+        assertTrue(
+            "the replica refill must not resurrect the just-retracted row - this is the actual fix for the 2026-08-26 incident",
+            CarDatabase.getDatabase(context).eventReplicaDao().getAllActive().none { it.title == "Buy milk" },
+        )
+    }
+
+    @Test
+    fun `a server row with a NULL origin_guid is never soft-deleted, even when nothing local matches it - the safety property`() = runBlocking {
+        val backend = FakeEventsBackend()
+        // Created directly against the server (no origin_guid) - the phone has no standing to
+        // retract this, per ticket 11's ruling #2's own bound: "a row with a NULL origin_guid is
+        // never touched - it was created somewhere else and this phone has no standing to delete
+        // it." Nothing local matches it (no engine record anywhere names it), which is precisely
+        // the condition the bound has to hold under - if it did not, EVERY laptop-authored row
+        // would be deleted by the very first phone reconcile that ever ran.
+        backend.upsert(serverId = null, fields = EventFields(title = "Authored elsewhere", startsAtMs = 5_000L))
+
+        val report = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(
+            "a NULL origin_guid row must never be counted as retracted",
+            0,
+            report.deletedOnServer,
+        )
+        assertFalse(
+            "a NULL origin_guid row must survive untouched",
+            backend.rows.values.single { it.title == "Authored elsewhere" }.deleted,
+        )
     }
 
     @Test
@@ -446,21 +539,28 @@ class EventsReconcileTest {
 
     @Test
     fun `a row with a derivable id is seated before any id is allocated, so the carry wins and the ancestor-less row moves instead`() = runBlocking {
-        // The contest this test exists to settle. The orphan has an origin_guid that resolves to
-        // NOTHING in the current engine set (its engine original was deleted, or never existed
-        // here), so it cannot derive an id and must autoincrement. It is given insertion order
-        // AHEAD of the real engine record's upload, so a naive single-pass refill over the
-        // just-emptied table would seat it on id 1 first - precisely the id the real record
-        // (records.id = 1, first row in a fresh engine table) needs to carry.
+        // The contest this test exists to settle. The orphan has NO origin_guid at all - created
+        // directly against the server, same as anything written post-cutover through
+        // EventsBackend.upsert - so it cannot derive an id and must autoincrement.
+        //
+        // CHANGED 2026-08-27 (ticket 11 ruling #2): this used to be a MIGRATED row whose
+        // origin_guid resolved to nothing in the engine. That shape is now retracted (soft-deleted)
+        // by the SAME reconcile run, by design - see `a server row whose origin_guid names a
+        // trashed engine record is soft-deleted...` above. A NULL origin_guid is what keeps this
+        // test isolated to the id-seating contest it actually exists to settle, without also
+        // tripping the (unrelated, and now correct) deletion propagation pass.
+        //
+        // It is given insertion order AHEAD of the real engine record's upload, so a naive
+        // single-pass refill over the just-emptied table would seat it on id 1 first - precisely
+        // the id the real record (records.id = 1, first row in a fresh engine table) needs to
+        // carry.
         //
         // Getting this wrong is not a cosmetic id shuffle. `upsert`'s collision guard would
         // correctly decline to clobber the orphan and hand the Dentist row a fresh id, which is
         // the exact alarm orphaning the carry exists to prevent, reached by a different route.
         // The two-pass refill removes the contest rather than adjudicating it.
         val backend = FakeEventsBackend()
-        backend.uploadMigratedEvent(
-            MigratedEvent(originGuid = "no-longer-in-engine", fields = EventFields(title = "Orphaned migrated row", startsAtMs = 1_000L)),
-        )
+        backend.upsert(serverId = null, fields = EventFields(title = "Orphaned migrated row", startsAtMs = 1_000L))
         val dentistEngineId = createDatesEvent("Dentist", startMs = 50_000L)
         assertEquals(1L, dentistEngineId)
 

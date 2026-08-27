@@ -157,6 +157,12 @@ object BackendMigrationResolver {
                     "with no date - uploaded anyway, with no start time, never a guessed one.",
             )
         }
+        if (report.deletedOnServer > 0) {
+            add(
+                "Removed ${report.deletedOnServer} ${plural(report.deletedOnServer, "row")} on the server whose " +
+                    "device original was deleted or is gone - a retraction, not an upload.",
+            )
+        }
         if (report.onlyOnEngine.isNotEmpty()) {
             add("Only on this device, not on the server: ${report.onlyOnEngine.joinToString(", ")}.")
         }

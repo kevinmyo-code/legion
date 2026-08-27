@@ -76,6 +76,10 @@ private data class EventUpsertDto(
     // the old block sitting there.
     @SerialName("structured_meta") val structuredMeta: JsonElement?,
     val source: String,
+    // reminder/appointment (EventKind) - no "= null" default for the same reason as every other
+    // required-on-every-write column in this class: this is NOT NULL server-side with a CHECK
+    // constraint, and EventFields.kind is never actually unknown at the point a write happens.
+    val kind: String,
     @SerialName("google_event_id") val googleEventId: String?,
     val done: Boolean,
     @SerialName("done_at") val doneAt: String?,
@@ -113,6 +117,7 @@ private data class EventUpsertDto(
             // SupabasePantryBackend.commitReceipt's identical parse) is correct.
             structuredMeta = fields.structuredMeta?.let { Json.parseToJsonElement(it) },
             source = fields.source,
+            kind = fields.kind,
             googleEventId = fields.googleEventId,
             done = fields.done,
             doneAt = tsOrNull(fields.doneAtMs),
@@ -154,6 +159,10 @@ private data class EventRowDto(
     // (toRemoteEvent, below), never earlier.
     @SerialName("structured_meta") val structuredMeta: JsonElement? = null,
     val source: String,
+    // Defaults to EventKind.REMINDER, mirroring the column's own server-side default - matches
+    // this class's existing precedent (allDay/done/exact all default to match their own DEFAULT).
+    // Real rows always carry an explicit value once 20260827000200_events_kind.sql is applied.
+    val kind: String = "reminder",
     @SerialName("google_event_id") val googleEventId: String? = null,
     val done: Boolean = false,
     @SerialName("done_at") val doneAt: String? = null,
@@ -190,6 +199,7 @@ private data class EventRowDto(
         // and values without this file re-implementing JSON formatting by hand.
         structuredMeta = structuredMeta?.toString(),
         source = source,
+        kind = kind,
         googleEventId = googleEventId,
         done = done,
         doneAtMs = parseTsOrNull(doneAt),

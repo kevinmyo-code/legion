@@ -2,6 +2,7 @@ package com.kevin.legion.notes
 
 import android.content.Context
 import com.kevin.legion.backend.EventFields
+import com.kevin.legion.backend.EventKind
 import com.kevin.legion.backend.EventsBackend
 import com.kevin.legion.backend.RemoteEvent
 import com.kevin.legion.backend.SupabaseClientProvider
@@ -256,6 +257,10 @@ object NotesController {
         location = null,
         notes = null,
         googleEventId = null,
+        // Every mutator that reaches this file has an existing ListItem in hand, and every
+        // ListItem this file ever produces is a reminder - see allEngineItems/itemById's own kind
+        // filters. Explicit for the same reason as addItem's identical value.
+        kind = EventKind.REMINDER,
         done = done,
         doneAtMs = doneAt,
         sortOrder = sortOrder,
@@ -297,6 +302,7 @@ object NotesController {
         location = location,
         notes = notes,
         source = source,
+        kind = kind,
         googleEventId = googleEventId,
         done = done,
         doneAt = doneAtMs,
@@ -319,14 +325,19 @@ object NotesController {
         deleted = deleted,
     )
 
-    /** Every non-trashed item, converted - the one place every read below funnels through, so
-     * there is exactly one query per read regardless of which path answers it. **Configured**:
-     * reads the Room [EventReplica] replica, never the network - cache-first (ticket 01 ruling 9).
-     * **Unconfigured**: every non-trashed engine `Item` record, exactly as before cutover. */
+    /** Every non-trashed ITEM (never an appointment), converted - the one place every read below
+     * funnels through, so there is exactly one query per read regardless of which path answers it.
+     * **Configured**: reads the Room [EventReplica] replica, never the network - cache-first
+     * (ticket 01 ruling 9), filtered to [EventKind.REMINDER] (ticket 11's 2026-08-27 ruling #1) -
+     * `events_replica` also holds every Dates `Event`/Google import, and this file must never treat
+     * one as something it owns (the 2026-08-26 incident: [AlarmScheduler]'s sweep read the whole
+     * unfiltered table and marked calendar appointments "missed"). **Unconfigured**: every
+     * non-trashed engine `Item` record, exactly as before cutover - inherently reminder-only, since
+     * the Notes `Item` record type is the only thing this branch ever reads. */
     private suspend fun allEngineItems(context: Context): List<ListItem> {
         val listId = theList(context).id
         if (backend(context) != null) {
-            return db(context).eventReplicaDao().getAllActive().map { it.toListItem(listId) }
+            return db(context).eventReplicaDao().getActiveByKind(EventKind.REMINDER).map { it.toListItem(listId) }
         }
         val db = db(context)
         val sch = schema(context)
@@ -417,12 +428,15 @@ object NotesController {
     /** **Configured**: reads the [EventReplica] replica by [EventReplica.id]. **Unconfigured**: the
      * unchanged engine read by [EngineRecord.id]. Both share [ListItem.id] as the same physical id
      * space (this object's own class doc's "id preservation" paragraph), so a caller never needs to
-     * know which path produced the id it is looking up. */
+     * know which path produced the id it is looking up. [EventReplica.kind] is checked on the
+     * configured path for the same reason [allEngineItems] filters by it (ticket 11's 2026-08-27
+     * ruling #1) - an id this file hands out must never resolve to a Dates appointment, even when
+     * looked up directly rather than found through a list. */
     suspend fun itemById(context: Context, id: Long): ListItem? {
         val listId = theList(context).id
         if (backend(context) != null) {
             val replica = db(context).eventReplicaDao().getById(id) ?: return null
-            if (replica.deleted) return null
+            if (replica.deleted || replica.kind != EventKind.REMINDER) return null
             return replica.toListItem(listId)
         }
         val record = db(context).engineRecordDao().getById(id) ?: return null
@@ -455,6 +469,10 @@ object NotesController {
                 createdAtMs = now,
                 done = false,
                 sortOrder = nextOrder,
+                // Explicit even though it matches EventFields' own default - every live write
+                // through this file IS a Notes Item, never an appointment (ticket 11's 2026-08-27
+                // ruling #1; NotesController has no path that produces the other kind).
+                kind = EventKind.REMINDER,
             )
             val remote = backend.upsert(serverId = null, fields = fields).getOrElse {
                 error("NotesController.addItem: remote write failed - ${it.message}")

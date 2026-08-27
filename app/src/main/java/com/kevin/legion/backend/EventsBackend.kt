@@ -1,6 +1,21 @@
 package com.kevin.legion.backend
 
 /**
+ * The two values `public.events.kind` may hold (`supabase/migrations/20260827000200_events_kind.sql`,
+ * ticket 11's 2026-08-27 ruling #1) - what tells [com.kevin.legion.notes.NotesController] which
+ * rows it owns. A Notes `Item` is always [REMINDER]; a Dates `Event` (legion-authored or a Google
+ * import) is always [APPOINTMENT]. Set once at upload by [EventsReconcile], from the record type
+ * read - never derived from a row's shape (`sortOrder`, `source`, anything else that happens to
+ * correlate today). See that migration's own comment for why the server default is [REMINDER],
+ * not a guess: an origin the app cannot identify is treated as something it owns, the direction
+ * that fails visibly rather than silently.
+ */
+object EventKind {
+    const val REMINDER = "reminder"
+    const val APPOINTMENT = "appointment"
+}
+
+/**
  * A `public.events` row as Postgres reports it
  * (`supabase/migrations/20260825000400_aspect_dates_notes_merged.sql`) - the shape
  * [SupabaseEventsBackend] hands back after every write, and the shape [EventsReconcile] copies
@@ -67,6 +82,10 @@ data class RemoteEvent(
     val loggedAtMs: Long?,
     val updatedAtMs: Long,
     val deleted: Boolean,
+    /** [EventKind.REMINDER] or [EventKind.APPOINTMENT] - see that object's own doc comment.
+     * Defaults to [EventKind.REMINDER] only as a decode-time placeholder matching the column's own
+     * server-side default; every real row states one explicitly. */
+    val kind: String = EventKind.REMINDER,
     /** Phase 4 migration provenance (`supabase/migrations/20260826000100_origin_guid.sql`) - null
      * for anything created after cutover through [EventsBackend.upsert], set only on a row
      * [EventsBackend.uploadMigratedEvent] wrote. [EventsReconcile]'s diff reads it to tell
@@ -109,6 +128,11 @@ data class EventFields(
      * of them. */
     val structuredMeta: String? = null,
     val source: String = "legion",
+    /** [EventKind.REMINDER] or [EventKind.APPOINTMENT] - see that object's own doc comment.
+     * Defaults to [EventKind.REMINDER] because every caller except [EventsReconcile]'s Dates
+     * branch IS a Notes `Item` (a live [com.kevin.legion.notes.NotesController] write never
+     * produces an appointment); the Dates branch overrides it explicitly. */
+    val kind: String = EventKind.REMINDER,
     val googleEventId: String? = null,
     val done: Boolean = false,
     val doneAtMs: Long? = null,

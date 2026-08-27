@@ -112,6 +112,22 @@ data class EventReplica(
      * [com.kevin.legion.notes.NotesController]'s own `applyChange`/mapper for the two writers.
      */
     @ColumnInfo(defaultValue = "0") val createdAt: Long = 0,
+    /**
+     * `reminder` or `appointment` ([com.kevin.legion.backend.EventKind]) - v42 -> v43, ticket 11's
+     * 2026-08-27 ruling #1. **This is why the column exists at all**, traced before adding it (a
+     * new Room migration is not free): [com.kevin.legion.notes.NotesController]'s configured read
+     * path used to read this ENTIRE table unfiltered, so a Notes reminder and a Dates appointment
+     * were indistinguishable the moment they landed in the same replica - the 2026-08-26 incident
+     * traced 51 false "missed" marks to exactly that (50 already-deleted todos plus every genuine
+     * calendar appointment, all read back as reminders `AlarmScheduler`'s sweep owned). `getById`/
+     * `getAllActive` stay unfiltered (still used by [com.kevin.legion.backend.EventsReconcile]'s
+     * own diff, which legitimately needs both kinds); [getActiveByKind] is the new query
+     * `NotesController` actually reads through. `DEFAULT 'reminder'` on the additive column
+     * mirrors the server's own default (`kind text not null default 'reminder'`,
+     * `supabase/migrations/20260827000200_events_kind.sql`) - the conservative direction, since an
+     * unrecognized row is safer treated as something the app owns than silently dropped.
+     */
+    @ColumnInfo(defaultValue = "'reminder'") val kind: String = "reminder",
 )
 
 /**
@@ -141,6 +157,15 @@ interface EventReplicaDao {
      * order among the dated rows or the undated ones beyond "earliest first". */
     @Query("SELECT * FROM events_replica WHERE deleted = 0 ORDER BY (startsAt IS NULL), startsAt ASC")
     suspend fun getAllActive(): List<EventReplica>
+
+    /** Active events of ONE [EventReplica.kind] - what [com.kevin.legion.notes.NotesController]'s
+     * configured read path actually reads through (`kind = 'reminder'`), so a Dates appointment
+     * merged into this same table is never mistaken for something `NotesController`/
+     * [com.kevin.legion.notes.AlarmScheduler] owns. Same NULLS-LAST ordering as [getAllActive] -
+     * see that function's own doc comment for why the `(startsAt IS NULL)` idiom is spelled out by
+     * hand rather than using the `NULLS LAST` keyword. */
+    @Query("SELECT * FROM events_replica WHERE deleted = 0 AND kind = :kind ORDER BY (startsAt IS NULL), startsAt ASC")
+    suspend fun getActiveByKind(kind: String): List<EventReplica>
 
     /** Every row including tombstones - used only by
      * [com.kevin.legion.backend.EventsReconcile] to diff against the engine's own guid set, same

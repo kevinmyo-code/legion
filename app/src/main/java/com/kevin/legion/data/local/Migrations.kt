@@ -1639,3 +1639,33 @@ val MIGRATION_41_42 = object : Migration(41, 42) {
         )
     }
 }
+
+/**
+ * v42 -> v43: `events_replica` gains `kind` (`TEXT NOT NULL DEFAULT 'reminder'`) -
+ * `.scratch/backend-erp/issues/11-notes-write-path-rewire.md`'s 2026-08-27 ruling #1, mirroring
+ * `public.events.kind` (`text not null default 'reminder' check (kind in ('reminder',
+ * 'appointment'))`, `supabase/migrations/20260827000200_events_kind.sql`).
+ *
+ * **Traced before adding it, per CLAUDE.md's own "check whether the replica genuinely needs the
+ * column" instruction - it does.** `com.kevin.legion.notes.NotesController`'s configured read
+ * path used to call [EventReplicaDao.getAllActive], which returns EVERY row in this table - both
+ * a Notes `Item` (a reminder `NotesController`/`AlarmScheduler` own) and a Dates `Event`/Google
+ * import (an appointment, owned by nothing on this file's side) are merged into the SAME
+ * `events_replica` table by [com.kevin.legion.backend.EventsReconcile]. With no column saying
+ * which is which, the 2026-08-26 incident's other root cause was structural: `AlarmScheduler`'s
+ * start-up sweep could not tell a genuine calendar appointment from a reminder it owned, and
+ * marked every overdue appointment "missed" alongside 50 already-deleted todos. `getActiveByKind`
+ * is the new query `NotesController` reads through; `getAllActive`/`getById` stay unfiltered for
+ * [com.kevin.legion.backend.EventsReconcile]'s own diff, which legitimately needs both kinds.
+ *
+ * A plain `ALTER TABLE ADD COLUMN` suffices - additive, same shape as [MIGRATION_40_41]'s
+ * `createdAt` column, not [MIGRATION_39_40]'s create/copy/drop/rename dance (`kind` is NOT NULL
+ * from day one, never a nullable-widening). `DEFAULT 'reminder'` mirrors the server column's own
+ * default and the conservative direction explained on [EventReplica.kind]'s own doc comment: an
+ * unrecognized row is safer treated as something the app owns than silently dropped.
+ */
+val MIGRATION_42_43 = object : Migration(42, 43) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `events_replica` ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'reminder'")
+    }
+}

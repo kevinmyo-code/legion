@@ -61,10 +61,22 @@ object EventsReconcile {
      * @param replicaCountAfter the Room replica's active event count after being refreshed.
      * @param onlyOnEngine `records.guid`s the engine has (from either aspect, reconciling or not)
      *   that the server does not - same posture as [PantryReconcile.Report.onlyOnEngine].
-     * @param onlyOnServer `origin_guid`s the server has that the engine does not - a migrated row
-     *   whose engine original has since vanished, or a stale engine read. A row created directly
-     *   through [EventsBackend.upsert] carries no `origin_guid` and is correctly excluded from this
+     * @param onlyOnServer `origin_guid`s the server has that the engine does not, AFTER
+     *   [deletedOnServer]'s retraction pass has already run. A migrated row whose engine original
+     *   has since vanished is retracted (soft-deleted), not left as a leftover, as of ticket 11's
+     *   2026-08-27 ruling #2 - so in the ordinary case this is empty even when engine records were
+     *   trashed this run; a non-empty value here means [EventsBackend.softDelete] itself reported
+     *   `false` for one of [deletedOnServer]'s candidates (already gone server-side by some other
+     *   path), not that the retraction was skipped. A row created directly through
+     *   [EventsBackend.upsert] carries no `origin_guid` and is correctly excluded from this
      *   comparison, same as [PantryReconcile.Report.onlyOnServer].
+     * @param deletedOnServer how many server rows this run soft-deleted because their `origin_guid`
+     *   named an engine record that is now trashed or absent - ticket 11's 2026-08-27 ruling #2,
+     *   the actual fix for the 2026-08-26 incident's root cause (a deleted todo staying "live" in
+     *   `events_replica` forever, resurrected by every refill). Reported as its own field rather
+     *   than folded into [onlyOnServer] or [uploaded] - a deletion is neither an upload nor a
+     *   leftover, and conflating it with either would make [isClean] mean something subtly
+     *   different than "everything matches on both sides".
      */
     data class Report(
         val datesEngineCount: Int,
@@ -73,6 +85,7 @@ object EventsReconcile {
         val uploadedUndated: Int,
         val serverCountAfter: Int,
         val replicaCountAfter: Int,
+        val deletedOnServer: Int = 0,
         val onlyOnEngine: List<String>,
         val onlyOnServer: List<String>,
     ) {
@@ -132,6 +145,11 @@ object EventsReconcile {
                     structuredMeta = s(DatesAspectSeeder.FIELD_STRUCTURED_META),
                     source = s(DatesAspectSeeder.FIELD_SOURCE) ?: DatesAspectSeeder.SOURCE_LEGION,
                     googleEventId = s(DatesAspectSeeder.FIELD_GOOGLE_EVENT_ID),
+                    // A Dates `Event` is always an appointment - ticket 11's 2026-08-27 ruling #1.
+                    // Explicit here even though it is the ONLY value this branch ever produces,
+                    // so a reader never has to chase the private EventFields(...) helper below to
+                    // learn what every row from this branch is tagged.
+                    kind = EventKind.APPOINTMENT,
                 ),
             )
         }
@@ -163,6 +181,10 @@ object EventsReconcile {
                     location = null,
                     notes = null,
                     source = DatesAspectSeeder.SOURCE_LEGION,
+                    // A Notes `Item` is always a reminder - ticket 11's 2026-08-27 ruling #1. This
+                    // matches EventFields' own default, spelled out explicitly for the same reason
+                    // as the Dates branch above.
+                    kind = EventKind.REMINDER,
                     googleEventId = null,
                     done = b(NotesAspectSeeder.FIELD_DONE),
                     doneAtMs = l(NotesAspectSeeder.FIELD_DONE_AT),
@@ -204,6 +226,32 @@ object EventsReconcile {
         }
 
         val serverEvents = backend.fetchActive().getOrElse { return Result.failure(it) }
+        val engineGuids = reconciling.map { it.guid }.toSet()
+
+        // Ticket 11's 2026-08-27 ruling #2, and the actual root cause of the 2026-08-26 incident
+        // (see AlarmScheduler.rescheduleAll's own doc comment for the incident account - that fix
+        // was only ever a guard against this gap's SYMPTOM). A server row this phone once created
+        // (a non-null origin_guid) whose engine record is now trashed or absent - not present in
+        // this run's `reconciling` set - gets retracted here. **Bounded strictly by origin_guid,
+        // and that bound is the whole safety argument**: a row with a NULL origin_guid was created
+        // somewhere else (the laptop, a future surface) and this phone has no standing to delete
+        // it, so it is never even considered. Soft delete only, via EventsBackend.softDelete -
+        // never a hard delete, so the retraction is itself auditable. This never touches, trashes,
+        // or reads the engine differently than the upload pass above already did - the engine
+        // stays the one thing this whole file never writes to (this object's own class doc).
+        var deletedOnServer = 0
+        val toRetract = serverEvents.filter { it.originGuid != null && it.originGuid !in engineGuids }
+        for (row in toRetract) {
+            val didDelete = backend.softDelete(row.serverId).getOrElse { return Result.failure(it) }
+            if (didDelete) deletedOnServer++
+        }
+        // Everything below (the id-carry map, the replica refill, and the onlyOnServer diff) must
+        // see the POST-retraction server state, or a row just soft-deleted above would be written
+        // straight back into the replica by the refill three lines down - undoing the retraction
+        // in the same run that performed it.
+        val retractedServerIds = toRetract.map { it.serverId }.toSet()
+        val activeServerEvents = if (retractedServerIds.isEmpty()) serverEvents else
+            serverEvents.filterNot { it.serverId in retractedServerIds }
 
         // Kevin's ruling 2026-08-26 (ticket 11): carry the engine id into the replica instead of
         // letting the wholesale refresh below remint one for every row. guid -> engine records.id,
@@ -222,7 +270,7 @@ object EventsReconcile {
         // derivable id before any id is allocated removes the contest instead of adjudicating it:
         // an ancestor-less row has nothing pointing at its local id yet, so it is the one that can
         // afford to move.
-        val (carried, ancestorless) = serverEvents.partition { row ->
+        val (carried, ancestorless) = activeServerEvents.partition { row ->
             row.originGuid?.let { engineIdByGuid.containsKey(it) } == true
         }
         for (row in carried + ancestorless) {
@@ -236,8 +284,7 @@ object EventsReconcile {
             }
         }
 
-        val engineGuids = reconciling.map { it.guid }.toSet()
-        val serverGuids = serverEvents.mapNotNull { it.originGuid }.toSet()
+        val serverGuids = activeServerEvents.mapNotNull { it.originGuid }.toSet()
 
         return Result.success(
             Report(
@@ -245,8 +292,9 @@ object EventsReconcile {
                 notesEngineCount = itemRecords.size,
                 uploaded = uploaded,
                 uploadedUndated = uploadedUndated,
-                serverCountAfter = serverEvents.size,
+                serverCountAfter = activeServerEvents.size,
                 replicaCountAfter = db.eventReplicaDao().getAllActive().size,
+                deletedOnServer = deletedOnServer,
                 onlyOnEngine = (engineGuids - serverGuids).sorted(),
                 onlyOnServer = (serverGuids - engineGuids).sorted(),
             ),
@@ -280,6 +328,7 @@ object EventsReconcile {
         location = location,
         notes = notes,
         source = source,
+        kind = kind,
         googleEventId = googleEventId,
         done = done,
         doneAt = doneAtMs,
@@ -318,6 +367,7 @@ private fun EventFields(
     structuredMeta: String?,
     source: String,
     googleEventId: String?,
+    kind: String,
 ) = EventFields(
     title = title,
     createdAtMs = createdAtMs,
@@ -328,6 +378,7 @@ private fun EventFields(
     notes = notes,
     structuredMeta = structuredMeta,
     source = source,
+    kind = kind,
     googleEventId = googleEventId,
     done = false,
     doneAtMs = null,
