@@ -11,10 +11,22 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 private const val VEHICLES_TABLE = "vehicles"
 private const val SERVICE_HISTORY_TABLE = "service_history"
 private const val DRIVES_TABLE = "drives"
+private const val CODE_EVENTS_TABLE = "code_events"
+private const val CODE_CLEAR_EVENTS_TABLE = "code_clear_events"
+private const val OIL_ANALYSES_TABLE = "oil_analyses"
+private const val CHASSIS_QUIRKS_TABLE = "chassis_quirks"
+
+// codes/freeze_frame/codes_after are jsonb server-side but raw JSON TEXT at the FleetBackend
+// interface boundary (see RemoteCodeEvent's own doc comment) - these two helpers are the one place
+// that crosses between the two, same pattern EventUpsertDto.from/RemoteEvent use for structured_meta.
+private fun jsonOrNull(text: String?): JsonElement? = text?.let { Json.parseToJsonElement(it) }
+private fun textOrNull(json: JsonElement?): String? = json?.toString()
 
 private fun tsOrNull(ms: Long?): String? = ms?.let { Instant.ofEpochMilli(it).toString() }
 private fun parseTs(s: String): Long = OffsetDateTime.parse(s).toInstant().toEpochMilli()
@@ -169,13 +181,268 @@ private data class DriveRowDto(
     )
 }
 
+/** The wire shape for [SupabaseFleetBackend.upsertCodeEvent]. `codes`/`freeze_frame` are `jsonb` -
+ * [jsonOrNull] converts the already-nullable text this DTO receives (freeze_frame having already
+ * been translated from the phone's `""` to a real `null` by [FleetReconcile]). `provenance` is on
+ * the wire explicitly, sourced from [CodeEventUpload.provenance] - CLAUDE.md section 4 rule 4 is a
+ * claim the phone makes, not a value the server column's own default gets to supply on its behalf. */
+@Serializable
+private data class CodeEventUpsertDto(
+    @SerialName("sync_id") val syncId: String,
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("occurred_at") val occurredAt: String,
+    val mileage: Int?,
+    val codes: JsonElement,
+    @SerialName("freeze_frame") val freezeFrame: JsonElement?,
+    val provenance: String,
+)
+
+/** The wire shape read back off `public.code_events` for every operation. */
+@Serializable
+private data class CodeEventRowDto(
+    val id: String,
+    @SerialName("sync_id") val syncId: String,
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("occurred_at") val occurredAt: String,
+    val mileage: Int? = null,
+    val codes: JsonElement,
+    @SerialName("freeze_frame") val freezeFrame: JsonElement? = null,
+    val provenance: String,
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("deleted_at") val deletedAt: String? = null,
+) {
+    fun toRemoteCodeEvent() = RemoteCodeEvent(
+        serverId = id,
+        syncId = syncId,
+        vehicleServerId = vehicleId,
+        occurredAtMs = parseTs(occurredAt),
+        mileage = mileage,
+        codesJson = codes.toString(),
+        freezeFrameJson = textOrNull(freezeFrame),
+        provenance = provenance,
+        updatedAtMs = parseTs(updatedAt),
+        deleted = deletedAt != null,
+    )
+}
+
+/** The wire shape for [SupabaseFleetBackend.upsertCodeClearEvent]. `codes_after` is `null` for
+ * UNVERIFIED, a real `jsonb` array otherwise - see [RemoteCodeClearEvent]'s own doc comment for why
+ * that three-way distinction must never collapse. */
+@Serializable
+private data class CodeClearEventUpsertDto(
+    @SerialName("sync_id") val syncId: String,
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("occurred_at") val occurredAt: String,
+    val mileage: Int?,
+    @SerialName("codes_before") val codesBefore: JsonElement,
+    @SerialName("freeze_frame") val freezeFrame: JsonElement?,
+    @SerialName("codes_after") val codesAfter: JsonElement?,
+    val outcome: String,
+    @SerialName("ack_raw") val ackRaw: String,
+    val provenance: String,
+)
+
+/** The wire shape read back off `public.code_clear_events` for every operation. */
+@Serializable
+private data class CodeClearEventRowDto(
+    val id: String,
+    @SerialName("sync_id") val syncId: String,
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("occurred_at") val occurredAt: String,
+    val mileage: Int? = null,
+    @SerialName("codes_before") val codesBefore: JsonElement,
+    @SerialName("freeze_frame") val freezeFrame: JsonElement? = null,
+    @SerialName("codes_after") val codesAfter: JsonElement? = null,
+    val outcome: String,
+    @SerialName("ack_raw") val ackRaw: String = "",
+    val provenance: String,
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("deleted_at") val deletedAt: String? = null,
+) {
+    fun toRemoteCodeClearEvent() = RemoteCodeClearEvent(
+        serverId = id,
+        syncId = syncId,
+        vehicleServerId = vehicleId,
+        occurredAtMs = parseTs(occurredAt),
+        mileage = mileage,
+        codesBeforeJson = codesBefore.toString(),
+        freezeFrameJson = textOrNull(freezeFrame),
+        codesAfterJson = textOrNull(codesAfter),
+        outcome = outcome,
+        ackRaw = ackRaw,
+        provenance = provenance,
+        updatedAtMs = parseTs(updatedAt),
+        deleted = deletedAt != null,
+    )
+}
+
+/** The wire shape for [SupabaseFleetBackend.upsertOilAnalysis]. `provenance` is on the wire
+ * explicitly, sourced from [OilAnalysisUpload.provenance] - always `'USER'` for this table (see
+ * [RemoteOilAnalysis]'s own doc comment), same "the phone asserts it, the server does not guess"
+ * posture as [CodeEventUpsertDto]. */
+@Serializable
+private data class OilAnalysisUpsertDto(
+    @SerialName("sync_id") val syncId: String,
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("analyzed_at") val analyzedAt: String,
+    val mileage: Int?,
+    @SerialName("oil_brand") val oilBrand: String,
+    @SerialName("oil_grade") val oilGrade: String,
+    @SerialName("drain_interval_miles") val drainIntervalMiles: Int?,
+    val iron: Int?,
+    val copper: Int?,
+    val lead: Int?,
+    val tin: Int?,
+    val aluminum: Int?,
+    val chromium: Int?,
+    val nickel: Int?,
+    val sodium: Int?,
+    val potassium: Int?,
+    val silicon: Int?,
+    val boron: Int?,
+    val magnesium: Int?,
+    @SerialName("fuel_percent") val fuelPercent: Double?,
+    @SerialName("water_percent") val waterPercent: Double?,
+    val tbn: Double?,
+    @SerialName("viscosity_cst") val viscosityCst: Double?,
+    @SerialName("lab_notes") val labNotes: String,
+    val provenance: String,
+)
+
+/** The wire shape read back off `public.oil_analyses` for every operation. */
+@Serializable
+private data class OilAnalysisRowDto(
+    val id: String,
+    @SerialName("sync_id") val syncId: String,
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("analyzed_at") val analyzedAt: String,
+    val mileage: Int? = null,
+    @SerialName("oil_brand") val oilBrand: String = "",
+    @SerialName("oil_grade") val oilGrade: String = "",
+    @SerialName("drain_interval_miles") val drainIntervalMiles: Int? = null,
+    val iron: Int? = null,
+    val copper: Int? = null,
+    val lead: Int? = null,
+    val tin: Int? = null,
+    val aluminum: Int? = null,
+    val chromium: Int? = null,
+    val nickel: Int? = null,
+    val sodium: Int? = null,
+    val potassium: Int? = null,
+    val silicon: Int? = null,
+    val boron: Int? = null,
+    val magnesium: Int? = null,
+    @SerialName("fuel_percent") val fuelPercent: Double? = null,
+    @SerialName("water_percent") val waterPercent: Double? = null,
+    val tbn: Double? = null,
+    @SerialName("viscosity_cst") val viscosityCst: Double? = null,
+    @SerialName("lab_notes") val labNotes: String = "",
+    val provenance: String,
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("deleted_at") val deletedAt: String? = null,
+) {
+    fun toRemoteOilAnalysis() = RemoteOilAnalysis(
+        serverId = id,
+        syncId = syncId,
+        vehicleServerId = vehicleId,
+        analyzedAtMs = parseTs(analyzedAt),
+        mileage = mileage,
+        oilBrand = oilBrand,
+        oilGrade = oilGrade,
+        drainIntervalMiles = drainIntervalMiles,
+        iron = iron,
+        copper = copper,
+        lead = lead,
+        tin = tin,
+        aluminum = aluminum,
+        chromium = chromium,
+        nickel = nickel,
+        sodium = sodium,
+        potassium = potassium,
+        silicon = silicon,
+        boron = boron,
+        magnesium = magnesium,
+        fuelPercent = fuelPercent,
+        waterPercent = waterPercent,
+        tbn = tbn,
+        viscosityCst = viscosityCst,
+        labNotes = labNotes,
+        provenance = provenance,
+        updatedAtMs = parseTs(updatedAt),
+        deleted = deletedAt != null,
+    )
+}
+
+/** The wire shape for [SupabaseFleetBackend.upsertChassisQuirk]. No `vehicle_id` at all - see
+ * [RemoteChassisQuirk]'s own doc comment for why this table is not per-vehicle. `provenance` IS on
+ * the wire, sourced from [ChassisQuirkUpload.provenance] - always `'DETERMINISTIC'` (parsed from a
+ * bundled JSON asset by code), same "the phone asserts it explicitly" posture as
+ * [CodeEventUpsertDto]. */
+@Serializable
+private data class ChassisQuirkUpsertDto(
+    @SerialName("quirk_id") val quirkId: String,
+    val chassis: String,
+    val engine: String,
+    val title: String,
+    val symptom: String,
+    @SerialName("verification_steps") val verificationSteps: String,
+    @SerialName("mileage_low") val mileageLow: Int?,
+    @SerialName("mileage_high") val mileageHigh: Int?,
+    val severity: String,
+    @SerialName("cost_low_cents") val costLowCents: Long?,
+    @SerialName("cost_high_cents") val costHighCents: Long?,
+    @SerialName("fix_notes") val fixNotes: String,
+    @SerialName("source_url") val sourceUrl: String,
+    val provenance: String,
+)
+
+/** The wire shape read back off `public.chassis_quirks` for every operation. */
+@Serializable
+private data class ChassisQuirkRowDto(
+    @SerialName("quirk_id") val quirkId: String,
+    val chassis: String,
+    val engine: String = "",
+    val title: String,
+    val symptom: String,
+    @SerialName("verification_steps") val verificationSteps: String,
+    @SerialName("mileage_low") val mileageLow: Int? = null,
+    @SerialName("mileage_high") val mileageHigh: Int? = null,
+    val severity: String,
+    @SerialName("cost_low_cents") val costLowCents: Long? = null,
+    @SerialName("cost_high_cents") val costHighCents: Long? = null,
+    @SerialName("fix_notes") val fixNotes: String = "",
+    @SerialName("source_url") val sourceUrl: String = "",
+    val provenance: String,
+    @SerialName("updated_at") val updatedAt: String,
+) {
+    fun toRemoteChassisQuirk() = RemoteChassisQuirk(
+        quirkId = quirkId,
+        chassis = chassis,
+        engine = engine,
+        title = title,
+        symptom = symptom,
+        verificationSteps = verificationSteps,
+        mileageLow = mileageLow,
+        mileageHigh = mileageHigh,
+        severity = severity,
+        costLowCents = costLowCents,
+        costHighCents = costHighCents,
+        fixNotes = fixNotes,
+        sourceUrl = sourceUrl,
+        provenance = provenance,
+        updatedAtMs = parseTs(updatedAt),
+    )
+}
+
 /**
  * [FleetBackend]'s real implementation over Postgrest, against `public.vehicles`,
- * `public.service_history` and `public.drives` (`supabase/migrations/20260825000500_aspect_places_fleet.sql`,
- * `supabase/migrations/20260826000200_fleet_drives.sql`). This is the deliberately untested seam in
- * the fleet cutover, same posture as [SupabasePlacesBackend]/[SupabaseEventsBackend] - exercising it
- * for real needs a live project. [FleetBackend] is the fake-friendly interface; every branch here
- * does nothing but translate exceptions and decode DTOs.
+ * `public.service_history`, `public.drives` (`supabase/migrations/20260825000500_aspect_places_fleet.sql`,
+ * `supabase/migrations/20260826000200_fleet_drives.sql`) and `public.code_events`,
+ * `public.code_clear_events`, `public.oil_analyses`, `public.chassis_quirks`
+ * (`supabase/migrations/20260826000600_fleet_diagnostics_specs_build.sql`). This is the deliberately
+ * untested seam in the fleet cutover, same posture as [SupabasePlacesBackend]/[SupabaseEventsBackend] -
+ * exercising it for real needs a live project. [FleetBackend] is the fake-friendly interface; every
+ * branch here does nothing but translate exceptions and decode DTOs.
  */
 class SupabaseFleetBackend(private val client: SupabaseClient) : FleetBackend {
 
@@ -288,4 +555,156 @@ class SupabaseFleetBackend(private val client: SupabaseClient) : FleetBackend {
             .decodeSingle<DriveRowDto>()
             .toRemoteDrive()
     }
+
+    override suspend fun fetchActiveCodeEvents(): Result<List<RemoteCodeEvent>> =
+        translating("load your stored codes") {
+            client.postgrest.from(CODE_EVENTS_TABLE)
+                .select {
+                    filter { filter("deleted_at", FilterOperator.IS, "null") }
+                }
+                .decodeList<CodeEventRowDto>()
+                .map { it.toRemoteCodeEvent() }
+        }
+
+    override suspend fun upsertCodeEvent(event: CodeEventUpload): Result<RemoteCodeEvent> =
+        translating("save that stored-code reading") {
+            client.postgrest.from(CODE_EVENTS_TABLE)
+                .upsert(
+                    CodeEventUpsertDto(
+                        syncId = event.syncId,
+                        vehicleId = event.vehicleServerId,
+                        occurredAt = Instant.ofEpochMilli(event.occurredAtMs).toString(),
+                        mileage = event.mileage,
+                        codes = Json.parseToJsonElement(event.codesJson),
+                        freezeFrame = jsonOrNull(event.freezeFrameJson),
+                        provenance = event.provenance,
+                    ),
+                ) {
+                    onConflict = "sync_id"
+                    select()
+                }
+                .decodeSingle<CodeEventRowDto>()
+                .toRemoteCodeEvent()
+        }
+
+    override suspend fun fetchActiveCodeClearEvents(): Result<List<RemoteCodeClearEvent>> =
+        translating("load your code-clear history") {
+            client.postgrest.from(CODE_CLEAR_EVENTS_TABLE)
+                .select {
+                    filter { filter("deleted_at", FilterOperator.IS, "null") }
+                }
+                .decodeList<CodeClearEventRowDto>()
+                .map { it.toRemoteCodeClearEvent() }
+        }
+
+    override suspend fun upsertCodeClearEvent(event: CodeClearEventUpload): Result<RemoteCodeClearEvent> =
+        translating("save that code-clear outcome") {
+            client.postgrest.from(CODE_CLEAR_EVENTS_TABLE)
+                .upsert(
+                    CodeClearEventUpsertDto(
+                        syncId = event.syncId,
+                        vehicleId = event.vehicleServerId,
+                        occurredAt = Instant.ofEpochMilli(event.occurredAtMs).toString(),
+                        mileage = event.mileage,
+                        codesBefore = Json.parseToJsonElement(event.codesBeforeJson),
+                        freezeFrame = jsonOrNull(event.freezeFrameJson),
+                        codesAfter = jsonOrNull(event.codesAfterJson),
+                        outcome = event.outcome,
+                        ackRaw = event.ackRaw,
+                        provenance = event.provenance,
+                    ),
+                ) {
+                    onConflict = "sync_id"
+                    select()
+                }
+                .decodeSingle<CodeClearEventRowDto>()
+                .toRemoteCodeClearEvent()
+        }
+
+    override suspend fun fetchActiveOilAnalyses(): Result<List<RemoteOilAnalysis>> =
+        translating("load your oil analyses") {
+            client.postgrest.from(OIL_ANALYSES_TABLE)
+                .select {
+                    filter { filter("deleted_at", FilterOperator.IS, "null") }
+                }
+                .decodeList<OilAnalysisRowDto>()
+                .map { it.toRemoteOilAnalysis() }
+        }
+
+    override suspend fun upsertOilAnalysis(analysis: OilAnalysisUpload): Result<RemoteOilAnalysis> =
+        translating("save that oil analysis") {
+            client.postgrest.from(OIL_ANALYSES_TABLE)
+                .upsert(
+                    OilAnalysisUpsertDto(
+                        syncId = analysis.syncId,
+                        vehicleId = analysis.vehicleServerId,
+                        analyzedAt = Instant.ofEpochMilli(analysis.analyzedAtMs).toString(),
+                        mileage = analysis.mileage,
+                        oilBrand = analysis.oilBrand,
+                        oilGrade = analysis.oilGrade,
+                        drainIntervalMiles = analysis.drainIntervalMiles,
+                        iron = analysis.iron,
+                        copper = analysis.copper,
+                        lead = analysis.lead,
+                        tin = analysis.tin,
+                        aluminum = analysis.aluminum,
+                        chromium = analysis.chromium,
+                        nickel = analysis.nickel,
+                        sodium = analysis.sodium,
+                        potassium = analysis.potassium,
+                        silicon = analysis.silicon,
+                        boron = analysis.boron,
+                        magnesium = analysis.magnesium,
+                        fuelPercent = analysis.fuelPercent,
+                        waterPercent = analysis.waterPercent,
+                        tbn = analysis.tbn,
+                        viscosityCst = analysis.viscosityCst,
+                        labNotes = analysis.labNotes,
+                        provenance = analysis.provenance,
+                    ),
+                ) {
+                    onConflict = "sync_id"
+                    select()
+                }
+                .decodeSingle<OilAnalysisRowDto>()
+                .toRemoteOilAnalysis()
+        }
+
+    override suspend fun fetchChassisQuirks(): Result<List<RemoteChassisQuirk>> =
+        translating("load the chassis quirk index") {
+            // No deleted_at filter - chassis_quirks has no such column (see RemoteChassisQuirk's
+            // own doc comment: it is REPLACE-semantics reference content, not a per-user record).
+            client.postgrest.from(CHASSIS_QUIRKS_TABLE)
+                .select()
+                .decodeList<ChassisQuirkRowDto>()
+                .map { it.toRemoteChassisQuirk() }
+        }
+
+    override suspend fun upsertChassisQuirk(quirk: ChassisQuirkUpload): Result<RemoteChassisQuirk> =
+        translating("save that chassis quirk") {
+            client.postgrest.from(CHASSIS_QUIRKS_TABLE)
+                .upsert(
+                    ChassisQuirkUpsertDto(
+                        quirkId = quirk.quirkId,
+                        chassis = quirk.chassis,
+                        engine = quirk.engine,
+                        title = quirk.title,
+                        symptom = quirk.symptom,
+                        verificationSteps = quirk.verificationSteps,
+                        mileageLow = quirk.mileageLow,
+                        mileageHigh = quirk.mileageHigh,
+                        severity = quirk.severity,
+                        costLowCents = quirk.costLowCents,
+                        costHighCents = quirk.costHighCents,
+                        fixNotes = quirk.fixNotes,
+                        sourceUrl = quirk.sourceUrl,
+                        provenance = quirk.provenance,
+                    ),
+                ) {
+                    onConflict = "quirk_id"
+                    select()
+                }
+                .decodeSingle<ChassisQuirkRowDto>()
+                .toRemoteChassisQuirk()
+        }
 }

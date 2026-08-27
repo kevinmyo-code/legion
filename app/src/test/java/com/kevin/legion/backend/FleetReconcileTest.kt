@@ -1,7 +1,11 @@
 package com.kevin.legion.backend
 
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.ChassisQuirk
+import com.kevin.legion.data.local.CodeClearEvent
+import com.kevin.legion.data.local.CodeEvent
 import com.kevin.legion.data.local.Drive
+import com.kevin.legion.data.local.OilAnalysis
 import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.engine.RecordStore
@@ -33,13 +37,24 @@ class FleetReconcileTest {
         val vehicles = mutableMapOf<String, RemoteVehicle>() // keyed by originGuid
         val serviceHistory = mutableMapOf<String, RemoteServiceHistory>() // keyed by originGuid
         val drives = mutableMapOf<String, RemoteDrive>() // keyed by syncId
+        val codeEvents = mutableMapOf<String, RemoteCodeEvent>() // keyed by syncId
+        val codeClearEvents = mutableMapOf<String, RemoteCodeClearEvent>() // keyed by syncId
+        val oilAnalyses = mutableMapOf<String, RemoteOilAnalysis>() // keyed by syncId
+        val chassisQuirks = mutableMapOf<String, RemoteChassisQuirk>() // keyed by quirkId
         var clock = 1_000L
         private var vehicleCounter = 0
         private var serviceHistoryCounter = 0
         private var driveCounter = 0
+        private var codeEventCounter = 0
+        private var codeClearEventCounter = 0
+        private var oilAnalysisCounter = 0
 
         /** Set to make the NEXT [uploadMigratedVehicle] call fail - the short-circuit test's hook. */
         var failNextVehicleUpload = false
+
+        /** Set to make the NEXT [upsertCodeEvent] call fail - the four-new-tables short-circuit
+         * test's hook, mirroring [failNextVehicleUpload]'s shape one section down. */
+        var failNextCodeEventUpload = false
 
         override suspend fun fetchActiveVehicles(): Result<List<RemoteVehicle>> =
             Result.success(vehicles.values.filterNot { it.deleted })
@@ -106,6 +121,127 @@ class FleetReconcileTest {
                 deleted = false,
             )
             drives[drive.syncId] = row
+            return Result.success(row)
+        }
+
+        override suspend fun fetchActiveCodeEvents(): Result<List<RemoteCodeEvent>> =
+            Result.success(codeEvents.values.filterNot { it.deleted })
+
+        override suspend fun upsertCodeEvent(event: CodeEventUpload): Result<RemoteCodeEvent> {
+            if (failNextCodeEventUpload) {
+                failNextCodeEventUpload = false
+                return Result.failure(FleetBackendException("simulated transport failure"))
+            }
+            val existing = codeEvents[event.syncId]
+            val row = RemoteCodeEvent(
+                serverId = existing?.serverId ?: "code_event-${++codeEventCounter}",
+                syncId = event.syncId,
+                vehicleServerId = event.vehicleServerId,
+                occurredAtMs = event.occurredAtMs,
+                mileage = event.mileage,
+                codesJson = event.codesJson,
+                freezeFrameJson = event.freezeFrameJson,
+                // Records what the reconcile actually sent, never a value the fake invents - a
+                // reconcile that stopped asserting provenance would show up here as whatever it
+                // sent (or a missing-field compile error), not as a value this fake papers over.
+                provenance = event.provenance,
+                updatedAtMs = ++clock,
+                deleted = false,
+            )
+            codeEvents[event.syncId] = row
+            return Result.success(row)
+        }
+
+        override suspend fun fetchActiveCodeClearEvents(): Result<List<RemoteCodeClearEvent>> =
+            Result.success(codeClearEvents.values.filterNot { it.deleted })
+
+        override suspend fun upsertCodeClearEvent(event: CodeClearEventUpload): Result<RemoteCodeClearEvent> {
+            val existing = codeClearEvents[event.syncId]
+            val row = RemoteCodeClearEvent(
+                serverId = existing?.serverId ?: "code_clear_event-${++codeClearEventCounter}",
+                syncId = event.syncId,
+                vehicleServerId = event.vehicleServerId,
+                occurredAtMs = event.occurredAtMs,
+                mileage = event.mileage,
+                codesBeforeJson = event.codesBeforeJson,
+                freezeFrameJson = event.freezeFrameJson,
+                codesAfterJson = event.codesAfterJson,
+                outcome = event.outcome,
+                ackRaw = event.ackRaw,
+                provenance = event.provenance,
+                updatedAtMs = ++clock,
+                deleted = false,
+            )
+            codeClearEvents[event.syncId] = row
+            return Result.success(row)
+        }
+
+        override suspend fun fetchActiveOilAnalyses(): Result<List<RemoteOilAnalysis>> =
+            Result.success(oilAnalyses.values.filterNot { it.deleted })
+
+        override suspend fun upsertOilAnalysis(analysis: OilAnalysisUpload): Result<RemoteOilAnalysis> {
+            val existing = oilAnalyses[analysis.syncId]
+            val row = RemoteOilAnalysis(
+                serverId = existing?.serverId ?: "oil_analysis-${++oilAnalysisCounter}",
+                syncId = analysis.syncId,
+                vehicleServerId = analysis.vehicleServerId,
+                analyzedAtMs = analysis.analyzedAtMs,
+                mileage = analysis.mileage,
+                oilBrand = analysis.oilBrand,
+                oilGrade = analysis.oilGrade,
+                drainIntervalMiles = analysis.drainIntervalMiles,
+                iron = analysis.iron,
+                copper = analysis.copper,
+                lead = analysis.lead,
+                tin = analysis.tin,
+                aluminum = analysis.aluminum,
+                chromium = analysis.chromium,
+                nickel = analysis.nickel,
+                sodium = analysis.sodium,
+                potassium = analysis.potassium,
+                silicon = analysis.silicon,
+                boron = analysis.boron,
+                magnesium = analysis.magnesium,
+                fuelPercent = analysis.fuelPercent,
+                waterPercent = analysis.waterPercent,
+                tbn = analysis.tbn,
+                viscosityCst = analysis.viscosityCst,
+                labNotes = analysis.labNotes,
+                // Records what the reconcile actually sent - see the code_events fake's own
+                // comment above for why this must not be a literal.
+                provenance = analysis.provenance,
+                updatedAtMs = ++clock,
+                deleted = false,
+            )
+            oilAnalyses[analysis.syncId] = row
+            return Result.success(row)
+        }
+
+        override suspend fun fetchChassisQuirks(): Result<List<RemoteChassisQuirk>> =
+            Result.success(chassisQuirks.values.toList())
+
+        override suspend fun upsertChassisQuirk(quirk: ChassisQuirkUpload): Result<RemoteChassisQuirk> {
+            val row = RemoteChassisQuirk(
+                quirkId = quirk.quirkId,
+                chassis = quirk.chassis,
+                engine = quirk.engine,
+                title = quirk.title,
+                symptom = quirk.symptom,
+                verificationSteps = quirk.verificationSteps,
+                mileageLow = quirk.mileageLow,
+                mileageHigh = quirk.mileageHigh,
+                severity = quirk.severity,
+                costLowCents = quirk.costLowCents,
+                costHighCents = quirk.costHighCents,
+                fixNotes = quirk.fixNotes,
+                sourceUrl = quirk.sourceUrl,
+                provenance = quirk.provenance,
+                updatedAtMs = ++clock,
+            )
+            // A genuine REPLACE-on-conflict, matching SupabaseFleetBackend.upsertChassisQuirk's
+            // real ON CONFLICT(quirk_id) DO UPDATE - always overwrites, never checks for "already
+            // there" first, per ChassisQuirkUpload's own doc comment.
+            chassisQuirks[quirk.quirkId] = row
             return Result.success(row)
         }
     }
@@ -197,6 +333,85 @@ class FleetReconcileTest {
     ) {
         CarDatabase.getDatabase(context).driveDao().insert(
             Drive(vehicleId = vehicleId, startedAt = startedAt, endedAt = endedAt, miles = miles, gallons = gallons, endReason = endReason, syncId = syncId),
+        )
+    }
+
+    private suspend fun createCodeEvent(
+        vehicleId: String,
+        syncId: String,
+        timestamp: Long = 1_000L,
+        mileage: Int? = 100_000,
+        codesJson: String = """["P0420"]""",
+        freezeFrameJson: String = "",
+    ) {
+        CarDatabase.getDatabase(context).codeEventDao().insert(
+            CodeEvent(
+                vehicleId = vehicleId,
+                timestamp = timestamp,
+                mileage = mileage,
+                codesJson = codesJson,
+                freezeFrameJson = freezeFrameJson,
+                syncId = syncId,
+            ),
+        )
+    }
+
+    private suspend fun createCodeClearEvent(
+        vehicleId: String,
+        syncId: String,
+        timestamp: Long = 1_000L,
+        codesBeforeJson: String = """["P0420"]""",
+        freezeFrameJson: String = "",
+        codesAfterJson: String = "",
+        outcome: String = "UNVERIFIED",
+    ) {
+        CarDatabase.getDatabase(context).codeClearEventDao().insert(
+            CodeClearEvent(
+                vehicleId = vehicleId,
+                timestamp = timestamp,
+                codesBeforeJson = codesBeforeJson,
+                freezeFrameJson = freezeFrameJson,
+                codesAfterJson = codesAfterJson,
+                outcome = outcome,
+                syncId = syncId,
+            ),
+        )
+    }
+
+    private suspend fun createOilAnalysis(
+        vehicleId: String,
+        syncId: String,
+        date: Long = 1_000L,
+        iron: Int? = 12,
+    ) {
+        CarDatabase.getDatabase(context).oilAnalysisDao().insert(
+            OilAnalysis(vehicleId = vehicleId, date = date, iron = iron, syncId = syncId),
+        )
+    }
+
+    private suspend fun createChassisQuirk(
+        quirkId: String,
+        chassis: String = "E46",
+        mileageLow: Int = -1,
+        mileageHigh: Int = -1,
+        costLow: Int = -1,
+        costHigh: Int = -1,
+    ) {
+        CarDatabase.getDatabase(context).chassisQuirkDao().upsertAll(
+            listOf(
+                ChassisQuirk(
+                    quirkId = quirkId,
+                    chassis = chassis,
+                    title = "Subframe crack",
+                    symptom = "clunk",
+                    verificationSteps = "inspect",
+                    mileageLow = mileageLow,
+                    mileageHigh = mileageHigh,
+                    severity = "MONITOR",
+                    costLow = costLow,
+                    costHigh = costHigh,
+                ),
+            ),
         )
     }
 
@@ -418,5 +633,190 @@ class FleetReconcileTest {
         assertEquals(0, report.drive.uploaded)
         assertEquals(1, report.drive.skippedUnresolvedVehicle.size)
         assertTrue(backend.drives.isEmpty())
+    }
+
+    // ---- Wave 3: code_events / code_clear_events / oil_analyses / chassis_quirks -----------------
+
+    @Test
+    fun `the four new tables map field-for-field, including oil_analyses' provenance divergence`() = runBlocking {
+        val obdMac = "10:20:30:40:50:60"
+        createEngineVehicle(obdMac)
+        createLegacyVehicle(obdMac)
+        createCodeEvent(vehicleId = obdMac, syncId = "code-1", codesJson = """["P0420","P0128"]""")
+        createCodeClearEvent(
+            vehicleId = obdMac, syncId = "clear-1",
+            codesAfterJson = """["P0128"]""", outcome = "RETURNED",
+        )
+        createOilAnalysis(vehicleId = obdMac, syncId = "oil-1", iron = 17)
+        createChassisQuirk(quirkId = "e46_subframe_crack", mileageLow = 80_000, mileageHigh = 150_000, costLow = 200, costHigh = 600)
+        val backend = FakeFleetBackend()
+
+        val report = FleetReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(1, report.codeEvent.uploaded)
+        val codeEventRow = backend.codeEvents.values.single()
+        assertEquals("""["P0420","P0128"]""", codeEventRow.codesJson)
+        assertEquals("DETERMINISTIC", codeEventRow.provenance)
+
+        assertEquals(1, report.codeClearEvent.uploaded)
+        val clearRow = backend.codeClearEvents.values.single()
+        assertEquals("RETURNED", clearRow.outcome)
+        assertEquals("""["P0128"]""", clearRow.codesAfterJson)
+        assertEquals("DETERMINISTIC", clearRow.provenance)
+
+        assertEquals(1, report.oilAnalysis.uploaded)
+        val oilRow = backend.oilAnalyses.values.single()
+        assertEquals(17, oilRow.iron)
+        // The one place this wave's provenance diverges from its DETERMINISTIC siblings -
+        // OilAnalysis.kt's own doc comment: a person transcribed a lab report, code did not
+        // derive it.
+        assertEquals("USER", oilRow.provenance)
+
+        assertEquals(1, report.chassisQuirk.uploaded)
+        val quirkRow = backend.chassisQuirks.values.single()
+        assertEquals(80_000, quirkRow.mileageLow)
+        assertEquals(150_000, quirkRow.mileageHigh)
+        // USD Int -> cents Long, CLAUDE.md section 3.
+        assertEquals(20_000L, quirkRow.costLowCents)
+        assertEquals(60_000L, quirkRow.costHighCents)
+        assertEquals("DETERMINISTIC", quirkRow.provenance)
+
+        assertTrue(report.isClean)
+    }
+
+    @Test
+    fun `the -1 sentinel becomes a real NULL on the wire, never travelling as -1`() = runBlocking {
+        val obdMac = "AA:AA:AA:AA:AA:AA"
+        createEngineVehicle(obdMac)
+        createLegacyVehicle(obdMac)
+        // Defaults are all -1 ("no bound"/"unknown") - see ChassisQuirk's own doc comment.
+        createChassisQuirk(quirkId = "unbounded_quirk")
+        val backend = FakeFleetBackend()
+
+        FleetReconcile.run(context, backend).getOrThrow()
+
+        val uploaded = backend.chassisQuirks.getValue("unbounded_quirk")
+        assertNull(uploaded.mileageLow)
+        assertNull(uploaded.mileageHigh)
+        assertNull(uploaded.costLowCents)
+        assertNull(uploaded.costHighCents)
+
+        // And the round trip back into the local replica must restore -1, not leave a real null
+        // sitting in a column the phone-side entity declares non-nullable with a -1 default.
+        val local = CarDatabase.getDatabase(context).chassisQuirkDao().getAll().single { it.quirkId == "unbounded_quirk" }
+        assertEquals(-1, local.mileageLow)
+        assertEquals(-1, local.mileageHigh)
+        assertEquals(-1, local.costLow)
+        assertEquals(-1, local.costHigh)
+    }
+
+    @Test
+    fun `the empty-string freeze-frame and codes-after conventions become NULL, not travelling as empty strings`() = runBlocking {
+        val obdMac = "BB:BB:BB:BB:BB:BB"
+        createEngineVehicle(obdMac)
+        createLegacyVehicle(obdMac)
+        createCodeEvent(vehicleId = obdMac, syncId = "code-no-freeze", freezeFrameJson = "")
+        createCodeClearEvent(vehicleId = obdMac, syncId = "clear-unverified", codesAfterJson = "", outcome = "UNVERIFIED")
+        val backend = FakeFleetBackend()
+
+        FleetReconcile.run(context, backend).getOrThrow()
+
+        assertNull(backend.codeEvents.getValue("code-no-freeze").freezeFrameJson)
+        assertNull(backend.codeClearEvents.getValue("clear-unverified").codesAfterJson)
+
+        // And the round trip back restores the phone's own "" convention rather than leaving a
+        // literal null sitting in a column the entity declares non-nullable with a "" default.
+        val db = CarDatabase.getDatabase(context)
+        assertEquals("", db.codeEventDao().getBySyncId("code-no-freeze")!!.freezeFrameJson)
+        assertEquals("", db.codeClearEventDao().getBySyncId("clear-unverified")!!.codesAfterJson)
+    }
+
+    @Test
+    fun `a re-run of the four new tables is idempotent - identity is stable, not just counts`() = runBlocking {
+        val obdMac = "CC:CC:CC:CC:CC:CC"
+        createEngineVehicle(obdMac)
+        createLegacyVehicle(obdMac)
+        createCodeEvent(vehicleId = obdMac, syncId = "code-idempotent")
+        createCodeClearEvent(vehicleId = obdMac, syncId = "clear-idempotent")
+        createOilAnalysis(vehicleId = obdMac, syncId = "oil-idempotent")
+        createChassisQuirk(quirkId = "idempotent_quirk")
+        val backend = FakeFleetBackend()
+
+        FleetReconcile.run(context, backend).getOrThrow()
+        val codeEventServerIdAfterFirst = backend.codeEvents.getValue("code-idempotent").serverId
+        val clearServerIdAfterFirst = backend.codeClearEvents.getValue("clear-idempotent").serverId
+        val oilServerIdAfterFirst = backend.oilAnalyses.getValue("oil-idempotent").serverId
+
+        val second = FleetReconcile.run(context, backend).getOrThrow()
+
+        // Identity, not just counts - a re-run that quietly reminted a fresh server row for an
+        // already-uploaded reading would still report matching counts (lessons.md's "assert on
+        // identity, NOT only on counts").
+        assertEquals(codeEventServerIdAfterFirst, backend.codeEvents.getValue("code-idempotent").serverId)
+        assertEquals(clearServerIdAfterFirst, backend.codeClearEvents.getValue("clear-idempotent").serverId)
+        assertEquals(oilServerIdAfterFirst, backend.oilAnalyses.getValue("oil-idempotent").serverId)
+        assertEquals(1, backend.codeEvents.size)
+        assertEquals(1, backend.codeClearEvents.size)
+        assertEquals(1, backend.oilAnalyses.size)
+        assertEquals(1, backend.chassisQuirks.size)
+
+        // Unlike vehicles/service_history's check-then-insert migration shape, these four are
+        // genuine upserts by natural key - same "no already-there branch, a repost still counts"
+        // posture DriveReport.uploaded's own doc comment states, so a re-run's `uploaded` count
+        // does NOT drop to 0. Identity (asserted above) is the thing that must stay stable, not
+        // this count.
+        assertEquals(1, second.codeEvent.uploaded)
+        assertEquals(1, second.codeClearEvent.uploaded)
+        assertEquals(1, second.oilAnalysis.uploaded)
+        assertEquals(1, second.chassisQuirk.uploaded)
+        assertTrue(second.isClean)
+
+        val db = CarDatabase.getDatabase(context)
+        assertEquals(1, db.codeEventDao().getAllForUpload().size)
+        assertEquals(1, db.codeClearEventDao().getAllForUpload().size)
+        assertEquals(1, db.oilAnalysisDao().getAllForUpload().size)
+        assertEquals(1, db.chassisQuirkDao().count())
+    }
+
+    @Test
+    fun `a failed code-event upload short-circuits before oil analyses or chassis quirks are attempted`() = runBlocking {
+        val obdMac = "DD:DD:DD:DD:DD:DD"
+        createEngineVehicle(obdMac)
+        createLegacyVehicle(obdMac)
+        createCodeEvent(vehicleId = obdMac, syncId = "code-fails")
+        createOilAnalysis(vehicleId = obdMac, syncId = "oil-never-attempted")
+        createChassisQuirk(quirkId = "quirk-never-attempted")
+        val backend = FakeFleetBackend()
+        backend.failNextCodeEventUpload = true
+
+        val result = FleetReconcile.run(context, backend)
+
+        assertTrue(result.isFailure)
+        assertTrue(backend.codeEvents.isEmpty())
+        // Neither ran, because the failure happened on code_events, which this reconcile visits
+        // before oil_analyses and chassis_quirks - a partial upload must never be reported as a
+        // low count, matching the vehicle-upload short-circuit test's own posture.
+        assertTrue(backend.oilAnalyses.isEmpty())
+        assertTrue(backend.chassisQuirks.isEmpty())
+    }
+
+    @Test
+    fun `the reconcile never deletes or trashes a code_events, code_clear_events, oil_analyses or chassis_quirks source row`() = runBlocking {
+        val obdMac = "EE:EE:EE:EE:EE:EE"
+        createEngineVehicle(obdMac)
+        createLegacyVehicle(obdMac)
+        createCodeEvent(vehicleId = obdMac, syncId = "code-survives")
+        createCodeClearEvent(vehicleId = obdMac, syncId = "clear-survives")
+        createOilAnalysis(vehicleId = obdMac, syncId = "oil-survives")
+        createChassisQuirk(quirkId = "quirk-survives")
+        val backend = FakeFleetBackend()
+
+        FleetReconcile.run(context, backend).getOrThrow()
+
+        val db = CarDatabase.getDatabase(context)
+        assertEquals(1, db.codeEventDao().getAllForUpload().size)
+        assertEquals(1, db.codeClearEventDao().getAllForUpload().size)
+        assertEquals(1, db.oilAnalysisDao().getAllForUpload().size)
+        assertEquals(1, db.chassisQuirkDao().count())
     }
 }

@@ -19,4 +19,10 @@ interface ChassisQuirkDao {
 
     @Query("DELETE FROM chassis_quirks")
     suspend fun deleteAll()
+
+    /** Every quirk on file - the upload source for [com.kevin.legion.backend.FleetReconcile]. Unlike
+     * [CodeEventDao.getAllForUpload] and its siblings there is no vehicle to resolve here at all:
+     * `chassis_quirks` is household-shared reference data, not a per-vehicle observation. */
+    @Query("SELECT * FROM chassis_quirks")
+    suspend fun getAll(): List<ChassisQuirk>
 }

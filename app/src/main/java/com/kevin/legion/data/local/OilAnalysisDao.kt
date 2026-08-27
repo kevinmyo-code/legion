@@ -23,4 +23,14 @@ interface OilAnalysisDao {
     // first, not a copy of the LWW car_tasks/places fix.
     @Query("DELETE FROM oil_analyses WHERE id = :id")
     suspend fun delete(id: Long)
+
+    /** Every oil analysis on file, across all vehicles - the upload source for
+     * [com.kevin.legion.backend.FleetReconcile], same role as [CodeEventDao.getAllForUpload]. */
+    @Query("SELECT * FROM oil_analyses")
+    suspend fun getAllForUpload(): List<OilAnalysis>
+
+    /** Looks an oil analysis up by its portable [OilAnalysis.syncId] - the insert-if-absent replica
+     * check [com.kevin.legion.backend.FleetReconcile] uses, same role as [CodeEventDao.getBySyncId]. */
+    @Query("SELECT * FROM oil_analyses WHERE syncId = :syncId LIMIT 1")
+    suspend fun getBySyncId(syncId: String): OilAnalysis?
 }

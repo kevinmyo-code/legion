@@ -25,4 +25,15 @@ interface CodeClearEventDao {
             "ORDER BY timestamp DESC LIMIT 1"
     )
     suspend fun getLatestCleared(vehicleId: String): CodeClearEvent?
+
+    /** Every code-clear event on file, across all vehicles - the upload source for
+     * [com.kevin.legion.backend.FleetReconcile], same role as [CodeEventDao.getAllForUpload]. */
+    @Query("SELECT * FROM code_clear_events")
+    suspend fun getAllForUpload(): List<CodeClearEvent>
+
+    /** Looks a code-clear event up by its portable [CodeClearEvent.syncId] - the insert-if-absent
+     * replica check [com.kevin.legion.backend.FleetReconcile] uses, same role as
+     * [CodeEventDao.getBySyncId]. */
+    @Query("SELECT * FROM code_clear_events WHERE syncId = :syncId LIMIT 1")
+    suspend fun getBySyncId(syncId: String): CodeClearEvent?
 }

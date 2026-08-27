@@ -2,7 +2,11 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.ChassisQuirk
+import com.kevin.legion.data.local.CodeClearEvent
+import com.kevin.legion.data.local.CodeEvent
 import com.kevin.legion.data.local.Drive
+import com.kevin.legion.data.local.OilAnalysis
 import com.kevin.legion.data.local.ServiceHistoryReplica
 import com.kevin.legion.data.local.VehicleReplica
 import com.kevin.legion.engine.PayloadCodec
@@ -68,8 +72,47 @@ import org.json.JSONObject
  * **Never touches, trashes, or deletes an engine record or a [Drive] row.** Same posture as every
  * other Phase 4 reconcile - the engine (and, for drives, the legacy table itself) stays the source
  * of truth until [VehicleReport.isClean]/[ServiceHistoryReport.isClean]/[DriveReport.isClean].
+ *
+ * **This wave (backend-erp ticket 10, `code_events`/`code_clear_events`/`oil_analyses`/
+ * `chassis_quirks`): four more tables, all reusing their legacy Room table as their own replica.**
+ * The first three follow [Drive]'s shape exactly - each already carried a portable `syncId`
+ * (confirmed against `sync/SyncEngine.kt`'s registry and each `@Entity`), none carries any local-only
+ * baggage a server-shaped refill would have to blank, and each resolves its vehicle through the same
+ * `guidByObdMac` -> `serverIdByOriginGuid` chain the Drives section below already builds - no second
+ * resolver, per ticket 10's own instruction. `chassis_quirks` is different again: it has no vehicle
+ * reference at all (household-shared reference data, not a per-vehicle observation), so it uploads
+ * and refills unconditionally, keyed on its own natural `quirkId`.
+ *
+ * **Two sentinel translations happen HERE, in this reconcile, not in [SupabaseFleetBackend].** The
+ * reason is testability: [SupabaseFleetBackend] is the "deliberately untested seam" (its own class
+ * doc), so a conversion that only happened there could never be asserted against without a live
+ * Postgres connection. [CodeEvent.freezeFrameJson]/[CodeClearEvent.freezeFrameJson]/
+ * [CodeClearEvent.codesAfterJson]'s `""`-means-absent convention becomes a real Kotlin `null` before
+ * a `*Upload` DTO is ever constructed, and [ChassisQuirk.mileageLow]/[ChassisQuirk.mileageHigh]/
+ * [ChassisQuirk.costLow]/[ChassisQuirk.costHigh]'s `-1`-means-unbounded sentinel becomes a real `null`
+ * the same way (cost additionally converts USD `Int` to cents `Long`, CLAUDE.md section 3). Both
+ * directions are exercised by `FleetReconcileTest`'s in-memory fake backend, never by trusting the
+ * DTO layer to have done it.
+ *
+ * **No id-preserving upsert for the three `syncId`-keyed replicas, checked the same way wave 2 did
+ * for [VehicleReplica]/[ServiceHistoryReplica].** `CodeEvent.id`/`CodeClearEvent.id`/`OilAnalysis.id`
+ * are read in exactly one place outside their own DAOs each - `ui/fleet/FleetDrilldowns.kt`'s
+ * `remember(event.id)`/`LaunchedEffect(event.id)` Compose recomposition keys and a `faultDetailKey`
+ * built from `event.id` - all three scoped to in-memory Compose state for the lifetime of one screen,
+ * never persisted, never an alarm request code, never synced. Insert-if-absent-by-syncId (mirroring
+ * [DriveDao.getBySyncId]) is therefore sufficient; there is nothing here shaped like
+ * [com.kevin.legion.data.local.EventReplica]'s alarm-request-code exposure.
  */
 object FleetReconcile {
+
+    // Server-side provenance literals this wave asserts explicitly (CLAUDE.md section 4 rule 4) -
+    // named here so the four upload call sites below read as "this table's provenance is X" rather
+    // than repeating a bare string four times. code_events/code_clear_events/chassis_quirks are all
+    // DETERMINISTIC (dongle reads and a code-parsed bundled asset, no model or person in the path);
+    // oil_analyses is the one table that diverges - see OilAnalysisUpload's own doc comment.
+    private const val PROVENANCE_DETERMINISTIC = "DETERMINISTIC"
+    private const val PROVENANCE_USER = "USER"
+
 
     /** @param engineCount active engine `Vehicle` records this device had.
      * @param uploaded how many were genuinely NEW server-side this run (a re-run reporting 0 is the
@@ -138,12 +181,46 @@ object FleetReconcile {
         val isClean: Boolean get() = onlyOnSource.isEmpty() && onlyOnServer.isEmpty()
     }
 
+    /** Same shape as [DriveReport], for `code_events`/`code_clear_events`/`oil_analyses` - all three
+     * follow the drives pattern (a genuine upsert by a natural `syncId`, no "already there" branch to
+     * separate out from "uploaded"). */
+    data class SyncIdReport(
+        val sourceCount: Int,
+        val uploaded: Int,
+        val skippedUnresolvedVehicle: List<String>,
+        val serverCountAfter: Int,
+        val replicaCountAfter: Int,
+        val onlyOnSource: List<String>,
+        val onlyOnServer: List<String>,
+    ) {
+        val isClean: Boolean get() = onlyOnSource.isEmpty() && onlyOnServer.isEmpty()
+    }
+
+    /** `chassis_quirks` has no vehicle to resolve and no soft-delete, so it has neither
+     * [SyncIdReport.skippedUnresolvedVehicle] nor a deleted-aware diff - every local quirk and every
+     * server quirk is compared by `quirkId` directly. */
+    data class ChassisQuirkReport(
+        val sourceCount: Int,
+        val uploaded: Int,
+        val serverCountAfter: Int,
+        val replicaCountAfter: Int,
+        val onlyOnSource: List<String>,
+        val onlyOnServer: List<String>,
+    ) {
+        val isClean: Boolean get() = onlyOnSource.isEmpty() && onlyOnServer.isEmpty()
+    }
+
     data class Report(
         val vehicle: VehicleReport,
         val serviceHistory: ServiceHistoryReport,
         val drive: DriveReport,
+        val codeEvent: SyncIdReport,
+        val codeClearEvent: SyncIdReport,
+        val oilAnalysis: SyncIdReport,
+        val chassisQuirk: ChassisQuirkReport,
     ) {
-        val isClean: Boolean get() = vehicle.isClean && serviceHistory.isClean && drive.isClean
+        val isClean: Boolean get() = vehicle.isClean && serviceHistory.isClean && drive.isClean &&
+            codeEvent.isClean && codeClearEvent.isClean && oilAnalysis.isClean && chassisQuirk.isClean
     }
 
     private data class EngineVehicle(
@@ -379,7 +456,292 @@ object FleetReconcile {
             onlyOnServer = (serverSyncIds - sourceSyncIds).sorted(),
         )
 
-        return Result.success(Report(vehicleReport, serviceHistoryReport, driveReport))
+        // ---- CodeEvent ------------------------------------------------------------------------
+        // Same obdMac -> guid -> server uuid chain the Drives section above already built - reused,
+        // not re-derived, per ticket 10's instruction to avoid a second resolver.
+        val sourceCodeEvents = db.codeEventDao().getAllForUpload()
+        var codeEventsUploaded = 0
+        val skippedCodeEvents = mutableListOf<String>()
+        for (event in sourceCodeEvents) {
+            val vehicleServerId = guidByObdMac[event.vehicleId]?.let { serverIdByOriginGuid[it] }
+            if (vehicleServerId == null) {
+                skippedCodeEvents.add("${event.syncId}: vehicle not yet migrated")
+                continue
+            }
+            backend.upsertCodeEvent(
+                CodeEventUpload(
+                    syncId = event.syncId,
+                    vehicleServerId = vehicleServerId,
+                    occurredAtMs = event.timestamp,
+                    mileage = event.mileage,
+                    codesJson = event.codesJson,
+                    // "" is the phone's "no freeze frame" convention (see CodeEvent's own doc
+                    // comment); a real null crosses the wire instead of carrying the empty string
+                    // forward as if it were a value.
+                    freezeFrameJson = event.freezeFrameJson.ifEmpty { null },
+                    provenance = PROVENANCE_DETERMINISTIC,
+                ),
+            ).getOrElse { return Result.failure(it) }
+            codeEventsUploaded++
+        }
+
+        val serverCodeEvents = backend.fetchActiveCodeEvents().getOrElse { return Result.failure(it) }
+        for (row in serverCodeEvents) {
+            val vehicleObdMac = guidByServerId[row.vehicleServerId]?.let { obdMacByGuid[it] } ?: continue
+            if (db.codeEventDao().getBySyncId(row.syncId) == null) {
+                db.codeEventDao().insert(
+                    CodeEvent(
+                        vehicleId = vehicleObdMac,
+                        timestamp = row.occurredAtMs,
+                        mileage = row.mileage,
+                        codesJson = row.codesJson,
+                        freezeFrameJson = row.freezeFrameJson ?: "",
+                        syncId = row.syncId,
+                    ),
+                )
+            }
+        }
+
+        val sourceCodeEventSyncIds = sourceCodeEvents.map { it.syncId }.toSet()
+        val serverCodeEventSyncIds = serverCodeEvents.map { it.syncId }.toSet()
+        val codeEventReport = SyncIdReport(
+            sourceCount = sourceCodeEvents.size,
+            uploaded = codeEventsUploaded,
+            skippedUnresolvedVehicle = skippedCodeEvents,
+            serverCountAfter = serverCodeEvents.size,
+            replicaCountAfter = db.codeEventDao().getAllForUpload().size,
+            onlyOnSource = (sourceCodeEventSyncIds - serverCodeEventSyncIds).sorted(),
+            onlyOnServer = (serverCodeEventSyncIds - sourceCodeEventSyncIds).sorted(),
+        )
+
+        // ---- CodeClearEvent -------------------------------------------------------------------
+        val sourceCodeClearEvents = db.codeClearEventDao().getAllForUpload()
+        var codeClearEventsUploaded = 0
+        val skippedCodeClearEvents = mutableListOf<String>()
+        for (event in sourceCodeClearEvents) {
+            val vehicleServerId = guidByObdMac[event.vehicleId]?.let { serverIdByOriginGuid[it] }
+            if (vehicleServerId == null) {
+                skippedCodeClearEvents.add("${event.syncId}: vehicle not yet migrated")
+                continue
+            }
+            backend.upsertCodeClearEvent(
+                CodeClearEventUpload(
+                    syncId = event.syncId,
+                    vehicleServerId = vehicleServerId,
+                    occurredAtMs = event.timestamp,
+                    mileage = event.mileage,
+                    codesBeforeJson = event.codesBeforeJson,
+                    freezeFrameJson = event.freezeFrameJson.ifEmpty { null },
+                    // "" (never attempted/never completed) becomes null - UNVERIFIED. "[]" (ran
+                    // clean) and a non-empty array (RETURNED's survivors) both cross the wire
+                    // verbatim - see CodeClearEvent.codesAfterJson's own doc comment for why this
+                    // three-way distinction must never collapse.
+                    codesAfterJson = event.codesAfterJson.ifEmpty { null },
+                    outcome = event.outcome,
+                    ackRaw = event.ackRaw,
+                    provenance = PROVENANCE_DETERMINISTIC,
+                ),
+            ).getOrElse { return Result.failure(it) }
+            codeClearEventsUploaded++
+        }
+
+        val serverCodeClearEvents = backend.fetchActiveCodeClearEvents().getOrElse { return Result.failure(it) }
+        for (row in serverCodeClearEvents) {
+            val vehicleObdMac = guidByServerId[row.vehicleServerId]?.let { obdMacByGuid[it] } ?: continue
+            if (db.codeClearEventDao().getBySyncId(row.syncId) == null) {
+                db.codeClearEventDao().insert(
+                    CodeClearEvent(
+                        vehicleId = vehicleObdMac,
+                        timestamp = row.occurredAtMs,
+                        mileage = row.mileage,
+                        codesBeforeJson = row.codesBeforeJson,
+                        freezeFrameJson = row.freezeFrameJson ?: "",
+                        codesAfterJson = row.codesAfterJson ?: "",
+                        outcome = row.outcome,
+                        ackRaw = row.ackRaw,
+                        syncId = row.syncId,
+                    ),
+                )
+            }
+        }
+
+        val sourceCodeClearEventSyncIds = sourceCodeClearEvents.map { it.syncId }.toSet()
+        val serverCodeClearEventSyncIds = serverCodeClearEvents.map { it.syncId }.toSet()
+        val codeClearEventReport = SyncIdReport(
+            sourceCount = sourceCodeClearEvents.size,
+            uploaded = codeClearEventsUploaded,
+            skippedUnresolvedVehicle = skippedCodeClearEvents,
+            serverCountAfter = serverCodeClearEvents.size,
+            replicaCountAfter = db.codeClearEventDao().getAllForUpload().size,
+            onlyOnSource = (sourceCodeClearEventSyncIds - serverCodeClearEventSyncIds).sorted(),
+            onlyOnServer = (serverCodeClearEventSyncIds - sourceCodeClearEventSyncIds).sorted(),
+        )
+
+        // ---- OilAnalysis ------------------------------------------------------------------------
+        val sourceOilAnalyses = db.oilAnalysisDao().getAllForUpload()
+        var oilAnalysesUploaded = 0
+        val skippedOilAnalyses = mutableListOf<String>()
+        for (analysis in sourceOilAnalyses) {
+            val vehicleServerId = guidByObdMac[analysis.vehicleId]?.let { serverIdByOriginGuid[it] }
+            if (vehicleServerId == null) {
+                skippedOilAnalyses.add("${analysis.syncId}: vehicle not yet migrated")
+                continue
+            }
+            backend.upsertOilAnalysis(
+                OilAnalysisUpload(
+                    syncId = analysis.syncId,
+                    vehicleServerId = vehicleServerId,
+                    analyzedAtMs = analysis.date,
+                    mileage = analysis.mileage,
+                    oilBrand = analysis.oilBrand,
+                    oilGrade = analysis.oilGrade,
+                    drainIntervalMiles = analysis.drainIntervalMiles,
+                    iron = analysis.iron,
+                    copper = analysis.copper,
+                    lead = analysis.lead,
+                    tin = analysis.tin,
+                    aluminum = analysis.aluminum,
+                    chromium = analysis.chromium,
+                    nickel = analysis.nickel,
+                    sodium = analysis.sodium,
+                    potassium = analysis.potassium,
+                    silicon = analysis.silicon,
+                    boron = analysis.boron,
+                    magnesium = analysis.magnesium,
+                    fuelPercent = analysis.fuelPercent,
+                    waterPercent = analysis.waterPercent,
+                    tbn = analysis.tbn,
+                    viscosityCst = analysis.viscosityCst,
+                    labNotes = analysis.labNotes,
+                    // The one divergence from this wave's other three tables - a person
+                    // transcribed a lab report, code did not derive these numbers.
+                    provenance = PROVENANCE_USER,
+                ),
+            ).getOrElse { return Result.failure(it) }
+            oilAnalysesUploaded++
+        }
+
+        val serverOilAnalyses = backend.fetchActiveOilAnalyses().getOrElse { return Result.failure(it) }
+        for (row in serverOilAnalyses) {
+            val vehicleObdMac = guidByServerId[row.vehicleServerId]?.let { obdMacByGuid[it] } ?: continue
+            if (db.oilAnalysisDao().getBySyncId(row.syncId) == null) {
+                db.oilAnalysisDao().insert(
+                    OilAnalysis(
+                        vehicleId = vehicleObdMac,
+                        date = row.analyzedAtMs,
+                        mileage = row.mileage,
+                        oilBrand = row.oilBrand,
+                        oilGrade = row.oilGrade,
+                        drainIntervalMiles = row.drainIntervalMiles,
+                        iron = row.iron,
+                        copper = row.copper,
+                        lead = row.lead,
+                        tin = row.tin,
+                        aluminum = row.aluminum,
+                        chromium = row.chromium,
+                        nickel = row.nickel,
+                        sodium = row.sodium,
+                        potassium = row.potassium,
+                        silicon = row.silicon,
+                        boron = row.boron,
+                        magnesium = row.magnesium,
+                        fuelPercent = row.fuelPercent,
+                        waterPercent = row.waterPercent,
+                        tbn = row.tbn,
+                        viscosityCst = row.viscosityCst,
+                        labNotes = row.labNotes,
+                        syncId = row.syncId,
+                    ),
+                )
+            }
+        }
+
+        val sourceOilAnalysisSyncIds = sourceOilAnalyses.map { it.syncId }.toSet()
+        val serverOilAnalysisSyncIds = serverOilAnalyses.map { it.syncId }.toSet()
+        val oilAnalysisReport = SyncIdReport(
+            sourceCount = sourceOilAnalyses.size,
+            uploaded = oilAnalysesUploaded,
+            skippedUnresolvedVehicle = skippedOilAnalyses,
+            serverCountAfter = serverOilAnalyses.size,
+            replicaCountAfter = db.oilAnalysisDao().getAllForUpload().size,
+            onlyOnSource = (sourceOilAnalysisSyncIds - serverOilAnalysisSyncIds).sorted(),
+            onlyOnServer = (serverOilAnalysisSyncIds - sourceOilAnalysisSyncIds).sorted(),
+        )
+
+        // ---- ChassisQuirk -----------------------------------------------------------------------
+        // No vehicle to resolve - chassis_quirks is household-shared reference data, not a
+        // per-vehicle observation (see this object's own class doc and RemoteChassisQuirk's).
+        val sourceChassisQuirks = db.chassisQuirkDao().getAll()
+        for (quirk in sourceChassisQuirks) {
+            backend.upsertChassisQuirk(
+                ChassisQuirkUpload(
+                    quirkId = quirk.quirkId,
+                    chassis = quirk.chassis,
+                    engine = quirk.engine,
+                    title = quirk.title,
+                    symptom = quirk.symptom,
+                    verificationSteps = quirk.verificationSteps,
+                    // -1 is the phone's "no bound"/"unknown" sentinel (ChassisQuirk's own doc
+                    // comment) - a real null crosses the wire instead, matching the migration's
+                    // own "do not carry -1 forward" column comments.
+                    mileageLow = quirk.mileageLow.takeIf { it != -1 },
+                    mileageHigh = quirk.mileageHigh.takeIf { it != -1 },
+                    severity = quirk.severity,
+                    costLowCents = quirk.costLow.takeIf { it != -1 }?.let { it.toLong() * 100 },
+                    costHighCents = quirk.costHigh.takeIf { it != -1 }?.let { it.toLong() * 100 },
+                    fixNotes = quirk.fixNotes,
+                    sourceUrl = quirk.sourceUrl,
+                    provenance = PROVENANCE_DETERMINISTIC,
+                ),
+            ).getOrElse { return Result.failure(it) }
+        }
+
+        val serverChassisQuirks = backend.fetchChassisQuirks().getOrElse { return Result.failure(it) }
+        // A genuine REPLACE-on-conflict refill, not insert-if-absent - see ChassisQuirkUpload's own
+        // doc comment for why this table's content CAN legitimately change between calls.
+        db.chassisQuirkDao().upsertAll(
+            serverChassisQuirks.map { row ->
+                ChassisQuirk(
+                    quirkId = row.quirkId,
+                    chassis = row.chassis,
+                    engine = row.engine,
+                    title = row.title,
+                    symptom = row.symptom,
+                    verificationSteps = row.verificationSteps,
+                    mileageLow = row.mileageLow ?: -1,
+                    mileageHigh = row.mileageHigh ?: -1,
+                    severity = row.severity,
+                    costLow = row.costLowCents?.let { (it / 100).toInt() } ?: -1,
+                    costHigh = row.costHighCents?.let { (it / 100).toInt() } ?: -1,
+                    fixNotes = row.fixNotes,
+                    sourceUrl = row.sourceUrl,
+                    updatedAt = row.updatedAtMs,
+                )
+            },
+        )
+
+        val sourceChassisQuirkIds = sourceChassisQuirks.map { it.quirkId }.toSet()
+        val serverChassisQuirkIds = serverChassisQuirks.map { it.quirkId }.toSet()
+        val chassisQuirkReport = ChassisQuirkReport(
+            sourceCount = sourceChassisQuirks.size,
+            uploaded = sourceChassisQuirks.size,
+            serverCountAfter = serverChassisQuirks.size,
+            replicaCountAfter = db.chassisQuirkDao().count(),
+            onlyOnSource = (sourceChassisQuirkIds - serverChassisQuirkIds).sorted(),
+            onlyOnServer = (serverChassisQuirkIds - sourceChassisQuirkIds).sorted(),
+        )
+
+        return Result.success(
+            Report(
+                vehicleReport,
+                serviceHistoryReport,
+                driveReport,
+                codeEventReport,
+                codeClearEventReport,
+                oilAnalysisReport,
+                chassisQuirkReport,
+            ),
+        )
     }
 
     /** [RemoteVehicle] -> [VehicleReplica], field for field - the Room side of the same shape.
