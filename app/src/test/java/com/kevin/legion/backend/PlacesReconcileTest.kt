@@ -6,6 +6,7 @@ import com.kevin.legion.engine.RecordStore
 import com.kevin.legion.engine.places.PlacesAspectSeeder
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -68,6 +69,20 @@ class PlacesReconcileTest {
             RecordProvenance.USER,
         )
     }
+
+    @After
+    fun drainRoomInvalidationTracker() {
+        // A DAO write anywhere in this test can schedule a Room InvalidationTracker refresh
+        // on ArchTaskExecutor's disk-IO pool. If that refresh is still queued or running when
+        // this test method returns, it races Robolectric's own per-@Test-METHOD native SQLite
+        // reset and throws "Illegal connection pointer" on a background thread - uncaught, and
+        // blamed by kotlinx-coroutines-test on whatever runTest starts next, not on this class.
+        // Draining here, before Robolectric ever gets a chance to reset, is the fix - see
+        // RoomTestReset's own class doc comment
+        // (.scratch/hardening/issues/13-the-suite-is-green-by-luck.md) for the full account.
+        RoomTestReset.drainArchDiskIoPool()
+    }
+
 
     @Test
     fun `run uploads every active engine record and fills the replica`() = runBlocking {

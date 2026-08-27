@@ -29,7 +29,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hardening/map\|hardening]] | [[03-pre-migration-backup\|03]] | task | Automatic backup before any schema migration |
 | [[.scratch/hardening/map\|hardening]] | [[05-ledger-gate-defects\|05]] | task | Three ledger gate defects found while grounding backend-erp ticket 03 |
 | [[.scratch/hardening/map\|hardening]] | [[06-kotlin-bump-and-compose-pin\|06]] | task | Build debt from backend-erp Phase 1: supabase-kt held back, Compose force-pinned |
-| [[.scratch/hardening/map\|hardening]] | [[13-the-suite-is-green-by-luck\|13]] | build | 13-the-suite-is-green-by-luck |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
@@ -69,6 +68,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[30-balance-arithmetic-in-three-places\|30]] | bug | The balance formula is written out in three places again |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[31-silent-success\|31]] | bug | It did the thing and did not say so |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[32-sitrep-on-demand-only\|32]] | build | Sitreps happen when asked, never on a schedule |
+| [[.scratch/hardening/map\|hardening]] | [[13-the-suite-is-green-by-luck\|13]] | build | 13-the-suite-is-green-by-luck |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[01-background-location\|01]] | build | Background location, asked for honestly |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[11-reframe-missed-the-toolbox\|11]] | bug | The concierge reframe missed the largest prompt surface |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |

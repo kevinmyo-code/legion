@@ -1,6 +1,6 @@
 ---
 type: build
-status: open
+status: built
 blocked_by: []
 map: hardening
 ---
@@ -79,3 +79,37 @@ Recommendation is 1, then 2 if 1 cannot be done without reaching into Room inter
 
 The test passes in isolation today. Reordering, sharding or retrying would all make it disappear
 without fixing anything, and would leave the suite exactly as untrustworthy as it is now.
+
+## FIXED 2026-08-27. Option 1, and the first placement of it was wrong.
+
+**Option 2 was investigated and disqualified on evidence, not deferred.** Room's
+`assertNotMainThread()` checks `Looper.getMainLooper().thread` DIRECTLY, not
+`ArchTaskExecutor.isMainThread()` (traced in Room 2.8.4's own source). Two tests already carry
+`.allowMainThreadQueries()` precisely because Robolectric's test thread IS the main-looper thread, so
+making disk IO run on the calling thread would have tripped that assertion across the whole 79-file
+surface that relies on hopping off it. A far larger blast radius than the leak.
+
+**The fix is a pool-quiescence barrier** (`RoomTestReset.drainArchDiskIoPool`) built only from
+`java.util.concurrent` plus `ArchTaskExecutor`'s public `Executor` - no Room internals. Submit
+exactly as many barrier tasks as the pool has threads; the instant all of them are parked together,
+every previously queued or running task is provably complete, whatever the queue depth.
+
+**The first placement failed, and finding that out took a real run rather than an argument.** The
+drain was put in `@Before` alongside the existing reset, and the suite STILL leaked - 7 leaking
+classes on the next full run. Robolectric resets its shadow layer for test method M *before any of
+M+1's code runs*, `@Before` included, so a drain there only ever catches work that was already safe.
+It has to run inside the CAUSING test's own lifecycle: `@After`/`tearDown`, or a `finally` around
+the Statement for the one `@Rule`-only screenshot test. 78 files updated, plus two that build their
+own in-memory `CarDatabase` and so never went through the singleton at all.
+
+**Verification, deliberately not one green run**, since green-by-luck is the whole subject of this
+ticket. Five clean full runs total across two independent checks, each with `test-results` deleted
+first: **2,744 tests, 0 failures, and 0 classes emitting `Illegal connection pointer` in
+`system-err`.** The leak count is the assertion that matters - a green suite that still leaked would
+mean the casualty moved rather than the cause being fixed.
+
+**Hardened after review:** the barrier's waits are BOUNDED. A stale `ARCH_DISK_IO_POOL_SIZE` fails
+two different ways and neither is silent - a grown pool under-drains (the leak returns, looking like
+the original bug), a shrunk pool could never trip the barrier at all. Unbounded waits would have
+turned that second case into a suite that HANGS, producing no report and no failing test name. It
+now fails with an error naming the constant.

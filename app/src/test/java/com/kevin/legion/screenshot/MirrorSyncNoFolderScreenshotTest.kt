@@ -43,13 +43,24 @@ class MirrorSyncNoFolderScreenshotTest {
      * be too late: `MirrorSyncScreen`'s own `LaunchedEffect` (reading `CarDatabase.getDatabase`)
      * fires the moment the activity's `onCreate` composes, which a plain `@Before` cannot preempt.
      * `order = 0` (lower runs outer/first) guarantees this fires before `order = 1`'s activity
-     * launch - same cross-test-leak concern [RoomTestReset]'s own doc comment describes. */
+     * launch - same cross-test-leak concern [RoomTestReset]'s own doc comment describes.
+     *
+     * The `finally` drains [RoomTestReset.drainArchDiskIoPool] AFTER [base]'s own evaluate - i.e.
+     * after this test's `@Test` (and any `@After`s it has) have run, but still inside THIS test
+     * method's own Statement chain, which is what makes it early enough: Robolectric's per-method
+     * native SQLite reset runs only once this whole chain returns. Same
+     * `.scratch/hardening/issues/13-the-suite-is-green-by-luck.md` fix as the plain-`@After` case,
+     * placed here because this class has no plain `@Before`/`@After` to hang it on. */
     @get:Rule(order = 0)
     val resetDatabase: TestRule = TestRule { base, _ ->
         object : Statement() {
             override fun evaluate() {
                 RoomTestReset.resetCarDatabaseSingleton()
-                base.evaluate()
+                try {
+                    base.evaluate()
+                } finally {
+                    RoomTestReset.drainArchDiskIoPool()
+                }
             }
         }
     }

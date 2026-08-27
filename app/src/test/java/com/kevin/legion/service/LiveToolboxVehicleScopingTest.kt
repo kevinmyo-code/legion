@@ -45,6 +45,13 @@ class LiveToolboxVehicleScopingTest {
 
     @After
     fun tearDown() {
+        // Drains ArchTaskExecutor's disk-IO pool before anything else in this @After - see
+        // RoomTestReset's class doc comment and
+        // .scratch/hardening/issues/13-the-suite-is-green-by-luck.md: a DAO write earlier in
+        // this test can leave a Room InvalidationTracker refresh in flight, and it must finish
+        // before this test method returns or it races Robolectric's per-method reset.
+        RoomTestReset.drainArchDiskIoPool()
+
         clearObdConnection()
     }
 

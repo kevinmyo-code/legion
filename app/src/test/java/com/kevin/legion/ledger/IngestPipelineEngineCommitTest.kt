@@ -12,6 +12,7 @@ import com.kevin.legion.engine.ledger.LedgerAspectSeeder
 import com.kevin.legion.engine.ledger.LedgerRecordBridge
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -80,6 +81,20 @@ class IngestPipelineEngineCommitTest {
             .single { it.id == schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_SOURCE_FILE_ID) }
         db.fieldDefDao().update(field.copy(type = FieldType.REFERENCE))
     }
+
+    @After
+    fun drainRoomInvalidationTracker() {
+        // A DAO write anywhere in this test can schedule a Room InvalidationTracker refresh
+        // on ArchTaskExecutor's disk-IO pool. If that refresh is still queued or running when
+        // this test method returns, it races Robolectric's own per-@Test-METHOD native SQLite
+        // reset and throws "Illegal connection pointer" on a background thread - uncaught, and
+        // blamed by kotlinx-coroutines-test on whatever runTest starts next, not on this class.
+        // Draining here, before Robolectric ever gets a chance to reset, is the fix - see
+        // RoomTestReset's own class doc comment
+        // (.scratch/hardening/issues/13-the-suite-is-green-by-luck.md) for the full account.
+        RoomTestReset.drainArchDiskIoPool()
+    }
+
 
     // --------------------------------------------------------------------------- provenance mapping
 

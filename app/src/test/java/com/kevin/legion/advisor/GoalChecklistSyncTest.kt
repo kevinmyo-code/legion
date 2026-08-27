@@ -14,6 +14,7 @@ import com.kevin.legion.testutil.RoomTestReset
 import com.kevin.legion.workouts.WorkoutController
 import com.kevin.legion.workouts.weekStartEpoch
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -92,6 +93,20 @@ class GoalChecklistSyncTest {
         val list = NotesController.theList(context)
         return NotesController.allItems(context).filter { it.listId == list.id && it.text.startsWith(GoalChecklistSync.ITEM_PREFIX) }
     }
+
+    @After
+    fun drainRoomInvalidationTracker() {
+        // A DAO write anywhere in this test can schedule a Room InvalidationTracker refresh
+        // on ArchTaskExecutor's disk-IO pool. If that refresh is still queued or running when
+        // this test method returns, it races Robolectric's own per-@Test-METHOD native SQLite
+        // reset and throws "Illegal connection pointer" on a background thread - uncaught, and
+        // blamed by kotlinx-coroutines-test on whatever runTest starts next, not on this class.
+        // Draining here, before Robolectric ever gets a chance to reset, is the fix - see
+        // RoomTestReset's own class doc comment
+        // (.scratch/hardening/issues/13-the-suite-is-green-by-luck.md) for the full account.
+        RoomTestReset.drainArchDiskIoPool()
+    }
+
 
     // --- idempotence: opening the app five times in one day must not produce five copies --------
 

@@ -2,6 +2,7 @@ package com.kevin.legion.data.local
 
 import androidx.room.Room
 import com.kevin.legion.advisor.GoalPlanAgent
+import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -34,7 +35,16 @@ class CompanionMemoryConstraintTest {
     }
 
     @After
-    fun tearDown() = db.close()
+    fun tearDown() {
+        // This test builds its OWN CarDatabase (Room.inMemoryDatabaseBuilder above) rather than
+        // going through CarDatabase.getDatabase, but Room's InvalidationTracker refresh still runs
+        // on ArchTaskExecutor's process-wide disk-IO pool - draining before close() is the same
+        // fix RoomTestReset applies to the singleton path, needed here for the same reason. See
+        // RoomTestReset's class doc comment for the full account
+        // (.scratch/hardening/issues/13-the-suite-is-green-by-luck.md).
+        RoomTestReset.drainArchDiskIoPool()
+        db.close()
+    }
 
     private fun row(
         text: String,

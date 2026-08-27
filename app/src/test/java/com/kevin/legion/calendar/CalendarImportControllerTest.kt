@@ -9,6 +9,7 @@ import com.kevin.legion.engine.dates.DatesAspectSeeder
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -56,6 +57,20 @@ class CalendarImportControllerTest {
         // exactly the "unreadable" case the dedicated denial test below exercises deliberately.
         shadowOf(context as android.app.Application).grantPermissions(android.Manifest.permission.READ_CALENDAR)
     }
+
+    @After
+    fun drainRoomInvalidationTracker() {
+        // A DAO write anywhere in this test can schedule a Room InvalidationTracker refresh
+        // on ArchTaskExecutor's disk-IO pool. If that refresh is still queued or running when
+        // this test method returns, it races Robolectric's own per-@Test-METHOD native SQLite
+        // reset and throws "Illegal connection pointer" on a background thread - uncaught, and
+        // blamed by kotlinx-coroutines-test on whatever runTest starts next, not on this class.
+        // Draining here, before Robolectric ever gets a chance to reset, is the fix - see
+        // RoomTestReset's own class doc comment
+        // (.scratch/hardening/issues/13-the-suite-is-green-by-luck.md) for the full account.
+        RoomTestReset.drainArchDiskIoPool()
+    }
+
 
     @Test
     fun `a legion-authored record is never touched by an import that finds nothing to read`() = runBlocking {

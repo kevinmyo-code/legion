@@ -362,6 +362,18 @@ dependencies {
     // capture extension; plain `roborazzi` alone only covers android.view.View.
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
+    // ArchTaskExecutor is already on the test RUNTIME classpath transitively, via
+    // androidx.room:room-runtime -> room-runtime-android -> androidx.arch.core:core-runtime (Room's
+    // default query/transaction executor when none is set on the builder). It is NOT on the test
+    // COMPILE classpath at that transitive edge (Gradle module metadata only exposes it at
+    // runtime scope there), so RoomTestReset.drainArchDiskIoPool cannot reference the type without
+    // this. Pinned to the exact version already resolved transitively (confirmed via
+    // `./gradlew app:dependencies --configuration debugUnitTestRuntimeClasspath`), so this changes
+    // nothing about the resolved graph - it only makes an artifact already on the classpath visible
+    // to the compiler. This is NOT androidx.arch.core:core-testing (InstantTaskExecutorRule and
+    // friends), which stays absent - see RoomTestReset's class doc comment,
+    // .scratch/hardening/issues/13-the-suite-is-green-by-luck.md.
+    testImplementation("androidx.arch.core:core-runtime:2.2.0")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))
