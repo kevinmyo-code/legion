@@ -19,6 +19,19 @@ import com.kevin.legion.sync.DatabaseSnapshot
  */
 object DriveBackupResolver {
 
+    /**
+     * `.scratch/backend-erp/issues/09-backups-do-not-cover-files.md`'s ruling: [DatabaseSnapshot]
+     * stays database-only on purpose (its generation guard, pre-restore aside and single-`.db.gz`
+     * naming are load-bearing and this is not the ticket that reopens them), which means a
+     * restored database can hold rows whose photo path points at a file the backup never carried.
+     * Shared verbatim across the panel description and both restore confirm dialogs so the caveat
+     * cannot drift into three slightly different wordings that a driver could read as three
+     * different facts.
+     */
+    const val PHOTO_COVERAGE_CAVEAT =
+        "This does not include photos. Receipt and record images live in the app's own storage, " +
+            "not the database, so backing up or restoring never touches them."
+
     /** One row the "generations available" list draws. */
     data class GenerationRow(
         val generation: DatabaseSnapshot.Generation,
@@ -79,7 +92,8 @@ object DriveBackupResolver {
             "all of it - with the backup from ${formatTime(generation.timestampMs)} " +
             "(${pluralRows(generation.rowCount)}). Your current data is saved locally first, so " +
             "this can be undone, but the app must restart to finish. Nothing does this " +
-            "automatically or as part of a sync - you have to choose it here."
+            "automatically or as part of a sync - you have to choose it here. $PHOTO_COVERAGE_CAVEAT " +
+            "If a restored record's photo is gone, its field will say so."
 
     /** One row the "Recover locally" list draws - a [DatabaseSnapshot.LocalRecovery] plus
      * display text. Never needs Drive/adb: these files never left the device (Ravi's
@@ -103,7 +117,8 @@ object DriveBackupResolver {
     /** The worded confirm-dialog body for recovering a local (non-Drive) copy. */
     fun confirmLocalRecoveryMessage(row: LocalRecoveryRow, formatTime: (Long) -> String): String =
         "This replaces the current database on this device with the ${row.kindLabel.lowercase()} " +
-            "from ${row.timeLabel}. This does not touch Drive. The app must restart to finish."
+            "from ${row.timeLabel}. This does not touch Drive. The app must restart to finish. " +
+            PHOTO_COVERAGE_CAVEAT
 
     /**
      * The worded confirm-dialog body for overriding [com.kevin.legion.sync.DatabaseSnapshotGuard]'s

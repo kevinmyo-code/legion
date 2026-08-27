@@ -181,6 +181,10 @@ fun DatabaseBackupRow(
                     Text(if (working) "BACKING UP" else "BACK UP NOW", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
                 }
             }
+            // Ticket 09's ruling: database-only, and it must SAY so, on the same panel that
+            // offers the button - not buried in a confirm dialog someone only sees on restore.
+            Spacer(Modifier.height(2.dp))
+            Text(DriveBackupResolver.PHOTO_COVERAGE_CAVEAT, style = LegionType.stamp, color = sem.faint)
             if (!canBackUp) {
                 Spacer(Modifier.height(4.dp))
                 Text("Connect Google Drive first.", style = LegionType.stamp, color = sem.faint)

@@ -264,12 +264,29 @@ private fun FieldEditor(fd: FieldDef, values: androidx.compose.runtime.snapshots
                 bitmap = captured
                 values[fd.id] = EnginePhotoStore.save(context, captured)
             }
+            // A freshly-captured bitmap is trusted outright (it was just written this composition),
+            // but an already-stored path is not: `.scratch/backend-erp/issues/09-backups-do-not-
+            // cover-files.md` is exactly the case where the record survives (a database restore)
+            // and the file underneath its path does not (backups never covered `files/`). Checking
+            // the disk here, rather than trusting a non-null path, is what tells "PHOTO ON FILE"
+            // apart from "PHOTO MISSING" instead of asserting the former from the string alone.
+            val photoStatus = if (bitmap == null) {
+                PhotoFieldResolver.status(currentPath) { path -> java.io.File(path).exists() }
+            } else {
+                null
+            }
             Column(Modifier.padding(bottom = 8.dp)) {
                 Text(label.uppercase(), style = LegionType.stamp, color = sem.faint)
                 if (bitmap != null) {
                     Image(bitmap!!.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().height(96.dp))
-                } else if (currentPath != null) {
-                    Text("PHOTO ON FILE", style = LegionType.stamp, color = sem.faint)
+                } else if (photoStatus != null) {
+                    PhotoFieldResolver.label(photoStatus)?.let {
+                        // MISSING reads as a genuine problem (the quarantine tone), never the same
+                        // faint weight as the routine ON_FILE state - CLAUDE.md's "unreadable and
+                        // empty are different sentences" rule needs a different colour, not just
+                        // different words, or a driver skimming past faint text would miss it.
+                        Text(it, style = LegionType.stamp, color = if (photoStatus == PhotoFieldResolver.Status.MISSING) sem.quarantined else sem.faint)
+                    }
                 }
                 DeckButton(text = "TAKE PHOTO", onClick = launch)
             }

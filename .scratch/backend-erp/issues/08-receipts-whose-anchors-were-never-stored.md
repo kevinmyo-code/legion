@@ -1,6 +1,6 @@
 ---
 type: build
-status: open
+status: built
 blocked_by: []
 map: backend-erp
 ---
@@ -74,3 +74,33 @@ transaction is external and falsifiable, which the receipt's own arithmetic no l
    `unaccounted_cents`. Nothing about the healthy path changes.
 4. The ledger-match promotion is NOT in this ticket. It needs the ledger cutover first, and it needs
    its own decision about what a match means (same total, near date, right account).
+
+## ALREADY BUILT - found 2026-08-26, the status was stale, not the work
+
+Items 1, 2 and 3 all shipped in `c0101cf` ("Pantry: upload unverified receipts, and fix a
+constraint conflict I created"), before this session. **The ticket still said `open`,** so a fully
+built feature was sitting on the board as unstarted work. That is CLAUDE.md section 12's named
+trap arriving from the other direction: section 12 warns that resolving a decision makes a ticket
+vanish while its code is unwritten; this is code written while its ticket still reads unbuilt.
+Either way the board lies. Re-checked against the live code rather than the commit message:
+
+- **Item 1** - `PantryReconcile.run` splits three ways (reconciling / shortfall / rejected), uploads
+  a shortfall receipt as `UNRECONCILED` with `unaccountedCents = totalCents - itemsTotal`, and keeps
+  it in `Report.uploadedUnreconciled`, never folded into `Report.uploaded`. An OVER-accounted receipt
+  is rejected outright and never given a fabricated `unaccounted_cents`.
+- **Item 2** - `PantryRows.PantryReceiptSection` says the unexplained amount is unexplained and that
+  the photo is gone; `PantrySpendPanel` labels any currency total containing one, so an aggregate
+  holding an unverified row is itself labelled; `BackendMigrationResolver` words "uploaded as
+  unreconciled" distinctly from a dropped row. The wording is unverified/unreconciled throughout,
+  never "estimate" - these are amounts the receipt DID state that the app cannot re-verify, which is
+  a different claim from a guess.
+- **Item 3** - a reconciling receipt still keeps `LLM_RECONCILED` and a NULL `unaccounted_cents`,
+  asserted at `PantryControllerBackendTest.kt:254-255`.
+
+`unaccounted_cents` is never summed into an anchor: the residual comes from `totalCents - itemsTotal`
+alone, independent of any stored subtotal or tax, so it cannot close its own gate.
+
+**Item 4 (ledger-match promotion) remains genuinely unbuilt and is correctly out of scope** - it
+needs the ledger cutover first and its own decision about what a match means (same total, near date,
+right account). It is the only path by which these three receipts ever become verified, because the
+receipts' own arithmetic no longer can be.

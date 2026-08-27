@@ -89,6 +89,12 @@ class DriveBackupResolverTest {
         assertTrue(message.contains("everything"))
     }
 
+    @Test
+    fun `confirmRestoreMessage says photos are not covered - ticket 09`() {
+        val message = DriveBackupResolver.confirmRestoreMessage(gen(500, 15, 250), fixedFormat)
+        assertTrue(message.contains("does not include photos"))
+    }
+
     private fun recovery(ts: Long, kind: DatabaseSnapshot.LocalRecoveryKind) =
         DatabaseSnapshot.LocalRecovery(file = File("fake_$ts.db"), timestampMs = ts, kind = kind, label = "test")
 
@@ -116,6 +122,7 @@ class DriveBackupResolverTest {
         assertTrue(message.contains("T400"))
         assertTrue(message.contains("does not touch Drive"))
         assertTrue(message.contains("restart"))
+        assertTrue(message.contains("does not include photos"))
     }
 
     @Test
