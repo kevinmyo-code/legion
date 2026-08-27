@@ -11,6 +11,7 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -94,5 +95,147 @@ class CalendarImportControllerTest {
         val outcome = CalendarImportController.importNow(context)
 
         assertEquals(CalendarImportController.ImportOutcome.PermissionMissing, outcome)
+    }
+
+    /**
+     * [CalendarImportController.buildFieldValues] is the pure half of the import (no DB, no
+     * `ContentResolver`), added specifically so description/location/allDay/`LEGION::v1` handling
+     * can be exercised directly even though [CalendarProvider.eventsInWindow] itself cannot be
+     * under Robolectric - see this file's own class doc.
+     */
+    @Test
+    fun `description, location and allDay round-trip into the right engine fields`() = runBlocking {
+        val schema = DatesAspectSeeder.ensureSeeded(context)
+        val fieldIds = CalendarImportController.FieldIds.from(schema)
+        val event = CalendarProvider.GoogleCalendarEvent(
+            eventId = 42L,
+            calendarId = 1L,
+            title = "Team offsite",
+            startMs = 1_000L,
+            endMs = 2_000L,
+            allDay = true,
+            description = "Bring a laptop and a badge.",
+            location = "  Conference Center  ",
+        )
+
+        val fieldValues = CalendarImportController.buildFieldValues(event, fieldIds)
+
+        assertEquals("Team offsite", fieldValues[fieldIds.title])
+        assertEquals(1_000L, fieldValues[fieldIds.start])
+        assertEquals(2_000L, fieldValues[fieldIds.end])
+        assertEquals(true, fieldValues[fieldIds.allDay])
+        assertEquals("Conference Center", fieldValues[fieldIds.location])
+        assertEquals("Bring a laptop and a badge.", fieldValues[fieldIds.notes])
+        assertNull("plain prose carries no LEGION::v1 block", fieldValues[fieldIds.structuredMeta])
+    }
+
+    @Test
+    fun `a LEGION v1 block is parsed into the structured field, not left as prose`() = runBlocking {
+        val schema = DatesAspectSeeder.ensureSeeded(context)
+        val fieldIds = CalendarImportController.FieldIds.from(schema)
+        val event = CalendarProvider.GoogleCalendarEvent(
+            eventId = 7L,
+            calendarId = 1L,
+            title = "Midterm",
+            startMs = 5_000L,
+            endMs = 6_000L,
+            allDay = false,
+            description = "LEGION::v1\ncourse: COSC4320\nsource: canvas_verified\n---\nBring a calculator.",
+            location = "",
+        )
+
+        val fieldValues = CalendarImportController.buildFieldValues(event, fieldIds)
+
+        val meta = fieldValues[fieldIds.structuredMeta] as String
+        val parsed = JSONObject(meta)
+        assertEquals("COSC4320", parsed.getString("course"))
+        assertEquals("canvas_verified", parsed.getString("source"))
+        assertEquals("Bring a calculator.", fieldValues[fieldIds.notes])
+        assertNull("an unset EVENT_LOCATION must read as null, never an empty-string location", fieldValues[fieldIds.location])
+    }
+
+    @Test
+    fun `an event with no description writes null, never an empty-string placeholder`() = runBlocking {
+        val schema = DatesAspectSeeder.ensureSeeded(context)
+        val fieldIds = CalendarImportController.FieldIds.from(schema)
+        val event = CalendarProvider.GoogleCalendarEvent(
+            eventId = 9L,
+            calendarId = 1L,
+            title = "Quiet event",
+            startMs = 10_000L,
+            endMs = 11_000L,
+            allDay = false,
+            description = "",
+            location = "",
+        )
+
+        val fieldValues = CalendarImportController.buildFieldValues(event, fieldIds)
+
+        assertNull(fieldValues[fieldIds.notes])
+        assertNull(fieldValues[fieldIds.structuredMeta])
+        assertNull(fieldValues[fieldIds.location])
+    }
+
+    /**
+     * The core claim of the unbounded mode: it must NOT reuse the windowed path's "candidate only
+     * if its own start already falls in this run's window" guard. Both records below are
+     * `source=google` with no matching key in a fresh (empty, since nothing is reachable under
+     * Robolectric per this file's own class doc) read - a windowed run only reaches the one whose
+     * start is inside `[now-30d, now+180d]`, an unbounded run must reach both.
+     */
+    @Test
+    fun `unbounded run does not apply the windowed delete guard`() = runBlocking {
+        val schema = DatesAspectSeeder.ensureSeeded(context)
+        val now = System.currentTimeMillis()
+        val store = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+
+        val insideWindow = store.create(
+            schema.recordTypeId,
+            mapOf(
+                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_TITLE) to "Inside the standard window",
+                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_START) to (now + 3_600_000L),
+                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_SOURCE) to DatesAspectSeeder.SOURCE_GOOGLE,
+                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_GOOGLE_EVENT_ID) to "111@${now + 3_600_000L}",
+            ),
+            RecordProvenance.DETERMINISTIC,
+            now,
+        ) as RecordStore.WriteResult.Success
+
+        val farInThePast = now - CalendarImportController.WINDOW_PAST_MS - 400L * 24 * 60 * 60 * 1000L
+        val outsideWindow = store.create(
+            schema.recordTypeId,
+            mapOf(
+                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_TITLE) to "Outside the standard window",
+                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_START) to farInThePast,
+                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_SOURCE) to DatesAspectSeeder.SOURCE_GOOGLE,
+                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_GOOGLE_EVENT_ID) to "222@$farInThePast",
+            ),
+            RecordProvenance.DETERMINISTIC,
+            now,
+        ) as RecordStore.WriteResult.Success
+
+        val windowedOutcome =
+            CalendarImportController.importNow(context, now, unbounded = false) as CalendarImportController.ImportOutcome.Imported
+        assertEquals("only the in-window row is a deletion candidate for a windowed run", 1, windowedOutcome.deleted)
+        assertTrue(
+            "the in-window row is gone",
+            db.engineRecordDao().getById(insideWindow.recordId)!!.deletedAt != null,
+        )
+        assertNull(
+            "a windowed run must never touch a row outside its own window",
+            db.engineRecordDao().getById(outsideWindow.recordId)!!.deletedAt,
+        )
+
+        val unboundedOutcome =
+            CalendarImportController.importNow(context, now, unbounded = true) as CalendarImportController.ImportOutcome.Imported
+        assertEquals(
+            "the unbounded run must reach the row the windowed run could not",
+            1,
+            unboundedOutcome.deleted,
+        )
+        assertTrue(
+            "unbounded delete semantics have no window guard to skip this row on",
+            db.engineRecordDao().getById(outsideWindow.recordId)!!.deletedAt != null,
+        )
     }
 }

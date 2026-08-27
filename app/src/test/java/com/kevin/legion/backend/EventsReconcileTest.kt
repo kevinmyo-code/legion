@@ -88,6 +88,7 @@ class EventsReconcileTest {
             allDay = allDay,
             location = location,
             notes = notes,
+            structuredMeta = structuredMeta,
             source = source,
             googleEventId = googleEventId,
             done = done,
@@ -118,20 +119,25 @@ class EventsReconcileTest {
         RoomTestReset.resetCarDatabaseSingleton()
     }
 
-    private suspend fun createDatesEvent(title: String, startMs: Long, location: String? = null): Long {
+    private suspend fun createDatesEvent(
+        title: String,
+        startMs: Long,
+        location: String? = null,
+        allDay: Boolean? = null,
+        structuredMeta: String? = null,
+    ): Long {
         val db = CarDatabase.getDatabase(context)
         val sch = DatesAspectSeeder.ensureSeeded(context)
         val store = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
-        val result = store.create(
-            sch.recordTypeId,
-            mapOf(
-                sch.fieldIds.getValue(DatesAspectSeeder.FIELD_TITLE) to title,
-                sch.fieldIds.getValue(DatesAspectSeeder.FIELD_START) to startMs,
-                sch.fieldIds.getValue(DatesAspectSeeder.FIELD_SOURCE) to DatesAspectSeeder.SOURCE_LEGION,
-                sch.fieldIds.getValue(DatesAspectSeeder.FIELD_LOCATION) to location,
-            ),
-            RecordProvenance.USER,
+        val fields = mutableMapOf<Long, Any?>(
+            sch.fieldIds.getValue(DatesAspectSeeder.FIELD_TITLE) to title,
+            sch.fieldIds.getValue(DatesAspectSeeder.FIELD_START) to startMs,
+            sch.fieldIds.getValue(DatesAspectSeeder.FIELD_SOURCE) to DatesAspectSeeder.SOURCE_LEGION,
+            sch.fieldIds.getValue(DatesAspectSeeder.FIELD_LOCATION) to location,
         )
+        if (allDay != null) fields[sch.fieldIds.getValue(DatesAspectSeeder.FIELD_ALL_DAY)] = allDay
+        if (structuredMeta != null) fields[sch.fieldIds.getValue(DatesAspectSeeder.FIELD_STRUCTURED_META)] = structuredMeta
+        val result = store.create(sch.recordTypeId, fields, RecordProvenance.USER)
         return (result as RecordStore.WriteResult.Success).recordId
     }
 
@@ -224,6 +230,50 @@ class EventsReconcileTest {
         val replicaMilk = replica.single { it.title == "Buy milk" }
         assertTrue(replicaMilk.done)
         assertEquals(60_000L, replicaMilk.startsAt)
+    }
+
+    /**
+     * The assertion whose absence let the coordinator-caught defect ship: this file's own Dates
+     * `Event` branch used to hardcode `allDay = false` for every row regardless of what the engine
+     * field actually held, so an all-day Google import silently uploaded as a timed one. Without
+     * this test the hardcoded value and a genuinely-false event were indistinguishable.
+     */
+    @Test
+    fun `an all-day Dates event uploads all_day true, not the old hardcoded false`() = runBlocking {
+        createDatesEvent("Company holiday", startMs = 50_000L, allDay = true)
+        createDatesEvent("Standup", startMs = 51_000L, allDay = false)
+        val backend = FakeEventsBackend()
+
+        EventsReconcile.run(context, backend).getOrThrow()
+
+        val holiday = backend.rows.values.single { it.title == "Company holiday" }
+        val standup = backend.rows.values.single { it.title == "Standup" }
+        assertTrue("an all-day Dates event must upload all_day = true", holiday.allDay)
+        assertFalse("a timed Dates event must still upload all_day = false", standup.allDay)
+    }
+
+    /**
+     * The `LEGION::v1` block, already parsed by `CalendarImportController` into its own engine
+     * field, must reach `public.events.structured_meta` as the same JSON text - not dropped, and
+     * not re-encoded into something else on the way through this file's Dates branch.
+     */
+    @Test
+    fun `a Dates event's structured meta block reaches the server as the same JSON text`() = runBlocking {
+        val json = """{"course":"COSC4320","source":"canvas_verified"}"""
+        createDatesEvent("Midterm", startMs = 50_000L, structuredMeta = json)
+        createDatesEvent("Plain event", startMs = 51_000L)
+        val backend = FakeEventsBackend()
+
+        EventsReconcile.run(context, backend).getOrThrow()
+
+        val midterm = backend.rows.values.single { it.title == "Midterm" }
+        val plain = backend.rows.values.single { it.title == "Plain event" }
+        assertEquals(json, midterm.structuredMeta)
+        assertEquals(
+            "an event with no LEGION::v1 block must upload a null structured_meta, never an invented one",
+            null,
+            plain.structuredMeta,
+        )
     }
 
     @Test

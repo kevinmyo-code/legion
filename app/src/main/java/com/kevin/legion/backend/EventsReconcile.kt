@@ -104,6 +104,8 @@ object EventsReconcile {
             fun s(name: String) = PayloadCodec.readString(payload, datesSch.fieldIds.getValue(name))
             fun l(name: String) = PayloadCodec.readLong(payload, datesSch.fieldIds.getValue(name))
 
+            fun bool(name: String) = PayloadCodec.readBoolean(payload, datesSch.fieldIds.getValue(name))
+
             val title = s(DatesAspectSeeder.FIELD_TITLE) ?: return@mapNotNull null
             val start = l(DatesAspectSeeder.FIELD_START) ?: return@mapNotNull null
             EngineEvent(
@@ -114,9 +116,20 @@ object EventsReconcile {
                     createdAtMs = record.createdAt,
                     startsAtMs = start,
                     endsAtMs = l(DatesAspectSeeder.FIELD_END),
-                    allDay = false,
+                    // Coordinator-caught defect (2026-08-27): this was hardcoded `false` for every
+                    // Dates Event, silently discarding an all-day Google import on the exact field
+                    // CalendarImportController's own widening was supposed to rescue. The Notes
+                    // branch below already read its own allDay field correctly; Dates simply had
+                    // none to read until DatesAspectSeeder.FIELD_ALL_DAY existed.
+                    allDay = bool(DatesAspectSeeder.FIELD_ALL_DAY),
                     location = s(DatesAspectSeeder.FIELD_LOCATION),
                     notes = s(DatesAspectSeeder.FIELD_NOTES),
+                    // The LEGION::v1 block, already parsed into its own engine field by
+                    // CalendarImportController - carried through verbatim (still JSON text) rather
+                    // than re-parsed, so it reaches public.events.structured_meta and survives past
+                    // the engine's own eventual retirement (ticket 01 ruling 11 / ruling 7). See
+                    // RemoteEvent.structuredMeta's own doc comment.
+                    structuredMeta = s(DatesAspectSeeder.FIELD_STRUCTURED_META),
                     source = s(DatesAspectSeeder.FIELD_SOURCE) ?: DatesAspectSeeder.SOURCE_LEGION,
                     googleEventId = s(DatesAspectSeeder.FIELD_GOOGLE_EVENT_ID),
                 ),
@@ -244,7 +257,18 @@ object EventsReconcile {
      * @param id the id to mint this row at, when known - a carried engine `records.id` for a row
      * that has one, or 0 to let [EventReplicaDao.upsert] autoincrement (a post-cutover row with no
      * engine ancestor). Kept as a parameter rather than mutated at each call site so the mapping
-     * from "which id" stays in the one place ([run]'s `engineIdByGuid` lookup). */
+     * from "which id" stays in the one place ([run]'s `engineIdByGuid` lookup).
+     *
+     * **Deliberately NOT "field for field" for [RemoteEvent.structuredMeta]** - traced every
+     * reader of [EventReplica] and [com.kevin.legion.notes.NotesController.allItems]/every screen
+     * built on it, and nothing on the phone renders a `LEGION::v1` block today (the only live
+     * consumer is the `read_calendar` voice tool at `service/LiveToolbox.kt:3114`, which reads
+     * straight off a LIVE Google description via [com.kevin.legion.calendar.CalendarReadToolLogic.structuredBlock],
+     * never off this replica). Adding an unread column to [EventReplica] would be a Room v42 -> v43
+     * migration bought for nothing; the value still reaches the one store that needs to outlive
+     * both Google and the engine (`public.events.structured_meta`, via [RemoteEvent.structuredMeta]
+     * above) even though this replica does not carry it. Revisit if a screen or widget is ever
+     * built to render it. */
     private fun RemoteEvent.toReplica(id: Long = 0) = EventReplica(
         id = id,
         serverId = serverId,
@@ -291,6 +315,7 @@ private fun EventFields(
     allDay: Boolean,
     location: String?,
     notes: String?,
+    structuredMeta: String?,
     source: String,
     googleEventId: String?,
 ) = EventFields(
@@ -301,6 +326,7 @@ private fun EventFields(
     allDay = allDay,
     location = location,
     notes = notes,
+    structuredMeta = structuredMeta,
     source = source,
     googleEventId = googleEventId,
     done = false,

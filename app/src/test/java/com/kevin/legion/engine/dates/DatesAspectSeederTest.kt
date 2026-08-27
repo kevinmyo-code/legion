@@ -28,7 +28,7 @@ class DatesAspectSeederTest {
     }
 
     @Test
-    fun `first run creates exactly one aspect, one record type, and seven fields`() = runBlocking {
+    fun `first run creates exactly one aspect, one record type, and nine fields`() = runBlocking {
         DatesAspectSeeder.ensureSeeded(context)
 
         assertEquals(1, db.aspectDao().listActive().count { it.name == DatesAspectSeeder.ASPECT_NAME })
@@ -36,7 +36,7 @@ class DatesAspectSeederTest {
         val recordTypes = db.recordTypeDao().listByAspect(aspectId)
         assertEquals(1, recordTypes.size)
         val fields = db.fieldDefDao().forRecordType(recordTypes.single().id)
-        assertEquals(7, fields.size)
+        assertEquals(9, fields.size)
     }
 
     @Test
@@ -48,7 +48,7 @@ class DatesAspectSeederTest {
         assertEquals(first.recordTypeId, second.recordTypeId)
         assertEquals(first.fieldIds, second.fieldIds)
         assertEquals(1, db.aspectDao().listActive().count { it.name == DatesAspectSeeder.ASPECT_NAME })
-        assertEquals(7, db.fieldDefDao().forRecordType(second.recordTypeId).size)
+        assertEquals(9, db.fieldDefDao().forRecordType(second.recordTypeId).size)
     }
 
     @Test

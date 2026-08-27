@@ -55,6 +55,33 @@ object DatesAspectSeeder {
     const val FIELD_SOURCE = "source"
     const val FIELD_GOOGLE_EVENT_ID = "googleEventId"
 
+    /** Whether the event occupies whole days rather than a clock-time span. Added for
+     * `.scratch/backend-erp/issues/01-what-the-backend-owns.md` ruling 11 / ticket 05 ruling 3's
+     * "widen the Dates Event type with description/location/allDay fields" - the Google-only
+     * `allDay` bit [CalendarImportController][com.kevin.legion.calendar.CalendarImportController]
+     * used to silently drop. `FieldType.BOOLEAN` already exists on the engine (see
+     * [com.kevin.legion.data.local.FieldType]), so this is exactly the same "a field is a row, not
+     * a migration" extension this seeder already demonstrates for its other six fields - not a new
+     * mechanism. Optional/unlocked: a legion-authored event has no Google concept of all-day and
+     * defaults to false via [com.kevin.legion.engine.PayloadCodec.readBoolean], which is the right
+     * default for a plain timed event. */
+    const val FIELD_ALL_DAY = "allDay"
+
+    /** The `LEGION::v1` description block ([com.kevin.legion.calendar.CalendarReadToolLogic]'s
+     * `structuredBlock`), stored as its own JSON-encoded text field rather than left buried inside
+     * [FIELD_NOTES]'s prose. This is the "become columns that survive Google's removal" half of
+     * ticket 05 ruling 3/ticket 01 ruling 11: the block's keys (`course`, `source`, `conflict`,
+     * `status`, observed in the wild - see that ticket's ruling 11) are per-event and open-ended,
+     * so a fixed one-column-per-key schema is not expressible without a real capability-plugin
+     * field-registration API this codebase does not have yet (this seeder's own class doc,
+     * "a fuller mechanism... not built yet"). One JSON text field is the closest available "real
+     * field" - retrievable, parseable, no longer only reachable by re-parsing a raw description
+     * string - without inventing per-key columns this seeder has no way to declare generically.
+     * Reasoned engineering call, flagged in the build report for review, same posture as
+     * [FIELD_GOOGLE_EVENT_ID]'s composite-key doc comment. Optional/unlocked: most events, Google
+     * or legion-authored, carry no block at all. */
+    const val FIELD_STRUCTURED_META = "structuredMeta"
+
     const val SOURCE_LEGION = "legion"
     const val SOURCE_GOOGLE = "google"
 
@@ -124,6 +151,8 @@ object DatesAspectSeeder {
             config = FieldConfig.serializeChoice(listOf(SOURCE_LEGION, SOURCE_GOOGLE)),
         )
         fieldIds[FIELD_GOOGLE_EVENT_ID] = ensureField(FIELD_GOOGLE_EVENT_ID, FieldType.TEXT, required = false, position = 6)
+        fieldIds[FIELD_ALL_DAY] = ensureField(FIELD_ALL_DAY, FieldType.BOOLEAN, required = false, position = 7)
+        fieldIds[FIELD_STRUCTURED_META] = ensureField(FIELD_STRUCTURED_META, FieldType.TEXT, required = false, position = 8)
 
         // The promoted-dueAt wiring (ticket 03 answer point 1) - RecordStore reads
         // RecordType.primaryDueDateFieldId to know which field mirrors into EngineRecord.dueAt,

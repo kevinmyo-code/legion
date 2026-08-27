@@ -35,6 +35,17 @@ data class RemoteEvent(
     val allDay: Boolean,
     val location: String?,
     val notes: String?,
+    /** The parsed `LEGION::v1` description-block map, as the server's own `jsonb` column
+     * round-trips it: a compact JSON object string (e.g. `{"course":"COSC4320"}`), or null when
+     * the event carries no such block. Added alongside `public.events.structured_meta`
+     * (`supabase/migrations/20260827000100_events_structured_meta.sql`, UNAPPLIED as of that
+     * migration's own doc comment) so the class-schedule metadata
+     * [com.kevin.legion.calendar.CalendarImportController] rescues out of a raw Google description
+     * string survives past the engine's own eventual retirement (ticket 01 ruling 11 / ruling 7) -
+     * a phone-only engine field alone would only defer the loss, not prevent it. Kept as an opaque
+     * JSON string here rather than parsed into a `Map` - this class mirrors the wire shape, same
+     * posture the rest of [RemoteEvent] already takes for every other column. */
+    val structuredMeta: String? = null,
     val source: String,
     val googleEventId: String?,
     val done: Boolean,
@@ -93,6 +104,10 @@ data class EventFields(
     val allDay: Boolean = false,
     val location: String? = null,
     val notes: String? = null,
+    /** Same field as [RemoteEvent.structuredMeta] - see that property's own doc comment. Null for
+     * every legion-authored event and for a Google event with no `LEGION::v1` block, which is most
+     * of them. */
+    val structuredMeta: String? = null,
     val source: String = "legion",
     val googleEventId: String? = null,
     val done: Boolean = false,

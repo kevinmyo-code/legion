@@ -11,6 +11,8 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 private const val EVENTS_TABLE = "events"
 private const val EVENT_SKIPS_TABLE = "event_skips"
@@ -61,6 +63,18 @@ private data class EventUpsertDto(
     @SerialName("all_day") val allDay: Boolean,
     val location: String?,
     val notes: String?,
+    // JsonElement, never a plain String - EventFields.structuredMeta is JSON TEXT
+    // (CalendarImportController.buildFieldValues produces it via org.json.JSONObject(...).toString()),
+    // and serializing a Kotlin String property sends it to Postgrest as a quoted, backslash-escaped
+    // JSON STRING SCALAR, so `structured_meta` would end up holding `"{\"course\":\"COSC4320\"}"` -
+    // a jsonb value that IS a string, not the JSON OBJECT this migration's own doc comment promises
+    // ("Postgres can index and query it"). EventUpsertDto.from parses the text back into a real
+    // JsonElement before it ever reaches this DTO, same pattern SupabasePantryBackend.commitReceipt
+    // already uses for exactly this reason (that function's own doc comment). Nullable with no
+    // "= null" default, same rule as every other clearable column in this class - an event whose
+    // block was removed on a re-import must actually clear the server's value, not silently leave
+    // the old block sitting there.
+    @SerialName("structured_meta") val structuredMeta: JsonElement?,
     val source: String,
     @SerialName("google_event_id") val googleEventId: String?,
     val done: Boolean,
@@ -91,6 +105,13 @@ private data class EventUpsertDto(
             allDay = fields.allDay,
             location = fields.location,
             notes = fields.notes,
+            // See this class's own field doc comment - parsed here, once, rather than trusting
+            // the caller's JSON text is already a JsonElement. fields.structuredMeta is internal
+            // (CalendarImportController's own org.json output), never user-typed free text, so a
+            // parse failure here is a real bug in this codebase, not a malformed third-party
+            // input - letting it throw (caught by the surrounding `translating` block, same as
+            // SupabasePantryBackend.commitReceipt's identical parse) is correct.
+            structuredMeta = fields.structuredMeta?.let { Json.parseToJsonElement(it) },
             source = fields.source,
             googleEventId = fields.googleEventId,
             done = fields.done,
@@ -128,6 +149,10 @@ private data class EventRowDto(
     @SerialName("all_day") val allDay: Boolean = false,
     val location: String? = null,
     val notes: String? = null,
+    // JsonElement, mirroring EventUpsertDto.structuredMeta's own doc comment - decoded from a real
+    // jsonb value server-side, converted to a compact JSON string only at the RemoteEvent boundary
+    // (toRemoteEvent, below), never earlier.
+    @SerialName("structured_meta") val structuredMeta: JsonElement? = null,
     val source: String,
     @SerialName("google_event_id") val googleEventId: String? = null,
     val done: Boolean = false,
@@ -160,6 +185,10 @@ private data class EventRowDto(
         allDay = allDay,
         location = location,
         notes = notes,
+        // .toString() on a JsonElement is kotlinx-serialization's own compact-JSON rendering, the
+        // exact inverse of EventUpsertDto.from's Json.parseToJsonElement - round-trips key order
+        // and values without this file re-implementing JSON formatting by hand.
+        structuredMeta = structuredMeta?.toString(),
         source = source,
         googleEventId = googleEventId,
         done = done,

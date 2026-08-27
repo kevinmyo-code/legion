@@ -95,6 +95,7 @@ class NotesControllerBackendTest {
             allDay = allDay,
             location = location,
             notes = notes,
+            structuredMeta = structuredMeta,
             source = source,
             googleEventId = googleEventId,
             done = done,

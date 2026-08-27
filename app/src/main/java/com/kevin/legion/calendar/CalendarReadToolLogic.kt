@@ -64,6 +64,30 @@ object CalendarReadToolLogic {
     }
 
     /**
+     * The counterpart to [structuredBlock]: that function returns the MACHINE half of a
+     * description, this returns the HUMAN half - the words Kevin (or whoever authored the Google
+     * event) actually wrote, never the `key: value` lines a block carries for Alfred. When
+     * [description] opens with [META_SENTINEL] this is everything after [META_TERMINATOR]; when it
+     * does not, the whole description IS the prose, verbatim. Added for
+     * `.scratch/backend-erp/issues/01-what-the-backend-owns.md` ruling 11 -
+     * [com.kevin.legion.calendar.CalendarImportController] needs this split to store the two halves
+     * as separate real fields rather than leaving them mixed together in one string.
+     *
+     * Null, never `""`, when there is nothing left to say (a blank description, a block with no
+     * trailing prose, or a block whose terminator never closed) - CLAUDE.md sec 4 rule 5's "never
+     * invent a value the source did not state" applies here exactly as it does to a money figure:
+     * an empty string would read as "the user wrote nothing" when the truth is "there was nothing
+     * to read".
+     */
+    fun proseAfter(description: String): String? {
+        val lines = description.lineSequence().map { it.trim() }.toList()
+        if (lines.firstOrNull() != META_SENTINEL) return description.trim().ifBlank { null }
+        val terminatorIdx = lines.indexOf(META_TERMINATOR)
+        if (terminatorIdx < 0) return null // the block never closed - nothing after it counts as prose
+        return lines.drop(terminatorIdx + 1).joinToString("\n").trim().ifBlank { null }
+    }
+
+    /**
      * Parses `from`/`to` (yyyy-MM-dd, the same date shape `manage_item`'s own `date` param already
      * uses) into a `[startMs, endMs)` window in [zone]: midnight of `from` through the START of the
      * day AFTER `to`, matching `ui/TodayScreen.kt`'s own `dayStart`/`dayEnd` convention for

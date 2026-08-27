@@ -75,4 +75,33 @@ class StructuredBlockTest {
             CalendarReadToolLogic.structuredBlock(desc),
         )
     }
+
+    // -- CalendarReadToolLogic.proseAfter: the human half of a description, the counterpart to
+    // structuredBlock's machine half above. --
+
+    @Test
+    fun `plain description with no block is entirely prose`() {
+        assertEquals("Dentist, bring the referral letter", CalendarReadToolLogic.proseAfter("Dentist, bring the referral letter"))
+    }
+
+    @Test
+    fun `empty description has no prose`() {
+        assertNull(CalendarReadToolLogic.proseAfter(""))
+    }
+
+    @Test
+    fun `prose is everything after the terminator`() {
+        val desc = "LEGION::v1\ncourse: COSC4320\nsource: canvas_verified\n---\nBring a calculator."
+        assertEquals("Bring a calculator.", CalendarReadToolLogic.proseAfter(desc))
+    }
+
+    @Test
+    fun `a block with no trailing prose has none`() {
+        assertNull(CalendarReadToolLogic.proseAfter("LEGION::v1\ncourse: COSC4320\n---"))
+    }
+
+    @Test
+    fun `a block whose terminator never closed has no prose`() {
+        assertNull(CalendarReadToolLogic.proseAfter("LEGION::v1\ncourse: MATH3391\nstatus: pending"))
+    }
 }
