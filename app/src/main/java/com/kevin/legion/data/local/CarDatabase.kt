@@ -301,8 +301,9 @@ import androidx.room.RoomDatabase
         Aspect::class, RecordType::class, FieldDef::class, EngineRecord::class, WidgetInstance::class,
         MutedReminder::class,
         EventReplica::class, EventSkipReplica::class,
+        VehicleReplica::class, ServiceHistoryReplica::class,
     ],
-    version = 41,
+    version = 42,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -390,6 +391,13 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun eventReplicaDao(): EventReplicaDao
     abstract fun eventSkipReplicaDao(): EventSkipReplicaDao
 
+    /** The fleet aspect's Room replicas (v42, backend-erp fleet wave 2) - see [VehicleReplica]'s
+     * own doc comment for why this pair exists, and why (unlike [eventReplicaDao]) neither carries
+     * an id-preserving upsert. Populated only by [com.kevin.legion.backend.FleetReconcile]; no
+     * CONFIGURED read path wired to either yet (repointing reads is a later wave). */
+    abstract fun vehicleReplicaDao(): VehicleReplicaDao
+    abstract fun serviceHistoryReplicaDao(): ServiceHistoryReplicaDao
+
     companion object {
         @Volatile
         private var INSTANCE: CarDatabase? = null
@@ -420,7 +428,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 41
+        const val SCHEMA_VERSION = 42
         // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
         // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
@@ -480,7 +488,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
                         MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34,
                         MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38,
-                        MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41,
+                        MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

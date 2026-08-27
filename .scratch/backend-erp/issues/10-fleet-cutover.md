@@ -56,3 +56,58 @@ ticket.
 
 The diff is clean per table, writes land server-side, the phone renders from the replica, and every
 fleet table is out of the `SyncEngine` registry. Same bar as places, pantry and notes+dates.
+
+---
+
+## PROGRESS 2026-08-26
+
+**Schema half built, NOT APPLIED (`54cdf5e`).** All seven tables plus `events.vehicle_id`. This
+machine has no Supabase CLI, no linked project and no credentials, so unlike phases 1 and 2 nothing
+here was verified against real Postgres. **Owed by Kevin:** apply both files; verify each table's
+RLS by querying `pg_class`/`pg_policy` rather than trusting the editor's success panel; confirm the
+natural keys and the new FK do not collide with seed data; and rule on whether a no-op
+`drive_reassignment` needs a CHECK (left unconstrained, since a client retry of an
+already-applied correction is legitimate).
+
+Idempotency keys were confirmed against `SyncEngine`'s registry and the Room entities rather than
+taken from this ticket's own paragraph. They matched.
+
+**`events.vehicle_id` is `ON DELETE SET NULL`** where every fleet FK uses `RESTRICT`. Blocking a
+vehicle delete over an unrelated todo reads wrong, and vehicles soft-delete so it fires close to
+never. **A design call made on Kevin's delegated authority, not a ruling** - cheap to reverse now.
+
+**Wave 1 built (`fa58865`): vehicles, service_history, drives.** Scoped to the three tables that ARE
+applied. Two findings worth carrying:
+
+**1. Fleet has TWO identity shapes inside one aspect, and this is correct.** `vehicles` and
+`service_history` are engine records and key on `origin_guid`; `drives` never were engine records,
+so `Drive.syncId` was already the portable identity. Every other aspect is uniform, so this is
+documented in the code to stop it reading as a mistake.
+
+**2. The legacy tables CANNOT serve as replicas for vehicles/service_history, which contradicts the
+premise ticket 01 ruling 7 was working from.** Ruling 7's shortcut was "repoint the phone back to
+the legacy typed tables that still exist". For fleet that does not hold: legacy `Vehicle` is keyed
+on `obdMac`, and `FleetRecordBridge`'s own doc says obdMac is NOT recoverable from the engine guid
+(a one-way `nameUUIDFromBytes` hash), so a server row cannot be mapped onto a legacy row's key. It
+also carries local-only columns (persona, telemetry accumulators, archive state) a refill would have
+to blank. `drives` was fine and reuses its own table.
+
+So wave 1 is **upload-only** for those two, and the gap is visible in the TYPE rather than buried in
+a comment: `VehicleReport`/`ServiceHistoryReport` have no `replicaCountAfter` field at all. Purpose-
+built replica tables are being added next, the way `EventReplica` was for Notes+Dates.
+
+**The vehicle reference has to be COMPOSED, not read.** `ServiceHistory` names its vehicle by the
+engine record's Long id, `Drive` by the legacy obdMac string, the server by uuid. The reconcile
+composes engine-id -> guid, obdMac -> guid, guid -> server uuid. A row whose parent cannot resolve
+is skipped and named in `skippedUnresolvedVehicle`, never uploaded with a guessed parent - that
+would put a service record on the wrong car.
+
+**MaintenanceSchedule is out of scope** and always was: it has no `origin_guid` column in
+`20260826000100`, so it was never part of this cutover. Worth an explicit decision later rather than
+being silently absent.
+
+**Still owed after the replicas land:** waves for the four newest tables (blocked on the migrations
+being applied), the `car_tasks` fold into events, repointing production controllers, dropping each
+table from the `SyncEngine` registry in the same commit its writes move, and the recap
+view-vs-RPC-vs-phone decision (deliberately untouched - transcribing `MonthlyRecapController` and
+`MpgTrust` into SQL unchecked is the two-implementations hazard ticket 03 ruling 2 exists to stop).

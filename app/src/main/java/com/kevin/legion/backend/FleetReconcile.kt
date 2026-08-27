@@ -3,6 +3,8 @@ package com.kevin.legion.backend
 import android.content.Context
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Drive
+import com.kevin.legion.data.local.ServiceHistoryReplica
+import com.kevin.legion.data.local.VehicleReplica
 import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.fleet.FleetAspectSeeder
 import com.kevin.legion.engine.fleet.FleetRecordBridge
@@ -34,21 +36,23 @@ import org.json.JSONObject
  * skipped rather than uploaded with a guessed or empty vehicle reference - an unresolvable parent is
  * a genuine "not yet migrated" state, not a value to paper over.
  *
- * **No Room replica for `vehicles`/`service_history` yet - reasoned and reported, not built.**
- * [PlacesReconcile]/[PantryReconcile] refill a LEGACY Room table that already happened to hold
- * exactly the uploaded columns. The legacy `Vehicle` table cannot play that role: it is keyed on
- * `obdMac`, which [FleetRecordBridge]'s own class doc says is NOT recoverable from the engine's
- * deterministic guid hash, and it carries a dozen local-only columns (persona, telemetry
- * accumulators, archive state) a server-shaped refill has no value for and would either have to
- * invent or silently blank - exactly the whole-row-clobber trap `VehicleDao.upsertStamped`'s own doc
- * comment warns about for a much smaller mismatch. The same reasoning applies to `ServiceRecord`
- * (keyed on an obdMac-derived `vehicleId` string it cannot reconstruct from a server uuid either). A
- * genuine replica needs a NEW Room table per aspect the way [com.kevin.legion.data.local.EventReplica]
- * was for Notes+Dates - which is a schema migration, and this ticket's own instructions are to STOP
- * and report before writing one rather than bump the version on this reconcile's own judgment. So
- * this wave uploads and diffs both tables in full - [VehicleReport]/[ServiceHistoryReport] simply
- * have no `replicaCountAfter` field at all, unlike [DriveReport]'s real one, so the gap is visible
- * in the TYPE rather than papered over with a number that only looks real.
+ * **Fleet wave 2 (backend-erp fleet cutover follow-up): `vehicles`/`service_history` now DO get a
+ * Room replica.** Wave 1 (above paragraph, kept for history) reasoned this out rather than building
+ * it: the legacy `Vehicle` table is keyed on `obdMac`, which [FleetRecordBridge]'s own class doc says
+ * is NOT recoverable from the engine's deterministic guid hash, and it carries a dozen local-only
+ * columns (persona, telemetry accumulators, archive state) a server-shaped refill has no value for
+ * and would either have to invent or silently blank - exactly the whole-row-clobber trap
+ * `VehicleDao.upsertStamped`'s own doc comment warns about for a much smaller mismatch. The same
+ * reasoning applies to `ServiceRecord` (keyed on an obdMac-derived `vehicleId` string it cannot
+ * reconstruct from a server uuid either). Wave 2 builds the NEW Room tables the way
+ * [com.kevin.legion.data.local.EventReplica] was built for Notes+Dates -
+ * [com.kevin.legion.data.local.VehicleReplica]/[com.kevin.legion.data.local.ServiceHistoryReplica],
+ * v42 - and refills both after every fetch below, so [VehicleReport]/[ServiceHistoryReport] now carry
+ * a real `replicaCountAfter`, same as [DriveReport]'s. **Neither replica gets an id-preserving
+ * upsert** - see [com.kevin.legion.data.local.VehicleReplica]'s own doc comment for the trace that
+ * established nothing in the app addresses either table by a stable local id, unlike
+ * [com.kevin.legion.data.local.EventReplica]'s alarm-request-code exposure. **Repointing a live read
+ * at either replica is still later work** - this wave only keeps them filled.
  *
  * **`drives` DOES get a working replica refill, with no migration needed.** The legacy [Drive]
  * table already has exactly the columns the server table has (`vehicleId`/`startedAt`/`endedAt`/
@@ -75,11 +79,15 @@ object FleetReconcile {
      * @param onlyOnEngine engine record guids the server has no matching `origin_guid` for.
      * @param onlyOnServer server `origin_guid`s (migrated only - a server-native vehicle carries a
      *   null `origin_guid` and is correctly excluded, same as [PantryReconcile.Report.onlyOnServer]'s
-     *   own note) with no matching engine record. */
+     *   own note) with no matching engine record.
+     * @param replicaCountAfter the `vehicles_replica` table's own active row count after being
+     *   refilled - wave 2's addition, see this object's own class doc for why wave 1 shipped without
+     *   it (the gap lived in the TYPE, not just the count). */
     data class VehicleReport(
         val engineCount: Int,
         val uploaded: Int,
         val serverCountAfter: Int,
+        val replicaCountAfter: Int,
         val onlyOnEngine: List<String>,
         val onlyOnServer: List<String>,
     ) {
@@ -98,6 +106,9 @@ object FleetReconcile {
         val uploaded: Int,
         val skippedUnresolvedVehicle: List<String>,
         val serverCountAfter: Int,
+        /** The `service_history_replica` table's own active row count after being refilled - same
+         * wave-2 addition as [VehicleReport.replicaCountAfter]. */
+        val replicaCountAfter: Int,
         val onlyOnEngine: List<String>,
         val onlyOnServer: List<String>,
     ) {
@@ -215,10 +226,19 @@ object FleetReconcile {
         val engineVehicleGuids = engineVehicles.map { it.guid }.toSet()
         val serverVehicleOriginGuids = serverVehicles.mapNotNull { it.originGuid }.toSet()
 
+        // Wave 2: refill the Room replica wholesale. Safe as a plain wipe-then-insert (no carried
+        // id) - see VehicleReplica's own doc comment for the trace establishing nothing addresses
+        // a row here by a stable local id, unlike EventReplica's alarm-request-code exposure.
+        db.vehicleReplicaDao().deleteAllForReplicaRefresh()
+        for (row in serverVehicles) {
+            db.vehicleReplicaDao().insert(row.toReplica())
+        }
+
         val vehicleReport = VehicleReport(
             engineCount = engineVehicles.size,
             uploaded = vehiclesUploaded,
             serverCountAfter = serverVehicles.size,
+            replicaCountAfter = db.vehicleReplicaDao().getAllActive().size,
             onlyOnEngine = (engineVehicleGuids - serverVehicleOriginGuids).sorted(),
             onlyOnServer = (serverVehicleOriginGuids - engineVehicleGuids).sorted(),
         )
@@ -272,11 +292,19 @@ object FleetReconcile {
         val engineServiceHistoryGuids = (engineServiceHistory.map { it.guid }.toSet() - skippedServiceHistoryGuids)
         val serverServiceHistoryOriginGuids = serverServiceHistory.mapNotNull { it.originGuid }.toSet()
 
+        // Wave 2: same wholesale refill as vehicles above - see ServiceHistoryReplica's own doc
+        // comment for the same "no stable-local-id consumer" trace.
+        db.serviceHistoryReplicaDao().deleteAllForReplicaRefresh()
+        for (row in serverServiceHistory) {
+            db.serviceHistoryReplicaDao().insert(row.toReplica())
+        }
+
         val serviceHistoryReport = ServiceHistoryReport(
             engineCount = engineServiceHistory.size,
             uploaded = serviceHistoryUploaded,
             skippedUnresolvedVehicle = skippedServiceHistory,
             serverCountAfter = serverServiceHistory.size,
+            replicaCountAfter = db.serviceHistoryReplicaDao().getAllActive().size,
             onlyOnEngine = (engineServiceHistoryGuids - serverServiceHistoryOriginGuids).sorted(),
             onlyOnServer = (serverServiceHistoryOriginGuids - engineServiceHistoryGuids).sorted(),
         )
@@ -353,4 +381,39 @@ object FleetReconcile {
 
         return Result.success(Report(vehicleReport, serviceHistoryReport, driveReport))
     }
+
+    /** [RemoteVehicle] -> [VehicleReplica], field for field - the Room side of the same shape.
+     * No id parameter (unlike [EventsReconcile]'s [com.kevin.legion.backend.EventsReconcile.toReplica]'s):
+     * every call site here wipes the table first and lets SQLite autoincrement, per
+     * [VehicleReplica]'s own doc comment on why that is sufficient. */
+    private fun RemoteVehicle.toReplica() = VehicleReplica(
+        serverId = serverId,
+        name = name,
+        make = make,
+        model = model,
+        year = year,
+        trim = trim,
+        engine = engine,
+        confirmed = confirmed,
+        odometerBaseline = odometerBaseline,
+        odometerBaselineAtMs = odometerBaselineAtMs,
+        updatedAtMs = updatedAtMs,
+        deleted = deleted,
+        originGuid = originGuid,
+    )
+
+    /** [RemoteServiceHistory] -> [ServiceHistoryReplica], field for field - same posture as
+     * [RemoteVehicle.toReplica]. */
+    private fun RemoteServiceHistory.toReplica() = ServiceHistoryReplica(
+        serverId = serverId,
+        vehicleServerId = vehicleServerId,
+        serviceName = serviceName,
+        mileage = mileage,
+        serviceDateEpochMs = serviceDateEpochMs,
+        costCents = costCents,
+        kind = kind,
+        updatedAtMs = updatedAtMs,
+        deleted = deleted,
+        originGuid = originGuid,
+    )
 }

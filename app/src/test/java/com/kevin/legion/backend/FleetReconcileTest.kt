@@ -246,6 +246,19 @@ class FleetReconcileTest {
         assertEquals("ENGINE_OFF", driveRow.endReason)
 
         assertTrue(report.isClean)
+
+        // Both new replicas (wave 2) refilled from the same server rows the reports above assert on.
+        assertEquals(1, report.vehicle.replicaCountAfter)
+        assertEquals(1, report.serviceHistory.replicaCountAfter)
+        val db = CarDatabase.getDatabase(context)
+        val replicaVehicle = db.vehicleReplicaDao().getAllActive().single()
+        assertEquals(vehicleRow.serverId, replicaVehicle.serverId)
+        assertEquals("Jeep", replicaVehicle.name)
+        assertEquals(142_000, replicaVehicle.odometerBaseline)
+        val replicaServiceHistory = db.serviceHistoryReplicaDao().getAllActive().single()
+        assertEquals(shRow.serverId, replicaServiceHistory.serverId)
+        assertEquals(vehicleRow.serverId, replicaServiceHistory.vehicleServerId)
+        assertEquals("Oil change", replicaServiceHistory.serviceName)
     }
 
     @Test
@@ -279,6 +292,9 @@ class FleetReconcileTest {
         val first = FleetReconcile.run(context, backend).getOrThrow()
         val vehicleServerIdAfterFirst = backend.vehicles.values.single().serverId
         val serviceHistoryServerIdAfterFirst = backend.serviceHistory.values.single().serverId
+        val db = CarDatabase.getDatabase(context)
+        val replicaVehicleIdAfterFirst = db.vehicleReplicaDao().getAllActive().single().serverId
+        val replicaServiceHistoryIdAfterFirst = db.serviceHistoryReplicaDao().getAllActive().single().serverId
 
         val second = FleetReconcile.run(context, backend).getOrThrow()
 
@@ -291,10 +307,22 @@ class FleetReconcileTest {
         assertEquals(1, backend.serviceHistory.size)
         assertEquals(1, backend.drives.size)
 
+        // Same identity check for the two NEW replicas: a re-run wipes and refills both tables, and
+        // this is the regression test for that refill quietly reminting the wrong server row (it
+        // cannot remint a LOCAL id here the way b17bc88 did for EventReplica - see VehicleReplica's
+        // own doc comment for why that mechanism is not needed - but a refill bug could still lose
+        // or duplicate the SERVER identity the replica is supposed to mirror).
+        assertEquals(replicaVehicleIdAfterFirst, db.vehicleReplicaDao().getAllActive().single().serverId)
+        assertEquals(replicaServiceHistoryIdAfterFirst, db.serviceHistoryReplicaDao().getAllActive().single().serverId)
+        assertEquals(1, db.vehicleReplicaDao().getAllActive().size)
+        assertEquals(1, db.serviceHistoryReplicaDao().getAllActive().size)
+
         assertEquals(0, second.vehicle.uploaded)
         assertEquals(0, second.serviceHistory.uploaded)
         assertEquals(first.vehicle.serverCountAfter, second.vehicle.serverCountAfter)
         assertEquals(first.serviceHistory.serverCountAfter, second.serviceHistory.serverCountAfter)
+        assertEquals(first.vehicle.replicaCountAfter, second.vehicle.replicaCountAfter)
+        assertEquals(first.serviceHistory.replicaCountAfter, second.serviceHistory.replicaCountAfter)
         assertEquals(first.drive.replicaCountAfter, second.drive.replicaCountAfter)
         assertTrue(second.isClean)
     }
@@ -334,6 +362,10 @@ class FleetReconcileTest {
         assertEquals(1, db.engineRecordDao().activeByRecordType(sch.vehicle.recordTypeId).size)
         assertEquals(1, db.engineRecordDao().activeByRecordType(sch.serviceHistory.recordTypeId).size)
         assertEquals(1, db.driveDao().getAll().size)
+        // The replicas are a byproduct of the same run, not a source of truth - confirming they
+        // landed alongside the engine/drive rows above, never a substitute check for them.
+        assertEquals(1, db.vehicleReplicaDao().getAllActive().size)
+        assertEquals(1, db.serviceHistoryReplicaDao().getAllActive().size)
     }
 
     @Test

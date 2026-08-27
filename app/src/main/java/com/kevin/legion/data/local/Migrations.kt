@@ -1609,3 +1609,33 @@ val MIGRATION_40_41 = object : Migration(40, 41) {
         db.execSQL("ALTER TABLE `events_replica` ADD COLUMN `createdAt` INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+/**
+ * v41 -> v42: `vehicles_replica` + `service_history_replica`, the fleet aspect's Room replicas
+ * (backend-erp fleet wave 2, `.scratch/backend-erp/issues/10-fleet-cutover.md`'s own follow-up -
+ * wave 1 shipped with these tables off entirely, see [com.kevin.legion.backend.FleetReconcile]'s
+ * class doc history for why). Two additive `CREATE TABLE`s, nothing existing touched - same shape
+ * as [MIGRATION_37_38]'s `events_replica`/`event_skips_replica` pair. SQL below is PASTED VERBATIM
+ * from the kapt-generated `app/schemas/com.kevin.legion.data.local.CarDatabase/42.json` after a
+ * real `compileDebugKotlin -Pnokey` run, per CLAUDE.md sec 5's "copy generated SQL verbatim"
+ * discipline. See [VehicleReplica]/[ServiceHistoryReplica]'s own doc comments for the field mapping
+ * and for why - unlike [EventReplica] - neither table needs [EventReplicaDao.upsert]'s carried-id
+ * dance: nothing in the app addresses either row by a stable local id, traced and reported in
+ * those entities' own doc comments.
+ */
+val MIGRATION_41_42 = object : Migration(41, 42) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `vehicles_replica` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `serverId` TEXT NOT NULL, `name` TEXT NOT NULL, `make` TEXT NOT NULL, `model` TEXT NOT NULL, `year` INTEGER NOT NULL, `trim` TEXT, `engine` TEXT, `confirmed` INTEGER NOT NULL, `odometerBaseline` INTEGER, `odometerBaselineAtMs` INTEGER, `updatedAtMs` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, `originGuid` TEXT)"
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_vehicles_replica_serverId` ON `vehicles_replica` (`serverId`)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `service_history_replica` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `serverId` TEXT NOT NULL, `vehicleServerId` TEXT NOT NULL, `serviceName` TEXT NOT NULL, `mileage` INTEGER, `serviceDateEpochMs` INTEGER, `costCents` INTEGER, `kind` TEXT NOT NULL, `updatedAtMs` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, `originGuid` TEXT)"
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_service_history_replica_serverId` ON `service_history_replica` (`serverId`)"
+        )
+    }
+}
