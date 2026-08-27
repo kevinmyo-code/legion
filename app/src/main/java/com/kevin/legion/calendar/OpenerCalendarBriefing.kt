@@ -73,6 +73,11 @@ object OpenerCalendarBriefing {
         val startMs: Long,
         val endMs: Long,
         val allDay: Boolean = false,
+        /** Mirrors [com.kevin.legion.engine.dates.DatesAgenda.AgendaItem.dueIsInferred] - ticket
+         * 01 ruling 2's "rendered in words" clause applies to spoken content exactly as much as it
+         * does to a screen: an inferred "tomorrow" spoken as a bare time would read as a stated
+         * appointment, the same lie a bare on-screen date would be. */
+        val dueIsInferred: Boolean = false,
     )
 
     const val NO_PERMISSION =
@@ -109,8 +114,13 @@ object OpenerCalendarBriefing {
 
         val listed = upcoming.joinToString("; ") { event ->
             val title = event.title.trim().ifEmpty { "(untitled)" }
-            if (event.allDay) "\"$title\" (all day)"
-            else "\"$title\" at ${Instant.ofEpochMilli(event.startMs).atZone(zone).format(TIME_FMT)}"
+            when {
+                // Ticket 01 ruling 2: an inferred date is spoken as what it is, in words, never as
+                // a bare time that would read as something the user actually scheduled.
+                event.dueIsInferred -> "\"$title\" (showing tomorrow, no date set)"
+                event.allDay -> "\"$title\" (all day)"
+                else -> "\"$title\" at ${Instant.ofEpochMilli(event.startMs).atZone(zone).format(TIME_FMT)}"
+            }
         }
         return "Their calendar, read just now, has exactly these and nothing else for the next " +
             "$WINDOW_HOURS hours: $listed. You may mention the next one briefly if it is soon " +

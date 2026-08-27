@@ -511,7 +511,14 @@ class AriaForegroundService : Service() {
                 nowMs,
                 nowMs + OpenerCalendarBriefing.WINDOW_HOURS * 60L * 60L * 1000L,
             )
-        }.map { OpenerCalendarBriefing.BriefingEvent(title = it.title, startMs = it.dueAt, endMs = it.endAt ?: it.dueAt) }
+        }.map {
+            OpenerCalendarBriefing.BriefingEvent(
+                title = it.title,
+                startMs = it.dueAt,
+                endMs = it.endAt ?: it.dueAt,
+                dueIsInferred = it.dueIsInferred,
+            )
+        }
         sb.append(OpenerCalendarBriefing.forOpener(events, nowMs, zone, hasCalendar))
 
         // Everything below this line is car context, and it is gated on the dongle actually being

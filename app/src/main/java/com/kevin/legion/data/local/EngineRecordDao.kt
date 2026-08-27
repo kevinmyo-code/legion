@@ -82,4 +82,26 @@ interface EngineRecordDao {
             "AND dueAt >= :afterMs ORDER BY dueAt ASC LIMIT :limit",
     )
     suspend fun activeWithDueAtFrom(afterMs: Long, limit: Int): List<EngineRecord>
+
+    /** Active records of a record type that HAS a due-date concept
+     * ([RecordType.primaryDueDateFieldId] set) but where the user left it unset - the raw read
+     * behind ticket 01 ruling 2's "undated todos get due=tomorrow as an inferred fact"
+     * (`.scratch/backend-erp/issues/01-what-the-backend-owns.md:42-44`). Deliberately a SEPARATE
+     * query rather than widening [activeWithDueAtInWindow]/[activeWithDueAtFrom] to `dueAt IS NULL
+     * OR ...`: those two feed the alarm scheduler ([DatesAgenda.nextUnmuted]) and a single alarm
+     * fire ([DatesAgenda.byId]), and ruling 2 is explicit that an inferred date must never reach
+     * either - keeping this on its own method means the exclusion is structural (nothing calls
+     * this from the alarm path) rather than a filter someone could forget to apply. Only
+     * [DatesAgenda.windowed] calls this. The join is required because "has a due-date concept" is
+     * a fact about the RECORD TYPE, not the row - a row can have `dueAt IS NULL` either because its
+     * type has no notion of a due date at all (e.g. a Ledger transaction) or because the user left
+     * a real due-date field blank, and only the second case is an "undated todo". */
+    @Query(
+        "SELECT records.* FROM records " +
+            "INNER JOIN record_types ON records.recordTypeId = record_types.id " +
+            "WHERE records.deletedAt IS NULL AND records.dueAt IS NULL " +
+            "AND record_types.primaryDueDateFieldId IS NOT NULL " +
+            "ORDER BY records.id ASC",
+    )
+    suspend fun activeUndatedWithDueConcept(): List<EngineRecord>
 }
