@@ -77,3 +77,56 @@ carries Kevin's own typed nickname. Rule-7 supersession keys on `(account_last4,
 TOGETHER, so **a real statement will not supersede the migrated provisional rows it should replace**,
 and they will double-count. Stated in `LedgerReconcile`'s own doc comment. Whatever option is chosen
 above has to answer this too.
+
+## DRY RUN RUN ON THE A25, 2026-08-27. All 107 files UNREACHABLE, and the cause is not the files.
+
+Built (`c53b167` and the dry run itself), installed on the A25 (APK sha256 verified against the
+build, not trusted to "Success"), and run from Settings > Connections > Ledger re-ingest dry run.
+
+```
+Read-only dry run over 107 statement files previously ingested from a connected Drive folder.
+Nothing was written.
+0 would recover all three anchors and unblock ticket 12 for that file.
+107 files no longer reachable through its saved folder link.
+Raw rows re-parsed: 0.
+```
+
+**The cause is a lapsed permission, not missing files.** `dumpsys activity permissions` shows LEGION
+holding **zero persisted URI grants** - verified the command works by confirming it lists 409 lines
+of other packages' grants on the same device.
+
+**The `connectedAndroidTest` uninstall of 2026-08-26 claimed a second victim.** Ticket 09 recorded
+that it destroyed `files/` and the receipt photos. Persisted SAF grants are per-install too, so they
+died in exactly the same way the Keystore key did (which is why the Gemini key had to be re-entered
+by hand). Nobody noticed, because nothing reads those grants until something tries to re-open an old
+file - and until this ticket, nothing ever did.
+
+**The finding is recoverable and the ledger was never touched.** Re-connecting the Drive folder in
+the app should restore the grants; a Drive folder's document id is stable, so the stored `treeUri`
+strings should resolve again. If the re-picked tree differs, a fresh folder scan re-discovers the
+files anyway and re-ingests them, which recovers the anchors by the other route.
+
+**This is the dry run earning its existence.** Had the re-ingestion been built and run directly, it
+would have found the same 107 failures - but against the real ledger, mid-write, with rule-7
+supersession and the replace flow live. Instead it cost one read-only pass and changed nothing.
+
+**Still owed before this ticket can close:** re-connect the folder, re-run the dry run, and only then
+judge whether the anchors come back. And note what the parser fix already established independently:
+**no bank format prints a single combined total**, so even a fully successful re-ingestion recovers
+opening and closing balances but never `stated_total`. Two of ruling 4's three anchors, for every
+historical statement. That needs its own ruling - see below.
+
+## OPEN QUESTION FOR KEVIN, created by the parser fix
+
+Ruling 4 demands three anchors because an LLM-produced CSV has lines AND total from one
+nondeterministic process, so a self-consistent hallucination could satisfy a single check. **That
+reasoning does not transfer to a deterministically-parsed bank PDF**, where the lines and the printed
+balances come from the document itself and the parser is code, not a model.
+
+The historical statements can supply opening and closing balances, and therefore the
+`closing - opening == sum(lines)` check - a real, independent, falsifiable anchor. They cannot supply
+a printed total because their banks do not print one.
+
+So: does a DETERMINISTIC statement qualify with two read anchors plus the balance-delta check, or
+does it fall to rule 7 provisional for want of a third that its bank never printed? Ruling 4 did not
+contemplate this case; it was written about the CSV path.
