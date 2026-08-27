@@ -23,7 +23,9 @@ import com.kevin.legion.engine.WidgetKind
 import com.kevin.legion.ui.common.DeckButton
 import com.kevin.legion.ui.common.DeckPoint
 import com.kevin.legion.ui.common.DeckRow
+import com.kevin.legion.ui.common.DECK_SPARKLINE_MIN_POINTS
 import com.kevin.legion.ui.common.DeckSparkline
+import com.kevin.legion.ui.common.deckSparklineHasShape
 import com.kevin.legion.ui.grid.GridPreset
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -173,6 +175,13 @@ fun ChartWidget(dataSource: WidgetDataSource, recordTypeId: Long?, fieldId: Long
         WidgetLoading()
     } else if (series.isEmpty()) {
         WidgetEmpty("no data points yet")
+    } else if (!deckSparklineHasShape(series.map { it.y })) {
+        // A widget occupies its grid cell whether or not the chart inside draws, so the collapse
+        // [DeckSparkline] performs below the threshold would leave a titled, empty cell here rather
+        // than the floating dot it replaced (command-center ticket 13 finding 4). Say the count
+        // instead: "not enough yet" and "none at all" are different facts and the cell has room for
+        // the distinction.
+        WidgetEmpty("${series.size} of $DECK_SPARKLINE_MIN_POINTS points needed for a trend")
     } else {
         // The mission-control palette applies automatically here - DeckSparkline reads
         // LocalLegionSemantics.current.data/marker for its stroke/dot colours, same as every other

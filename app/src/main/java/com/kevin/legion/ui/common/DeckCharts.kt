@@ -148,6 +148,30 @@ private fun DrawScope.drawDeckMarker(type: DeckMarkerType, center: Offset, color
 // ---------------------------------------------------------------- sparkline
 
 /**
+ * The fewest non-null points a sparkline needs before it is drawn at all (command-center ticket 13
+ * finding 4). Two points are a straight line between them and carry no more information than the
+ * two numbers already printed above the chart; one is a dot floating in an otherwise empty 54.dp
+ * panel, which reads as a rendering fault rather than as data. Three is the first count at which
+ * the silhouette - the entire reason a sparkline exists rather than a number - can bend.
+ */
+const val DECK_SPARKLINE_MIN_POINTS = 3
+
+/**
+ * Whether [points] has enough shape for [DeckSparkline] to draw anything.
+ *
+ * **Callers should branch on this rather than on `points.any { it != null }`.** The component
+ * enforces the threshold itself and collapses to zero height below it, so a caller that gets this
+ * wrong renders no floating dot - but a pane whose own height is fixed for a chart would still
+ * reserve the void, and a caller wanting to say something in words about *why* the trend is absent
+ * needs to know. Callers with only one honest sentence for both cases may still just omit.
+ *
+ * Deliberately NOT a check on `points.size`: a series is index-ordered with `null` gaps, so ten
+ * slots holding one reading is one point, not ten.
+ */
+fun deckSparklineHasShape(points: List<Float?>): Boolean =
+    points.count { it != null } >= DECK_SPARKLINE_MIN_POINTS
+
+/**
  * A panel-height (~54dp) trend line with no axes and no labels - the shape of
  * the data, not its numbers, exactly like [com.kevin.legion.ui.fleet.TelemetryChart]'s
  * doc comment reasons: the exact figures belong in the panel's hero readout
@@ -157,8 +181,10 @@ private fun DrawScope.drawDeckMarker(type: DeckMarkerType, center: Offset, color
  * a sparkline's whole point is silhouette, not a time axis) and a `null`
  * entry is a GAP: the pen lifts, no line is drawn across it, and it resumes
  * on the next non-null point. A run of exactly one non-null point between
- * two gaps (or a series of length one) draws only as the endpoint dot, never
- * as an invisible zero-length line. The series' own min/max come only from
+ * two gaps draws only as the endpoint dot, never as an invisible zero-length
+ * line. (A whole SERIES of one or two points draws nothing at all now - see
+ * [DECK_SPARKLINE_MIN_POINTS]; this clause is about an isolated run inside a
+ * series that clears the threshold overall.) The series' own min/max come only from
  * its non-null values ([computeLineScale]), so gaps never drag the scale
  * toward zero.
  *
@@ -186,6 +212,11 @@ fun DeckSparkline(
     modifier: Modifier = Modifier,
     markers: List<DeckMarkerType?>? = null,
 ) {
+    // Below the threshold this composable occupies NO space at all - the return is above the
+    // Canvas deliberately, since a Canvas that draws nothing still reserves its 54.dp and that
+    // reserved void, with a single dot floating in it, is exactly the bug command-center ticket
+    // 13 finding 4 photographed on the A25.
+    if (!deckSparklineHasShape(points)) return
     val sem = LocalLegionSemantics.current
     val lineColor = sem.data
     val markerColor = sem.marker

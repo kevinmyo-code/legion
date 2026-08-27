@@ -57,6 +57,7 @@ import com.kevin.legion.ui.common.DeckTag
 import com.kevin.legion.ui.common.DeckTagStyle
 import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.HalfTile
+import com.kevin.legion.ui.common.deckSparklineHasShape
 import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.ui.fleet.BuildSheetScreen
 import com.kevin.legion.ui.fleet.DriveHistoryDrilldownScreen
@@ -919,7 +920,7 @@ private fun FleetListing(
                             color = LocalLegionSemantics.current.faint,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                         )
-                    } else if (state.mpgSparkline.any { it != null }) {
+                    } else if (deckSparklineHasShape(state.mpgSparkline)) {
                         DeckSparkline(state.mpgSparkline, modifier = Modifier.padding(horizontal = 12.dp))
                     }
                 }

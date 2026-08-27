@@ -45,6 +45,7 @@ import com.kevin.legion.ui.body.LogSleepDialog
 import com.kevin.legion.ui.body.LogWorkoutSetDialog
 import com.kevin.legion.ui.body.SetMealTargetDialog
 import com.kevin.legion.ui.body.SetSleepTargetDialog
+import com.kevin.legion.ui.common.DECK_SPARKLINE_MIN_POINTS
 import com.kevin.legion.ui.common.DeckBar
 import com.kevin.legion.ui.common.DeckBarChart
 import com.kevin.legion.ui.common.DeckLineChart
@@ -61,6 +62,7 @@ import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.ReadingRow
 import com.kevin.legion.ui.common.dailyBuckets
 import com.kevin.legion.ui.common.deckRangeStartMs
+import com.kevin.legion.ui.common.deckSparklineHasShape
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -467,10 +469,22 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
                         Text(formatWeight(latest.weightValue, latest.weightUnit), style = MaterialTheme.typography.displaySmall, color = sem.data)
                         Text(bodyweightTrendText(latest, state.previousBodyweight) ?: shortDate(latest.loggedAt), style = LegionType.stamp, color = sem.faint)
                     }
-                    if (state.massSparkline.any { it != null }) {
+                    // Three states, not two (command-center ticket 13 finding 4). "No readings"
+                    // and "not enough readings to have a shape yet" are different facts and get
+                    // different sentences - the same empty-vs-unreadable rule CLAUDE.md sec 1
+                    // states for a refused permission versus a clear day. Saying "NO READINGS YET"
+                    // under a hero that is currently printing a reading would be a plain lie.
+                    val massPoints = state.massSparkline.count { it != null }
+                    if (deckSparklineHasShape(state.massSparkline)) {
                         DeckSparkline(state.massSparkline, modifier = Modifier.padding(horizontal = 12.dp))
                     } else {
-                        Text("NO READINGS YET", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                        Text(
+                            if (massPoints == 0) "NO READINGS YET"
+                            else "TREND NEEDS $DECK_SPARKLINE_MIN_POINTS READINGS - $massPoints SO FAR",
+                            style = LegionType.stamp,
+                            color = sem.faint,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        )
                     }
                 }
                 Text(
@@ -500,7 +514,7 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
                     caption = intakeTile.caption,
                     modifier = Modifier.clickable { onOpenPane(BodyDrilldown.Intake) },
                 ) {
-                    if (state.intakeSparkline.any { it != null }) {
+                    if (deckSparklineHasShape(state.intakeSparkline)) {
                         DeckSparkline(state.intakeSparkline, modifier = Modifier.padding(horizontal = 12.dp))
                     }
                     Text(
@@ -522,7 +536,7 @@ private fun BodyPanelList(state: BodyUiState, onOpenPane: (BodyDrilldown) -> Uni
                     caption = sleepTile.caption,
                     modifier = Modifier.clickable { onOpenPane(BodyDrilldown.Sleep) },
                 ) {
-                    if (state.sleepSparkline.any { it != null }) {
+                    if (deckSparklineHasShape(state.sleepSparkline)) {
                         DeckSparkline(state.sleepSparkline, modifier = Modifier.padding(horizontal = 12.dp))
                     }
                     Text(
