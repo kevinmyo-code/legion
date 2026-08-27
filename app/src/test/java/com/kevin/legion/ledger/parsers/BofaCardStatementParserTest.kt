@@ -32,7 +32,7 @@ class BofaCardStatementParserTest {
     @Test
     fun `parses a happy-path card statement across three sections plus an optional fourth`() {
         val fixture = fixture("bofa_card_happy_path.pdf")
-        val transactions = fixture.inputStream().use { BofaCardStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { BofaCardStatementParser.parse(fixture.name, it) }.transactions
 
         // 2 payments + 3 purchases + 1 interest row. The invented "Fees
         // Charged" section never prints a bare header on this fixture (see
@@ -67,12 +67,37 @@ class BofaCardStatementParserTest {
     @Test
     fun `card purchases store negative, payments store positive - money leaving Kevin is always negative`() {
         val fixture = fixture("bofa_card_happy_path.pdf")
-        val transactions = fixture.inputStream().use { BofaCardStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { BofaCardStatementParser.parse(fixture.name, it) }.transactions
 
         val payments = transactions.filter { it.description.startsWith("PAYMENT FROM") }
         val purchases = transactions.filter { !it.description.startsWith("PAYMENT FROM") }
         assertTrue("a payment is money Kevin didn't lose - stores positive", payments.isNotEmpty() && payments.all { it.amountCents > 0 })
         assertTrue("a purchase is money that left - stores negative", purchases.isNotEmpty() && purchases.all { it.amountCents < 0 })
+    }
+
+    /**
+     * Ticket 12: `previousBalance`/`newBalanceTotal` are this statement's own printed opening/
+     * closing balance, already reconciled by gate layer 2 above and now surfaced instead of
+     * discarded. `statedTotalCents` stays null: nothing on this layout prints one combined total
+     * independent of the two balances - only four per-section totals - a real regression guard,
+     * since the fixture's own lines sum to a nonzero net movement, so a wrongly-reinstated
+     * `sum(amountCents)` stand-in would fail this with a number instead of null.
+     */
+    @Test
+    fun `surfaces the printed previous and new balance but no single stated total`() {
+        val fixture = fixture("bofa_card_happy_path.pdf")
+        val parsed = fixture.inputStream().use { BofaCardStatementParser.parse(fixture.name, it) }
+
+        assertEquals(null, parsed.anchors.statedTotalCents)
+        assertFalse(parsed.anchors.hasAllThreeAnchors)
+        assertTrue(parsed.anchors.openingBalanceCents != null)
+        assertTrue(parsed.anchors.closingBalanceCents != null)
+        // The identity gate layer 2 already checked: previous + net movement == new balance,
+        // computed in the DOCUMENT's own printed sign convention - parse()'s returned rows are
+        // sign-flipped for storage (this file's class KDoc), so undo that flip here to reproduce
+        // the same convention the gate itself checked in.
+        val documentConventionNet = parsed.transactions.sumOf { it.amountCents } * -1
+        assertEquals(parsed.anchors.closingBalanceCents, parsed.anchors.openingBalanceCents!! + documentConventionNet)
     }
 
     @Test
@@ -124,7 +149,7 @@ class BofaCardStatementParserTest {
     @Test
     fun `derives the correct year across a December to January cycle boundary`() {
         val fixture = fixture("bofa_card_dec_jan_boundary.pdf")
-        val transactions = fixture.inputStream().use { BofaCardStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { BofaCardStatementParser.parse(fixture.name, it) }.transactions
 
         assertEquals(3, transactions.size)
         fun yearOf(epochMillis: Long) = Instant.ofEpochMilli(epochMillis).atZone(ZoneOffset.UTC).year
@@ -151,7 +176,7 @@ class BofaCardStatementParserTest {
     @Test
     fun `parses bare-form Interest Charged rows with no reference or account number`() {
         val fixture = fixture("bofa_card_bare_interest_rows.pdf")
-        val transactions = fixture.inputStream().use { BofaCardStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { BofaCardStatementParser.parse(fixture.name, it) }.transactions
 
         // 2 payments + 3 purchases + 4 bare interest rows.
         assertEquals(9, transactions.size)
@@ -170,7 +195,7 @@ class BofaCardStatementParserTest {
     @Test
     fun `parses bare-form Fees Charged rows with no reference or account number`() {
         val fixture = fixture("bofa_card_bare_fee_rows.pdf")
-        val transactions = fixture.inputStream().use { BofaCardStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { BofaCardStatementParser.parse(fixture.name, it) }.transactions
 
         assertEquals(6, transactions.size) // 2 payments + 3 purchases + 1 bare fee row
         val fee = transactions.first { it.description == "LATE FEE" }

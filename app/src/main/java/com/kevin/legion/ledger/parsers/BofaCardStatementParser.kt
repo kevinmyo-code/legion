@@ -168,7 +168,7 @@ object BofaCardStatementParser {
      */
     private data class YearBounds(val startMonth: Int, val startYear: Int, val endYear: Int)
 
-    fun parse(fileName: String, input: InputStream): List<LedgerTransaction> {
+    fun parse(fileName: String, input: InputStream): ParsedStatement {
         val text = PdfText.extractText(input)
         val lines = text.lines().map { it.trim() }
 
@@ -277,7 +277,18 @@ object BofaCardStatementParser {
         // 2026-08-07 decision) now holds for this account exactly as it
         // already did for checking (BofaStatementParser stores a debit
         // negative already, no flip needed there).
-        return transactions.map { it.copy(amountCents = -it.amountCents) }
+        // Ticket 12: previousBalance and newBalanceTotal are this statement's own printed
+        // opening/closing balance (already read and reconciled above, gate layer 2), returned
+        // now instead of discarded. statedTotalCents is null: nothing on this layout prints a
+        // single combined total independent of the two balances themselves - only the four
+        // per-section totals (payments, purchases, fees, interest), each already its own gate
+        // layer 1 check, and none of them is "the" total for the statement.
+        val anchors = StatementAnchors(
+            statedTotalCents = null,
+            openingBalanceCents = previousBalance,
+            closingBalanceCents = newBalanceTotal,
+        )
+        return ParsedStatement(transactions.map { it.copy(amountCents = -it.amountCents) }, anchors)
     }
 
     /**

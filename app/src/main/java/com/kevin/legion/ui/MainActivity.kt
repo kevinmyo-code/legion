@@ -655,6 +655,9 @@ private fun LegionShell(
             composable(LegionRoute.SETTINGS_BACKEND_MIGRATION) {
                 com.kevin.legion.ui.settings.BackendMigrationScreen(onBack = { navController.popBackStack() })
             }
+            composable(LegionRoute.SETTINGS_LEDGER_REINGEST_DRY_RUN) {
+                com.kevin.legion.ui.settings.ReingestDryRunScreen(onBack = { navController.popBackStack() })
+            }
             composable(LegionRoute.SETTINGS_CONNECTIONS) {
                 com.kevin.legion.ui.settings.ConnectionsScreen(
                     onBack = { navController.popBackStack() },
@@ -662,6 +665,7 @@ private fun LegionShell(
                     onOpenGoogleAccess = { navController.navigate(LegionRoute.SETTINGS_GOOGLE) },
                     onOpenSpotify = { navController.navigate(LegionRoute.SETTINGS_SPOTIFY) },
                     onOpenBackendMigration = { navController.navigate(LegionRoute.SETTINGS_BACKEND_MIGRATION) },
+                    onOpenReingestDryRun = { navController.navigate(LegionRoute.SETTINGS_LEDGER_REINGEST_DRY_RUN) },
                 )
             }
             composable(LegionRoute.SETTINGS_DATA_PRIVACY) {

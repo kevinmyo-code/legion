@@ -20,7 +20,7 @@ class DbsStatementParserTest {
     @Test
     fun `parses a happy-path statement with correct amounts and running balance`() {
         val fixture = File("src/test/resources/ledger_fixtures/dbs_happy_path.pdf")
-        val transactions = fixture.inputStream().use { DbsStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { DbsStatementParser.parse(fixture.name, it) }.transactions
 
         assertEquals(3, transactions.size)
         assertEquals(-5000L, transactions[0].amountCents)
@@ -31,6 +31,26 @@ class DbsStatementParserTest {
         assertEquals(200000L, transactions[1].amountCents)
         assertEquals(-5000L, transactions[2].amountCents)
         assertEquals(290000L, transactions[2].balanceCents)
+    }
+
+    /**
+     * Ticket 12: DBS prints "Balance Brought Forward" (opening) and "Total Balance Carried
+     * Forward" (closing) - both real, printed figures, now surfaced instead of thrown away. It
+     * never prints one combined total (only separate withdrawal/deposit totals on the closing
+     * line), so `statedTotalCents` stays null - this is a real regression guard, not just a
+     * happy-path check: the fixture's own lines sum to a nonzero net movement
+     * (-5000 + 200000 - 5000 = 190000), so a wrongly-reinstated `sum(amountCents)` stand-in would
+     * make this assertion fail with 190000 instead of null.
+     */
+    @Test
+    fun `surfaces the printed opening and closing balance but no single stated total`() {
+        val fixture = File("src/test/resources/ledger_fixtures/dbs_happy_path.pdf")
+        val parsed = fixture.inputStream().use { DbsStatementParser.parse(fixture.name, it) }
+
+        assertEquals(100000L, parsed.anchors.openingBalanceCents)
+        assertEquals(290000L, parsed.anchors.closingBalanceCents)
+        assertEquals(null, parsed.anchors.statedTotalCents)
+        assertEquals(false, parsed.anchors.hasAllThreeAnchors)
     }
 
     @Test
@@ -54,7 +74,7 @@ class DbsStatementParserTest {
     @Test
     fun `skips an artifact line immediately before the closing totals`() {
         val fixture = File("src/test/resources/ledger_fixtures/dbs_description_artifact.pdf")
-        val transactions = fixture.inputStream().use { DbsStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { DbsStatementParser.parse(fixture.name, it) }.transactions
 
         assertEquals(3, transactions.size)
         assertEquals("Interest Earned", transactions[2].description)
@@ -63,7 +83,7 @@ class DbsStatementParserTest {
     @Test
     fun `captures a legitimate multi-line description in full`() {
         val fixture = File("src/test/resources/ledger_fixtures/dbs_description_artifact.pdf")
-        val transactions = fixture.inputStream().use { DbsStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { DbsStatementParser.parse(fixture.name, it) }.transactions
 
         // The full three-line description, artifact line excluded from the
         // middle of it (see the next test for that in isolation).
@@ -76,7 +96,7 @@ class DbsStatementParserTest {
     @Test
     fun `an artifact line sandwiched between two continuation lines does not eat the second one`() {
         val fixture = File("src/test/resources/ledger_fixtures/dbs_description_artifact.pdf")
-        val transactions = fixture.inputStream().use { DbsStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { DbsStatementParser.parse(fixture.name, it) }.transactions
 
         val description = transactions[0].description
         assertEquals(false, description.contains("1 4 8 A"))

@@ -27,7 +27,7 @@ object DbsStatementParser {
 
     private data class Boundaries(val descAmt: Float, val wdDep: Float, val depBal: Float)
 
-    fun parse(fileName: String, input: InputStream): List<LedgerTransaction> {
+    fun parse(fileName: String, input: InputStream): ParsedStatement {
         val pageWords = PdfWords.extractWords(input)
         val boundaries = findBoundaries(pageWords, fileName)
 
@@ -37,6 +37,17 @@ object DbsStatementParser {
         var runningBalanceCents: Long? = null
         var currentTxnIndex = -1
         var sectionOpen = false
+
+        // Anchor tracking (ticket 12): DBS prints a "Balance Brought Forward" line at the start
+        // of every account section and a "Total Balance Carried Forward" line at its close -
+        // both already read and reconciled below, just never returned before this ticket. A
+        // consolidated statement CAN carry more than one account section (see the account-header
+        // handling below), and a single opening/closing pair would misattribute one account's
+        // balance to another's - so this is only kept when every section closed under the SAME
+        // account id, same reasoning ReingestDryRun's own (now-retired) workaround used.
+        val sectionAccountIds = mutableSetOf<String>()
+        var firstOpeningBalanceCents: Long? = null
+        var lastClosingBalanceCents: Long? = null
 
         for ((pageIdx, words) in pageWords.withIndex()) {
             for (rawLine in groupLines(words)) {
@@ -56,6 +67,7 @@ object DbsStatementParser {
                         continue
                     }
                     accountId = newId
+                    sectionAccountIds.add(newId)
                     runningBalanceCents = null
                     sectionOpen = true
                     sectionTransactions = mutableListOf()
@@ -116,6 +128,10 @@ object DbsStatementParser {
                     }
                     sectionOpen = false
                     currentTxnIndex = -1
+                    // Anchor tracking: this section's own printed closing figure, read straight
+                    // off the "Total Balance Carried Forward" line - always the LAST one seen
+                    // wins, so a multi-section file's tracker ends at the final section's close.
+                    lastClosingBalanceCents = finalBalance
                     continue
                 }
 
@@ -131,6 +147,14 @@ object DbsStatementParser {
                                 "${formatCents(stated)}, but the previous one closed at " +
                                 "${formatCents(runningBalanceCents!!)}. Nothing was imported.",
                         )
+                    }
+                    // Anchor tracking: this is the true section-opening figure, printed on the
+                    // document, only the first time it is observed per file - a later section's
+                    // own "Balance Brought Forward" is that section's own opening, not the
+                    // whole file's, and (per this function's own KDoc on multi-section files)
+                    // gets dropped below anyway unless every section shares one account.
+                    if (runningBalanceCents == null && firstOpeningBalanceCents == null) {
+                        firstOpeningBalanceCents = stated
                     }
                     runningBalanceCents = stated
                     currentTxnIndex = -1
@@ -235,7 +259,22 @@ object DbsStatementParser {
             throw UnrecognizedLayoutException("no DBS account section found in $fileName")
         }
 
-        return transactions
+        // Single-account files (the overwhelming common case, and every fixture this ticket
+        // covers) get their real printed opening/closing balance. A consolidated statement
+        // spanning more than one account has no single opening/closing to name - see the field
+        // declarations' own doc for why reporting one account's figures under a mixed file would
+        // misattribute them, the same reasoning ReingestDryRun's retired workaround used.
+        //
+        // statedTotalCents is always null: DBS prints separate withdrawal and deposit totals on
+        // its closing line, never one combined "total" or "net movement" figure, so there is
+        // nothing here that qualifies as a stated total per this ticket's rule.
+        val singleAccount = sectionAccountIds.size == 1
+        val anchors = StatementAnchors(
+            statedTotalCents = null,
+            openingBalanceCents = if (singleAccount) firstOpeningBalanceCents else null,
+            closingBalanceCents = if (singleAccount) lastClosingBalanceCents else null,
+        )
+        return ParsedStatement(transactions, anchors)
     }
 
     /**

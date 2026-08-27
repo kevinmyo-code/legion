@@ -33,6 +33,17 @@ interface IngestedFileDao {
     @Query("SELECT * FROM ingested_files WHERE treeUri = :treeUri")
     suspend fun listByTreeUri(treeUri: String): List<IngestedFile>
 
+    /**
+     * Every [IngestState.INGESTED] file whose [IngestedFile.treeUri] is non-null - the exact
+     * scope ticket 12's dry run (`.scratch/backend-erp/issues/12-ledger-rows-have-no-statement-
+     * header.md`) re-reads: only a file that came from a connected folder scan is reachable again
+     * by that same [DocumentsContract] identity, which single-file `ACTION_OPEN_DOCUMENT` picks
+     * (null [IngestedFile.treeUri]) are not - see [com.kevin.legion.ledger.ReingestDryRun]'s own
+     * class doc for why that narrower set is the honest one to attempt.
+     */
+    @Query("SELECT * FROM ingested_files WHERE state = 'INGESTED' AND treeUri IS NOT NULL")
+    suspend fun listIngestedWithTreeUri(): List<IngestedFile>
+
     /** Insert-or-replace by [IngestedFile.driveFileId] - the scan's single write path for a file's record. */
     @Upsert
     suspend fun upsert(file: IngestedFile)

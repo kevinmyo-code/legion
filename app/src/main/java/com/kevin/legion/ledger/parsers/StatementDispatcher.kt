@@ -6,6 +6,44 @@ import com.kevin.legion.ledger.LedgerStatementAgent
 import java.io.ByteArrayInputStream
 
 /**
+ * The three server-schema anchors ticket 12 needs (CLAUDE.md §4's backend-ERP amendment):
+ * a statement's own printed total/net movement, opening balance, and closing balance. **Each
+ * field is null when the DOCUMENT ITSELF prints no such figure - never a value the parser
+ * computed by summing its own extracted rows.** A summed value would make a reconciliation check
+ * against it an identity that can never fail (rule 6's failure shape in a new place, the exact
+ * thing `ReingestDryRun`'s old `sum(amountCents)` stand-in did before this type existed). See
+ * each parser's own KDoc for which of the three, if any, its specific bank format actually
+ * prints - most PDF/CSV bank statements print opening and closing balances but no single unified
+ * "total" line, so [statedTotalCents] is null far more often than the other two.
+ */
+data class StatementAnchors(
+    val statedTotalCents: Long?,
+    val openingBalanceCents: Long?,
+    val closingBalanceCents: Long?,
+) {
+    /** True only once every anchor is present - the bar ticket 12's re-ingest plan needs to call a file fully recoverable (ruling 4). */
+    val hasAllThreeAnchors: Boolean
+        get() = statedTotalCents != null && openingBalanceCents != null && closingBalanceCents != null
+
+    companion object {
+        /** No anchors at all - [BofaCardCsvStatementParser]'s permanent shape (CLAUDE.md §4 rule 7: it prints none, and never will). */
+        val NONE = StatementAnchors(null, null, null)
+    }
+}
+
+/**
+ * Bundles the rows a parser extracted with the anchors it read while doing so. Introduced so
+ * [DbsStatementParser], [BofaStatementParser], [BofaCsvStatementParser] and
+ * [BofaCardStatementParser] can hand their already-computed reconciliation figures back to
+ * [StatementDispatcher] instead of discarding them the moment `parse` returns - which is exactly
+ * what ticket 12 found had been happening (`.scratch/backend-erp/issues/12-ledger-rows-have-no-statement-header.md`).
+ * [BofaCardCsvStatementParser] and [LegionCsvStatementParser] don't use this type: the former's
+ * anchors are always [StatementAnchors.NONE] by construction (nothing to bundle), the latter
+ * already returns a richer [LegionCsvStatement] that carries its own anchors.
+ */
+data class ParsedStatement(val transactions: List<LedgerTransaction>, val anchors: StatementAnchors)
+
+/**
  * Outcome of [StatementDispatcher.dispatchDeterministic] - the free half of
  * the pipeline, per `.scratch/ledger-drive-ingestion/issues/06-llm-spend-gate.md`
  * §1: "split the dispatcher, do not add recognition." [NeedsLlm] carries the
@@ -13,7 +51,7 @@ import java.io.ByteArrayInputStream
  * never has to re-run PDF extraction.
  */
 sealed class DeterministicResult {
-    data class Success(val transactions: List<LedgerTransaction>) : DeterministicResult()
+    data class Success(val transactions: List<LedgerTransaction>, val anchors: StatementAnchors) : DeterministicResult()
     data class Quarantined(val reason: String) : DeterministicResult()
     data class NeedsLlm(val statementText: String) : DeterministicResult()
 
@@ -94,8 +132,19 @@ object StatementDispatcher {
         // CSV recognizers is immaterial and this one is simply listed first as the one ruling 3
         // means to keep.
         try {
-            val transactions = LegionCsvStatementParser.parse(fileName, ByteArrayInputStream(bytes))
-            return DeterministicResult.Success(transactions)
+            // LegionCsvStatementParser.parseStatement already carries all three anchors as a
+            // matter of format contract (docs/ledger-csv-import-format.md's "cannot use this
+            // format" rule) - read them straight off the typed statement rather than re-deriving
+            // anything.
+            val statement = LegionCsvStatementParser.parseStatement(fileName, ByteArrayInputStream(bytes))
+            return DeterministicResult.Success(
+                statement.toLedgerTransactions(fileName, sourceFileId = null),
+                StatementAnchors(
+                    statedTotalCents = statement.statedTotalCents,
+                    openingBalanceCents = statement.openingBalanceCents,
+                    closingBalanceCents = statement.closingBalanceCents,
+                ),
+            )
         } catch (e: UnrecognizedLayoutException) {
             // fall through to the next parser
         } catch (e: StatementParseException) {
@@ -115,8 +164,8 @@ object StatementDispatcher {
         // CSV bytes, that throws a raw (non-StatementParseException) IOException
         // that this catch chain does not handle, instead of falling through.
         try {
-            val transactions = BofaCsvStatementParser.parse(fileName, ByteArrayInputStream(bytes), accountHint)
-            return DeterministicResult.Success(transactions)
+            val parsed = BofaCsvStatementParser.parse(fileName, ByteArrayInputStream(bytes), accountHint)
+            return DeterministicResult.Success(parsed.transactions, parsed.anchors)
         } catch (e: UnrecognizedLayoutException) {
             // fall through to the next parser
         } catch (e: UnmappedAccountException) {
@@ -142,8 +191,11 @@ object StatementDispatcher {
         // header line, cannot shadow the other CSV parser or a PDF" footing
         // as BofaCsvStatementParser above.
         try {
+            // BofaCardCsvStatementParser's own KDoc: this export states no balance or total of
+            // any kind, and never will - StatementAnchors.NONE is the correct, permanent answer
+            // here, not a gap this ticket needs to fill.
             val transactions = BofaCardCsvStatementParser.parse(fileName, ByteArrayInputStream(bytes))
-            return DeterministicResult.Success(transactions)
+            return DeterministicResult.Success(transactions, StatementAnchors.NONE)
         } catch (e: UnrecognizedLayoutException) {
             // fall through to the next parser
         } catch (e: StatementParseException) {
@@ -172,8 +224,8 @@ object StatementDispatcher {
         }
 
         try {
-            val transactions = DbsStatementParser.parse(fileName, ByteArrayInputStream(bytes))
-            return DeterministicResult.Success(transactions)
+            val parsed = DbsStatementParser.parse(fileName, ByteArrayInputStream(bytes))
+            return DeterministicResult.Success(parsed.transactions, parsed.anchors)
         } catch (e: UnrecognizedLayoutException) {
             // fall through to the next parser
         } catch (e: StatementParseException) {
@@ -186,8 +238,8 @@ object StatementDispatcher {
         }
 
         try {
-            val transactions = BofaStatementParser.parse(fileName, ByteArrayInputStream(bytes))
-            return DeterministicResult.Success(transactions)
+            val parsed = BofaStatementParser.parse(fileName, ByteArrayInputStream(bytes))
+            return DeterministicResult.Success(parsed.transactions, parsed.anchors)
         } catch (e: UnrecognizedLayoutException) {
             // fall through to BofaCardStatementParser
         } catch (e: StatementParseException) {
@@ -206,8 +258,8 @@ object StatementDispatcher {
         // guarantees BofaCardStatementParser can never shadow the checking
         // parser, not the reverse.
         try {
-            val transactions = BofaCardStatementParser.parse(fileName, ByteArrayInputStream(bytes))
-            return DeterministicResult.Success(transactions)
+            val parsed = BofaCardStatementParser.parse(fileName, ByteArrayInputStream(bytes))
+            return DeterministicResult.Success(parsed.transactions, parsed.anchors)
         } catch (e: UnrecognizedLayoutException) {
             // fall through to the LLM path
         } catch (e: StatementParseException) {

@@ -62,7 +62,7 @@ object BofaCsvStatementParser {
     private const val TXN_HEADER = "Date,Description,Amount,Running Bal."
     private val DATE_FORMAT = DateTimeFormatter.ofPattern("MM/dd/yyyy")
 
-    fun parse(fileName: String, input: InputStream, accountHint: String? = null): List<LedgerTransaction> {
+    fun parse(fileName: String, input: InputStream, accountHint: String? = null): ParsedStatement {
         // String(bytes, Charsets.UTF_8) never throws on malformed input (it
         // substitutes the replacement character), which matters here: this is
         // tried against every file [StatementDispatcher] sees, including PDF
@@ -214,7 +214,17 @@ object BofaCsvStatementParser {
                     "Nothing was imported.",
             )
         }
-        return transactions.map { it.copy(accountId = accountHint) }
+        // Ticket 12: the summary block's own beginning/ending balance, already read and
+        // reconciled above (anchor 1's beginning + net == ending check), returned now instead of
+        // discarded. statedTotalCents is null: this export prints separate "Total credits" and
+        // "Total debits" lines, never one combined total, so there is nothing here that qualifies
+        // as a single stated total per this ticket's rule.
+        val anchors = StatementAnchors(
+            statedTotalCents = null,
+            openingBalanceCents = beginningBalance,
+            closingBalanceCents = endingBalance,
+        )
+        return ParsedStatement(transactions.map { it.copy(accountId = accountHint) }, anchors)
     }
 
     /** Parses one 3-field summary row ("label,,\"amount\""), validating the label prefix. */

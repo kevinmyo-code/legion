@@ -140,6 +140,14 @@ object LegionRoute {
     const val SETTINGS_BACKEND_MIGRATION = "settings/backend-migration"
 
     /**
+     * Ticket 12's dry run (`.scratch/backend-erp/issues/12-ledger-rows-have-no-statement-header.md`)
+     * - the hands path for [com.kevin.legion.ledger.ReingestDryRun]. Reached from
+     * [SETTINGS_CONNECTIONS], same shape as [SETTINGS_BACKEND_MIGRATION]. **Read-only** - unlike
+     * every other screen this route sits next to, nothing here ever reaches a write path.
+     */
+    const val SETTINGS_LEDGER_REINGEST_DRY_RUN = "settings/ledger-reingest-dry-run"
+
+    /**
      * The driver's own editor for [com.kevin.legion.advisor.PrimingTopic]'s four bodies of
      * doctrine (2026-08-18) - see [com.kevin.legion.ui.companions.PlaybookScreen]. The list-to-
      * editor drill-down inside it is internal Compose state, same posture [NOTES]'s own doc

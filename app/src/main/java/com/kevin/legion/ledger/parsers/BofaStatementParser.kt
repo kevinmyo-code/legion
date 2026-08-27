@@ -73,7 +73,7 @@ object BofaStatementParser {
      */
     private const val MAX_CONTINUATION_LINES = 6
 
-    fun parse(fileName: String, input: InputStream): List<LedgerTransaction> {
+    fun parse(fileName: String, input: InputStream): ParsedStatement {
         val text = PdfText.extractText(input)
         val lines = text.lines().map { it.trim() }
 
@@ -122,7 +122,18 @@ object BofaStatementParser {
             )
         }
 
-        return transactions
+        // Ticket 12: this statement's own beginning/ending balance summary, already read and
+        // reconciled above (the beginningBalance + netTotal == endingBalance check), just never
+        // returned before this ticket - it went straight from a local val to the void once
+        // `parse` returned only `transactions`. statedTotalCents is null: BofA prints each
+        // section's own total (deposits, ATM/debit, other, fees) separately and never a single
+        // combined figure for the whole statement, so there is nothing here that qualifies.
+        val anchors = StatementAnchors(
+            statedTotalCents = null,
+            openingBalanceCents = beginningBalance,
+            closingBalanceCents = endingBalance,
+        )
+        return ParsedStatement(transactions, anchors)
     }
 
     /**

@@ -24,7 +24,8 @@ class BofaCsvStatementParserTest {
     @Test
     fun `parses the happy-path CSV export, skipping the beginning-balance row`() {
         val fixture = fixture("bofa_csv_happy_path.csv")
-        val transactions = fixture.inputStream().use { BofaCsvStatementParser.parse(fixture.name, it, MAPPED_ACCOUNT) }
+        val parsed = fixture.inputStream().use { BofaCsvStatementParser.parse(fixture.name, it, MAPPED_ACCOUNT) }
+        val transactions = parsed.transactions
 
         assertEquals(7, transactions.size)
         assertTrue(transactions.all { it.ingestMethod == IngestMethod.DETERMINISTIC })
@@ -48,6 +49,25 @@ class BofaCsvStatementParserTest {
 
         // Last row's running balance is the statement's own ending balance.
         assertEquals(222061L, transactions.last().balanceCents)
+    }
+
+    /**
+     * Ticket 12: the summary block's own beginning/ending balance (already reconciled by anchor
+     * 1's check inside `parse`) is now surfaced instead of thrown away. `statedTotalCents` stays
+     * null: this export prints "Total credits" and "Total debits" separately, never one combined
+     * figure - a real regression guard, since the fixture's own lines sum to a nonzero net
+     * movement, so a wrongly-reinstated `sum(amountCents)` stand-in would fail this with a number
+     * instead of null.
+     */
+    @Test
+    fun `surfaces the printed beginning and ending balance but no single stated total`() {
+        val fixture = fixture("bofa_csv_happy_path.csv")
+        val parsed = fixture.inputStream().use { BofaCsvStatementParser.parse(fixture.name, it, MAPPED_ACCOUNT) }
+
+        assertEquals(-631L, parsed.anchors.openingBalanceCents)
+        assertEquals(222061L, parsed.anchors.closingBalanceCents)
+        assertEquals(null, parsed.anchors.statedTotalCents)
+        assertTrue(!parsed.anchors.hasAllThreeAnchors)
     }
 
     @Test
@@ -105,7 +125,7 @@ class BofaCsvStatementParserTest {
         """.trimIndent()
         val transactions = BofaCsvStatementParser.parse(
             "comma.csv", ByteArrayInputStream(csv.toByteArray()), MAPPED_ACCOUNT,
-        )
+        ).transactions
         assertEquals(1, transactions.size)
         assertEquals("STORE, THE #123, CITY", transactions[0].description)
         assertEquals(3000L, transactions[0].amountCents)

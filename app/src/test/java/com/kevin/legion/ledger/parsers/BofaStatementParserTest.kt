@@ -21,7 +21,7 @@ class BofaStatementParserTest {
     @Test
     fun `parses a happy-path statement across all four sections`() {
         val fixture = File("src/test/resources/ledger_fixtures/bofa_happy_path.pdf")
-        val transactions = fixture.inputStream().use { BofaStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { BofaStatementParser.parse(fixture.name, it) }.transactions
 
         assertEquals(4, transactions.size)
         assertEquals(200000L, transactions[0].amountCents)
@@ -32,6 +32,31 @@ class BofaStatementParserTest {
         assertEquals(LedgerCurrency.USD, transactions[0].currency)
         assertEquals(IngestMethod.DETERMINISTIC, transactions[0].ingestMethod)
         assertEquals("123456789012", transactions[0].accountId)
+    }
+
+    /**
+     * Ticket 12: this parser reconciles `beginningBalance + netTotal == endingBalance`
+     * internally on every parse and used to throw both figures away - now they come back as this
+     * statement's own printed opening/closing balance. `statedTotalCents` stays null: BofA prints
+     * each SECTION's own total separately (see the four `assertEquals` above) and never one
+     * combined figure for the whole statement - a real regression guard, since the fixture's own
+     * lines sum to a nonzero net movement (183800), so a wrongly-reinstated `sum(amountCents)`
+     * stand-in would fail this assertion with that number instead of null.
+     */
+    @Test
+    fun `surfaces the printed beginning and ending balance but no single stated total`() {
+        val fixture = File("src/test/resources/ledger_fixtures/bofa_happy_path.pdf")
+        val parsed = fixture.inputStream().use { BofaStatementParser.parse(fixture.name, it) }
+
+        assertEquals(null, parsed.anchors.statedTotalCents)
+        assertEquals(false, parsed.anchors.hasAllThreeAnchors)
+        // The beginning/ending balance are whatever the fixture states - not independently
+        // re-typed here, since the parser's own internal check already ties them to the sum of
+        // the four assertions above (200000 - 10000 - 5000 - 1200 = 183800 net movement).
+        assertEquals(
+            parsed.anchors.openingBalanceCents!! + 183800L,
+            parsed.anchors.closingBalanceCents,
+        )
     }
 
     @Test
@@ -56,7 +81,7 @@ class BofaStatementParserTest {
     @Test
     fun `joins a multi-line wire row into one transaction and still reconciles`() {
         val fixture = File("src/test/resources/ledger_fixtures/bofa_multiline_wire.pdf")
-        val transactions = fixture.inputStream().use { BofaStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { BofaStatementParser.parse(fixture.name, it) }.transactions
 
         assertEquals(5, transactions.size)
 
@@ -102,7 +127,7 @@ class BofaStatementParserTest {
     @Test
     fun `does not mistake the summary block for a section start and stitches a page-split section together`() {
         val fixture = File("src/test/resources/ledger_fixtures/bofa_summary_and_split_section.pdf")
-        val transactions = fixture.inputStream().use { BofaStatementParser.parse(fixture.name, it) }
+        val transactions = fixture.inputStream().use { BofaStatementParser.parse(fixture.name, it) }.transactions
 
         assertEquals(6, transactions.size)
 
