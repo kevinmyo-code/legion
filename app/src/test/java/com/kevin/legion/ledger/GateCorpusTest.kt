@@ -29,8 +29,13 @@ import org.robolectric.RobolectricTestRunner
  * the same arithmetic the SQL implements, so a divergence in either direction shows up as a
  * disagreement between this file and the SQL run.
  *
- * **When the pre-check lands**, it plugs in here: replace `ledgerOutcome`/`pantryOutcome` with calls
- * to it and the comparison becomes direct rather than arithmetic-level. The corpus does not change.
+ * **The ledger pre-check landed** (`LegionCsvStatementParser`, ticket 03's CSV import path) and
+ * `ledgerOutcome` below calls its production arithmetic, [LedgerReconciliationCheck.check],
+ * directly rather than reimplementing it - the corpus's own promise made good: this file, the SQL
+ * this corpus also generates, and the actual phone-side pre-check now all agree by construction,
+ * not by three people copying the same rule correctly. `pantryOutcome` still reimplements the
+ * arithmetic inline because pantry's own pre-check has not landed yet; when it does, apply the
+ * same change there.
  */
 @RunWith(RobolectricTestRunner::class)
 class GateCorpusTest {
@@ -42,22 +47,23 @@ class GateCorpusTest {
     }
 
     /**
-     * The ledger gate, expressed once. Rule 6 before the anchors, deliberately: with zero lines the
-     * sum is 0 and closing-minus-opening can also be 0, so both anchors are satisfiable by nothing
-     * at all.
+     * The ledger gate. Calls [LedgerReconciliationCheck.check] - the same function
+     * `LegionCsvStatementParser`'s own pre-check calls - rather than reimplementing the
+     * arithmetic a third time. See this class's own doc comment for why that matters.
      */
     private fun ledgerOutcome(case: JSONObject): String {
         val lines = case.getJSONArray("lines")
-        if (lines.length() == 0) return "QUARANTINED"
-
-        var sum = 0L
-        for (i in 0 until lines.length()) sum += lines.getJSONObject(i).getLong("amount_cents")
-
-        if (sum != case.getLong("stated_total_cents")) return "QUARANTINED"
-        if (case.getLong("closing_balance_cents") - case.getLong("opening_balance_cents") != sum) {
-            return "QUARANTINED"
+        val amounts = (0 until lines.length()).map { lines.getJSONObject(it).getLong("amount_cents") }
+        val outcome = LedgerReconciliationCheck.check(
+            amountsCents = amounts,
+            statedTotalCents = case.getLong("stated_total_cents"),
+            openingBalanceCents = case.getLong("opening_balance_cents"),
+            closingBalanceCents = case.getLong("closing_balance_cents"),
+        )
+        return when (outcome) {
+            is LedgerGateOutcome.Committed -> "COMMITTED"
+            is LedgerGateOutcome.Quarantined -> "QUARANTINED"
         }
-        return "COMMITTED"
     }
 
     /**

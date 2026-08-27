@@ -84,7 +84,27 @@ object StatementDispatcher {
      * it, not a conflict to quarantine over.
      */
     fun dispatchDeterministic(fileName: String, bytes: ByteArray, accountHint: String? = null): DeterministicResult {
-        // BofaCsvStatementParser MUST run first, before either PDF parser
+        // LegionCsvStatementParser runs first of all (ticket 03 ruling 3 - this is the format
+        // going forward, ahead of every bank-specific parser this dispatcher still carries). Its
+        // recognition is an exact match against this format's own fixed header line
+        // (docs/ledger-csv-import-format.md), a string no bank's own export or PDF can contain, so
+        // it cannot shadow any parser below it - same "closed, distinct header" reasoning as
+        // BofaCsvStatementParser's own comment just below, and the reverse is equally true: none
+        // of those recognizers can match THIS format's header either, so the ordering among the
+        // CSV recognizers is immaterial and this one is simply listed first as the one ruling 3
+        // means to keep.
+        try {
+            val transactions = LegionCsvStatementParser.parse(fileName, ByteArrayInputStream(bytes))
+            return DeterministicResult.Success(transactions)
+        } catch (e: UnrecognizedLayoutException) {
+            // fall through to the next parser
+        } catch (e: StatementParseException) {
+            return DeterministicResult.Quarantined(
+                e.userMessage ?: e.message ?: "This statement's numbers didn't reconcile."
+            )
+        }
+
+        // BofaCsvStatementParser MUST run before either PDF parser
         // touches these bytes. Its recognition step is pure text matching
         // (String(bytes, UTF_8) never throws), so handing it a real PDF is
         // safe - the fixed CSV header string cannot appear in a BofA/DBS
