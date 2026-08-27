@@ -81,6 +81,16 @@
       "color": "1"
     },
     {
+      "id": "4937b91d9cc8cc3f",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/12-ledger-rows-have-no-statement-header.md",
+      "x": 0,
+      "y": 1200,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "0826d5c94a1739ed",
       "type": "file",
       "file": ".scratch/backend-erp/issues/02-auth-and-identity.md",
