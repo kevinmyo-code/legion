@@ -6,44 +6,37 @@ import com.kevin.legion.backend.PlacesBackend
 import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabasePlacesBackend
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.EngineRecord
-import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.data.local.TaggedPlace
-import com.kevin.legion.engine.PayloadCodec
-import com.kevin.legion.engine.RecordStore
-import com.kevin.legion.engine.places.PlacesAspectSeeder
-import org.json.JSONObject
+import com.kevin.legion.engine.migration.EnginePlacesRetirementCopy
 
 /**
- * **Cutover 1** (`docs/architecture/cutover1-2026-08-24.md`). Every function keeps its original
- * signature and return type - callers ([FleetScreen]'s saved-places UI, `location/ReminderController.kt`,
- * `service/LiveToolbox.kt`'s `tag_place`/`forget_place`/`show_saved_places`) flip onto the engine
- * unchanged (ADR 0035). Internally, every read/write now goes through [RecordStore] against the
- * Places aspect's `Place` record type (`docs/architecture/wave1-carve-2026-08-23.md`'s field
- * mapping, reused verbatim), and every [TaggedPlace] this file returns is an in-memory value object
- * built from an [EngineRecord] payload - **`places` gains zero writers from this file after
- * cutover** (see the cutover doc's reader/writer table).
- *
- * **Closes a known v1 gap the wave 1 carve doc flagged rather than fixed** ("`PlaceController`'s
- * own re-tag-overwrites-by-label behaviour is NOT reproduced by the engine copy alone... not
- * load-bearing for THIS wave since the old table remained the live path"). It is load-bearing now:
- * [tagPlace] looks up any existing active record with the same label and [RecordStore.update]s it
- * in place rather than always creating a second row, reproducing [TaggedPlace.label]'s old
- * `@PrimaryKey`/`OnConflictStrategy.REPLACE` upsert semantics by hand, since the engine has no
- * column-level uniqueness mechanism (`RecordStore`'s own class doc).
+ * **Cutover 1** (`docs/architecture/cutover1-2026-08-24.md`) originally moved every read/write in
+ * this file onto the engine (ADR 0035) - callers ([FleetScreen]'s saved-places UI,
+ * `location/ReminderController.kt`, `service/LiveToolbox.kt`'s `tag_place`/`forget_place`/
+ * `show_saved_places`) kept their original signatures throughout and never had to change.
+ * **That engine cutover is itself retired as of ticket 15 step 1** - see the class doc's second
+ * paragraph below for the current shape, which is `places` for both branches.
  *
  * **Backend-erp Phase 4, aspect 1 of 5** (`.scratch/backend-erp/issues/05-migration-path.md`).
  * DUAL-PATH, per C1: "retirement and deletion are different events". Every function now checks
  * [backend] first:
- * - **Not configured** (no Supabase project saved): the ENGINE path above, completely unchanged -
- *   this is what keeps a stranger's clone-and-run build working with zero setup, and what keeps
- *   Kevin's own phone working before he signs into a project.
  * - **Configured**: reads come from the Room [TaggedPlace] replica (cache-first, ticket 01 ruling
  *   9 - and it must work with no network, since [currentLabel] sits on the geofencing/assistant
  *   hot path); writes go straight to the server (ruling 8, no local queue) and the replica is
  *   written **only on a genuine server ACK** - never ahead of it, never on a failure. A failed
- *   remote write is reported as failed in words (the same §7 outcome-verb discipline the engine
- *   path already honours below) and leaves Room completely untouched.
+ *   remote write is reported as failed in words (the same §7 outcome-verb discipline this file has
+ *   always honoured) and leaves Room completely untouched.
+ * - **Not configured** (no Supabase project saved): **repointed onto the SAME `places` table as of
+ *   ticket 15 step 1** (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`) -
+ *   `EngineDataMigrationWave1`'s original engine cutover for this file is retired. Places was the
+ *   easiest of the five aspects precisely because `places` already exists, already serves the
+ *   configured read above, and was already written on ACK - repointing the unconfigured path here
+ *   makes ONE table serve both, with zero new schema. [ensureLegacyReconciled] runs
+ *   [EnginePlacesRetirementCopy] once, first, so any place tagged directly through the engine
+ *   since wave 1 is not silently lost the moment this read flips. **This file no longer touches
+ *   [com.kevin.legion.engine.RecordStore] or `engineRecordDao()` at all** - the engine's Place
+ *   records are left exactly where they are (ticket 15: nothing is deleted until every aspect is
+ *   repointed and soaked), just no longer read or written from here.
  */
 object PlaceController {
     private const val MATCH_RADIUS_M = 150f
@@ -67,28 +60,16 @@ object PlaceController {
 
     private fun placeDao(context: Context) = CarDatabase.getDatabase(context).placeDao()
 
-    private fun store(context: Context): RecordStore {
-        val db = CarDatabase.getDatabase(context)
-        return RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
-    }
-
-    private suspend fun schema(context: Context) = PlacesAspectSeeder.ensureSeeded(context)
-
-    private fun toTaggedPlace(record: EngineRecord, fieldIds: Map<String, Long>): TaggedPlace {
-        val payload = JSONObject(record.payload)
-        return TaggedPlace(
-            label = PayloadCodec.readString(payload, fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL)).orEmpty(),
-            latitude = PayloadCodec.readDouble(payload, fieldIds.getValue(PlacesAspectSeeder.FIELD_LATITUDE)) ?: 0.0,
-            longitude = PayloadCodec.readDouble(payload, fieldIds.getValue(PlacesAspectSeeder.FIELD_LONGITUDE)) ?: 0.0,
-            timestamp = record.updatedAt,
-            deleted = record.deletedAt != null,
-        )
-    }
-
-    private suspend fun activeRecords(context: Context): List<EngineRecord> {
-        val db = CarDatabase.getDatabase(context)
-        val sch = schema(context)
-        return db.engineRecordDao().activeByRecordType(sch.recordTypeId)
+    /**
+     * One-time reconcile gate for the unconfigured path (ticket 15 step 1): before EVER reading
+     * or writing `places` from an unconfigured branch, make sure any engine-only Place has already
+     * landed there. Cheap after the first call - [EnginePlacesRetirementCopy.copyIfNeeded] itself
+     * short-circuits on its own completion flag, so this is a SharedPreferences read on every
+     * later call, not a repeat scan. Every unconfigured function below calls this first so none of
+     * them can read `places` before the copy has run, regardless of call order.
+     */
+    private suspend fun ensureLegacyReconciled(context: Context) {
+        EnginePlacesRetirementCopy.copyIfNeeded(context)
     }
 
     /**
@@ -123,26 +104,24 @@ object PlaceController {
             return ackFor(label)
         }
 
-        val sch = schema(context)
-        val fieldValues = mapOf(
-            sch.fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL) to label,
-            sch.fieldIds.getValue(PlacesAspectSeeder.FIELD_LATITUDE) to loc.latitude,
-            sch.fieldIds.getValue(PlacesAspectSeeder.FIELD_LONGITUDE) to loc.longitude,
+        // Unconfigured (ticket 15 step 1): `places` is now the single store for this branch too,
+        // so tagging is a plain upsert on its `@PrimaryKey` label - the exact re-tag-overwrites
+        // semantics [TaggedPlace]'s own doc comment describes, reproduced here instead of by hand
+        // against the engine the way the retired code did. Room's suspend insert either completes
+        // or throws (there is no false/failed return to check), so - matching the configured
+        // branch immediately above, which never checks the local Room write either - the ack is
+        // unconditional once the write call returns.
+        ensureLegacyReconciled(context)
+        placeDao(context).upsert(
+            TaggedPlace(
+                label = label,
+                latitude = loc.latitude,
+                longitude = loc.longitude,
+                timestamp = System.currentTimeMillis(),
+                deleted = false,
+            )
         )
-        val existing = activeRecords(context).firstOrNull {
-            PayloadCodec.readString(JSONObject(it.payload), sch.fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL)) == label
-        }
-        val store = store(context)
-        // Senior review, 2026-08-24 (should-fix 3): a §7 outcome-verb violation - tagPlace used to
-        // always return ackFor(label) regardless of whether the engine write actually landed, so a
-        // failed RecordStore.create/update still spoke a confident "got it, pinned it." Both branches
-        // now check the real WriteResult and only speak the ack on a genuine Success.
-        val ok = if (existing != null) {
-            store.update(existing.id, fieldValues) is RecordStore.WriteResult.Success
-        } else {
-            store.create(sch.recordTypeId, fieldValues, RecordProvenance.USER) is RecordStore.WriteResult.Success
-        }
-        return if (ok) ackFor(label) else "Something went wrong pinning that spot - it didn't save. Try again in a sec."
+        return ackFor(label)
     }
 
     /** Deletes the saved place matching [rawLabel]. Returns a spoken ack, or an error if not found
@@ -160,12 +139,15 @@ object PlaceController {
             return forgetAck(label)
         }
 
-        val sch = schema(context)
-        val existing = activeRecords(context).firstOrNull {
-            PayloadCodec.readString(JSONObject(it.payload), sch.fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL)) == label
-        } ?: return "I don't have a saved place called \"$label\"."
-        val trashed = store(context).delete(existing.id) is RecordStore.DeleteResult.Trashed
-        return if (trashed) forgetAck(label) else "I found \"$label\" but couldn't remove it just now - nothing was deleted."
+        // Unconfigured (ticket 15 step 1): existence has to be checked against `places` directly
+        // now (there is no server ACK to report a real/fake delete) - a label with no active row
+        // is reported as never-found rather than issuing a soft-delete UPDATE that would match zero
+        // rows and still speak a false "gone."
+        ensureLegacyReconciled(context)
+        placeDao(context).getAll().firstOrNull { it.label == label }
+            ?: return "I don't have a saved place called \"$label\"."
+        placeDao(context).delete(label)
+        return forgetAck(label)
     }
 
     /** Deletes a saved place by label (used by the UI list). Returns true only on a confirmed
@@ -179,19 +161,19 @@ object PlaceController {
             return didDelete
         }
 
-        val sch = schema(context)
-        val existing = activeRecords(context).firstOrNull {
-            PayloadCodec.readString(JSONObject(it.payload), sch.fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL)) == label
-        } ?: return false
-        return store(context).delete(existing.id) is RecordStore.DeleteResult.Trashed
+        ensureLegacyReconciled(context)
+        if (placeDao(context).getAll().none { it.label == label }) return false
+        placeDao(context).delete(label)
+        return true
     }
 
     /** All saved places (used by the UI list). Configured: reads the Room replica, never the
-     * network - cache-first (ticket 01 ruling 9). Unconfigured: the unchanged engine path. */
+     * network - cache-first (ticket 01 ruling 9). Unconfigured: `places` too, as of ticket 15 step
+     * 1 - reconciled against the engine first (see [ensureLegacyReconciled]) so nothing tagged
+     * while engine-backed is silently dropped by the repoint. */
     suspend fun all(context: Context): List<TaggedPlace> {
-        if (backend(context) != null) return placeDao(context).getAll()
-        val sch = schema(context)
-        return activeRecords(context).map { toTaggedPlace(it, sch.fieldIds) }
+        if (backend(context) == null) ensureLegacyReconciled(context)
+        return placeDao(context).getAll()
     }
 
     /**

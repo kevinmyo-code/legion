@@ -2,11 +2,16 @@ package com.kevin.legion.location
 
 import android.location.Location
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.RecordProvenance
+import com.kevin.legion.engine.RecordStore
+import com.kevin.legion.engine.migration.EnginePlacesRetirementCopy
+import com.kevin.legion.engine.places.PlacesAspectSeeder
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -16,11 +21,16 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 
 /**
- * **Cutover 1** (`docs/architecture/cutover1-2026-08-24.md`). CRUD against [PlaceController]'s
- * now-engine-backed internals. [LocationController.state] has no public setter (it is only ever
- * written by a real `LocationListener`), so [setFix] reaches its private backing field via
- * reflection - the same shape a GPS-dependent unit test needs regardless of which store
- * [PlaceController] writes to; this is not a cutover-specific test hazard.
+ * **Cutover 1** (`docs/architecture/cutover1-2026-08-24.md`) originally made this the engine-backed
+ * suite for [PlaceController]'s UNCONFIGURED path. **Ticket 15 step 1**
+ * (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`) repointed that path onto the
+ * legacy `places` table, so this file now covers CRUD against `places` via the unconfigured branch
+ * plus [EnginePlacesRetirementCopy]'s one-time reconcile - the step that keeps a place tagged
+ * directly through the engine (before this repoint, or on an install still mid-soak) from being
+ * silently dropped the moment the read flips. [PlaceControllerBackendTest] covers the CONFIGURED
+ * path and is untouched by this ticket. [LocationController.state] has no public setter (it is
+ * only ever written by a real `LocationListener`), so [setFix] reaches its private backing field
+ * via reflection - unrelated to which store [PlaceController] writes to.
  */
 @RunWith(RobolectricTestRunner::class)
 class PlaceControllerTest {
@@ -56,8 +66,26 @@ class PlaceControllerTest {
         }
     }
 
+    /** Writes a Place record directly through the engine, bypassing [PlaceController] entirely -
+     * simulates a place tagged before ticket 15's repoint (or on an install still mid-soak), which
+     * only [EnginePlacesRetirementCopy] should ever be able to see and copy forward. */
+    private suspend fun createEnginePlace(label: String, lat: Double, lon: Double): RecordStore.WriteResult {
+        val db = CarDatabase.getDatabase(context)
+        val schema = PlacesAspectSeeder.ensureSeeded(context)
+        val store = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+        return store.create(
+            recordTypeId = schema.recordTypeId,
+            fieldValues = mapOf(
+                schema.fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL) to label,
+                schema.fieldIds.getValue(PlacesAspectSeeder.FIELD_LATITUDE) to lat,
+                schema.fieldIds.getValue(PlacesAspectSeeder.FIELD_LONGITUDE) to lon,
+            ),
+            provenance = RecordProvenance.USER,
+        )
+    }
+
     @Test
-    fun `tagPlace writes an engine record readable back through all`() = runBlocking {
+    fun `tagPlace writes places directly, readable back through all`() = runBlocking {
         val ack = PlaceController.tagPlace(context, "my work")
         assertTrue(ack.isNotBlank())
 
@@ -65,8 +93,10 @@ class PlaceControllerTest {
         assertEquals(1, places.size)
         assertEquals("work", places.single().label)
 
-        // places gains no reader here - the legacy table must still be empty.
-        assertTrue(CarDatabase.getDatabase(context).placeDao().getAll().isEmpty())
+        // The repoint (ticket 15 step 1) means `places` IS the unconfigured store now - the old
+        // "places gains no reader here" assertion this test used to carry is exactly backwards
+        // post-repoint.
+        assertEquals(1, CarDatabase.getDatabase(context).placeDao().getAll().size)
     }
 
     @Test
@@ -111,5 +141,70 @@ class PlaceControllerTest {
 
         setFix(40.0, -74.0) // far away - New York, nowhere near Houston
         assertNull(PlaceController.currentLabel(context))
+    }
+
+    // -------------------------------------------------------------- ticket 15 step 1: engine -> places reconcile
+
+    @Test
+    fun `the one-time copy moves engine Places into places, idempotently`() = runBlocking {
+        val write = createEnginePlace("gym", 29.75, -95.4)
+        assertTrue(write is RecordStore.WriteResult.Success)
+
+        val first = EnginePlacesRetirementCopy.copyIfNeeded(context)
+        assertEquals(1, first.copied)
+        assertFalse(first.alreadyDone)
+
+        val afterFirst = CarDatabase.getDatabase(context).placeDao().getAll()
+        assertEquals(1, afterFirst.size)
+        assertEquals("gym", afterFirst.single().label)
+        assertEquals(29.75, afterFirst.single().latitude, 0.0001)
+
+        // Running it again changes nothing - both the fast-path completion flag AND, independently,
+        // the per-label existence check (if the flag were ever cleared) must be no-ops the second
+        // time.
+        val second = EnginePlacesRetirementCopy.copyIfNeeded(context)
+        assertEquals(0, second.copied)
+        assertTrue(second.alreadyDone)
+        assertEquals(1, CarDatabase.getDatabase(context).placeDao().getAll().size)
+    }
+
+    @Test
+    fun `a label already present in places is not duplicated or overwritten by the copy`() = runBlocking {
+        // `places` already has "home" at one set of coordinates (e.g. from the configured path,
+        // or an earlier wave 1 forward-copy) - it must win the tie, never be clobbered by a
+        // possibly-stale engine record for the same label.
+        CarDatabase.getDatabase(context).placeDao().upsert(
+            com.kevin.legion.data.local.TaggedPlace(label = "home", latitude = 1.0, longitude = 2.0, timestamp = 500L),
+        )
+        createEnginePlace("home", 99.0, 99.0)
+
+        val result = EnginePlacesRetirementCopy.copyIfNeeded(context)
+        assertEquals("the engine's stale 'home' must be skipped, not copied over the legacy row", 0, result.copied)
+
+        val rows = CarDatabase.getDatabase(context).placeDao().getAll()
+        assertEquals(1, rows.size)
+        assertEquals(1.0, rows.single().latitude, 0.0001)
+    }
+
+    @Test
+    fun `unconfigured reads return engine-only places after the repoint`() = runBlocking {
+        // Nothing ever calls PlaceController.tagPlace here - this place exists ONLY in the engine,
+        // simulating data written before ticket 15's repoint landed. all() must still surface it.
+        createEnginePlace("dentist", 29.8, -95.5)
+
+        val places = PlaceController.all(context)
+        assertEquals(1, places.size)
+        assertEquals("dentist", places.single().label)
+    }
+
+    @Test
+    fun `the engine's Place records still exist after the copy - nothing is deleted`() = runBlocking {
+        createEnginePlace("gym", 29.75, -95.4)
+        EnginePlacesRetirementCopy.copyIfNeeded(context)
+
+        val db = CarDatabase.getDatabase(context)
+        val schema = PlacesAspectSeeder.ensureSeeded(context)
+        val engineRecords = db.engineRecordDao().activeByRecordType(schema.recordTypeId)
+        assertEquals("ticket 15: nothing is deleted until every aspect is repointed and soaked", 1, engineRecords.size)
     }
 }
