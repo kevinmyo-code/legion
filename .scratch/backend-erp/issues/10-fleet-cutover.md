@@ -111,3 +111,38 @@ being applied), the `car_tasks` fold into events, repointing production controll
 table from the `SyncEngine` registry in the same commit its writes move, and the recap
 view-vs-RPC-vs-phone decision (deliberately untouched - transcribing `MonthlyRecapController` and
 `MpgTrust` into SQL unchecked is the two-implementations hazard ticket 03 ruling 2 exists to stop).
+
+## APPLIED AND VERIFIED ON THE LIVE PROJECT 2026-08-27
+
+All three outstanding migrations were applied to `HomeERPBackend` through the dashboard SQL editor
+(driven via browser automation, at Kevin's explicit request): `20260826000600` (the seven fleet
+tables), `20260826000700` (`events.vehicle_id`), and `20260827000100` (`events.structured_meta`).
+
+**Verified by querying the catalog, not by trusting the editor's success panel** - the same posture
+phase 2 used. All eight tables (`code_events`, `code_clear_events`, `oil_analyses`, `chassis_quirks`,
+`vehicle_specs`, `build_entries`, `drive_reassignments`, `events`):
+
+| check | result |
+|---|---|
+| `pg_class.relrowsecurity` | true, all 8 |
+| `pg_policy` count | 1, all 8 |
+| `has_table_privilege('anon', 'SELECT')` | **false**, all 8 |
+| `has_table_privilege('authenticated', 'SELECT')` | true, all 8 |
+
+Both layers demonstrated independently, as with the earlier RLS proof: `anon` is revoked at the
+GRANT level before RLS is ever consulted, and the policy exists on top of that.
+
+Columns on `public.events` confirmed present with the right types: `vehicle_id uuid` nullable,
+`structured_meta jsonb` nullable, alongside the pre-existing `all_day boolean not null` and
+`origin_guid text`.
+
+**One dialog worth recording, because its wording is actively misleading.** The editor warned
+"creates tables without enabling Row Level Security" and offered "Run without RLS" versus "Run and
+enable RLS". The migration DOES enable RLS - through `private.apply_household_rls` inside an
+`execute format` in a `do $$` block, which Supabase's static analyzer cannot see. **"Run without
+RLS" was the correct choice**: it means "do not append Supabase's own RLS statements", and taking
+the other option would have made the live schema diverge from the committed migration file.
+Confirmed the macro's contents (`20260825000200_conventions.sql:124-131`) before choosing.
+
+Migration history is still bypassed by the dashboard path, so a first CLI use needs
+`supabase migration repair`, not a re-run - the files are idempotent. Same caveat as phase 2.
