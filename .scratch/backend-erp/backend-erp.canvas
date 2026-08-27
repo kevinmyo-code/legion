@@ -18,7 +18,7 @@
       "y": 150,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "0bca95ed38b262fb",
@@ -38,7 +38,7 @@
       "y": 450,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "75ae1ad54daac8c6",
@@ -56,6 +56,26 @@
       "file": ".scratch/backend-erp/issues/09-backups-do-not-cover-files.md",
       "x": 0,
       "y": 750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "215e1fd56e088624",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/10-fleet-cutover.md",
+      "x": 0,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "d0857da6bfa8c158",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/11-notes-write-path-rewire.md",
+      "x": 0,
+      "y": 1050,
       "width": 320,
       "height": 110,
       "color": "1"
