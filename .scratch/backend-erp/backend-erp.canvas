@@ -101,6 +101,16 @@
       "color": "1"
     },
     {
+      "id": "1cbb06b665d5d553",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/15-engine-retirement-sequence.md",
+      "x": 0,
+      "y": 1500,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "0826d5c94a1739ed",
       "type": "file",
       "file": ".scratch/backend-erp/issues/02-auth-and-identity.md",
