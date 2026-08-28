@@ -59,6 +59,15 @@ interface PantryReceiptDao {
      * read/write path. */
     @Query("DELETE FROM pantry_receipts")
     suspend fun deleteAllForReplicaRefresh()
+
+    /** Every [PantryReceipt.syncId] this table has ever seen - the existence check
+     * [com.kevin.legion.engine.migration.EnginePantryRetirementCopy] needs so a receipt already
+     * landed here (forward-copied by [com.kevin.legion.engine.migration.EngineDataMigrationWave2],
+     * whose guid IS the legacy syncId, or previously repointed by this same copier) is never
+     * duplicated by copying its engine record back in. No `deleted` filter for the same reason
+     * [getAll]'s own doc comment gives: this table has no tombstone concept at all. */
+    @Query("SELECT syncId FROM pantry_receipts")
+    suspend fun getAllSyncIds(): List<String>
 }
 
 /**

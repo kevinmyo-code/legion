@@ -9,7 +9,6 @@ import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabasePantryBackend
 import com.kevin.legion.data.PantryPhotoStore
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.EngineRecord
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.PantryCurrencyTotal
 import com.kevin.legion.data.local.PantryLineItem
@@ -17,9 +16,7 @@ import com.kevin.legion.data.local.PantryLineItemWithCurrency
 import com.kevin.legion.data.local.PantryReceipt
 import com.kevin.legion.data.local.PantryReceiptSummary
 import com.kevin.legion.data.local.RecordProvenance
-import com.kevin.legion.engine.PayloadCodec
-import com.kevin.legion.engine.RecordStore
-import com.kevin.legion.engine.pantry.PantryAspectSeeder
+import com.kevin.legion.engine.migration.EnginePantryRetirementCopy
 import com.kevin.legion.ledger.IngestPipeline
 import java.io.File
 import org.json.JSONArray
@@ -31,35 +28,42 @@ import org.json.JSONObject
  * `.claude/plans/wiggly-beaming-quasar.md`.
  *
  * **Cutover 2** (`docs/architecture/cutover2-2026-08-24.md`,
- * `.scratch/aspect-engine/issues/22-cutover-per-aspect.md`). Every function below keeps its
- * ORIGINAL signature and return type (`PantryReceipt`/`PantryLineItem`/`PantryCurrencyTotal`/
- * `PantryReceiptSummary` - the legacy Room entity/row shapes) so every caller - `ui/PantryScreen.kt`,
- * `service/LiveToolbox.kt`'s `list_recent_groceries`/`get_grocery_spend` - flips onto the engine
- * with this file, unchanged (ADR 0035: "the controller keeps its seam"). What changed is entirely
- * internal: reads and writes now go through [RecordStore] against the Pantry aspect's `Receipt`/
- * `LineItem` record types (`docs/architecture/wave2-carve-2026-08-23.md`'s field mapping, reused
- * verbatim - not reinvented), and every value object this file hands back is assembled in-memory
- * from an [EngineRecord]'s JSON payload, never a row actually persisted in the legacy
- * `pantry_receipts`/`pantry_line_items` tables. **Those two tables have ZERO writers from this file
- * after cutover** - see the cutover doc's reader/writer table for the full grep-proven account.
+ * `.scratch/aspect-engine/issues/22-cutover-per-aspect.md`) moved every function below onto the
+ * engine. **That cutover is itself retired as of engine retirement step 2**
+ * (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`) - see the class doc's "Not
+ * configured" bullet below for the current shape, which is `pantry_receipts`/`pantry_line_items`
+ * for both branches. Every function below keeps its ORIGINAL signature and return type
+ * (`PantryReceipt`/`PantryLineItem`/`PantryCurrencyTotal`/`PantryReceiptSummary` - the legacy Room
+ * entity/row shapes) so every caller - `ui/PantryScreen.kt`, `service/LiveToolbox.kt`'s
+ * `list_recent_groceries`/`get_grocery_spend` - never had to change across either cutover.
  *
- * **The reconciliation gate moves with it.** [PantryReceiptAgent.parseAndReconcile] is completely
- * untouched - it still runs entirely upstream of any write, and a [PantryIngestResult.Quarantined]
- * still causes [importReceipt] to write NOTHING, exactly as before cutover. What changed is only
- * where a [PantryIngestResult.Success] lands: through [RecordStore.create] inside one
- * [androidx.room.withTransaction] block (receipt first, then its line items, referencing the
- * receipt's real engine id), rather than straight `Insert` DAO calls. A `RecordStore` write CAN
- * fail post-gate (a corrupted field schema, a reference-validation edge) in a way the old plain
- * `Insert` calls structurally could not - CLAUDE.md §7's outcome-verb rule applies here just as much
- * as to a voice tool: [importReceipt] never reports success unless every write in the transaction
- * actually landed, and rolls the whole transaction back rather than leaving a receipt with some but
- * not all of its line items.
+ * **The reconciliation gate is unaffected by either cutover.**
+ * [PantryReceiptAgent.parseAndReconcile] runs entirely upstream of any write in this file, and a
+ * [PantryIngestResult.Quarantined] causes [importReceipt] to write NOTHING, in every era.
  *
  * **Backend-erp Phase 4, aspect 2 of 5** (`.scratch/backend-erp/issues/05-migration-path.md`).
  * DUAL-PATH, exactly [com.kevin.legion.location.PlaceController]'s shape - every function checks
  * [backend] first:
- * - **Not configured**: the ENGINE path above, completely unchanged - clone-and-run with zero
- *   Supabase setup still works.
+ * - **Not configured**: **repointed onto the SAME `pantry_receipts`/`pantry_line_items` tables as
+ *   of engine retirement step 2** - the engine cutover above is retired.
+ *   [ensureLegacyReconciled] runs [EnginePantryRetirementCopy] once, first, so any receipt
+ *   imported directly through the engine since cutover 2 is not silently lost the moment this read
+ *   flips. **This file no longer touches [com.kevin.legion.engine.RecordStore] or
+ *   `engineRecordDao()` at all** - the engine's Receipt/LineItem records are left exactly where
+ *   they are (ticket 15: nothing is deleted until every aspect is repointed and soaked), just no
+ *   longer read or written from here. **v44 (coordinator-authorised follow-up, same ticket):**
+ *   [PantryReceipt] gained `subtotalCents`/`taxCents`/`otherChargesCents` (`MIGRATION_43_44`)
+ *   specifically so this repoint would not recreate CLAUDE.md section 4 rule 7's 2026-08-26
+ *   amendment (ticket 08) prospectively - the first version of this repoint left those three
+ *   engine-only fields (see [com.kevin.legion.engine.pantry.PantryAspectSeeder]'s own doc comment,
+ *   "the gate invariant is re-checkable post-hoc") with nowhere to land on the legacy entity, which
+ *   would have silently discarded the gate's own inputs for every receipt an unconfigured install
+ *   wrote from then on - the exact "new ingestion path" that amendment refuses to license. Fixed
+ *   before shipping: [writeReceipt] now stamps them onto the receipt it inserts, and
+ *   [EnginePantryRetirementCopy] carries them through for any receipt already sitting in the
+ *   engine. `null` still means "not printed" (or, for a genuinely pre-v44 row, "predates this
+ *   column"), never a fabricated zero - the arithmetic itself was never affected, only whether it
+ *   could be re-checked from storage after the fact.
  * - **Configured**: reads come from the Room [PantryReceipt]/[PantryLineItem] replica (cache-first,
  *   ticket 01 ruling 9); writes go straight to the server. **Two distinct write paths, kept apart
  *   on purpose:** a NEW receipt import always goes through [PantryBackend.commitReceipt], so
@@ -79,10 +83,6 @@ object PantryController {
     private const val TAG = "PantryController"
 
     private fun db(context: Context) = CarDatabase.getDatabase(context)
-    private fun store(context: Context): RecordStore {
-        val database = db(context)
-        return RecordStore(database.engineRecordDao(), database.fieldDefDao(), database.recordTypeDao())
-    }
 
     /** Test seam: settable from a unit test so a [PantryBackend] fake can be injected without a
      * real [SupabaseClientProvider] / network - same mechanism as
@@ -102,79 +102,36 @@ object PantryController {
     private fun receiptDao(context: Context) = db(context).pantryReceiptDao()
     private fun lineItemDao(context: Context) = db(context).pantryLineItemDao()
 
-    private suspend fun schema(context: Context) = PantryAspectSeeder.ensureSeeded(context)
-
-    // ---------------------------------------------------------------- engine <-> value-object bridge
-
-    /** Matches `docs/architecture/wave2-carve-2026-08-23.md`'s field mapping table exactly -
-     * nothing here invents a second mapping. Falls back to [LedgerCurrency.USD] only if a stored
-     * currency string somehow doesn't match either enum name - should never happen (the field is a
-     * locked `CHOICE` of exactly `["SGD", "USD"]`), but a read function must still return SOMETHING
-     * rather than throw on a record it can't fully decode. */
-    private fun toReceipt(record: EngineRecord, fieldIds: Map<String, Long>): PantryReceipt {
-        val payload = JSONObject(record.payload)
-        fun s(name: String) = PayloadCodec.readString(payload, fieldIds.getValue(name))
-        fun l(name: String) = PayloadCodec.readLong(payload, fieldIds.getValue(name))
-        val currency = LedgerCurrency.entries.firstOrNull { it.name == s(PantryAspectSeeder.FIELD_CURRENCY) }
-            ?: LedgerCurrency.USD
-        return PantryReceipt(
-            id = record.id,
-            store = s(PantryAspectSeeder.FIELD_STORE).orEmpty(),
-            purchaseDate = l(PantryAspectSeeder.FIELD_PURCHASE_DATE) ?: record.createdAt,
-            currency = currency,
-            totalCents = l(PantryAspectSeeder.FIELD_TOTAL) ?: 0L,
-            sourceImagePath = s(PantryAspectSeeder.FIELD_SOURCE_IMAGE_PATH).orEmpty(),
-            syncId = record.guid,
-        )
-    }
-
-    private fun toLineItem(record: EngineRecord, fieldIds: Map<String, Long>): PantryLineItem {
-        val payload = JSONObject(record.payload)
-        fun s(name: String) = PayloadCodec.readString(payload, fieldIds.getValue(name))
-        fun l(name: String) = PayloadCodec.readLong(payload, fieldIds.getValue(name))
-        fun d(name: String) = PayloadCodec.readDouble(payload, fieldIds.getValue(name))
-        return PantryLineItem(
-            id = record.id,
-            receiptId = PayloadCodec.readReferenceId(payload, fieldIds.getValue(PantryAspectSeeder.FIELD_RECEIPT)) ?: 0L,
-            name = s(PantryAspectSeeder.FIELD_NAME).orEmpty(),
-            quantity = d(PantryAspectSeeder.FIELD_QUANTITY) ?: 1.0,
-            unitPriceCents = l(PantryAspectSeeder.FIELD_UNIT_PRICE),
-            totalPriceCents = l(PantryAspectSeeder.FIELD_TOTAL_PRICE) ?: 0L,
-            caloriesKcal = d(PantryAspectSeeder.FIELD_ESTIMATED_CALORIES_KCAL)?.toInt(),
-            proteinG = d(PantryAspectSeeder.FIELD_ESTIMATED_PROTEIN_G),
-            carbsG = d(PantryAspectSeeder.FIELD_ESTIMATED_CARBS_G),
-            fatG = d(PantryAspectSeeder.FIELD_ESTIMATED_FAT_G),
-            syncId = record.guid,
-        )
+    /** One-time reconcile gate for the unconfigured path (engine retirement step 2): before EVER
+     * reading or writing `pantry_receipts`/`pantry_line_items` from an unconfigured branch, make
+     * sure any engine-only receipt has already landed there. Cheap after the first call -
+     * [EnginePantryRetirementCopy.copyIfNeeded] itself short-circuits on its own completion flag,
+     * so this is a SharedPreferences read on every later call, not a repeat scan. Every unconfigured
+     * function below calls this first so none of them can read the legacy tables before the copy
+     * has run, regardless of call order - same shape as
+     * [com.kevin.legion.location.PlaceController.ensureLegacyReconciled]. */
+    private suspend fun ensureLegacyReconciled(context: Context) {
+        EnginePantryRetirementCopy.copyIfNeeded(context)
     }
 
     /** Every receipt - the one place every receipt read below funnels through. **Configured**:
      * reads the Room replica, never the network - cache-first (ticket 01 ruling 9). **Unconfigured**:
-     * every non-trashed engine `Receipt` record, converted; exactly one query against the engine
-     * per read, as before cutover 2. */
+     * `pantry_receipts` too, as of engine retirement step 2 - reconciled against the engine first
+     * (see [ensureLegacyReconciled]) so nothing imported while engine-backed is silently dropped by
+     * the repoint. Both branches now read the exact same query, matching
+     * [com.kevin.legion.location.PlaceController.all]'s own convergence. */
     private suspend fun allReceipts(context: Context): List<PantryReceipt> {
-        if (backend(context) != null) return receiptDao(context).getAll()
-        val sch = schema(context)
-        return db(context).engineRecordDao().activeByRecordType(sch.receipt.recordTypeId)
-            .map { toReceipt(it, sch.receipt.fieldIds) }
+        if (backend(context) == null) ensureLegacyReconciled(context)
+        return receiptDao(context).getAll()
     }
 
-    /** Every line item - same cache-first/engine split as [allReceipts]. */
+    /** Every line item - same cache-first/legacy split as [allReceipts]. */
     private suspend fun allLineItems(context: Context): List<PantryLineItem> {
-        if (backend(context) != null) return lineItemDao(context).getAll()
-        val sch = schema(context)
-        return db(context).engineRecordDao().activeByRecordType(sch.lineItem.recordTypeId)
-            .map { toLineItem(it, sch.lineItem.fieldIds) }
+        if (backend(context) == null) ensureLegacyReconciled(context)
+        return lineItemDao(context).getAll()
     }
 
     // ------------------------------------------------------------------------------------ ingestion
-
-    /** Thrown only to force [androidx.room.withTransaction] to roll back the WHOLE receipt+items
-     * write in [importReceipt] - Room's transaction helper rolls back on a thrown exception, never
-     * on a plain early return, so a partial engine write (receipt landed, a later line item did
-     * not) needs a real throw to undo, not just a guard clause. Caught immediately inside
-     * [importReceipt] and never escapes it. */
-    private class EngineWriteFailedException(val reason: String) : Exception()
 
     /**
      * Reads [imageFile] (already saved via [PantryPhotoStore]), extracts it
@@ -220,75 +177,66 @@ object PantryController {
 
     /**
      * The network-free half of [importReceipt] - writes an already-gate-passed
-     * [PantryIngestResult.Success] through [RecordStore] inside one transaction (receipt then its
-     * line items, referencing the receipt's real engine id, provenance `LLM_RECONCILED`). Split out
-     * as its own function, mirroring [PantryReceiptAgent.parseAndReconcile]'s own "network-free...
-     * unit-tested directly" split (see that function's doc comment) - [PantryControllerTest]
-     * exercises this directly with a hand-built [PantryIngestResult.Success], with no Gemini key or
-     * network call needed, exactly as [PantryReceiptAgentTest] already does for the gate itself.
+     * [PantryIngestResult.Success] straight into `pantry_receipts`/`pantry_line_items` (receipt
+     * first, then its line items stamped with the new receipt id) inside one
+     * [androidx.room.withTransaction] block - repointed here at engine retirement step 2 from the
+     * [com.kevin.legion.engine.RecordStore] write this function used between cutover 2 and this
+     * ticket. Split out as its own function, mirroring [PantryReceiptAgent.parseAndReconcile]'s own
+     * "network-free... unit-tested directly" split (see that function's doc comment) -
+     * [PantryControllerTest] exercises this directly with a hand-built
+     * [PantryIngestResult.Success], with no Gemini key or network call needed, exactly as
+     * [PantryReceiptAgentTest] already does for the gate itself.
      *
      * Never called for a [PantryIngestResult.Quarantined] - [importReceipt]'s `when` only reaches
      * this branch after the gate has already passed, so "quarantine writes nothing" is enforced
      * structurally (there is no path from a `Quarantined` result to this function at all), not by a
      * runtime check inside it.
+     *
+     * **A Room `@Insert` throws on failure rather than returning a false/failed result**, but
+     * unlike [com.kevin.legion.location.PlaceController.tagPlace] this function still catches it
+     * and words it - checked, not assumed, against this function's ONE production caller.
+     * `tagPlace`'s "let it throw" is safe for its VOICE path because
+     * [com.kevin.legion.service.LiveSessionController]'s tool dispatch already wraps every call in
+     * a catch-all (`"Something went wrong running that."`); its UI caller in `ui/FleetScreen.kt`
+     * has no such wrapper either, a pre-existing gap out of scope here. [importReceipt] has NO
+     * voice tool at all - `import_receipt` only opens `ui/PantryScreen.kt`'s
+     * `PantryImportScreen`, which calls this function from a bare `LaunchedEffect` with no
+     * try/catch of its own and reads `.message` straight onto the screen. A raw throw here would
+     * crash that composition instead of showing the worded failure the pre-repoint
+     * `EngineWriteFailedException` branch used to produce - strictly worse than the wording it
+     * would have replaced, which is exactly what CLAUDE.md §7 exists to prevent (a failure result
+     * must say in words what did NOT happen). So the whole write is wrapped below: a genuine
+     * failure - Room throws, [androidx.room.withTransaction] rolls the whole block back on it, same
+     * as before - is caught and turned into the SAME worded message the engine-backed version used.
      */
     suspend fun writeReceipt(context: Context, result: PantryIngestResult.Success): PantryImportResult {
+        ensureLegacyReconciled(context)
         val database = db(context)
-        val sch = schema(context)
-        val recordStore = store(context)
         var itemCount = 0
 
         try {
             database.withTransaction {
-                val receiptResult = recordStore.create(
-                    recordTypeId = sch.receipt.recordTypeId,
-                    fieldValues = mapOf(
-                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_STORE) to result.receipt.store,
-                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_PURCHASE_DATE) to result.receipt.purchaseDate,
-                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_CURRENCY) to result.receipt.currency.name,
-                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_TOTAL) to result.receipt.totalCents,
-                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_SOURCE_IMAGE_PATH) to result.receipt.sourceImagePath,
-                        // Cutover 2's owed anchor persistence - see PantryAspectSeeder's own
-                        // doc comment on these three fields.
-                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_SUBTOTAL) to result.subtotalCents,
-                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_TAX) to result.taxCents,
-                        sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_OTHER_CHARGES) to result.otherChargesCents,
-                    ),
-                    provenance = RecordProvenance.LLM_RECONCILED,
-                    guid = result.receipt.syncId,
+                // v44 (coordinator-authorised follow-up to engine retirement step 2): the gate's
+                // own subtotal/tax/otherCharges anchors live on [result] itself, not on
+                // [result.receipt] - stamped on here before the insert so this unconfigured write
+                // persists them exactly as the engine did pre-repoint. Dropping them would recreate
+                // ticket 08's defect for every receipt written from this call on - see this
+                // function's own doc comment.
+                val receiptWithAnchors = result.receipt.copy(
+                    subtotalCents = result.subtotalCents,
+                    taxCents = result.taxCents,
+                    otherChargesCents = result.otherChargesCents,
                 )
-                val receiptId = (receiptResult as? RecordStore.WriteResult.Success)?.recordId
-                    ?: throw EngineWriteFailedException(
-                        "receipt: ${(receiptResult as RecordStore.WriteResult.Failure).reason}",
-                    )
-
-                for (item in result.items) {
-                    val itemResult = recordStore.create(
-                        recordTypeId = sch.lineItem.recordTypeId,
-                        fieldValues = mapOf(
-                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_RECEIPT) to receiptId,
-                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_NAME) to item.name,
-                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_QUANTITY) to item.quantity,
-                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_UNIT_PRICE) to item.unitPriceCents,
-                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_TOTAL_PRICE) to item.totalPriceCents,
-                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_ESTIMATED_CALORIES_KCAL) to item.caloriesKcal,
-                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_ESTIMATED_PROTEIN_G) to item.proteinG,
-                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_ESTIMATED_CARBS_G) to item.carbsG,
-                            sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_ESTIMATED_FAT_G) to item.fatG,
-                        ),
-                        provenance = RecordProvenance.LLM_RECONCILED,
-                        guid = item.syncId,
-                    )
-                    if (itemResult !is RecordStore.WriteResult.Success) {
-                        throw EngineWriteFailedException(
-                            "line item '${item.name}': ${(itemResult as RecordStore.WriteResult.Failure).reason}",
-                        )
-                    }
-                    itemCount++
+                val newReceiptId = receiptDao(context).insert(receiptWithAnchors)
+                if (result.items.isNotEmpty()) {
+                    lineItemDao(context).insertAll(result.items.map { it.copy(receiptId = newReceiptId) })
                 }
+                itemCount = result.items.size
             }
-        } catch (e: EngineWriteFailedException) {
-            Log.w(TAG, "writeReceipt: engine write failed after the gate passed, rolled back - ${e.reason}")
+        } catch (e: Exception) {
+            // See this function's own doc comment: PantryImportScreen has no try/catch of its own,
+            // so a genuine write failure must be worded HERE, not left to propagate.
+            Log.w(TAG, "writeReceipt: legacy write failed after the gate passed, rolled back - ${e.message}")
             return PantryImportResult(
                 success = false,
                 message = "This receipt's numbers checked out, but I couldn't save it - try again.",

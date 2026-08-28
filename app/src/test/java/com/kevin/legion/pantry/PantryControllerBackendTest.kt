@@ -11,7 +11,6 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.PantryLineItem
 import com.kevin.legion.data.local.PantryReceipt
-import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.RecordStore
 import com.kevin.legion.engine.pantry.PantryAspectSeeder
 import com.kevin.legion.testutil.RoomTestReset
@@ -235,12 +234,53 @@ class PantryControllerBackendTest {
 
     // ------------------------------------------------------------------------------ PantryReconcile
 
+    /**
+     * Writes [result] straight through [RecordStore], bypassing [PantryController] entirely -
+     * [PantryReconcile] reads the engine directly regardless of which store the unconfigured path
+     * itself writes to (see that object's own doc comment: it stays reading the engine, the
+     * configured-transition upload tool, out of scope for engine retirement step 2). Was
+     * `PantryController.writeReceipt(context, result)` before that step repointed
+     * [PantryController.writeReceipt] onto the legacy `pantry_receipts`/`pantry_line_items` tables -
+     * this suite needs an ENGINE record to reconcile against regardless of what the controller's
+     * own unconfigured write path does today, so it seeds one directly, same shape as
+     * `PlacesReconcileTest`'s own direct [RecordStore] seeding.
+     */
     private suspend fun writeEngineReceipt(result: PantryIngestResult.Success): String {
-        val written = PantryController.writeReceipt(context, result)
-        assertTrue(written.success)
         val sch = PantryAspectSeeder.ensureSeeded(context)
-        val record = db.engineRecordDao().activeByRecordType(sch.receipt.recordTypeId)
-            .first { PayloadCodec.readString(JSONObject(it.payload), sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_STORE)) == result.receipt.store }
+        val recordStore = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+        val receiptResult = recordStore.create(
+            recordTypeId = sch.receipt.recordTypeId,
+            fieldValues = mapOf(
+                sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_STORE) to result.receipt.store,
+                sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_PURCHASE_DATE) to result.receipt.purchaseDate,
+                sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_CURRENCY) to result.receipt.currency.name,
+                sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_TOTAL) to result.receipt.totalCents,
+                sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_SOURCE_IMAGE_PATH) to result.receipt.sourceImagePath,
+                sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_SUBTOTAL) to result.subtotalCents,
+                sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_TAX) to result.taxCents,
+                sch.receipt.fieldIds.getValue(PantryAspectSeeder.FIELD_OTHER_CHARGES) to result.otherChargesCents,
+            ),
+            provenance = com.kevin.legion.data.local.RecordProvenance.LLM_RECONCILED,
+        )
+        val receiptId = (receiptResult as RecordStore.WriteResult.Success).recordId
+        for (item in result.items) {
+            recordStore.create(
+                recordTypeId = sch.lineItem.recordTypeId,
+                fieldValues = mapOf(
+                    sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_RECEIPT) to receiptId,
+                    sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_NAME) to item.name,
+                    sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_QUANTITY) to item.quantity,
+                    sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_UNIT_PRICE) to item.unitPriceCents,
+                    sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_TOTAL_PRICE) to item.totalPriceCents,
+                    sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_ESTIMATED_CALORIES_KCAL) to item.caloriesKcal,
+                    sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_ESTIMATED_PROTEIN_G) to item.proteinG,
+                    sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_ESTIMATED_CARBS_G) to item.carbsG,
+                    sch.lineItem.fieldIds.getValue(PantryAspectSeeder.FIELD_ESTIMATED_FAT_G) to item.fatG,
+                ),
+                provenance = com.kevin.legion.data.local.RecordProvenance.LLM_RECONCILED,
+            )
+        }
+        val record = db.engineRecordDao().getById(receiptId)!!
         return record.guid
     }
 

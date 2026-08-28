@@ -28,6 +28,21 @@ import androidx.room.PrimaryKey
  * re-derive it from nullability alone. Every surface rendering a receipt with a non-null
  * [unaccountedCents] must say so in words (rule 7 condition 3) - see
  * `ui/pantry/PantryReceiptSection.kt`.
+ *
+ * **v43 -> v44 (engine retirement step 2, `.scratch/backend-erp/issues/15-engine-retirement-sequence.md`).**
+ * [subtotalCents]/[taxCents]/[otherChargesCents] mirror the three ENGINE-only fields cutover 2 added
+ * to [com.kevin.legion.engine.pantry.PantryAspectSeeder] (`FIELD_SUBTOTAL`/`FIELD_TAX`/
+ * `FIELD_OTHER_CHARGES`, "the gate invariant is re-checkable post-hoc") but that this entity never
+ * carried - repointing [com.kevin.legion.pantry.PantryController.writeReceipt] onto this table
+ * without them would have silently discarded the reconciliation gate's own inputs for every
+ * receipt an unconfigured install writes from now on, which is precisely the "new ingestion path"
+ * CLAUDE.md section 4 rule 7's 2026-08-26 amendment (ticket 08) refuses to license - that amendment
+ * covers rows already stored with no anchors, never a path that keeps producing more of them. All
+ * three are nullable `MONEY_CENTS`-shaped `Long` for the identical reason the engine fields are
+ * optional: a receipt legitimately prints no subtotal/tax line (the tax-inclusive-basket branch in
+ * [com.kevin.legion.pantry.PantryReceiptAgent]'s own reconciliation), and a pre-v44 row genuinely
+ * has none at all (null here means "not printed" or "predates this column," never "not checked" -
+ * the gate itself already ran either way).
  */
 @Entity(tableName = "pantry_receipts")
 data class PantryReceipt(
@@ -42,4 +57,8 @@ data class PantryReceipt(
     val syncId: String = java.util.UUID.randomUUID().toString(),
     val provenance: String = "LLM_RECONCILED",
     val unaccountedCents: Long? = null,
+    // v44 (engine retirement step 2) - see this class's own doc comment above.
+    val subtotalCents: Long? = null,
+    val taxCents: Long? = null,
+    val otherChargesCents: Long? = null,
 )

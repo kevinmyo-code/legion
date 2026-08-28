@@ -30,6 +30,16 @@ interface PantryLineItemDao {
     @Query("DELETE FROM pantry_line_items")
     suspend fun deleteAllForReplicaRefresh()
 
+    /** Every [PantryLineItem.syncId] this table has ever seen - the existence check
+     * [com.kevin.legion.engine.migration.EnginePantryRetirementCopy] needs so a line item already
+     * landed here is never duplicated by copying its engine record back in. Same "no natural key
+     * even in principle, so guid is the only thing to key on" reasoning as
+     * `supabase/migrations/20260826000100_origin_guid.sql`'s `receipt_line_items` comment - two
+     * identical lines on one receipt are legitimate, so nothing besides the syncId itself could
+     * tell them apart. */
+    @Query("SELECT syncId FROM pantry_line_items")
+    suspend fun getAllSyncIds(): List<String>
+
     /** Most recent items across all receipts, newest receipt first, for `list_recent_groceries`. */
     @Query(
         "SELECT pantry_line_items.* FROM pantry_line_items " +

@@ -1669,3 +1669,28 @@ val MIGRATION_42_43 = object : Migration(42, 43) {
         db.execSQL("ALTER TABLE `events_replica` ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'reminder'")
     }
 }
+
+/**
+ * v43 -> v44: `pantry_receipts` gains `subtotalCents`/`taxCents`/`otherChargesCents`
+ * (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`, engine retirement step 2's
+ * coordinator-authorised follow-up). Three additive `ALTER TABLE ADD COLUMN`s, all nullable so a
+ * pre-v44 row (which genuinely never printed or captured these, per CLAUDE.md section 4 rule 7's
+ * 2026-08-26 amendment) reads them as absent rather than a fabricated zero.
+ *
+ * **Why this exists at all**: [com.kevin.legion.engine.pantry.PantryAspectSeeder] added these three fields to the ENGINE schema
+ * at cutover 2 so the reconciliation gate's own inputs could be re-checked post-hoc, but the
+ * legacy [PantryReceipt] entity this migration touches never carried them. Engine retirement step
+ * 1/2 repoints [com.kevin.legion.pantry.PantryController.writeReceipt] off the engine and onto
+ * this table - without this migration, that repoint would have started discarding the gate's
+ * inputs for every NEW receipt an unconfigured install writes, which is exactly the "new ingestion
+ * path" CLAUDE.md section 4 rule 7's amendment (ticket 08) refuses to license. Ticket 08 covers
+ * three of Kevin's real receipts that can never be re-verified because their anchors were
+ * discarded after the gate ran in memory; this migration exists so a fourth case is never created.
+ */
+val MIGRATION_43_44 = object : Migration(43, 44) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `pantry_receipts` ADD COLUMN `subtotalCents` INTEGER")
+        db.execSQL("ALTER TABLE `pantry_receipts` ADD COLUMN `taxCents` INTEGER")
+        db.execSQL("ALTER TABLE `pantry_receipts` ADD COLUMN `otherChargesCents` INTEGER")
+    }
+}
