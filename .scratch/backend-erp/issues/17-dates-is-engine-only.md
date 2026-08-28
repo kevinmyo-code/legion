@@ -45,3 +45,35 @@ pointed at the wrong one inherits a silent gap rather than an obvious one.
 **Recommendation: settle ruling 5's Google removal first**, then Dates is a one-time copy with no
 live writer to chase. That also matches the C3 constraint already in the map - the importer must be
 widened and run unbounded BEFORE Google is cut, and that widening is already built (`6e36ef1`).
+
+## RULED 2026-08-28, and this REVISES my own earlier recommendation in this same ticket
+
+Delegated to me ("resolve everything with ur recommendations"); open to reversal.
+
+**Earlier in this ticket I recommended settling Google's removal first, so Dates would become a
+one-time copy with no live writer to chase. That was wrong, and worth saying plainly rather than
+quietly replacing.** It made Dates wait on a removal that itself waits on an unbounded importer run
+that needs the phone - a chain of three, to avoid a problem that does not need avoiding.
+
+**Ruled instead: Dates repoints onto the SAME `events` table Notes already uses.**
+
+The reason is one the earlier recommendation missed. **Ruling 4 merged todos INTO events** - they are
+not two aspects sharing a name, they are one table by design, and step 4 already renamed
+`events_replica` to `events` and put Notes on it for both paths. `events.kind` exists precisely to
+tell a `reminder` from an `appointment` in that shared table.
+
+So Dates does not need a table of its own, a copy that drifts, or a removal to happen first. It
+needs to write `kind = 'appointment'` rows to the table its other half already lives in.
+
+That also dissolves the drift this ticket was filed about: `CalendarImportController` writing new
+Dates events to the engine on every foreground was only a problem because the copy landed somewhere
+the writer did not. Point the writer at the same place and there is nothing to drift from.
+
+**And it removes the tension ticket 15's own notes ruling named:** leaving Dates on the engine would
+mean one table written by two different stores depending on which record type a row is, which is the
+shape that ruling rejected.
+
+**Google's removal is now independent of this**, which is the real gain. C3 still binds - widen the
+importer, run it unbounded, verify, THEN cut - and the widening is built (`6e36ef1`). But that
+sequence is about not losing the class metadata living in Google's descriptions, and it has nothing
+to do with which local table Dates writes to.
