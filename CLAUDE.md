@@ -240,6 +240,22 @@ that makes ingestion trustworthy, and it is not negotiable per-feature.
    storing one that later reads as strong. Decided 2026-08-06 (Kevin); ticket
    `.scratch/ledger-drive-ingestion/issues/12-provisional-card-csv.md`.
 
+8. **A gate that discards its own inputs leaves rows nobody can ever re-verify. Persist the
+   anchors, not just the verdict.** Rule 2's guarantee is only as durable as the evidence kept.
+   Found twice, both times too late to fix the data: three pantry receipts whose legacy table only
+   ever had `totalCents`, so the check cannot be reproduced from storage and the photos are gone
+   (rule 7's 2026-08-26 amendment); and then the ledger's WHOLE verified history, whose stated
+   total, opening balance and closing balance were read inside a parser at ingestion and never
+   written down (`.scratch/backend-erp/issues/12-*.md`, 2026-08-28). The second one is recoverable
+   only because the source documents survive in Drive.
+
+   **So: every ingestion path stores the numbers the gate checked against, in their own columns,
+   alongside the rows they gated.** A `provenance` tag records the verdict; it is not evidence, and
+   a row carrying `DETERMINISTIC` with no retrievable anchors is an assertion nobody can audit. An
+   anchor the source did not state is stored NULL and recorded as absent - never synthesised from
+   `sum(lines)`, which would make the check an identity (rule 6's shape again). The server schema
+   gets this right for both aspects; the phone's legacy tables never did, and that is the gap.
+
 Rule 5 is the §7 safety thesis applied to data: agents and memory are safe to the degree they are
 anchored to external, falsifiable reality.
 

@@ -88,7 +88,7 @@
       "y": 1200,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "284e750563448b12",
@@ -98,7 +98,7 @@
       "y": 1350,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "1cbb06b665d5d553",
@@ -108,7 +108,7 @@
       "y": 1500,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "aba5dae149ca8226",
@@ -136,6 +136,16 @@
       "file": ".scratch/backend-erp/issues/18-the-generic-ui-still-runs-on-the-engine.md",
       "x": 0,
       "y": 1950,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "b4aa3e1db024f0ea",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/19-re-ingest-historical-statements.md",
+      "x": 0,
+      "y": 2100,
       "width": 320,
       "height": 110,
       "color": "1"

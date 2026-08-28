@@ -1,0 +1,679 @@
+---
+shelf: session
+status: live
+kind: narrative
+---
+
+# Session narrative, 2026-08-15 to 2026-08-28: the backend-ERP arc
+
+**LIVE, not frozen.** This is LEGION history, not Midnight AI history. It was lifted verbatim out of
+`memory/MEMORY.md` on 2026-08-28, which had grown to 960 lines against its own 80-line cap in
+CLAUDE.md section "Library + how to update this file". Nothing was edited on the way across; the
+dashboard now carries one-liners and points here for depth.
+
+Read `.scratch/backend-erp/` for the decisions themselves - this is the running account of how they
+were reached and what was found while building them.
+
+---
+
+## START HERE - 2026-08-25 (late) - BACKEND-ERP IS FULLY DECIDED AND SEQUENCED. BUILDING IS NEXT.
+
+**Kevin pivoted: the backend IS the ERP.** Supabase (BYO project per household, never
+Kevin-hosted) becomes the system of record; the Android app becomes ONE consumer; a Windows/laptop
+surface is coming; auth for two users, extensible. This reopens local-Room-primary at Kevin's own
+initiative. Map: `.scratch/backend-erp/` - six tickets, feasibility research RESOLVED (free tier
+fits; one hazard: the 7-day inactivity pause, manual resume; free tier has no backups so the xlsx
+mirror carries recovery).
+
+**Ticket 01 is RESOLVED - eleven rulings, all five of its questions answered.** Read
+`.scratch/backend-erp/issues/01-what-the-backend-owns.md` before touching anything here. The four
+that reshape the app, all Kevin's, three of them against the recommendation:
+
+- **Postgres gets PER-ASPECT REAL TABLES**, not the generic shape translated. Enforcement moves
+  server-side into real FKs/CHECKs/RLS.
+- **The phone goes typed with it and the GENERIC ENGINE RETIRES.** Biggest cost in the map: it
+  undoes the 2026-08-24 cutover of one day earlier. **Nothing is deleted until ticket 05
+  sequences it.**
+- **Todos become Dates events.** Note this is a TYPE MERGE, not a re-parenting: todos are the
+  Notes aspect's `Item` type (21 fields, 64 Kotlin files) with recurrence, `list_item_skips`,
+  geofenced place triggers and a second alarm stack attached.
+- **Google Calendar is dropped entirely** - but the ORDER IS BINDING: widen the importer first
+  (description/location/allDay + parse the LEGION::v1 block into real fields, unbounded window),
+  verify, THEN cut. The class metadata lives only in Google descriptions and is never stored;
+  cutting first deletes it permanently.
+
+Also: writes go direct to Postgres with no offline queue (so the ticket-06 keep-alive is now
+load-bearing, not a nicety); reads are cache-first with a visible "as of" required on money;
+OBD live state, wake word/audio, photo files and widget layouts stay phone-only.
+
+**Measured, not guessed** (two scouts, static counts, nothing compiled): the engine is 9,518
+production + 6,367 test lines. **But it retired ZERO legacy tables** - `CarDatabase.kt:265-296`
+still lists all 56 entities, only 6 of them engine, and the waves are additive-only. So ruling 7 is
+largely REPOINTING WRITES BACK to typed tables that still exist, not building a typed layer from
+nothing. Ticket 05 must reconcile-and-repoint per aspect (legacy tables are ~1 day stale for
+whatever cut over on 08-24), never blind-switch.
+
+**Ticket 02 (auth) is RESOLVED too - five rulings.** Sign-in is **email + password**: Google OAuth
+needs two client IDs with one keyed to the SHA-1 cert (the trap already open against Drive), and
+magic link rides Supabase's built-in email at **2 msg/hour, "not meant for production", no delivery
+SLA** (now recorded as §7b of the feasibility research). Household RLS, all users see all rows, no
+roles ever. **Both accounts are made in the dashboard** - no signup screen, no invite flow, zero app
+code. **Personas and memories bind to the USER**, not the device, and memories gain a user tag for
+attribution (CLAUDE.md §7: recalling her statement as his is the unfalsifiable-memory failure).
+The Supabase session goes in KeyVault but **fails closed** - no plaintext fallback, unlike every
+other secret slot, because phone-only killed the head-unit reason for it.
+
+**Premise correction worth carrying:** the app has **no Google sign-in**. `sync/DriveAuth.kt` is the
+Authorization API only - one `drive.appdata` scope, no token, no account, no email stored; sign-out
+is a boolean. There is no human-user entity anywhere in the app, and no table has a human owner
+column. Ticket 02's own question text claimed otherwise and was wrong.
+
+**Ticket 03 (the gate) is RESOLVED - eight rulings, and it changed a CLAUDE.md rule.** The file
+commit becomes ONE atomic Supabase RPC, **idempotent on `contentSha256`** - that is what closes the
+gap ruling 8 opened, because `CANNOT_CLAUSE` is binary and has no word for "I don't know if it
+landed"; with idempotency the phone retries instead of narrating. Gate arithmetic runs server-side,
+phone pre-checks (two implementations, so they need a shared test corpus).
+
+**The big one: the deterministic statement parsers RETIRE (Kevin's own proposal).** A statement goes
+through the user's OWN LLM, which masks sensitive data and emits a CSV in a format LEGION defines.
+Kills PdfBox, kills the Deno problem, and covers every bank instead of just DBS and BofA. **This
+amends CLAUDE.md §4 rule 1** (amendment written in, marked decided-but-not-built). The gate gets
+STRONGER to compensate: **three anchors** required (printed total, opening, closing), because an
+LLM-produced CSV has lines and total from one process and a single anchor could be satisfied by a
+self-consistent hallucination. Fewer than three anchors means rule-7 provisional. Rows tag
+`LLM_RECONCILED`. Account identity is **last-4 plus a nickname** (last-4 collisions are real;
+the nickname is what disambiguates).
+
+**Ticket 01 ruling 10 was AMENDED the same day: photo files MAY leave the device**, to a private
+bucket in the household's own Supabase project, because Edge-Function receipt vision cannot work
+otherwise. OBD live state, wake word/audio and widget layouts stay phone-only.
+
+**Three pre-existing defects found while grounding ticket 03, all filed there, none introduced:**
+(1) `IngestPipelineProvisionalSupersedeTest`'s four cases have been testing DEAD CODE since cutover
+3 - rule 7's live engine-path coverage is a single test; (2) a schema mismatch throws
+`NoSuchElementException` past the narrow `catch` in `IngestPipeline`, so the file is never written
+back to NEW; (3) `BofaStatementParser` has no non-empty guard and could vacuously pass a
+zero-movement statement.
+
+**Ticket 04 (mirror/cache) is RESOLVED - four rulings, and the grounding justified the boldest one.**
+The **xlsx mirror is retired entirely** (~2,200 lines). Two facts made that cheap: **the import half
+never round-tripped on a device** (export to Drive WAS verified on the A25 2026-08-23; a hand edit
+landing in the app never was), and **`MirrorSyncActivity` has no in-app navigation** - debug-exported
+only, unreachable in a release build. Hand-edit reimport dies with it, closing a real hole: a
+blank-guid row minted a record with provenance `USER`, and a foreign guid was created as-is, so a
+spreadsheet could mint records past the gate. Local cache is a **full replica** (569 records, roughly
+285 KB estimated, three orders of magnitude under the free tier's ceiling).
+
+**Recovery: `sync/DatabaseSnapshot.kt`, SCHEDULED, with a restore actually exercised.** The research
+had nominated the mirror as the recovery story because the free tier has zero backups - **that was
+already false**, resting on the import path that never ran. DatabaseSnapshot is built and reviewed
+(whole-DB gzip to Drive appDataFolder, 3 generations, prunes only after upload confirms) but is
+**manual-only** and **its restore has never been exercised on a device**. **BINDING ORDER: do not
+delete the mirror until the scheduler and a real restore are both done**, or there is a window with
+no recovery at all.
+
+**Ticket 05 is RESOLVED and the map is CLOSED - all six tickets decided.** Three final rulings:
+**`SyncEngine` retires PER-TABLE** (each table leaves the Drive registry in the same commit its
+writes move to Postgres, so no table is ever in two sync channels fighting each other); the
+**Item-into-Event merge lands directly in the Supabase schema** (forced: there is **no legacy
+`events` table** to fall back to, Dates was born engine-native, so ticket 01's repoint-to-existing
+shortcut covers ledger/pantry/fleet/places but NOT Notes/Dates); and Kevin chose **schema-and-auth
+first** over a thin vertical slice, with the accepted risk that the stack is unproven until the
+first aspect lands.
+
+**THE SEQUENCE - seven phases. Do not reorder; C2, C3 and C4 lose data if violated.**
+- **Phase 0, safety net, nothing else starts first:** schedule `DatabaseSnapshot` and **exercise a
+  real restore on the A25**; fix hardening ticket 05 defect 1 so rule 7's tests point at production
+  code BEFORE rule 7 is rewritten in SQL.
+- **Phase 1, foundations:** supabase-kt, committed SQL migrations, `household_members` + RLS helper,
+  email+password with the session failing closed, and the 7-day-pause keep-alive.
+- **Phase 2, schema + the commit RPC:** typed tables, the `events` table absorbing the Item shape,
+  gate arithmetic in SQL, three anchors, rule-7 supersession in-transaction, idempotent on
+  `contentSha256`. The shared gate test corpus is the real deliverable.
+- **Phase 3, read-path honesty, BEFORE any cutover:** loading/error/stale states and the "as of" on
+  money. Extend `WidgetDataSource`'s vocabulary; do not invent a second one.
+- **Phase 4, per-aspect cutover, smallest first:** Places 3 -> Pantry 29 -> Fleet 62 -> Notes+Dates
+  172 (carrying the merge) -> Ledger 168 last. Upload, diff until clean, flip writes, drop that
+  table from the `SyncEngine` registry in the same commit, soak.
+- **Phase 5, interleaved:** widen the Google importer and run it unbounded BEFORE the Notes+Dates
+  cutover; the three-anchor CSV path works BEFORE the parsers come out.
+- **Phase 6, deletions only, last:** mirror (gated on phase 0), `SyncEngine` once its registry is
+  empty, parsers, and only genuinely dead tables. **CORRECTED 2026-08-28 (ticket 18): the engine is
+  NOT deleted here.** All six built-in aspects are off it, but `EngineToolbox`'s `create_aspect` +
+  the generated UI + the widget pager are a shipped, still-wanted feature, so `engine/` narrows to
+  "how a user-created aspect stores data" and stays. `engine/EngineBoundaryTest` enforces the new
+  boundary.
+
+**Two clarifications that prevent real mistakes.** Ticket 03's "engine retirement before or with the
+RPC" does NOT mean deleting 15,885 lines up front: the SERVER schema is typed from day one so the
+RPC is never built against the generic shape, while the PHONE's engine retires per-aspect and the
+code is deleted only in phase 6. And **"legacy-table drops" no longer means what it used to** -
+ruling 7 sends the phone back to those tables, so `ledger_transactions`, `pantry_receipts`,
+`vehicles`, `service_records` and `places` are the DESTINATION, not drop candidates. Only the engine
+metadata tables and the dead notes-era tables actually get dropped.
+
+**Why deletion is separated from retirement:** every rollback depends on the code deleted at the end
+still existing during the middle. Ruling 8 removed the offline queue, so there is no buffer to hide
+a bad cutover behind; per-aspect rollback is stop writing to Supabase, restore the table to the
+`SyncEngine` registry, keep reading Room.
+
+**OWED, DO NOT LOSE: exercise a real `DatabaseSnapshot` RESTORE on the A25.** Kevin released it as
+a Phase 0 gate on 2026-08-25 (the A25 has never been attached to the second machine, `adb devices`
+is empty), over a stated objection - an untested restore is a hope, which is L36's exact shape. It
+is **still owed before the phase 6 mirror deletion**, because deleting the mirror with no proven
+replacement leaves a window with no recovery path at all. **Must be done from the Kwin laptop**
+(debug keystore lives there; never uninstall to fix a signature mismatch).
+
+**PHASE 0 IS DONE except the device half (2026-08-25).** Both buildable items landed and are
+verified green on the current tree (2,549 tests, 0 failures, counted from the JUnit XML, plus
+`compileDebugAndroidTestKotlin`):
+- **Rule 7's tests now run against production code.** The four supersede cases had not called
+  `IngestPipeline.commit` since cutover 3; they exercised `deleteSupersededProvisional`, which has
+  zero production callers. Ported to `src/test` (Robolectric) calling the real `commit` and
+  asserting on engine records. Rule 7 went from **1 live test to 5**. The old file's reason for not
+  calling `commit` (the `CarDatabase` singleton) was **obsolete** - `RoomTestReset` already solved
+  it. Closes hardening ticket 05 defect 1, which blocked rewriting rule 7 in SQL at phase 2.
+- **`sync/ScheduledBackup.kt` exists**: app-lifecycle daily check (no WorkManager), called from
+  `MainActivity.onResume`, 24h floor, never passes `overrideGuard`, install-scoped prefs, sealed
+  `Outcome` with every branch worded, six tests. `DriveSyncScreen` shows last success, the
+  "only while the app is open" caveat on BOTH branches, and any failure reason.
+
+**PHASE 1 IS BUILT, NOT PROVEN (2026-08-25).** All of it compiles, tests green (2,576, 0 failures),
+and `assembleDebug` produces an APK. **Nothing has touched a real Supabase project yet.**
+
+- `supabase/migrations/20260825000100_household_and_rls.sql` - household roster, `security definer`
+  membership helper in a `private` schema (the recursion fix), RLS, and a `public.keepalive()` RPC.
+  **The absence of insert/update/delete policies IS the enforcement** - membership can only be
+  granted in the dashboard. No role column, deliberately.
+- `.github/workflows/supabase-keepalive.yml` - daily cron ping. **Deliberately NOT on the phone:**
+  the pause triggers on no DB activity, and a phone ping only fires when the app is open, which is
+  when there is already activity. Needs secrets `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
+- `backend/` - `SupabaseConfig` (BYO URL + anon key, never `BuildConfig`, NOT in KeyVault since the
+  anon key is not secret), `SupabaseSession` (**fails closed** - throws rather than the plaintext
+  fallback every other secret slot uses), `SupabaseClientProvider`, `SupabaseAuth` (email+password,
+  sealed results including signed-in-but-not-a-member). UI on `KeyScreen`.
+
+**Two build compromises, filed as hardening ticket 06, both verified by real builds:** supabase-kt
+is pinned to **3.6.0** because 3.7.0 needs Kotlin metadata 2.4.0 and this project is Kotlin 2.1.0;
+and Compose is `resolutionStrategy.force`d to 1.7.0 after the new graph drifted it to 1.9.0 and
+broke four screenshot tests. The 1.9.0 requester was never identified.
+
+**OWED BY KEVIN, blocks everything else in Phase 1:**
+1. Apply the migration (`supabase db push`, or paste into the dashboard SQL editor).
+2. Add the two GitHub Actions secrets, then run the workflow manually to prove it.
+3. Create both accounts in the dashboard and insert their `household_members` rows.
+4. Sign in on the phone and confirm the membership check.
+
+**PHASE 2 SCHEMA IS APPLIED AND VERIFIED ON THE REAL PROJECT (2026-08-25).** Six migrations ran against
+`HomeERPBackend` (ref `gccxiqusqxkjmjmaadpz`, org HomeERP, us-east-1, free tier) through the
+dashboard SQL editor. **12 tables, every one RLS-enabled with a policy**, confirmed by querying
+`pg_class`/`pg_policy` rather than by trusting the editor's success panel.
+
+**The two things a local parser could never check are now proven on real Postgres.** The
+immutability trigger: gated UPDATE blocked, gated DELETE blocked, provisional DELETE allowed (rule
+7 needs that last one). And `commit_statement`: valid payload COMMITTED with 3 rows, the same
+payload again ALREADY_COMMITTED with 0 rows, empty lines QUARANTINED (rule 6), wrong total
+QUARANTINED, wrong closing balance QUARANTINED. Every test ended in a deliberate `raise` so it
+rolled back; all tables verified back at 0 rows.
+
+**Migration history is bypassed** by the dashboard path. First CLI use needs
+`supabase migration repair`, not a re-run - the files are idempotent.
+
+Ten tables. Kevin's three rulings encoded: **immutable for gated aspects** (ledger, pantry) and
+editable for authored ones; **header-plus-lines** so a line cannot exist without the anchor it was
+checked against; **all six aspects** at once, including the Item-into-Event merge (21 fields plus 7
+into one `events` table, nothing dropped, plus `event_skips`).
+
+Two design points worth not re-deriving: the immutability trigger blocks every UPDATE and blocks
+DELETE **except on UNRECONCILED**, because rule 7 defines provisional rows as never asserted as fact
+and transient - freezing them would stop rule 7 running at all. And there is deliberately **no
+`reversed_by` column**, since setting one would require updating an immutable row; a reversal
+carries `reversal_of` and "is this reversed" is a lookup.
+
+`commit_statement` is the gate in SQL: rule 6's non-empty check FIRST (a zero-line extraction sails
+through every anchor when the statement's own figures are zero), then the three anchors, then rule 7
+supersession BEFORE the dedup read, then the lines. **Idempotent on `content_sha256`.** It returns
+QUARANTINED rather than raising on a gate failure, deliberately: a raise would roll back the
+quarantine record too, and the prohibition is on partial DATA, never on recording a rejection.
+
+**OWED, all three recorded on ticket 05 rather than glossed:** `commit_receipt` (pantry's RPC, so
+the gate is proven against two anchor shapes not one); the dedup **restatement pass** using
+`enumeratedWindows`, without which a restated period double-counts; and the **shared gate test
+corpus**, which is ticket 03 ruling 2's real deliverable - two implementations of the same
+arithmetic now exist and nothing proves they agree.
+
+**PHASE 1 IS DONE except the phone.** Secrets set and the keep-alive workflow run manually and
+concluded success (2026-08-26 00:48Z, `workflow_dispatch`), so the daily 07:00 UTC cron is live.
+
+**ONE user for now (Kevin, 2026-08-25).** The household model is unchanged, it simply has one
+member; adding the second is a dashboard job whenever he wants it, and the schema gives clients no
+write path to `household_members` by construction.
+
+**RLS is proven in BOTH directions despite there being one account**, by impersonating a JWT `sub`
+rather than needing a second real user: member sees 1 row, **non-member (valid JWT, not on the
+roster) sees 0**, and **anon is DENIED at the grant level** ("permission denied for table places")
+before RLS is even consulted. That is two independent layers, each demonstrated: the
+`revoke all from anon` in the RLS macro, and the policy itself. Test self-rolled-back.
+
+**THE A25 IS NOW REACHABLE FROM THE SECOND MACHINE** over wireless adb, and a build from here is
+installed and running on it (2026-08-26). Uninstall/reinstall was authorised; **all data was pulled,
+verified and restored** - backup with checksums and a README at
+`C:\Users\kevin\legion-device-backup\2026-08-26\`.
+
+**RESOLVED, and the restore test finally ran. Phase 0 is genuinely complete.** Kevin registered this
+machine's SHA-1 as a second Android OAuth client, Drive authorised, and backup plus restore were
+both exercised on the A25.
+
+**The restore failed on its first ever run, which is why running it mattered.** `DriveClient` set
+only `callTimeout(60s)`; OkHttp does not derive per-operation timeouts from that, so read stayed at
+the 10s default and a multi-MB download died waiting for Drive to start streaming, with 50s of
+budget unused. **Uploads were never affected** - the backup half ran for weeks, the restore half had
+never run once. L36 exactly: the untested half was the broken half, on the only recovery path.
+Fixed with explicit connect 15 / read 60 / write 60 / call 120.
+
+**After the fix, verified**: restore clean, `pre_restore_*.db` safety copy written as promised, and
+the database checked afterwards at `integrity: ok`, schema 37, **578 records** with provenance split
+unchanged, 168 legacy ledger rows, 71 list items, 5 vehicles.
+
+**`ScheduledBackup` also proved itself on hardware**, both directions: it recorded a real failure in
+words while Drive was unauthorised, then ran automatically and succeeded once it was ("Automatic
+backup: last succeeded Aug 25, 22:19").
+
+**The historical finding, kept because it still binds any UNREGISTERED machine:**
+A build signed with this machine's debug key fails authorisation with
+`8: [8] Unknown error [status=UNREGISTERED_ON_API_CONSOLE]`, because its SHA-1 is not registered
+against `com.kevin.legion`. That is CLAUDE.md §2's open finding 1 observed for real rather than
+reasoned about. **Consequence: the `DatabaseSnapshot` restore exercise cannot run from here**, since
+backup and restore both go through Drive - so it stays owed, and stays a gate on the phase 6 mirror
+deletion.
+
+**One console entry unblocks it.** This machine's debug SHA-1 is
+`52:4F:39:23:7E:8B:3B:5B:C2:3A:76:A7:EE:BD:16:ED:82:77:30:07`; registering it as a second Android
+OAuth client for the package makes Drive work from here permanently.
+
+**Also still owed:** the Gemini key and every other `KeyVault` secret must be re-entered by hand.
+The ciphertext restored fine but the Keystore key that decrypts it died with the uninstall, and the
+app correctly reports "Gemini key: Not set" rather than pretending.
+
+**PHASE 2 IS COMPLETE (2026-08-26).** All three remaining items landed and were verified against the
+live project: `commit_receipt` (seven branches), the real dedup port (two-pass shared credit pool,
+tested against the actual BofA rewording case), and **the shared gate corpus** -
+`app/src/test/resources/gate-corpus.json` read by BOTH `GateCorpusTest.kt` and
+`tools/gate_corpus_sql.py`, reporting **"GATE CORPUS: all 13 cases agree"** against the real RPCs,
+rolled back to 0 rows. Ticket 03 ruling 2's condition is now met rather than owed.
+
+## 2026-08-27 - THE SCHEMA IS LIVE, AND A REGRESSION I CAUSED IS OPEN
+
+**Fleet's server schema is APPLIED AND VERIFIED** (`b628802`). All three outstanding migrations ran
+against `HomeERPBackend` through the dashboard, driven by browser automation at Kevin's request.
+Verified by querying `pg_class`/`pg_policy`, not the success panel: 8 tables, RLS on, one policy
+each, `anon` revoked at the GRANT level, `authenticated` granted. `events.vehicle_id` (uuid) and
+`events.structured_meta` (jsonb) confirmed.
+
+**Trap for next time:** the editor warns "creates tables without enabling RLS" because
+`apply_household_rls` runs inside an `execute format` its analyzer cannot read. **"Run without RLS"
+is the correct button** - it means "do not append Supabase's own statements". The other option
+silently diverges the live schema from the committed file.
+
+**OPEN AND MINE: 51 rows on Kevin's live project were falsely marked missed.** `e91a296` made
+`NotesController` read the replica when configured, so `AlarmScheduler`'s start-up sweep saw the
+merged 325-row events table instead of 56 Notes Items and marked 51 historical rows missed, writing
+through to Supabase. Home went from "1 missed" to "51 missed". Stamped 08:37:19-08:37:21, sequential
+- the exact moment the build first launched. **The data was not cleared: that is Kevin's call and
+needs the guard landed first, or the next sweep re-marks them.**
+
+**Two consequences of ruling 4's merge that the ticket never followed through**, both unruled:
+1. **No discriminator** between "a reminder LEGION owns" and "an appointment in the same table".
+   `source='legion'` does NOT work - all 106 legion rows carry `sortOrder`, so all are Notes Items.
+2. **`EventsReconcile` never propagates an engine deletion to the server.** The engine holds 56
+   active Items; the server holds 106. The other 50 are todos Kevin deleted, resurrected by the
+   replica refill and served back as live reminders. Needs a ruling on whether the phone may delete
+   server rows; ticket 04's mirror-reimport hole is the cautionary precedent.
+
+**LEDGER RE-INGESTION (ticket 12) - dry run RUN on the A25, three findings:**
+- **The SAF folder grants died with the `connectedAndroidTest` uninstall**, same as the receipt
+  photos and the Keystore key. `dumpsys` showed zero persisted grants for LEGION on a device listing
+  409 for other packages.
+- **Re-granting restores them exactly.** Re-picked `Bank Statements/USA Bank Statements` and the tree
+  URI matched a saved one character for character. Drive document ids are stable.
+- **`connect()` deliberately releases the previous grant**, so the app holds ONE folder at a time.
+  Kevin's 107 files span FOUR folders, so re-ingestion is four sequential passes, and each makes the
+  previous folder unreachable again.
+- **A bug the dry run found in itself:** `ingested_files.driveFileId` is a KEY, not an ADDRESS -
+  `stripAccountPrefix` removes Drive's `acc=N;` so the key stays stable across accounts, and
+  `IngestScanner` opens bytes with the FULL id. The dry run used the stored key as an address.
+  Fixed (`reattachAccountPrefix`), **still owed a real on-device re-run.**
+
+**NO BANK FORMAT PRINTS A COMBINED TOTAL** (`c53b167`). Every one prints per-section figures instead,
+so `statedTotalCents` is null for every bank parser and only the LLM-produced CSV can supply all
+three anchors. `BofaStatementParser` went from zero anchors to two real ones. **Open question for
+Kevin:** ruling 4 demanded three anchors for an LLM-produced CSV where lines and total share one
+nondeterministic source. A deterministically parsed bank PDF is not that case. Does it qualify on
+two read anchors plus `closing - opening == sum(lines)`, or fall to rule 7 provisional?
+
+**Ledger wave 1 (`0b53bd2`) uploads ONLY provisional rows.** The verified history cannot go up:
+`ledger_txn_header_matches_provenance` needs a `statements` header whose anchors were never
+persisted. Ticket 08's defect at the scale of the whole ledger.
+
+**Also today:** ticket 08 was already built and merely stale; ticket 09's wording half landed
+(`ccb868a`) plus a live bug where `GeneratedFormScreen` claimed "PHOTO ON FILE" from a path it never
+checked; the Google importer was widened (`6e36ef1`) with two defects found on review that would
+have silently dropped what it rescued.
+
+**RESUME POINT (updated 2026-08-26, late): Phase 4 aspect 5 - the FLEET CUTOVER, ticket 10.**
+Places, Pantry and Notes+Dates are all cut over. Ledger is last. Phase 3 is DONE (`bea1cef`,
+`9a7fa57`).
+
+**Notes+Dates landed 2026-08-26** (tickets 11 + 07's build half), four commits:
+- `b17bc88` - **a live defect, not a hazard**: `EventsReconcile` wiped the replica one line before
+  the id-preserving upsert, so EVERY reconcile reminted EVERY local id. That id is an alarm
+  `PendingIntent` request code and a soft FK from `list_item_skips`, `workout_set_logs` and
+  `muted_reminders`. Kevin ruled CARRY THE ENGINE ID, so the id is derived and cannot drift; no
+  rekey and no alarm re-arm at cutover. Two-pass refill, ordering load-bearing. No test caught the
+  original because the idempotence test asserted COUNTS, never ids.
+- `e91a296` - the dual-path rewire, plus a worse defect found under it: `uploadMigratedEvent`
+  inserted without `created_at` and took Postgres's `now()`, so at cutover all 56 notes would read
+  as created that moment, resetting `GoalChecklistSync`'s "already materialized today" gate and
+  every `LogDigestBuilder` staleness bucket. Room v40 -> **v41**.
+- `c79da08` - the agenda finally implements ticket 01 ruling 2. **53 of 56 Notes items were
+  invisible to it.** Undated renders as tomorrow, says "(showing tomorrow, no date set)" in words,
+  and is EXCLUDED from `nextUnmuted` structurally - an inferred date must never fire an alarm.
+- `ccb868a` - ticket 09's wording half, plus a live bug: `GeneratedFormScreen` rendered "PHOTO ON
+  FILE" from a non-null path without touching the disk.
+
+**Ticket 08 was already built** (`c0101cf`) and its status was merely stale - a built feature sitting
+on the board as unstarted work, section 12's trap from the other direction.
+
+**OWED ON THE PHONE, do not lose:** a reminder set BEFORE the notes cutover still firing AFTER it.
+`AlarmScheduler` has ZERO tests repo-wide and the `PendingIntent` request-code contract is exercised
+by nothing. `CarDatabaseMigration40To41Test` is written but has never been RUN. The configured Notes
+path has never touched a real Supabase project.
+
+**Still open on this map:** ticket 10 (fleet cutover, the largest remaining build), ticket 09's
+Supabase Storage half (until it lands the receipt photos have NO durable copy anywhere), ledger
+cutover, phase 5 (widen the Google importer BEFORE the Notes cut), phase 6 deletions.
+
+**PREVIOUS RESUME POINT: Phase 3 (read-path honesty)** - loading/error/stale states on ledger, pantry and
+fleet, plus the visible "as of" on money that ticket 01 ruling 9 requires. `engine/WidgetDataSource.kt`
+already words empty vs not-configured vs error and is the vocabulary to extend, not duplicate.
+Phase 3 comes BEFORE any per-aspect cutover, because a network round trip turns "empty screen" into
+a false assertion. Nothing in this map has been built - it is six
+resolved decision tickets and a sequence. Deferred deliberately: the eval/screenshot test plan
+(phase 3 changes what every migrated screen renders, so writing it first writes it twice) and the
+second phone (never attached to this machine; Supabase likely dissolves the merge problem, but that
+is `reasoned`, not verified).
+
+Also landed 2026-08-25:
+- **Calendar description blocks merged** (LEGION::v1 sentinel: machine fields reach the model,
+  prose does not) - from Kevin's cross-session patch, plus a JSONObject-wrapping fix.
+- **Home flip reverted to classic** (section below); the revert build is pushed but **NOT yet
+  installed - the A25 dropped off adb**. Install MUST happen from the Kwin laptop (debug keystore
+  lives there; never uninstall to fix a signature mismatch).
+- **Wiki-notes research resolved**: video I3bpdgFJCUY = Ben Holmes's llm-wiki pattern (agent does
+  the gardening nightly; wiki compiled weekly). Mapping: a Note record type on the Notes aspect,
+  enrichment as a SubAgent batch, provenance-separated. `research/wiki-notes-second-brain.md`.
+  Kevin wants this as his notes system - do not lose it.
+- **Cross-interface memory requirement**: companion_memories follows the user to Supabase so
+  Alfred remembers across phone/Windows. On the backend-erp map.
+
+**Standing queue behind the pivot**: widget tap-through (widgets still do not navigate), legacy
+drops (WAIT until the backend arc proves out - dropping local history first would be the bad day),
+ticket 23 (deferred fleet entities), semantic recall (.scratch/ai-craft/02).
+
+---
+
+## PREVIOUS - 2026-08-25 - THE HOME FLIP REVERTED, ASPECT-ADD FIXED
+
+**Classic home is back.** Kevin field-tested the pager as HOME overnight and ruled "kill it, revert
+everything to classic." `LegionRoute.TODAY` is `NavHost`'s `startDestination` and the HOME hard key
+again, exactly the pre-cutover-5 shape. **The pager is NOT deleted** - `LegionRoute.DASHBOARD` stays
+a real route, demoted to an opt-in surface: a single "DASHBOARD" button on `TodayScreen`. The
+pager's own HOME-page "CLASSIC" button is removed (pointless once TODAY is home again).
+**Also fixed: "adding an aspect doesn't work."** The pager's "+" page was exactly the stub ticket 18
+called it - it wrote a bare `Aspect` row with no `RecordType`/`FieldDef`, so a created aspect could
+never hold a record or a widget. Now a real create flow (aspect name, starter record type, 1-2
+starter fields) committed through `EngineToolbox.manualCreateDraft` + `commitCreateAspect` - the
+SAME write path `create_aspect`'s voice confirm handshake uses, one implementation not two.
+Screenshot re-recorded (`pager-home-seeded-arrangement.png`, CLASSIC button gone from the header).
+Full account: `docs/architecture/cutover5-2026-08-24.md`'s postscript. Owed on-device: the real
+launcher tap lands on TODAY; the fixed "+" page produces a genuinely usable aspect on the phone.
+
+---
+
+## PREVIOUS - 2026-08-24 (night) - THE CUTOVER ARC IS COMPLETE
+
+**The engine IS the app, and Kevin approved it on the phone ("i like it").** All five cutovers
+merged and device-verified in one day: Notes+Places, Pantry (anchors now persisted), Ledger (gate
+commits engine-side, atomic with rule-7 supersession), Fleet (anchors derived single-row,
+ticket-29 drift dead by construction), and the home flip (DASHBOARD is MainActivity's start
+destination; WidgetPagerActivity deleted; CLASSIC + per-aspect full-screen buttons keep every old
+capability one tap away). 569 active engine records, zero duplicate guids, legacy tables frozen
+writer-less but NOT dropped (soak first). Every cutover doc: docs/architecture/cutover{1..5}-2026-08-24.md.
+**Known named gap: widgets do not navigate on tap** (generated screens have zero callers) - the
+top follow-up. Then: legacy drops, ticket 23, the Supabase sync build (decided: BYO project,
+sync+push, every push passes the compulsion test), semantic recall (.scratch/ai-craft/02).
+
+---
+
+## PREVIOUS - 2026-08-24 - THE ASPECT ENGINE SHIPPED, ALL DATA MIGRATED
+
+**LEGION's spine is now the aspect engine.** Charted, decided, built, and verified in one
+2026-08-23/24 run: `.scratch/aspect-engine/map.md` (21 of 23 tickets resolved; 17/18/19 `built`
+owing small on-device verdicts; open: 22 cutover, 23 deferred fleet entities).
+
+- **Room v37.** Engine tables (`aspects`/`record_types`/`field_defs`/`records` + guid identity),
+  `engine/RecordStore.kt` is the ONLY writer of records. 13 field types, computed fields, the
+  reconciliation gate rehomed as engine infrastructure.
+- **ALL legacy aspect data copied onto the engine, additive-only, verified on the A25 by pulling
+  the real DB**: Dates 160 (Google Calendar imports, one-way), Notes 12/12, Places 3/3, Pantry
+  3+26 all `LLM_RECONCILED`, Ledger 161 `DETERMINISTIC` + 7 `UNRECONCILED` (1:1), Fleet 5 vehicles
+  + 52 schedules + 1 OBSERVED + 4 ASSERTED service-history rows. **Old tables and screens still
+  live; NOTHING reads the engine copies yet except the pager/mirror/meta-tools. Cutover is ticket
+  22.** Carve docs: `docs/architecture/wave{1..4}-carve-2026-08-23.md` - read before touching.
+- **The whole-app widget pager exists** (`ui/widgets/WidgetPagerActivity`, debug-exported only,
+  seeded home, real data) but is NOT the app home yet. Grid: preset sizes, launcher semantics,
+  seven on-device feel rounds with Kevin.
+- **Voice: nine engine meta-tools + Flash clerk (silent under 4s, needs grounded date) + Pro
+  schema generator with confirm handshake** live in `service/EngineToolbox.kt`. The 104-tool
+  inventory: `docs/architecture/tool-inventory-2026-08-23.md` (33 die at cutover, 48 survive, 23
+  need a call). Owed: one real voice round-trip.
+- **Mirror/sync: Kevin ran the Drive probe - PASSED** (xlsx per aspect in his picked folder, rwt +
+  hash verify, no quarantine). The xlsx files ARE the two-phone sync channel, row-merge by
+  guid+updatedAt. Second phone never tested.
+- **Owed on-device, small:** a Dates reminder actually firing (exact alarms armed); pager felt
+  verdict in anger; voice round-trip writing a record.
+- **New review muscle:** `/thermo-review` (Cursor's skill, adapted, MIT) + its detection lens
+  wired into senior-dev and bug-hunter. Six Android skill packs vendored (adb/testing/gradle/
+  debugging/security). Standing thermo candidate: `LiveToolbox.kt` (7,106 lines).
+- **Process note that keeps proving itself:** every wave's reviewer found a real bug reading code
+  (unwired migration, partial-copy flag, OR-across-rows fact drop); every UI bug needed the real
+  phone. `BioDigestBuilderTest`'s Monday flake is dead (clock-injectable overload).
+
+---
+
+## START HERE - 2026-08-20 (late) - WAKE WORD LIVE, MEMORY DE-CARRED
+
+**The wake word works and Kevin has used it.** "hey alfred" opens a turn, the assistant
+acknowledges, "nevermind" closes it, and an ordinary "no" does not - all four verified by ear on the
+A25. The greeting no longer assumes a drive and no longer mentions Chicago; Kevin: *"sounds good
+now."*
+
+**Read `.scratch/wake-word/map.md` first if you are picking up the wake word.** 5 of 12 tickets
+resolved tonight.
+
+**Four defects were found by RUNNING it, none by the compiler or the suite:**
+1. `WakeWordPreferences` had **zero writers** - the engine was complete, wired, and unreachable.
+2. The Vosk model had never been fetched onto this machine (gitignored). Debug APK 78MB -> 120MB.
+3. The grammar was hardcoded to **"hey moose"** while the new Settings row said "hey alfred".
+4. **The wake word went permanently deaf after the first conversation of every launch** - the
+   greeting counts - because `ConversationState.isBusy` going false is not the same fact as "the
+   microphone is free". Only visible because the silence detector had shipped an hour earlier.
+
+**Still open and only Kevin can close them:**
+- **Does it fire in the JEEP?** It did not, before tonight. The engine now opens
+  `VOICE_COMMUNICATION` with hardware AEC/NS/AGC instead of Vosk's hardcoded `VOICE_RECOGNITION`.
+  **Untested at road speed**, and the deaf-after-first-conversation bug may have been the real cause.
+- **The battery number.** `.scratch/wake-word/issues/03-measure-the-battery-cost.md`. A contaminated
+  19-minute window suggested ~0.7%/hour; treat that as a smell, not a measurement. Needs a clean
+  overnight run: screen off, off charger, phone left alone.
+
+**Memory: surveyed, then fixed rather than charted** (Kevin's call). Consolidation, reflection and
+human-like forgetting were ALREADY running. The defect was that `companion_memories` is keyed by
+`vehicleId` and recall read only the active car's slice, so **46 memories about Kevin were invisible
+whenever the Jeep was active**. Fixed in a WHERE clause, no schema change.
+
+**New: `memory_audit` (Room v27).** Records memory writes, deletes, recalls (query + every memory
+handed to the model) and the lines the assistant SPEAKS. Pull it with
+`adb exec-out run-as com.kevin.legion cat databases/legion_database` and read the table - that is
+how the mileage bug got diagnosed.
+
+**KNOWN GAP: the trail can miss a spoken line.** It depends on the API returning
+`outputTranscription`, and a turn was observed speaking audio with none - it missed the very
+greeting Kevin approved. Do not assume silence in the trail means silence from the assistant.
+
+**Open and unexplained: `.scratch/hands-and-senses/issues/20-it-said-142k.md`.** The assistant said
+the Jeep was at 142k when the record says 227,612. The data is correct everywhere, that figure is in
+no table, the tool returns the right label, and it could not be reproduced. The audit trail now
+exists precisely so the next occurrence can be read rather than guessed at.
+
+## START HERE - 2026-08-20 - SPOTIFY VOICE, INSTALLED BUT NOT EXERCISED
+
+**Ten of twelve tickets on `.scratch/spotify-voice/` are built, merged to `dev` and pushed.** Suite
+**1747 green** (re-run 2026-08-20 on the Kwin laptop). The APK is now **installed on the A25 and
+hash-verified** - it launches, `AriaService` starts, Room v26 opens with no migration error. That is
+all the install proves: **not one Spotify path has been spoken to.** Everything below is
+`built`+`tested`+`installed`, nothing is `on-device` in the sense of having been USED.
+
+**Do this FIRST:**
+1. **Re-approve Spotify in Setup.** `SCOPES` went 4 -> 13 (ticket 01), so the existing grant is stale
+   BY DESIGN and `play_music` refuses until the browser hop is done. Do it at a desk. If it is
+   discovered in the car, ticket 01 failed at its own purpose.
+2. ~~**Install from the OTHER laptop.**~~ **DONE 2026-08-20, and the instruction was written in a
+   frame that inverts when you move.** It said "this machine" / "the OTHER laptop" from the SECOND
+   laptop, so read from anywhere else it points the wrong way, and it cost a failed attempt. Named
+   absolutely: **the A25's install is signed by the FIRST (Kwin) laptop's
+   `C:\Users\Kwin\.android\debug.keystore`**, SHA-256
+   `4419FEDD4965BB5FD4250DD008266D978DF1CD61A02A1E4E88504B64D05F2FF3`. Verified by pulling the
+   running `base.apk` off the phone and reading its signer with `apksigner verify --print-certs`,
+   not by trusting a note. **Only the Kwin laptop can `adb install -r` onto the A25.** **NEVER
+   uninstall to get around a signature mismatch** - `sync/` has still never executed, so the phone
+   holds the only copy of 18,645 OBD samples, 148 ledger rows and the Keystore-sealed Gemini key.
+   Check the signer; do not deduce it from whichever machine you happen to be sitting at.
+
+**What landed:** the App Remote spine (it CREATES an active device rather than needing one, so
+asking for music with Spotify closed should now work - **the headline claim, never run**), a
+20-action `control_music` (queue, like, unlike, follow, shuffle, repeat, seek, restart, add to
+playlist, more from this artist), playlists matched against his OWN library before the catalogue,
+now-playing read from Spotify's own pushed state, `play_music` naming what it actually picked, and
+`legion_history` rows that can finally be replayed.
+
+**Left:** ticket 11 (the recommender - Kevin's own call: least important thing on the map) and
+ticket 12 (ship pass, which is the on-device test list).
+
+**Two numbers nobody has measured:** the playlist fuzzy-match threshold (0.6) and its cache TTL
+(15 min). Both were tuned against unit tests, never against a spoken transcript.
+
+**A research claim was DOWNGRADED:** the "Feb-2026 dev-mode cull" in
+`.scratch/spotify-voice/research/01-api-capability-surface.md` could not be re-verified from primary
+docs, and a confirmed-dead endpoint renders an identically normal reference page - so page
+appearance proves nothing. `/artists/{id}/albums` may 403 on the real Client ID; ticket 13 degrades
+to an honest spoken failure if it does.
+
+## START HERE - 2026-08-19
+
+**Second laptop is live** (`C:\Users\kevin\AndroidStudioProjects\legion`, Studio at the default
+`C:\Program Files\Android\Android Studio`). Builds and the full suite run there; **the A25 has
+never been plugged into it**, so nothing built there can be verified on-device from there.
+
+**`open_navigation` shipped to `dev` (`b210ac3`, merged `6513ec3`)** - drive-test ticket 03. The
+assistant could not open a map at all and said it had; now `location/NavigationController` fires
+`google.navigation:`/`geo:` and its success is derived from whether `startActivity` ran.
+**Every on-device box on that ticket is still unticked.**
+
+**The suite is GREEN: 1641 tests, 0 failures.** `BioDigestBuilderTest` passes now - the
+"known-failing, pre-existing" line below is STALE, do not repeat it.
+
+## START HERE - 2026-08-18 night
+
+**SWEPT 2026-08-19: all 39 open tickets across 9 maps were verified against the tree by five
+readers. Exactly ONE was stale** (quant-viz 17, four of its five decisions built; narrowed to the
+fifth). Everything else is genuinely open, waiting on Kevin, or waiting on a device, a car or a USB
+cable. **The repo is NOT ahead of its docs this time** - the tickets' own notes were honest.
+
+**Everything below is committed on `feat/mission-control` and installed on the A25, hash-verified.**
+Nothing has been looked at on the phone. That is the whole outstanding risk.
+
+**Look at these first when you pick it up:**
+1. `.scratch/goal-keeping/map.md` - charted tonight, 8 tickets, blocking wired. Start at
+   [What "on track" actually means](../../.scratch/goal-keeping/issues/01-what-on-track-means.md);
+   the research ticket was fired at a subagent and its findings land in
+   `.scratch/goal-keeping/research/08-computable-metrics.md`.
+2. **The alarm pane's contrast, on the phone.** It is the first thing in the app to read
+   `errorContainer`. That colour colliding with `surface` is what once drew every screen's body text
+   in quarantine red, and only an APK install caught it.
+3. ~~**`.scratch/proactive-mode/issues/09-fgs-start-delay.md`** - a 123s `startForeground` is a
+   crash~~ **STALE. Downgraded by its own author in `65884a0` (2026-08-17) and still open as a
+   MISREADING CANDIDATE**: a second `dumpsys` read showed `startForegroundDelayMs:554912` on a
+   demonstrably healthy running service, so the field's meaning is unestablished. `startForegroundCompat()`
+   is already first in `onCreate`. Unfixed AND unconfirmed as a bug - do not report it either way.
+
+**Shipped tonight, all unverified on-device:** driver-editable playbooks + one priming resolver for
+both answer paths; a memory screen (read + delete) and a playbook editor; temperature as a Setup
+choice; the ALARM tier wired end to end; the proactive choke point plus a master switch that is
+reachable by a human for the first time.
+
+**Two live corrections to this repo's own docs.** CLAUDE.md sec 5 says Room v21 - a ticket
+references v23/v24. Sec 10 says `ui/` is a clean slate - it has 23 screens and 13 subpackages.
+
+**Audit, 2026-08-18:** 211 tickets swept. Still unbuilt: the deck control migration (7 files still
+on raw Material), restricted-battery detection so reminders cannot silently die, three doc rules
+decided and never written down (the CLAUDE.md sec 7 read-through guardrail is the important one),
+and quant-viz's two vanished sparklines. 42 tickets unresolved across 10 maps; 34 are takeable.
+
+**Known-failing test, pre-existing:** `BioDigestBuilderTest > bodyweight reports a weekly average`.
+Fails at HEAD with the session's work stashed - verified, not assumed. Everything else is green
+(1546 tests).
+
+## Status as of 2026-08-15 (session 8)
+
+- **THE PHONE CHANGED. It is a Samsung Galaxy A25 (`SM-A256U`), Android 16 / SDK 36.** Migrated
+  2026-08-15; Kevin: "a25 is the real phone now". The **OPPO A17k (`CPH2471`) is RETIRED** - it still
+  holds a full copy of the database as a fallback, so do not wipe it, but **never write to it.** Both
+  phones were identical at the moment of migration and **`sync/` has still never executed**, so
+  anything written to the A17k diverges silently and nothing reconciles it.
+  - **Migration verified row-for-row**: 5 vehicles / 54 maintenance items / 2 service records /
+    18,645 obd_samples / 148 ledger rows / 188 ingested_files, and **totals identical to the cent on
+    both sides.** WAL was checkpointed into the main file before the copy and the target's stale
+    `-wal`/`-shm` deleted, so no mismatched journal could replay.
+  - **The Gemini key did NOT come across** - it is sealed by the A17k's hardware Keystore, which is
+    device-bound by design. Drive authorisation and runtime permissions (mic, calendar) also need
+    re-granting.
+- **Two device facts that invalidate prior assumptions, both measured:**
+  - **384 x 832 dp, not 360 x 806.** Every layout figure in `.scratch/mission-control/` was measured
+    against the A17k - the 560dp content budget, the 328/159dp tiles, the 7-character hero. Not
+    wrong, **unverified at this size.**
+  - **Animation scales are 1.0, not 0.0.** The A17k froze every infinite animation, so the entire
+    mission-control motion vocabulary was dormant. **That motion has never been observed by anyone,
+    on any device, and it is now running.** Treat as untested, not as shipped-and-fine.
+- **SIX domains: fleet, ledger, pantry, body, notes/lists/calendar, plus goals/advisors.** Tabs:
+  Today, Money, Body, Fleet, Notes, Setup. **1485 unit tests, 2 FAILING** (2026-08-17) - both
+  `BioDigestBuilderTest`, proven pre-existing by running that class alone at HEAD in a clean
+  worktree. The old "1474 green" line was wrong. **The suite is NOT green. Do not claim it is.**
+- **Room is v25.** v24->v25 indexed `obd_samples` on `(vehicleId, pid, timestamp)` - the table had
+  **ZERO indexes at 18,694 rows**, so the FAULTS drilldown read **1.68M rows to draw one screen**
+  and the old import hang was 11,511 full scans. **Verified on device: the plan is now
+  `SEARCH ... USING INDEX`, was `SCAN` + temp sort.**
+- Earlier: **v24.** v23->v24 closed the `categoryPending` default drift (annotation only, empty
+  migration body, **verified opening on the A25**). v22->v23: `drives` (the drive-boundary object).
+  v21->v22 landed 2026-08-16: `code_clear_events` (clear-DTC), additive, SQL
+  verified byte-identical to the generated schema AND applied to a pulled copy of the real device
+  DB (47->48 tables, zero DDL changes, zero row drift, integrity clean). **v20->v21 predates this
+  session and is unaccounted for here** - read `app/schemas/` rather than trusting this line.
+- Earlier: v19->v20 landed 2026-08-15 (fleet-maintenance): `intervalSource` + `deleted` on
+  `maintenance_items`, `engine` on `vehicles`, and `cost` REAL -> `costCents` INTEGER on
+  `service_records`. That last one is **non-additive**, the map's single stated exception to §5,
+  permitted only because the column was **proven empty first** (0 of 2 rows). Proven against a COPY
+  of Kevin's real data, then verified on-device.
+- Branch **`feat/mission-control`** holds this session's work. `dev`/`main` far behind. CLAUDE.md §8:
+  Claude never pushes `main`, never opens or merges that PR.
+

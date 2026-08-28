@@ -4812,3 +4812,47 @@ Six Phase 2 migrations applied to the real Supabase project (HomeERPBackend, ref
 Dashboard path bypasses migration history tracking, so any future CLI use against this project requires `supabase migration repair` rather than re-running the initial migrations. See L37 for the lesson on dashboard deployment verification.
 
 **Related:** L37 (success indicator persistence) and its regression discipline.
+
+## 2026-08-28 - the backend-ERP map closes
+
+**Ticket 14 resolved: fleet is a PROJECTION, not a cutover.** Fleet reads stay legacy-primary; the
+Postgres tables are a one-way export for the laptop surface and for durability. Fleet KEEPS its
+`SyncEngine` registry entries, because Drive is still how fleet syncs between two phones and
+Postgres is write-only from the phone - there is nothing for the two channels to disagree about.
+The build (`runFleet` on the migration screen) is done and unexercised on hardware. Reversing this
+means option 1, a local sidecar for the phone-owned columns.
+
+**Ticket 15 resolved: engine retirement was a rewire, and its step 6 was CANCELLED, not deferred.**
+All five repoints landed (places `0551ad9`, pantry `7a50aa2`, fleet `65e1f68`+`f155198`, notes
+`ab6ec1b`+`8aecdc7`, ledger `f5dcdee`). Ticket 18 then established that the premise behind deleting
+`engine/` was wrong: `create_aspect`, the generated UI and the widget pager are a shipped feature
+whose storage layer IS the engine. It narrows in scope instead, enforced by `EngineBoundaryTest`.
+
+**Ticket 12 resolved, and it corrected itself on a point of fact.** The ticket and
+`LedgerReconcile`'s doc comment both claimed rule-7 supersession keys on
+`(account_last4, account_nickname)` together, so migrated provisional rows would never be superseded
+and would double-count. **The live SQL keys on `account_last4` alone** - `20260825000600` step 5,
+carried verbatim into `20260827000300` - so there is no double-count and no schema change is owed.
+`(last4, nickname)` together is the key for DEDUP and enumerated windows (`20260825000800`), a
+different mechanism. The comment was corrected in place rather than deleted, and it records what the
+wrong claim was.
+
+**Lesson graduated to CLAUDE.md §4 rule 8:** a gate that discards its own inputs leaves rows nobody
+can ever re-verify - persist the anchors, not just the verdict. Found twice, both times too late to
+fix the data (three pantry receipts, then the ledger's whole verified history). An anchor the source
+did not state is stored NULL and recorded as absent, never synthesised from `sum(lines)`.
+
+**Ticket 10's last open modelling call ruled: recaps STAY ON THE PHONE.** No view, no RPC.
+`MonthlyRecapController` and `MpgTrust` remain the only implementation. A second implementation owes
+a shared corpus (ticket 03 ruling 2 made one the deliverable, not a preference); ruling 06 already
+declined to store recaps because they are derived; the laptop surface that would consume them does
+not exist; and `drives`/`drive_reassignments` are already on the server, so deferring costs nothing
+that deciding now saves. Binding condition on any reversal: the corpus lands in the same commit.
+
+**Ticket 19 opened at ticket 12's resolution** (CLAUDE.md §12: a resolved decision leaves its build
+ticket behind). Re-ingest the historical statements to recover their anchors. It waits on a human
+re-connecting four Drive folders on the A25, not on code, and it **gates the retirement of the
+deterministic parsers**.
+
+**MEMORY.md was cut from 960 lines to 77**, against its own 80-line cap. Verbatim into
+`session-2026-08-backend-erp.md` and `standing-caveats-2026-08.md`.

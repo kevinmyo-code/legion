@@ -36,15 +36,30 @@ import com.kevin.legion.engine.ledger.LedgerRecordBridge
  * physical card) end up on two different `(account_last4, account_nickname)` server identities
  * rather than silently colliding into one.
  *
- * **The consequence worth stating out loud, not hiding.** A future REAL statement committed through
- * the not-yet-built `commit_statement` RPC will carry a human-TYPED nickname (Kevin's own words in
- * his LEGION CSV, ticket 03 ruling 5), which will essentially never equal a migrated row's
- * `accountId`-shaped nickname for the same physical account. Since rule-7 supersession keys on
- * `(account_last4, account_nickname)` together (ruling 7: "the key... is therefore
- * `(account_last4, account_nickname)` together"), **a migrated provisional row for an account will
- * not be superseded by a later real statement for that same account** unless the nicknames happen to
- * match. This reconcile does not attempt to fix that - it is a known, accepted gap in exactly the
- * style `LedgerAccountIdentity.kt`'s own doc comments state theirs, not an oversight.
+ * **CORRECTED 2026-08-28 (ticket 12's closure). This comment used to claim a double-count gap that
+ * the live SQL does not have, and the claim was wrong in a way worth recording rather than simply
+ * deleting.** It said: a future REAL statement carries a human-TYPED nickname (ticket 03 ruling 5)
+ * which will essentially never equal a migrated row's `accountId`-shaped nickname, and since rule-7
+ * supersession keys on `(account_last4, account_nickname)` together, a migrated provisional row
+ * would never be superseded and would double-count.
+ *
+ * **Rule-7 supersession does NOT key on the nickname.** Read the RPC:
+ * `20260825000600_commit_statement_rpc.sql` step 5, carried forward verbatim into
+ * `20260827000300_commit_statement_deterministic_two_anchor.sql`, deletes on
+ * `provenance = 'UNRECONCILED' and account_last4 = v_last4 and txn_date between ...` - no nickname
+ * anywhere in the predicate, and its own header says so outright ("`sameCard` becomes the last-four
+ * match. Its known weakness carries over unchanged... two accounts sharing a last four collide,
+ * which is what the nickname is for"). So a real statement DOES supersede a migrated provisional row
+ * for the same last-4 in its window, whatever nickname either carries. There is no double-count.
+ *
+ * **What `(account_last4, account_nickname)` together IS the key for** is dedup and enumerated
+ * windows (`20260825000800_ledger_dedup.sql`), where plain equality on a full account identity is
+ * required so a checking account cannot absorb a card's rows. Ruling 7's sentence was about that
+ * key; this comment applied it to a different mechanism.
+ *
+ * **The residual risk runs the other way, is pre-existing, and is documented at its own site:** a
+ * real statement for account A supersedes provisional rows of account B that share a last-4. That
+ * is the collision the RPC's own header names and accepts, not something migration introduced.
  *
  * **Why this wave uploads ONLY `UNRECONCILED` rows, never `DETERMINISTIC`/`LLM_RECONCILED` ones.**
  * See [MigratedLedgerTransaction]'s own doc comment for the full trace: every currently-stored
