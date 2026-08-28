@@ -230,3 +230,60 @@ stay on the phone.
 **Owed on hardware, and none of it is code:** `runFleet` has never been tapped, so the projection is
 unproven end to end; the new migration is unapplied; and the diff has never been read against real
 data. Suite: 2,842 tests, 0 failures.
+
+## RUN ON THE A25, 2026-08-28. The projection works, and it surfaced two defects.
+
+First real end-to-end run against `HomeERPBackend`, after the `year 0` skip fix. Server counts
+queried from the catalog and cross-checked against what the screen said, table by table.
+
+| table | on device | uploaded | on server | agrees |
+|---|---|---|---|---|
+| vehicles | 5 (3 exportable) | 3 | 3 | yes |
+| service_history | 5 | 4 | 4 | yes |
+| drives | 17 | 17 | 17 | yes |
+| code_events | 59 | 59 | 59 | yes |
+| code_clear_events | 2 | 2 | 2 | yes |
+| vehicle_specs | 4 | 3 | 3 | yes |
+| build_entries | 1 | 1 | 1 | yes |
+| drive_reassignments | 1 | 0 | 0 | **wording defect, below** |
+| events (car_task) | 14 | 13 | 13 | **defect, below** |
+
+**The skip and its cascade behaved exactly as designed.** Both year-0 placeholders were named with
+their guids and the reason. Three child rows - a service record, a vehicle spec and the drive
+reassignment - were held back with "vehicle not yet migrated" rather than uploaded against a guessed
+parent, and the screen said so in words.
+
+### Defect 1: a guid that already exists under ANOTHER kind silently strands a row, forever
+
+One car task uploaded as 13 of 14 and the 14th was reported "only on this device". It has no vehicle
+dependency, so the skip cascade is not the cause.
+
+**The row IS on the server** - `origin_guid = e7546107-...`, title "fix fuel pump relay fault and
+transmission electrical issue for cher...", **`kind = 'reminder'`**. It had already been uploaded by
+the Notes path under the same guid.
+
+`FleetBackend.uploadMigratedEvent`'s existence guard is **table-wide on `origin_guid`**, so it found
+the row and correctly declined to insert a duplicate. But the car-task wave's diff reads
+`fetchActive().filter { kind == CAR_TASK }`, which is **kind-scoped**. A guid that exists under a
+different kind therefore satisfies the guard and fails the diff at the same time: the row can never
+upload and never stops being reported as drift. `isClean` can never go true.
+
+**And the row is now a `reminder` on the server holding a car task's text**, which is the exact
+hazard `20260828000100`'s third kind was introduced to prevent, arriving by a route that migration
+did not consider. Needs a ruling: does the guard become kind-scoped (allowing the same guid under two
+kinds), does the wave re-kind an existing row it owns, or is a cross-kind guid collision itself the
+thing to forbid? Not decided here.
+
+### Defect 2: "already all on the server" was said about a table with nothing on it
+
+The screen reported `Drive reassignments: 1 on this device, already all on the server. NOT clean.`
+The server has **zero** drive_reassignments. The single row was held back because its vehicle was
+skipped - correctly, and it is named in the held-back list two lines further down.
+
+So the phrase is generated from "0 uploaded this run" and asserts a fact it did not check. CLAUDE.md
+section 7's outcome-verb rule is about speech, but the principle is the same one: a rendered line
+must not assert a state nobody verified. It should say nothing was uploaded and why, not that the
+server already has it.
+
+Both defects are wording-and-diff level. **No data was written wrongly and nothing on the device
+changed.**
