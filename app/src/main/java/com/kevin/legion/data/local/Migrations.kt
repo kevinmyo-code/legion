@@ -1719,3 +1719,23 @@ val MIGRATION_44_45 = object : Migration(44, 45) {
         db.execSQL("ALTER TABLE `event_skips_replica` RENAME TO `event_skips`")
     }
 }
+
+/**
+ * v45 -> v46: `pantry_receipts` gains `photoObjectPath` (ticket 09,
+ * `.scratch/backend-erp/issues/09-backups-do-not-cover-files.md`), mirroring the server's
+ * `receipts.photo_object_path` column that pantry's cutover (v44's doc comment) deliberately left
+ * unused. Null on every existing row (nothing has ever written it yet, on either the configured or
+ * unconfigured path) and stays null on an unconfigured install going forward - only
+ * [com.kevin.legion.pantry.PantryController.commitReceiptRemote]'s CONFIGURED path, on a
+ * successful [com.kevin.legion.backend.SupabasePhotoBackend] upload, ever sets it. See
+ * [com.kevin.legion.data.local.PantryReceipt]'s own class doc for why this needs to exist at all:
+ * without it, [com.kevin.legion.ui.generated.PhotoFieldResolver] cannot tell "the photo is gone and
+ * unrecoverable" apart from "not on this device, but safely backed up to Storage" for a
+ * successfully-committed receipt, which - per [PantryReceipt.sourceImagePath]'s own comment - is
+ * EVERY successfully-committed receipt, by design, once its local staging file is deleted.
+ */
+val MIGRATION_45_46 = object : Migration(45, 46) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `pantry_receipts` ADD COLUMN `photoObjectPath` TEXT")
+    }
+}

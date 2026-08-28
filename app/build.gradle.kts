@@ -310,6 +310,8 @@ dependencies {
     implementation(platform(libs.supabase.bom))
     implementation(libs.supabase.auth)
     implementation(libs.supabase.postgrest)
+    // storage-kt (ticket 09, receipt-photo durability): same BOM-managed version as auth/postgrest.
+    implementation(libs.supabase.storage)
     implementation(libs.kotlinx.serialization.json)
     // Ktor needs an explicit engine on Android rather than relying on ServiceLoader
     // auto-detection (undocumented/unreliable under R8 - the debug build here never runs R8, but

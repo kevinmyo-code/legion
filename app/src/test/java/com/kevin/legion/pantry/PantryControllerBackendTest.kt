@@ -4,6 +4,8 @@ import com.kevin.legion.backend.CommitOutcome
 import com.kevin.legion.backend.MigratedReceipt
 import com.kevin.legion.backend.PantryBackend
 import com.kevin.legion.backend.PantryBackendException
+import com.kevin.legion.backend.PantryPhotoBackend
+import com.kevin.legion.backend.PantryPhotoBackendException
 import com.kevin.legion.backend.PantryReconcile
 import com.kevin.legion.backend.RemoteReceipt
 import com.kevin.legion.backend.RemoteReceiptLine
@@ -102,6 +104,23 @@ class PantryControllerBackendTest {
         }
     }
 
+    /** Ticket 09's photo-durability seam - an in-memory stand-in for [SupabasePhotoBackend], same
+     * fake-not-real-network posture as [FakePantryBackend] above. */
+    private class FakePantryPhotoBackend(var uploadFails: Boolean = false) : PantryPhotoBackend {
+        val uploaded = mutableMapOf<String, ByteArray>()
+        var uploadCalls = 0
+
+        override suspend fun uploadReceiptPhoto(objectPath: String, bytes: ByteArray): Result<String> {
+            uploadCalls++
+            if (uploadFails) return Result.failure(PantryPhotoBackendException("simulated upload failure"))
+            uploaded[objectPath] = bytes
+            return Result.success(objectPath)
+        }
+
+        override suspend fun downloadReceiptPhoto(objectPath: String): Result<ByteArray?> =
+            Result.success(uploaded[objectPath])
+    }
+
     @Before
     fun clearState() {
         RoomTestReset.resetCarDatabaseSingleton()
@@ -117,6 +136,7 @@ class PantryControllerBackendTest {
         RoomTestReset.drainArchDiskIoPool()
 
         PantryController.backendOverride = null
+        PantryController.photoBackendOverride = null
     }
 
     private fun success(
@@ -212,6 +232,79 @@ class PantryControllerBackendTest {
         assertTrue(first.success)
         assertTrue(second.success)
         assertEquals(1, db.pantryReceiptDao().getAll().size)
+    }
+
+    // ------------------------------------------------------------------------ ticket 09: photo backup
+
+    @Test
+    fun `a configured commit uploads the receipt photo and stores the returned object path`() = runBlocking {
+        val backend = FakePantryBackend()
+        val photos = FakePantryPhotoBackend()
+        PantryController.backendOverride = backend
+        PantryController.photoBackendOverride = photos
+        val bytes = "photo-bytes".toByteArray()
+
+        val outcome = PantryController.commitReceiptRemote(context, backend, bytes, success(store = "Walmart"))
+
+        assertTrue(outcome.success)
+        assertEquals(1, photos.uploadCalls)
+        val stored = db.pantryReceiptDao().getAll().single()
+        assertEquals(
+            "the stored object path must be the same content_sha256 the commit RPC's payload carries",
+            com.kevin.legion.ledger.IngestPipeline.sha256(bytes),
+            stored.photoObjectPath,
+        )
+        assertTrue(photos.uploaded.containsKey(stored.photoObjectPath))
+    }
+
+    @Test
+    fun `a failed photo upload does NOT lose the receipt - it commits with a null object path and says so`() = runBlocking {
+        val backend = FakePantryBackend()
+        val photos = FakePantryPhotoBackend(uploadFails = true)
+        PantryController.backendOverride = backend
+        PantryController.photoBackendOverride = photos
+
+        val outcome = PantryController.commitReceiptRemote(context, backend, "photo-a".toByteArray(), success(store = "Walmart"))
+
+        // The receipt's FIGURES are what matter and must survive a photo-backup failure -
+        // losing them here would be strictly worse than the durability gap ticket 09 closes.
+        assertTrue("a failed photo upload must not fail the whole commit", outcome.success)
+        assertTrue(
+            "the failure must be worded, not silently swallowed (CLAUDE.md section 7)",
+            outcome.message.contains("couldn't back up", ignoreCase = true),
+        )
+        val stored = db.pantryReceiptDao().getAll().single()
+        assertEquals("Walmart", stored.store)
+        assertEquals(null, stored.photoObjectPath)
+    }
+
+    @Test
+    fun `no photo backend configured (unconfigured Supabase Storage) skips the upload and leaves photoObjectPath null`() = runBlocking {
+        val backend = FakePantryBackend()
+        PantryController.backendOverride = backend
+        // photoBackendOverride left null on purpose - PantryController.photoBackend(context)
+        // resolves via SupabaseClientProvider, which returns null in this Robolectric context
+        // with no Supabase config, so the upload branch never fires at all.
+
+        val outcome = PantryController.commitReceiptRemote(context, backend, "photo-a".toByteArray(), success(store = "Walmart"))
+
+        assertTrue(outcome.success)
+        assertFalse("no photo-upload note should appear when Storage isn't configured at all", outcome.message.contains("back up"))
+        assertEquals(null, db.pantryReceiptDao().getAll().single().photoObjectPath)
+    }
+
+    @Test
+    fun `the unconfigured (legacy) write path never touches the photo backend`() = runBlocking {
+        // writeReceipt is the UNCONFIGURED half - PantryPhotoStore is untouched by this ticket
+        // there, and no photoBackend resolution happens at all (see PantryController's own class
+        // doc: "the unconfigured path has nowhere to upload to").
+        val photos = FakePantryPhotoBackend()
+        PantryController.photoBackendOverride = photos
+
+        val outcome = PantryController.writeReceipt(context, success(store = "Aldi"))
+
+        assertTrue(outcome.success)
+        assertEquals(0, photos.uploadCalls)
     }
 
     // --------------------------------------------------------------------------------------- reads

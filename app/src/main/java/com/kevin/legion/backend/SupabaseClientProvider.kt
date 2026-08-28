@@ -5,6 +5,7 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
+import io.github.jan.supabase.storage.Storage
 import io.ktor.client.engine.okhttp.OkHttp
 
 /**
@@ -67,6 +68,9 @@ object SupabaseClientProvider {
                 sessionManager = session
             }
             install(Postgrest)
+            // Storage (ticket 09): the receipt-photo durability half of ticket 01 ruling 10 as
+            // amended. Same client, same OkHttp engine - no separate install target needed.
+            install(Storage)
         }
         cachedKey = key
         cachedClient = client

@@ -170,6 +170,12 @@ roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi
 supabase-bom = { group = "io.github.jan-tennert.supabase", name = "bom", version.ref = "supabaseKt" }
 supabase-auth = { group = "io.github.jan-tennert.supabase", name = "auth-kt" }
 supabase-postgrest = { group = "io.github.jan-tennert.supabase", name = "postgrest-kt" }
+# storage-kt (ticket 09 backend-erp, the receipt-photo durability half): the BYO Storage client.
+# Same BOM, no version.ref of its own - checked at 3.6.0 the same way auth-kt/postgrest-kt were
+# (the artifact exists at that coordinate on Maven Central; adding a THIRD supabase-kt module at
+# the pinned version does not reopen the 3.7.0 metadata question, since the whole point of the BOM
+# is that every module it manages lands on one release together).
+supabase-storage = { group = "io.github.jan-tennert.supabase", name = "storage-kt" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 # OkHttp engine for Ktor (supabase-kt's transport), chosen over ktor-client-cio (the docs'
 # generic recommendation) because OkHttp is already a first-class dependency of this repo

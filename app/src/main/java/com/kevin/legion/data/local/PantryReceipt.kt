@@ -43,6 +43,20 @@ import androidx.room.PrimaryKey
  * [com.kevin.legion.pantry.PantryReceiptAgent]'s own reconciliation), and a pre-v44 row genuinely
  * has none at all (null here means "not printed" or "predates this column," never "not checked" -
  * the gate itself already ran either way).
+ *
+ * **v45 -> v46 (ticket 09, `.scratch/backend-erp/issues/09-backups-do-not-cover-files.md`).**
+ * [photoObjectPath] mirrors `receipts.photo_object_path` server-side - null on every unconfigured
+ * install (there is no bucket to upload to) and on any configured receipt whose upload to
+ * [com.kevin.legion.backend.SupabasePhotoBackend] failed (see
+ * [com.kevin.legion.pantry.PantryController.commitReceiptRemote]'s own doc comment: a failed photo
+ * upload never blocks or rolls back the receipt commit). Non-null means the photo bytes have a
+ * durable copy in the household's Storage bucket even after [sourceImagePath]'s local staging file
+ * is gone - which, per that field's own comment, is true of EVERY successfully-committed receipt
+ * by design, not just ones affected by the ticket 09 incident. [PhotoFieldResolver] reads this
+ * (via a caller-supplied `hasRemoteCopy` bit) to tell "gone and unrecoverable" apart from "not on
+ * this device, but safely backed up" - collapsing those two would be exactly the "unreadable and
+ * empty are different sentences" mistake this ticket exists to fix, aimed at a photo instead of a
+ * permission.
  */
 @Entity(tableName = "pantry_receipts")
 data class PantryReceipt(
@@ -61,4 +75,6 @@ data class PantryReceipt(
     val subtotalCents: Long? = null,
     val taxCents: Long? = null,
     val otherChargesCents: Long? = null,
+    // v46 (ticket 09) - see this class's own doc comment above.
+    val photoObjectPath: String? = null,
 )

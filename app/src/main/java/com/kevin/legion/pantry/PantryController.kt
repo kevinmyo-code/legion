@@ -5,8 +5,10 @@ import android.util.Log
 import androidx.room.withTransaction
 import com.kevin.legion.backend.CommitOutcome
 import com.kevin.legion.backend.PantryBackend
+import com.kevin.legion.backend.PantryPhotoBackend
 import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabasePantryBackend
+import com.kevin.legion.backend.SupabasePhotoBackend
 import com.kevin.legion.data.PantryPhotoStore
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.LedgerCurrency
@@ -74,10 +76,20 @@ import org.json.JSONObject
  *   ACK**, never ahead of it, never on a failure - a failed write is reported as failed in words and
  *   leaves Room untouched (CLAUDE.md §7).
  *
- * **Photos stay on the device in this ticket.** `photo_object_path` is left NULL server-side;
- * [PantryPhotoStore] is unchanged. Supabase Storage is not installed
- * ([com.kevin.legion.backend.SupabaseClientProvider] only installs Auth and Postgrest) and wiring
- * it is its own piece of work, owed separately.
+ * **Photos get a durable copy as of ticket 09** (`.scratch/backend-erp/issues/09-backups-do-not-
+ * cover-files.md`, ticket 01 ruling 10 as amended). [commitReceiptRemote] uploads the receipt bytes
+ * to [SupabasePhotoBackend] (the household's private `receipt-photos` bucket,
+ * `supabase/migrations/20260827000400_receipt_photos_bucket.sql`) BEFORE building the commit
+ * payload, so a successful upload's object path rides along as `photo_object_path` on the same RPC
+ * call, and [writeReceipt]'s local counterpart is a no-op (the unconfigured path has nowhere to
+ * upload to - [PantryPhotoStore] stays exactly as it was there). **A failed photo upload never
+ * loses the receipt**: [commitReceiptRemote] commits the receipt's figures regardless of the
+ * upload outcome, with `photo_object_path` left null and the failure worded into
+ * [PantryImportResult.message] - losing financial data to a photo backup failure would be strictly
+ * worse than the durability gap ticket 09 exists to close. [PantryPhotoStore]'s own local file is
+ * UNCHANGED by any of this - still deleted on a successful commit exactly as before (that file was
+ * always staging-only, never the durable copy; see [PantryReceipt.sourceImagePath]'s own comment) -
+ * this ticket only makes sure the bytes reach a durable home BEFORE that deletion happens.
  */
 object PantryController {
     private const val TAG = "PantryController"
@@ -97,6 +109,23 @@ object PantryController {
         backendOverride?.let { return it }
         val client = SupabaseClientProvider.get(context) ?: return null
         return SupabasePantryBackend(client)
+    }
+
+    /** Test seam: settable from a unit test so a [PantryPhotoBackend] fake can be injected without
+     * a real [SupabaseClientProvider] / network - the photo-upload sibling of [backendOverride].
+     * Defaults to null, meaning "resolve normally"; production code never sets this. */
+    @Volatile
+    internal var photoBackendOverride: PantryPhotoBackend? = null
+
+    /** Resolves the active photo backend, or null when Supabase is not configured. Deliberately
+     * its OWN resolution (not derived from [backend]'s null-ness) so a test can exercise
+     * [commitReceiptRemote]'s upload branch with a [PantryBackend] fake and a real/absent
+     * [PantryPhotoBackend] independently - same posture as keeping [backendOverride] and
+     * [photoBackendOverride] as two separate volatiles rather than one combined "configured" flag. */
+    private fun photoBackend(context: Context): PantryPhotoBackend? {
+        photoBackendOverride?.let { return it }
+        val client = SupabaseClientProvider.get(context) ?: return null
+        return SupabasePhotoBackend(client)
     }
 
     private fun receiptDao(context: Context) = db(context).pantryReceiptDao()
@@ -169,7 +198,17 @@ object PantryController {
                 } else {
                     writeReceipt(context, result)
                 }
-                if (written.success) PantryPhotoStore.delete(context, imageFile)
+                // **Only delete the staging file when a durable copy actually exists**, which
+                // means: configured, so the Storage upload had somewhere to go. This used to
+                // delete unconditionally, and on an UNCONFIGURED install that left every committed
+                // receipt's `sourceImagePath` pointing at a file the app had just removed itself -
+                // the exact "row pointing at nothing" shape ticket 09 is named after, arrived at
+                // by design rather than by the uninstall that ticket investigated.
+                //
+                // Deleting after a successful upload is right: the bucket holds the durable copy
+                // and the local file is only staging. Deleting with no upload is throwing the
+                // only copy away. A clone-and-run install has no bucket, so it keeps its photos.
+                if (written.success && backend != null) PantryPhotoStore.delete(context, imageFile)
                 written
             }
         }
@@ -264,6 +303,17 @@ object PantryController {
      * `internal`, not `private` - the network-free half of the CONFIGURED path, exercised directly
      * by `PantryControllerBackendTest` with a [com.kevin.legion.backend.PantryBackend] fake, same
      * posture as [writeReceipt] being the network-free half of the unconfigured one.
+     *
+     * **Photo upload happens FIRST, before the commit RPC** (ticket 09), so a successful upload's
+     * object path can ride along on the SAME [buildCommitReceiptPayload] call as `photo_object_path`
+     * rather than needing a second round trip to attach it after the fact. [PantryPhotoBackend]
+     * resolves via [photoBackend] independently of [backend] (a test can supply a
+     * [PantryPhotoBackend] fake through [photoBackendOverride] without touching [backendOverride],
+     * or leave it unset - unset resolves to null in a Robolectric context with no Supabase
+     * configured, in which case the upload step is skipped entirely and every existing
+     * `PantryControllerBackendTest` case keeps its exact old behaviour with `photo_object_path`
+     * staying null). **A failed or skipped upload NEVER blocks the commit** - see this function's
+     * own doc comment above for why that ordering is load-bearing.
      */
     internal suspend fun commitReceiptRemote(
         context: Context,
@@ -271,7 +321,23 @@ object PantryController {
         bytes: ByteArray,
         result: PantryIngestResult.Success,
     ): PantryImportResult {
-        val payload = buildCommitReceiptPayload(bytes, result)
+        val sha256 = IngestPipeline.sha256(bytes)
+        var photoObjectPath: String? = null
+        var photoUploadFailed = false
+        photoBackend(context)?.let { photos ->
+            photos.uploadReceiptPhoto(sha256, bytes).fold(
+                onSuccess = { objectPath -> photoObjectPath = objectPath },
+                onFailure = { e ->
+                    // Worded, never thrown - see this function's own doc comment: losing the
+                    // receipt to a photo backup failure would be strictly worse than the gap
+                    // ticket 09 exists to close. The receipt itself still commits below.
+                    Log.w(TAG, "commitReceiptRemote: photo upload failed, committing without it - ${e.message}")
+                    photoUploadFailed = true
+                },
+            )
+        }
+
+        val payload = buildCommitReceiptPayload(result, sha256, photoObjectPath)
         val outcome = backend.commitReceipt(payload).getOrElse {
             Log.w(TAG, "commitReceiptRemote: request failed - ${it.message}")
             return PantryImportResult(
@@ -280,11 +346,20 @@ object PantryController {
             )
         }
 
+        // Appended to a successful commit's message when the photo backup step failed - the
+        // receipt's figures are safe either way, but the driver should know the photo is only on
+        // this device for now (CLAUDE.md §7: a failure must say in words what did NOT happen).
+        val photoNote = if (photoUploadFailed) {
+            " (Couldn't back up the receipt photo - it's only on this device for now.)"
+        } else {
+            ""
+        }
+
         return when (outcome) {
             is CommitOutcome.Quarantined -> PantryImportResult(success = false, message = outcome.reason)
             is CommitOutcome.AlreadyCommitted -> PantryImportResult(
                 success = true,
-                message = "This receipt was already logged.",
+                message = "This receipt was already logged.$photoNote",
             )
             is CommitOutcome.Committed -> {
                 // Room is written ONLY here, after a genuine server ACK - never ahead of it.
@@ -296,12 +371,13 @@ object PantryController {
                         totalCents = result.receipt.totalCents,
                         sourceImagePath = result.receipt.sourceImagePath,
                         syncId = outcome.receiptId,
+                        photoObjectPath = photoObjectPath,
                     ),
                 )
                 lineItemDao(context).insertAll(result.items.map { it.copy(receiptId = localReceiptId) })
                 PantryImportResult(
                     success = true,
-                    message = "Logged ${result.items.size} item(s) from ${result.receipt.store}.",
+                    message = "Logged ${result.items.size} item(s) from ${result.receipt.store}.$photoNote",
                     itemCount = result.items.size,
                 )
             }
@@ -311,14 +387,23 @@ object PantryController {
     /**
      * The JSON body `public.commit_receipt(payload jsonb)` expects
      * (`supabase/migrations/20260825000700_commit_receipt_rpc.sql`), built from a gate-passed
-     * [result] - [content_sha256] is what makes the RPC idempotent, computed with the exact same
-     * [IngestPipeline.sha256] the ledger ingestion path already uses, over the same photo [bytes]
-     * that were handed to [PantryReceiptAgent]. Lives here rather than in `backend/` because it is
-     * the one place that already holds a [PantryIngestResult.Success] in this exact shape -
+     * [result] - [sha256] is what makes the RPC idempotent, computed by the caller (once, in
+     * [commitReceiptRemote]) with the exact same [IngestPipeline.sha256] the ledger ingestion path
+     * already uses, over the same photo bytes that were handed to [PantryReceiptAgent] - the raw
+     * bytes stay out of this function's signature entirely now that both of its uses (the
+     * idempotency key AND, since ticket 09, the photo's object path) are covered by [sha256] alone.
+     * [photoObjectPath] is null when the photo upload was skipped (not configured) or failed (see
+     * [commitReceiptRemote]'s own doc comment) - either way `photo_object_path` genuinely has
+     * nothing to report, never a fabricated value. Lives here rather than in `backend/` because it
+     * is the one place that already holds a [PantryIngestResult.Success] in this exact shape -
      * [PantryBackend.commitReceipt] stays free of any pantry-package type (see that function's own
      * doc comment).
      */
-    private fun buildCommitReceiptPayload(bytes: ByteArray, result: PantryIngestResult.Success): String {
+    private fun buildCommitReceiptPayload(
+        result: PantryIngestResult.Success,
+        sha256: String,
+        photoObjectPath: String?,
+    ): String {
         val itemsArray = JSONArray()
         for (item in result.items) {
             itemsArray.put(
@@ -337,7 +422,7 @@ object PantryController {
         val purchaseDateStr = java.time.Instant.ofEpochMilli(result.receipt.purchaseDate)
             .atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
         val root = JSONObject().apply {
-            put("content_sha256", IngestPipeline.sha256(bytes))
+            put("content_sha256", sha256)
             put("store", result.receipt.store)
             put("purchase_date", purchaseDateStr)
             put("currency", result.receipt.currency.name)
@@ -345,6 +430,7 @@ object PantryController {
             put("subtotal_cents", result.subtotalCents ?: JSONObject.NULL)
             put("tax_cents", result.taxCents ?: JSONObject.NULL)
             put("other_charges_cents", result.otherChargesCents ?: JSONObject.NULL)
+            put("photo_object_path", photoObjectPath ?: JSONObject.NULL)
             put("items", itemsArray)
             put("provenance", RecordProvenance.LLM_RECONCILED.name)
         }

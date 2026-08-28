@@ -1,6 +1,7 @@
 package com.kevin.legion.ui.generated
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -45,5 +46,40 @@ class PhotoFieldResolverTest {
         assertTrue(onFile != missing)
         assertTrue(missing.contains("MISSING"))
         assertTrue(missing.contains("gone"))
+    }
+
+    // --------------------------------------------------------------------- ticket 09: ON_SERVER
+
+    @Test
+    fun `no local file but a remote copy on record is ON_SERVER, not MISSING`() {
+        val status = PhotoFieldResolver.status("/data/x/y.jpg", hasRemoteCopy = true) { false }
+        assertEquals(PhotoFieldResolver.Status.ON_SERVER, status)
+    }
+
+    @Test
+    fun `a blank local path with a remote copy on record is ON_SERVER, not NONE`() {
+        val status = PhotoFieldResolver.status(null, hasRemoteCopy = true) { false }
+        assertEquals(PhotoFieldResolver.Status.ON_SERVER, status)
+    }
+
+    @Test
+    fun `a local file present wins over a remote copy - ON_FILE, not ON_SERVER`() {
+        val status = PhotoFieldResolver.status("/data/x/y.jpg", hasRemoteCopy = true) { true }
+        assertEquals(PhotoFieldResolver.Status.ON_FILE, status)
+    }
+
+    @Test
+    fun `no local file and no remote copy is still MISSING - hasRemoteCopy defaulting to false changes nothing`() {
+        val status = PhotoFieldResolver.status("/data/x/y.jpg") { false }
+        assertEquals(PhotoFieldResolver.Status.MISSING, status)
+    }
+
+    @Test
+    fun `ON_SERVER's label never reads as MISSING or as no-photo - the three worded states stay distinct`() {
+        val onServer = PhotoFieldResolver.label(PhotoFieldResolver.Status.ON_SERVER)!!
+        val missing = PhotoFieldResolver.label(PhotoFieldResolver.Status.MISSING)!!
+        assertTrue(onServer != missing)
+        assertFalse(onServer.contains("MISSING"))
+        assertTrue(onServer.contains("Supabase"))
     }
 }
