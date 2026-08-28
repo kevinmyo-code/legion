@@ -2,6 +2,7 @@ package com.kevin.legion.location
 
 import android.content.Context
 import android.location.Location
+import android.util.Log
 import com.kevin.legion.backend.PlacesBackend
 import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabasePlacesBackend
@@ -39,6 +40,8 @@ import com.kevin.legion.engine.migration.EnginePlacesRetirementCopy
  *   repointed and soaked), just no longer read or written from here.
  */
 object PlaceController {
+    private const val TAG = "PlaceController"
+
     private const val MATCH_RADIUS_M = 150f
 
     /**
@@ -107,21 +110,33 @@ object PlaceController {
         // Unconfigured (ticket 15 step 1): `places` is now the single store for this branch too,
         // so tagging is a plain upsert on its `@PrimaryKey` label - the exact re-tag-overwrites
         // semantics [TaggedPlace]'s own doc comment describes, reproduced here instead of by hand
-        // against the engine the way the retired code did. Room's suspend insert either completes
-        // or throws (there is no false/failed return to check), so - matching the configured
-        // branch immediately above, which never checks the local Room write either - the ack is
-        // unconditional once the write call returns.
+        // against the engine the way the retired code did.
+        //
+        // **The failure is WORDED, not thrown, and that was corrected rather than assumed.** Step 1
+        // originally let a Room failure propagate, on the reasoning that a suspend insert either
+        // completes or throws so there is nothing to check. That is only safe for a function
+        // reachable solely through a voice tool, because `LiveSessionController.dispatch` wraps
+        // every tool call in a catch-all. `tagPlace` is NOT only that: `ui/FleetScreen.kt` calls it
+        // from a bare `scope.launch` with no handler, so a throw there is an unhandled coroutine
+        // exception rather than anything the user can read. Section 7 wants a failure result that
+        // says in words what did not happen, and a crash says nothing at all. Found while tracing
+        // the identical question for `PantryController.writeReceipt` in step 2.
         ensureLegacyReconciled(context)
-        placeDao(context).upsert(
-            TaggedPlace(
-                label = label,
-                latitude = loc.latitude,
-                longitude = loc.longitude,
-                timestamp = System.currentTimeMillis(),
-                deleted = false,
+        return try {
+            placeDao(context).upsert(
+                TaggedPlace(
+                    label = label,
+                    latitude = loc.latitude,
+                    longitude = loc.longitude,
+                    timestamp = System.currentTimeMillis(),
+                    deleted = false,
+                )
             )
-        )
-        return ackFor(label)
+            ackFor(label)
+        } catch (e: Exception) {
+            Log.w(TAG, "unconfigured tagPlace write failed for $label: ${e.message}")
+            "Something went wrong pinning that spot - it didn't save. Try again in a sec."
+        }
     }
 
     /** Deletes the saved place matching [rawLabel]. Returns a spoken ack, or an error if not found
