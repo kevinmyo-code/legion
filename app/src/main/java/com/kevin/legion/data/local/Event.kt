@@ -99,6 +99,38 @@ import androidx.room.Update
     indices = [Index("serverId", unique = true)],
 )
 data class Event(
+    /**
+     * **Two disjoint id ranges live in this one column, by construction, not by guard** (coordinator
+     * follow-up round 2 on backend-erp ticket 17, 2026-08-28 - the collision-safety-net round found
+     * this was not enough: for an appointment losing the tie a reassigned id is cosmetic, but
+     * [id] for a REMINDER is an `AlarmManager` `PendingIntent` request code, a notification id, and
+     * a soft foreign key from `list_item_skips`/`workout_set_logs`/`muted_reminders` - the exact
+     * class of harm `b17bc88` and the 51-false-missed incident both came from, and "unlikely" is not
+     * "impossible" for a silent failure).
+     *
+     * - **Reminders (`kind = reminder`) keep the LOW range, always** - a reminder's carried id, on
+     *   the configured refill path, IS [com.kevin.legion.data.local.EngineRecord.id] (`records.id`),
+     *   the engine's own single global autoincrement shared across every aspect - see
+     *   [com.kevin.legion.backend.EventsReconcile]'s own class doc for why that source stays
+     *   authoritative. This column never chooses that value; it only ever RECEIVES it.
+     * - **Appointments (`kind = appointment`) are pinned to [APPOINTMENT_ID_BASE] and above,
+     *   always**, by [com.kevin.legion.calendar.CalendarImportController]'s own allocator
+     *   (`nextAppointmentId`) - the ONLY writer of new appointment rows. See [APPOINTMENT_ID_BASE]'s
+     *   own doc comment for the property this establishes and why a constant offset (not a runtime
+     *   guard) is what makes the two ranges disjoint BY CONSTRUCTION - there is nothing for either
+     *   side to check against the other, because there is nothing left to collide over.
+     * - **The one exception, and it is provably safe, not overlooked:**
+     *   [com.kevin.legion.engine.migration.EngineNotesRetirementCopy] seats a HISTORICAL, pre-repoint
+     *   Dates appointment at its OWN original `records.id` (a LOW value) - this looks like it breaks
+     *   the rule above, but it cannot collide with any reminder's carried id either, because BOTH
+     *   values are drawn from the exact same single `records.id` counter, and two DIFFERENT engine
+     *   records (a Dates one and a Notes one) can never share that counter's value by construction -
+     *   the same "no two engine records ever collide with each other" property
+     *   [com.kevin.legion.backend.EventsReconcile] already relies on elsewhere. This is the only
+     *   appointment-creating path exempt from [APPOINTMENT_ID_BASE], and it is exempt because it
+     *   inherits an EQUALLY strong disjointness guarantee from a different source, not because the
+     *   rule was relaxed for it.
+     */
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val serverId: String,
     val title: String,
@@ -162,7 +194,99 @@ data class Event(
      * silently dropped.
      */
     @ColumnInfo(defaultValue = "'reminder'") val kind: String = "reminder",
-)
+    /**
+     * The parsed `LEGION::v1` description-block map (v47 -> v48,
+     * `.scratch/backend-erp/issues/17-dates-is-engine-only.md`'s "RULED 2026-08-28") - a compact
+     * JSON object string, or null for the common case of an event with no such block. Mirrors
+     * [com.kevin.legion.backend.RemoteEvent.structuredMeta] field for field; see [MIGRATION_47_48]'s
+     * own doc comment for why this column exists now when [com.kevin.legion.backend.EventsReconcile]
+     * once deliberately declined to add it. Notes `Item` rows never carry one - Google Calendar is
+     * the only source of a `LEGION::v1` block, and Notes has no Google side at all. */
+    val structuredMeta: String? = null,
+    /**
+     * A locally-minted, immutable identity for this row - v48 -> v49
+     * (`.scratch/backend-erp/issues/17-dates-is-engine-only.md`, coordinator follow-up after the
+     * initial repoint: "EventsReconcile's Dates branch reads exactly stale engine rows... imported
+     * appointment reaches the server by no route at all"). Plays the exact role
+     * [com.kevin.legion.data.local.EngineRecord.guid] played for a Dates event before this repoint -
+     * a stable key [com.kevin.legion.backend.EventsReconcile] can hand to
+     * [com.kevin.legion.backend.MigratedEvent.originGuid] so a re-run recognizes "already uploaded"
+     * instead of minting a duplicate server row.
+     *
+     * **Deliberately NOT [serverId].** [serverId] starts as a client-minted placeholder but gets
+     * OVERWRITTEN with the server's own real uuid the moment [com.kevin.legion.backend.EventsReconcile]'s
+     * wholesale refill re-seats this row from server data (see that class's own `toReplica`) - a
+     * value that mutates over the row's lifetime cannot also be the identity a re-run's idempotency
+     * check depends on staying constant, or a second reconcile would upload every Dates appointment
+     * a second time under a "new" identity. [guid] is never touched by that refill except to be
+     * carried forward unchanged (from [com.kevin.legion.backend.RemoteEvent.originGuid], which is
+     * exactly the value this column supplied on the upload that created it) - same posture
+     * `service_records.syncId` already established for the identical problem, ticket 16's own
+     * precedent (`FleetReconcile`'s class doc: "a SOURCE change, not an identity change").
+     *
+     * **Minted at row creation by [com.kevin.legion.calendar.CalendarImportController.buildEventRow]**
+     * for every `kind = `[com.kevin.legion.backend.EventKind.APPOINTMENT] row (the only writer of
+     * that kind today) and preserved on every later update via `copy` - never regenerated for a row
+     * that already has one. A `kind = `[com.kevin.legion.backend.EventKind.REMINDER] row (Notes)
+     * never has this read - [com.kevin.legion.backend.EventsReconcile]'s Notes branch stays
+     * engine-sourced (see that object's own class doc for why the two branches are not symmetric),
+     * so it is left at its Kotlin default there; nothing currently reads it for that kind. `DEFAULT
+     * ''` on the additive column is a schema-validity placeholder only - [MIGRATION_48_49] backfills
+     * every pre-existing row a real one, matching [MIGRATION_36_37]'s identical `records.guid`
+     * recipe, so the column is never actually blank in a live database as of that backfill.
+     *
+     * **Deliberately NOT a unique index, unlike [records.guid][com.kevin.legion.data.local.EngineRecord.guid]/
+     * [serverId] - caught by the real build, not designed in.** Every `kind = `[com.kevin.legion.backend.EventKind.REMINDER]
+     * row (Notes) leaves this at its Kotlin default (blank) by design (see this doc comment's own
+     * "never has this read" paragraph above), so more than one such row sharing the value `""`
+     * is normal, expected, and must never fail a constraint - a unique index here would reject the
+     * SECOND Notes reminder ever created on an unconfigured install. Nothing queries `events` BY
+     * this column (every reader already has the row in hand before consulting it), so no index is
+     * needed for lookup performance either.
+     */
+    @ColumnInfo(defaultValue = "''") val guid: String = "",
+) {
+    companion object {
+        /**
+         * **The property this establishes: no [id] a reminder might ever carry can equal an [id]
+         * an appointment might ever be allocated - unconditionally, by construction, never by a
+         * runtime check on either side.** Coordinator follow-up round 2 on backend-erp ticket 17
+         * (2026-08-28): a runtime collision GUARD (round 1's fix) resolves a collision after it
+         * happens and was judged not good enough - for a reminder specifically, the loser of that
+         * guard's tie-break gets a silently reassigned id, orphaning an armed `AlarmManager` alarm
+         * that can then never be cancelled while the real one drops - the exact class of harm
+         * `b17bc88` and the 2026-08-26 51-false-missed incident both came from. A disjoint range
+         * removes the contest entirely: there is nothing for either side to check, because there is
+         * nothing left that could collide.
+         *
+         * **Why a constant offset, not something cleverer.** A reminder's id is
+         * [com.kevin.legion.data.local.EngineRecord.id] (`records.id`) - the engine's single global
+         * autoincrement, shared across EVERY aspect this app has ever had or will have (fleet,
+         * ledger, pantry, notes, dates, drives...). This is a personal, single-user app; even
+         * decades of heavy use across every aspect combined would not plausibly approach the low
+         * millions of engine records, let alone this base. `100_000_000L` (one hundred million) is
+         * chosen to sit comfortably clear of any realistic `records.id`, while leaving over two
+         * billion values of headroom below `Long`'s own range and, more immediately, below
+         * `Int.MAX_VALUE` (~2.147 billion) - appointment ids are cast via `.toInt()` for
+         * `AlarmManager`/notification request codes exactly as reminder ids are
+         * (`service/DatesReminderAlarmReceiver.kt`'s `postNotification`), and a base near that
+         * ceiling would have traded one collision class for another.
+         *
+         * **What allocates from here, and what does not.**
+         * [com.kevin.legion.calendar.CalendarImportController.nextAppointmentId] is the ONLY
+         * allocator - every NEW appointment row is explicitly inserted at a value this function
+         * returns, never left to the table's own natural autoincrement (which would draw from
+         * whatever the table's shared, cross-kind high-water mark happens to be, defeating the
+         * whole point). [com.kevin.legion.engine.migration.EngineNotesRetirementCopy] seats
+         * HISTORICAL Dates appointments at their own `records.id` instead - see [Event.id]'s own
+         * doc comment for why that is a documented, provably-safe exception rather than a gap.
+         *
+         * **A bare magic number invites someone to "simplify" it later - it must not be lowered or
+         * removed without re-establishing this exact property some other way.**
+         */
+        const val APPOINTMENT_ID_BASE = 100_000_000L
+    }
+}
 
 /**
  * One skipped occurrence of a recurring [Event] on the CONFIGURED path only - the replica of a
@@ -210,6 +334,19 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE deleted = 0 AND kind = :kind ORDER BY (startsAt IS NULL), startsAt ASC")
     suspend fun getActiveByKind(kind: String): List<Event>
 
+    /** Bounded next-batch read for one [kind], dated rows only, ascending - the candidate batch
+     * [com.kevin.legion.engine.dates.DatesAgenda.nextUnmuted] filters down to the single soonest
+     * UNMUTED appointment (backend-erp ticket 17's repoint, "RULED 2026-08-28": Dates now reads
+     * `events` directly instead of the engine). `startsAt IS NOT NULL` mirrors
+     * [com.kevin.legion.data.local.EngineRecordDao.activeWithDueAtFrom]'s identical guard for the
+     * identical reason - an inferred ("tomorrow") row is never eligible for the alarm scheduler,
+     * see that method's own doc comment and CLAUDE.md sec 7's compulsion test clause (a). */
+    @Query(
+        "SELECT * FROM events WHERE deleted = 0 AND kind = :kind " +
+            "AND startsAt IS NOT NULL AND startsAt >= :afterMs ORDER BY startsAt ASC LIMIT :limit",
+    )
+    suspend fun activeByKindFrom(kind: String, afterMs: Long, limit: Int): List<Event>
+
     /** Every row including tombstones - used only by [com.kevin.legion.backend.EventsReconcile] to
      * diff against the engine's own guid set, same shape as [PantryReceiptDao.getAll]. */
     @Query("SELECT * FROM events")
@@ -220,6 +357,15 @@ interface EventDao {
 
     @Query("SELECT * FROM events WHERE id = :id")
     suspend fun getById(id: Long): Event?
+
+    /** The highest [Event.id] at or above [floor], or null when nothing occupies that range yet -
+     * the raw read behind [com.kevin.legion.calendar.CalendarImportController.nextAppointmentId],
+     * which uses it (with [floor] = [Event.APPOINTMENT_ID_BASE]) to allocate the next appointment
+     * id from the disjoint high range. See [Event.APPOINTMENT_ID_BASE]'s own doc comment for the
+     * property this exists to serve - nothing else in this codebase should call this with a
+     * different [floor]. */
+    @Query("SELECT MAX(id) FROM events WHERE id >= :floor")
+    suspend fun maxIdAtOrAbove(floor: Long): Long?
 
     @Insert
     suspend fun insert(row: Event): Long
@@ -241,9 +387,27 @@ interface EventDao {
 
     /** Wipes the table clean before [com.kevin.legion.backend.EventsReconcile] refills it - same
      * role as [PantryReceiptDao.deleteAllForReplicaRefresh]. Never called from the regular
-     * read/write path. */
+     * read/write path. **Unused by [com.kevin.legion.backend.EventsReconcile] since the 2026-08-28
+     * coordinator follow-up** - that refill now wipes only [deleteByKindForReplicaRefresh]'s
+     * `kind = reminder` rows, never appointments (see that function's own doc comment). Left in
+     * place rather than deleted: still the correct shape for a caller that genuinely wants the
+     * whole table gone (none exists today), and CLAUDE.md's "nothing deleted" discipline for a
+     * shared write door extends to not deleting a still-correct, still-compiling DAO method with
+     * no live caller either. */
     @Query("DELETE FROM events")
     suspend fun deleteAllForReplicaRefresh()
+
+    /** Wipes only one [kind]'s rows before [com.kevin.legion.backend.EventsReconcile]'s refill -
+     * added 2026-08-28 (coordinator follow-up on backend-erp ticket 17) because the wholesale
+     * [deleteAllForReplicaRefresh] forces every refilled row through a single shared "carry or
+     * derive an id" scheme, and Dates appointments and Notes reminders now draw their carried ids
+     * from two INDEPENDENT autoincrement spaces (`Event.id` itself for appointments, the engine's
+     * `records.id` for reminders) that can coincidentally collide. [com.kevin.legion.backend.EventsReconcile]
+     * wipes only `kind = reminder` here and refills those through the existing carry/derive dance;
+     * appointment rows are never deleted at all - they already live at a known, stable local id and
+     * are updated in place instead (see that file's own `run` for the split). */
+    @Query("DELETE FROM events WHERE kind = :kind")
+    suspend fun deleteByKindForReplicaRefresh(kind: String)
 }
 
 /**

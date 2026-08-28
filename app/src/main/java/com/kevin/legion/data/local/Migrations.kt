@@ -1791,3 +1791,70 @@ val MIGRATION_46_47 = object : Migration(46, 47) {
         db.execSQL("ALTER TABLE `service_records_new` RENAME TO `service_records`")
     }
 }
+
+/**
+ * v47 -> v48: `events` gains `structuredMeta` (`.scratch/backend-erp/issues/17-dates-is-engine-only.md`,
+ * "RULED 2026-08-28": Dates repoints onto the SAME `events` table Notes already uses, so
+ * [com.kevin.legion.calendar.CalendarImportController] now writes the Google `LEGION::v1`
+ * description block straight into Room instead of through the engine's own
+ * [com.kevin.legion.engine.dates.DatesAspectSeeder.FIELD_STRUCTURED_META] field.
+ *
+ * **This column already existed as a concept before this migration - on the SERVER.**
+ * `public.events.structured_meta` (`supabase/migrations/20260827000100_events_structured_meta.sql`)
+ * and [com.kevin.legion.backend.RemoteEvent.structuredMeta]/[com.kevin.legion.backend.EventFields.structuredMeta]
+ * already carry it; [com.kevin.legion.backend.EventsReconcile.toReplica]'s own doc comment
+ * explicitly declined to add the matching Room column, reasoning "nothing on the phone renders a
+ * `LEGION::v1` block today... adding an unread column would be a migration bought for nothing." That
+ * reasoning held only as long as the value's one surviving home was the server. Now that
+ * [com.kevin.legion.calendar.CalendarImportController] writes `events` directly with no server
+ * round-trip involved at all, an unread Room column is the ONLY place this data can live at all -
+ * omitting it would not defer the loss the way it did before, it would BE the loss (ticket 17's own
+ * hazard 3: "if something is missing, say so; a Room migration is authorised with full discipline").
+ * [com.kevin.legion.backend.EventsReconcile.toReplica]/[com.kevin.legion.notes.NotesController]'s own
+ * private `RemoteEvent.toReplica` are both updated in the same commit to carry it through on the
+ * configured path too, closing the gap that comment flagged rather than leaving it half-fixed.
+ *
+ * Nullable, no `NOT NULL DEFAULT` needed - a plain additive `ADD COLUMN`, same shape as
+ * [MIGRATION_39_40]'s own `startsAt` widen reasoning: every pre-migration row simply never had this
+ * fact, and `NULL` states that plainly rather than a manufactured placeholder (CLAUDE.md section 4
+ * rule 5).
+ */
+val MIGRATION_47_48 = object : Migration(47, 48) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `events` ADD COLUMN `structuredMeta` TEXT")
+    }
+}
+
+/**
+ * v48 -> v49: `events` gains `guid` - a locally-minted, immutable identity for a Dates appointment
+ * row, added because reusing [Event.serverId] for that job turned out to be wrong (coordinator
+ * follow-up, `.scratch/backend-erp/issues/17-dates-is-engine-only.md`, 2026-08-28). [Event.serverId]
+ * gets overwritten with the server's own real uuid every time
+ * [com.kevin.legion.backend.EventsReconcile]'s wholesale refill re-seats a row from server data - a
+ * value that mutates cannot also be the identity a re-run's idempotency check depends on staying
+ * constant. See [Event.guid]'s own doc comment for the full account, and
+ * `service_records.syncId`/[MIGRATION_36_37]'s `records.guid` for the two precedents this follows.
+ *
+ * **Additive `ADD COLUMN` plus a per-row backfill, same `randomblob`/`hex` v4-shaped-UUID recipe
+ * [MIGRATION_36_37]'s `records.guid` uses - but DELIBERATELY NO unique index, unlike that column.**
+ * The first version of this migration added one and it broke the real build immediately: every
+ * `kind = reminder` row (Notes) leaves [Event.guid] at its Kotlin default (blank) by design - see
+ * that property's own doc comment - so a SECOND Notes item ever created on an unconfigured install
+ * would violate a unique constraint and crash with `SQLiteConstraintException`. Caught by running
+ * the real suite (CLAUDE.md's "a grep-clean result is not a done result" lesson, L10), not by
+ * reasoning about the schema in isolation - reported in the build report's assumptions ledger as
+ * `tested`, not `reasoned`.
+ */
+val MIGRATION_48_49 = object : Migration(48, 49) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `events` ADD COLUMN `guid` TEXT NOT NULL DEFAULT ''")
+        db.execSQL(
+            "UPDATE events SET guid = (" +
+                "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || " +
+                "substr(lower(hex(randomblob(2))), 2) || '-' || " +
+                "substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || " +
+                "lower(hex(randomblob(6)))" +
+                ") WHERE guid = ''"
+        )
+    }
+}

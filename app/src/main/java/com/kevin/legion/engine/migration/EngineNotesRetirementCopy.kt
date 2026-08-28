@@ -58,22 +58,22 @@ import org.json.JSONObject
  * write path bypasses that function entirely), so its exact value carries no meaning beyond
  * satisfying the schema.
  *
- * **Dates `Event` records have no live unconfigured CONSUMER of the copy this makes, and that is
- * reported rather than hidden.** Traced before writing this copier: `engine/dates/DatesAgenda.kt`
- * (the cross-aspect due-date scan `service/DatesAlarmScheduler.kt`/`calendar/OpenerCalendarBriefing.kt`
- * both read through) queries `engineRecordDao()` directly and unconditionally - no
- * configured/unconfigured branch to repoint at all, the identical shape ticket 16 found for
- * fleet's `ServiceHistory`/`MaintenanceSchedule` ("engine-only unconditionally... needs a real
- * schema decision, not a copier... nothing in ticket 14 or 15 authorises it"). Likewise
- * `calendar/CalendarImportController.kt` (the Google import) writes new Dates `Event` records
- * STRAIGHT to the engine, unconditionally, on every app foreground, with no replica-write funnel
- * at all - so even a perfect one-time copy of today's Dates `Event`s would start drifting the
- * moment the app is next opened. Copying them here anyway is still correct under ticket 15's own
- * "deletes nothing, only fills gaps" posture (this is additive, and matches what
- * [com.kevin.legion.backend.EventsReconcile] would itself produce for a configured install reading
- * the identical engine rows) - it is simply groundwork for a repoint that is NOT this ticket's
- * scope and has not been authorised. Filed as a gap in the build report rather than improvised
- * into a second, unauthorised repoint.
+ * **CORRECTED 2026-08-28 (backend-erp ticket 17): Dates `Event` records DO now have a live
+ * unconfigured consumer of the copy this makes.** At the time this copier was first written,
+ * `engine/dates/DatesAgenda.kt`/`service/DatesAlarmScheduler.kt`/`calendar/CalendarImportController.kt`
+ * all read/wrote the engine unconditionally, with no configured/unconfigured branch to repoint at
+ * all - the identical shape ticket 16 found for fleet's `ServiceHistory`/`MaintenanceSchedule` - so
+ * this copier's Dates half was pure groundwork for a repoint that had not yet been authorised.
+ * Ticket 17 authorised and built that repoint: `DatesAgenda` now reads the local `events` table
+ * directly, and `CalendarImportController` writes it directly, no engine involved in either
+ * direction any more. This copier's job is UNCHANGED by that - it is still the one-time bridge that
+ * seats every pre-repoint engine `Event` record at its own `records.id` in `events`, exactly the
+ * shape [DatesAgenda]'s own reads now depend on to see historical data at all (see
+ * [com.kevin.legion.engine.dates.DatesAgenda]'s own class doc for why the engine's Dates rows are
+ * now EXCLUDED from its cross-aspect scan - this copy is the only path by which a pre-repoint Dates
+ * event still reaches the agenda). Confirmed run correctly by `DatesAgendaTest`'s own
+ * "an old Dates event still living in the engine is excluded, never double-counted" case, which
+ * proves the negative half of the same contract.
  *
  * **Deletes nothing.** The engine's `Item`/`Event` records are read here and never trashed,
  * updated, or touched - ticket 15 is explicit that nothing is deleted until every aspect is
@@ -172,6 +172,12 @@ object EngineNotesRetirementCopy {
                     allDay = b(DatesAspectSeeder.FIELD_ALL_DAY),
                     location = s(DatesAspectSeeder.FIELD_LOCATION),
                     notes = s(DatesAspectSeeder.FIELD_NOTES),
+                    // Added 2026-08-28 alongside MIGRATION_47_48 - the column did not exist when
+                    // this copier was first written, so the engine's own structuredMeta field was
+                    // silently left behind on every historical Dates event this copy touches. See
+                    // that migration's own doc comment for why an unread Room column stopped being
+                    // an acceptable place to leave this value.
+                    structuredMeta = s(DatesAspectSeeder.FIELD_STRUCTURED_META),
                     source = s(DatesAspectSeeder.FIELD_SOURCE) ?: DatesAspectSeeder.SOURCE_LEGION,
                     googleEventId = s(DatesAspectSeeder.FIELD_GOOGLE_EVENT_ID),
                     kind = EventKind.APPOINTMENT,

@@ -63,8 +63,10 @@ private data class EventUpsertDto(
     @SerialName("all_day") val allDay: Boolean,
     val location: String?,
     val notes: String?,
-    // JsonElement, never a plain String - EventFields.structuredMeta is JSON TEXT
-    // (CalendarImportController.buildFieldValues produces it via org.json.JSONObject(...).toString()),
+    // JsonElement, never a plain String - EventFields.structuredMeta is JSON TEXT (produced via
+    // org.json.JSONObject(...).toString(), same shape com.kevin.legion.calendar.CalendarImportController.buildEventRow
+    // still uses for the local Room column since backend-erp ticket 17's repoint - only the WRITE
+    // TARGET moved off this DTO's own EventsReconcile-fed upload path, not the JSON shape itself),
     // and serializing a Kotlin String property sends it to Postgrest as a quoted, backslash-escaped
     // JSON STRING SCALAR, so `structured_meta` would end up holding `"{\"course\":\"COSC4320\"}"` -
     // a jsonb value that IS a string, not the JSON OBJECT this migration's own doc comment promises
@@ -111,7 +113,7 @@ private data class EventUpsertDto(
             notes = fields.notes,
             // See this class's own field doc comment - parsed here, once, rather than trusting
             // the caller's JSON text is already a JsonElement. fields.structuredMeta is internal
-            // (CalendarImportController's own org.json output), never user-typed free text, so a
+            // (org.json output, this codebase's own JSON encoding), never user-typed free text, so a
             // parse failure here is a real bug in this codebase, not a malformed third-party
             // input - letting it throw (caught by the surrounding `translating` block, same as
             // SupabasePantryBackend.commitReceipt's identical parse) is correct.

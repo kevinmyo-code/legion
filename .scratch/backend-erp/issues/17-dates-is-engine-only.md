@@ -1,6 +1,6 @@
 ---
 type: decision
-status: open
+status: built
 blocked_by: []
 map: backend-erp
 ---
@@ -77,3 +77,41 @@ shape that ruling rejected.
 importer, run it unbounded, verify, THEN cut - and the widening is built (`6e36ef1`). But that
 sequence is about not losing the class metadata living in Google's descriptions, and it has nothing
 to do with which local table Dates writes to.
+
+## BUILT 2026-08-28. Three passes, and each pass found the previous one's blind spot.
+
+Dates writes and reads the shared `events` table. `CalendarImportController` writes
+`kind = 'appointment'` rows there instead of engine records, `DatesAgenda` reads them, and step 4's
+copier already moved the historical records across (its gate now also fires from `DatesAgenda`, so a
+device that only ever used Dates is not stranded). Room v47 -> v49.
+
+**Pass 2 caught a live regression, not just a future one.** The importer's writes moved and
+`EventsReconcile`'s Dates branch kept reading the engine, so a newly imported appointment reached
+Supabase by no route at all - **ticket 16's exact shape one ticket later.** The justification offered
+for leaving it ("Google is already the cross-device sync layer") also expires by design: ruling 5
+removes Google Calendar, and then appointments would have had no sync at all. Repointed onto the
+same table the writes go to.
+
+**Pass 3 caught what pass 2 created.** Appointments carried the `events` autoincrement while
+reminders carried `records.id` - two independent counters in one physical column, proven to collide
+by a live test. The first fix was a guard, which resolves a collision after it happens. That is not
+good enough here: a reminder's id is an `AlarmManager` request code and a soft foreign key from
+three tables, so a reassignment orphans an armed alarm - the harm `b17bc88` and the 51-false-missed
+incident both came from. **Now disjoint by construction:** `APPOINTMENT_ID_BASE = 100_000_000`, one
+allocator, and a property test over 500 rows rather than one example.
+
+The one exception is documented rather than excused: the retirement copier still seats historical
+appointments at their own `records.id`, which is safe for a different reason - `records.id` is a
+single global autoincrement across every aspect, so two engine records can never share a value.
+
+**The Notes branch was investigated and deliberately NOT repointed**, with a traced reason rather
+than symmetry. `NotesController` reads `events` on both paths, so a `kind = 'reminder'` row there is
+ambiguous - already live on the server, or an unconfigured-era row still needing migration, and the
+two are indistinguishable UUIDs. Re-uploading via `uploadMigratedEvent`, which always mints a new
+server row, would duplicate every already-synced reminder. Strictly worse than the incompleteness it
+would fix. The engine stays correct there precisely because it is frozen. The real fix needs a
+migrated-flag signal and is new write-path work, recorded in `EventsReconcile`'s class doc.
+
+Suite: 2,835 tests, 0 failures, 0 leaking classes.
+
+**Owed on the phone:** the v47 -> v49 upgrades, and a real Google import plus reminder fire.

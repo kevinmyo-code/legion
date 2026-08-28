@@ -1,7 +1,9 @@
 package com.kevin.legion.engine.dates
 
+import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.Aspect
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.FieldDef
 import com.kevin.legion.data.local.FieldType
 import com.kevin.legion.data.local.MutedReminder
@@ -19,13 +21,23 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import java.util.UUID
 
 /**
  * Guards [DatesAgenda] - ticket 19 point 3, ticket 05 answer point 4: "agenda is a query, across
  * the Dates aspect plus every record's dueAt column... one fact, one place." Exercises the merge
- * across TWO different record types (Dates events AND a plain non-Dates record type with its own
- * `dueAt`) to prove this is a real cross-aspect query, not a Dates-aspect-only read that happens to
- * share a name with the ticket's charter answer.
+ * across TWO SOURCES (the local `events` table, kind=appointment, AND a plain non-Dates/Notes
+ * engine record type with its own `dueAt`) to prove this is a real cross-source query, not a
+ * Dates-only read that happens to share a name with the ticket's charter answer.
+ *
+ * **Rewritten for backend-erp ticket 17's repoint ("RULED 2026-08-28").** Before this repoint every
+ * "Dates event" fixture here was created through [RecordStore] against the engine's Dates aspect,
+ * because that was the only place [DatesAgenda] read Dates data from. It no longer is - Dates now
+ * reads the local `events` table directly (see [DatesAgenda]'s own class doc) - so every fixture
+ * that plays the "Dates event" role below is now a direct [Event] row via [createAppointment],
+ * while the "a plain non-Dates record type has its own due date" half of each test is UNCHANGED,
+ * still created through [RecordStore] against a synthetic "Tasks" aspect, because that half is
+ * exactly the cross-aspect engine merge [DatesAgenda] still performs (excluding Dates/Notes only).
  */
 @RunWith(RobolectricTestRunner::class)
 class DatesAgendaTest {
@@ -51,22 +63,32 @@ class DatesAgendaTest {
         RoomTestReset.drainArchDiskIoPool()
     }
 
+    /** Creates a [Event] row directly in the local `events` table, `kind = `[EventKind.APPOINTMENT] -
+     * the fixture shape [DatesAgenda] now actually reads for Dates, replacing the pre-repoint
+     * `store.create(schema.recordTypeId, ...)` fixtures this file used to build. Returns the row's
+     * own [Event.id], the value [DatesAgenda.AgendaItem.recordId] carries for it. */
+    private suspend fun createAppointment(
+        title: String,
+        startsAt: Long?,
+        now: Long,
+        source: String = DatesAspectSeeder.SOURCE_LEGION,
+    ): Long = db.eventDao().insert(
+        Event(
+            serverId = UUID.randomUUID().toString(),
+            title = title,
+            startsAt = startsAt,
+            source = source,
+            kind = EventKind.APPOINTMENT,
+            updatedAtMs = now,
+            createdAt = now,
+        ),
+    )
 
     @Test
-    fun `windowed merges a Dates event and a plain task's own dueAt in one sorted list`() = runBlocking {
-        val schema = DatesAspectSeeder.ensureSeeded(context)
+    fun `windowed merges a Dates appointment and a plain task's own dueAt in one sorted list`() = runBlocking {
         val now = System.currentTimeMillis()
 
-        store.create(
-            schema.recordTypeId,
-            mapOf(
-                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_TITLE) to "Standup",
-                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_START) to (now + 2_000_000L),
-                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_SOURCE) to DatesAspectSeeder.SOURCE_LEGION,
-            ),
-            RecordProvenance.USER,
-            now,
-        )
+        createAppointment("Standup", now + 2_000_000L, now)
 
         val taskAspectId = db.aspectDao().insert(Aspect(name = "Tasks", createdAt = now, updatedAt = now))
         val taskTypeId = db.recordTypeDao().insert(RecordType(aspectId = taskAspectId, name = "Task", createdAt = now, updatedAt = now))
@@ -95,31 +117,10 @@ class DatesAgendaTest {
 
     @Test
     fun `nextUnmuted skips a muted record and returns the following one`() = runBlocking {
-        val schema = DatesAspectSeeder.ensureSeeded(context)
         val now = System.currentTimeMillis()
 
-        val soonerId = (
-            store.create(
-                schema.recordTypeId,
-                mapOf(
-                    schema.fieldIds.getValue(DatesAspectSeeder.FIELD_TITLE) to "Sooner",
-                    schema.fieldIds.getValue(DatesAspectSeeder.FIELD_START) to (now + 1_000_000L),
-                    schema.fieldIds.getValue(DatesAspectSeeder.FIELD_SOURCE) to DatesAspectSeeder.SOURCE_LEGION,
-                ),
-                RecordProvenance.USER,
-                now,
-            ) as RecordStore.WriteResult.Success
-            ).recordId
-        store.create(
-            schema.recordTypeId,
-            mapOf(
-                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_TITLE) to "Later",
-                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_START) to (now + 2_000_000L),
-                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_SOURCE) to DatesAspectSeeder.SOURCE_LEGION,
-            ),
-            RecordProvenance.USER,
-            now,
-        )
+        val soonerId = createAppointment("Sooner", now + 1_000_000L, now)
+        createAppointment("Later", now + 2_000_000L, now)
         db.mutedReminderDao().mute(MutedReminder(recordId = soonerId, mutedAt = now))
 
         val next = DatesAgenda.nextUnmuted(context, now)
@@ -131,20 +132,8 @@ class DatesAgendaTest {
 
     @Test
     fun `nextUnmuted returns null when everything due is muted`() = runBlocking {
-        val schema = DatesAspectSeeder.ensureSeeded(context)
         val now = System.currentTimeMillis()
-        val id = (
-            store.create(
-                schema.recordTypeId,
-                mapOf(
-                    schema.fieldIds.getValue(DatesAspectSeeder.FIELD_TITLE) to "Only one",
-                    schema.fieldIds.getValue(DatesAspectSeeder.FIELD_START) to (now + 1_000_000L),
-                    schema.fieldIds.getValue(DatesAspectSeeder.FIELD_SOURCE) to DatesAspectSeeder.SOURCE_LEGION,
-                ),
-                RecordProvenance.USER,
-                now,
-            ) as RecordStore.WriteResult.Success
-            ).recordId
+        val id = createAppointment("Only one", now + 1_000_000L, now)
         db.mutedReminderDao().mute(MutedReminder(recordId = id, mutedAt = now))
 
         assertNull(DatesAgenda.nextUnmuted(context, now))
@@ -152,21 +141,10 @@ class DatesAgendaTest {
 
     @Test
     fun `a trashed record never appears in the window`() = runBlocking {
-        val schema = DatesAspectSeeder.ensureSeeded(context)
         val now = System.currentTimeMillis()
-        val id = (
-            store.create(
-                schema.recordTypeId,
-                mapOf(
-                    schema.fieldIds.getValue(DatesAspectSeeder.FIELD_TITLE) to "Cancelled",
-                    schema.fieldIds.getValue(DatesAspectSeeder.FIELD_START) to (now + 1_000_000L),
-                    schema.fieldIds.getValue(DatesAspectSeeder.FIELD_SOURCE) to DatesAspectSeeder.SOURCE_LEGION,
-                ),
-                RecordProvenance.USER,
-                now,
-            ) as RecordStore.WriteResult.Success
-            ).recordId
-        store.delete(id, now)
+        val id = createAppointment("Cancelled", now + 1_000_000L, now)
+        val row = db.eventDao().getById(id)!!
+        db.eventDao().update(row.copy(deleted = true, updatedAtMs = now))
 
         assertTrue(DatesAgenda.windowed(context, now, now + 3_000_000L).none { it.recordId == id })
     }
@@ -203,6 +181,42 @@ class DatesAgendaTest {
         assertTrue("an undated todo must be tagged inferred, never look like a stated date", item.dueIsInferred)
         val expectedTomorrow = now + 24 * 60 * 60 * 1000L
         assertEquals("ruling 2's literal 'due=tomorrow'", expectedTomorrow, item.dueAt)
+    }
+
+    @Test
+    fun `an undated Dates appointment also appears in windowed showing tomorrow, tagged inferred`() = runBlocking {
+        // No current writer produces this shape (CalendarImportController always has a real
+        // Google startMs), but the mechanism must hold for the events table too - a future
+        // legion-authored appointment write path could produce one, and this proves the repoint
+        // did not silently narrow the inferred-tomorrow rule to engine-sourced rows only.
+        val now = System.currentTimeMillis()
+        createAppointment("Undated appointment", startsAt = null, now = now)
+
+        val item = DatesAgenda.windowed(context, now, now + 2 * 24 * 60 * 60 * 1000L, nowMs = now)
+            .single { it.title == "Undated appointment" }
+
+        assertTrue("an undated appointment must be tagged inferred too", item.dueIsInferred)
+        assertEquals(now + 24 * 60 * 60 * 1000L, item.dueAt)
+    }
+
+    @Test
+    fun `nextUnmuted never returns an inferred appointment, even when it would otherwise be soonest`() = runBlocking {
+        // Mutation-proof companion to the engine-sourced version of this test below: this one
+        // targets the events-table branch of nextUnmuted specifically. Deleting the
+        // `startsAt IS NOT NULL` guard from EventDao.activeByKindFrom (or the equivalent structural
+        // exclusion) is exactly the mutation that would make this assertion fail - see the build
+        // report's own mutation-testing note.
+        val now = System.currentTimeMillis()
+        createAppointment("Undated appointment", startsAt = null, now = now)
+        createAppointment("Stated later appointment", startsAt = now + 48 * 60 * 60 * 1000L, now = now)
+
+        val next = DatesAgenda.nextUnmuted(context, now)
+
+        assertEquals(
+            "an inferred appointment must never be eligible for the alarm scheduler - CLAUDE.md sec 7's compulsion test",
+            "Stated later appointment",
+            next?.title,
+        )
     }
 
     @Test
@@ -279,5 +293,39 @@ class DatesAgendaTest {
         val items = DatesAgenda.windowed(context, now, now + 3 * 24 * 60 * 60 * 1000L, nowMs = now)
 
         assertEquals(listOf("Soon", "Undated todo", "Later stated"), items.map { it.title })
+    }
+
+    @Test
+    fun `an old Dates event still living only in the engine surfaces exactly once, never double-counted`() = runBlocking {
+        // Simulates the frozen historical snapshot this repoint's own class doc warns about: a
+        // Dates Event record that predates the repoint, still sitting ONLY in the engine (nothing
+        // deletes it) with no matching events-table row yet. DatesAgenda's own
+        // ensureLegacyReconciled gate (mirroring NotesController's identical posture) runs
+        // EngineNotesRetirementCopy the first time this is read, which seats it into `events` at
+        // its own records.id - after that, the engine scan excludes the Dates aspect entirely (see
+        // this file's own class doc), so the row must be visible exactly once: from `events`, via
+        // the copy, never from the engine directly, and never twice.
+        val now = System.currentTimeMillis()
+        val schema = DatesAspectSeeder.ensureSeeded(context)
+        val created = store.create(
+            schema.recordTypeId,
+            mapOf(
+                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_TITLE) to "Stale engine event",
+                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_START) to (now + 1_000_000L),
+                schema.fieldIds.getValue(DatesAspectSeeder.FIELD_SOURCE) to DatesAspectSeeder.SOURCE_LEGION,
+            ),
+            RecordProvenance.USER,
+            now,
+        ) as RecordStore.WriteResult.Success
+
+        val items = DatesAgenda.windowed(context, now, now + 3_000_000L)
+
+        val matches = items.filter { it.title == "Stale engine event" }
+        assertEquals("a pre-repoint engine-only Dates record must surface exactly once, never twice", 1, matches.size)
+        assertEquals(
+            "the copy seats it at its OWN records.id - the id contract every alarm/mute/skip depends on",
+            created.recordId,
+            matches.single().recordId,
+        )
     }
 }

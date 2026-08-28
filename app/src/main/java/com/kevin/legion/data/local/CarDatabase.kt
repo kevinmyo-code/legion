@@ -311,7 +311,7 @@ import androidx.room.RoomDatabase
         Event::class, EventSkip::class,
         VehicleReplica::class, ServiceHistoryReplica::class,
     ],
-    version = 47,
+    version = 49,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -487,6 +487,18 @@ abstract class CarDatabase : RoomDatabase() {
         // the jump from 40 straight to 45 here too - v41/42/43/44 never got an entry in THIS
         // constant's own comment trail either, same benign drift the doc above predicts;
         // `@Database(version=)` itself went 40 -> 41 -> 42 -> 43 -> 44 -> 45 in order.
+        // 2026-08-28: bumped to 48 alongside `@Database(version=)` in the same edit again
+        // (`events.structuredMeta`, backend-erp ticket 17's "RULED 2026-08-28" - Dates repoints
+        // onto `events` and `CalendarImportController` needs somewhere to put the Google
+        // `LEGION::v1` block now that it no longer goes through the engine at all). Note the jump
+        // from 45 straight to 48 here too - v46 (fleet's `service_records.kind`/`.updatedAt`,
+        // ticket 16) and v47 never got an entry in THIS constant's own comment trail either, same
+        // benign drift the doc above predicts; `@Database(version=)` itself went 45 -> 46 -> 47 ->
+        // 48 in order.
+        // 2026-08-28: bumped to 49 alongside `@Database(version=)` in the same edit again
+        // (`events.guid`, coordinator follow-up on ticket 17 the same day - EventsReconcile's
+        // Dates branch was repointed onto `events` and needed a stable, immutable identity column
+        // that survives EventsReconcile's own wholesale refill, which `serverId` does not).
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -513,7 +525,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38,
                         MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42,
                         MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46,
-                        MIGRATION_46_47,
+                        MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

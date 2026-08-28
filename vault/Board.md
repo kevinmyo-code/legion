@@ -21,7 +21,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[12-ledger-rows-have-no-statement-header\|12]] | decision | 12-ledger-rows-have-no-statement-header |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[15-engine-retirement-sequence\|15]] | decision | 15-engine-retirement-sequence |
-| [[.scratch/backend-erp/map\|backend-erp]] | [[17-dates-is-engine-only\|17]] | decision | 17-dates-is-engine-only |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[18-the-generic-ui-still-runs-on-the-engine\|18]] | decision | 18-the-generic-ui-still-runs-on-the-engine |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
@@ -50,6 +49,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[09-backups-do-not-cover-files\|09]] | build | 09-backups-do-not-cover-files |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[11-notes-write-path-rewire\|11]] | build | 11-notes-write-path-rewire |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[16-fleet-service-history-is-not-a-configured-split\|16]] | decision | 16-fleet-service-history-is-not-a-configured-split |
+| [[.scratch/backend-erp/map\|backend-erp]] | [[17-dates-is-engine-only\|17]] | decision | 17-dates-is-engine-only |
 | [[.scratch/command-center/map\|command-center]] | [[02-settings-submenus\|02]] | build | Settings stops being one long wall |
 | [[.scratch/command-center/map\|command-center]] | [[03-body-writes-by-hand\|03]] | build | The Body tab learns to write |
 | [[.scratch/command-center/map\|command-center]] | [[04-media-panel\|04]] | build | Music gets buttons |

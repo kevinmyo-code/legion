@@ -8,6 +8,7 @@ import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.dates.DatesAspectSeeder
 import com.kevin.legion.engine.notes.NotesAspectSeeder
 import org.json.JSONObject
+import java.util.UUID
 
 /**
  * The one-time (and re-runnable) Phase 4 step 1/2 job for Notes+Dates, cut over TOGETHER because
@@ -43,11 +44,74 @@ import org.json.JSONObject
  * null policy.** The policy is NULLS LAST (a dated item outranks an undated one on a timeline) -
  * see [com.kevin.legion.data.local.Event]'s own doc comment for why that has to be spelled
  * out by hand rather than relying on the `NULLS LAST` keyword.
+ *
+ * **The two branches read from DIFFERENT sources, deliberately, and that asymmetry is confirmed
+ * rather than assumed (coordinator follow-up on backend-erp ticket 17, 2026-08-28).** The Dates
+ * branch reads the local `events` table directly (`kind = appointment`) because
+ * [com.kevin.legion.calendar.CalendarImportController] - the only writer of that kind - was itself
+ * repointed off the engine onto `events` by ticket 17; reading the engine here after that repoint
+ * would have kept reading a frozen historical snapshot that stopped receiving new rows the instant
+ * the importer's write target moved, which is exactly what happened between this file's own
+ * previous version and this one (a real, live regression: an imported appointment reached the
+ * server by no route at all - CLAUDE.md's "run the real build" lesson applied to a data-flow gap
+ * rather than a compile error). **The Notes branch stays engine-sourced, and that is a separate,
+ * confirmed answer, not symmetry copied from the Dates fix.** [com.kevin.legion.notes.NotesController]'s
+ * CONFIGURED path writes straight through [EventsBackend.upsert] on every live edit (see that
+ * object's own `applyChange`) - a Notes item never needs THIS reconcile to reach the server at all
+ * once a device is configured, so this branch is a genuine one-time/re-runnable MIGRATION source
+ * (existing pre-configuration local data, or an unconfigured install's engine-era history), never
+ * the live upload path Notes items depend on day to day. That is a materially different situation
+ * from Dates, which never had (and still does not have) a configured live-write path of its own -
+ * [com.kevin.legion.calendar.CalendarImportController] is unconditional, local-only, regardless of
+ * whether Supabase is configured (see that object's own class doc) - so THIS reconcile is the ONLY
+ * route a Dates appointment ever reaches the server by, which is why it cannot be left reading a
+ * source that stopped updating. **A known gap - INVESTIGATED, not just flagged (coordinator
+ * follow-up round 2, 2026-08-28: "that is the same regression a third time and I would rather
+ * close it now than file it").** [com.kevin.legion.notes.NotesController]'s UNCONFIGURED write path
+ * was ALSO repointed off the engine onto `events` directly (backend-erp ticket 15 step 4) before
+ * this file's Notes branch was ever revisited - a Notes item created on an unconfigured install
+ * after that repoint never reaches the engine either, so at first glance this branch's engine scan
+ * looks stale for that case in the identical shape the Dates branch just had fixed.
+ *
+ * **It is NOT the same fix, and repointing it the same way would be UNSAFE - checked, not
+ * assumed.** The Dates repoint was safe specifically because [com.kevin.legion.calendar.CalendarImportController]
+ * has NO configured live-write path at all - every local `events` row it produces is, by
+ * construction, "not yet on the server," so uploading every one of them via `uploadMigratedEvent`
+ * is always correct. Notes has no such guarantee: on the CONFIGURED path,
+ * [com.kevin.legion.notes.NotesController]'s own class doc states the reads are "now IDENTICAL" -
+ * BOTH configured and unconfigured read `events` directly - which means a `kind = reminder` row in
+ * `events` on a configured install is, in the ordinary case, ALREADY live on the server via its own
+ * REAL [Event.serverId] (set on creation by [com.kevin.legion.notes.NotesController.applyChange]'s
+ * configured branch, straight from the server's own ACK). A row created while the SAME device was
+ * still unconfigured (before it was ever configured, or between the two) instead carries a
+ * CLIENT-MINTED PLACEHOLDER in that same column - see [Event]'s own class doc for why that
+ * distinction exists at all. **Both are syntactically identical UUID strings; there is no local,
+ * reliable way to tell "already live via its own serverId" apart from "still a placeholder, needs
+ * migrating" by inspecting the row alone.** Repointing this branch onto `events` unconditionally
+ * would scan BOTH kinds together and upload the already-live ones a second time through
+ * `uploadMigratedEvent` - which mints a brand-new server row every time, never upserts by serverId -
+ * duplicating every already-synced reminder on the household's Postgres. That is a strictly WORSE
+ * failure than the gap it would close: the current gap is incomplete (misses some unconfigured-then-
+ * later-configured history), a naive repoint would be actively corrupting (duplicates live data).
+ *
+ * **The engine stays the correct, LOWER-RISK source for Notes precisely because it is frozen.**
+ * Nothing has written a NEW Notes `Item` to the engine since ticket 15 step 4, so anything still
+ * sitting there is unambiguously old, historical, and not-yet-migrated - no row there can EVER be
+ * "already live," because the engine plays no part in any live write path any more. `events` cannot
+ * offer that same guarantee for `kind = reminder` rows, and won't be able to until there is a real
+ * way to mark "already migrated" independent of [Event.serverId]'s own overloaded meaning (a
+ * dedicated flag, or reusing [Event.guid] the way the Dates branch now does - but a reminder's
+ * [Event.guid] is deliberately left blank on the configured live-write path today, per that
+ * property's own doc comment, so this would need its own schema and write-path change, not a read
+ * repoint). Left on the engine. Flagged for its own ticket - the fix here is a real design decision
+ * (a migrated-flag or a guid-based signal), not a repoint.
  */
 object EventsReconcile {
 
     /**
-     * @param datesEngineCount how many active Dates `Event` engine records existed.
+     * @param datesEngineCount how many active Dates appointments existed in the LOCAL `events`
+     *   table (`kind = appointment`) - named for history/API stability; no longer an engine count
+     *   as of the 2026-08-28 coordinator follow-up (see this object's own class doc).
      * @param notesEngineCount how many active Notes `Item` engine records existed.
      * @param uploaded how many of the reconciling records were genuinely NEW server-side this run
      *   (idempotent re-run reports 0 new, matching [PantryReconcile.Report.uploaded]'s own
@@ -97,56 +161,64 @@ object EventsReconcile {
         val isClean: Boolean get() = onlyOnEngine.isEmpty() && onlyOnServer.isEmpty()
     }
 
-    /** @param engineRecordId the engine's own `records.id` this row came from - carried through so
-     * the refilled replica row can be minted at THAT id rather than a fresh autoincrement one. See
-     * this file's own `run` for why: [com.kevin.legion.data.local.Event.id] is load-bearing
-     * (alarm request codes, notification ids, soft foreign keys), and a wholesale replica refresh
-     * used to remint every one of them on every reconcile. */
-    private data class EngineEvent(val guid: String, val engineRecordId: Long, val fields: EventFields, val skipDatesEpochMs: List<Long> = emptyList())
+    /** @param guid the stable identity this row uploads under - EngineRecord.guid for the Notes
+     * branch (still engine-sourced), Event.guid for the Dates branch (events-table-sourced since
+     * backend-erp ticket 17's coordinator follow-up, 2026-08-28 - see Event.guid's own doc comment
+     * for why Event.serverId cannot play this role). @param localId the LOCAL id this row already
+     * has - the engine's own records.id for Notes, the events table's own Event.id for Dates -
+     * carried through so the refilled replica row can be minted at THAT id rather than a fresh
+     * autoincrement one. See this file's own `run` for why: Event.id is load-bearing (alarm request
+     * codes, notification ids, soft foreign keys), and a wholesale replica refresh used to remint
+     * every one of them on every reconcile. */
+    private data class EngineEvent(val guid: String, val localId: Long, val fields: EventFields, val skipDatesEpochMs: List<Long> = emptyList())
 
     suspend fun run(context: Context, backend: EventsBackend): Result<Report> {
         val db = CarDatabase.getDatabase(context)
-        val datesSch = DatesAspectSeeder.ensureSeeded(context)
+        // No DatesAspectSeeder.ensureSeeded(context) call any more - the Dates branch below reads
+        // the local `events` table directly, no engine schema lookup needed (see that branch's own
+        // comment). DatesAspectSeeder.SOURCE_LEGION is still used by the Notes branch, which is why
+        // the import survives.
         val notesSch = NotesAspectSeeder.ensureSeeded(context)
 
-        // ---- Dates aspect Event records: a direct field-for-field carry, every field required
-        // on this side already lines up with public.events' own required pair.
-        val dateRecords = db.engineRecordDao().activeByRecordType(datesSch.recordTypeId)
-        val dateEvents = dateRecords.mapNotNull { record ->
-            val payload = JSONObject(record.payload)
-            fun s(name: String) = PayloadCodec.readString(payload, datesSch.fieldIds.getValue(name))
-            fun l(name: String) = PayloadCodec.readLong(payload, datesSch.fieldIds.getValue(name))
-
-            fun bool(name: String) = PayloadCodec.readBoolean(payload, datesSch.fieldIds.getValue(name))
-
-            val title = s(DatesAspectSeeder.FIELD_TITLE) ?: return@mapNotNull null
-            val start = l(DatesAspectSeeder.FIELD_START) ?: return@mapNotNull null
+        // ---- Dates aspect appointments: read the LOCAL `events` table directly, kind = appointment.
+        // CORRECTED 2026-08-28 (coordinator follow-up, same day as ticket 17's initial repoint):
+        // this branch used to read the engine's Dates record type, which was correct only until
+        // CalendarImportController's OWN write target moved off the engine onto `events` in that
+        // same ticket - after that this branch was reading a frozen historical snapshot that stopped
+        // receiving new rows the instant the importer's write target moved. Ticket 16's shape one
+        // ticket later: a repoint moved the writes, this reconcile kept reading where they used to
+        // be, and the projection silently stopped receiving new rows - there it was oil changes,
+        // here it was appointments never reaching the server at all. See this object's own class
+        // doc for why the Notes branch below stays engine-sourced instead of following this repoint
+        // - a genuinely different question, confirmed rather than assumed symmetric.
+        //
+        // No datesSch/PayloadCodec/JSONObject involved any more - an Event row already carries
+        // every field flat, no schema lookup needed. Every active appointment is included
+        // regardless of startsAt (nullable now, matching the Notes branch's own "an undated item
+        // is an ordinary row" posture, ticket 07's ruling) - the old engine-schema-era "no start,
+        // skip it" filter does not apply to a table where startsAt is legitimately nullable.
+        val dateRows = db.eventDao().getActiveByKind(EventKind.APPOINTMENT)
+        val dateEvents = dateRows.map { row ->
             EngineEvent(
-                guid = record.guid,
-                engineRecordId = record.id,
+                guid = row.guid,
+                localId = row.id,
                 fields = EventFields(
-                    title = title,
-                    createdAtMs = record.createdAt,
-                    startsAtMs = start,
-                    endsAtMs = l(DatesAspectSeeder.FIELD_END),
-                    // Coordinator-caught defect (2026-08-27): this was hardcoded `false` for every
-                    // Dates Event, silently discarding an all-day Google import on the exact field
-                    // CalendarImportController's own widening was supposed to rescue. The Notes
-                    // branch below already read its own allDay field correctly; Dates simply had
-                    // none to read until DatesAspectSeeder.FIELD_ALL_DAY existed.
-                    allDay = bool(DatesAspectSeeder.FIELD_ALL_DAY),
-                    location = s(DatesAspectSeeder.FIELD_LOCATION),
-                    notes = s(DatesAspectSeeder.FIELD_NOTES),
-                    // The LEGION::v1 block, already parsed into its own engine field by
-                    // CalendarImportController - carried through verbatim (still JSON text) rather
-                    // than re-parsed, so it reaches public.events.structured_meta and survives past
-                    // the engine's own eventual retirement (ticket 01 ruling 11 / ruling 7). See
-                    // RemoteEvent.structuredMeta's own doc comment.
-                    structuredMeta = s(DatesAspectSeeder.FIELD_STRUCTURED_META),
-                    source = s(DatesAspectSeeder.FIELD_SOURCE) ?: DatesAspectSeeder.SOURCE_LEGION,
-                    googleEventId = s(DatesAspectSeeder.FIELD_GOOGLE_EVENT_ID),
-                    // A Dates `Event` is always an appointment - ticket 11's 2026-08-27 ruling #1.
-                    // Explicit here even though it is the ONLY value this branch ever produces,
+                    title = row.title,
+                    createdAtMs = row.createdAt,
+                    startsAtMs = row.startsAt,
+                    endsAtMs = row.endsAt,
+                    allDay = row.allDay,
+                    location = row.location,
+                    notes = row.notes,
+                    // The LEGION::v1 block - CalendarImportController writes it straight into
+                    // Event.structuredMeta now (MIGRATION_47_48), carried through verbatim here so
+                    // it reaches public.events.structured_meta and survives past Google's own
+                    // eventual removal (ticket 01 ruling 11 / ruling 7).
+                    structuredMeta = row.structuredMeta,
+                    source = row.source,
+                    googleEventId = row.googleEventId,
+                    // A Dates `Event` row is always an appointment - ticket 11's 2026-08-27 ruling
+                    // #1. Explicit here even though it is the ONLY value this branch ever produces,
                     // so a reader never has to chase the private EventFields(...) helper below to
                     // learn what every row from this branch is tagged.
                     kind = EventKind.APPOINTMENT,
@@ -171,7 +243,7 @@ object EventsReconcile {
 
             EngineEvent(
                 guid = record.guid,
-                engineRecordId = record.id,
+                localId = record.id,
                 fields = EventFields(
                     title = text,
                     createdAtMs = record.createdAt,
@@ -253,28 +325,32 @@ object EventsReconcile {
         val activeServerEvents = if (retractedServerIds.isEmpty()) serverEvents else
             serverEvents.filterNot { it.serverId in retractedServerIds }
 
-        // Kevin's ruling 2026-08-26 (ticket 11): carry the engine id into the replica instead of
-        // letting the wholesale refresh below remint one for every row. guid -> engine records.id,
-        // built from `reconciling` (both aspects) so either origin resolves.
-        val engineIdByGuid = reconciling.associate { it.guid to it.engineRecordId }
+        // ---- The refill, split by kind since 2026-08-28 (coordinator follow-up) - a REAL id
+        // collision, not a theoretical one, forced this split. Reminder ids are drawn from the
+        // engine's own `records.id` space; appointment ids are drawn from `events`' OWN
+        // autoincrement space (Event.id) - two INDEPENDENT counters that can and did coincidentally
+        // both mint "1" in a real test run. The old single wipe-and-derive scheme assumed one shared
+        // id space (true before this repoint, when every row's carried id came from the SAME
+        // `records.id` counter) and silently stranded whichever row lost the `upsert` collision
+        // guard's tie-break onto a fresh autoincremented id - orphaning any alarm/mute pointing at
+        // the old one, the exact class of bug ticket 11/15 exists to prevent. Splitting the refill
+        // by kind removes the collision by construction instead of adjudicating it.
+        val noteLocalIdByGuid = noteEvents.associate { it.guid to it.localId }
+        val dateLocalIdByGuid = dateEvents.associate { it.guid to it.localId }
+        val (serverAppointments, serverReminders) = activeServerEvents.partition { it.kind == EventKind.APPOINTMENT }
 
-        db.eventDao().deleteAllForReplicaRefresh()
+        // Reminders: UNCHANGED shape from before this fix - wipe just the reminder rows, refill
+        // from server data, deriving each row's carried id from the engine's records.id space via
+        // noteLocalIdByGuid. See the historical comment this replaces (still accurate for THIS half
+        // alone): an ancestor-less row (no origin_guid) is seated LAST so it can never occupy an id
+        // a carried row still needs.
+        db.eventDao().deleteByKindForReplicaRefresh(EventKind.REMINDER)
         db.eventSkipDao().deleteAllForReplicaRefresh()
-
-        // Rows WITH a carried id are refilled first, and this ordering is load-bearing rather than
-        // tidy. The table was just emptied, so an ancestor-less row (created after the cutover on
-        // another surface, no `origin_guid`) autoincrements from 1 and can land on precisely the id
-        // a not-yet-processed migrated row needs to carry. `upsert`'s collision guard then does the
-        // safe thing and hands the migrated row a fresh id instead - which is exactly the alarm
-        // orphaning the carry exists to prevent, arrived at by a different route. Seating every
-        // derivable id before any id is allocated removes the contest instead of adjudicating it:
-        // an ancestor-less row has nothing pointing at its local id yet, so it is the one that can
-        // afford to move.
-        val (carried, ancestorless) = activeServerEvents.partition { row ->
-            row.originGuid?.let { engineIdByGuid.containsKey(it) } == true
+        val (carriedReminders, ancestorlessReminders) = serverReminders.partition { row ->
+            row.originGuid?.let { noteLocalIdByGuid.containsKey(it) } == true
         }
-        for (row in carried + ancestorless) {
-            val carriedId = row.originGuid?.let { engineIdByGuid[it] } ?: 0L
+        for (row in carriedReminders + ancestorlessReminders) {
+            val carriedId = row.originGuid?.let { noteLocalIdByGuid[it] } ?: 0L
             db.eventDao().upsert(row.toReplica(id = carriedId))
             val skips = backend.fetchSkips(row.serverId).getOrElse { return Result.failure(it) }
             for (skipMs in skips) {
@@ -282,6 +358,20 @@ object EventsReconcile {
                     com.kevin.legion.data.local.EventSkip(eventServerId = row.serverId, skipDateEpochMs = skipMs),
                 )
             }
+        }
+
+        // Appointments: NEVER wiped. Every appointment row already lives in `events` at a KNOWN,
+        // stable local id (dateRows was read from that exact table moments ago, before any upload
+        // happened) - there is nothing to derive and nothing to re-seat, so this is a plain UPDATE
+        // at the row's own existing id, not an upsert through a shared collision-prone id space.
+        // Dates has no skip concept (skipDatesEpochMs is only ever populated for the Notes branch
+        // above), so there is no skips fetch here at all. An ancestor-less appointment (no
+        // origin_guid) has no local row to update and is left alone - see EventDao.upsert's own doc
+        // comment / this file's toReplica doc comment for why nothing currently produces one
+        // (Dates has no configured live-write path of its own today).
+        for (row in serverAppointments) {
+            val localId = row.originGuid?.let { dateLocalIdByGuid[it] } ?: continue
+            db.eventDao().update(row.toReplica(id = localId))
         }
 
         val serverGuids = activeServerEvents.mapNotNull { it.originGuid }.toSet()
@@ -307,16 +397,14 @@ object EventsReconcile {
      * engine ancestor). Kept as a parameter rather than mutated at each call site so the mapping
      * from "which id" stays in the one place ([run]'s `engineIdByGuid` lookup).
      *
-     * **Deliberately NOT "field for field" for [RemoteEvent.structuredMeta]** - traced every
-     * reader of [Event] and [com.kevin.legion.notes.NotesController.allItems]/every screen
-     * built on it, and nothing on the phone renders a `LEGION::v1` block today (the only live
-     * consumer is the `read_calendar` voice tool at `service/LiveToolbox.kt:3114`, which reads
-     * straight off a LIVE Google description via [com.kevin.legion.calendar.CalendarReadToolLogic.structuredBlock],
-     * never off this replica). Adding an unread column to [Event] would be a Room v42 -> v43
-     * migration bought for nothing; the value still reaches the one store that needs to outlive
-     * both Google and the engine (`public.events.structured_meta`, via [RemoteEvent.structuredMeta]
-     * above) even though this replica does not carry it. Revisit if a screen or widget is ever
-     * built to render it. */
+     * **CORRECTED 2026-08-28 (backend-erp ticket 17): this WAS deliberately not field-for-field for
+     * [RemoteEvent.structuredMeta], and that reasoning is now stale.** It held only while the
+     * server was `structuredMeta`'s one surviving home; now that
+     * [com.kevin.legion.calendar.CalendarImportController] writes `events` directly with no server
+     * round-trip at all, a Room column is the only place a Dates event's `LEGION::v1` block can
+     * live on the unconfigured path, and [MIGRATION_47_48] added it precisely so this branch is not
+     * the one place left silently dropping it. See that migration's own doc comment for the full
+     * account. */
     private fun RemoteEvent.toReplica(id: Long = 0) = Event(
         id = id,
         serverId = serverId,
@@ -327,6 +415,19 @@ object EventsReconcile {
         allDay = allDay,
         location = location,
         notes = notes,
+        structuredMeta = structuredMeta,
+        // Restores the row's own stable local identity across the wholesale refill this function
+        // feeds - originGuid IS that identity for a row this device (or any device) migrated or
+        // uploaded through this reconcile, carried straight back into Event.guid so the NEXT run's
+        // Dates-branch re-scan (`db.eventDao().getActiveByKind`) recognizes it as already-uploaded
+        // rather than minting a duplicate server row (see Event.guid's own doc comment). A row with
+        // no originGuid at all (ancestorless - created directly against the server by some OTHER
+        // surface, never through this device) has no identity to restore and gets a fresh one
+        // minted here instead; nothing currently produces such a row for kind=appointment (Dates has
+        // no configured live-write path of its own today), so this branch is a documented,
+        // currently-unreachable safety net rather than a live path - see EventsReconcile's own
+        // class doc.
+        guid = originGuid?.ifBlank { null } ?: UUID.randomUUID().toString(),
         source = source,
         kind = kind,
         googleEventId = googleEventId,

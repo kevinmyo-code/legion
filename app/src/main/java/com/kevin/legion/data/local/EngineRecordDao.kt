@@ -63,29 +63,49 @@ interface EngineRecordDao {
     suspend fun search(query: String): List<EngineRecord>
 
     /** Every active record with a promoted [EngineRecord.dueAt] inside `[fromMs, toMs]`, across
-     * EVERY record type/aspect, ascending - the raw read behind
+     * EVERY record type/aspect EXCEPT [excludedAspectNames], ascending - the raw read behind
      * [com.kevin.legion.engine.dates.DatesAgenda.windowed] (ticket 19/ticket 05 answer point 4:
      * "agenda is a query... across the Dates aspect plus every record's dueAt column"). A read,
-     * not a write, so this stays on the DAO rather than needing [com.kevin.legion.engine.RecordStore]. */
+     * not a write, so this stays on the DAO rather than needing [com.kevin.legion.engine.RecordStore].
+     *
+     * **The exclusion list, added backend-erp ticket 17 ("RULED 2026-08-28"):** Dates and Notes
+     * both retired their own engine writers onto the local `events` table (this ticket's own
+     * repoint, and step 4 before it) - [DatesAgenda] now reads THOSE aspects from `events` directly
+     * and must not also read the same aspect's stale, frozen-in-place engine rows a second time.
+     * Nothing else has ever set [RecordType.primaryDueDateFieldId] (confirmed by grep before this
+     * change), so in practice [excludedAspectNames] filters out exactly the rows that would
+     * otherwise double-count; the join stays general rather than hardcoding "Dates"/"Notes" here so
+     * a future third aspect's own retirement can reuse this method unchanged. */
     @Query(
-        "SELECT * FROM records WHERE deletedAt IS NULL AND dueAt IS NOT NULL " +
-            "AND dueAt BETWEEN :fromMs AND :toMs ORDER BY dueAt ASC",
+        "SELECT records.* FROM records " +
+            "INNER JOIN record_types ON records.recordTypeId = record_types.id " +
+            "INNER JOIN aspects ON record_types.aspectId = aspects.id " +
+            "WHERE records.deletedAt IS NULL AND records.dueAt IS NOT NULL " +
+            "AND records.dueAt BETWEEN :fromMs AND :toMs " +
+            "AND aspects.name NOT IN (:excludedAspectNames) ORDER BY records.dueAt ASC",
     )
-    suspend fun activeWithDueAtInWindow(fromMs: Long, toMs: Long): List<EngineRecord>
+    suspend fun activeWithDueAtInWindow(fromMs: Long, toMs: Long, excludedAspectNames: List<String>): List<EngineRecord>
 
-    /** The next [limit] active records due at or after [afterMs], ascending - the candidate batch
+    /** The next [limit] active records due at or after [afterMs], ascending, across every aspect
+     * except [excludedAspectNames] - the candidate batch
      * [com.kevin.legion.engine.dates.DatesAgenda.nextUnmuted] filters down to the single soonest
      * UNMUTED one. Bounded rather than unbounded for the same "personal app's data volume" reason
-     * [com.kevin.legion.engine.RecordStore]'s own class doc already accepts for its aggregate scans. */
+     * [com.kevin.legion.engine.RecordStore]'s own class doc already accepts for its aggregate scans.
+     * See [activeWithDueAtInWindow]'s own doc comment for why [excludedAspectNames] exists at all. */
     @Query(
-        "SELECT * FROM records WHERE deletedAt IS NULL AND dueAt IS NOT NULL " +
-            "AND dueAt >= :afterMs ORDER BY dueAt ASC LIMIT :limit",
+        "SELECT records.* FROM records " +
+            "INNER JOIN record_types ON records.recordTypeId = record_types.id " +
+            "INNER JOIN aspects ON record_types.aspectId = aspects.id " +
+            "WHERE records.deletedAt IS NULL AND records.dueAt IS NOT NULL " +
+            "AND records.dueAt >= :afterMs AND aspects.name NOT IN (:excludedAspectNames) " +
+            "ORDER BY records.dueAt ASC LIMIT :limit",
     )
-    suspend fun activeWithDueAtFrom(afterMs: Long, limit: Int): List<EngineRecord>
+    suspend fun activeWithDueAtFrom(afterMs: Long, limit: Int, excludedAspectNames: List<String>): List<EngineRecord>
 
     /** Active records of a record type that HAS a due-date concept
-     * ([RecordType.primaryDueDateFieldId] set) but where the user left it unset - the raw read
-     * behind ticket 01 ruling 2's "undated todos get due=tomorrow as an inferred fact"
+     * ([RecordType.primaryDueDateFieldId] set) but where the user left it unset, excluding any
+     * aspect in [excludedAspectNames] - the raw read behind ticket 01 ruling 2's "undated todos get
+     * due=tomorrow as an inferred fact"
      * (`.scratch/backend-erp/issues/01-what-the-backend-owns.md:42-44`). Deliberately a SEPARATE
      * query rather than widening [activeWithDueAtInWindow]/[activeWithDueAtFrom] to `dueAt IS NULL
      * OR ...`: those two feed the alarm scheduler ([DatesAgenda.nextUnmuted]) and a single alarm
@@ -95,13 +115,16 @@ interface EngineRecordDao {
      * [DatesAgenda.windowed] calls this. The join is required because "has a due-date concept" is
      * a fact about the RECORD TYPE, not the row - a row can have `dueAt IS NULL` either because its
      * type has no notion of a due date at all (e.g. a Ledger transaction) or because the user left
-     * a real due-date field blank, and only the second case is an "undated todo". */
+     * a real due-date field blank, and only the second case is an "undated todo". See
+     * [activeWithDueAtInWindow]'s own doc comment for why [excludedAspectNames] exists at all. */
     @Query(
         "SELECT records.* FROM records " +
             "INNER JOIN record_types ON records.recordTypeId = record_types.id " +
+            "INNER JOIN aspects ON record_types.aspectId = aspects.id " +
             "WHERE records.deletedAt IS NULL AND records.dueAt IS NULL " +
             "AND record_types.primaryDueDateFieldId IS NOT NULL " +
+            "AND aspects.name NOT IN (:excludedAspectNames) " +
             "ORDER BY records.id ASC",
     )
-    suspend fun activeUndatedWithDueConcept(): List<EngineRecord>
+    suspend fun activeUndatedWithDueConcept(excludedAspectNames: List<String>): List<EngineRecord>
 }

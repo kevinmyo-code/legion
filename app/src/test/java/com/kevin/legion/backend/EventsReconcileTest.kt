@@ -1,6 +1,7 @@
 package com.kevin.legion.backend
 
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.ListItemSkip
 import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.engine.RecordStore
@@ -17,16 +18,27 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import java.util.UUID
 
 /**
  * EventsReconcile - the Phase 4 step 1/2 job for Notes+Dates, cut over TOGETHER because the merge
  * itself only has to happen once (`.scratch/backend-erp/issues/05-migration-path.md`, ticket 01
- * ruling 4). Exercised entirely against an in-memory FakeEventsBackend and a real (Robolectric)
- * engine, never a network - same posture as [PlacesReconcileTest]/`PantryReconcileTest`.
+ * ruling 4). Exercised against an in-memory FakeEventsBackend, a real (Robolectric) engine for the
+ * Notes half, and the real (Robolectric) local `events` table for the Dates half - never a network -
+ * same posture as [PlacesReconcileTest]/`PantryReconcileTest`.
  *
  * **The merge test (`a Dates Event and a Notes Item both land as correct events rows`) is the one
  * that matters most** - see [EventsReconcile]'s own class doc for the undated-item ruling this
  * suite also covers.
+ *
+ * **CORRECTED 2026-08-28 (coordinator follow-up on backend-erp ticket 17).** [createDatesEvent]
+ * used to build a Dates `Event` through the ENGINE ([RecordStore]) because that was where
+ * [EventsReconcile]'s Dates branch read from. That branch now reads the local `events` table
+ * directly (`kind = appointment`) - see [EventsReconcile]'s own class doc for why - so this helper
+ * was rewritten to insert straight into `events` instead, matching what
+ * [com.kevin.legion.calendar.CalendarImportController] itself does post-repoint. Every test below
+ * that calls it is exercising the SAME regression the coordinator caught: before this fix, an
+ * appointment built this way would have been invisible to [EventsReconcile.run] entirely.
  */
 @RunWith(RobolectricTestRunner::class)
 class EventsReconcileTest {
@@ -121,6 +133,13 @@ class EventsReconcileTest {
         RoomTestReset.resetCarDatabaseSingleton()
     }
 
+    /** Inserts a Dates `Event` row directly into the local `events` table, `kind = appointment` -
+     * the shape [com.kevin.legion.calendar.CalendarImportController.buildEventRow] itself produces
+     * post-repoint, and the shape [EventsReconcile]'s Dates branch now reads. Mints a fresh [Event.guid]
+     * per row, matching [CalendarImportController]'s own "minted once at creation, never reused"
+     * posture (see [Event.guid]'s own doc comment) - each call produces a row with its own
+     * independent identity, exactly like two separately-imported Google occurrences would. Returns
+     * the row's own local [Event.id]. */
     private suspend fun createDatesEvent(
         title: String,
         startMs: Long,
@@ -129,18 +148,51 @@ class EventsReconcileTest {
         structuredMeta: String? = null,
     ): Long {
         val db = CarDatabase.getDatabase(context)
-        val sch = DatesAspectSeeder.ensureSeeded(context)
-        val store = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
-        val fields = mutableMapOf<Long, Any?>(
-            sch.fieldIds.getValue(DatesAspectSeeder.FIELD_TITLE) to title,
-            sch.fieldIds.getValue(DatesAspectSeeder.FIELD_START) to startMs,
-            sch.fieldIds.getValue(DatesAspectSeeder.FIELD_SOURCE) to DatesAspectSeeder.SOURCE_LEGION,
-            sch.fieldIds.getValue(DatesAspectSeeder.FIELD_LOCATION) to location,
+        val now = System.currentTimeMillis()
+        return db.eventDao().insert(
+            Event(
+                serverId = UUID.randomUUID().toString(),
+                guid = UUID.randomUUID().toString(),
+                title = title,
+                startsAt = startMs,
+                allDay = allDay ?: false,
+                location = location,
+                structuredMeta = structuredMeta,
+                source = DatesAspectSeeder.SOURCE_LEGION,
+                kind = EventKind.APPOINTMENT,
+                updatedAtMs = now,
+                createdAt = now,
+            ),
         )
-        if (allDay != null) fields[sch.fieldIds.getValue(DatesAspectSeeder.FIELD_ALL_DAY)] = allDay
-        if (structuredMeta != null) fields[sch.fieldIds.getValue(DatesAspectSeeder.FIELD_STRUCTURED_META)] = structuredMeta
-        val result = store.create(sch.recordTypeId, fields, RecordProvenance.USER)
-        return (result as RecordStore.WriteResult.Success).recordId
+    }
+
+    /** Burns through [times] worth of `events` table AUTOINCREMENT values (insert then hard
+     * delete, real SQLite `AUTOINCREMENT` never reuses a value once issued - confirmed against the
+     * generated schema) so a subsequently-created [Event] lands comfortably clear of any small
+     * `records.id` a fixture in the SAME test also uses. Exists ONLY to keep the id-STABILITY tests
+     * below isolated from the id-COLLISION question `a Dates appointment and a Notes reminder whose
+     * ids coincidentally collide never corrupt either row` covers on its own - both `events.id` and
+     * `records.id` start fresh at 1 in an empty Robolectric DB regardless of which table a test
+     * writes to first, so ordinary fixture ordering cannot avoid the collision by itself (confirmed
+     * by hand while building this fix - the first attempt at this, reordering `createNotesItem`
+     * before `createDatesEvent`, still collided, cascading into a second collision one row later). */
+    private suspend fun burnEventAutoincrement(times: Int = 20) {
+        val db = CarDatabase.getDatabase(context)
+        repeat(times) {
+            val id = db.eventDao().insert(
+                Event(
+                    serverId = UUID.randomUUID().toString(),
+                    guid = UUID.randomUUID().toString(),
+                    title = "burn",
+                    startsAt = null,
+                    source = DatesAspectSeeder.SOURCE_LEGION,
+                    kind = EventKind.APPOINTMENT,
+                    updatedAtMs = 0L,
+                    createdAt = 0L,
+                ),
+            )
+            db.eventDao().deleteById(id)
+        }
     }
 
     private suspend fun createNotesItem(
@@ -190,10 +242,10 @@ class EventsReconcileTest {
      * [EventsReconcile] fix (which threads `record.createdAt` through) and passes after it.
      */
     @Test
-    fun `uploadMigratedEvent carries the engine record's real createdAt, not the migration moment`() = runBlocking {
+    fun `uploadMigratedEvent carries the local row's real createdAt, not the migration moment`() = runBlocking {
         val dentistId = createDatesEvent("Dentist", startMs = 50_000L)
         val db = CarDatabase.getDatabase(context)
-        val originalCreatedAt = db.engineRecordDao().getById(dentistId)!!.createdAt
+        val originalCreatedAt = db.eventDao().getById(dentistId)!!.createdAt
         val backend = FakeEventsBackend()
         // Stand in for "the migration ran much later than the note was created" - if the fix
         // regresses, the uploaded row's createdAt would read as (approximately) this clock instead
@@ -472,18 +524,32 @@ class EventsReconcileTest {
 
     @Test
     fun `a failed upload short-circuits into failure and touches neither replica nor server further`() = runBlocking {
-        createDatesEvent("Dentist", startMs = 50_000L)
+        // CORRECTED 2026-08-28: createDatesEvent now writes straight into `events` (matching
+        // CalendarImportController post-repoint), so the local row exists BEFORE the reconcile ever
+        // runs - "touches nothing further" now means the source row survives untouched, not that
+        // the table stays empty (which it never was, pre-repoint the engine held it and `events`
+        // really did start empty).
+        val dentistId = createDatesEvent("Dentist", startMs = 50_000L)
         val backend = FakeEventsBackend(uploadFails = true)
 
         val result = EventsReconcile.run(context, backend)
 
         assertTrue(result.isFailure)
-        assertTrue(CarDatabase.getDatabase(context).eventDao().getAllActive().isEmpty())
+        val row = CarDatabase.getDatabase(context).eventDao().getById(dentistId)!!
+        assertTrue("a failed upload must leave the source appointment row completely untouched", !row.deleted)
+        assertEquals("Dentist", row.title)
     }
 
     @Test
-    fun `a refilled replica row carries the originating engine record's own id, not a fresh autoincrement one`() = runBlocking {
-        val dentistEngineId = createDatesEvent("Dentist", startMs = 50_000L)
+    fun `a refilled replica row carries the originating row's own id, not a fresh autoincrement one`() = runBlocking {
+        // Pushes Event.id well clear of the small records.id values this test's Notes fixture will
+        // use - see burnEventAutoincrement's own doc comment for why this, and not fixture
+        // reordering, is what actually avoids the collision. This test is about id STABILITY when
+        // nothing collides; the collision case has its own dedicated test below.
+        burnEventAutoincrement()
+        // dentistLocalId is the Event's own pre-existing local id (this table's autoincrement,
+        // post-repoint); milkEngineId is still the engine's records.id, unchanged.
+        val dentistLocalId = createDatesEvent("Dentist", startMs = 50_000L)
         val milkEngineId = createNotesItem("Buy milk", startsAt = 60_000L)
         val backend = FakeEventsBackend()
 
@@ -492,12 +558,16 @@ class EventsReconcileTest {
         val replica = CarDatabase.getDatabase(context).eventDao().getAllActive()
         val dentist = replica.single { it.title == "Dentist" }
         val milk = replica.single { it.title == "Buy milk" }
-        assertEquals("the replica id must equal the engine records.id it came from, not a reminted one", dentistEngineId, dentist.id)
+        assertEquals("the replica id must equal the local events row's own id it came from, not a reminted one", dentistLocalId, dentist.id)
         assertEquals("the replica id must equal the engine records.id it came from, not a reminted one", milkEngineId, milk.id)
     }
 
     @Test
     fun `ids are stable across two reconciles - this is the regression test for the wholesale-refresh remint defect`() = runBlocking {
+        // Same avoidance as the previous test, and for the identical reason - keeps this test
+        // isolated to the id-STABILITY question it exists to answer, not the separate colliding-id
+        // question the dedicated test below covers.
+        burnEventAutoincrement()
         createDatesEvent("Dentist", startMs = 50_000L)
         createNotesItem("Buy milk", startsAt = 60_000L)
         val backend = FakeEventsBackend()
@@ -582,17 +652,94 @@ class EventsReconcileTest {
     }
 
     @Test
-    fun `never deletes or trashes either engine record type - the engine stays the truth until the diff is clean`() = runBlocking {
-        createDatesEvent("Dentist", startMs = 50_000L)
+    fun `never deletes or trashes a Dates appointment's local row, and never trashes the Notes engine record either`() = runBlocking {
+        // CORRECTED 2026-08-28: this used to assert the Dates half stayed live in the ENGINE - it
+        // no longer lives there at all post-repoint (see EventsReconcile's own class doc), so the
+        // Dates half of this assertion now checks the local `events` row instead. The Notes half is
+        // unchanged - that branch is still engine-sourced.
+        val dentistId = createDatesEvent("Dentist", startMs = 50_000L)
         createNotesItem("Buy milk", startsAt = 60_000L)
         val backend = FakeEventsBackend()
         val db = CarDatabase.getDatabase(context)
-        val datesSch = DatesAspectSeeder.ensureSeeded(context)
         val notesSch = NotesAspectSeeder.ensureSeeded(context)
 
         EventsReconcile.run(context, backend).getOrThrow()
 
-        assertEquals(1, db.engineRecordDao().activeByRecordType(datesSch.recordTypeId).size)
+        assertFalse(
+            "the Dates appointment's own source row must never be soft-deleted by uploading it",
+            db.eventDao().getById(dentistId)!!.deleted,
+        )
         assertEquals(1, db.engineRecordDao().activeByRecordType(notesSch.recordTypeId).size)
+    }
+
+    /**
+     * The assertion whose absence WAS the live regression the coordinator caught (backend-erp
+     * ticket 17, 2026-08-28): [com.kevin.legion.calendar.CalendarImportController] was repointed to
+     * write the local `events` table directly, but [EventsReconcile]'s Dates branch still read the
+     * engine - so a newly imported appointment reached the server by NO route at all, even on a
+     * fully configured install. [createDatesEvent] builds the exact row shape the importer now
+     * produces; if this branch regresses back to reading the engine, this appointment would never
+     * appear in `backend.rows` at all. Mutation-proved in the build report: pointing the Dates
+     * branch back at `engineRecordDao()` makes this specific test fail and no other.
+     */
+    @Test
+    fun `an appointment imported after the repoint is uploaded by the reconcile - the regression this fix closes`() = runBlocking {
+        createDatesEvent("Team offsite", startMs = 70_000L)
+        val backend = FakeEventsBackend()
+
+        val report = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(1, report.uploaded)
+        assertTrue(
+            "the imported appointment must actually reach the server, not silently vanish",
+            backend.rows.values.any { it.title == "Team offsite" },
+        )
+    }
+
+    /**
+     * **SUPERSEDED 2026-08-28 (coordinator follow-up round 2) - kept as a BELT-AND-BRACES check on
+     * a case the allocation now makes impossible, not as documentation of an accepted risk.** The
+     * paragraph this doc comment used to carry recommended "a genuinely disjoint id space... rather
+     * than relying on this collision being rare" - that recommendation is now built:
+     * [Event.APPOINTMENT_ID_BASE] and [com.kevin.legion.calendar.CalendarImportController.nextAppointmentId]
+     * make a Dates appointment id and a Notes reminder's carried `records.id` disjoint BY
+     * CONSTRUCTION, not by this guard. Every REAL appointment (through [CalendarImportController],
+     * the only production writer) now lands at or above [Event.APPOINTMENT_ID_BASE], comfortably
+     * clear of any `records.id` this app will ever produce - so the collision this test manufactures
+     * (via [createDatesEvent], which bypasses the allocator entirely and seats a Dates row at a raw
+     * `id = 1` on purpose) cannot happen through any real write path any more. It stays here
+     * because [EventDao.upsert]'s collision guard is itself still real code, still reachable if a
+     * FUTURE writer ever bypasses the allocator the way this test deliberately does, and a guard
+     * with no test proving it degrades safely is a guard nobody can trust under pressure.
+     */
+    @Test
+    fun `a Dates appointment and a Notes reminder whose ids coincidentally collide never corrupt either row - now unreachable via any real write path, kept as a safety net`() = runBlocking {
+        // Both fixtures deliberately land on Event.id = 1 / records.id = 1 respectively - no
+        // throwaway offset this time, so the collision this test exists to exercise actually fires.
+        // createDatesEvent bypasses CalendarImportController.nextAppointmentId on purpose here -
+        // this is the one place in this file that still exercises the pre-disjoint-range shape.
+        val dentistId = createDatesEvent("Dentist", startMs = 50_000L)
+        assertEquals(1L, dentistId)
+        val milkEngineId = createNotesItem("Buy milk", startsAt = 60_000L)
+        assertEquals(1L, milkEngineId)
+        val backend = FakeEventsBackend()
+
+        val report = EventsReconcile.run(context, backend).getOrThrow()
+
+        // Both rows survive, with their real content intact - the safety property that matters
+        // most: a collision degrades an id, it never destroys or merges two unrelated rows.
+        assertTrue(report.isClean)
+        val replica = CarDatabase.getDatabase(context).eventDao().getAllActive()
+        val dentist = replica.single { it.title == "Dentist" }
+        val milk = replica.single { it.title == "Buy milk" }
+        assertEquals("the appointment keeps its own known id - it was never wiped in the first place", 1L, dentist.id)
+        assertTrue(
+            "the reminder must survive at SOME real id rather than being lost or clobbering the appointment",
+            milk.id != 0L,
+        )
+        assertTrue(
+            "the reminder's carried id lost the collision and moved - documented cost, not a crash",
+            milk.id != dentist.id,
+        )
     }
 }

@@ -275,6 +275,7 @@ object NotesController {
         allDay = allDay,
         location = location,
         notes = notes,
+        structuredMeta = structuredMeta,
         source = source,
         kind = kind,
         googleEventId = googleEventId,
