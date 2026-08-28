@@ -97,3 +97,41 @@ table, but it is named and shaped as a replica of something), reconcile and use 
 both (the replica becomes redundant), or accept two stores with a very sharp boundary.
 
 Recommend deciding that BEFORE step 4, not during it.
+
+## RULED 2026-08-27: notes gets ONE local table, and it is the events shape, not `list_items`
+
+Delegated to me ("go everything as per your recommendations"); open to reversal.
+
+The question this ticket flagged: places and pantry had replica and legacy as the SAME table, so one
+store serves both paths. Notes has two - `events_replica` and `list_items` - and keeping both would
+mean one aspect stored two ways depending on a setting. That is the shape that produced the 51 false
+"missed".
+
+**The unconfigured path repoints onto the EVENTS table, not `list_items`.** Three reasons:
+
+1. **`list_items` is the pre-merge shape.** Ruling 4 merged todos into events; the per-aspect table
+   for this aspect IS events. Ruling 7 says Room mirrors the per-aspect tables, and mirroring
+   `public.events` is exactly what the events table already does.
+2. **`list_items` has had no live writer since cutover 1** and is badly stale. Repointing onto it
+   would need a full engine-to-`list_items` reconcile first, to arrive at a shape that is wrong
+   anyway.
+3. **It already carries `kind`**, so the reminder/appointment discriminator that fixed the 51-missed
+   incident keeps working on both paths rather than existing on only one.
+
+**The table is renamed, because the name would otherwise be a lie.** A table called
+`events_replica` that is ALSO the primary store on an unconfigured install is misdescribed, and this
+codebase has been bitten twice by a name or comment that promised something the code did not do
+(`EventReplicaDao.upsert`'s defeated guarantee, `GeneratedFormScreen`'s "PHOTO ON FILE"). It becomes
+the local `events` table, serving both paths. `list_items` becomes dead and is deleted in phase 6
+with everything else.
+
+**The id contract is the whole risk and it is preserved by construction.** `ListItem.id` is an
+`AlarmManager` `PendingIntent` request code and a soft foreign key from `list_item_skips`,
+`workout_set_logs` and `muted_reminders`. Today the unconfigured path hands out `records.id` and the
+configured path hands out the events-table id, which `b17bc88` already made EQUAL to `records.id` by
+deriving it. So the copier must seat each engine record at its own `records.id` in the events table -
+then both paths hand out the same id they always did, and no alarm, skip, mute or workout log
+detaches.
+
+**That is the assertion the step lives or dies on**, and it must be tested directly rather than
+inferred from a passing suite.
