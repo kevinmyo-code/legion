@@ -713,6 +713,55 @@ class FleetReconcileTest {
     }
 
     @Test
+    fun `a vehicle whose year falls outside the server's check constraint is skipped and named, never uploaded`() = runBlocking {
+        // Reproduces the real 2026-08-28 on-device failure: a legacy placeholder vehicle
+        // (year = 0) was uploaded and Supabase rejected it with `vehicles_year_check`, aborting the
+        // whole run. The fix is a pre-check, not a retry - the bad vehicle is named and held back,
+        // and every OTHER vehicle in the same run still uploads.
+        val badObdMac = "00:00:00:00:00:00"
+        createEngineVehicle(badObdMac, name = "", make = "", model = "", year = 0)
+        val goodObdMac = "AA:BB:CC:DD:EE:FF"
+        createEngineVehicle(goodObdMac, name = "Jeep", year = 1998)
+        val backend = FakeFleetBackend()
+
+        val report = FleetReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(2, report.vehicle.engineCount)
+        assertEquals(1, report.vehicle.uploaded)
+        assertEquals(1, backend.vehicles.size)
+        assertEquals(1, report.vehicle.skippedUnexportable.size)
+        assertTrue(report.vehicle.skippedUnexportable.single().contains("year"))
+        // A skipped-unexportable vehicle is a known, named state, not a real one-sided diff.
+        assertTrue(report.vehicle.onlyOnEngine.isEmpty())
+        assertFalse(report.vehicle.isClean)
+        assertFalse(report.isClean)
+    }
+
+    @Test
+    fun `a vehicle rejected on its own shape does not stop the run - later waves still execute`() = runBlocking {
+        val badObdMac = "00:00:00:00:00:00"
+        val badVehicleEngineId = createEngineVehicle(badObdMac, year = 0)
+        createLegacyVehicle(badObdMac)
+        createEngineServiceHistory(badVehicleEngineId)
+        val goodObdMac = "AA:BB:CC:DD:EE:FF"
+        createEngineVehicle(goodObdMac, year = 1998)
+        createLegacyVehicle(goodObdMac)
+        val backend = FakeFleetBackend()
+
+        val report = FleetReconcile.run(context, backend).getOrThrow()
+
+        // The bad vehicle's own service-history row has no server parent to resolve through
+        // (its vehicle was never uploaded) so it lands in the existing skipped-unresolved-vehicle
+        // bucket, composing correctly with no extra plumbing - it is neither uploaded nor dropped.
+        assertEquals(1, report.serviceHistory.skippedUnresolvedVehicle.size)
+        assertTrue(backend.serviceHistory.isEmpty())
+        // Later waves ran to completion rather than the whole reconcile aborting.
+        assertEquals(1, report.vehicle.uploaded)
+        assertEquals(0, report.drive.sourceCount)
+        assertTrue(report.drive.isClean)
+    }
+
+    @Test
     fun `gallons null survives as null rather than becoming 0`() = runBlocking {
         val obdMac = "11:22:33:44:55:66"
         createEngineVehicle(obdMac)

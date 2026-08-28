@@ -192,6 +192,12 @@ object BackendMigrationResolver {
      * Collapsing that into "3 skipped" would read like an error; it is a deliberate refusal to
      * mis-parent, and the sentence says so.
      *
+     * **[FleetReconcile.VehicleReport.skippedUnexportable] is a different bucket at a different
+     * level** - not a child row whose parent has not migrated YET, but a vehicle that cannot satisfy
+     * the server's own shape at all until its own data changes (a year of 0, an unpaired odometer
+     * baseline). It gets its own line, worded so "run this again" is not the fix - editing the
+     * vehicle is.
+     *
      * **A table with nothing to upload and a table where everything was already on the server read
      * differently on purpose** - [compactFleetTableLine]'s first branch - because the first means
      * "you have none of this data" and the second means "this run genuinely changed nothing", and
@@ -216,6 +222,14 @@ object BackendMigrationResolver {
             )
             add(if (report.isClean) "Overall: clean - every table matches the server." else "Overall: NOT clean - see the tables below.")
             add(compactFleetTableLine("Vehicles", report.vehicle.engineCount, report.vehicle.uploaded, report.vehicle.isClean, report.vehicle.onlyOnEngine, report.vehicle.onlyOnServer))
+            if (report.vehicle.skippedUnexportable.isNotEmpty()) {
+                add(
+                    "Not uploaded, ${report.vehicle.skippedUnexportable.size} " +
+                        "${plural(report.vehicle.skippedUnexportable.size, "vehicle")} the server would reject as " +
+                        "written: ${report.vehicle.skippedUnexportable.joinToString("; ")}. Nothing on this " +
+                        "device was changed - fix the vehicle's own data on the phone and run this again.",
+                )
+            }
             add(compactFleetTableLine("Service history", report.serviceHistory.engineCount, report.serviceHistory.uploaded, report.serviceHistory.isClean, report.serviceHistory.onlyOnEngine, report.serviceHistory.onlyOnServer))
             add(compactFleetTableLine("Drives", report.drive.sourceCount, report.drive.uploaded, report.drive.isClean, report.drive.onlyOnSource, report.drive.onlyOnServer))
             add(compactFleetTableLine("Code events", report.codeEvent.sourceCount, report.codeEvent.uploaded, report.codeEvent.isClean, report.codeEvent.onlyOnSource, report.codeEvent.onlyOnServer))

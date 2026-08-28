@@ -229,7 +229,7 @@ class BackendMigrationResolverTest {
         return FleetReconcile.Report(
             vehicle = FleetReconcile.VehicleReport(
                 engineCount = 2, uploaded = 0, serverCountAfter = 2, replicaCountAfter = 2,
-                onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
+                skippedUnexportable = emptyList(), onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
             ),
             serviceHistory = FleetReconcile.ServiceHistoryReport(
                 engineCount = 5, uploaded = 0, skippedUnresolvedVehicle = emptyList(),
@@ -292,7 +292,7 @@ class BackendMigrationResolverTest {
         val emptyVehicleReport = cleanFleetReport().copy(
             vehicle = FleetReconcile.VehicleReport(
                 engineCount = 0, uploaded = 0, serverCountAfter = 0, replicaCountAfter = 0,
-                onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
+                skippedUnexportable = emptyList(), onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
             ),
         )
         val lines = BackendMigrationResolver.renderFleetReport(emptyVehicleReport)

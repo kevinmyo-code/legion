@@ -183,6 +183,22 @@ object FleetReconcile {
      * behaviour that never actually gets exercised. */
     private fun dollarsToCentsOrNull(dollars: Double?): Long? = dollars?.let { Math.round(it * 100.0) }
 
+    /** Every check `public.vehicles` itself declares (`20260825000500_aspect_places_fleet.sql`)
+     * that a real upload can fail on - read from that DDL directly, never invented. Returns the
+     * worded reasons a vehicle would be rejected for, empty if none apply. Checked against the DDL:
+     * `year between 1885 and 2200`, `odometer_baseline is null or odometer_baseline >= 0`, and
+     * `vehicles_odometer_baseline_paired` (baseline and its timestamp are null together or set
+     * together). `name`/`make`/`model` are `not null` only, with no length/emptiness check in the
+     * DDL, so an empty string there is not a rejection - matching this function's own "do not
+     * invent constraints the SQL does not state" instruction. */
+    private fun vehicleRejectionReasons(v: EngineVehicle): List<String> = buildList {
+        if (v.year < 1885 || v.year > 2200) add("year ${v.year} is outside 1885-2200")
+        if (v.odometerBaseline != null && v.odometerBaseline < 0) add("odometer baseline ${v.odometerBaseline} is negative")
+        if ((v.odometerBaseline == null) != (v.odometerBaselineAtMs == null)) {
+            add("odometer baseline and its timestamp must both be set or both be absent")
+        }
+    }
+
 
     /** @param engineCount active engine `Vehicle` records this device had.
      * @param uploaded how many were genuinely NEW server-side this run (a re-run reporting 0 is the
@@ -195,16 +211,30 @@ object FleetReconcile {
      *   own note) with no matching engine record.
      * @param replicaCountAfter the `vehicles_replica` table's own active row count after being
      *   refilled - wave 2's addition, see this object's own class doc for why wave 1 shipped without
-     *   it (the gap lived in the TYPE, not just the count). */
+     *   it (the gap lived in the TYPE, not just the count).
+     * @param skippedUnexportable engine `Vehicle` records that cannot satisfy `public.vehicles`'
+     *   own check constraints as written in `20260825000500_aspect_places_fleet.sql` - a year outside
+     *   1885..2200, or an odometer baseline/timestamp pair where one side is set and the other is
+     *   not (the table's `vehicles_odometer_baseline_paired` constraint), or a negative odometer
+     *   baseline. Each entry is a worded line: the vehicle's name if it has one, its guid otherwise,
+     *   plus the reason. **Never uploaded, never guessed into shape** - same posture as
+     *   [ServiceHistoryReport.skippedUnresolvedVehicle]: a row this reconcile cannot describe
+     *   honestly is named and held back, not silently coerced into passing. Real-world cause found
+     *   2026-08-28 on-device: two legacy placeholder vehicles (`default`,
+     *   `66:1E:11:0E:82:0E`, both `archived = 1` in the legacy table) carry `year = 0` because
+     *   `archived` is phone-only and has no engine-side counterpart to hide them from this scan -
+     *   see this object's own class doc for why `archived` cannot simply be added to the engine
+     *   Vehicle type (ticket 14's ruling). */
     data class VehicleReport(
         val engineCount: Int,
         val uploaded: Int,
         val serverCountAfter: Int,
         val replicaCountAfter: Int,
+        val skippedUnexportable: List<String>,
         val onlyOnEngine: List<String>,
         val onlyOnServer: List<String>,
     ) {
-        val isClean: Boolean get() = onlyOnEngine.isEmpty() && onlyOnServer.isEmpty()
+        val isClean: Boolean get() = onlyOnEngine.isEmpty() && onlyOnServer.isEmpty() && skippedUnexportable.isEmpty()
     }
 
     /** Same shape as [VehicleReport], for `ServiceHistory`. [skippedUnresolvedVehicle] is a THIRD
@@ -407,7 +437,20 @@ object FleetReconcile {
         }
 
         var vehiclesUploaded = 0
+        val skippedUnexportableVehicles = mutableListOf<String>()
+        val skippedUnexportableGuids = mutableSetOf<String>()
         for (v in engineVehicles) {
+            // Pre-check against public.vehicles' own stated shape before uploading - a row this
+            // reconcile cannot describe honestly is skipped and named, never posted with a value
+            // the server is guaranteed to reject. See VehicleReport.skippedUnexportable's own doc
+            // for the real-world year-0 placeholder that made this necessary.
+            val reasons = vehicleRejectionReasons(v)
+            if (reasons.isNotEmpty()) {
+                val label = v.name.ifBlank { v.guid }
+                skippedUnexportableVehicles.add("$label: ${reasons.joinToString("; ")}")
+                skippedUnexportableGuids.add(v.guid)
+                continue
+            }
             val migrated = MigratedVehicle(
                 originGuid = v.guid,
                 name = v.name,
@@ -425,10 +468,17 @@ object FleetReconcile {
         }
 
         val serverVehicles = backend.fetchActiveVehicles().getOrElse { return Result.failure(it) }
-        // guid -> server uuid, the map every child upload below resolves its parent through.
+        // guid -> server uuid, the map every child upload below resolves its parent through. A
+        // skipped-unexportable vehicle was never uploaded, so it is simply absent here - every
+        // child row that resolves through it lands in the existing "vehicle not yet migrated"
+        // bucket below with no extra plumbing, the same way an actually-not-yet-migrated vehicle
+        // does.
         val serverIdByOriginGuid = serverVehicles.mapNotNull { row -> row.originGuid?.let { it to row.serverId } }.toMap()
 
-        val engineVehicleGuids = engineVehicles.map { it.guid }.toSet()
+        // Skipped-unexportable guids are excluded from the diff the same way a skipped
+        // service-history row's syncId is excluded below - a vehicle this run refused to upload is
+        // a known, named state, not a genuine "only on this device" discrepancy.
+        val engineVehicleGuids = (engineVehicles.map { it.guid }.toSet() - skippedUnexportableGuids)
         val serverVehicleOriginGuids = serverVehicles.mapNotNull { it.originGuid }.toSet()
 
         // Moved up from the Drives section (engine retirement step 3): ServiceHistory now needs the
@@ -453,6 +503,7 @@ object FleetReconcile {
             uploaded = vehiclesUploaded,
             serverCountAfter = serverVehicles.size,
             replicaCountAfter = db.vehicleReplicaDao().getAllActive().size,
+            skippedUnexportable = skippedUnexportableVehicles,
             onlyOnEngine = (engineVehicleGuids - serverVehicleOriginGuids).sorted(),
             onlyOnServer = (serverVehicleOriginGuids - engineVehicleGuids).sorted(),
         )
