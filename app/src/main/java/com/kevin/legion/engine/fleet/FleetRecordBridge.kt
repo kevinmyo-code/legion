@@ -221,4 +221,30 @@ object FleetRecordBridge {
     fun explainedBy(anchorMileage: Int?, anchorDate: Long?, candidateMileage: Int?, candidateDate: Long?): Boolean =
         (anchorMileage == null || candidateMileage == anchorMileage) &&
             (anchorDate == null || candidateDate == anchorDate)
+
+    // ---- Legacy-table equivalents (engine retirement step 3, ticket 16) -----------------------
+    // ServiceHistory/MaintenanceSchedule repoint off the engine and onto `service_records`/
+    // `maintenance_items` (`vehicle/FleetEngineStore.kt`'s own class doc, updated the same edit as
+    // this section). [projectAnchor]/[toServiceRecord]/[kindOf]/[serviceHistory*] above are kept,
+    // UNCHANGED, because `backend/FleetReconcile.kt` still reads the engine directly (the
+    // configured-transition upload tool, explicitly out of scope for this step) and must keep
+    // resolving the identical guid/field shape it always has.
+
+    /**
+     * [com.kevin.legion.data.local.ServiceRecord] equivalent of [projectAnchor], sourced from the
+     * legacy table instead of [com.kevin.legion.data.local.EngineRecord]. Same law, restated for
+     * the new input type: the anchor is BOTH axes of the single MOST-RECENTLY-STATED row
+     * (`kind = OBSERVED` or `ASSERTED` alike) for this `(vehicleId, serviceName)` pair - "most
+     * recently stated" meaning the greatest [ServiceRecord.updatedAt] - never a mileage from one
+     * row paired with a date from a different one. See [projectAnchor]'s own doc for the full
+     * reasoning (the anti-pairing rule, and why the prior per-axis version was wrong); this is the
+     * same function against a different store, not a new derivation.
+     *
+     * A vehicle with no history for this service reports `null, null` - genuinely unknown, not
+     * zero, matching [projectAnchor]'s own contract.
+     */
+    fun projectAnchorLegacy(historyForThisService: List<com.kevin.legion.data.local.ServiceRecord>): Pair<Int?, Long?> {
+        val mostRecent = historyForThisService.maxByOrNull { it.updatedAt } ?: return null to null
+        return mostRecent.mileage to mostRecent.date
+    }
 }

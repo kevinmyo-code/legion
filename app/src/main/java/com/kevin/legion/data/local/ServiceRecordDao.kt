@@ -21,6 +21,18 @@ interface ServiceRecordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(record: ServiceRecord)
 
+    /**
+     * Same write as [insert], but returns Room's own rowid - engine retirement step 3
+     * (`.scratch/backend-erp/issues/16-*`): [com.kevin.legion.vehicle.FleetEngineStore.insertObserved]
+     * needs the freshly-inserted row's id to hand back as `InsertObservedResult.Success.recordId`,
+     * which [insert]'s `Unit` return cannot supply. `@Insert` without an explicit return type gives
+     * `Unit`; declaring `Long` here is enough for Room to return the SQLite rowid on a real insert,
+     * or the REPLACEd row's rowid on a conflict-replace (an `id = 0` caller never collides, since
+     * `id` is `AUTOINCREMENT` and no legacy row is ever pre-assigned one).
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReturningId(record: ServiceRecord): Long
+
     @Query("SELECT * FROM service_records WHERE deleted = 0 ORDER BY date DESC")
     fun getAllRecords(): Flow<List<ServiceRecord>>
 
@@ -88,12 +100,30 @@ interface ServiceRecordDao {
     @Query("SELECT COUNT(*) FROM service_records WHERE vehicleId = :vehicleId AND deleted = 0 AND costCents IS NOT NULL")
     suspend fun countWithCost(vehicleId: String): Int
 
-    /** Count of services logged in a time range - feeds MonthlyRecapController's aggregation. */
+    /**
+     * Count of services logged in a time range - feeds MonthlyRecapController's aggregation.
+     * **`kind = 'OBSERVED'` (engine retirement step 3, ticket 16): an `ASSERTED` row is a driver's
+     * stated guess with no backing event, not a service performed in the range its `date` happens
+     * to fall in - counting one here would be the exact "invented a joint fact nobody stated" shape
+     * CLAUDE.md §4 rule 6 names for a reconciliation gate, applied to a recap statistic instead.**
+     */
     @Query(
         "SELECT COUNT(*) FROM service_records WHERE vehicleId = :vehicleId AND deleted = 0 " +
-            "AND date >= :fromMs AND date <= :toMs"
+            "AND kind = 'OBSERVED' AND date >= :fromMs AND date <= :toMs"
     )
     suspend fun countInRange(vehicleId: String, fromMs: Long, toMs: Long): Int
+
+    /**
+     * Finds a row by its portable [ServiceRecord.syncId] regardless of [ServiceRecord.deleted] -
+     * engine retirement step 3's find-or-create identity for the deterministic `ASSERTED` anchor
+     * (`FleetRecordBridge.assertedAnchorGuid`, reused verbatim as this table's `syncId` for that
+     * row) and for [com.kevin.legion.engine.migration.EngineFleetServiceHistoryRetirementCopy]'s
+     * own gap check. Deliberately unfiltered on `deleted`, mirroring [getById]'s own doc: a caller
+     * that already knows the exact syncId it wrote (or is about to restore) has no business 404ing
+     * on a tombstoned row it needs to see.
+     */
+    @Query("SELECT * FROM service_records WHERE syncId = :syncId LIMIT 1")
+    suspend fun getBySyncId(syncId: String): ServiceRecord?
 
     /** Total records for a vehicle - ticket 09's FLEET "NOT BUILT YET" block needs a real count, not a hardcoded one. */
     @Query("SELECT COUNT(*) FROM service_records WHERE vehicleId = :vehicleId AND deleted = 0")

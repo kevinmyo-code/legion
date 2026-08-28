@@ -68,7 +68,11 @@ import java.time.ZoneId
 internal fun groupServiceRecordsByYear(recordsNewestFirst: List<ServiceRecord>): List<Pair<Int, List<ServiceRecord>>> {
     val byYear = linkedMapOf<Int, MutableList<ServiceRecord>>()
     for (record in recordsNewestFirst) {
-        val year = Instant.ofEpochMilli(record.date).atZone(ZoneId.systemDefault()).year
+        // ServiceRecord.date widened to nullable at v46->v47 (engine retirement step 3) for an
+        // ASSERTED anchor row - but this screen only ever renders OBSERVED rows (FleetEngineStore.
+        // serviceRecordsForVehicle's own filter), which always carry a real date. `?: 0L` is a
+        // type-satisfying fallback, never a value real data here hits.
+        val year = Instant.ofEpochMilli(record.date ?: 0L).atZone(ZoneId.systemDefault()).year
         byYear.getOrPut(year) { mutableListOf() }.add(record)
     }
     // recordsNewestFirst is already newest-first, so linkedMapOf's insertion order already puts the
@@ -235,10 +239,13 @@ fun ServiceHistoryRow(record: ServiceRecord, showServiceName: Boolean, onClick: 
             if (showServiceName) {
                 Text(record.serviceName, style = LegionType.reading, color = MaterialTheme.colorScheme.onSurface)
             }
-            Text(shortDate(record.date), style = LegionType.stamp, color = sem.faint)
+            // Both fallbacks below are type-satisfying only - this row only ever renders an
+            // OBSERVED record (see [groupServiceRecordsByYear]'s own comment), which always
+            // carries both non-null.
+            Text(shortDate(record.date ?: 0L), style = LegionType.stamp, color = sem.faint)
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text("${groupThousands(record.mileage)} mi", style = LegionType.reading, color = MaterialTheme.colorScheme.onSurface)
+            Text("${groupThousands(record.mileage ?: 0)} mi", style = LegionType.reading, color = MaterialTheme.colorScheme.onSurface)
             Text(
                 record.costCents?.let { "$${formatCents(it)}" } ?: "no cost logged",
                 style = LegionType.stamp,
@@ -267,7 +274,7 @@ private fun EditServiceRecordDialog(
 ) {
     val sem = LocalLegionSemantics.current
     val scope = rememberCoroutineScope()
-    var mileageText by remember(record.id) { mutableStateOf(record.mileage.toString()) }
+    var mileageText by remember(record.id) { mutableStateOf((record.mileage ?: 0).toString()) }
     // Plain "%.2f" here, deliberately NOT formatCents' grouped-thousands form ("1,234.56") - this
     // field round-trips through toDoubleOrNull() on SAVE below, and a comma would fail that parse
     // for any cost >= $1,000 the driver didn't happen to retype by hand.

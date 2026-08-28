@@ -1,6 +1,6 @@
 ---
 type: decision
-status: open
+status: built
 blocked_by: []
 map: backend-erp
 ---
@@ -89,3 +89,47 @@ someone tries to delete `engine/` and two fleet record types have nowhere left t
 
 Recommend deciding this before step 6, not during it - same posture ticket 15 itself asked for on
 the Notes+Dates fork.
+
+## RULED AND BUILT 2026-08-27/28. Delegated to me; open to reversal.
+
+**Ruling: option 1. ServiceHistory and MaintenanceSchedule repoint onto the legacy typed tables**,
+following ticket 14's fleet-is-legacy-primary shape. Vehicle was already there; these two were the
+only fleet record types still engine-backed and therefore the reason `engine/` could not be deleted
+for fleet.
+
+Room v46 -> v47 gives `service_records` the `kind` and `updatedAt` columns cutover 4's OBSERVED /
+ASSERTED unification needs, and `FleetRecordBridge.projectAnchorLegacy` derives the anchor from the
+typed rows the way `projectAnchor` did from engine records - **the single most-recently-updated row
+across both kinds, never blending mileage from one row with a date from another.** That
+no-blending property was cutover 4's own senior-review MUST-FIX and it is preserved deliberately.
+
+**The MonthlyRecap under-count is closed.** `countInRange` had read a table with no writers since
+2026-08-24; service writes land there again, and it now filters `kind = 'OBSERVED'` so a co-located
+ASSERTED anchor can never be counted as a service actually performed.
+
+## The regression this nearly shipped, and why fleet is the aspect where it mattered
+
+The first cut left `FleetReconcile` reading the engine, as every earlier retirement step correctly
+did. **For fleet that is wrong, and the difference is structural: fleet has NO configured write
+path.** Ticket 14 ruled it a projection, so `FleetReconcile` is the ONLY route by which fleet data
+ever reaches Postgres. Grepping `FleetEngineStore` for a backend call returns nothing.
+
+For places, pantry, notes and ledger the reconcile is a one-time migration tool and new writes reach
+the server through each aspect's own configured backend, so leaving it on the engine costs nothing.
+Here it would have frozen the projection at the last engine write - **every oil change logged from
+then on would silently never reach the server.** The mirror image of the MonthlyRecap gap this
+ticket closes, and it would have traded one silent under-count for another.
+
+Now repointed onto the same legacy table. `origin_guid` is the legacy row's own `syncId`, verified
+identical to the engine guid wherever both exist - a source change, not an identity change.
+
+**The vehicles half was checked and needed nothing:** identity writes still update the engine record
+and the legacy mirror in one transaction, so the engine Vehicle row is never stale and its
+`origin_guid` is untouched.
+
+Suite: 2,825 tests, 0 failures, 0 leaking classes. Both halves mutation-proven - hardcoding `kind`
+fails the copy assertion, and pointing the reconcile back at the engine drops the
+post-repoint record from the upload.
+
+**Owed on the phone:** a real v46 -> v47 upgrade, a logged oil change, and a `runFleet` against the
+live project.

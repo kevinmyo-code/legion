@@ -259,22 +259,30 @@ object FleetDigestBuilder : DigestBuilder {
      * zero miles on an odometer that has moved). */
     private fun odometerTrendLine(recentServices: List<ServiceRecord>, mileageLabel: String, now: Long): String {
         if (recentServices.isEmpty()) return DigestText.line("ODOMETER TREND", DigestText.notLogged())
+        // ServiceRecord.mileage/.date widened to nullable at v46->v47 (engine retirement step 3) to
+        // let an ASSERTED anchor row state only one axis - but every row THIS function ever sees
+        // came from FleetEngineStore.serviceRecordsForVehicle/getRecentForVehicle, which filter to
+        // kind == OBSERVED only, and an OBSERVED row always carries both, non-null, by construction
+        // (FleetEngineStore.insertObserved's own signature takes non-null mileage/date). `?: 0`
+        // below is therefore a type-satisfying fallback that real data never actually exercises,
+        // not a silent "unknown reads as zero" - see [FleetRecordBridge]'s own doc for the ASSERTED/
+        // OBSERVED split this reflects.
         val buckets = (0 until WINDOW_PERIODS).map { periodIndex ->
             val bucketEnd = now - periodIndex * MONTH_MS
             val bucketStart = bucketEnd - MONTH_MS
-            val inBucket = recentServices.filter { it.date in bucketStart..bucketEnd }
-            inBucket.maxOfOrNull { it.mileage }
+            val inBucket = recentServices.filter { (it.date ?: 0L) in bucketStart..bucketEnd }
+            inBucket.maxOfOrNull { it.mileage ?: 0 }
         }
         val bucketText = buckets.mapIndexed { i, mileage ->
             val label = if (i == 0) "current" else "-${i}mo"
             "$label ${mileage?.let { groupThousands(it) } ?: DigestText.notLogged()}"
         }.joinToString(", ")
 
-        val oldest = recentServices.minByOrNull { it.date }
-        val newest = recentServices.maxByOrNull { it.date }
-        val olderTrend = if (oldest != null && newest != null && oldest.date < now - WINDOW_PERIODS * MONTH_MS && oldest.id != newest.id) {
-            val milesDelta = newest.mileage - oldest.mileage
-            val monthsSpan = ((newest.date - oldest.date).toDouble() / MONTH_MS).coerceAtLeast(1.0)
+        val oldest = recentServices.minByOrNull { it.date ?: 0L }
+        val newest = recentServices.maxByOrNull { it.date ?: 0L }
+        val olderTrend = if (oldest != null && newest != null && (oldest.date ?: 0L) < now - WINDOW_PERIODS * MONTH_MS && oldest.id != newest.id) {
+            val milesDelta = (newest.mileage ?: 0) - (oldest.mileage ?: 0)
+            val monthsSpan = (((newest.date ?: 0L) - (oldest.date ?: 0L)).toDouble() / MONTH_MS).coerceAtLeast(1.0)
             "%,d mi over %.1f mo (avg %.0f mi/mo)".format(milesDelta, monthsSpan, milesDelta / monthsSpan)
         } else {
             DigestText.notLogged()
@@ -295,7 +303,7 @@ object FleetDigestBuilder : DigestBuilder {
             DigestText.withTier(
                 DigestText.line(
                     "LAST SERVICE ${record.serviceName}",
-                    "${compactDate(record.date)} at ${groupThousands(record.mileage)} mi",
+                    "${compactDate(record.date ?: 0L)} at ${groupThousands(record.mileage ?: 0)} mi",
                 ),
                 TrustTier.REPORTED,
             )

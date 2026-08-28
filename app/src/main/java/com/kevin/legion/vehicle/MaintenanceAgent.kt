@@ -173,7 +173,11 @@ object MaintenanceAgent {
         // no record to compare against, or the anchor's own date is not older than the record's -
         // mergeBackfillAnchors' "supplying both keeps both" rule means a dated anchor's mileage and
         // date came from the SAME driver statement, so there is nothing to reconcile it against.
-        if (item.lastDoneDate != null && (record == null || item.lastDoneDate >= record.date)) {
+        // record.date/.mileage are type-nullable since v46->v47 (an ASSERTED anchor can state only
+        // one axis), but [record] here only ever comes from an OBSERVED-filtered read (see
+        // describeItem's own doc), which always carries both - `?: 0` fallbacks below are
+        // type-satisfying only, never a value real data exercises.
+        if (item.lastDoneDate != null && (record == null || item.lastDoneDate >= (record.date ?: 0L))) {
             return listOfNotNull(
                 item.lastDoneMileage?.let { "at ${"%,d".format(it)} mi" },
                 "on ${shortDate(item.lastDoneDate)}",
@@ -189,14 +193,16 @@ object MaintenanceAgent {
 
         // record != null and the anchor's own date is either absent or older than record's date -
         // the record is the more recent (or the only) known event, so it is the derivation.
-        val recordClause = "at ${"%,d".format(record.mileage)} mi on ${shortDate(record.date)}"
+        val recordMileage = record.mileage ?: 0
+        val recordDate = record.date ?: 0L
+        val recordClause = "at ${"%,d".format(recordMileage)} mi on ${shortDate(recordDate)}"
         val anchorMileage = item.lastDoneMileage
         return when {
             anchorMileage == null -> recordClause
-            abs(anchorMileage - record.mileage) <= PLAUSIBLE_MILEAGE_DRIFT ->
-                "at ${"%,d".format(anchorMileage)} mi on ${shortDate(record.date)}"
+            abs(anchorMileage - recordMileage) <= PLAUSIBLE_MILEAGE_DRIFT ->
+                "at ${"%,d".format(anchorMileage)} mi on ${shortDate(recordDate)}"
             else ->
-                "logged at ${"%,d".format(record.mileage)} mi on ${shortDate(record.date)}; the maintenance " +
+                "logged at ${"%,d".format(recordMileage)} mi on ${shortDate(recordDate)}; the maintenance " +
                     "clock was later set to ${"%,d".format(anchorMileage)} mi"
         }
     }

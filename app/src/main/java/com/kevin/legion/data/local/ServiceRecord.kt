@@ -12,8 +12,15 @@ data class ServiceRecord(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val vehicleId: String, // Vehicle.obdMac
     val serviceName: String,
-    val mileage: Int,
-    val date: Long, // Timestamp in milliseconds
+    // Nullable as of v46->v47 (engine retirement step 3/ticket 16) - see [kind]'s own doc comment
+    // for why: an ASSERTED row (a driver-stated anchor with no backing event) can legitimately
+    // state only one axis ("did the oil change around 50,000 miles, not sure when" has a mileage
+    // and no date). Every OBSERVED row - a real logged service - still carries both, non-null, by
+    // construction (every write path that creates one, FleetEngineStore.insertObserved, always
+    // supplies them); the type only widened to let the OTHER kind this table now holds be honest
+    // about what it does not know, not because a logged service became less certain.
+    val mileage: Int?,
+    val date: Long?, // Timestamp in milliseconds. Same nullability reasoning as [mileage].
     // Cents, never dollars - CLAUDE.md §4 rule 3. Migrated from `cost: Double?` at
     // v19->v20 (ticket 11, `.scratch/fleet-maintenance/issues/11-*`): the column had
     // NO writer anywhere in the app and was null on both of Kevin's real records, so
@@ -52,4 +59,22 @@ data class ServiceRecord(
     // delete must say so in words** - "deletes on this phone only" - never imply
     // it is a global delete the way [MaintenanceItem.deleted]'s genuinely is.
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    // Engine retirement step 3 (`.scratch/backend-erp/issues/16-*`, ticket 15's option 1, ruled
+    // 2026-08-27): this table now holds BOTH a real logged service (`kind = "OBSERVED"`) and a
+    // driver-stated anchor with no backing event (`kind = "ASSERTED"`) - the exact unification
+    // cutover 4's engine `ServiceHistory` record type built (`FleetAspectSeeder.FIELD_SH_KIND`),
+    // reproduced here so [FleetRecordBridge.projectAnchorLegacy] has exactly ONE place to derive
+    // "last done" from, never two independently-writable stores that can drift apart (the original
+    // pre-cutover-4 bug this whole design exists to not repeat). DEFAULT 'OBSERVED' is correct for
+    // every pre-v47 row without exception: this table held nothing else before this column existed.
+    @ColumnInfo(defaultValue = "OBSERVED") val kind: String = "OBSERVED",
+    // Last-modified epoch ms - the SAME role [MaintenanceItem.updatedAt] already plays, needed here
+    // for the identical reason: [FleetRecordBridge.projectAnchorLegacy] picks the single MOST
+    // RECENTLY STATED row for a (vehicleId, serviceName) pair and takes BOTH its axes together,
+    // never blending mileage from one row with date from another (see that function's own doc for
+    // why "most recently stated," not "most recent date," is the correct axis). DEFAULT 0 mirrors
+    // the migration's own column default; [data.local.MIGRATION_46_47] backfills every existing row
+    // to its own `date`, the closest fact on file for when an already-migrated OBSERVED row was
+    // last true, and every row this table gains from here on stamps a real value at write time.
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
 )

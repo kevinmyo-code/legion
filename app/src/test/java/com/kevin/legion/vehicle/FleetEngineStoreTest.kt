@@ -102,14 +102,14 @@ class FleetEngineStoreTest {
         // A driver-stated anchor with no backing event yet.
         FleetEngineStore.setAnchor(context, "V1", "Oil Change", mileage = 227_483, date = 1_723_000_000_000L, now = System.currentTimeMillis())
         val assertedGuid = com.kevin.legion.engine.fleet.FleetRecordBridge.assertedAnchorGuid("V1", "Oil Change")
-        assertNotNull("the ASSERTED row must exist before the observation", db.engineRecordDao().getByGuid(assertedGuid))
+        assertNotNull("the ASSERTED row must exist before the observation", db.serviceRecordDao().getBySyncId(assertedGuid))
 
         // The real event that explains the anchor on BOTH axes now lands.
         val result = FleetEngineStore.insertObserved(context, "V1", "Oil Change", mileage = 227_483, date = 1_723_000_000_000L, costCents = null)
         assertTrue(result is FleetEngineStore.InsertObservedResult.Success)
 
-        val asserted = db.engineRecordDao().getByGuid(assertedGuid)!!
-        assertNotNull("the superseded ASSERTED row must have been trashed, not deleted outright (30-day restore)", asserted.deletedAt)
+        val asserted = db.serviceRecordDao().getBySyncId(assertedGuid)!!
+        assertTrue("the superseded ASSERTED row must have been soft-deleted, not hard-deleted", asserted.deleted)
     }
 
     @Test
@@ -127,11 +127,11 @@ class FleetEngineStoreTest {
         // insertObserved's own create call passes the service's own date as the row's `now`.
         FleetEngineStore.insertObserved(context, "V1", "Oil Change", mileage = 227_374, date = 1_692_000_000_000L, costCents = null)
 
-        val asserted = db.engineRecordDao().getByGuid(assertedGuid)!!
-        assertNull(
+        val asserted = db.serviceRecordDao().getBySyncId(assertedGuid)!!
+        assertFalse(
             "a mismatched mileage must NOT trash the anchor - ticket 29's dateless 227,483 anchor " +
                 "must survive alongside a disagreeing OBSERVED row, both facts stated, never silently reconciled",
-            asserted.deletedAt,
+            asserted.deleted,
         )
 
         // Senior review MUST-FIX (2026-08-24): projectAnchor derives BOTH axes from the single
@@ -175,14 +175,14 @@ class FleetEngineStoreTest {
         FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change"))
         FleetEngineStore.setAnchor(context, "V1", "Oil Change", mileage = 227_000, date = null, now = System.currentTimeMillis())
         val assertedGuid = com.kevin.legion.engine.fleet.FleetRecordBridge.assertedAnchorGuid("V1", "Oil Change")
-        assertNull(db.engineRecordDao().getByGuid(assertedGuid)!!.deletedAt)
+        assertFalse(db.serviceRecordDao().getBySyncId(assertedGuid)!!.deleted)
 
         // currentMileage(vehicle) == odometerBaseline (227_000, no trip miles) - matches the anchor exactly.
         VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
 
-        assertNotNull(
+        assertTrue(
             "voice logService must supersede the ASSERTED anchor the same way a direct insertObserved does",
-            db.engineRecordDao().getByGuid(assertedGuid)!!.deletedAt,
+            db.serviceRecordDao().getBySyncId(assertedGuid)!!.deleted,
         )
     }
 
@@ -213,7 +213,7 @@ class FleetEngineStoreTest {
         // Both halves of the one logical write are visible together - the OBSERVED row exists...
         assertEquals(1, FleetEngineStore.serviceRecordsForVehicle(context, "V1").size)
         // ...AND its matching ASSERTED row was superseded in the same call.
-        assertNotNull(db.engineRecordDao().getByGuid(assertedGuid)!!.deletedAt)
+        assertTrue(db.serviceRecordDao().getBySyncId(assertedGuid)!!.deleted)
     }
 
     // ============================================================================================

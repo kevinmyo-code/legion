@@ -132,8 +132,11 @@ object CarToolbelt {
         if (recs.isEmpty()) return "No service history logged yet."
         return recs.joinToString("\n") { r ->
             buildString {
-                append(shortDate(r.date)).append(": ").append(r.serviceName)
-                append(" at ${"%,d".format(r.mileage)} mi")
+                // r.date/.mileage are type-nullable since v46->v47 (an ASSERTED anchor can state
+                // only one axis) but getRecentForVehicle only ever returns OBSERVED rows, which
+                // always carry both - `?: 0` is a type-satisfying fallback, never real data.
+                append(shortDate(r.date ?: 0L)).append(": ").append(r.serviceName)
+                append(" at ${"%,d".format(r.mileage ?: 0)} mi")
                 // costCents is cents (ticket 11, CLAUDE.md §4 rule 3) - divide by 100
                 // here at the formatting edge, never carry a raw cents figure further.
                 // Two decimals, not "%.0f". Rounding to the nearest dollar here turned a $45.99

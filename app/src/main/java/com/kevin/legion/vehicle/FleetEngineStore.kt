@@ -8,11 +8,10 @@ import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.data.local.Vehicle
-import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.RecordStore
 import com.kevin.legion.engine.fleet.FleetAspectSeeder
 import com.kevin.legion.engine.fleet.FleetRecordBridge
-import org.json.JSONObject
+import com.kevin.legion.engine.migration.EngineFleetServiceHistoryRetirementCopy
 
 /**
  * Cutover 4 (`docs/architecture/cutover4-2026-08-24.md`). The single door every fleet write and read
@@ -49,14 +48,40 @@ import org.json.JSONObject
  * this file performs for those. `markOdometerPrompted`/`clearThisCarSentinel` here are the same kind
  * of narrow, legacy-only-column writer, kept for the identical reason.
  *
- * **`ServiceHistory`/`MaintenanceSchedule` have no such problem** - their engine records are the
- * ONLY store from this branch forward (see the cutover doc's ruling table: zero legacy writers on
- * `service_records`/`maintenance_items`), and [MaintenanceItem.lastDoneMileage]/[lastDoneDate] are
- * reconstructed fresh on every read via [FleetRecordBridge.toMaintenanceItem]/[FleetRecordBridge.projectAnchor] -
- * this is the actual unification ticket 29 asked for; the Vehicle-mirror question above is a
- * narrower, purely-identity-shaped problem the carve's own guid derivation created, unrelated to
- * ticket 29's drift bug (Vehicle identity was never split across two stores the way service history
- * was).
+ * **`ServiceHistory`/`MaintenanceSchedule` REPOINTED off the engine at engine retirement step 3
+ * (`.scratch/backend-erp/issues/16-fleet-service-history-is-not-a-configured-split.md`, ticket 15's
+ * "RULED... option 1", 2026-08-27).** Ticket 16 found these two record types had NO
+ * configured/unconfigured split to repoint the ordinary way (they were engine-only, unconditionally,
+ * by cutover 4's own design) and that the legacy `service_records` table had no `kind` column to
+ * hold an `ASSERTED` row without regressing ticket 29's unification. [data.local.MIGRATION_46_47]
+ * adds `kind`/`updatedAt` to `service_records` (widening `mileage`/`date` to nullable, since an
+ * `ASSERTED` anchor can legitimately state only one axis) so `service_records` alone can still be
+ * the ONE place a schedule check derives "last done" from - `ServiceHistory`/`MaintenanceSchedule`
+ * write/read through [db.serviceRecordDao()]/[db.maintenanceItemDao()] directly now, the same
+ * legacy-primary shape [getByMac]/[getAll] above already use for Vehicle.
+ * [EngineFleetServiceHistoryRetirementCopy] is the one-time gap-filler that must run before this
+ * branch is live on an existing install, mirroring [com.kevin.legion.engine.migration.EnginePantryRetirementCopy]'s
+ * shape.
+ *
+ * **`MaintenanceItem.lastDoneMileage`/`.lastDoneDate` stay DERIVED, not stored, even though the
+ * legacy columns exist and are nullable.** Writing the anchor VALUE into those columns again would
+ * silently resurrect the exact two-independently-writable-stores bug ticket 29 fixed (see this
+ * object's own [FleetRecordBridge.projectAnchorLegacy] doc for the full reasoning) - nothing in
+ * this file writes them from here on; every read composes a fresh anchor from `service_records` via
+ * [toItemsLegacy] instead, the identical shape [FleetRecordBridge.toMaintenanceItem]/[projectAnchor]
+ * already used against the engine.
+ *
+ * **`backend/FleetReconcile.kt` still reads the engine directly, unchanged and out of scope for
+ * this step** - it is the configured-transition upload tool, and per ticket 15's own sequencing
+ * ("nothing is deleted until every aspect is repointed and soaked") the engine `ServiceHistory`/
+ * `MaintenanceSchedule` records this file no longer writes stay in place, frozen at whatever this
+ * install had migrated/reconciled as of the repoint. **Named consequence, not a silent one:** a
+ * service logged or a schedule edited AFTER this branch lands never reaches those engine records
+ * again, so a `FleetReconcile.run` on an install that keeps using the phone past this point will
+ * upload an increasingly stale ServiceHistory/MaintenanceSchedule snapshot to Postgres until
+ * `FleetReconcile` itself gets its own follow-up repoint - the same shape of gap
+ * [MonthlyRecapController.generate]'s own comment already named for the read side pre-repoint, now
+ * on the upload side post-repoint.
  */
 object FleetEngineStore {
 
@@ -221,45 +246,72 @@ object FleetEngineStore {
     }
 
     /**
-     * Trashes the engine `Vehicle` record - exercises [RecordStore]'s `DeletePolicy.BLOCK` on
-     * `ServiceHistory.vehicle`/`MaintenanceSchedule.vehicle` (`docs/architecture/wave4-carve-2026-08-23.md`'s
-     * own field mapping). **No live caller reaches this today** - archive/unarchive
+     * Trashes the engine `Vehicle` record. **Blockers are now checked against the LEGACY
+     * `service_records`/`maintenance_items` tables, not the engine** (engine retirement step 3):
+     * since [insertObserved]/[upsertNewItem]/etc. below no longer write `ServiceHistory`/
+     * `MaintenanceSchedule` engine records, the engine's own `DeletePolicy.BLOCK` scan (which only
+     * ever sees engine rows) would find nothing for a car whose ENTIRE history was logged after this
+     * branch landed and incorrectly allow the delete - checking the tables that are now the real
+     * store closes that hole. **No live caller reaches this today** - archive/unarchive
      * ([setArchived]) is the only removal affordance the app currently exposes for a car; a real
      * hard-delete voice tool or screen action does not exist, so this exists to make the refusal
-     * mechanically real and testable (instruction 5: "exercised directly against a real RecordStore")
-     * rather than to back a live capability this branch did not add. When a caller does reach it, the
-     * contract is: [RecordStore.DeleteResult.Blocked] means NOTHING was written, and the caller must
-     * surface `blockers` in words - "that car has service history on file, so I can't delete it" -
-     * never a silent no-op and never a partial delete.
+     * mechanically real and testable rather than to back a live capability this branch did not add.
+     * When a caller does reach it, the contract is unchanged: [RecordStore.DeleteResult.Blocked]
+     * means NOTHING was written, and the caller must surface `blockers` in words - "that car has
+     * service history on file, so I can't delete it" - never a silent no-op and never a partial
+     * delete.
      */
     suspend fun deleteVehicle(context: Context, mac: String): RecordStore.DeleteResult {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
+        if (db.vehicleDao().getByMac(mac) == null) return RecordStore.DeleteResult.NotFound
+
+        val blockers = mutableListOf<String>()
+        val serviceHistoryCount = db.serviceRecordDao().countForVehicle(mac)
+        if (serviceHistoryCount > 0) blockers += "$serviceHistoryCount service history record(s) still reference this car"
+        val scheduleCount = db.maintenanceItemDao().getForVehicle(mac).size
+        if (scheduleCount > 0) blockers += "$scheduleCount maintenance schedule item(s) still reference this car"
+        if (blockers.isNotEmpty()) return RecordStore.DeleteResult.Blocked(blockers)
+
         val recordStore = store(db)
         val engineId = engineVehicleId(db, mac) ?: return RecordStore.DeleteResult.NotFound
         return recordStore.delete(engineId)
     }
 
     // =============================================================================================
-    // ServiceHistory (ServiceRecord value object, OBSERVED rows only - ASSERTED rows never surface
-    // as a ServiceRecord; they have no real event behind them)
+    // ServiceHistory (ServiceRecord entity, OBSERVED rows only surface through the functions below
+    // that return one - ASSERTED rows never do; they have no real event behind them). Repointed off
+    // the engine at engine retirement step 3 - see this file's own class doc.
     // =============================================================================================
 
-    private suspend fun activeServiceHistoryForVehicle(db: CarDatabase, schema: FleetAspectSeeder.Schema, vehicleEngineId: Long): List<EngineRecord> =
-        db.engineRecordDao().activeByRecordType(schema.serviceHistory.recordTypeId)
-            .filter { FleetRecordBridge.serviceHistoryVehicleId(it, schema.serviceHistory.fieldIds) == vehicleEngineId }
+    /** One-time reconcile gate (engine retirement step 3): before EVER reading or writing
+     * `service_records`/`maintenance_items` from this file, make sure any engine-only row has
+     * already landed there. Cheap after the first call -
+     * [EngineFleetServiceHistoryRetirementCopy.copyIfNeeded] itself short-circuits on its own
+     * completion flag, so this is a SharedPreferences read on every later call, not a repeat scan.
+     * **Unconditional, never gated on a "configured" check** - unlike places/pantry/ledger, fleet
+     * has no configured/unconfigured split for these two record types at all (ticket 14: fleet is a
+     * projection, legacy-primary always), so every entry point below calls this directly, matching
+     * how [getByMac]/[getAll] above never gate on one either. Every public function in this section
+     * (and [deleteVehicle] above, whose blockers now read these same tables) calls this first, so
+     * none of them can read ahead of the copy regardless of call order. */
+    private suspend fun ensureServiceHistoryReconciled(context: Context) {
+        EngineFleetServiceHistoryRetirementCopy.copyIfNeeded(context)
+    }
 
-    /** All logged (OBSERVED) service records for [mac], newest first - the engine-backed equivalent
-     * of [com.kevin.legion.data.local.ServiceRecordDao.getRecordsForVehicle]'s `Flow`, collected to a
-     * plain `List` since every caller of that Flow already only ever read `.first()` off it (FleetScreen,
-     * FleetSpendController) - there was never a second subscriber relying on live updates. */
+    /** Every `service_records` row (both kinds) for [mac] - the shared read [toItemsLegacy]/
+     * [FleetRecordBridge.projectAnchorLegacy] group by service name, and every OBSERVED-only
+     * accessor below filters. */
+    private suspend fun allHistoryForVehicle(db: CarDatabase, mac: String): List<ServiceRecord> =
+        db.serviceRecordDao().getRecordsForVehicleOnce(mac)
+
+    /** All logged (OBSERVED) service records for [mac], newest first. */
     suspend fun serviceRecordsForVehicle(context: Context, mac: String): List<ServiceRecord> {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val engineId = engineVehicleId(db, mac) ?: return emptyList()
-        return activeServiceHistoryForVehicle(db, schema, engineId)
-            .filter { FleetRecordBridge.kindOf(it, schema.serviceHistory.fieldIds) == FleetAspectSeeder.KIND_OBSERVED }
-            .map { FleetRecordBridge.toServiceRecord(it, schema.serviceHistory.fieldIds).copy(vehicleId = mac) }
-            .sortedByDescending { it.date }
+        return allHistoryForVehicle(db, mac)
+            .filter { it.kind == FleetAspectSeeder.KIND_OBSERVED }
+            .sortedByDescending { it.date ?: 0L }
     }
 
     suspend fun getRecentForVehicle(context: Context, mac: String, limit: Int): List<ServiceRecord> =
@@ -274,85 +326,66 @@ object FleetEngineStore {
         serviceRecordsForVehicle(context, mac).count { it.costCents != null }
 
     suspend fun getServiceRecordById(context: Context, id: Long): ServiceRecord? {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val record = db.engineRecordDao().getById(id) ?: return null
-        if (record.recordTypeId != schema.serviceHistory.recordTypeId || record.deletedAt != null) return null
-        if (FleetRecordBridge.kindOf(record, schema.serviceHistory.fieldIds) != FleetAspectSeeder.KIND_OBSERVED) return null
-        // vehicleId (mac) is not recoverable from the engine record alone (Vehicle's own guid
-        // problem, one level removed) - the one caller of this function
-        // (VehicleController.editServiceRecordDirect's read-back) only ever uses the returned
-        // ServiceRecord's serviceName/mileage/date/costCents, never its vehicleId, so this is left
-        // blank rather than threading an extra vehicle lookup nothing needs.
-        return FleetRecordBridge.toServiceRecord(record, schema.serviceHistory.fieldIds)
+        val record = db.serviceRecordDao().getById(id) ?: return null
+        if (record.deleted || record.kind != FleetAspectSeeder.KIND_OBSERVED) return null
+        return record
     }
 
     suspend fun mostRecentForVehicleAndService(context: Context, mac: String, serviceName: String): ServiceRecord? =
         serviceRecordsForVehicle(context, mac)
             .filter { it.serviceName == serviceName }
-            .maxByOrNull { it.date }
+            .maxByOrNull { it.date ?: 0L }
 
     suspend fun hasRecordAtOrAfter(context: Context, mac: String, serviceName: String, atOrAfterMs: Long): Boolean =
-        serviceRecordsForVehicle(context, mac).any { it.serviceName == serviceName && it.date >= atOrAfterMs }
+        serviceRecordsForVehicle(context, mac).any { it.serviceName == serviceName && (it.date ?: 0L) >= atOrAfterMs }
 
     sealed class InsertObservedResult {
-        data class Success(val engineRecordId: Long) : InsertObservedResult()
+        /** [recordId] is now `service_records.id` (engine retirement step 3) - the name was
+         * `engineRecordId` when this wrote an [EngineRecord]; nothing outside this file reads the
+         * field by name (checked by grep before the rename), so the rename costs nothing. */
+        data class Success(val recordId: Long) : InsertObservedResult()
         data class Failure(val reason: String) : InsertObservedResult()
     }
 
     /**
-     * Writes a real, logged `ServiceHistory` row (`kind = OBSERVED`) and, in the SAME transaction,
-     * supersedes any `ASSERTED` anchor for the same `(vehicleId, serviceName)` this observation now
-     * explains (cutover instruction 3, `docs/architecture/wave4-carve-2026-08-23.md`'s owed follow-up
-     * #8). **The both-axes rule is [FleetRecordBridge.explainedBy] - identical to the migration's own
-     * corrected dedup rule**, so a post-cutover log can supersede an anchor the migration itself wrote
-     * (same deterministic guid, [FleetRecordBridge.assertedAnchorGuid]) exactly as readily as one a
-     * post-cutover `setAnchor` call wrote. Every write path that logs a real, precise service - voice
-     * `log_service`/`log_past_service`(with a date) via [VehicleController], AND the hands-UI's
+     * Writes a real, logged `ServiceHistory` row (`kind = OBSERVED`) into `service_records` and, in
+     * the SAME transaction, supersedes any `ASSERTED` anchor for the same `(vehicleId, serviceName)`
+     * this observation now explains (cutover instruction 3, carried through the engine retirement
+     * repoint unchanged). **The both-axes rule is [FleetRecordBridge.explainedBy]**, applied here
+     * against the LEGACY row's `mileage`/`date` instead of an [EngineRecord]'s payload fields - the
+     * function signature is unchanged (`Int?`/`Long?` in, `Int?`/`Long?` out), so the rule itself did
+     * not have to change, only what it reads. Every write path that logs a real, precise service -
+     * voice `log_service`/`log_past_service` via [VehicleController], AND the hands-UI's
      * DONE_AT-with-cost save via `ui/fleet/MaintenanceWrites.kt` - calls this ONE function, so the
-     * supersession fires identically no matter which surface logged the service (the unification this
-     * cutover exists to land, extended to the supersession rule itself).
+     * supersession fires identically no matter which surface logged the service.
      */
     suspend fun insertObserved(context: Context, mac: String, serviceName: String, mileage: Int, date: Long, costCents: Long?): InsertObservedResult {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val recordStore = store(db)
-        val vehicleEngineId = engineVehicleId(db, mac)
-            ?: return InsertObservedResult.Failure("no vehicle on file for $mac")
+        if (db.vehicleDao().getByMac(mac) == null) return InsertObservedResult.Failure("no vehicle on file for $mac")
 
         var outcome: InsertObservedResult = InsertObservedResult.Failure("write did not complete")
         try {
             db.withTransaction {
-                val record = ServiceRecord(vehicleId = mac, serviceName = serviceName, mileage = mileage, date = date, costCents = costCents)
-                val created = recordStore.create(
-                    recordTypeId = schema.serviceHistory.recordTypeId,
-                    fieldValues = FleetRecordBridge.observedFieldValues(record, schema.serviceHistory.fieldIds, vehicleEngineId),
-                    provenance = RecordProvenance.USER,
-                    now = date,
+                val newId = db.serviceRecordDao().insertReturningId(
+                    ServiceRecord(
+                        vehicleId = mac, serviceName = serviceName, mileage = mileage, date = date, costCents = costCents,
+                        kind = FleetAspectSeeder.KIND_OBSERVED, updatedAt = date,
+                    ),
                 )
-                if (created !is RecordStore.WriteResult.Success) {
-                    throw EngineWriteFailedException((created as RecordStore.WriteResult.Failure).reason)
-                }
+                if (newId <= 0) throw EngineWriteFailedException("service_records insert did not return a row id")
 
-                // ASSERTED supersession, in the same transaction as the OBSERVED create.
-                val assertedGuid = FleetRecordBridge.assertedAnchorGuid(mac, serviceName)
-                val asserted = db.engineRecordDao().getByGuid(assertedGuid)
-                if (asserted != null && asserted.deletedAt == null) {
-                    val aMileage = FleetRecordBridge.serviceHistoryMileage(asserted, schema.serviceHistory.fieldIds)
-                    val aDate = FleetRecordBridge.serviceHistoryDate(asserted, schema.serviceHistory.fieldIds)
-                    if (FleetRecordBridge.explainedBy(aMileage, aDate, mileage, date)) {
-                        val deleteResult = recordStore.delete(asserted.id, now = date)
-                        // Nothing ever references a ServiceHistory row, so BLOCK is structurally
-                        // impossible here - guarded anyway so a future reference field added onto
-                        // ServiceHistory can never turn this into a silent stale-anchor leak.
-                        if (deleteResult is RecordStore.DeleteResult.Blocked) {
-                            throw EngineWriteFailedException(
-                                "could not supersede the prior anchor: ${deleteResult.blockers.joinToString()}",
-                            )
-                        }
+                // ASSERTED supersession, in the same transaction as the OBSERVED insert.
+                val assertedSyncId = FleetRecordBridge.assertedAnchorGuid(mac, serviceName)
+                val asserted = db.serviceRecordDao().getBySyncId(assertedSyncId)
+                if (asserted != null && !asserted.deleted) {
+                    if (FleetRecordBridge.explainedBy(asserted.mileage, asserted.date, mileage, date)) {
+                        db.serviceRecordDao().softDelete(asserted.id)
                     }
                 }
-                outcome = InsertObservedResult.Success(created.recordId)
+                outcome = InsertObservedResult.Success(newId)
             }
         } catch (e: EngineWriteFailedException) {
             outcome = InsertObservedResult.Failure(e.reason)
@@ -361,284 +394,169 @@ object FleetEngineStore {
     }
 
     suspend fun editMileageAndCost(context: Context, id: Long, mileageMiles: Int, costCents: Long?): Int {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val recordStore = store(db)
-        val existing = db.engineRecordDao().getById(id)
-            ?: return 0
-        if (existing.recordTypeId != schema.serviceHistory.recordTypeId || existing.deletedAt != null) return 0
-        val result = recordStore.update(
-            id,
-            mapOf(
-                schema.serviceHistory.fieldIds.getValue(FleetAspectSeeder.FIELD_SH_MILEAGE) to mileageMiles,
-                schema.serviceHistory.fieldIds.getValue(FleetAspectSeeder.FIELD_SH_COST) to costCents,
-            ),
-        )
-        return if (result is RecordStore.WriteResult.Success) 1 else 0
+        return db.serviceRecordDao().editMileageAndCost(id, mileageMiles, costCents)
     }
 
     suspend fun softDeleteServiceRecord(context: Context, id: Long): Int {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val recordStore = store(db)
-        return when (recordStore.delete(id)) {
-            RecordStore.DeleteResult.Trashed -> 1
-            else -> 0
-        }
+        return db.serviceRecordDao().softDelete(id)
     }
 
     // =============================================================================================
-    // MaintenanceSchedule (MaintenanceItem value object, anchor DERIVED from ServiceHistory)
+    // MaintenanceSchedule (MaintenanceItem entity, anchor DERIVED from ServiceHistory - never
+    // stored on this row, see this file's own class doc). Repointed off the engine at engine
+    // retirement step 3.
     // =============================================================================================
 
-    private suspend fun scheduleRecordsForVehicle(db: CarDatabase, schema: FleetAspectSeeder.Schema, vehicleEngineId: Long, includeDeleted: Boolean): List<EngineRecord> {
-        val vehicleFieldId = schema.maintenanceSchedule.fieldIds.getValue(FleetAspectSeeder.FIELD_MS_VEHICLE)
-        val active = db.engineRecordDao().activeByRecordType(schema.maintenanceSchedule.recordTypeId)
-            .filter { FleetRecordBridge.referenceId(it, vehicleFieldId) == vehicleEngineId }
-        if (!includeDeleted) return active
-        val trashed = db.engineRecordDao().trashedByRecordType(schema.maintenanceSchedule.recordTypeId)
-            .filter { FleetRecordBridge.referenceId(it, vehicleFieldId) == vehicleEngineId }
-        return active + trashed
-    }
-
-    private suspend fun toItems(db: CarDatabase, schema: FleetAspectSeeder.Schema, mac: String, vehicleEngineId: Long, schedules: List<EngineRecord>): List<MaintenanceItem> {
-        val history = activeServiceHistoryForVehicle(db, schema, vehicleEngineId)
-        val byService = history.groupBy { FleetRecordBridge.serviceHistoryServiceName(it, schema.serviceHistory.fieldIds) }
+    /** Composes the derived anchor onto every [schedules] row - the legacy-table equivalent of
+     * [FleetRecordBridge.toMaintenanceItem]/[FleetRecordBridge.projectAnchor] against the engine. */
+    private suspend fun toItemsLegacy(db: CarDatabase, mac: String, schedules: List<MaintenanceItem>): List<MaintenanceItem> {
+        val byService = allHistoryForVehicle(db, mac).groupBy { it.serviceName }
         return schedules.map { schedule ->
-            val name = PayloadCodec.readString(
-                JSONObject(schedule.payload), schema.maintenanceSchedule.fieldIds.getValue(FleetAspectSeeder.FIELD_MS_SERVICE_NAME),
-            ).orEmpty()
-            FleetRecordBridge.toMaintenanceItem(
-                schedule = schedule,
-                scheduleFieldIds = schema.maintenanceSchedule.fieldIds,
-                vehicleId = mac,
-                historyForThisService = byService[name].orEmpty(),
-                shFieldIds = schema.serviceHistory.fieldIds,
-            )
+            val (mileage, date) = FleetRecordBridge.projectAnchorLegacy(byService[schedule.serviceName].orEmpty())
+            schedule.copy(lastDoneMileage = mileage, lastDoneDate = date)
         }
     }
 
     suspend fun getForVehicle(context: Context, mac: String): List<MaintenanceItem> {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val vehicleEngineId = engineVehicleId(db, mac) ?: return emptyList()
-        val schedules = scheduleRecordsForVehicle(db, schema, vehicleEngineId, includeDeleted = false)
-        return toItems(db, schema, mac, vehicleEngineId, schedules)
+        return toItemsLegacy(db, mac, db.maintenanceItemDao().getForVehicle(mac))
     }
 
     suspend fun getForVehicleIncludingDeleted(context: Context, mac: String): List<MaintenanceItem> {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val vehicleEngineId = engineVehicleId(db, mac) ?: return emptyList()
-        val schedules = scheduleRecordsForVehicle(db, schema, vehicleEngineId, includeDeleted = true)
-        return toItems(db, schema, mac, vehicleEngineId, schedules)
+        return toItemsLegacy(db, mac, db.maintenanceItemDao().getForVehicleIncludingDeleted(mac))
     }
 
     suspend fun get(context: Context, mac: String, serviceName: String): MaintenanceItem? =
         getForVehicle(context, mac).firstOrNull { it.serviceName == serviceName }
 
     /** Genuine create only (a fresh schedule item, hand-added or the "no match" branch of a service
-     * log) - never call this to edit an existing row. Deterministic guid ([FleetRecordBridge.scheduleGuid])
-     * so a retry recognizes what it already wrote rather than duplicating. */
+     * log) - never call this to edit an existing row, mirroring
+     * [com.kevin.legion.data.local.MaintenanceItemDao.upsert]'s own "create only" contract.
+     * [item]'s own `lastDoneMileage`/`lastDoneDate` are never stored on the schedule row itself (see
+     * this file's own class doc) - if either is present, they seed an `ASSERTED` anchor in
+     * `service_records` instead, the one place an anchor now lives. */
     suspend fun upsertNewItem(context: Context, item: MaintenanceItem) {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val recordStore = store(db)
-        val vehicleEngineId = engineVehicleId(db, item.vehicleId) ?: return
-        val guid = FleetRecordBridge.scheduleGuid(item.vehicleId, item.serviceName)
-        val existing = db.engineRecordDao().getByGuid(guid)
-        if (existing != null) {
-            // restore BEFORE update - RecordStore.update refuses to touch a trashed record.
-            if (existing.deletedAt != null) recordStore.restore(existing.id)
-            recordStore.update(existing.id, FleetRecordBridge.scheduleFieldValues(item, schema.maintenanceSchedule.fieldIds, vehicleEngineId))
-        } else {
-            recordStore.create(
-                recordTypeId = schema.maintenanceSchedule.recordTypeId,
-                fieldValues = FleetRecordBridge.scheduleFieldValues(item, schema.maintenanceSchedule.fieldIds, vehicleEngineId),
-                provenance = RecordProvenance.USER,
-                guid = guid,
-            )
-        }
+        if (db.vehicleDao().getByMac(item.vehicleId) == null) return
+        db.maintenanceItemDao().upsert(item.copy(lastDoneMileage = null, lastDoneDate = null))
         if (item.lastDoneMileage != null || item.lastDoneDate != null) {
-            writeAssertedAnchor(db, schema, recordStore, vehicleEngineId, item.vehicleId, item.serviceName, item.lastDoneMileage, item.lastDoneDate, System.currentTimeMillis())
+            writeAssertedAnchorLegacy(db, item.vehicleId, item.serviceName, item.lastDoneMileage, item.lastDoneDate, System.currentTimeMillis())
         }
     }
 
     /** `-1L` on a collision with an existing `(vehicleId, serviceName)` pair, active OR trashed -
-     * matches [com.kevin.legion.data.local.MaintenanceItemDao.insertIgnore]'s exact contract (a
-     * tombstoned row still occupies the natural key, and must be un-tombstoned via [restore], never
-     * silently overwritten by an insert). Returns the new engine record id on a genuine insert. */
+     * delegates straight to [com.kevin.legion.data.local.MaintenanceItemDao.insertIgnore], which
+     * already carries this exact contract (a composite-PK `@Insert(IGNORE)` collides identically
+     * whether the existing row is tombstoned or not). */
     suspend fun insertIgnore(context: Context, item: MaintenanceItem): Long {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val recordStore = store(db)
-        val vehicleEngineId = engineVehicleId(db, item.vehicleId) ?: return -1L
-        val guid = FleetRecordBridge.scheduleGuid(item.vehicleId, item.serviceName)
-        if (db.engineRecordDao().getByGuid(guid) != null) return -1L
-        val result = recordStore.create(
-            recordTypeId = schema.maintenanceSchedule.recordTypeId,
-            fieldValues = FleetRecordBridge.scheduleFieldValues(item, schema.maintenanceSchedule.fieldIds, vehicleEngineId),
-            provenance = RecordProvenance.USER,
-            guid = guid,
-        )
-        return when (result) {
-            is RecordStore.WriteResult.Success -> result.recordId
-            is RecordStore.WriteResult.Failure -> -1L
-        }
+        if (db.vehicleDao().getByMac(item.vehicleId) == null) return -1L
+        return db.maintenanceItemDao().insertIgnore(item.copy(lastDoneMileage = null, lastDoneDate = null))
     }
 
     suspend fun setIntervals(context: Context, mac: String, serviceName: String, miles: Int?, months: Int?, source: String, now: Long): Int {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val recordStore = store(db)
-        val guid = FleetRecordBridge.scheduleGuid(mac, serviceName)
-        val existing = db.engineRecordDao().getByGuid(guid) ?: return 0
-        if (existing.deletedAt != null) return 0
-        val result = recordStore.update(
-            existing.id,
-            mapOf(
-                schema.maintenanceSchedule.fieldIds.getValue(FleetAspectSeeder.FIELD_MS_INTERVAL_MILES) to miles,
-                schema.maintenanceSchedule.fieldIds.getValue(FleetAspectSeeder.FIELD_MS_INTERVAL_MONTHS) to months,
-                schema.maintenanceSchedule.fieldIds.getValue(FleetAspectSeeder.FIELD_MS_INTERVAL_SOURCE) to source,
-            ),
-            now,
-        )
-        return if (result is RecordStore.WriteResult.Success) 1 else 0
+        return db.maintenanceItemDao().setIntervals(mac, serviceName, miles, months, source, now)
     }
 
-    private suspend fun writeAssertedAnchor(
-        db: CarDatabase,
-        schema: FleetAspectSeeder.Schema,
-        recordStore: RecordStore,
-        vehicleEngineId: Long,
-        mac: String,
-        serviceName: String,
-        mileage: Int?,
-        date: Long?,
-        now: Long,
-    ) {
-        val guid = FleetRecordBridge.assertedAnchorGuid(mac, serviceName)
-        val existing = db.engineRecordDao().getByGuid(guid)
+    /** Find-or-create-or-clear the deterministic `ASSERTED` row in `service_records` for
+     * `(mac, serviceName)`, keyed on [FleetRecordBridge.assertedAnchorGuid] as that row's own
+     * `syncId` - the legacy-table equivalent of the engine version's `writeAssertedAnchor`, unchanged
+     * in every rule, only in what it writes to. A full-row REPLACE (via [ServiceRecordDao.insert]'s
+     * `OnConflictStrategy.REPLACE` on `id`) both creates a fresh row AND "restores" a previously
+     * soft-deleted one in one call - there is no separate restore-before-update step the engine
+     * version needed, because SQLite REPLACE overwrites `deleted` along with everything else. */
+    private suspend fun writeAssertedAnchorLegacy(db: CarDatabase, mac: String, serviceName: String, mileage: Int?, date: Long?, now: Long) {
+        val syncId = FleetRecordBridge.assertedAnchorGuid(mac, serviceName)
+        val existing = db.serviceRecordDao().getBySyncId(syncId)
         if (mileage == null && date == null) {
-            // "I don't know" clears any existing ASSERTED row to unknown - trash it rather than
+            // "I don't know" clears any existing ASSERTED row to unknown - soft-delete rather than
             // writing a meaningless null/null row (there is nothing left for such a row to assert).
-            if (existing != null && existing.deletedAt == null) recordStore.delete(existing.id, now)
+            if (existing != null && !existing.deleted) db.serviceRecordDao().softDelete(existing.id)
             return
         }
-        val fieldValues = FleetRecordBridge.assertedFieldValues(vehicleEngineId, serviceName, mileage, date, schema.serviceHistory.fieldIds)
-        if (existing != null) {
-            // restore BEFORE update - RecordStore.update refuses to touch a trashed record.
-            if (existing.deletedAt != null) recordStore.restore(existing.id, now)
-            recordStore.update(existing.id, fieldValues, now)
-        } else {
-            recordStore.create(
-                recordTypeId = schema.serviceHistory.recordTypeId,
-                fieldValues = fieldValues,
-                provenance = RecordProvenance.USER,
-                now = date ?: now,
-                guid = guid,
-            )
-        }
+        db.serviceRecordDao().insert(
+            ServiceRecord(
+                id = existing?.id ?: 0, vehicleId = mac, serviceName = serviceName, mileage = mileage, date = date,
+                costCents = null, syncId = syncId, deleted = false, kind = FleetAspectSeeder.KIND_ASSERTED, updatedAt = now,
+            ),
+        )
     }
 
     /**
-     * The engine-backed equivalent of [com.kevin.legion.data.local.MaintenanceItemDao.setAnchor] -
-     * "when was this last done", never the interval. Writes/clears the deterministic `ASSERTED`
-     * `ServiceHistory` row for `(mac, serviceName)` (see [FleetRecordBridge.assertedAnchorGuid]) and
-     * clears `MaintenanceSchedule.neverDone` back to false (supplying a real anchor is the driver
-     * un-confirming a prior "never done" - same rule the legacy `setAnchor` query enforced in one
-     * UPDATE). Returns 0 (no-op, per ticket 05's law) when no `MaintenanceSchedule` row exists for
-     * this pair.
+     * "When was this last done", never the interval. Writes/clears the deterministic `ASSERTED`
+     * `service_records` row for `(mac, serviceName)` and clears `MaintenanceSchedule.neverDone` back
+     * to false (supplying a real anchor is the driver un-confirming a prior "never done"). Returns 0
+     * (no-op, per ticket 05's law) when no active `MaintenanceSchedule` row exists for this pair.
      */
     suspend fun setAnchor(context: Context, mac: String, serviceName: String, mileage: Int?, date: Long?, now: Long): Int {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val recordStore = store(db)
-        val scheduleGuid = FleetRecordBridge.scheduleGuid(mac, serviceName)
-        val schedule = db.engineRecordDao().getByGuid(scheduleGuid) ?: return 0
-        if (schedule.deletedAt != null) return 0
-        val vehicleEngineId = engineVehicleId(db, mac) ?: return 0
+        if (db.maintenanceItemDao().get(mac, serviceName) == null) return 0
 
         db.withTransaction {
-            recordStore.update(schedule.id, mapOf(schema.maintenanceSchedule.fieldIds.getValue(FleetAspectSeeder.FIELD_MS_NEVER_DONE) to false), now)
-            writeAssertedAnchor(db, schema, recordStore, vehicleEngineId, mac, serviceName, mileage, date, now)
+            db.maintenanceItemDao().clearNeverDone(mac, serviceName, now)
+            writeAssertedAnchorLegacy(db, mac, serviceName, mileage, date, now)
         }
         return 1
     }
 
     /**
      * Clears `MaintenanceSchedule.neverDone` back to false ONLY - never touches the anchor.
-     * [insertObserved] already IS the new anchor the instant it lands (the projected
-     * mileage/date - [FleetRecordBridge.projectAnchor] - reads straight off the `OBSERVED` row just
-     * written), so [VehicleController.logServiceDirect]'s matched-item branch calls this rather than
-     * [setAnchor] (which would also write/replace an `ASSERTED` row this call has no anchor value
-     * for). Returns 0 (no-op, ticket 05's law) when no `MaintenanceSchedule` row exists for this pair.
+     * [insertObserved] already IS the new anchor the instant it lands (the projected mileage/date -
+     * [FleetRecordBridge.projectAnchorLegacy] - reads straight off the `OBSERVED` row just written),
+     * so [VehicleController.logServiceDirect]'s matched-item branch calls this rather than
+     * [setAnchor]. Returns 0 (no-op, ticket 05's law) when no active row exists for this pair.
      */
     suspend fun setNeverDoneCleared(context: Context, mac: String, serviceName: String, now: Long): Int {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val recordStore = store(db)
-        val guid = FleetRecordBridge.scheduleGuid(mac, serviceName)
-        val existing = db.engineRecordDao().getByGuid(guid) ?: return 0
-        if (existing.deletedAt != null) return 0
-        val result = recordStore.update(existing.id, mapOf(schema.maintenanceSchedule.fieldIds.getValue(FleetAspectSeeder.FIELD_MS_NEVER_DONE) to false), now)
-        return if (result is RecordStore.WriteResult.Success) 1 else 0
+        if (db.maintenanceItemDao().get(mac, serviceName) == null) return 0
+        return db.maintenanceItemDao().clearNeverDone(mac, serviceName, now)
     }
 
     /** Marks `neverDone` and clears the anchor - "never done" REPLACES any prior guess, mirroring
      * [com.kevin.legion.data.local.MaintenanceItemDao.setNeverDone]'s exact contract. */
     suspend fun setNeverDone(context: Context, mac: String, serviceName: String, now: Long): Int {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val recordStore = store(db)
-        val scheduleGuid = FleetRecordBridge.scheduleGuid(mac, serviceName)
-        val schedule = db.engineRecordDao().getByGuid(scheduleGuid) ?: return 0
-        if (schedule.deletedAt != null) return 0
+        if (db.maintenanceItemDao().get(mac, serviceName) == null) return 0
 
         db.withTransaction {
-            recordStore.update(schedule.id, mapOf(schema.maintenanceSchedule.fieldIds.getValue(FleetAspectSeeder.FIELD_MS_NEVER_DONE) to true), now)
-            val assertedGuid = FleetRecordBridge.assertedAnchorGuid(mac, serviceName)
-            val asserted = db.engineRecordDao().getByGuid(assertedGuid)
-            if (asserted != null && asserted.deletedAt == null) recordStore.delete(asserted.id, now)
+            db.maintenanceItemDao().setNeverDone(mac, serviceName, now)
+            val assertedSyncId = FleetRecordBridge.assertedAnchorGuid(mac, serviceName)
+            val asserted = db.serviceRecordDao().getBySyncId(assertedSyncId)
+            if (asserted != null && !asserted.deleted) db.serviceRecordDao().softDelete(asserted.id)
         }
         return 1
     }
 
-    /** Trashes the `MaintenanceSchedule` record only - `ServiceHistory` (both `OBSERVED` and any
-     * `ASSERTED` row) survives untouched, matching [com.kevin.legion.data.local.MaintenanceItemDao.softDelete]'s
-     * own doc: "deleting a schedule row does not un-do work that was actually logged". */
+    /** Tombstones the `MaintenanceSchedule` record only - `ServiceHistory` (both `OBSERVED` and any
+     * `ASSERTED` row) survives untouched. */
     suspend fun softDeleteItem(context: Context, mac: String, serviceName: String, now: Long): Int {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val recordStore = store(db)
-        val guid = FleetRecordBridge.scheduleGuid(mac, serviceName)
-        val existing = db.engineRecordDao().getByGuid(guid) ?: return 0
-        return when (recordStore.delete(existing.id, now)) {
-            RecordStore.DeleteResult.Trashed -> 1
-            else -> 0
-        }
+        return db.maintenanceItemDao().softDelete(mac, serviceName, now)
     }
 
     /** Un-tombstones a row AND sets its interval in one call - the populate diff's "you deleted this
-     * - add it back?" case. `-1`/0-style no-op contract per [com.kevin.legion.data.local.MaintenanceItemDao.restore]'s
+     * - add it back?" case. No-op contract per [com.kevin.legion.data.local.MaintenanceItemDao]'s
      * own doc: a restore against a pair that was never tombstoned (or never existed) touches nothing. */
     suspend fun restore(context: Context, mac: String, serviceName: String, miles: Int?, months: Int?, source: String, now: Long): Int {
+        ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        val schema = FleetAspectSeeder.ensureSeeded(context)
-        val recordStore = store(db)
-        val guid = FleetRecordBridge.scheduleGuid(mac, serviceName)
-        val existing = db.engineRecordDao().getByGuid(guid) ?: return 0
-        if (existing.deletedAt == null) return 0 // was never tombstoned - restore is a no-op by contract
-        db.withTransaction {
-            recordStore.restore(existing.id, now)
-            recordStore.update(
-                existing.id,
-                mapOf(
-                    schema.maintenanceSchedule.fieldIds.getValue(FleetAspectSeeder.FIELD_MS_INTERVAL_MILES) to miles,
-                    schema.maintenanceSchedule.fieldIds.getValue(FleetAspectSeeder.FIELD_MS_INTERVAL_MONTHS) to months,
-                    schema.maintenanceSchedule.fieldIds.getValue(FleetAspectSeeder.FIELD_MS_INTERVAL_SOURCE) to source,
-                ),
-                now,
-            )
-        }
-        return 1
+        val existing = db.maintenanceItemDao().getForVehicleIncludingDeleted(mac).firstOrNull { it.serviceName == serviceName } ?: return 0
+        if (!existing.deleted) return 0 // was never tombstoned - restore is a no-op by contract
+        return db.maintenanceItemDao().restore(mac, serviceName, miles, months, source, now)
     }
 }

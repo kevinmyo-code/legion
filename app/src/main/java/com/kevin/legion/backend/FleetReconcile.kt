@@ -10,11 +10,14 @@ import com.kevin.legion.data.local.Drive
 import com.kevin.legion.data.local.DriveReassignment
 import com.kevin.legion.data.local.OilAnalysis
 import com.kevin.legion.data.local.ServiceHistoryReplica
+import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.data.local.VehicleReplica
 import com.kevin.legion.data.local.VehicleSpec
 import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.fleet.FleetAspectSeeder
 import com.kevin.legion.engine.fleet.FleetRecordBridge
+import com.kevin.legion.engine.migration.EngineFleetServiceHistoryRetirementCopy
+import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 
 /**
@@ -24,18 +27,37 @@ import org.json.JSONObject
  * `drive_reassignments` on top of this same shape - see that ticket's "the order that matters"
  * for why vehicles come first here too.
  *
- * **Two identity shapes in one reconcile, because the aspect genuinely has two.** `vehicles` and
- * `service_history` are engine records (`FleetAspectSeeder`), uploaded keyed on `origin_guid` from
- * `records.guid`, exactly like [PantryReconcile]/[EventsReconcile]. `drives` is a legacy
- * [com.kevin.legion.data.local.Drive] row with no engine counterpart at all - it upserts by
- * [Drive.syncId] instead, exactly like [PlacesReconcile]'s label-keyed upsert. Confirmed against
- * `engine/fleet/FleetAspectSeeder.kt` (only Vehicle/ServiceHistory/MaintenanceSchedule are engine
- * record types) and `supabase/migrations/20260826000200_fleet_drives.sql`'s own header comment.
+ * **Fleet has NO configured write path - this reconcile is the ONLY route fleet data ever reaches
+ * the server by (engine retirement step 3, ticket 16, 2026-08-28).** Ticket 14 ruled fleet a
+ * PROJECTION: reads stay legacy-primary and Postgres is a one-way export, and `FleetEngineStore`
+ * has no backend/Supabase call of its own to grep for. That makes THIS run the sole upload path,
+ * unlike [PantryReconcile]/[EventsReconcile]/etc., where the reconcile is a one-time migration tool
+ * and new writes reach the server through each aspect's own configured backend afterward.
  *
- * **The vehicle-id translation problem this reconcile exists to solve.** A `ServiceHistory` engine
- * record references its vehicle by that vehicle's ENGINE record id (a `Long`, local to this
- * device's `records` table). A [Drive] row references its vehicle by [com.kevin.legion.data.local.Vehicle.obdMac]
- * (a `String`, the legacy Room primary key). Neither is the identity `public.service_history.vehicle_id`/
+ * **Two identity shapes in one reconcile, because the aspect genuinely has two - `vehicles` stays
+ * engine-sourced, `service_history` moved to the LEGACY table.** `vehicles` reads active engine
+ * `Vehicle` records (`FleetAspectSeeder`), uploaded keyed on `origin_guid` from `records.guid`,
+ * exactly like [PantryReconcile]/[EventsReconcile] - safe because [com.kevin.legion.vehicle.FleetEngineStore]'s
+ * every Vehicle-identity write still writes the engine record AND the legacy mirror in the SAME
+ * transaction (unchanged by ticket 16; see that file's own class doc), so the engine `Vehicle` row
+ * is never stale. `service_history`, by contrast, reads the legacy `service_records` table (engine
+ * retirement step 3 repointed [com.kevin.legion.vehicle.FleetEngineStore]'s writes there and NOT
+ * the engine) - reading the engine here, as this file did before ticket 16, would upload a snapshot
+ * frozen at the last engine write and silently stop receiving every service logged from the repoint
+ * forward, since there is no other route to the server for it to fall back to. `originGuid` for a
+ * `service_records` row is that row's own `syncId`, which [EngineFleetServiceHistoryRetirementCopy]
+ * carries through IDENTICAL to the engine guid it copied from wherever both exist - this is a
+ * SOURCE change, not an identity change (see that copier's own class doc's natural-key section).
+ * `drives` is a legacy [com.kevin.legion.data.local.Drive] row with no engine counterpart at all -
+ * it upserts by [Drive.syncId] instead, exactly like [PlacesReconcile]'s label-keyed upsert.
+ * Confirmed against `engine/fleet/FleetAspectSeeder.kt` (only Vehicle/ServiceHistory/
+ * MaintenanceSchedule are engine record types) and
+ * `supabase/migrations/20260826000200_fleet_drives.sql`'s own header comment.
+ *
+ * **The vehicle-id translation problem this reconcile exists to solve.** A [Drive] row - and, as of
+ * ticket 16, a `service_records` row too - references its vehicle by
+ * [com.kevin.legion.data.local.Vehicle.obdMac] (a `String`, the legacy Room primary key). Neither is
+ * the identity `public.service_history.vehicle_id`/
  * `public.drives.vehicle_id` need - both server columns are foreign keys to `public.vehicles.id`, a
  * uuid that does not exist until [FleetBackend.uploadMigratedVehicle] mints one. So vehicles upload
  * FIRST, every step below builds a map from whatever local identity it started with to that minted
@@ -313,9 +335,16 @@ object FleetReconcile {
         val odometerBaselineAtMs: Long?,
     )
 
-    private data class EngineServiceHistory(
-        val guid: String,
-        val vehicleEngineRecordId: Long?,
+    /** Engine retirement step 3 (ticket 16, `.scratch/backend-erp/issues/16-*`): [ServiceHistory]
+     * upload now reads the LEGACY `service_records` table, not the engine - see [run]'s own
+     * ServiceHistory section comment for why. [vehicleId] is the legacy row's own `obdMac` string
+     * directly (the natural key that table has always carried), resolved through the SAME
+     * `guidByObdMac` -> `serverIdByOriginGuid` chain every other legacy-table upload in this file
+     * already uses (Drives, CodeEvent, etc.) - no second resolver, matching this file's own
+     * "no second resolver" rule stated for the four-more-tables wave. */
+    private data class LocalServiceHistory(
+        val syncId: String,
+        val vehicleId: String,
         val serviceName: String,
         val mileage: Int?,
         val serviceDateEpochMs: Long?,
@@ -372,12 +401,18 @@ object FleetReconcile {
         val serverVehicles = backend.fetchActiveVehicles().getOrElse { return Result.failure(it) }
         // guid -> server uuid, the map every child upload below resolves its parent through.
         val serverIdByOriginGuid = serverVehicles.mapNotNull { row -> row.originGuid?.let { it to row.serverId } }.toMap()
-        // engine record id -> guid, so a ServiceHistory row's Long vehicle reference can reach the
-        // map above without a second DB round trip.
-        val vehicleGuidByEngineRecordId = engineVehicles.associate { it.engineRecordId to it.guid }
 
         val engineVehicleGuids = engineVehicles.map { it.guid }.toSet()
         val serverVehicleOriginGuids = serverVehicles.mapNotNull { it.originGuid }.toSet()
+
+        // Moved up from the Drives section (engine retirement step 3): ServiceHistory now needs the
+        // SAME obdMac -> guid -> server-uuid chain Drives/CodeEvent/etc. already use, since it reads
+        // the legacy `service_records` table (keyed on obdMac directly) rather than an engine
+        // reference field. obdMac -> guid, computed forward from every known local vehicle (never
+        // inverted from a hash - FleetRecordBridge.vehicleGuid is one-way by construction, see its
+        // own doc comment).
+        val vehicles = db.vehicleDao().getAllIncludingArchived()
+        val guidByObdMac = vehicles.associate { it.obdMac to FleetRecordBridge.vehicleGuid(it.obdMac) }
 
         // Wave 2: refill the Room replica wholesale. Safe as a plain wipe-then-insert (no carried
         // id) - see VehicleReplica's own doc comment for the trace establishing nothing addresses
@@ -397,35 +432,47 @@ object FleetReconcile {
         )
 
         // ---- ServiceHistory -----------------------------------------------------------------------
-        val engineServiceHistory = db.engineRecordDao().activeByRecordType(sch.serviceHistory.recordTypeId).map { record ->
-            val payload = JSONObject(record.payload)
-            EngineServiceHistory(
-                guid = record.guid,
-                vehicleEngineRecordId = FleetRecordBridge.referenceId(record, sch.serviceHistory.fieldIds.getValue(FleetAspectSeeder.FIELD_SH_VEHICLE)),
-                serviceName = FleetRecordBridge.serviceHistoryServiceName(record, sch.serviceHistory.fieldIds),
-                mileage = FleetRecordBridge.serviceHistoryMileage(record, sch.serviceHistory.fieldIds),
-                serviceDateEpochMs = FleetRecordBridge.serviceHistoryDate(record, sch.serviceHistory.fieldIds),
-                costCents = PayloadCodec.readLong(payload, sch.serviceHistory.fieldIds.getValue(FleetAspectSeeder.FIELD_SH_COST)),
-                kind = FleetRecordBridge.kindOf(record, sch.serviceHistory.fieldIds),
+        // Engine retirement step 3 (ticket 16, `.scratch/backend-erp/issues/16-*`): fleet has NO
+        // configured write path - grepping FleetEngineStore for a backend/Supabase call returns
+        // nothing, so THIS reconcile is the only route service history ever reaches the server.
+        // ServiceHistory therefore reads the LEGACY `service_records` table (FleetEngineStore's own
+        // write target since the repoint), never the engine directly - reading the engine here would
+        // upload a snapshot frozen at the last engine write, and every service logged from the
+        // repoint forward would silently never reach Postgres. copyIfNeeded gap-fills any row that
+        // is STILL only on the engine (an install that migrated under cutover 4 but has not opened a
+        // fleet screen since this repoint landed) before the read below, so this reconcile sees the
+        // full history regardless of whether the app's own read paths have run yet - same
+        // "reconcile before you read" gate FleetEngineStore.ensureServiceHistoryReconciled applies to
+        // every one of its own entry points. Idempotent and cheap after the first call.
+        EngineFleetServiceHistoryRetirementCopy.copyIfNeeded(context)
+        val localServiceHistory = db.serviceRecordDao().getAllRecords().first().map { record ->
+            LocalServiceHistory(
+                syncId = record.syncId,
+                vehicleId = record.vehicleId,
+                serviceName = record.serviceName,
+                mileage = record.mileage,
+                serviceDateEpochMs = record.date,
+                costCents = record.costCents,
+                kind = record.kind,
             )
         }
 
         var serviceHistoryUploaded = 0
         val skippedServiceHistory = mutableListOf<String>()
         val skippedServiceHistoryGuids = mutableSetOf<String>()
-        for (sh in engineServiceHistory) {
-            val vehicleServerId = sh.vehicleEngineRecordId
-                ?.let { vehicleGuidByEngineRecordId[it] }
-                ?.let { serverIdByOriginGuid[it] }
+        for (sh in localServiceHistory) {
+            // Resolved through the SAME obdMac -> guid -> server-uuid chain every other legacy-table
+            // upload in this file uses - no second resolver (see LocalServiceHistory's own doc).
+            val vehicleServerId = guidByObdMac[sh.vehicleId]?.let { serverIdByOriginGuid[it] }
             if (vehicleServerId == null) {
                 // The parent vehicle has not (yet) landed server-side - see this object's own class
                 // doc for why that is a "not yet migrated" state to report, never a value to invent.
-                skippedServiceHistory.add("${sh.serviceName} (${sh.guid}): vehicle not yet migrated")
-                skippedServiceHistoryGuids.add(sh.guid)
+                skippedServiceHistory.add("${sh.serviceName} (${sh.syncId}): vehicle not yet migrated")
+                skippedServiceHistoryGuids.add(sh.syncId)
                 continue
             }
             val migrated = MigratedServiceHistory(
-                originGuid = sh.guid,
+                originGuid = sh.syncId,
                 vehicleServerId = vehicleServerId,
                 serviceName = sh.serviceName,
                 mileage = sh.mileage,
@@ -439,10 +486,10 @@ object FleetReconcile {
 
         val serverServiceHistory = backend.fetchActiveServiceHistory().getOrElse { return Result.failure(it) }
         // A skipped (unresolved-vehicle) row is genuinely "not yet migrated", not a diff failure -
-        // it is excluded from the engine side of the comparison the same way a rejected pantry
+        // it is excluded from the local side of the comparison the same way a rejected pantry
         // receipt is excluded from PantryReconcile's engine/server guid sets, so isClean reflects
         // only what this run actually attempted to reconcile.
-        val engineServiceHistoryGuids = (engineServiceHistory.map { it.guid }.toSet() - skippedServiceHistoryGuids)
+        val localServiceHistorySyncIds = (localServiceHistory.map { it.syncId }.toSet() - skippedServiceHistoryGuids)
         val serverServiceHistoryOriginGuids = serverServiceHistory.mapNotNull { it.originGuid }.toSet()
 
         // Wave 2: same wholesale refill as vehicles above - see ServiceHistoryReplica's own doc
@@ -453,20 +500,22 @@ object FleetReconcile {
         }
 
         val serviceHistoryReport = ServiceHistoryReport(
-            engineCount = engineServiceHistory.size,
+            // Field name kept as `engineCount` for report-shape/test-source compatibility - it now
+            // counts the legacy `service_records` rows this run examined (post gap-fill), not a
+            // literal engine record count. See this section's own comment above for why the SOURCE
+            // moved.
+            engineCount = localServiceHistory.size,
             uploaded = serviceHistoryUploaded,
             skippedUnresolvedVehicle = skippedServiceHistory,
             serverCountAfter = serverServiceHistory.size,
             replicaCountAfter = db.serviceHistoryReplicaDao().getAllActive().size,
-            onlyOnEngine = (engineServiceHistoryGuids - serverServiceHistoryOriginGuids).sorted(),
-            onlyOnServer = (serverServiceHistoryOriginGuids - engineServiceHistoryGuids).sorted(),
+            onlyOnEngine = (localServiceHistorySyncIds - serverServiceHistoryOriginGuids).sorted(),
+            onlyOnServer = (serverServiceHistoryOriginGuids - localServiceHistorySyncIds).sorted(),
         )
 
         // ---- Drives -------------------------------------------------------------------------------
-        // obdMac -> guid, computed forward from every known local vehicle (never inverted from a
-        // hash - FleetRecordBridge.vehicleGuid is one-way by construction, see its own doc comment).
-        val vehicles = db.vehicleDao().getAllIncludingArchived()
-        val guidByObdMac = vehicles.associate { it.obdMac to FleetRecordBridge.vehicleGuid(it.obdMac) }
+        // vehicles/guidByObdMac are now built above, right after the Vehicles section - ServiceHistory
+        // needs them too as of the repoint.
 
         val sourceDrives = db.driveDao().getAll()
         var drivesUploaded = 0

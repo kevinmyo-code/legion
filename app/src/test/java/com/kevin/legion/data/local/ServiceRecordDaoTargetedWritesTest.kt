@@ -134,4 +134,42 @@ class ServiceRecordDaoTargetedWritesTest {
         assertEquals(1, dao.countWithCost("V1"))
         assertEquals(2, dao.countForVehicle("V1"))
     }
+
+    // ================================================================================================
+    // Engine retirement step 3 (ticket 16): `kind`/`updatedAt`, and the two new accessors
+    // `insertReturningId`/`getBySyncId` that write path relies on.
+    // ================================================================================================
+
+    @Test
+    fun `countInRange excludes an ASSERTED row even when its date falls inside the window`() = runBlocking {
+        // A real logged service inside the window.
+        dao.insert(ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 100_000, date = 5_000L, kind = "OBSERVED", updatedAt = 5_000L))
+        // A driver-stated anchor whose date ALSO falls inside the window - MUST NOT count as a
+        // service performed in the range (this object's own doc comment on countInRange: counting
+        // it would invent a joint fact nobody stated, the reconciliation-gate rule 6 shape applied
+        // to a recap statistic).
+        dao.insert(ServiceRecord(vehicleId = "V1", serviceName = "Brake Pads", mileage = 90_000, date = 6_000L, kind = "ASSERTED", updatedAt = 6_000L))
+
+        assertEquals("only the OBSERVED row counts", 1, dao.countInRange("V1", 0L, 10_000L))
+    }
+
+    @Test
+    fun `insertReturningId hands back a usable row id`() = runBlocking {
+        val id = dao.insertReturningId(ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 100_000, date = 1_000L))
+
+        assertTrue("a real insert must return a positive rowid", id > 0)
+        assertEquals("Oil Change", dao.getById(id)!!.serviceName)
+    }
+
+    @Test
+    fun `getBySyncId finds a row regardless of its deleted flag`() = runBlocking {
+        dao.insert(ServiceRecord(vehicleId = "V1", serviceName = "Oil Change", mileage = 100_000, date = 1_000L, syncId = "anchor-guid"))
+        val id = dao.getBySyncId("anchor-guid")!!.id
+        dao.softDelete(id)
+
+        val found = dao.getBySyncId("anchor-guid")
+
+        assertTrue("a tombstoned row must still be findable by its own syncId", found != null)
+        assertTrue(found!!.deleted)
+    }
 }

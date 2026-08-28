@@ -124,6 +124,21 @@ interface MaintenanceItemDao {
     suspend fun setNeverDone(vehicleId: String, serviceName: String, now: Long): Int
 
     /**
+     * Clears [MaintenanceItem.neverDone] back to false ONLY - never touches the anchor or interval
+     * columns. Engine retirement step 3 (ticket 16): `FleetEngineStore.setAnchor`/
+     * `.setNeverDoneCleared` need this as an isolated targeted write because, post-repoint, the
+     * anchor itself is DERIVED from `service_records` rather than stored here (see
+     * [com.kevin.legion.engine.fleet.FleetRecordBridge.projectAnchorLegacy]'s own doc) - the old
+     * combined [setAnchor] query below still writes the (now-dead, kept-but-unused) `lastDoneMileage`/
+     * `lastDoneDate` columns alongside `neverDone`, which is harmless but not what a repointed
+     * caller wants to reach for.
+     *
+     * **Returns the affected row count - the caller MUST check it** (ticket 05's law).
+     */
+    @Query("UPDATE maintenance_items SET neverDone = 0, updatedAt = :now WHERE vehicleId = :vehicleId AND serviceName = :serviceName")
+    suspend fun clearNeverDone(vehicleId: String, serviceName: String, now: Long): Int
+
+    /**
      * Tombstones an item rather than deleting the row (ticket 07,
      * `.scratch/fleet-maintenance/issues/07-hand-added-items-and-what-delete-means.md`).
      * `maintenance_items` syncs `Mode.LWW, naturalPk = true` (`SyncEngine.kt`), so a hard DELETE

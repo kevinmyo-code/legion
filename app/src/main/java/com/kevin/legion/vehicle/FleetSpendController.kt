@@ -134,7 +134,10 @@ object FleetSpendController {
         val centsByYear = sortedMapOf<Int, Long>()
         for (record in records) {
             val cost = record.costCents ?: continue
-            val year = Instant.ofEpochMilli(record.date).atZone(ZoneId.systemDefault()).year
+            // .date is type-nullable since v46->v47, but serviceRecordsForVehicle only ever
+            // returns OBSERVED rows, which always carry one - see CarToolbelt.serviceHistory's own
+            // comment for the same fallback reasoning.
+            val year = Instant.ofEpochMilli(record.date ?: 0L).atZone(ZoneId.systemDefault()).year
             centsByYear[year] = (centsByYear[year] ?: 0L) + cost
         }
         return centsByYear.entries.map { it.key to it.value }

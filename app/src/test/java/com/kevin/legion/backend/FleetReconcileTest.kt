@@ -7,6 +7,7 @@ import com.kevin.legion.data.local.CodeClearEvent
 import com.kevin.legion.data.local.CodeEvent
 import com.kevin.legion.data.local.Drive
 import com.kevin.legion.data.local.DriveReassignment
+import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.OilAnalysis
 import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.data.local.Vehicle
@@ -15,9 +16,11 @@ import com.kevin.legion.engine.RecordStore
 import com.kevin.legion.engine.fleet.FleetAspectSeeder
 import com.kevin.legion.engine.fleet.FleetRecordBridge
 import com.kevin.legion.testutil.RoomTestReset
+import com.kevin.legion.vehicle.FleetEngineStore
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -739,9 +742,20 @@ class FleetReconcileTest {
         // activeByRecordType entirely - the closest reproducible stand-in for "the vehicle has not
         // migrated yet" without relying on a partial upload, which this reconcile's own
         // short-circuit rule makes impossible to construct (see the test above).
+        //
+        // Engine retirement step 3 (ticket 16): createLegacyVehicle is now REQUIRED here too, not
+        // just createEngineVehicle - EngineFleetServiceHistoryRetirementCopy (which FleetReconcile
+        // now runs before reading ServiceHistory) can only translate an engine Vehicle record's
+        // guid back to its obdMac via the LEGACY `vehicles` table (FleetRecordBridge.vehicleGuid is
+        // a one-way hash - see FleetEngineStore's own class doc), and ticket 14 established that a
+        // real install always co-writes both. Without the legacy row, the copier cannot resolve
+        // which car the ServiceHistory engine record belongs to and skips copying it entirely,
+        // which would make this test fail for the wrong reason (no local row) rather than the one
+        // it exists to prove (a local row whose vehicle has not reached the server yet).
         val obdMac = "FE:ED:FA:CE:00:02"
         val vehicleEngineId = createEngineVehicle(obdMac)
         createEngineServiceHistory(vehicleEngineId)
+        createLegacyVehicle(obdMac)
         CarDatabase.getDatabase(context).engineRecordDao().trash(vehicleEngineId, System.currentTimeMillis())
         val backend = FakeFleetBackend()
 
@@ -1180,5 +1194,75 @@ class FleetReconcileTest {
         assertEquals(1, db.vehicleSpecDao().getAll().size)
         assertEquals(1, db.buildEntryDao().getAllForUpload().size)
         assertEquals(1, db.driveReassignmentDao().getAll().size)
+    }
+
+    // ================================================================================================
+    // Engine retirement step 3 (ticket 16): fleet has no configured write path, so FleetReconcile is
+    // the ONLY route service history ever reaches the server - these pin the repoint that keeps that
+    // true after ServiceHistory moved off the engine and onto `service_records`.
+    // ================================================================================================
+
+    @Test
+    fun `a service record written through TODAY's real write path (never touching the engine) is uploaded`() = runBlocking {
+        val obdMac = "10:20:30:40:50:60"
+        FleetEngineStore.createVehicle(
+            context,
+            Vehicle(obdMac = obdMac, name = "Cherokee", make = "Jeep", model = "Cherokee", year = 1998, personaPrompt = "", confirmed = true),
+        )
+        // FleetEngineStore.insertObserved writes ONLY service_records post-repoint (FleetEngineStore's
+        // own class doc) - this is the regression this whole fix exists to close: before it, a row
+        // written this way would never appear in an upload at all.
+        val inserted = FleetEngineStore.insertObserved(context, obdMac, "Oil Change", mileage = 231_500, date = 1_723_500_000_000L, costCents = 4599)
+        assertTrue(inserted is FleetEngineStore.InsertObservedResult.Success)
+        val backend = FakeFleetBackend()
+
+        val report = FleetReconcile.run(context, backend).getOrThrow()
+
+        assertEquals("the post-repoint write must be visible to the reconcile, not just the engine snapshot", 1, report.serviceHistory.uploaded)
+        val uploaded = backend.serviceHistory.values.single()
+        assertEquals("Oil Change", uploaded.serviceName)
+        assertEquals(231_500, uploaded.mileage)
+        assertEquals(4599L, uploaded.costCents)
+        assertEquals(FleetAspectSeeder.KIND_OBSERVED, uploaded.kind)
+        assertTrue(report.serviceHistory.isClean)
+    }
+
+    @Test
+    fun `kind survives to the server for both OBSERVED and ASSERTED rows`() = runBlocking {
+        val obdMac = "20:30:40:50:60:70"
+        FleetEngineStore.createVehicle(
+            context,
+            Vehicle(obdMac = obdMac, name = "Cherokee", make = "Jeep", model = "Cherokee", year = 1998, personaPrompt = "", confirmed = true),
+        )
+        FleetEngineStore.insertObserved(context, obdMac, "Oil Change", mileage = 100_000, date = 1_000L, costCents = null)
+        // A driver-stated anchor with no backing event - writeAssertedAnchorLegacy's ASSERTED row,
+        // also written only to service_records post-repoint.
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = obdMac, serviceName = "Brake Pads"))
+        FleetEngineStore.setAnchor(context, obdMac, "Brake Pads", mileage = 90_000, date = null, now = 2_000L)
+        val backend = FakeFleetBackend()
+
+        FleetReconcile.run(context, backend).getOrThrow()
+
+        val kinds = backend.serviceHistory.values.map { it.serviceName to it.kind }.toMap()
+        assertEquals(FleetAspectSeeder.KIND_OBSERVED, kinds.getValue("Oil Change"))
+        assertEquals(FleetAspectSeeder.KIND_ASSERTED, kinds.getValue("Brake Pads"))
+    }
+
+    @Test
+    fun `the reconcile never deletes or trashes a service_records row it just uploaded`() = runBlocking {
+        val obdMac = "30:40:50:60:70:80"
+        FleetEngineStore.createVehicle(
+            context,
+            Vehicle(obdMac = obdMac, name = "Cherokee", make = "Jeep", model = "Cherokee", year = 1998, personaPrompt = "", confirmed = true),
+        )
+        FleetEngineStore.insertObserved(context, obdMac, "Oil Change", mileage = 100_000, date = 1_000L, costCents = null)
+        val backend = FakeFleetBackend()
+
+        FleetReconcile.run(context, backend).getOrThrow()
+
+        val db = CarDatabase.getDatabase(context)
+        val row = db.serviceRecordDao().getRecordsForVehicleOnce(obdMac).singleOrNull()
+        assertTrue("the source row must survive a reconcile run, present and not tombstoned", row != null)
+        assertFalse(row!!.deleted)
     }
 }

@@ -1739,3 +1739,55 @@ val MIGRATION_45_46 = object : Migration(45, 46) {
         db.execSQL("ALTER TABLE `pantry_receipts` ADD COLUMN `photoObjectPath` TEXT")
     }
 }
+
+/**
+ * v46 -> v47: `service_records` gains `kind`/`updatedAt` and `mileage`/`date` widen to nullable
+ * (engine retirement step 3, `.scratch/backend-erp/issues/16-fleet-service-history-is-not-a-configured-split.md`,
+ * ticket 15's "RULED... option 1"). Not additive - SQLite cannot retype `NOT NULL` to nullable in
+ * place, so this is the same create/copy/drop/rename shape [MIGRATION_19_20] already used for this
+ * exact table, verbatim from the generated `app/schemas/com.kevin.legion.data.local.CarDatabase/47.json`
+ * after a kapt run.
+ *
+ * **Why the widen is real, not cosmetic.** `ServiceHistory.kind = "ASSERTED"` (a driver-stated
+ * anchor with no backing logged event, cutover 4/ticket 29) can legitimately state only ONE axis -
+ * "did the oil change around 50,000 miles, not sure when" has a mileage and no date - and the
+ * engine's own `FIELD_SH_MILEAGE`/`FIELD_SH_SERVICE_DATE` fields were already `required = false`
+ * for exactly that reason. Every row that predates this migration is `kind = "OBSERVED"` by
+ * construction (this table held nothing else before today) and keeps its real, non-null
+ * `mileage`/`date` untouched by the copy - the widen only ever creates room for a NEW kind of row
+ * this table did not hold before, never loosens a guarantee an existing row depended on.
+ *
+ * **`updatedAt` backfills to each row's own `date`, not `0`.** `0` is technically what
+ * `DEFAULT 0` on a plain `ADD COLUMN` would give a pre-migration row, but for the `kind`/`updatedAt`
+ * pair to mean anything the moment [com.kevin.legion.engine.fleet.FleetRecordBridge.projectAnchorLegacy]
+ * starts reading it, an already-migrated OBSERVED row needs a plausible "when was this last
+ * stated" - and `date` (when the service happened, and for every pre-migration row also
+ * approximately when it was logged, since nothing else ever wrote this table) is the closest fact
+ * on file, the same substitution [EngineDataMigrationWave4]'s own vehicle-copy already uses
+ * ("Vehicle carries no creation timestamp distinct from its own last-edit clock").
+ */
+val MIGRATION_46_47 = object : Migration(46, 47) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `service_records_new` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`vehicleId` TEXT NOT NULL, " +
+                "`serviceName` TEXT NOT NULL, " +
+                "`mileage` INTEGER, " +
+                "`date` INTEGER, " +
+                "`costCents` INTEGER, " +
+                "`syncId` TEXT NOT NULL DEFAULT '', " +
+                "`deleted` INTEGER NOT NULL DEFAULT 0, " +
+                "`kind` TEXT NOT NULL DEFAULT 'OBSERVED', " +
+                "`updatedAt` INTEGER NOT NULL DEFAULT 0)"
+        )
+        db.execSQL(
+            "INSERT INTO `service_records_new` " +
+                "(`id`, `vehicleId`, `serviceName`, `mileage`, `date`, `costCents`, `syncId`, `deleted`, `kind`, `updatedAt`) " +
+                "SELECT `id`, `vehicleId`, `serviceName`, `mileage`, `date`, `costCents`, `syncId`, `deleted`, 'OBSERVED', " +
+                "COALESCE(`date`, 0) FROM `service_records`"
+        )
+        db.execSQL("DROP TABLE `service_records`")
+        db.execSQL("ALTER TABLE `service_records_new` RENAME TO `service_records`")
+    }
+}

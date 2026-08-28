@@ -217,7 +217,12 @@ object EngineDataMigrationWave4 {
                 recordTypeId = schema.serviceHistory.recordTypeId,
                 fieldValues = fieldValues,
                 provenance = RecordProvenance.USER,
-                now = record.date,
+                // ServiceRecord.date widened to nullable at v46->v47 (engine retirement step 3) so
+                // an ASSERTED anchor could state only a mileage - but this wave only ever migrates
+                // rows that predate that column existing at all, which are `kind = OBSERVED` by the
+                // migration's own column default and always carried a real date. `?: 0L` is a
+                // type-satisfying fallback, never a value this call site's real data hits.
+                now = record.date ?: 0L,
                 guid = guid,
             )
             when (result) {
