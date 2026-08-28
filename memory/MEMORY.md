@@ -23,9 +23,13 @@ trusting a green suite.
 1. **Re-connect the Drive statement folders on the A25 and re-run the ledger dry run.** 107 of 107
    files were unreachable - a lapsed SAF grant, killed by the 2026-08-26 `connectedAndroidTest`
    uninstall. The grants come back one folder at a time; Kevin's files span four. Ticket 19.
-2. **Exercise a real `DatabaseSnapshot` RESTORE on the A25.** Owed since phase 0, and it still gates
-   the phase-6 mirror deletion. **Kwin laptop only** (debug keystore); never uninstall to fix a
-   signature mismatch.
+2. ~~Exercise a real `DatabaseSnapshot` RESTORE on the A25.~~ **DONE 2026-08-28.** Full round trip,
+   all 65 tables back to their pre-drill counts. It found a real defect on the way: `SCHEMA_VERSION`
+   was stale at 47 against `@Database(version=)` 49, which disabled restore on every backup the
+   running app produced. Phase-6 mirror deletion is unblocked. Detail in ticket 04.
+   **And the Kwin-laptop-only rule was FALSE** - both machines carry the same debug key, proven by
+   comparing the installed APK's signer against this machine's keystore. `adb install -r` keeps the
+   data; never uninstall.
 3. **Apply the unapplied SQL migrations** and confirm from `pg_class`/`pg_policy`, never the editor's
    success panel. In the dashboard, **"Run without RLS" is the correct button** - the migrations
    enable RLS themselves inside an `execute format` the analyzer cannot see.
@@ -37,7 +41,9 @@ trusting a green suite.
 
 - Every phase-4 repoint is compile-and-suite green only. **The unconfigured path is clone-and-run,
   and no device here has run it.**
-- `runFleet` has never been tapped. The fleet projection is unproven.
+- `runFleet` has never been tapped. The fleet projection is unproven. Its server constraint IS
+  applied now (`20260828000100`, verified 11/11 check constraints on `public.events`), and there are
+  **14 active car tasks**, so the wave will do real work rather than no-op.
 - A reminder set BEFORE the notes cutover still firing AFTER it. `AlarmScheduler` has zero tests
   repo-wide and the `PendingIntent` request-code contract is exercised by nothing.
 - `CarDatabaseMigration40To41Test` is written and has never been RUN.

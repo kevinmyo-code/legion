@@ -146,3 +146,50 @@ a `Log.w`. Nothing tells the user, and the flag surfaces only on a screen nobody
 Retiring the mirror deletes this hole rather than fixing it - but the lesson generalises to the
 scheduled snapshot in ruling 4: **a background data-protection job that fails silently is worse than
 one that does not exist**, because it reports safety it is not providing.
+
+## THE RESTORE IS EXERCISED, 2026-08-28. The phase-6 mirror deletion is unblocked.
+
+This ticket's BINDING ORDER was: do not delete the xlsx mirror until the `DatabaseSnapshot`
+scheduler AND a real restore are both done, or there is a window with no recovery at all. The
+scheduler landed 2026-08-25 (`sync/ScheduledBackup.kt`). **The restore has now been run on the A25,
+end to end, and the round trip is exact.**
+
+| step | result |
+|---|---|
+| Backup to Drive | "Backed up - 29343 rows", new generation, schema v49 |
+| Pre-restore safety copy | written to `files/pre_restore_backups/`, correct size and timestamp |
+| Restore an OLDER generation (Aug 26) | installed, app restarted clean, counts rolled back exactly as that generation's age predicts |
+| Room migration replay | the restored older-shape file came back reading `user_version` 49 - Room ran its chain forward rather than leaving tables mismatched |
+| Restore FORWARD to the safety copy | **all 65 tables back to their pre-drill counts** |
+
+The only difference across the whole database after the round trip was `proactive_raises` 84 -> 85,
+which is the app logging its own activity during the drill. Every other table, all 64 of them,
+matched exactly.
+
+**L36 is satisfied for this capability**: the half that carries the risk was the one that ran. The
+research had once nominated the mirror as the recovery story on the strength of an import path that
+had never executed on a device; this is the opposite of that.
+
+### The drill found a defect that would have bitten in a real emergency
+
+`CarDatabase.SCHEMA_VERSION` was 47 while `@Database(version=)` was 49 - tickets 17 and 18 each
+bumped the annotation and left the hand-maintained constant. `DriveBackupResolver.generationRows`
+refuses a restore for any backup NEWER than that constant, so **every v49 backup, the only ones
+matching the live schema, had its restore button disabled**, while the app itself ran v49.
+
+The constant's own doc comment called a forgotten bump harmless because it "only ever makes the UI's
+restore button MORE conservative... never less". More conservative is not safe. A backup nobody can
+restore is not a backup. Fixed, and `CarDatabaseSchemaVersionTest` now compares the constant against
+the version Room actually opens the database at, so the next drift fails the build rather than a
+recovery.
+
+**The local "Recover locally" path is NOT gated by that constant** (`localRecoveryRows` takes no
+version argument), which is the only reason the drill had a way home while the Drive list was
+greyed out. That asymmetry was luck, not design, and it is worth keeping in mind.
+
+### Owed, and it is not this ticket's
+
+The round trip took a detour: the device dropped off wireless ADB while rolled back, and the phone
+sat in the Aug 26 state until it was reconnected. No data was lost - the safety copy held - but a
+restore drill that strands a phone between the two halves is a real operational hazard. **Run the
+forward restore in the same session as the backward one, or not at all.**
