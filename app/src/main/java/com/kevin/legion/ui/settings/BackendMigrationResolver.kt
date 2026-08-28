@@ -141,7 +141,15 @@ object BackendMigrationResolver {
      * [EventsReconcile.Report.uploadedUndated] is a plain count, informational only, rendered
      * without affecting the clean verdict. Same posture [renderPantryReport] already applies to
      * [PantryReconcile.Report.uploadedUnreconciled]: a row that genuinely uploaded is worded
-     * differently from one that did not. */
+     * differently from one that did not.
+     *
+     * **AMENDED 2026-08-28 (ticket 20, Q2's ruling - the 213-row incident).** The retraction line
+     * below now ALWAYS names [EventsReconcile.Report.retractionCandidateCount] in words, retracted
+     * or not - the incident that prompted this ticket was found only because a routine sync
+     * reported a 213-row deletion as one line inside an otherwise unremarkable success message.
+     * When [EventsReconcile.Report.retractionWithheld] is true, this states the count, WHY the
+     * rows looked orphaned, and that running the migration screen again is what confirms it - no
+     * dialog, per `BackendMigrationScreen`'s own doc comment, the second tap IS the consent. */
     fun renderEventsReport(report: EventsReconcile.Report): List<String> = buildList {
         add(
             "Engine had ${report.datesEngineCount} dated ${plural(report.datesEngineCount, "event")} and " +
@@ -158,12 +166,20 @@ object BackendMigrationResolver {
                     "with no date - uploaded anyway, with no start time, never a guessed one.",
             )
         }
-        if (report.deletedOnServer > 0) {
-            add(
-                "Removed ${report.deletedOnServer} ${plural(report.deletedOnServer, "row")} on the server whose " +
-                    "device original was deleted or is gone - a retraction, not an upload.",
-            )
-        }
+        add(
+            when {
+                report.retractionWithheld ->
+                    "Held back, on purpose: ${report.retractionCandidateCount} " +
+                        "${plural(report.retractionCandidateCount, "row")} on the server look orphaned - " +
+                        "their device original was deleted or is gone - but that is enough of the " +
+                        "server's own total that nothing was removed this run. Nothing on the server " +
+                        "was changed. Run this again to confirm and remove them."
+                report.retractionCandidateCount > 0 ->
+                    "Removed ${report.deletedOnServer} ${plural(report.deletedOnServer, "row")} on the " +
+                        "server whose device original was deleted or is gone - a retraction, not an upload."
+                else -> "No rows looked orphaned this run - nothing to retract."
+            },
+        )
         if (report.onlyOnEngine.isNotEmpty()) {
             add("Only on this device, not on the server: ${report.onlyOnEngine.joinToString(", ")}.")
         }

@@ -6,6 +6,7 @@ import com.kevin.legion.backend.MembershipResult
 import com.kevin.legion.backend.PantryReconcile
 import com.kevin.legion.backend.PlacesReconcile
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -203,6 +204,44 @@ class BackendMigrationResolverTest {
             onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
         )
         val lines = BackendMigrationResolver.renderEventsReport(report)
+        assertTrue(lines.last().contains("Clean"))
+    }
+
+    /** Ticket 20's Q2 ruling, the wording half: a withheld retraction must read as a bounded
+     * refusal, not the "Did not finish" failure phrasing [renderFailure] owns, and must keep
+     * [EventsReconcile.Report.isClean] false. */
+    @Test
+    fun `a withheld retraction names the count, why, and that a re-run confirms - and is not clean`() {
+        val report = EventsReconcile.Report(
+            datesEngineCount = 100, notesEngineCount = 0, uploaded = 0,
+            uploadedUndated = 0, serverCountAfter = 354, replicaCountAfter = 141,
+            deletedOnServer = 0, retractionCandidateCount = 213, retractionWithheld = true,
+            onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
+        )
+        assertFalse("a withheld retraction must not read as clean", report.isClean)
+
+        val lines = BackendMigrationResolver.renderEventsReport(report)
+        val retractionLine = lines.first { it.contains("orphaned") }
+        assertTrue(retractionLine.contains("213"))
+        assertTrue("must say a re-run confirms - the no-dialog consent", retractionLine.contains("Run this again"))
+        assertTrue("must say nothing on the server changed", retractionLine.contains("Nothing on the server was changed"))
+        // Must never borrow renderFailure's own phrasing - this is a bounded refusal, not a failure.
+        assertTrue(lines.none { it.contains("Did not finish") })
+        assertTrue(lines.last().contains("Not clean"))
+    }
+
+    /** The count must be named in words even when nothing needed retracting - ticket 20's
+     * ruling: "always report its size in words - whether it retracts or not." */
+    @Test
+    fun `zero retraction candidates is still stated in words, not silently omitted`() {
+        val report = EventsReconcile.Report(
+            datesEngineCount = 1, notesEngineCount = 0, uploaded = 0,
+            uploadedUndated = 0, serverCountAfter = 1, replicaCountAfter = 1,
+            deletedOnServer = 0, retractionCandidateCount = 0, retractionWithheld = false,
+            onlyOnEngine = emptyList(), onlyOnServer = emptyList(),
+        )
+        val lines = BackendMigrationResolver.renderEventsReport(report)
+        assertTrue(lines.any { it.contains("No rows looked orphaned") })
         assertTrue(lines.last().contains("Clean"))
     }
 

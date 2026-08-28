@@ -140,6 +140,12 @@ class EventsReconcileTest {
     @Before
     fun clearState() {
         RoomTestReset.resetCarDatabaseSingleton()
+        // Ticket 20's Q2 ruling: EventsReconcile now remembers the last WITHHELD retraction set in
+        // an object-level var so a second, deliberate run can consent to it (see that field's own
+        // doc comment). Robolectric normally reuses this class's classloader across every @Test
+        // method in this file, so without this reset one test's withheld warning could leak into
+        // an unrelated test's fixture data and be silently "confirmed" by it.
+        EventsReconcile.resetPendingRetractionForTests()
     }
 
     /** Inserts a Dates `Event` row directly into the local `events` table, `kind = appointment` -
@@ -855,6 +861,108 @@ class EventsReconcileTest {
             "the stale-origin_guid server row must never be soft-deleted by this run",
             backend.rows.getValue(backend.rows.keys.single()).deleted,
         )
+    }
+
+    // ---------------------------------------------------------------------- ticket 20, Q2's ruling
+    // "a routine sync may not perform an unbounded deletion as a side effect" - the 213-of-354
+    // incident. Seeds N server-only "ghost" rows directly through the backend (never through the
+    // engine), the same shape as the pre-existing ghost test above, so every one of them is a
+    // genuine retraction candidate with no matching reconciling record.
+
+    /** Seeds [count] ghost server rows, each with its own unique `origin_guid` and no matching
+     * engine record - every one of them is, by construction, a retraction candidate. [prefix]
+     * must be distinct across calls within the same test - [FakeEventsBackend.uploadMigratedEvent]
+     * treats a repeated `origin_guid` as "already present" and silently declines to insert it
+     * again, so two calls sharing a prefix would seed fewer rows than the test asked for. */
+    private suspend fun seedGhostRows(backend: FakeEventsBackend, count: Int, prefix: String = "ghost") {
+        repeat(count) { i ->
+            backend.uploadMigratedEvent(
+                MigratedEvent(originGuid = "$prefix-$i", fields = EventFields(title = "Ghost $prefix-$i", startsAtMs = 1_000L)),
+            ).getOrThrow()
+        }
+    }
+
+    @Test
+    fun `a small retraction set proceeds and is counted, same as before this ticket`() = runBlocking {
+        val backend = FakeEventsBackend()
+        seedGhostRows(backend, count = 2)
+
+        val report = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(2, report.retractionCandidateCount)
+        assertEquals(2, report.deletedOnServer)
+        assertFalse("a small retraction set must not be withheld", report.retractionWithheld)
+        assertTrue("actually deleted, not just counted", backend.rows.values.all { it.deleted })
+    }
+
+    @Test
+    fun `a retraction set at the bound retracts nothing, is reported in words, and isClean is false`() = runBlocking {
+        val backend = FakeEventsBackend()
+        seedGhostRows(backend, count = 6)
+
+        val report = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(6, report.retractionCandidateCount)
+        assertEquals("nothing may be retracted this run", 0, report.deletedOnServer)
+        assertTrue(report.retractionWithheld)
+        assertFalse(
+            "a withheld retraction must hold isClean false - the household is genuinely out of step",
+            report.isClean,
+        )
+        assertTrue(
+            "the withheld rows must survive untouched, not be soft-deleted anyway",
+            backend.rows.values.none { it.deleted },
+        )
+    }
+
+    @Test
+    fun `the immediate re-run with the same candidate set proceeds - the second run is the consent`() = runBlocking {
+        val backend = FakeEventsBackend()
+        seedGhostRows(backend, count = 6)
+        val first = EventsReconcile.run(context, backend).getOrThrow()
+        assertTrue(first.retractionWithheld)
+
+        val second = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertFalse("the second, unchanged run must proceed", second.retractionWithheld)
+        assertEquals(6, second.retractionCandidateCount)
+        assertEquals(6, second.deletedOnServer)
+        assertTrue("the six ghost rows must actually be retracted now", backend.rows.values.all { it.deleted })
+    }
+
+    @Test
+    fun `a re-run whose candidate set has materially changed refuses again, rather than spending the old confirmation`() = runBlocking {
+        val backend = FakeEventsBackend()
+        seedGhostRows(backend, count = 6)
+        val first = EventsReconcile.run(context, backend).getOrThrow()
+        assertTrue(first.retractionWithheld)
+
+        // A materially different set - one MORE candidate than the one just warned about, under
+        // its own distinct prefix so it does not collide with (and get silently dropped against)
+        // the first batch's own origin_guids.
+        seedGhostRows(backend, count = 1, prefix = "extra-ghost")
+        val second = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertTrue(
+            "a changed candidate set must refuse again, not silently spend the earlier warning",
+            second.retractionWithheld,
+        )
+        assertEquals(7, second.retractionCandidateCount)
+        assertEquals(0, second.deletedOnServer)
+        assertTrue("still nothing actually deleted", backend.rows.values.none { it.deleted })
+    }
+
+    @Test
+    fun `zero retraction candidates is still reported as a count, not silently omitted`() = runBlocking {
+        createDatesEvent("Dentist", startMs = 50_000L)
+        val backend = FakeEventsBackend()
+
+        val report = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(0, report.retractionCandidateCount)
+        assertEquals(0, report.deletedOnServer)
+        assertFalse(report.retractionWithheld)
+        assertTrue(report.isClean)
     }
 
     @Test

@@ -140,7 +140,23 @@ object EventsReconcile {
      *   `events_replica` forever, resurrected by every refill). Reported as its own field rather
      *   than folded into [onlyOnServer] or [uploaded] - a deletion is neither an upload nor a
      *   leftover, and conflating it with either would make [isClean] mean something subtly
-     *   different than "everything matches on both sides".
+     *   different than "everything matches on both sides". **Zero whenever [Report.retractionWithheld]
+     *   is true** - see that field's own doc comment (ticket 20's ruling on Q2, the 213-row incident).
+     * @param retractionCandidateCount how many server rows THIS run identified as orphaned - the
+     *   same predicate that used to soft-delete unconditionally. Reported every run, retracted or
+     *   not, per ticket 20's ruling: "the pass computes its retraction set FIRST and always names
+     *   the count in words, retracted or not." Equal to [deletedOnServer] whenever
+     *   [Report.retractionWithheld] is false and every candidate was actually deletable
+     *   server-side; can exceed it only in the same rare case [onlyOnServer]'s own doc comment
+     *   already covers (a candidate was already gone by some other path, so
+     *   [EventsBackend.softDelete] reported `false` for it).
+     * @param retractionWithheld true when [retractionCandidateCount] crossed
+     *   [RETRACTION_SMALL_FLOOR]/[RETRACTION_RATIO_BOUND] and this run refused to retract ANY of
+     *   the candidates - ticket 20's Q2 ruling, the safeguard for the 213-of-354 incident. Never
+     *   true when [retractionCandidateCount] is 0. Holds [Report.isClean] false even though
+     *   [onlyOnEngine]/[onlyOnServer] might otherwise read clean, because the withheld rows are
+     *   genuinely still sitting on the server unretracted and a caller reading only [isClean] must
+     *   be told the household is out of step.
      */
     data class Report(
         val datesEngineCount: Int,
@@ -150,15 +166,60 @@ object EventsReconcile {
         val serverCountAfter: Int,
         val replicaCountAfter: Int,
         val deletedOnServer: Int = 0,
+        val retractionCandidateCount: Int = 0,
+        val retractionWithheld: Boolean = false,
         val onlyOnEngine: List<String>,
         val onlyOnServer: List<String>,
     ) {
-        /** True only when every reconciling engine record landed on the server and nothing is
-         * left over on either side. [uploadedUndated] does NOT keep this false on its own - an
-         * undated item genuinely lands on the server now, it is just reported separately so a
-         * caller can never mistake it for a dated row (same posture
-         * [PantryReconcile.Report.isClean]'s own doc comment states for `uploadedUnreconciled`). */
-        val isClean: Boolean get() = onlyOnEngine.isEmpty() && onlyOnServer.isEmpty()
+        /** True only when every reconciling engine record landed on the server, nothing is left
+         * over on either side, AND no retraction was withheld this run. [uploadedUndated] does
+         * NOT keep this false on its own - an undated item genuinely lands on the server now, it
+         * is just reported separately so a caller can never mistake it for a dated row (same
+         * posture [PantryReconcile.Report.isClean]'s own doc comment states for
+         * `uploadedUnreconciled`). [retractionWithheld] DOES keep this false - see that field's
+         * own doc comment. */
+        val isClean: Boolean get() = onlyOnEngine.isEmpty() && onlyOnServer.isEmpty() && !retractionWithheld
+    }
+
+    /** Below this many candidate rows, a retraction always proceeds regardless of ratio - ticket
+     * 20's own ruling: "the common case is one or two rows and asking about those would train the
+     * answer 'yes' into a reflex, which is worse than not asking." A literal handful, chosen so
+     * the ratio bound below is never even consulted for a small server: 3 orphaned rows out of a
+     * household's 4 total events is 75%, comfortably over [RETRACTION_RATIO_BOUND], but it is
+     * exactly the "handful of rows out of a handful of rows" ticket 20 says must never trip this -
+     * the floor short-circuits before the ratio is computed at all. */
+    private const val RETRACTION_SMALL_FLOOR = 5
+
+    /** At or above [RETRACTION_SMALL_FLOOR] candidates, a retraction is ALSO bounded by this
+     * fraction of the server's own active total before this run touched anything. The incident
+     * this ticket exists to close was 213 retracted out of 354 active rows - just over 60% - and
+     * this bound is set well under half of that so the identical incident, run today, would have
+     * been caught with room to spare rather than by a coincidence of exactly where the real
+     * number happened to fall. Named rather than inlined per ticket 20's own instruction. */
+    private const val RETRACTION_RATIO_BOUND = 0.25
+
+    /** The retraction set (by server id) THIS object most recently withheld, or null once nothing
+     * is pending. **This is the entire consent mechanism, per ticket 20's own instruction: "the
+     * second run is the consent... remembering the set it warned about, and only proceeding when
+     * the new set is the same."** Deliberately in-memory only (an [EventsReconcile] object lives
+     * for the app process's lifetime) rather than persisted to disk - persisting it would let a
+     * withheld warning survive a restart and silently expire the moment the underlying data
+     * legitimately changed for an unrelated reason, which is exactly the "sticky state a later
+     * unrelated run silently spends" ticket 20 warns against. Comparing the FULL SET rather than
+     * just its size is what keeps a re-run whose candidates changed (even at the same count) from
+     * being mistaken for the same confirmed action - a different 213 rows is not the 213 rows that
+     * were just explained to the reader. */
+    private var pendingRetraction: Set<String>? = null
+
+    /** Test-only escape hatch. Production code never calls this - the whole point of
+     * [pendingRetraction] is that it survives across calls within one process; a unit-test class
+     * that reuses this object's classloader across multiple `@Test` methods (Robolectric's normal
+     * behaviour) needs a way to guarantee one test's withheld warning cannot leak into the next
+     * test's unrelated fixture data. Kept `internal` rather than `private` so
+     * `EventsReconcileTest` can call it from `app/src/test`, which shares this module's internal
+     * visibility with `app/src/main` by construction. */
+    internal fun resetPendingRetractionForTests() {
+        pendingRetraction = null
     }
 
     /** @param guid the stable identity this row uploads under - EngineRecord.guid for the Notes
@@ -329,20 +390,47 @@ object EventsReconcile {
         // engineGoogleEventIds just above) - without this, a Google-imported appointment whose
         // local origin_guid rotated would be retracted here even though it is still very much
         // present on the engine side under its real identity, google_event_id.
-        var deletedOnServer = 0
         val toRetract = serverEvents.filter {
             it.originGuid != null && it.originGuid !in engineGuids &&
                 (it.googleEventId == null || it.googleEventId !in engineGoogleEventIds)
         }
-        for (row in toRetract) {
-            val didDelete = backend.softDelete(row.serverId).getOrElse { return Result.failure(it) }
-            if (didDelete) deletedOnServer++
+        // Ticket 20's Q2 ruling, the actual code owed by the 213-row incident: the candidate set
+        // above is computed FIRST and reported in full regardless of what happens next (see
+        // Report.retractionCandidateCount's own doc comment). Whether it is actually PERFORMED is
+        // a separate question, bounded relative to the server's own total the way ticket 20
+        // requires - "213 of 354 must stop it... a handful of rows out of a handful of rows must
+        // not trip it."
+        val toRetractIds = toRetract.map { it.serverId }.toSet()
+        val retractionRatio = if (serverEvents.isEmpty()) 0.0 else toRetract.size.toDouble() / serverEvents.size
+        val overBound = toRetract.size > RETRACTION_SMALL_FLOOR && retractionRatio >= RETRACTION_RATIO_BOUND
+        // The consent: a run that is over-bound but whose candidate set is IDENTICAL to the one
+        // this object already warned about (pendingRetraction) is the deliberate second run
+        // CLAUDE.md's own no-dialog posture asks for - see pendingRetraction's own doc comment for
+        // why this compares the whole set, not just its size.
+        val consented = overBound && toRetractIds.isNotEmpty() && pendingRetraction == toRetractIds
+        val performRetraction = !overBound || consented
+        val retractionWithheld = toRetract.isNotEmpty() && !performRetraction
+        // Update the remembered warning for NEXT time: cleared the instant a retraction actually
+        // runs (consented or never over-bound in the first place - there is nothing left to
+        // confirm), set to the new candidate set the instant one is withheld. A materially
+        // different candidate set on a later, unrelated run therefore refuses again rather than
+        // silently spending an old confirmation - the exact failure ticket 20 warns against.
+        pendingRetraction = if (retractionWithheld) toRetractIds else null
+
+        var deletedOnServer = 0
+        if (performRetraction) {
+            for (row in toRetract) {
+                val didDelete = backend.softDelete(row.serverId).getOrElse { return Result.failure(it) }
+                if (didDelete) deletedOnServer++
+            }
         }
         // Everything below (the id-carry map, the replica refill, and the onlyOnServer diff) must
         // see the POST-retraction server state, or a row just soft-deleted above would be written
         // straight back into the replica by the refill three lines down - undoing the retraction
-        // in the same run that performed it.
-        val retractedServerIds = toRetract.map { it.serverId }.toSet()
+        // in the same run that performed it. When the retraction was WITHHELD, retractedServerIds
+        // is deliberately empty - the withheld rows stay exactly where they were, live, and fall
+        // out naturally into onlyOnServer below rather than needing separate bookkeeping.
+        val retractedServerIds = if (performRetraction) toRetract.map { it.serverId }.toSet() else emptySet()
         val activeServerEvents = if (retractedServerIds.isEmpty()) serverEvents else
             serverEvents.filterNot { it.serverId in retractedServerIds }
 
@@ -423,6 +511,8 @@ object EventsReconcile {
                 serverCountAfter = activeServerEvents.size,
                 replicaCountAfter = db.eventDao().getAllActive().size,
                 deletedOnServer = deletedOnServer,
+                retractionCandidateCount = toRetract.size,
+                retractionWithheld = retractionWithheld,
                 onlyOnEngine = reconciling
                     .filter { ev ->
                         ev.guid !in serverGuids &&
