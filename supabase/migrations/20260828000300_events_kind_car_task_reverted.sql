@@ -42,16 +42,26 @@
 -- migration history that erases its own mistakes is worse than one that admits them (this file's
 -- own project convention, stated first in that migration's own header).
 --
--- UNAPPLIED AND OWED, same posture as 20260828000100 and (now-deleted) 20260828000200. The
--- dashboard-applied migration history is bypassed the same way theirs was, so this needs the same
--- `supabase migration repair` caveat on first CLI use. Idempotent: re-running deletes nothing (no
--- `car_task` rows remain after the first run) and re-adding an identical constraint is a no-op in
--- effect even though the drop-then-add always executes.
--- ---------------------------------------------------------------------------------------------
--- The constraint is found by what it CONSTRAINS (conkey = the attnum of the `kind` column alone),
--- never by an assumed name - same reasoning as 20260828000100's own header: a text or name match
--- can miss silently and leave the wrong constraint in place while reporting success (lesson L37).
--- ---------------------------------------------------------------------------------------------
+-- APPLIED AND VERIFIED 2026-08-28 against HomeERPBackend (ref gccxiqusqxkjmjmaadpz), through the
+-- dashboard SQL editor, at Kevin's explicit instruction ("do it in chrome"). The editor's
+-- "Potential issue detected - this query includes destructive operations" dialog was confirmed
+-- deliberately: the DELETE is the point of this file.
+--
+-- Verified from the catalog, never from the success panel (lesson L37):
+--
+--   check constraints on public.events     11   (unchanged - none lost)
+--   ...of which still mention car_task      0   (the narrowing landed)
+--   rows with kind = 'car_task'             0   (13 deleted)
+--   public.events total                   354   (Notes/Dates rows untouched)
+--   public.vehicles / public.drives      3 / 17  (the fleet projection is intact)
+--
+-- **The 11 is the check that matters**, for the same reason it did in 20260828000100: four of the
+-- other ten check constraints on this table mention "kind" in their text, and a name- or text-based
+-- match would have dropped them and put none back. The conkey match below is what makes that
+-- impossible; the count is how it was proven rather than assumed.
+--
+-- Migration history is still bypassed by the dashboard path, so a first CLI use needs
+-- `supabase migration repair`, not a re-run. Same caveat as every migration since phase 2.
 
 delete from public.events where kind = 'car_task';
 
