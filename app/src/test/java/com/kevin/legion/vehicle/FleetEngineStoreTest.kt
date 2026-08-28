@@ -299,6 +299,49 @@ class FleetEngineStoreTest {
     }
 
     // ============================================================================================
+    // Engine-retirement ticket 15/16: Vehicle READS must survive the engine's own record vanishing
+    // entirely, because ticket 14's ruling (option 3, "fleet is a projection, not a cutover") means
+    // Vehicle reads were NEVER routed through the engine in the first place - this file's own class
+    // doc already says so ("every Vehicle READ in this file... serves straight from that
+    // always-in-sync mirror"), but nothing pinned it as a live contract before this. If a future
+    // change ever wires getByMac/getAll/getAllIncludingArchived onto the engine record (undoing
+    // ticket 14's ruling without anyone noticing), this is the test that goes red.
+    // ============================================================================================
+
+    @Test
+    fun `getByMac still returns the full car, including legacy-only columns, after the engine Vehicle record is gone`() = runBlocking {
+        FleetEngineStore.setArchived(context, "V1", archived = false, now = 1L)
+        wipeEngineVehicleRecord("V1")
+
+        val vehicle = FleetEngineStore.getByMac(context, "V1")
+
+        assertNotNull("the mirror is the real store for Vehicle reads - it must not need the engine row", vehicle)
+        assertEquals("Cherokee", vehicle!!.name)
+        assertEquals(227_000, vehicle.odometerBaseline)
+        assertFalse("archived is a legacy-only column with no engine counterpart at all", vehicle.archived)
+    }
+
+    @Test
+    fun `getAllIncludingArchived still enumerates the car after the engine Vehicle record is gone`() = runBlocking {
+        wipeEngineVehicleRecord("V1")
+
+        val all = FleetEngineStore.getAllIncludingArchived(context)
+
+        assertEquals(1, all.size)
+        assertEquals("V1", all.single().obdMac)
+    }
+
+    /** Simulates the engine Vehicle record being purged out from under the mirror - trash then
+     * hard-delete, same two calls [com.kevin.legion.engine.RecordStore.purgeExpiredTrash] chains in
+     * production, just invoked directly since this test has no reason to wait 30 days. */
+    private suspend fun wipeEngineVehicleRecord(mac: String) {
+        val engineId = db.engineRecordDao().getByGuid(com.kevin.legion.engine.fleet.FleetRecordBridge.vehicleGuid(mac))!!.id
+        db.engineRecordDao().trash(engineId, System.currentTimeMillis())
+        db.engineRecordDao().purgeDeletedBefore(System.currentTimeMillis() + 1)
+        assertNull("the engine record must actually be gone for this test to mean anything", db.engineRecordDao().getById(engineId))
+    }
+
+    // ============================================================================================
     // Worded failure per write path (§7's outcome-verb rule, applied to every FleetEngineStore
     // write this cutover added).
     // ============================================================================================

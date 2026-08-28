@@ -62,6 +62,13 @@ legacy-primary and were never engine-primary for the local path in the same way.
 is `FleetEngineStore` and the reconcile, and it should be checked against that ruling rather than
 assumed to follow the others.
 
+**CHECKED 2026-08-27, step 3 (ticket 16).** Vehicle needed no repoint - it was already
+unconditionally legacy-primary, both reads and writes, and now has a regression test pinning that.
+`ServiceHistory`/`MaintenanceSchedule` are a SEPARATE problem ticket 14 never ruled on: they are
+engine-only unconditionally (no configured/unconfigured split to repoint at all), by cutover 4's own
+design, and repointing them onto a legacy table is a real schema decision, not a copier. See
+ticket 16. Step 6 ("delete `engine/`") cannot happen until that ticket is ruled and built.
+
 ## The sequence, recommended
 
 1. **Places** - one table serves both paths. Smallest, and it establishes the shape.
