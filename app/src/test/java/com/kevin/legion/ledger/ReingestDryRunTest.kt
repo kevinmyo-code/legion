@@ -56,10 +56,117 @@ class ReingestDryRunTest {
         bytesByFile.getValue(driveFileId)
     }
 
+    /** Always-fails saved-link reader - every row in [driveFileIds] falls straight to the content-match fallback. */
+    private fun deadReader(vararg driveFileIds: String) = ReingestDryRun.ByteReader { driveFileId, _, _ ->
+        require(driveFileId in driveFileIds) { "unexpected driveFileId $driveFileId" }
+        null
+    }
+
+    /** A [ReingestDryRun.ContentFolderScanner] over a fixed in-memory candidate set - the "currently connected folder". */
+    private fun fakeConnectedFolder(candidates: Map<String, ByteArray>) = object : ReingestDryRun.ContentFolderScanner {
+        override suspend fun listCandidates(): List<ReingestDryRun.ConnectedCandidate> =
+            candidates.map { (documentId, bytes) -> ReingestDryRun.ConnectedCandidate(documentId, documentId, bytes.size.toLong()) }
+
+        override suspend fun readCandidate(documentId: String): ByteArray? = candidates[documentId]
+    }
+
     @Test
-    fun `run reports Unreachable when the byte reader returns null`() = runBlocking {
+    fun `run reports Unreachable when the byte reader returns null and no content fallback is supplied`() = runBlocking {
         val input = ReingestDryRun.FileInput("gone", "tree://x", "gone.pdf")
         val reports = ReingestDryRun.run(listOf(input), fakeReader(mapOf("gone" to null)))
+        val report = reports.single()
+        assertTrue(report.outcome is ReingestDryRun.FileOutcome.Unreachable)
+        assertNull(report.resolvedVia)
+    }
+
+    // ---------------------------------------------------------------------
+    // Ticket 19 - content-hash fallback, resolving a row by CONTENT rather than by its saved
+    // treeUri+driveFileId address. `.scratch/backend-erp/issues/19-re-ingest-historical-statements.md`'s
+    // 2026-08-28 device pass: LEGION holds one Drive folder grant at a time, so a row whose ORIGINAL
+    // folder isn't the one connected now can only ever be recovered by matching its stored
+    // contentSha256 against whatever bytes are sitting in the folder that IS connected.
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `run resolves by saved link first, never touching the content fallback, when the saved link works`() = runBlocking {
+        val bytes = fixture("bofa_csv_happy_path.csv").readBytes()
+        val hash = IngestPipeline.sha256(bytes)
+        val input = ReingestDryRun.FileInput("bofa-csv-1", "tree://x", "bofa_csv_happy_path.csv", sizeBytes = bytes.size.toLong(), contentSha256 = hash)
+        // A content-fallback scanner that throws if it's ever asked anything - proves it's never consulted.
+        val explodingFolder = object : ReingestDryRun.ContentFolderScanner {
+            override suspend fun listCandidates(): List<ReingestDryRun.ConnectedCandidate> =
+                error("content fallback must not run when the saved link already worked")
+            override suspend fun readCandidate(documentId: String): ByteArray? =
+                error("content fallback must not run when the saved link already worked")
+        }
+        val reports = ReingestDryRun.run(
+            listOf(input),
+            fakeReader(mapOf("bofa-csv-1" to bytes)),
+            explodingFolder,
+            accountHint = { "BOFA-CHECKING" },
+        )
+        val report = reports.single()
+        assertEquals(ReingestDryRun.ResolvedVia.SAVED_LINK, report.resolvedVia)
+        assertTrue(report.outcome is ReingestDryRun.FileOutcome.Parsed)
+    }
+
+    @Test
+    fun `run resolves by content hash when the saved link fails but a byte-identical copy sits in the connected folder`() = runBlocking {
+        val bytes = fixture("bofa_csv_happy_path.csv").readBytes()
+        val hash = IngestPipeline.sha256(bytes)
+        val input = ReingestDryRun.FileInput("bofa-csv-1", "tree://original-folder", "bofa_csv_happy_path.csv", sizeBytes = bytes.size.toLong(), contentSha256 = hash)
+        val connectedFolder = fakeConnectedFolder(mapOf("some-copy-doc-id" to bytes))
+
+        val reports = ReingestDryRun.run(
+            listOf(input),
+            deadReader("bofa-csv-1"),
+            connectedFolder,
+            accountHint = { "BOFA-CHECKING" },
+        )
+        val report = reports.single()
+        assertEquals(ReingestDryRun.ResolvedVia.CONTENT_MATCH, report.resolvedVia)
+        assertTrue(report.outcome is ReingestDryRun.FileOutcome.Parsed)
+    }
+
+    @Test
+    fun `run reports Unreachable with the folder-not-connected wording when neither route resolves`() = runBlocking {
+        val bytes = fixture("bofa_csv_happy_path.csv").readBytes()
+        val hash = IngestPipeline.sha256(bytes)
+        val input = ReingestDryRun.FileInput("bofa-csv-1", "tree://original-folder", "bofa_csv_happy_path.csv", sizeBytes = bytes.size.toLong(), contentSha256 = hash)
+        // Connected folder is real (listable) but holds nothing matching this row's size/hash.
+        val connectedFolder = fakeConnectedFolder(mapOf("unrelated-doc-id" to "not the same bytes at all".toByteArray()))
+
+        val reports = ReingestDryRun.run(listOf(input), deadReader("bofa-csv-1"), connectedFolder)
+        val report = reports.single()
+        assertNull(report.resolvedVia)
+        val outcome = report.outcome
+        assertTrue(outcome is ReingestDryRun.FileOutcome.Unreachable)
+        outcome as ReingestDryRun.FileOutcome.Unreachable
+        assertTrue(
+            "expected the folder-not-connected wording to lead, got: ${outcome.reason}",
+            outcome.reason.startsWith("Most likely this file's Drive folder is not the one connected right now"),
+        )
+    }
+
+    @Test
+    fun `run never hashes a connected-folder candidate whose size cannot match any wanted file`() = runBlocking {
+        val bytes = fixture("bofa_csv_happy_path.csv").readBytes()
+        val hash = IngestPipeline.sha256(bytes)
+        val input = ReingestDryRun.FileInput("bofa-csv-1", "tree://original-folder", "bofa_csv_happy_path.csv", sizeBytes = bytes.size.toLong(), contentSha256 = hash)
+        var readCandidateCalls = 0
+        val connectedFolder = object : ReingestDryRun.ContentFolderScanner {
+            override suspend fun listCandidates(): List<ReingestDryRun.ConnectedCandidate> = listOf(
+                // Wrong size on purpose - the size-first shortcut must skip this without ever reading it.
+                ReingestDryRun.ConnectedCandidate("wrong-size-doc", "wrong-size-doc", bytes.size.toLong() + 1),
+            )
+            override suspend fun readCandidate(documentId: String): ByteArray? {
+                readCandidateCalls++
+                return bytes
+            }
+        }
+
+        val reports = ReingestDryRun.run(listOf(input), deadReader("bofa-csv-1"), connectedFolder)
+        assertEquals(0, readCandidateCalls)
         assertTrue(reports.single().outcome is ReingestDryRun.FileOutcome.Unreachable)
     }
 

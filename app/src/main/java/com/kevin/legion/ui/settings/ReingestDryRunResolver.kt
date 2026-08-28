@@ -32,8 +32,21 @@ object ReingestDryRunResolver {
                     } + ".",
             )
         }
+        if (report.resolvedBySavedLink > 0 || report.resolvedByContentMatch > 0) {
+            add(
+                "${report.resolvedBySavedLink} ${plural(report.resolvedBySavedLink, "file")} resolved " +
+                    "through its saved folder link. ${report.resolvedByContentMatch} " +
+                    "${plural(report.resolvedByContentMatch, "file")} needed the content-hash fallback - " +
+                    "found by matching bytes in the folder that IS connected, because that file's saved " +
+                    "link points at a folder that is not.",
+            )
+        }
         if (report.unreachable > 0) {
-            add("${report.unreachable} ${plural(report.unreachable, "file")} no longer reachable through its saved folder link.")
+            add(
+                "${report.unreachable} ${plural(report.unreachable, "file")} not reachable by either " +
+                    "route - most likely sitting in a Drive folder that isn't the one connected right " +
+                    "now, and no byte-identical copy of it turned up in the one that is.",
+            )
         }
         if (report.unparseable > 0) {
             add("${report.unparseable} ${plural(report.unparseable, "file")} quarantined on re-read - the numbers no longer reconcile.")
@@ -54,10 +67,14 @@ object ReingestDryRunResolver {
         )
     }
 
-    /** One line per file, for the detail list - reachability, parse outcome, anchors, row count, all named. */
+    /** One line per file, for the detail list - reachability, parse outcome, anchors, row count, resolution route, all named. */
     fun renderFileLine(report: ReingestDryRun.FileReport): String {
         val prefix = "${report.displayName}: "
-        return prefix + when (val outcome = report.outcome) {
+        val viaSuffix = when (report.resolvedVia) {
+            ReingestDryRun.ResolvedVia.CONTENT_MATCH -> " (found by content match, not its saved folder link)"
+            ReingestDryRun.ResolvedVia.SAVED_LINK, null -> ""
+        }
+        val body = when (val outcome = report.outcome) {
             is ReingestDryRun.FileOutcome.Unreachable -> "UNREACHABLE - ${outcome.reason}"
             is ReingestDryRun.FileOutcome.Unparseable -> "UNPARSEABLE - ${outcome.reason}"
             is ReingestDryRun.FileOutcome.NeedsAccount -> "NEEDS ACCOUNT MAPPING - ${outcome.reason}"
@@ -74,6 +91,7 @@ object ReingestDryRunResolver {
                 }
             }
         }
+        return prefix + body + viaSuffix
     }
 
     private fun plural(count: Int, noun: String): String = if (count == 1) noun else "${noun}s"

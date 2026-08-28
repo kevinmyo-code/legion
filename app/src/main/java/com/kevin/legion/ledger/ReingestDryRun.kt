@@ -87,12 +87,47 @@ object ReingestDryRun {
         suspend fun read(driveFileId: String, treeUri: String, displayName: String): ByteArray?
     }
 
-    /** One file's stored identity - the exact fields [ByteReader.read] and re-dispatch need, no more. */
+    /**
+     * One file's stored identity - the exact fields [ByteReader.read] and re-dispatch need, plus
+     * [sizeBytes]/[contentSha256] (2026-08-28, ticket 19) for the content-match fallback below.
+     * Both default to values that make content-matching a no-op ([sizeBytes] 0 never matches a real
+     * candidate; [contentSha256] null skips the row outright) so every existing caller/test
+     * constructing a bare `FileInput(id, tree, name)` keeps behaving exactly as before.
+     */
     data class FileInput(
         val driveFileId: String,
         val treeUri: String,
         val displayName: String,
+        val sizeBytes: Long = 0L,
+        val contentSha256: String? = null,
     )
+
+    /** Which route recovered a file's bytes - [FileReport.resolvedVia], reported so a human can tell "worked as expected" from "worked, but only because a copy happened to be sitting in the connected folder". */
+    enum class ResolvedVia { SAVED_LINK, CONTENT_MATCH }
+
+    /**
+     * One candidate document under the folder that IS currently connected - identity/size only, no
+     * bytes read yet. [ContentFolderScanner.listCandidates] returns these for every child (the exact
+     * enumeration [com.kevin.legion.service.SafListing.listChildren] does for a real scan), so the
+     * size-first shortcut in [resolveByContent] can skip hashing anything whose size cannot possibly
+     * match before opening a single byte.
+     */
+    data class ConnectedCandidate(val documentId: String, val displayName: String, val sizeBytes: Long)
+
+    /**
+     * The content-match fallback's own I/O boundary - same posture as [ByteReader]: this dry run
+     * stays a plain JVM class with no Android/SAF import, and a real caller wires this to
+     * [com.kevin.legion.service.SafListing] against whatever folder [com.kevin.legion.ledger.LedgerFolderPreferences]
+     * currently holds. Both methods return null on any failure, never throw - same contract
+     * [ByteReader.read] uses, so "the connected folder itself couldn't be listed" and "nothing in it
+     * matched" are both representable without an exception.
+     */
+    interface ContentFolderScanner {
+        /** Every child of the currently connected folder. Null if the folder itself couldn't be listed at all - distinct from an empty list, which means "listed fine, holds nothing". */
+        suspend fun listCandidates(): List<ConnectedCandidate>?
+        /** Reads one candidate's bytes for hashing. Null on any read failure. */
+        suspend fun readCandidate(documentId: String): ByteArray?
+    }
 
     /**
      * The three numbers a `statements` header needs (CLAUDE.md §4's server-schema amendment).
@@ -117,7 +152,12 @@ object ReingestDryRun {
 
     /** One file's outcome. Every case is something that would ALSO happen on a real re-ingest - this never invents a category the pipeline itself does not have. */
     sealed class FileOutcome {
-        /** [ByteReader.read] returned null - the file's saved folder link no longer resolves. */
+        /**
+         * Neither [ByteReader.read] nor the [ContentFolderScanner] content-match fallback could
+         * produce this file's bytes. See [unreachableReason] for the wording, which as of ticket 19
+         * leads with the most likely real cause found on-device 2026-08-28: LEGION holds one Drive
+         * folder grant at a time, and this file's saved link points at a folder that is not it.
+         */
         data class Unreachable(val reason: String) : FileOutcome()
 
         /** Read fine, but [StatementDispatcher.dispatchDeterministic] quarantined it - the numbers on THIS read did not reconcile, an unexpected regression worth flagging since the same bytes reconciled once already. */
@@ -141,11 +181,16 @@ object ReingestDryRun {
         ) : FileOutcome()
     }
 
-    /** One file's identity plus what re-reading it found. */
+    /**
+     * One file's identity plus what re-reading it found. [resolvedVia] is null exactly when
+     * [outcome] is [FileOutcome.Unreachable] - defaulted so every existing three-argument call site
+     * (tests included) keeps compiling unchanged.
+     */
     data class FileReport(
         val driveFileId: String,
         val displayName: String,
         val outcome: FileOutcome,
+        val resolvedVia: ResolvedVia? = null,
     )
 
     /** The whole dry run's findings - see each field's own doc for what it does and does not promise. */
@@ -161,6 +206,10 @@ object ReingestDryRun {
         val unparseable: Int,
         val needsAccount: Int,
         val needsLlm: Int,
+        /** Of every file whose bytes were recovered at all (any [FileOutcome] but [FileOutcome.Unreachable]), how many came back through the cheap saved `treeUri`+`driveFileId` route. */
+        val resolvedBySavedLink: Int,
+        /** Of every file whose bytes were recovered at all, how many needed the ticket 19 content-hash fallback against the currently connected folder - each of these is a file whose ORIGINAL folder is not the one connected. */
+        val resolvedByContentMatch: Int,
         /** Sum of [FileOutcome.Parsed.rowCount] across every parsed file - the raw re-read total, BEFORE dedup. */
         val rawRowsParsed: Int,
         /**
@@ -179,34 +228,122 @@ object ReingestDryRun {
      * folder context to draw one from unless a caller supplies it, so a file whose account can only
      * be resolved via a folder mapping surfaces as [FileOutcome.NeedsAccount] here exactly as it
      * would on a real scan with no mapping set.
+     *
+     * **Resolution order (ticket 19, 2026-08-28 device pass)**: try [reader] first - the cheap,
+     * saved `treeUri`+`driveFileId` route, correct whenever the exact folder a file was ingested
+     * from is still connected. Only for a row that fails this AND carries a non-null
+     * [FileInput.contentSha256] does [contentFolder] get consulted at all: every candidate in the
+     * CURRENTLY connected folder is listed once (not per row), size-filtered against every still-
+     * unresolved row's own [FileInput.sizeBytes] before a single byte is read, and only a
+     * size-matching candidate is opened and hashed. [contentFolder] defaults to null so a caller
+     * with no folder context (or a test not exercising this fallback) never has to construct one -
+     * every row that would have needed it simply reports [FileOutcome.Unreachable], exactly as
+     * before this ticket.
      */
     suspend fun run(
         files: List<FileInput>,
         reader: ByteReader,
+        contentFolder: ContentFolderScanner? = null,
         accountHint: (FileInput) -> String? = { null },
-    ): List<FileReport> = files.map { input ->
-        val bytes = reader.read(input.driveFileId, input.treeUri, input.displayName)
-        val outcome: FileOutcome = if (bytes == null) {
-            FileOutcome.Unreachable(
-                "Couldn't read this file through its saved folder link - it may have moved, " +
-                    "been deleted, or the folder permission may have lapsed."
-            )
-        } else {
-            when (val det = StatementDispatcher.dispatchDeterministic(input.displayName, bytes, accountHint(input))) {
-                is DeterministicResult.Success -> {
-                    val anchors = AnchorRecovery(
-                        openingBalanceCents = det.anchors.openingBalanceCents,
-                        closingBalanceCents = det.anchors.closingBalanceCents,
-                        statedTotalCents = det.anchors.statedTotalCents,
-                    )
-                    FileOutcome.Parsed(det.transactions.size, anchors, det.transactions)
-                }
-                is DeterministicResult.Quarantined -> FileOutcome.Unparseable(det.reason)
-                is DeterministicResult.NeedsAccount -> FileOutcome.NeedsAccount(det.reason)
-                is DeterministicResult.NeedsLlm -> FileOutcome.NeedsLlm
-            }
+    ): List<FileReport> {
+        val savedLinkAttempts = files.map { input ->
+            input to reader.read(input.driveFileId, input.treeUri, input.displayName)
         }
-        FileReport(input.driveFileId, input.displayName, outcome)
+
+        val stillMissing = savedLinkAttempts.filter { (input, bytes) -> bytes == null && input.contentSha256 != null }
+        val contentMatched: Map<String, ByteArray> =
+            if (contentFolder != null && stillMissing.isNotEmpty()) {
+                resolveByContent(stillMissing.map { it.first }, contentFolder)
+            } else {
+                emptyMap()
+            }
+
+        return savedLinkAttempts.map { (input, savedBytes) ->
+            val (bytes, via) = when {
+                savedBytes != null -> savedBytes to ResolvedVia.SAVED_LINK
+                contentMatched.containsKey(input.driveFileId) -> contentMatched.getValue(input.driveFileId) to ResolvedVia.CONTENT_MATCH
+                else -> null to null
+            }
+            val outcome = classify(input, bytes, contentFolder != null, accountHint)
+            FileReport(input.driveFileId, input.displayName, outcome, via)
+        }
+    }
+
+    /**
+     * The saved-link-failed, content-hash-succeeded (or not) fallback. Lists [contentFolder]'s
+     * candidates exactly ONCE for the whole batch (never per row), then hashes only a candidate
+     * whose [ConnectedCandidate.sizeBytes] equals at least one still-wanted [FileInput.sizeBytes] -
+     * the shortcut the ticket asked to be checked, and it is SAFE here specifically because
+     * [FileInput.sizeBytes] and [ConnectedCandidate.sizeBytes] are both the SAF-reported byte length
+     * of the exact same document type this pipeline already treats as a change signal
+     * ([com.kevin.legion.ledger.IngestPipeline.stage]'s own `unchanged` check uses `sizeBytes` the
+     * same way) - two different byte sequences of the same reported length are exactly what the
+     * hash comparison below still catches, so the size filter can only produce a false SKIP (a
+     * genuinely matching file whose provider reports a different size for the same bytes, not
+     * observed in practice) and never a false MATCH. [IngestPipeline.sha256] is the exact hashing
+     * function ingestion itself uses to populate [FileInput.contentSha256] in the first place - not
+     * a reimplementation - so equal hashes here mean the bytes are the ones the gate actually saw.
+     */
+    private suspend fun resolveByContent(
+        wanted: List<FileInput>,
+        contentFolder: ContentFolderScanner,
+    ): Map<String, ByteArray> {
+        val candidates = contentFolder.listCandidates() ?: return emptyMap()
+        val wantedSizes = wanted.mapNotNull { it.contentSha256?.let { _ -> it.sizeBytes } }.toSet()
+        val hashToBytes = mutableMapOf<String, ByteArray>()
+        for (candidate in candidates) {
+            if (candidate.sizeBytes !in wantedSizes) continue
+            val bytes = contentFolder.readCandidate(candidate.documentId) ?: continue
+            hashToBytes.putIfAbsent(IngestPipeline.sha256(bytes), bytes)
+        }
+        val resolved = mutableMapOf<String, ByteArray>()
+        for (input in wanted) {
+            val hash = input.contentSha256 ?: continue
+            val bytes = hashToBytes[hash] ?: continue
+            resolved[input.driveFileId] = bytes
+        }
+        return resolved
+    }
+
+    /**
+     * The wording for a file neither route could recover, in the order ticket 19 asked for: the
+     * common case (this file's original folder simply isn't the one connected right now - LEGION
+     * holds one Drive folder grant at a time) leads, and the pre-ticket-19 reasons (moved, deleted,
+     * permission lapsed) follow rather than being replaced, since any of them can still be true.
+     */
+    private fun unreachableReason(input: FileInput, contentMatchAttempted: Boolean): String = when {
+        !contentMatchAttempted -> "Couldn't read this file through its saved folder link - it may " +
+            "have moved, been deleted, or the folder permission may have lapsed."
+        input.contentSha256 == null -> "Couldn't read this file through its saved folder link, and " +
+            "this row has no stored content hash to fall back on. It may have moved, been deleted, " +
+            "or the folder permission may have lapsed."
+        else -> "Most likely this file's Drive folder is not the one connected right now - LEGION " +
+            "holds only one folder grant at a time, and no byte-identical copy of it was found in " +
+            "the folder that IS connected. It could also have moved, been deleted, or the folder " +
+            "permission may have lapsed."
+    }
+
+    /** Parses (or reports Unreachable for) one already-resolved file. Shared by every branch of [run] regardless of which route recovered [bytes]. */
+    private fun classify(
+        input: FileInput,
+        bytes: ByteArray?,
+        contentMatchAttempted: Boolean,
+        accountHint: (FileInput) -> String?,
+    ): FileOutcome {
+        if (bytes == null) return FileOutcome.Unreachable(unreachableReason(input, contentMatchAttempted))
+        return when (val det = StatementDispatcher.dispatchDeterministic(input.displayName, bytes, accountHint(input))) {
+            is DeterministicResult.Success -> {
+                val anchors = AnchorRecovery(
+                    openingBalanceCents = det.anchors.openingBalanceCents,
+                    closingBalanceCents = det.anchors.closingBalanceCents,
+                    statedTotalCents = det.anchors.statedTotalCents,
+                )
+                FileOutcome.Parsed(det.transactions.size, anchors, det.transactions)
+            }
+            is DeterministicResult.Quarantined -> FileOutcome.Unparseable(det.reason)
+            is DeterministicResult.NeedsAccount -> FileOutcome.NeedsAccount(det.reason)
+            is DeterministicResult.NeedsLlm -> FileOutcome.NeedsLlm
+        }
     }
 
     /** Aggregates [reports] into the counts and projection [AggregateReport] carries. Pure. */
@@ -219,8 +356,15 @@ object ReingestDryRun {
         var needsAccount = 0
         var needsLlm = 0
         var rawRows = 0
+        var resolvedBySavedLink = 0
+        var resolvedByContentMatch = 0
 
         for (report in reports) {
+            when (report.resolvedVia) {
+                ResolvedVia.SAVED_LINK -> resolvedBySavedLink++
+                ResolvedVia.CONTENT_MATCH -> resolvedByContentMatch++
+                null -> Unit
+            }
             when (val outcome = report.outcome) {
                 is FileOutcome.Unreachable -> unreachable++
                 is FileOutcome.Unparseable -> unparseable++
@@ -249,6 +393,8 @@ object ReingestDryRun {
             unparseable = unparseable,
             needsAccount = needsAccount,
             needsLlm = needsLlm,
+            resolvedBySavedLink = resolvedBySavedLink,
+            resolvedByContentMatch = resolvedByContentMatch,
             rawRowsParsed = rawRows,
             projectedRowCount = projectRowCount(reports),
         )

@@ -29,7 +29,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.ledger.IngestPipeline
+import com.kevin.legion.ledger.LedgerFolderPreferences
 import com.kevin.legion.ledger.ReingestDryRun
+import com.kevin.legion.service.SafListing
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LegionTheme
@@ -70,10 +72,16 @@ fun ReingestDryRunScreen(onBack: () -> Unit) {
                     CarDatabase.getDatabase(context).ingestedFileDao().listIngestedWithTreeUri()
                         .mapNotNull { file ->
                             val treeUri = file.treeUri ?: return@mapNotNull null
-                            ReingestDryRun.FileInput(file.driveFileId, treeUri, file.displayName)
+                            ReingestDryRun.FileInput(
+                                driveFileId = file.driveFileId,
+                                treeUri = treeUri,
+                                displayName = file.displayName,
+                                sizeBytes = file.sizeBytes,
+                                contentSha256 = file.contentSha256,
+                            )
                         }
                 }
-                val reports = ReingestDryRun.run(inputs, safReader(context))
+                val reports = ReingestDryRun.run(inputs, safReader(context), connectedFolderScanner(context))
                 val aggregate = ReingestDryRun.aggregate(reports)
                 uiState = uiState.copy(
                     running = false,
@@ -117,6 +125,36 @@ private fun safReader(context: Context) = ReingestDryRun.ByteReader { driveFileI
             Log.w("ReingestDryRunScreen", "read failed for $driveFileId: ${e.message}")
             null
         }
+    }
+}
+
+/**
+ * The content-match fallback's real I/O, ticket 19's fix for the 2026-08-28 device pass finding:
+ * [ReingestDryRun.run]'s cheap saved-link route only ever succeeds while the exact folder a file
+ * was ingested from is still connected, and LEGION holds ONE Drive folder grant at a time
+ * ([LedgerFolderPreferences.treeUri]) - so a file ingested from a since-disconnected folder needs
+ * its bytes found by CONTENT inside whatever folder IS connected right now, never by address.
+ *
+ * Built on [SafListing] - the exact enumeration/read [com.kevin.legion.service.IngestScanner]'s
+ * real folder scan uses - rather than a second SAF listing implementation. Null [treeUri] (no
+ * folder connected at all) makes [listCandidates] return null immediately, which
+ * [ReingestDryRun.resolveByContent] already treats as "nothing to match against", not a crash.
+ */
+private fun connectedFolderScanner(context: Context) = object : ReingestDryRun.ContentFolderScanner {
+    private val treeUri = LedgerFolderPreferences.treeUri.value
+
+    override suspend fun listCandidates(): List<ReingestDryRun.ConnectedCandidate>? {
+        val tree = treeUri ?: return null
+        return withContext(Dispatchers.IO) {
+            SafListing.listChildren(context, tree)?.map {
+                ReingestDryRun.ConnectedCandidate(it.documentId, it.displayName, it.size)
+            }
+        }
+    }
+
+    override suspend fun readCandidate(documentId: String): ByteArray? {
+        val tree = treeUri ?: return null
+        return withContext(Dispatchers.IO) { SafListing.openBytes(context, tree, documentId) }
     }
 }
 

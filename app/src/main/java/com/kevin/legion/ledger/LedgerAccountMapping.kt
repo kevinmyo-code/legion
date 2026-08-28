@@ -27,9 +27,9 @@ data class DiscoveredAccountFolder(val folderId: String, val displayName: String
  * Pure resolution logic, extracted out of [LedgerAccountMappingPreferences]
  * so it's testable on a plain JVM without touching SharedPreferences/Context
  * (see `playbook-coding.md`'s "keep platform calls out of it" testing note).
- * [folderId] is [com.kevin.legion.service.IngestScanner.SafChild]'s
- * (private) `containingFolderId` - null for a file that sat directly in the
- * connected root, which by construction is never mapped to anything.
+ * [folderId] is [com.kevin.legion.service.SafChild]'s `containingFolderId` -
+ * null for a file that sat directly in the connected root, which by
+ * construction is never mapped to anything.
  */
 fun resolveAccountHint(folderId: String?, mapping: Map<String, String>): String? =
     folderId?.let { mapping[it] }
@@ -108,7 +108,7 @@ object LedgerAccountMappingPreferences {
 
     /**
      * Every subfolder directly under [treeUri]'s root - one level, matching
-     * [com.kevin.legion.service.IngestScanner.listChildren]'s recursion cap
+     * [com.kevin.legion.service.SafListing.listChildren]'s recursion cap
      * (see that function's doc comment for why). Read-only discovery for the
      * mapping UI, independent of a running scan; a plain child-documents
      * query filtered to directories, the same shape as
@@ -145,7 +145,7 @@ object LedgerAccountMappingPreferences {
             //
             // Returning empty is safe here, and specifically NOT the
             // "empty folder and unreadable folder look identical" bug that
-            // IngestScanner.queryChildDocuments exists to avoid: the revoked
+            // SafListing.queryChildDocuments exists to avoid: the revoked
             // state is already surfaced, in words, by the folder-connection row
             // above this list. This function feeds a subfolder PICKER, and a
             // picker with no options next to a banner saying the folder is
