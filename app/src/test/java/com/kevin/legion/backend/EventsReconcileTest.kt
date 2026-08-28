@@ -77,9 +77,18 @@ class EventsReconcileTest {
         override suspend fun fetchSkips(serverId: String): Result<List<Long>> =
             Result.success(skips[serverId].orEmpty())
 
+        // Mirrors SupabaseEventsBackend.uploadMigratedEvent's own dual-key existence check
+        // (`.scratch/backend-erp/issues/20-*.md`): public.events enforces TWO unique keys,
+        // origin_guid AND a partial-unique google_event_id (where google_event_id is not null),
+        // so "already present" must check both - and the google_event_id check must never fire for
+        // a null value, exactly matching the server's own partial-index predicate.
         override suspend fun uploadMigratedEvent(event: MigratedEvent): Result<Boolean> {
             if (uploadFails) return Result.failure(EventsBackendException("simulated network failure"))
             if (rows.values.any { it.originGuid == event.originGuid }) return Result.success(false)
+            val googleEventId = event.fields.googleEventId
+            if (googleEventId != null && rows.values.any { it.googleEventId == googleEventId }) {
+                return Result.success(false)
+            }
             val id = "server-${nextId++}"
             rows[id] = event.fields.toRemote(id, originGuid = event.originGuid)
             if (event.skipDatesEpochMs.isNotEmpty()) skips.getOrPut(id) { mutableListOf() }.addAll(event.skipDatesEpochMs)
@@ -712,6 +721,142 @@ class EventsReconcileTest {
      * FUTURE writer ever bypasses the allocator the way this test deliberately does, and a guard
      * with no test proving it degrades safely is a guard nobody can trust under pressure.
      */
+    /**
+     * `.scratch/backend-erp/issues/20-*.md` - the actual live defect: `public.events` enforces
+     * TWO unique keys, `origin_guid` and a partial-unique `google_event_id`, but the upload guard
+     * used to check only the first. A row already present under its `google_event_id` but a
+     * DIFFERENT (or absent) `origin_guid` must be reported not-new and never inserted a second
+     * time, exactly like an `origin_guid` match already was.
+     */
+    @Test
+    fun `uploadMigratedEvent reports not-new when only the google_event_id matches, origin_guid different`() = runBlocking {
+        val backend = FakeEventsBackend()
+        backend.uploadMigratedEvent(
+            MigratedEvent(
+                originGuid = "origin-a",
+                fields = EventFields(title = "Team offsite", startsAtMs = 1_000L, googleEventId = "google-1"),
+            ),
+        ).getOrThrow()
+        assertEquals(1, backend.rows.size)
+
+        val wasNew = backend.uploadMigratedEvent(
+            MigratedEvent(
+                // A rotated origin_guid - exactly what a re-import through the repointed Dates
+                // branch produces (a fresh Event.guid minted on every import) - but the SAME
+                // google_event_id, meaning the server already holds this row.
+                originGuid = "origin-b",
+                fields = EventFields(title = "Team offsite", startsAtMs = 1_000L, googleEventId = "google-1"),
+            ),
+        ).getOrThrow()
+
+        assertFalse("a google_event_id match must be reported not-new, same as an origin_guid match", wasNew)
+        assertEquals("must not have inserted a second row for the same google_event_id", 1, backend.rows.size)
+    }
+
+    /**
+     * A `null` `google_event_id` must never be treated as matching another `null` -
+     * `events_google_event_id_idx` is partial (`where google_event_id is not null`), so two
+     * genuinely dateless-of-that-field rows are not the same row, and the client-side check must
+     * reproduce that predicate rather than short-circuiting on "both null".
+     */
+    @Test
+    fun `two events with null google_event_id never collide with each other`() = runBlocking {
+        val backend = FakeEventsBackend()
+        val firstNew = backend.uploadMigratedEvent(
+            MigratedEvent(originGuid = "origin-a", fields = EventFields(title = "Buy milk", startsAtMs = 1_000L)),
+        ).getOrThrow()
+        val secondNew = backend.uploadMigratedEvent(
+            MigratedEvent(originGuid = "origin-b", fields = EventFields(title = "Call the vet", startsAtMs = 2_000L)),
+        ).getOrThrow()
+
+        assertTrue("first row with a null google_event_id must upload as new", firstNew)
+        assertTrue("second row with a null google_event_id must ALSO upload as new - a null never matches another null", secondNew)
+        assertEquals(2, backend.rows.size)
+    }
+
+    /**
+     * A row whose `google_event_id` is null is unaffected by the new google_event_id branch and
+     * still keys purely on `origin_guid`, exactly as before this fix.
+     */
+    @Test
+    fun `an event with a null google_event_id still keys on origin_guid alone, exactly as before`() = runBlocking {
+        val backend = FakeEventsBackend()
+        backend.uploadMigratedEvent(
+            MigratedEvent(originGuid = "origin-a", fields = EventFields(title = "Buy milk", startsAtMs = 1_000L)),
+        ).getOrThrow()
+
+        val wasNewSameOrigin = backend.uploadMigratedEvent(
+            MigratedEvent(originGuid = "origin-a", fields = EventFields(title = "Buy milk", startsAtMs = 1_000L)),
+        ).getOrThrow()
+
+        assertFalse("a repeat call with the same origin_guid must still report not-new", wasNewSameOrigin)
+        assertEquals(1, backend.rows.size)
+    }
+
+    /**
+     * The retraction danger this ticket exists to close, at the [EventsReconcile.run] level rather
+     * than the raw backend call: a server row already migrated once, under an `origin_guid` this
+     * run's Dates branch no longer produces (a freshly re-imported [Event] mints its own new
+     * `guid` every time - see [Event.guid]'s own doc comment), but carrying the SAME
+     * `google_event_id`, must survive this run untouched - never re-uploaded as a duplicate, and
+     * critically, never RETRACTED by the origin_guid-bounded deletion pass either. Retracting it
+     * would be the exact 213-row incident (`.scratch/backend-erp/issues/20-*.md`) happening again
+     * through the diff logic rather than the upload path.
+     */
+    @Test
+    fun `a server row matched only by google_event_id survives the reconcile untouched, never re-uploaded and never retracted`() = runBlocking {
+        val backend = FakeEventsBackend()
+        // Seed a server row as if a PRIOR reconcile run uploaded this same Google appointment
+        // under a different origin_guid than the one the CURRENT local Event row carries.
+        backend.uploadMigratedEvent(
+            MigratedEvent(
+                originGuid = "stale-origin-guid",
+                fields = EventFields(
+                    title = "Team offsite",
+                    startsAtMs = 70_000L,
+                    googleEventId = "google-1",
+                    kind = EventKind.APPOINTMENT,
+                ),
+            ),
+        ).getOrThrow()
+        assertEquals(1, backend.rows.size)
+
+        // The CURRENT local row for the same Google event, with its own freshly-minted guid and
+        // the same google_event_id - exactly CalendarImportController's real re-import shape.
+        val db = CarDatabase.getDatabase(context)
+        db.eventDao().insert(
+            Event(
+                serverId = UUID.randomUUID().toString(),
+                guid = UUID.randomUUID().toString(),
+                title = "Team offsite",
+                startsAt = 70_000L,
+                allDay = false,
+                source = DatesAspectSeeder.SOURCE_LEGION,
+                kind = EventKind.APPOINTMENT,
+                googleEventId = "google-1",
+                updatedAtMs = System.currentTimeMillis(),
+                createdAt = System.currentTimeMillis(),
+            ),
+        )
+
+        val report = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertEquals("the google_event_id match must not be counted as a new upload", 0, report.uploaded)
+        assertEquals(
+            "the stale-origin_guid row must survive - it is the SAME event under a rotated key, not an orphan",
+            0,
+            report.deletedOnServer,
+        )
+        assertTrue(
+            "must not be a lingering onlyOnServer diff either - it is genuinely present, just under a different key",
+            report.onlyOnServer.isEmpty(),
+        )
+        assertFalse(
+            "the stale-origin_guid server row must never be soft-deleted by this run",
+            backend.rows.getValue(backend.rows.keys.single()).deleted,
+        )
+    }
+
     @Test
     fun `a Dates appointment and a Notes reminder whose ids coincidentally collide never corrupt either row - now unreachable via any real write path, kept as a safety net`() = runBlocking {
         // Both fixtures deliberately land on Event.id = 1 / records.id = 1 respectively - no

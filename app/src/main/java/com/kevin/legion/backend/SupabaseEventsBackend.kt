@@ -329,15 +329,55 @@ class SupabaseEventsBackend(private val client: SupabaseClient) : EventsBackend 
      * only job is the one-time transfer). Result.success(false) on an existing row skips the
      * skips upload too, since the event's server id (and therefore the skips' foreign key) did not
      * change.
+     *
+     * **CORRECTED 2026-08-28 (`.scratch/backend-erp/issues/20-*.md`): `origin_guid` is not the
+     * only unique key `public.events` enforces.** `events_google_event_id_idx` is a SEPARATE
+     * partial unique index on `google_event_id` (`where google_event_id is not null`,
+     * `20260825000400_aspect_dates_notes_merged.sql`). For a Google-imported appointment,
+     * `google_event_id` IS the row's real identity - `origin_guid` is migration provenance and can
+     * legitimately be null or different for the same underlying event (this is exactly what
+     * happened: a row previously uploaded under one `origin_guid` came back around under a second,
+     * unrelated one after the Dates branch's engine-to-`events` repoint). The old single-key check
+     * passed, the insert ran, and the SECOND index rejected it - a duplicate-key failure that
+     * quarantined the entire reconcile run (`translating` wraps this whole function, so one
+     * colliding row poisoned every other row in the same call). Now BOTH keys are checked, and a
+     * hit on either is "already present" - matching the shape both indexes actually enforce
+     * server-side rather than the one this function used to know about.
+     *
+     * **The `google_event_id` check runs ONLY when the incoming event actually carries one.** A
+     * null must never be treated as matching another null - that is precisely what the index's own
+     * `where google_event_id is not null` predicate exists to prevent, and skipping the query
+     * entirely (rather than sending `eq("google_event_id", null)`, which Postgrest would not even
+     * treat as a null-match anyway) reproduces that predicate in the client instead of relying on
+     * the query happening to behave right.
+     *
+     * **Two separate `select`s, not one OR filter.** Postgrest's Kotlin client expresses an OR via
+     * `or { ... }` inside a single `filter` block, which would report "matched" without saying
+     * WHICH key matched - fine for this function's own `Result<Boolean>` contract, but it would
+     * also mean a future caller wanting to distinguish "already uploaded under this origin_guid"
+     * from "already present under this google_event_id" (see [EventsReconcile]'s own diff-logic
+     * doc comment for exactly this need) would have to re-query anyway. Two plain `eq` selects are
+     * no more expensive (bounded by a partial unique index, at most one row each) and cannot
+     * silently mask which branch fired.
      */
     override suspend fun uploadMigratedEvent(event: MigratedEvent): Result<Boolean> =
         translating("upload a migrated date or note") {
-            val existing = client.postgrest.from(EVENTS_TABLE)
+            val existingByOriginGuid = client.postgrest.from(EVENTS_TABLE)
                 .select {
                     filter { eq("origin_guid", event.originGuid) }
                 }
                 .decodeList<EventRowDto>()
-            if (existing.isNotEmpty()) return@translating false
+            if (existingByOriginGuid.isNotEmpty()) return@translating false
+
+            val googleEventId = event.fields.googleEventId
+            if (googleEventId != null) {
+                val existingByGoogleEventId = client.postgrest.from(EVENTS_TABLE)
+                    .select {
+                        filter { eq("google_event_id", googleEventId) }
+                    }
+                    .decodeList<EventRowDto>()
+                if (existingByGoogleEventId.isNotEmpty()) return@translating false
+            }
 
             val inserted = client.postgrest.from(EVENTS_TABLE)
                 .insert(EventUpsertDto.from(event.fields, originGuid = event.originGuid)) { select() }

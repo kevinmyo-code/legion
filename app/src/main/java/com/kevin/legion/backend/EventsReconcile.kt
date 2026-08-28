@@ -299,6 +299,19 @@ object EventsReconcile {
 
         val serverEvents = backend.fetchActive().getOrElse { return Result.failure(it) }
         val engineGuids = reconciling.map { it.guid }.toSet()
+        // CORRECTED 2026-08-28 (`.scratch/backend-erp/issues/20-*.md`): origin_guid is not the
+        // only identity a reconciling event can be known to the server under any more, now that
+        // SupabaseEventsBackend.uploadMigratedEvent also checks google_event_id (see that
+        // function's own doc comment for the collision that forced this). A row uploaded once
+        // under an origin_guid this run's Dates branch no longer produces (a fresh Event.guid,
+        // minted the same way every re-import does) but still carrying the SAME google_event_id
+        // is genuinely still "on the engine side" - it must be excluded from both the retraction
+        // pass below and the onlyOnEngine/onlyOnServer diff, or the bound this file's class doc
+        // draws around origin_guid alone would retract (or misreport as drift) an appointment that
+        // is not actually missing, purely because its migration-provenance key rotated. This is
+        // the exact shape of the 213-row incident this ticket exists to close: bounded by ONE key
+        // when the server enforces two.
+        val engineGoogleEventIds = reconciling.mapNotNull { it.fields.googleEventId }.toSet()
 
         // Ticket 11's 2026-08-27 ruling #2, and the actual root cause of the 2026-08-26 incident
         // (see AlarmScheduler.rescheduleAll's own doc comment for the incident account - that fix
@@ -311,9 +324,15 @@ object EventsReconcile {
         // never a hard delete, so the retraction is itself auditable. This never touches, trashes,
         // or reads the engine differently than the upload pass above already did - the engine
         // stays the one thing this whole file never writes to (this object's own class doc).
+        //
+        // **Widened to also spare a row matched by google_event_id** (see the comment on
+        // engineGoogleEventIds just above) - without this, a Google-imported appointment whose
+        // local origin_guid rotated would be retracted here even though it is still very much
+        // present on the engine side under its real identity, google_event_id.
         var deletedOnServer = 0
         val toRetract = serverEvents.filter {
-            it.originGuid != null && it.originGuid !in engineGuids
+            it.originGuid != null && it.originGuid !in engineGuids &&
+                (it.googleEventId == null || it.googleEventId !in engineGoogleEventIds)
         }
         for (row in toRetract) {
             val didDelete = backend.softDelete(row.serverId).getOrElse { return Result.failure(it) }
@@ -387,6 +406,13 @@ object EventsReconcile {
         }
 
         val serverGuids = activeServerEvents.mapNotNull { it.originGuid }.toSet()
+        // Same widening as the retraction pass above, and for the identical reason: origin_guid
+        // alone under-counts what the server already has once google_event_id is a second live
+        // identity. Without this, an event skipped by uploadMigratedEvent's google_event_id branch
+        // (matched, therefore correctly NOT re-inserted under a rotated origin_guid) would show up
+        // here as onlyOnEngine - reported as drift when it is not missing anywhere, merely present
+        // under a different key than the one this diff used to check alone.
+        val serverGoogleEventIds = activeServerEvents.mapNotNull { it.googleEventId }.toSet()
 
         return Result.success(
             Report(
@@ -397,8 +423,20 @@ object EventsReconcile {
                 serverCountAfter = activeServerEvents.size,
                 replicaCountAfter = db.eventDao().getAllActive().size,
                 deletedOnServer = deletedOnServer,
-                onlyOnEngine = (engineGuids - serverGuids).sorted(),
-                onlyOnServer = (serverGuids - engineGuids).sorted(),
+                onlyOnEngine = reconciling
+                    .filter { ev ->
+                        ev.guid !in serverGuids &&
+                            (ev.fields.googleEventId == null || ev.fields.googleEventId !in serverGoogleEventIds)
+                    }
+                    .map { it.guid }
+                    .sorted(),
+                onlyOnServer = activeServerEvents
+                    .filter { row ->
+                        row.originGuid != null && row.originGuid !in engineGuids &&
+                            (row.googleEventId == null || row.googleEventId !in engineGoogleEventIds)
+                    }
+                    .mapNotNull { it.originGuid }
+                    .sorted(),
             ),
         )
     }
