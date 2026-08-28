@@ -311,8 +311,17 @@ object EventsReconcile {
         // never a hard delete, so the retraction is itself auditable. This never touches, trashes,
         // or reads the engine differently than the upload pass above already did - the engine
         // stays the one thing this whole file never writes to (this object's own class doc).
+        // kind = car_task is excluded from retraction here regardless of originGuid membership -
+        // its originGuid is a fleet CarTask.syncId, which will NEVER appear in this run's own
+        // engineGuids (that set is Notes+Dates only), so without this guard EVERY car task this
+        // phone ever uploaded would be soft-deleted on the very next EventsReconcile run. Those
+        // rows belong to FleetReconcile - it is their only writer and the only thing with standing
+        // to retract them; this reconcile must not even consider them (see EventKind.CAR_TASK's
+        // own doc comment).
         var deletedOnServer = 0
-        val toRetract = serverEvents.filter { it.originGuid != null && it.originGuid !in engineGuids }
+        val toRetract = serverEvents.filter {
+            it.originGuid != null && it.kind != EventKind.CAR_TASK && it.originGuid !in engineGuids
+        }
         for (row in toRetract) {
             val didDelete = backend.softDelete(row.serverId).getOrElse { return Result.failure(it) }
             if (didDelete) deletedOnServer++
@@ -337,7 +346,18 @@ object EventsReconcile {
         // by kind removes the collision by construction instead of adjudicating it.
         val noteLocalIdByGuid = noteEvents.associate { it.guid to it.localId }
         val dateLocalIdByGuid = dateEvents.associate { it.guid to it.localId }
-        val (serverAppointments, serverReminders) = activeServerEvents.partition { it.kind == EventKind.APPOINTMENT }
+        // CORRECTED (car_tasks fold, backend-erp ticket 10): this used to be a two-way
+        // `activeServerEvents.partition { it.kind == EventKind.APPOINTMENT }`, which meant ANY
+        // kind other than appointment - including the new car_task - fell into the "reminder"
+        // bucket by default and would have been refilled straight into the phone's Notes store,
+        // replaying the 2026-08-26 incident. Explicit per-kind filters instead of a partition:
+        // a car_task row (or any future kind nobody has taught this function about yet) matches
+        // NEITHER filter and is silently excluded from both buckets - excluded by construction,
+        // not by a default someone has to remember to add. See EventKind.CAR_TASK's own doc
+        // comment for why car_task rows are refilled by nobody at all (FleetReconcile is their
+        // only writer and the phone's own car_tasks table is fleet's real local store).
+        val serverAppointments = activeServerEvents.filter { it.kind == EventKind.APPOINTMENT }
+        val serverReminders = activeServerEvents.filter { it.kind == EventKind.REMINDER }
 
         // Reminders: UNCHANGED shape from before this fix - wipe just the reminder rows, refill
         // from server data, deriving each row's carried id from the engine's records.id space via
@@ -374,7 +394,13 @@ object EventsReconcile {
             db.eventDao().update(row.toReplica(id = localId))
         }
 
-        val serverGuids = activeServerEvents.mapNotNull { it.originGuid }.toSet()
+        // car_task rows are excluded from this diff for the same reason they are excluded from
+        // retraction above: they are uploaded by FleetReconcile under a fleet CarTask.syncId that
+        // this run's own engineGuids (Notes+Dates only) never contains, so counting them here
+        // would report every fleet-uploaded car task as "onlyOnServer" drift on every single run -
+        // a false positive, not a real gap, since this reconcile was never supposed to have
+        // produced them in the first place.
+        val serverGuids = activeServerEvents.filter { it.kind != EventKind.CAR_TASK }.mapNotNull { it.originGuid }.toSet()
 
         return Result.success(
             Report(

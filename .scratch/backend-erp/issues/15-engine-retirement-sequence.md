@@ -1,6 +1,6 @@
 ---
 type: decision
-status: open
+status: resolved
 blocked_by: []
 map: backend-erp
 ---
@@ -140,3 +140,31 @@ detaches.
 
 **That is the assertion the step lives or dies on**, and it must be tested directly rather than
 inferred from a passing suite.
+
+## RESOLVED 2026-08-28. All five repoint steps are built; step 6 was cancelled, not skipped.
+
+Every step this ticket sequenced has landed, each in its own commit:
+
+| Step | Commit | What actually happened |
+|---|---|---|
+| 1 Places | `0551ad9` | one store serves both paths; `385b72f` then WORDED the unconfigured write failure instead of throwing it |
+| 2 Pantry | `7a50aa2` | repointed, and the anchors it must keep were carried |
+| 3 Fleet | `65e1f68` | "the answer was investigate, not copy" - Vehicle was already unconditionally legacy-primary and got a regression test; `ServiceHistory`/`MaintenanceSchedule` turned out to be a separate schema decision and became ticket 16 (`f155198`) |
+| 4 Notes+Dates | `ab6ec1b` | one local events table, ids preserved; Dates' own half followed in ticket 17 (`8aecdc7`) |
+| 5 Ledger | `f5dcdee` | off the engine, with the gate's order proven intact |
+| 6 Delete `engine/` | - | **CANCELLED by ticket 18 (`f418318`)**, not deferred |
+
+**Step 6 deserves the word "cancelled" rather than "done" or "pending".** The premise this ticket
+was written on - that repointing the built-in aspects leaves `engine/` with no reason to exist -
+was wrong, and ticket 18 is where that was established. `EngineToolbox.create_aspect`, the
+generated list/detail/form screens and the widget pager are a shipped, still-wanted feature whose
+storage layer IS the engine. So `engine/` narrows in SCOPE rather than being removed: it is now
+"how a user-created aspect stores data", and `engine/EngineBoundaryTest` fails the build if a
+built-in aspect reaches back into it.
+
+**The id assertion this ticket said it lived or dies on was tested directly**, per the ruling's own
+closing line - not inferred from a passing suite. See ticket 11 and `b17bc88`.
+
+**What this ticket does NOT close, so it is not mistaken for coverage:** none of the five repoints
+has been exercised on the A25. They are compile-and-suite green only. The unconfigured path is the
+clone-and-run path, which is precisely the one no device here has run.

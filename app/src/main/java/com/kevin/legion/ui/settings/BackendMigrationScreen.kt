@@ -149,7 +149,10 @@ fun BackendMigrationScreen(onBack: () -> Unit) {
                 fleet = fleet.copy(running = false, failure = BackendMigrationResolver.renderFailure("Supabase is not configured"))
                 return@launch
             }
-            val result = FleetReconcile.run(context, SupabaseFleetBackend(client))
+            // eventsBackend passed explicitly (not the default NoOpEventsBackend) - the car_tasks
+            // fold into `events` (backend-erp ticket 06/10) uploads through this seam, and this is
+            // the one and only production route that upload ever runs through.
+            val result = FleetReconcile.run(context, SupabaseFleetBackend(client), SupabaseEventsBackend(client))
             fleet = result.fold(
                 onSuccess = { report -> ReconcileRowUiState(resultLines = BackendMigrationResolver.renderFleetReport(report)) },
                 onFailure = { t -> ReconcileRowUiState(failure = BackendMigrationResolver.renderFailure(failureReason(t))) },

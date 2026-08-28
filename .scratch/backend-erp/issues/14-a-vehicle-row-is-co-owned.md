@@ -1,6 +1,6 @@
 ---
 type: decision
-status: open
+status: resolved
 blocked_by: []
 map: backend-erp
 ---
@@ -117,3 +117,24 @@ primitive for a one-way export, and `origin_guid` keeps the meaning its own migr
 beside places/pantry/events), so the projection can actually be run and diffed. Nothing touches a
 fleet read. `VehicleReplica`/`ServiceHistoryReplica` stay as the diff-and-audit surface they already
 are, which is what wave 2 built them to be.
+
+## RESOLVED 2026-08-28. The ruling is built and reachable.
+
+`BackendMigrationScreen.runFleet` exists and calls `FleetReconcile.run` with
+`SupabaseFleetBackend`, beside places/pantry/events, with its own doc comment stating in words
+what the projection is and is not ("it touches no fleet read: the phone keeps reading its own
+tables, and Drive keeps syncing fleet between the two phones exactly as it does today").
+`BackendMigrationResolver.renderFleetReport` words the result. That was the whole of "what to
+build" in the ruling above.
+
+**Nothing else in this ticket owes code.** The two rejected options (server-schema widening, local
+sidecar) are recorded above with their reasoning so a reversal has something to argue with; the
+live-write identity question dissolved with the ruling, as stated.
+
+**What is deliberately NOT true, and must not be read into this closure:** fleet did not "cut
+over". Fleet reads are legacy-primary, fleet keeps its `SyncEngine` registry entries, and a fleet
+edit made on the laptop surface does not reach the phone. Ticket 10's "done means" bar is amended
+accordingly and closes on the projection bar, not the cutover bar.
+
+**Owed on the phone, not by this ticket:** `runFleet` has never been tapped on the A25. It is a
+one-way export against the household's own project; the projection is unproven until it runs.

@@ -1,6 +1,6 @@
 ---
 type: build
-status: open
+status: built
 blocked_by: []
 map: backend-erp
 ---
@@ -146,3 +146,87 @@ Confirmed the macro's contents (`20260825000200_conventions.sql:124-131`) before
 
 Migration history is still bypassed by the dashboard path, so a first CLI use needs
 `supabase migration repair`, not a re-run - the files are idempotent. Same caveat as phase 2.
+
+## RULED 2026-08-28: recaps STAY ON THE PHONE. No view, no RPC.
+
+The last modelling call this ticket deliberately left open. Made on Kevin's standing delegation
+("complete all tickets with default recs"), and open to reversal - the reasoning is written out so
+a reversal has something to argue with.
+
+`vehicle/MonthlyRecapController.kt` and `vehicle/MpgTrust.kt` remain the only implementation of
+recap arithmetic. Nothing is transcribed into SQL.
+
+**Why, in the order the reasons actually carry weight:**
+
+1. **A second implementation is the expensive half, and the corpus is the real bill.** Ticket 03
+   ruling 2 does not merely prefer a shared corpus for arithmetic that exists twice - it made one
+   the deliverable, and the gate corpus is the reason the two gate implementations are *proven* to
+   agree rather than merely both existing. Moving recaps server-side buys a view and owes a corpus.
+   The ticket already says transcribing these two files unchecked is exactly the hazard ruling 2
+   exists to stop.
+2. **Ruling 06 already declined to store recaps**, precisely because they are recomputed from
+   `drives`. A view or RPC would be a second *derivation* of data the phone derives correctly today,
+   which is the same duplication in a different costume.
+3. **The consumer does not exist.** The laptop surface is coming, not here. Server-side recap
+   arithmetic built now has one hypothetical caller and no way to be wrong loudly.
+4. **Deferring costs nothing that deciding now saves.** `drives` and `drive_reassignments` are both
+   on the server already, so the INPUTS are durable and queryable whatever happens next. Whenever a
+   laptop surface genuinely needs recaps, every fact it needs is sitting there and the decision can
+   be made against a real requirement instead of an imagined one.
+
+**The binding condition if this is ever reversed:** recaps move server-side only WITH a shared test
+corpus both implementations read, exactly as ticket 03 ruling 2 required for the gate. Not "and
+then a corpus later" - the corpus is what makes the move safe, so it lands in the same commit.
+
+**Consequence for `MpgTrust` specifically:** its trust bands are a judgement about data quality, not
+an anchor, so CLAUDE.md section 4 rule 5 applies to anything it renders and it stays labelled an
+estimate wherever it appears. That is unchanged by this ruling and is stated so a future server-side
+port does not quietly drop the label at the boundary.
+
+## RESOLVED 2026-08-28. The last build item landed, and the "done means" bar was amended, not met.
+
+**`car_tasks` folds into `public.events` at a THIRD kind, `car_task`.** Ruling 06 said car tasks get
+no table of their own; ticket 14 said fleet is a one-way projection. Both hold: `FleetReconcile`
+gained a car-task wave that uploads through `EventsBackend`, the phone keeps `car_tasks` as its
+local store, and nothing pulls a server car task back down.
+
+**Why a third kind rather than reusing `reminder`**, which looked free and is not: `EventsReconcile`
+wipes every local `kind = reminder` row and refills it from the server, so a car task stored as a
+reminder would land in the phone's Notes store on the next reconcile and `AlarmScheduler`'s sweep
+would treat it as a reminder it owns. That is the 2026-08-26 51-false-missed incident replayed one
+column over. A distinct kind removes it by construction rather than by a filter someone has to
+remember.
+
+**Three latent bugs in `EventsReconcile` were closed on the way**, all of which a third kind would
+have triggered on the very next run:
+- the refill's `partition { kind == APPOINTMENT }` bucketed EVERY other kind as a reminder. Replaced
+  with explicit per-kind filters, so an unknown future kind matches neither bucket instead of
+  defaulting into the dangerous one.
+- the origin-guid retraction pass would have soft-deleted every car task this phone ever uploaded,
+  because a fleet `CarTask.syncId` is never in a Notes+Dates `engineGuids` set.
+- the `onlyOnServer` diff would have reported every car task as drift, forever.
+
+`vehicle_id` is left NULL on every uploaded row and that is deliberate: `CarTask` is **global, never
+keyed to a vehicle**, by its own entity doc. The column stays for the day that changes. `category`,
+`done` and `doneAt` go to `structured_meta` rather than into invented events columns.
+
+**Migration `20260828000100_events_kind_car_task.sql` is UNAPPLIED and owed by Kevin.** It finds the
+old constraint by the column it covers (`conkey = {kind}`) rather than by the name Postgres probably
+gave it - a `drop constraint if exists <guessed name>` that misses would no-op silently, add a
+second constraint, and leave every `car_task` insert rejected at runtime while the editor reported
+success. That is lesson L37's shape and it is cheap to rule out here.
+
+### The bar this closes on
+
+The "done means" written at the top of this ticket - phone renders from the replica, every fleet
+table out of the `SyncEngine` registry - **was amended by ticket 14 and is not the bar any more.**
+Fleet is a projection: reads stay legacy-primary and the registry entries STAY, because Drive is
+still how fleet syncs between two phones and Postgres is write-only from the phone.
+
+What is actually done: all ten fleet tables have an upload wave, the schema is applied and verified
+on the live project, the reconcile is reachable from the migration screen, and recaps are ruled to
+stay on the phone.
+
+**Owed on hardware, and none of it is code:** `runFleet` has never been tapped, so the projection is
+unproven end to end; the new migration is unapplied; and the diff has never been read against real
+data. Suite: 2,842 tests, 0 failures.

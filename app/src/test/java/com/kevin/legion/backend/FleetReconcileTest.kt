@@ -2,6 +2,7 @@ package com.kevin.legion.backend
 
 import com.kevin.legion.data.local.BuildEntry
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.CarTask
 import com.kevin.legion.data.local.ChassisQuirk
 import com.kevin.legion.data.local.CodeClearEvent
 import com.kevin.legion.data.local.CodeEvent
@@ -550,6 +551,89 @@ class FleetReconcileTest {
         CarDatabase.getDatabase(context).driveReassignmentDao().insert(
             DriveReassignment(syncId = syncId, vehicleId = vehicleId, fromMs = fromMs, toMs = toMs, newVehicleId = newVehicleId),
         )
+    }
+
+    /** [CarTask] is deliberately global, never keyed to a vehicle - see that entity's own class doc -
+     * so unlike every other `create*` helper above, this one takes no vehicle parameter at all. */
+    private suspend fun createCarTask(
+        text: String,
+        category: String = "maintenance",
+        done: Boolean = false,
+        doneAt: Long? = null,
+        createdAt: Long = 1_000L,
+        syncId: String = java.util.UUID.randomUUID().toString(),
+    ) {
+        CarDatabase.getDatabase(context).carTaskDao().insert(
+            CarTask(text = text, category = category, done = done, doneAt = doneAt, createdAt = createdAt, syncId = syncId),
+        )
+    }
+
+    /** A minimal [EventsBackend] fake - the car_tasks wave (backend-erp ticket 10's final item)
+     * only ever calls [uploadMigratedEvent] and [fetchActive], never any of the Notes/Dates-shaped
+     * methods [EventsReconcileTest]'s own richer fake exists to exercise. */
+    private class FakeEventsBackend : EventsBackend {
+        val rows = mutableMapOf<String, RemoteEvent>() // keyed by originGuid
+        var nextId = 0
+        var failNextUpload = false
+
+        override suspend fun fetchActive(): Result<List<RemoteEvent>> =
+            Result.success(rows.values.filterNot { it.deleted })
+
+        override suspend fun upsert(serverId: String?, fields: EventFields): Result<RemoteEvent> =
+            Result.failure(EventsBackendException("FakeEventsBackend does not support upsert"))
+
+        override suspend fun softDelete(serverId: String): Result<Boolean> {
+            val existing = rows.values.find { it.serverId == serverId } ?: return Result.success(false)
+            if (existing.deleted) return Result.success(false)
+            rows[existing.originGuid!!] = existing.copy(deleted = true)
+            return Result.success(true)
+        }
+
+        override suspend fun skipOccurrence(serverId: String, skipDateEpochMs: Long): Result<Unit> = Result.success(Unit)
+        override suspend fun fetchSkips(serverId: String): Result<List<Long>> = Result.success(emptyList())
+
+        override suspend fun uploadMigratedEvent(event: MigratedEvent): Result<Boolean> {
+            if (failNextUpload) {
+                failNextUpload = false
+                return Result.failure(EventsBackendException("simulated transport failure"))
+            }
+            if (rows.containsKey(event.originGuid)) return Result.success(false)
+            rows[event.originGuid] = RemoteEvent(
+                serverId = "event-${++nextId}",
+                title = event.fields.title,
+                createdAtMs = event.fields.createdAtMs ?: 0L,
+                startsAtMs = event.fields.startsAtMs,
+                endsAtMs = event.fields.endsAtMs,
+                allDay = event.fields.allDay,
+                location = event.fields.location,
+                notes = event.fields.notes,
+                structuredMeta = event.fields.structuredMeta,
+                source = event.fields.source,
+                googleEventId = event.fields.googleEventId,
+                done = event.fields.done,
+                doneAtMs = event.fields.doneAtMs,
+                sortOrder = event.fields.sortOrder,
+                triggerPlaceLabel = event.fields.triggerPlaceLabel,
+                repeatKind = event.fields.repeatKind,
+                repeatEvery = event.fields.repeatEvery,
+                repeatDaysOfWeek = event.fields.repeatDaysOfWeek,
+                repeatDay = event.fields.repeatDay,
+                repeatMonth = event.fields.repeatMonth,
+                repeatEndKind = event.fields.repeatEndKind,
+                repeatEndDateMs = event.fields.repeatEndDateMs,
+                repeatEndCount = event.fields.repeatEndCount,
+                exact = event.fields.exact,
+                exactDowngraded = event.fields.exactDowngraded,
+                missedAtMs = event.fields.missedAtMs,
+                missedDismissedAtMs = event.fields.missedDismissedAtMs,
+                loggedAtMs = event.fields.loggedAtMs,
+                updatedAtMs = 0L,
+                deleted = false,
+                kind = event.fields.kind,
+                originGuid = event.originGuid,
+            )
+            return Result.success(true)
+        }
     }
 
     @After
@@ -1264,5 +1348,71 @@ class FleetReconcileTest {
         val row = db.serviceRecordDao().getRecordsForVehicleOnce(obdMac).singleOrNull()
         assertTrue("the source row must survive a reconcile run, present and not tombstoned", row != null)
         assertFalse(row!!.deleted)
+    }
+
+    // ================================================================================================
+    // The car_tasks fold into `public.events` (backend-erp ticket 06's ruling, ticket 10's own final
+    // item). Uploaded through EventsBackend, not FleetBackend - a genuinely different seam from every
+    // table above in this file.
+    // ================================================================================================
+
+    @Test
+    fun `a car task uploads with kind car_task and a null vehicle_id`() = runBlocking {
+        createCarTask("Replace the bushings", category = "project", syncId = "car-task-1")
+        val fleetBackend = FakeFleetBackend()
+        val eventsBackend = FakeEventsBackend()
+
+        val report = FleetReconcile.run(context, fleetBackend, eventsBackend).getOrThrow()
+
+        assertEquals(1, report.carTask.uploaded)
+        assertTrue(report.carTask.isClean)
+        val uploaded = eventsBackend.rows.getValue("car-task-1")
+        assertEquals(EventKind.CAR_TASK, uploaded.kind)
+        assertEquals("Replace the bushings", uploaded.title)
+        // A car task has no date to state - never a guessed one (CLAUDE.md sec 4 rule 5).
+        assertNull(uploaded.startsAtMs)
+        // There is no vehicle_id assertion possible here at all, and that is the point: RemoteEvent/
+        // EventFields/EventUpsertDto carry no vehicle_id property on this wire path today (grepped,
+        // not assumed - see FleetReconcile.runCarTaskWave's own doc comment), so a CarTask - global,
+        // never keyed to a vehicle - cannot be uploaded with a guessed one even by accident. The
+        // column stays at its own server-side null default until that plumbing is added.
+    }
+
+    @Test
+    fun `category and done are carried in structured_meta, never invented as a real events column`() = runBlocking {
+        createCarTask("LS swap", category = "project", done = true, doneAt = 5_000L, syncId = "car-task-2")
+        val eventsBackend = FakeEventsBackend()
+
+        FleetReconcile.run(context, FakeFleetBackend(), eventsBackend).getOrThrow()
+
+        val meta = org.json.JSONObject(eventsBackend.rows.getValue("car-task-2").structuredMeta!!)
+        assertEquals("project", meta.getString("category"))
+        assertTrue(meta.getBoolean("done"))
+        assertEquals(5_000L, meta.getLong("doneAt"))
+    }
+
+    @Test
+    fun `a second run is idempotent on syncId - no duplicate car_task row`() = runBlocking {
+        createCarTask("New wheels", syncId = "car-task-3")
+        val eventsBackend = FakeEventsBackend()
+
+        val first = FleetReconcile.run(context, FakeFleetBackend(), eventsBackend).getOrThrow()
+        val second = FleetReconcile.run(context, FakeFleetBackend(), eventsBackend).getOrThrow()
+
+        assertEquals(1, first.carTask.uploaded)
+        assertEquals("a re-run must report 0 new uploads for an already-migrated car task", 0, second.carTask.uploaded)
+        assertEquals(1, eventsBackend.rows.size)
+        assertTrue(second.carTask.isClean)
+    }
+
+    @Test
+    fun `a car task upload failure fails the whole run rather than reporting false success`() = runBlocking {
+        createCarTask("A light bar", syncId = "car-task-4")
+        val eventsBackend = FakeEventsBackend()
+        eventsBackend.failNextUpload = true
+
+        val result = FleetReconcile.run(context, FakeFleetBackend(), eventsBackend)
+
+        assertTrue(result.isFailure)
     }
 }

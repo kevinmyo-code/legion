@@ -742,4 +742,127 @@ class EventsReconcileTest {
             milk.id != dentist.id,
         )
     }
+
+    // ================================================================================================
+    // The car_tasks fold (backend-erp ticket 06's ruling / ticket 10's own final item). A car_task
+    // row is uploaded ONLY by FleetReconcile, under a fleet CarTask.syncId this reconcile's own
+    // engineGuids (Notes+Dates only) never contains - the regression test this file exists to add:
+    // before the fix, `activeServerEvents.partition { it.kind == EventKind.APPOINTMENT }` put every
+    // car_task into the "reminder" bucket by default, which would have (a) refilled it into the
+    // phone's Notes store, (b) retracted it on the very next run (its originGuid is not an engine
+    // guid), and (c) reported it as onlyOnServer drift forever. All three are the exact incident
+    // shape EventKind.CAR_TASK's own doc comment names.
+    // ================================================================================================
+
+    @Test
+    fun `a car_task row from the server is neither refilled into events nor counted as a reminder`() = runBlocking {
+        val backend = FakeEventsBackend()
+        // Simulates a row FleetReconcile already uploaded on a prior run - this reconcile never
+        // produces a car_task itself, so the fixture has to plant one directly rather than going
+        // through EventsReconcile.run.
+        backend.rows["server-car-task-1"] = RemoteEvent(
+            serverId = "server-car-task-1",
+            title = "Replace the bushings",
+            createdAtMs = 10_000L,
+            startsAtMs = null,
+            endsAtMs = null,
+            allDay = false,
+            location = null,
+            notes = null,
+            structuredMeta = """{"category":"project","done":false}""",
+            source = "legion",
+            googleEventId = null,
+            done = false,
+            doneAtMs = null,
+            sortOrder = null,
+            triggerPlaceLabel = null,
+            repeatKind = null,
+            repeatEvery = null,
+            repeatDaysOfWeek = null,
+            repeatDay = null,
+            repeatMonth = null,
+            repeatEndKind = null,
+            repeatEndDateMs = null,
+            repeatEndCount = null,
+            exact = false,
+            exactDowngraded = false,
+            missedAtMs = null,
+            missedDismissedAtMs = null,
+            loggedAtMs = null,
+            updatedAtMs = 10_000L,
+            deleted = false,
+            kind = EventKind.CAR_TASK,
+            originGuid = "car-task-sync-1",
+        )
+        // A real reminder in the same run, so the test can tell "reminders still refill normally"
+        // apart from "nothing refills at all".
+        createNotesItem("Buy milk", startsAt = 60_000L)
+
+        val report = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertTrue("a car_task row must never be treated as drift this reconcile is responsible for", report.isClean)
+        assertEquals("the car_task row must never be soft-deleted by this reconcile's retraction pass", 0, report.deletedOnServer)
+        assertTrue(
+            "the server-side car_task row must survive untouched, not retracted",
+            backend.rows.getValue("server-car-task-1").deleted.not(),
+        )
+        val replica = CarDatabase.getDatabase(context).eventDao().getAllActive()
+        assertTrue(
+            "a car_task row must never be refilled into the local events table - that table belongs to Notes/Dates",
+            replica.none { it.title == "Replace the bushings" },
+        )
+        assertTrue(
+            "an ordinary reminder in the same run must still refill normally",
+            replica.any { it.title == "Buy milk" },
+        )
+    }
+
+    @Test
+    fun `a second reconcile run does not retract a car_task uploaded on a prior run`() = runBlocking {
+        val backend = FakeEventsBackend()
+        backend.rows["server-car-task-2"] = RemoteEvent(
+            serverId = "server-car-task-2",
+            title = "New coilovers",
+            createdAtMs = 10_000L,
+            startsAtMs = null,
+            endsAtMs = null,
+            allDay = false,
+            location = null,
+            notes = null,
+            structuredMeta = null,
+            source = "legion",
+            googleEventId = null,
+            done = false,
+            doneAtMs = null,
+            sortOrder = null,
+            triggerPlaceLabel = null,
+            repeatKind = null,
+            repeatEvery = null,
+            repeatDaysOfWeek = null,
+            repeatDay = null,
+            repeatMonth = null,
+            repeatEndKind = null,
+            repeatEndDateMs = null,
+            repeatEndCount = null,
+            exact = false,
+            exactDowngraded = false,
+            missedAtMs = null,
+            missedDismissedAtMs = null,
+            loggedAtMs = null,
+            updatedAtMs = 10_000L,
+            deleted = false,
+            kind = EventKind.CAR_TASK,
+            originGuid = "car-task-sync-2",
+        )
+
+        EventsReconcile.run(context, backend).getOrThrow()
+        val secondReport = EventsReconcile.run(context, backend).getOrThrow()
+
+        assertTrue(
+            "re-running EventsReconcile with no Notes/Dates change must not touch a fleet-owned car_task row",
+            backend.rows.getValue("server-car-task-2").deleted.not(),
+        )
+        assertEquals(0, secondReport.deletedOnServer)
+        assertTrue(secondReport.isClean)
+    }
 }

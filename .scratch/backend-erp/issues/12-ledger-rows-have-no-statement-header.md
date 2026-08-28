@@ -1,6 +1,6 @@
 ---
 type: decision
-status: open
+status: resolved
 blocked_by: []
 map: backend-erp
 ---
@@ -200,3 +200,50 @@ Rollback verified by querying afterwards rather than trusting the RAISE: `statem
 
 **Ticket 03 ruling 2's condition now holds for the amendment too:** the Kotlin pre-check and the SQL
 gate are proven to agree, on the new branch as well as the old, by one corpus both sides read.
+
+## RESOLVED 2026-08-28, with one factual correction and one build ticket left behind.
+
+**The decision half of this ticket is complete.** Option 1 (re-ingest to recover real anchors) is
+chosen; the two-anchor deterministic amendment is ruled, applied to `HomeERPBackend`, and proven by
+the 17-case corpus running against the live RPCs. Nothing above is reopened.
+
+### Correction: the double-count consequence this ticket named does not exist
+
+The section above ("A separate consequence, already live and named in code") says rule-7
+supersession keys on `(account_last4, account_nickname)` together, so a real statement would not
+supersede the migrated provisional rows it should replace, and they would double-count.
+
+**That is wrong, and the code was checked rather than the comment trusted.** The RPC's supersession
+step deletes on `provenance = 'UNRECONCILED' and account_last4 = v_last4 and txn_date between
+v_min_date and v_max_date` - no nickname in the predicate - in
+`20260825000600_commit_statement_rpc.sql` and carried forward verbatim into
+`20260827000300_commit_statement_deterministic_two_anchor.sql`. Its own header states the design
+plainly: the last-four match IS `sameCard`, and its known weakness is that two accounts sharing a
+last four collide, "which is what the nickname is for".
+
+`(account_last4, account_nickname)` together is the key for **dedup and enumerated windows**
+(`20260825000800_ledger_dedup.sql`), a different mechanism with a different reason. Ruling 7's
+sentence was about that key; this ticket and `LedgerReconcile`'s doc comment both applied it to
+supersession. **`LedgerReconcile`'s comment is corrected in the same commit as this closure**, and
+the correction records what the wrong claim was rather than quietly deleting it.
+
+So no schema change, no nickname migration and no UI to collect a typed nickname is owed. The
+residual risk runs the OTHER way and is pre-existing: a real statement for account A supersedes
+provisional rows of account B sharing a last-4. The RPC names and accepts that collision at its own
+site; migration did not introduce it.
+
+### The lesson graduates into CLAUDE.md
+
+This ticket asked for it in writing, and ticket 08 is the same root cause at a smaller scale, so it
+is now **CLAUDE.md section 4 rule 8**: a gate that passes in memory and discards its inputs leaves
+rows nobody can re-verify. Persist the anchors, not just the verdict.
+
+### What is still owed, as its own ticket rather than as a footnote
+
+The re-ingestion pass itself is NOT built - only the read-only dry run is. And the dry run's 107
+failures were a lapsed SAF permission, which needs a human on the phone to clear. Both live in
+`.scratch/backend-erp/issues/19-re-ingest-historical-statements.md`, created in this same commit,
+per CLAUDE.md section 12's rule that a resolved decision leaves its build ticket behind.
+
+**The parsers must not be retired until ticket 19 closes.** That gate is this ticket's, it is real,
+and it now has somewhere to live that will not vanish when this ticket does.

@@ -17,10 +17,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[03-durable-jobs\|03]] | task | Durable jobs: agent work that survives process death |
 | [[.scratch/ai-craft/map\|ai-craft]] | [[04-voice-latency\|04]] | grilling | Why the voice feels slower than it should: duplex, and 104 tools every turn |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
-| [[.scratch/backend-erp/map\|backend-erp]] | [[10-fleet-cutover\|10]] | build | 10-fleet-cutover |
-| [[.scratch/backend-erp/map\|backend-erp]] | [[12-ledger-rows-have-no-statement-header\|12]] | decision | 12-ledger-rows-have-no-statement-header |
-| [[.scratch/backend-erp/map\|backend-erp]] | [[14-a-vehicle-row-is-co-owned\|14]] | decision | 14-a-vehicle-row-is-co-owned |
-| [[.scratch/backend-erp/map\|backend-erp]] | [[15-engine-retirement-sequence\|15]] | decision | 15-engine-retirement-sequence |
+| [[.scratch/backend-erp/map\|backend-erp]] | [[19-re-ingest-historical-statements\|19]] | build | 19-re-ingest-historical-statements |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
@@ -46,6 +43,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[19-build-dates-aspect\|19]] | task | Build the Dates aspect |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[08-receipts-whose-anchors-were-never-stored\|08]] | build | 08-receipts-whose-anchors-were-never-stored |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[09-backups-do-not-cover-files\|09]] | build | 09-backups-do-not-cover-files |
+| [[.scratch/backend-erp/map\|backend-erp]] | [[10-fleet-cutover\|10]] | build | 10-fleet-cutover |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[11-notes-write-path-rewire\|11]] | build | 11-notes-write-path-rewire |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[16-fleet-service-history-is-not-a-configured-split\|16]] | decision | 16-fleet-service-history-is-not-a-configured-split |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[17-dates-is-engine-only\|17]] | decision | 17-dates-is-engine-only |
@@ -127,7 +125,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 4 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
-| [[.scratch/backend-erp/map\|backend-erp]] | 18 | 10 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
+| [[.scratch/backend-erp/map\|backend-erp]] | 19 | 8 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |

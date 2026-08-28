@@ -1,18 +1,30 @@
 package com.kevin.legion.backend
 
 /**
- * The two values `public.events.kind` may hold (`supabase/migrations/20260827000200_events_kind.sql`,
- * ticket 11's 2026-08-27 ruling #1) - what tells [com.kevin.legion.notes.NotesController] which
- * rows it owns. A Notes `Item` is always [REMINDER]; a Dates `Event` (legion-authored or a Google
- * import) is always [APPOINTMENT]. Set once at upload by [EventsReconcile], from the record type
- * read - never derived from a row's shape (`sortOrder`, `source`, anything else that happens to
- * correlate today). See that migration's own comment for why the server default is [REMINDER],
- * not a guess: an origin the app cannot identify is treated as something it owns, the direction
- * that fails visibly rather than silently.
+ * The three values `public.events.kind` may hold (`supabase/migrations/20260827000200_events_kind.sql`
+ * for the first two, `supabase/migrations/20260828000100_events_kind_car_task.sql` for the third) -
+ * what tells [com.kevin.legion.notes.NotesController] and [EventsReconcile] which rows they own. A
+ * Notes `Item` is always [REMINDER]; a Dates `Event` (legion-authored or a Google import) is always
+ * [APPOINTMENT]; a fleet `car_tasks` row uploaded by [FleetReconcile] (the `car_tasks` fold into
+ * events, backend-erp ticket 06's ruling) is always [CAR_TASK]. Set once at upload, from the
+ * record type read - never derived from a row's shape (`sortOrder`, `source`, anything else that
+ * happens to correlate today). See the first migration's own comment for why the server default is
+ * [REMINDER], not a guess: an origin the app cannot identify is treated as something it owns, the
+ * direction that fails visibly rather than silently.
+ *
+ * **[CAR_TASK] is a genuinely separate value from [REMINDER], not a convenience alias - see the
+ * 20260828000100 migration's own header for why reusing [REMINDER] would have replayed the
+ * 2026-08-26 51-false-missed-reminders incident one column over.** [EventsReconcile]'s refill
+ * treats [CAR_TASK] as neither a reminder nor an appointment: never wiped/refilled into the local
+ * `events` table, never counted toward [EventsReconcile.Report]'s onlyOnServer drift, never
+ * retracted by the origin-guid retraction pass (those rows belong to [FleetReconcile], which is
+ * their only writer and the only thing that should ever retract them). A row of this kind exists
+ * server-side purely so a second phone's fleet aspect can read it back.
  */
 object EventKind {
     const val REMINDER = "reminder"
     const val APPOINTMENT = "appointment"
+    const val CAR_TASK = "car_task"
 }
 
 /**
