@@ -38,11 +38,22 @@
 -- Dates stores. They exist in `public.events` purely so a second phone's fleet aspect can read
 -- them - the same cross-device sync every other fleet wave provides.
 --
--- UNAPPLIED as of this commit - this agent has no Supabase CLI access and no project credentials
--- from this environment, same posture every migration in this folder since 54cdf5e has recorded.
--- Kevin (or a future session with credentials) must run this against the live project before
--- FleetReconcile's car-task wave or EventsReconcile's kind-filtered refill mean anything
--- server-side.
+-- APPLIED AND VERIFIED 2026-08-28 against HomeERPBackend (ref gccxiqusqxkjmjmaadpz), through the
+-- dashboard SQL editor. Verified from the catalog, never from the editor's success panel:
+--
+--   before:  events_kind_check = CHECK ((kind = ANY (ARRAY['reminder'::text, 'appointment'::text])))
+--   after:   11 check constraints on public.events, exactly 1 of which mentions car_task
+--
+-- **The 11/11 count is the check that matters**, not the constraint definition. public.events
+-- carries ELEVEN check constraints and FOUR of the other ten mention "kind" in their text
+-- (events_recurring_not_done, events_repeat_kind_check, events_repeat_end_kind_check,
+-- events_repeat_end_needs_kind). The first draft of this migration matched constraints by
+-- `pg_get_constraintdef(...) ilike '%kind%'` and would have dropped all four and put none back -
+-- silently, with a success panel. The conkey match below is what makes that impossible, and the
+-- count is how it was proven rather than assumed.
+--
+-- Migration history is still bypassed by the dashboard path, so a first CLI use needs
+-- `supabase migration repair`, not a re-run - this file is idempotent. Same caveat as phases 2-4.
 -- ---------------------------------------------------------------------------------------------
 -- The widening, written so it cannot half-apply.
 --
