@@ -7,13 +7,8 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.IngestState
 import com.kevin.legion.data.local.IngestedFile
-import com.kevin.legion.data.local.RecordProvenance
-import com.kevin.legion.engine.PayloadCodec
-import com.kevin.legion.engine.RecordStore
-import com.kevin.legion.engine.ledger.LedgerAspectSeeder
-import com.kevin.legion.engine.ledger.LedgerRecordBridge
+import com.kevin.legion.engine.migration.EngineLedgerRetirementCopy
 import java.security.MessageDigest
-import org.json.JSONObject
 
 /**
  * The per-file classify/stage/commit core both
@@ -28,41 +23,43 @@ import org.json.JSONObject
  * already has one file's bytes and identity metadata in hand, which is why
  * it can stay a plain object with no service lifecycle of its own.
  *
- * **Cutover 3** (`docs/architecture/cutover3-2026-08-24.md`). [commit]'s `Success` branch now writes
- * every transaction row through [RecordStore] - the engine's single write door - inside ONE
- * `db.withTransaction` block, rather than [com.kevin.legion.data.local.LedgerTransactionDao.insertAll]
- * against the legacy `ledger_transactions` table. CLAUDE.md §4 rule 7's provisional-row supersession
- * moves INTO this same transaction (the legacy-table version,
- * [com.kevin.legion.data.local.LedgerTransactionDao.deleteSupersededProvisional], is dead code as of
- * this branch - nothing calls it anymore, since nothing writes the legacy table anymore): when a
- * reconciled (`DETERMINISTIC`/`LLM_RECONCILED`) file commits, every ACTIVE engine
- * `RecordProvenance.UNRECONCILED` `Transaction` record for the same physical card ([sameCard],
- * suffix-matched exactly as the retired legacy query was) whose `txnDate` falls inside the incoming
- * statement's own range is trashed via [RecordStore.delete] BEFORE the dedup read, in the same
- * transaction as the inserts that follow - the identical three load-bearing properties the legacy
- * version's own doc comment named (the guard, before-the-dedup-read ordering, inside-the-transaction
- * atomicity), just applied to [com.kevin.legion.data.local.EngineRecord] rows instead of
- * `LedgerTransaction` rows. `ingested_files` stays plugin-internal and untouched by this cutover -
- * its own writes inside this same transaction are exactly what they were before.
+ * **Engine retirement step 5** (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`), the
+ * "before" half of ticket 03's "lands before or with the `commit_statement` RPC move". Cutover 3
+ * (`docs/architecture/cutover3-2026-08-24.md`, 2026-08-24) had repointed [commit]'s `Success` branch
+ * onto the engine; this step repoints it back onto
+ * [com.kevin.legion.data.local.LedgerTransactionDao.insertAll] against the legacy
+ * `ledger_transactions` table - the ONLY local store an unconfigured (no Supabase project)
+ * clone-and-run install has. [ensureLegacyReconciled] runs [EngineLedgerRetirementCopy] once,
+ * first, so any transaction written directly through the engine between the cutover and this
+ * repoint is not silently invisible to the dedup/supersede reads below.
  *
- * **Any [RecordStore.WriteResult.Failure] anywhere in the transaction - a superseded-row delete, a
- * replace-flow delete, or a fresh row create - throws [EngineWriteFailedException], which
- * `db.withTransaction` catches and rolls back in full** (CLAUDE.md §4 rule 2's "nothing partial is
- * ever written", now also covering a POST-gate engine-write failure that plain `Insert` calls could
- * never produce - the same class of failure [com.kevin.legion.pantry.PantryController.writeReceipt]
- * already guards against, applied here to a possibly-many-row statement instead of one receipt). The
- * caller is told in words that nothing was saved (CLAUDE.md §7) via [CommitOutcome.EngineWriteFailed],
- * and the file's [IngestedFile] record is written back to [IngestState.NEW] OUTSIDE the rolled-back
- * transaction, so the file is re-offered on the next scan rather than silently vanishing.
+ * CLAUDE.md §4 rule 7's provisional-row supersession runs INSIDE this same transaction, exactly as
+ * it did pre-cutover-3 and exactly as `.scratch/backend-erp/issues/03-the-gate-server-side.md`'s
+ * ruling 7 requires of its eventual RPC successor: when a reconciled (`DETERMINISTIC`/
+ * `LLM_RECONCILED`) file commits,
+ * [com.kevin.legion.data.local.LedgerTransactionDao.deleteSupersededProvisional] (suffix-matched on
+ * the physical card via [sameCard], exactly as ticket 12 §0 requires) removes every
+ * `UNRECONCILED` row for the same card whose `txnDate` falls inside the incoming statement's own
+ * range, BEFORE the dedup read, in the same transaction as the inserts that follow - the three
+ * load-bearing properties this file's own commit doc comment states below (the guard, the
+ * before-dedup-read ordering, the inside-the-transaction atomicity). `ingested_files` stays
+ * plugin-internal, unaffected by this step - its own writes inside this same transaction are
+ * unchanged.
+ *
+ * **A genuine write failure is still WORDED, never left to throw uncaught.** A plain Room `@Insert`/
+ * `@Query` against a typed table has a much narrower failure surface than the engine's per-row
+ * JSON-schema validation did (there is no [com.kevin.legion.engine.RecordStore.WriteResult.Failure]
+ * class of error here - a legacy `INSERT` either succeeds or SQLite throws), but CLAUDE.md §7 does
+ * not carve out an exception for "the failure surface got narrower": [commit]'s whole
+ * `db.withTransaction` block is still wrapped in a `try`/`catch`, and any thrown exception - the
+ * transaction already rolled back by Room - is turned into [CommitOutcome.EngineWriteFailed] rather
+ * than propagating. The file's [IngestedFile] record is written back to [IngestState.NEW] OUTSIDE
+ * the rolled-back transaction, so the file is re-offered on the next scan rather than silently
+ * vanishing. See this object's own `commit` doc comment for why this caller chain in particular
+ * cannot be allowed to throw: `import_statement` only opens a screen, and the real write runs from
+ * a bare `LaunchedEffect` with no try/catch of its own.
  */
 object IngestPipeline {
-
-    /** Thrown only to force [androidx.room.withTransaction] to roll back the whole file commit -
-     * Room's transaction helper rolls back on a thrown exception, never a plain early return, so a
-     * partial engine write (some rows landed, a later one did not, or a supersede/replace delete
-     * failed) needs a real throw to undo. Caught immediately inside [commit] and never escapes it -
-     * same shape as [com.kevin.legion.pantry.PantryController]'s own `EngineWriteFailedException`. */
-    private class EngineWriteFailedException(val reason: String) : Exception()
 
     /**
      * [driveFileId] with the `acc=N;` prefix stripped, per ticket 03
@@ -285,12 +282,16 @@ object IngestPipeline {
         ) : CommitOutcome()
         data class Quarantined(val reason: String) : CommitOutcome()
         /**
-         * Cutover 3. A gate-passed [LedgerIngestResult.Success] whose engine write failed AFTER
-         * reconciliation - a real possibility a plain `Insert` DAO call never had (a corrupted field
-         * schema, a reference-validation edge). The whole transaction rolled back: nothing landed,
-         * not even the [IngestedFile] bookkeeping from a partial write, and [reason] is the worded
-         * failure CLAUDE.md §7 requires rather than a false success. The file's own [IngestedFile]
-         * record is written back to [IngestState.NEW] so it is re-offered on the next scan.
+         * A gate-passed [LedgerIngestResult.Success] whose legacy-table write failed AFTER
+         * reconciliation - a genuine Room/SQLite failure (constraint violation, disk I/O), the same
+         * narrow surface [com.kevin.legion.pantry.PantryController.writeReceipt] guards against on
+         * its own legacy write. The whole transaction rolled back: nothing landed, not even the
+         * [IngestedFile] bookkeeping from a partial write, and [reason] is the worded failure
+         * CLAUDE.md §7 requires rather than a false success or a raw throw. The file's own
+         * [IngestedFile] record is written back to [IngestState.NEW] so it is re-offered on the
+         * next scan. Name kept from cutover 3 rather than renamed - a caller reading
+         * `CommitOutcome.EngineWriteFailed` still gets the correct meaning ("the write layer
+         * failed"), and renaming it would touch every caller/test for no behavioural gain.
          */
         data class EngineWriteFailed(val reason: String) : CommitOutcome()
     }
@@ -306,9 +307,10 @@ object IngestPipeline {
      * [LedgerIngestResult.Quarantined]: nothing is written to the engine,
      * only the [IngestedFile] record.
      *
-     * **Cutover 3**: every transaction row is written through [RecordStore], never the legacy
-     * `ledger_transactions` table - see this object's own class doc for the full transaction/rollback
-     * shape.
+     * **Engine retirement step 5**: every transaction row is written through
+     * [com.kevin.legion.data.local.LedgerTransactionDao] again, never the engine - see this
+     * object's own class doc for the full transaction/rollback shape and why this is the "before"
+     * half of ticket 03's RPC pairing rather than a reversal of it.
      *
      * [llmUsage] is `(promptTokens, responseTokens)` for the LLM path (null
      * fields allowed - a call that ran but got no usable response still
@@ -343,14 +345,17 @@ object IngestPipeline {
                 CommitOutcome.Quarantined(result.reason)
             }
             is LedgerIngestResult.Success -> {
+                // Before EVER reading or writing `ledger_transactions` from this path - see
+                // EngineLedgerRetirementCopy's own class doc for why this has to run here too, not
+                // only from LedgerController: IngestScanner's folder-scan path calls this function
+                // directly and never goes through LedgerController at all.
+                EngineLedgerRetirementCopy.copyIfNeeded(context)
+
                 val stamped = result.transactions.map { it.copy(sourceFileId = driveFileId) }
                 val accountId = stamped.first().accountId
                 val minDate = stamped.minOf { it.txnDate }
                 val maxDate = stamped.maxOf { it.txnDate }
-
-                val schema = LedgerAspectSeeder.ensureSeeded(context)
-                val fieldIds = schema.transaction.fieldIds
-                val recordStore = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+                val txnDao = db.ledgerTransactionDao()
 
                 var inserted = 0
                 var duplicatesSkipped = 0
@@ -359,18 +364,9 @@ object IngestPipeline {
                 try {
                     db.withTransaction {
                         if (staged.isReplace) {
-                            // Engine-side equivalent of the retired
-                            // `LedgerTransactionDao.deleteBySourceFileId` - every active engine
-                            // Transaction record this file previously produced, trashed before the
+                            // Every row this file previously produced, dropped before the
                             // re-parsed replacement is inserted below.
-                            val toReplace = db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId)
-                                .filter { PayloadCodec.readString(JSONObject(it.payload), fieldIds.getValue(LedgerAspectSeeder.FIELD_SOURCE_FILE_ID)) == driveFileId }
-                            for (rec in toReplace) {
-                                when (recordStore.delete(rec.id)) {
-                                    is RecordStore.DeleteResult.Trashed, is RecordStore.DeleteResult.AlreadyTrashed -> {}
-                                    else -> throw EngineWriteFailedException("replace: couldn't remove this file's own previous row #${rec.id}")
-                                }
-                            }
+                            txnDao.deleteBySourceFileId(driveFileId)
                             val prevAccount = staged.previousAccountId
                             val prevMin = staged.previousMinTxnDate
                             val prevMax = staged.previousMaxTxnDate
@@ -382,8 +378,9 @@ object IngestPipeline {
                             }
                         }
 
-                        // Ticket 12 §5 - three load-bearing properties, in order, now applied to the
-                        // ENGINE mirror instead of the (retired) legacy delete:
+                        // Ticket 12 §5 - three load-bearing properties, in order, now a single SQL
+                        // predicate again ([LedgerTransactionDao.deleteSupersededProvisional]) rather
+                        // than a Kotlin-side filter-and-delete loop over engine records:
                         //
                         // 1. THE GUARD. Without `ingestMethod != UNRECONCILED`, importing
                         //    the card CSV twice would make the second import delete the
@@ -398,53 +395,23 @@ object IngestPipeline {
                         // 3. INSIDE the transaction. A crash between the delete and the
                         //    insert below must never leave the account with neither.
                         if (stamped.first().ingestMethod != IngestMethod.UNRECONCILED) {
-                            val toSupersede = db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId)
-                                .filter { rec ->
-                                    if (rec.provenance != RecordProvenance.UNRECONCILED) return@filter false
-                                    val payload = JSONObject(rec.payload)
-                                    val rowAccountId = PayloadCodec.readString(payload, fieldIds.getValue(LedgerAspectSeeder.FIELD_ACCOUNT_ID)).orEmpty()
-                                    val rowTxnDate = PayloadCodec.readLong(payload, fieldIds.getValue(LedgerAspectSeeder.FIELD_TXN_DATE))
-                                    sameCard(rowAccountId, accountId) && rowTxnDate != null && rowTxnDate in minDate..maxDate
-                                }
-                            for (rec in toSupersede) {
-                                when (recordStore.delete(rec.id)) {
-                                    is RecordStore.DeleteResult.Trashed -> provisionalSuperseded++
-                                    is RecordStore.DeleteResult.AlreadyTrashed -> {}
-                                    else -> throw EngineWriteFailedException("supersede: couldn't remove provisional row #${rec.id}")
-                                }
-                            }
+                            provisionalSuperseded = txnDao.deleteSupersededProvisional(accountId, minDate, maxDate)
                         }
 
                         // Read INSIDE the transaction and AFTER the replace/supersede deletes above -
                         // both can remove rows the dedup comparison must not see as "already there".
-                        val existingRows = db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId)
-                            .map { LedgerRecordBridge.toTransaction(it, fieldIds) }
-                            .filter { it.accountId == accountId && it.txnDate in minDate..maxDate }
-                        // ingested_files stays plugin-internal and legacy - unaffected by cutover 3,
-                        // read INSIDE the transaction and AFTER the replace-flow reset above: that
-                        // reset can knock an overlapping file out of INGESTED, and a window from a
-                        // file that is no longer committed would let this drop rows nothing else is
-                        // going to put back.
+                        val existingRows = txnDao.getForAccountInRange(accountId, minDate, maxDate)
+                        // ingested_files stays plugin-internal, read INSIDE the transaction and AFTER
+                        // the replace-flow reset above: that reset can knock an overlapping file out
+                        // of INGESTED, and a window from a file that is no longer committed would let
+                        // this drop rows nothing else is going to put back.
                         val enumerated = ingestedDao
                             .enumeratedWindows(accountId, driveFileId, minDate, maxDate)
                             .map { LedgerCoveredWindow(it.fromMs, it.toMs) }
                         val resolution = resolveDedup(existingRows, stamped, enumerated)
 
-                        for (txn in resolution.toInsert) {
-                            val res = recordStore.create(
-                                recordTypeId = schema.transaction.recordTypeId,
-                                fieldValues = LedgerRecordBridge.fieldValuesFor(txn, fieldIds),
-                                provenance = LedgerRecordBridge.provenanceFor(txn.ingestMethod),
-                                now = txn.txnDate,
-                                guid = txn.syncId,
-                            )
-                            if (res !is RecordStore.WriteResult.Success) {
-                                throw EngineWriteFailedException(
-                                    "row '${txn.description}': ${(res as RecordStore.WriteResult.Failure).reason}",
-                                )
-                            }
-                            inserted++
-                        }
+                        if (resolution.toInsert.isNotEmpty()) txnDao.insertAll(resolution.toInsert)
+                        inserted = resolution.toInsert.size
                         duplicatesSkipped = resolution.duplicatesSkipped
                         restatementsSkipped = resolution.restatementsSkipped
 
@@ -460,8 +427,8 @@ object IngestPipeline {
                             )
                         )
                     }
-                } catch (e: EngineWriteFailedException) {
-                    Log.w(TAG, "commit: engine write failed after the gate passed, rolled back - ${e.reason}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "commit: legacy write failed after the gate passed, rolled back - ${e.message}")
                     // Nothing landed for this file, not even the IngestedFile bookkeeping - that
                     // write was inside the same rolled-back transaction. Written back to NEW, outside
                     // the transaction, so the file is re-offered on the next scan rather than
@@ -472,7 +439,7 @@ object IngestPipeline {
                             quarantineReason = null, lastAttemptAt = now,
                         )
                     )
-                    return CommitOutcome.EngineWriteFailed(e.reason)
+                    return CommitOutcome.EngineWriteFailed(e.message ?: "couldn't save this statement")
                 }
                 CommitOutcome.Ingested(inserted, duplicatesSkipped, restatementsSkipped, provisionalSuperseded)
             }

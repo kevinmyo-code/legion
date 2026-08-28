@@ -3,9 +3,6 @@ package com.kevin.legion.ledger
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
-import com.kevin.legion.data.local.RecordProvenance
-import com.kevin.legion.engine.PayloadCodec
-import com.kevin.legion.engine.ledger.LedgerAspectSeeder
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -24,21 +21,12 @@ import com.kevin.legion.data.local.CarDatabase
  * ([IngestPipeline.commit]'s three load-bearing properties documented at its
  * call site), which needs a real Room database to observe at all.
  *
- * **Replaces `androidTest/.../ledger/IngestPipelineProvisionalSupersedeTest`**
- * (hardening ticket 05 defect 1, `.scratch/hardening/issues/05-ledger-gate-defects.md`
- * §1). That file's stated reason for not calling the real [IngestPipeline.commit] -
- * [CarDatabase.getDatabase] being a process-wide singleton, so calling it from an
- * instrumented test would touch the app-under-test's real on-disk database - is
- * obsolete: [RoomTestReset.resetCarDatabaseSingleton] (used below, same as
- * [IngestPipelineEngineCommitTest]) resets that singleton to a fresh in-memory
- * Robolectric database per test, so the real entry point is reachable without
- * cross-contamination. The old file also asserted against the legacy
- * `ledger_transactions` table via `LedgerTransactionDao.deleteSupersededProvisional`,
- * which cutover 3 made dead code (zero production callers - see
- * [IngestPipeline]'s own KDoc); these four cases had been exercising a path
- * production no longer runs since that cutover. This file asserts against the
- * ENGINE mirror ([com.kevin.legion.data.local.EngineRecord] rows read through
- * [RecordProvenance]) that [IngestPipeline.commit] actually writes today.
+ * **Live again as of engine retirement step 5** (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`).
+ * Cutover 3 (2026-08-24) had made `LedgerTransactionDao.deleteSupersededProvisional` dead code (zero
+ * production callers) and this file's four cases exercised only the engine mirror instead - see the
+ * git history for that intermediate shape. Step 5 repointed [IngestPipeline.commit] back onto that
+ * exact DAO method, so this file now asserts against `ledger_transactions` directly again, the
+ * table production actually writes.
  *
  * The account-id choice below preserves the old file's own reasoning, restated
  * for the engine path: the reconciled row's supersede match against the
@@ -99,19 +87,10 @@ class IngestPipelineProvisionalSupersedeTest {
         previousAccountId = null, previousMinTxnDate = null, previousMaxTxnDate = null,
     )
 
-    private suspend fun activeRowsFor(accountId: String, minDate: Long, maxDate: Long): List<Pair<String, RecordProvenance>> {
-        val schema = LedgerAspectSeeder.ensureSeeded(context)
-        val fieldIds = schema.transaction.fieldIds
-        return db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId)
-            .mapNotNull { rec ->
-                val payload = JSONObject(rec.payload)
-                val rowAccountId = PayloadCodec.readString(payload, fieldIds.getValue(LedgerAspectSeeder.FIELD_ACCOUNT_ID)).orEmpty()
-                val rowTxnDate = PayloadCodec.readLong(payload, fieldIds.getValue(LedgerAspectSeeder.FIELD_TXN_DATE))
-                if (rowAccountId == accountId && rowTxnDate != null && rowTxnDate in minDate..maxDate) {
-                    (PayloadCodec.readString(payload, fieldIds.getValue(LedgerAspectSeeder.FIELD_LINE_REF)) ?: "") to rec.provenance
-                } else null
-            }
-    }
+    private suspend fun activeRowsFor(accountId: String, minDate: Long, maxDate: Long): List<Pair<String, IngestMethod>> =
+        db.ledgerTransactionDao().getAll()
+            .filter { it.accountId == accountId && it.txnDate in minDate..maxDate }
+            .map { it.lineRef to it.ingestMethod }
 
     @After
     fun drainRoomInvalidationTracker() {
@@ -183,7 +162,7 @@ class IngestPipelineProvisionalSupersedeTest {
         assertEquals(0, ingested.duplicatesSkipped)
         val rows = activeRowsFor("SAMEACCT", JUL_1, JUL_1)
         assertEquals(1, rows.size)
-        assertEquals(RecordProvenance.DETERMINISTIC, rows.single().second)
+        assertEquals(IngestMethod.DETERMINISTIC, rows.single().second)
     }
 
     /** Test 18: a reconciled statement covering a DIFFERENT window leaves provisional rows alone. */

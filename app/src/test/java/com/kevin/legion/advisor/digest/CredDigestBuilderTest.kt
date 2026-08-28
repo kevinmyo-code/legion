@@ -8,9 +8,6 @@ import com.kevin.legion.data.local.IngestedFile
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
-import com.kevin.legion.engine.RecordStore
-import com.kevin.legion.engine.ledger.LedgerAspectSeeder
-import com.kevin.legion.engine.ledger.LedgerRecordBridge
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -77,24 +74,15 @@ class CredDigestBuilderTest {
         categoryPending = categoryPending,
     )
 
-    /** Cutover 3 (`docs/architecture/cutover3-2026-08-24.md`): [CredDigestBuilder] reads through
-     * [com.kevin.legion.ledger.LedgerController], which is now engine-backed - a fixture written
-     * straight to the legacy `ledgerTransactionDao()` is invisible to it. Writes through
-     * [RecordStore] instead, the same door [com.kevin.legion.ledger.IngestPipeline] itself now
-     * writes through. */
+    /** Engine retirement step 5 (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`):
+     * [CredDigestBuilder] reads through [com.kevin.legion.ledger.LedgerController], which is
+     * legacy-table-backed again - writes straight into `ledgerTransactionDao()`, the same table
+     * [com.kevin.legion.ledger.IngestPipeline] itself writes through post-repoint. Name kept
+     * (`insertEngineTransactions`) even though the underlying store changed, to minimise churn at
+     * every call site below - the function's CONTRACT (fixtures become visible to
+     * [com.kevin.legion.ledger.LedgerController]'s reads) is what every caller actually depends on. */
     private suspend fun insertEngineTransactions(vararg transactions: LedgerTransaction) {
-        val db = CarDatabase.getDatabase(context)
-        val schema = LedgerAspectSeeder.ensureSeeded(context)
-        val recordStore = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
-        for (t in transactions) {
-            recordStore.create(
-                recordTypeId = schema.transaction.recordTypeId,
-                fieldValues = LedgerRecordBridge.fieldValuesFor(t, schema.transaction.fieldIds),
-                provenance = LedgerRecordBridge.provenanceFor(t.ingestMethod),
-                now = t.txnDate,
-                guid = t.syncId,
-            )
-        }
+        CarDatabase.getDatabase(context).ledgerTransactionDao().insertAll(transactions.toList())
     }
 
     @After

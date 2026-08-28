@@ -1,15 +1,10 @@
 package com.kevin.legion.ledger
 
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.FieldType
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.IngestState
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
-import com.kevin.legion.data.local.RecordProvenance
-import com.kevin.legion.engine.RecordStore
-import com.kevin.legion.engine.ledger.LedgerAspectSeeder
-import com.kevin.legion.engine.ledger.LedgerRecordBridge
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -23,12 +18,14 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 
 /**
- * Cutover 3 (`docs/architecture/cutover3-2026-08-24.md`): [IngestPipeline.commit]'s engine-side
- * write path, exercised directly with Robolectric (Room, no ContentResolver - same posture as
- * [LedgerTransferGateTest]/[LedgerControllerOwnAccountMovementsTest], which is why this is testable
- * at all despite README/CLAUDE.md §10's note that the ContentResolver-touching HALF of
- * [LedgerController]'s import path is not). Nothing here existed before this branch -
- * `IngestPipeline.commit`/`stage` had zero direct test coverage prior to cutover.
+ * Engine retirement step 5 (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`):
+ * [IngestPipeline.commit]'s write path is legacy-table-backed again, exercised directly with
+ * Robolectric (Room, no ContentResolver - same posture as [LedgerTransferGateTest]/
+ * [LedgerControllerOwnAccountMovementsTest]). Renamed in spirit but not in filename from its
+ * cutover-3 predecessor, which asserted against `db.engineRecordDao()`; every assertion below reads
+ * `db.ledgerTransactionDao()` instead, and the provenance-mapping cases now check
+ * [LedgerTransaction.ingestMethod] directly rather than round-tripping through
+ * [com.kevin.legion.data.local.RecordProvenance].
  */
 @RunWith(RobolectricTestRunner::class)
 class IngestPipelineEngineCommitTest {
@@ -48,8 +45,9 @@ class IngestPipelineEngineCommitTest {
         amountCents: Long = -1_000L,
         lineRef: String = "line-1",
         ingestMethod: IngestMethod = IngestMethod.DETERMINISTIC,
+        id: Long = 0L,
     ) = LedgerTransaction(
-        sourceFile = "stmt.pdf", accountId = accountId, currency = currency, txnDate = txnDate,
+        id = id, sourceFile = "stmt.pdf", accountId = accountId, currency = currency, txnDate = txnDate,
         description = description, amountCents = amountCents, lineRef = lineRef, ingestMethod = ingestMethod,
     )
 
@@ -59,28 +57,7 @@ class IngestPipelineEngineCommitTest {
             previousAccountId = previousAccountId, previousMinTxnDate = previousMin, previousMaxTxnDate = previousMax,
         )
 
-    private suspend fun engineTransactionCount(): Int {
-        val schema = LedgerAspectSeeder.ensureSeeded(context)
-        return db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).size
-    }
-
-    private suspend fun trashedTransactionCount(): Int {
-        val schema = LedgerAspectSeeder.ensureSeeded(context)
-        return db.engineRecordDao().trashedByRecordType(schema.transaction.recordTypeId).size
-    }
-
-    /** Corrupts `sourceFileId`'s field TYPE to REFERENCE - same lever [EngineDataMigrationWave3Test]
-     * uses, forced because `Transaction` carries no naturally-occurring REFERENCE field (see the
-     * carve doc). Since [IngestPipeline.commit] always stamps every row's `sourceFileId` with the
-     * incoming file's own id (a non-null String), this makes every subsequent [RecordStore.create]
-     * call in this test fail identically - `validateReferences`'s `(raw as? Number)` cast fails
-     * immediately for a REFERENCE-typed field holding a String. */
-    private suspend fun corruptSourceFileIdField() {
-        val schema = LedgerAspectSeeder.ensureSeeded(context)
-        val field = db.fieldDefDao().forRecordType(schema.transaction.recordTypeId)
-            .single { it.id == schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_SOURCE_FILE_ID) }
-        db.fieldDefDao().update(field.copy(type = FieldType.REFERENCE))
-    }
+    private suspend fun transactionCount(): Int = db.ledgerTransactionDao().getAll().size
 
     @After
     fun drainRoomInvalidationTracker() {
@@ -99,75 +76,65 @@ class IngestPipelineEngineCommitTest {
     // --------------------------------------------------------------------------- provenance mapping
 
     @Test
-    fun `a DETERMINISTIC commit lands a DETERMINISTIC engine record`() = runBlocking {
+    fun `a DETERMINISTIC commit lands a DETERMINISTIC row`() = runBlocking {
         val outcome = IngestPipeline.commit(
             context, "file-det", null, "stmt.pdf", staged(),
             LedgerIngestResult.Success(listOf(txn(ingestMethod = IngestMethod.DETERMINISTIC))),
         )
         assertTrue(outcome is IngestPipeline.CommitOutcome.Ingested)
-        val schema = LedgerAspectSeeder.ensureSeeded(context)
-        val record = db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).single()
-        assertEquals(RecordProvenance.DETERMINISTIC, record.provenance)
-        assertEquals(-1_000L, record.amountCents) // primaryAmountFieldId promotion, sign preserved
+        val row = db.ledgerTransactionDao().getAll().single()
+        assertEquals(IngestMethod.DETERMINISTIC, row.ingestMethod)
+        assertEquals(-1_000L, row.amountCents)
     }
 
     @Test
-    fun `an LLM_RECONCILED commit lands an LLM_RECONCILED engine record`() = runBlocking {
+    fun `an LLM_RECONCILED commit lands an LLM_RECONCILED row`() = runBlocking {
         IngestPipeline.commit(
             context, "file-llm", null, "stmt.pdf", staged(),
             LedgerIngestResult.Success(listOf(txn(ingestMethod = IngestMethod.LLM_RECONCILED))),
         )
-        val schema = LedgerAspectSeeder.ensureSeeded(context)
-        val record = db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).single()
-        assertEquals(RecordProvenance.LLM_RECONCILED, record.provenance)
+        val row = db.ledgerTransactionDao().getAll().single()
+        assertEquals(IngestMethod.LLM_RECONCILED, row.ingestMethod)
     }
 
     @Test
-    fun `an UNRECONCILED commit lands an UNRECONCILED engine record and never supersedes anything`() = runBlocking {
+    fun `an UNRECONCILED commit lands an UNRECONCILED row and never supersedes anything`() = runBlocking {
         val outcome = IngestPipeline.commit(
             context, "file-unr", null, "stmt.csv", staged(),
             LedgerIngestResult.Success(listOf(txn(ingestMethod = IngestMethod.UNRECONCILED))),
         )
         assertEquals(0, (outcome as IngestPipeline.CommitOutcome.Ingested).provisionalSuperseded)
-        val schema = LedgerAspectSeeder.ensureSeeded(context)
-        val record = db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId).single()
-        assertEquals(RecordProvenance.UNRECONCILED, record.provenance)
+        val row = db.ledgerTransactionDao().getAll().single()
+        assertEquals(IngestMethod.UNRECONCILED, row.ingestMethod)
     }
 
     @Test
-    fun `a quarantined result writes no engine record at all`() = runBlocking {
+    fun `a quarantined result writes no row at all`() = runBlocking {
         val outcome = IngestPipeline.commit(
             context, "file-q", null, "stmt.pdf", staged(),
             LedgerIngestResult.Quarantined("numbers didn't reconcile"),
         )
         assertTrue(outcome is IngestPipeline.CommitOutcome.Quarantined)
-        assertEquals(0, engineTransactionCount())
+        assertEquals(0, transactionCount())
         assertEquals(IngestState.QUARANTINED, db.ingestedFileDao().getByDriveFileId("file-q")!!.state)
     }
 
     // --------------------------------------------------------------------------- supersession-in-commit
 
     @Test
-    fun `a reconciled commit trashes an in-window UNRECONCILED mirror row, leaves out-of-window and non-UNRECONCILED rows alone`() = runBlocking {
-        val schema = LedgerAspectSeeder.ensureSeeded(context)
-        val recordStore = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
-        suspend fun seed(t: LedgerTransaction) = recordStore.create(
-            recordTypeId = schema.transaction.recordTypeId,
-            fieldValues = LedgerRecordBridge.fieldValuesFor(t, schema.transaction.fieldIds),
-            provenance = LedgerRecordBridge.provenanceFor(t.ingestMethod),
-            now = t.txnDate,
-            guid = t.syncId,
+    fun `a reconciled commit supersedes an in-window UNRECONCILED row, leaves out-of-window and non-UNRECONCILED rows alone`() = runBlocking {
+        db.ledgerTransactionDao().insertAll(
+            listOf(
+                // In-window provisional - the statement below covers [500_000, 1_500_000].
+                txn(accountId = "7823", txnDate = 1_000_000L, lineRef = "in-window", ingestMethod = IngestMethod.UNRECONCILED),
+                // Out-of-window provisional - same card (suffix match), but dated well outside the statement's range.
+                txn(accountId = "7823", txnDate = 9_000_000L, lineRef = "out-of-window", ingestMethod = IngestMethod.UNRECONCILED),
+                // A DETERMINISTIC row for the SAME account/date the statement below also covers - must never
+                // be touched by supersession, which is scoped to UNRECONCILED only.
+                txn(accountId = "7823", txnDate = 1_000_000L, lineRef = "already-reconciled", ingestMethod = IngestMethod.DETERMINISTIC),
+            ),
         )
-
-        // In-window provisional - the statement below covers [500_000, 1_500_000].
-        seed(txn(accountId = "7823", txnDate = 1_000_000L, lineRef = "in-window", ingestMethod = IngestMethod.UNRECONCILED))
-        // Out-of-window provisional - same card (suffix match), but dated well outside the statement's range.
-        seed(txn(accountId = "7823", txnDate = 9_000_000L, lineRef = "out-of-window", ingestMethod = IngestMethod.UNRECONCILED))
-        // A DETERMINISTIC row for the SAME account/date the statement below also covers - must never
-        // be touched by supersession, which is scoped to UNRECONCILED only.
-        seed(txn(accountId = "7823", txnDate = 1_000_000L, lineRef = "already-reconciled", ingestMethod = IngestMethod.DETERMINISTIC))
-
-        assertEquals(3, engineTransactionCount())
+        assertEquals(3, transactionCount())
 
         // The reconciled statement - full printed PAN, matches "7823" by suffix (ticket 12 §0).
         val outcome = IngestPipeline.commit(
@@ -178,29 +145,32 @@ class IngestPipelineEngineCommitTest {
         )
 
         assertEquals(1, (outcome as IngestPipeline.CommitOutcome.Ingested).provisionalSuperseded)
-        // 3 pre-existing + 1 new - 1 trashed = 3 active.
-        assertEquals(3, engineTransactionCount())
-        assertEquals(1, trashedTransactionCount())
+        // 3 pre-existing + 1 new - 1 superseded = 3 remaining rows (a legacy DELETE, not a trash).
+        assertEquals(3, transactionCount())
 
-        val activeLineRefs = db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId)
-            .map { com.kevin.legion.engine.PayloadCodec.readString(org.json.JSONObject(it.payload), schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_LINE_REF)) }
-        assertTrue("out-of-window provisional must survive", "out-of-window" in activeLineRefs)
-        assertTrue("a DETERMINISTIC row must never be touched by supersession", "already-reconciled" in activeLineRefs)
-        assertTrue("the new statement's own row must be present", "new" in activeLineRefs)
-        assertFalse("the in-window provisional must be gone from the active set", "in-window" in activeLineRefs)
+        val lineRefs = db.ledgerTransactionDao().getAll().map { it.lineRef }
+        assertTrue("out-of-window provisional must survive", "out-of-window" in lineRefs)
+        assertTrue("a DETERMINISTIC row must never be touched by supersession", "already-reconciled" in lineRefs)
+        assertTrue("the new statement's own row must be present", "new" in lineRefs)
+        assertFalse("the in-window provisional must be gone", "in-window" in lineRefs)
     }
 
     // ------------------------------------------------------------------------------------ atomicity
 
     @Test
-    fun `atomicity, early failure - zero rows land when the very first engine write fails`() = runBlocking {
-        corruptSourceFileIdField()
+    fun `atomicity, early failure - zero rows land when the very first row write fails`() = runBlocking {
+        // Forces a real Room PRIMARY KEY collision on the FIRST row's insert - occupies id 1 first,
+        // then hands commit a stamped transaction explicitly claiming that same id. Same forcing
+        // shape as PantryControllerTest's post-repoint write-failure test, aimed at Room's own
+        // constraint instead of RecordStore.WriteResult.Failure, since that type no longer exists
+        // on this path.
+        db.ledgerTransactionDao().insertAll(listOf(txn(id = 1L, accountId = "OCCUPANT", lineRef = "occupant")))
 
         val outcome = IngestPipeline.commit(
             context, "file-fails", null, "stmt.pdf", staged(),
             LedgerIngestResult.Success(
                 listOf(
-                    txn(lineRef = "1", description = "ROW ONE"),
+                    txn(id = 1L, lineRef = "1", description = "ROW ONE"),
                     txn(lineRef = "2", description = "ROW TWO"),
                 ),
             ),
@@ -208,7 +178,10 @@ class IngestPipelineEngineCommitTest {
 
         assertTrue(outcome is IngestPipeline.CommitOutcome.EngineWriteFailed)
         assertTrue((outcome as IngestPipeline.CommitOutcome.EngineWriteFailed).reason.isNotBlank())
-        assertEquals(0, engineTransactionCount())
+        // Only the pre-existing occupant row survives - the colliding insert never landed, and
+        // Room's own transaction rollback means "ROW TWO" never landed either even though it did
+        // not itself collide with anything.
+        assertEquals(1, transactionCount())
         // Re-offered on the next scan, not silently dropped - CLAUDE.md §7's "in words what did NOT happen".
         assertEquals(IngestState.NEW, db.ingestedFileDao().getByDriveFileId("file-fails")!!.state)
     }
@@ -226,34 +199,30 @@ class IngestPipelineEngineCommitTest {
             ),
         )
         assertTrue(firstOutcome is IngestPipeline.CommitOutcome.Ingested)
-        assertEquals(2, engineTransactionCount())
+        assertEquals(2, transactionCount())
 
-        // Now corrupt the schema so every FUTURE create fails, then re-commit the SAME file as a
-        // replace (the file was re-parsed with different bytes). The replace-flow delete loop runs
-        // FIRST inside the transaction - trashing the two original rows via RecordStore.delete,
-        // which is untouched by the corruption (delete never validates references) - and only THEN
-        // does the create loop hit the corrupted field and fail. This is the "late" failure: writes
-        // that already happened earlier in the SAME transaction (the replace deletes) must be undone
-        // too, not just the create that actually threw.
-        corruptSourceFileIdField()
+        // An unrelated row occupies id 3 (the next autogenerated id after the two rows above), so
+        // the replacement commit's own insert collides with it. The replace-flow delete loop runs
+        // FIRST inside the transaction - dropping the two original rows via `deleteBySourceFileId` -
+        // and only THEN does the insert hit the id collision and fail. This is the "late" failure:
+        // writes that already happened earlier in the SAME transaction (the replace delete) must be
+        // undone too, not just the insert that actually threw.
+        db.ledgerTransactionDao().insertAll(listOf(txn(id = 3L, accountId = "OCCUPANT", lineRef = "occupant")))
 
         val replaceOutcome = IngestPipeline.commit(
             context, "file-replace", null, "stmt.pdf",
             staged(isReplace = true, previousAccountId = "BOFA-1234", previousMin = 1_000_000L, previousMax = 1_000_000L),
-            LedgerIngestResult.Success(listOf(txn(lineRef = "new-1", description = "REPLACEMENT ONE"))),
+            LedgerIngestResult.Success(listOf(txn(id = 3L, lineRef = "new-1", description = "REPLACEMENT ONE"))),
         )
 
         assertTrue(replaceOutcome is IngestPipeline.CommitOutcome.EngineWriteFailed)
-        // The two ORIGINAL rows must still be ACTIVE - the replace-flow delete was rolled back along
-        // with the failed create, not left half-applied.
-        assertEquals(2, engineTransactionCount())
-        assertEquals(0, trashedTransactionCount())
-        val schema = LedgerAspectSeeder.ensureSeeded(context)
-        val activeLineRefs = db.engineRecordDao().activeByRecordType(schema.transaction.recordTypeId)
-            .map { com.kevin.legion.engine.PayloadCodec.readString(org.json.JSONObject(it.payload), schema.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_LINE_REF)) }
-        assertTrue("orig-1" in activeLineRefs)
-        assertTrue("orig-2" in activeLineRefs)
-        assertFalse("a rolled-back replacement row must never appear", "new-1" in activeLineRefs)
+        // The two ORIGINAL rows must still be present - the replace-flow delete was rolled back
+        // along with the failed insert, not left half-applied. Plus the untouched occupant row.
+        assertEquals(3, transactionCount())
+        val lineRefs = db.ledgerTransactionDao().getAll().map { it.lineRef }
+        assertTrue("orig-1" in lineRefs)
+        assertTrue("orig-2" in lineRefs)
+        assertFalse("a rolled-back replacement row must never appear", "new-1" in lineRefs)
     }
 
     // ------------------------------------------------------------------------------------------ dedup
@@ -266,7 +235,7 @@ class IngestPipelineEngineCommitTest {
                 listOf(txn(accountId = "BOFA-1234", txnDate = 1_000_000L, description = "TRADER JOES", amountCents = -4599L, lineRef = "A-1")),
             ),
         )
-        assertEquals(1, engineTransactionCount())
+        assertEquals(1, transactionCount())
 
         // A second, overlapping statement restates the SAME transaction (same account/date/cents/
         // description) - dedupKey matches regardless of lineRef, which a second export is free to
@@ -284,6 +253,6 @@ class IngestPipelineEngineCommitTest {
         val ingested = outcome as IngestPipeline.CommitOutcome.Ingested
         assertEquals(1, ingested.transactionCount)
         assertEquals(1, ingested.duplicatesSkipped)
-        assertEquals(2, engineTransactionCount()) // the original TRADER JOES row, plus the new WALMART row - never 3
+        assertEquals(2, transactionCount()) // the original TRADER JOES row, plus the new WALMART row - never 3
     }
 }

@@ -10,10 +10,7 @@ import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
 import androidx.room.withTransaction
-import com.kevin.legion.engine.PayloadCodec
-import com.kevin.legion.engine.RecordStore
-import com.kevin.legion.engine.ledger.LedgerAspectSeeder
-import com.kevin.legion.engine.ledger.LedgerRecordBridge
+import com.kevin.legion.engine.migration.EngineLedgerRetirementCopy
 import com.kevin.legion.ledger.parsers.DeterministicResult
 import com.kevin.legion.ledger.parsers.PdfWords
 import com.kevin.legion.ledger.parsers.StatementDispatcher
@@ -23,7 +20,6 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneOffset
-import org.json.JSONObject
 
 /**
  * Orchestrates ledger statement ingestion - mirrors
@@ -31,29 +27,37 @@ import org.json.JSONObject
  * [com.kevin.legion.vehicle.BuildSheetController]'s naming and shape.
  * `.claude/plans/wiggly-beaming-quasar.md`.
  *
- * **Cutover 3** (`docs/architecture/cutover3-2026-08-24.md`). Every function below keeps its
- * ORIGINAL signature and return type (`LedgerTransaction`/`AccountBalance`/`BudgetVsActual`/etc,
- * the legacy Room-row-shaped value objects) so every caller - `ui/LedgerImportActivity`, the Money
- * tab screens, `service/LiveToolbox.kt`'s ledger tools - flips onto the engine with this file,
- * unchanged (ADR 0035: "the controller keeps its seam"). What changed is entirely internal: every
- * read now goes through [RecordStore]/[com.kevin.legion.data.local.EngineRecordDao] against the
- * Ledger aspect's `Transaction` record type (`docs/architecture/wave3-carve-2026-08-23.md`'s field
- * mapping, applied through [LedgerRecordBridge] - not a second mapping), and every write
- * ([logPendingTransaction], [clearPendingTransaction], the category-application functions, and
- * [importStatement]'s commit path via [IngestPipeline]) goes through [RecordStore] instead of
- * [com.kevin.legion.data.local.LedgerTransactionDao]. The legacy `ledger_transactions` table has
- * ZERO writers after this branch - see the cutover doc's reader/writer table.
+ * **Engine retirement step 5** (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`),
+ * the "before" half of ticket 03's "lands before or with the `commit_statement` RPC move". Every
+ * function below keeps its ORIGINAL signature and return type
+ * (`LedgerTransaction`/`AccountBalance`/`BudgetVsActual`/etc) so every caller -
+ * `ui/LedgerImportActivity`, the Money tab screens, `service/LiveToolbox.kt`'s ledger tools -
+ * is unaffected by this step (ADR 0035: "the controller keeps its seam"). What changed is
+ * entirely internal: cutover 3 (2026-08-24) had repointed every read/write at the engine's
+ * `Transaction` record type; this step repoints them back at the legacy `ledger_transactions`
+ * table, which is the ONLY local store an unconfigured (no Supabase project) clone-and-run install
+ * has. [ensureLegacyReconciled] runs [EngineLedgerRetirementCopy] once, first, so any transaction
+ * written directly through the engine between the 2026-08-24 cutover and this repoint (a folder
+ * scan, a voice-logged pending charge, a category correction) is not silently invisible the moment
+ * the read flips tables.
+ *
+ * **This is a REWIRE, not a re-implementation** (ticket 15's own framing): the engine's Transaction
+ * records are read here and never trashed, updated, or touched, and
+ * [com.kevin.legion.backend.LedgerReconcile] (the configured-transition upload tool) keeps reading
+ * the engine directly, exactly as `PlacesReconcile`/`PantryReconcile` were left alone in the two
+ * prior steps.
  *
  * **Read volume**: every read function below funnels through [allTransactions], which loads every
- * active `Transaction` engine record into memory and filters/aggregates in Kotlin rather than SQL -
- * the same "personal household app's data volume, not an enterprise table scan" tradeoff
- * [RecordStore]'s own class doc already accepts, and the same one
- * [com.kevin.legion.pantry.PantryController] already applies to pantry's equivalent reads.
+ * row of `ledger_transactions` into memory and filters/aggregates in Kotlin rather than SQL - the
+ * same "personal household app's data volume, not an enterprise table scan" tradeoff this file
+ * already accepted for its engine-backed reads pre-repoint, now simply pointed at ordinary SQL
+ * instead of a JSON-payload table scan (ticket 03's own "consequences for whoever builds this"
+ * section: this is exactly what removes the per-statement fan-out that made a 40-row commit run
+ * 200+ statements).
  *
  * `ingested_files` (the per-file ingestion ledger), `categories`/`category_rules` (the
  * classification vocabulary), and `budget_targets` are all **plugin-internal and untouched by this
- * cutover** - `docs/architecture/wave3-carve-2026-08-23.md`'s carve table already ruled all three
- * stay off the engine, and nothing here changes that ruling.
+ * step**, unchanged from cutover 3.
  */
 object LedgerController {
     private const val TAG = "LedgerController"
@@ -75,43 +79,45 @@ object LedgerController {
      */
     const val MIN_MERCHANT_KEY_LENGTH = 4
 
-    // ---------------------------------------------------------------- engine <-> value-object bridge
+    // ------------------------------------------------------------------------- legacy table access
 
     private fun db(context: Context) = CarDatabase.getDatabase(context)
-    private fun store(context: Context): RecordStore {
-        val database = db(context)
-        return RecordStore(database.engineRecordDao(), database.fieldDefDao(), database.recordTypeDao())
-    }
-
-    private suspend fun schema(context: Context) = LedgerAspectSeeder.ensureSeeded(context)
 
     /**
-     * Every non-trashed `Transaction` record, converted to the legacy [LedgerTransaction] shape via
-     * [LedgerRecordBridge.toTransaction] - the ONE place every read below funnels through, so there
-     * is exactly one query against the engine per read (matching
-     * [com.kevin.legion.pantry.PantryController.allReceipts]'s own precedent).
+     * One-time reconcile gate for the unconfigured path (engine retirement step 5): before EVER
+     * reading or writing `ledger_transactions` from this controller (or from [IngestPipeline]'s own
+     * commit path, which calls this too), make sure anything written directly through the engine
+     * between the 2026-08-24 cutover and this repoint has landed here first. [EngineLedgerRetirementCopy.copyIfNeeded]
+     * short-circuits on its own completion flag, so this is a SharedPreferences read on every later
+     * call, not a repeat scan. Same shape as
+     * [com.kevin.legion.pantry.PantryController.ensureLegacyReconciled]/
+     * [com.kevin.legion.location.PlaceController.ensureLegacyReconciled].
+     */
+    private suspend fun ensureLegacyReconciled(context: Context) {
+        EngineLedgerRetirementCopy.copyIfNeeded(context)
+    }
+
+    /**
+     * Every row of `ledger_transactions`, unconditionally - the ONE place every read below funnels
+     * through, so there is exactly one query per read (matching
+     * [com.kevin.legion.pantry.PantryController.allReceipts]'s own precedent). Ordered by `id`
+     * (statement/insert order), same convention [com.kevin.legion.data.local.LedgerTransactionDao.getAll]'s
+     * own doc comment states.
      */
     private suspend fun allTransactions(context: Context): List<LedgerTransaction> {
-        val sch = schema(context)
-        return db(context).engineRecordDao().activeByRecordType(sch.transaction.recordTypeId)
-            .map { LedgerRecordBridge.toTransaction(it, sch.transaction.fieldIds) }
+        ensureLegacyReconciled(context)
+        return db(context).ledgerTransactionDao().getAll()
     }
 
     /**
-     * Writes one [LedgerTransaction] through [RecordStore] - the shared write shape
-     * [logPendingTransaction] uses. Not used by [IngestPipeline]'s own commit path, which
-     * constructs its own [RecordStore]/schema pair so every write in a multi-row statement commit
-     * participates in the SAME `db.withTransaction` block - see that object's own doc comment.
+     * Writes one [LedgerTransaction] into `ledger_transactions` - the shared write shape
+     * [logPendingTransaction] uses. Not used by [IngestPipeline]'s own commit path, which writes
+     * its own multi-row batch inside its own `db.withTransaction` block - see that object's own
+     * doc comment.
      */
-    private suspend fun writeTransaction(context: Context, txn: LedgerTransaction): RecordStore.WriteResult {
-        val sch = schema(context)
-        return store(context).create(
-            recordTypeId = sch.transaction.recordTypeId,
-            fieldValues = LedgerRecordBridge.fieldValuesFor(txn, sch.transaction.fieldIds),
-            provenance = LedgerRecordBridge.provenanceFor(txn.ingestMethod),
-            now = txn.txnDate,
-            guid = txn.syncId,
-        )
+    private suspend fun writeTransaction(context: Context, txn: LedgerTransaction) {
+        ensureLegacyReconciled(context)
+        db(context).ledgerTransactionDao().insertAll(listOf(txn))
     }
 
     /**
@@ -307,42 +313,35 @@ object LedgerController {
             }
         }
 
-    /** Thrown only to force [androidx.room.withTransaction] to roll back the whole write when a
-     * post-gate [RecordStore] write fails inside [commitPlain] - see [IngestPipeline]'s own
-     * `EngineWriteFailedException` for the identical shape. */
-    private class EngineWriteFailedException(val reason: String) : Exception()
-
+    /**
+     * **A Room `@Insert` throws on failure rather than returning a false/failed result**, and every
+     * caller up the chain has no try/catch of its own to word it (traced): this function is reached
+     * only through [importWithoutRecord], from [importStatement], whose own production caller is
+     * `ui/LedgerScreen.kt`'s `LedgerImportScreen` - a bare `LaunchedEffect` that reads `.message`
+     * off the returned [LedgerImportResult] with no `try`/`catch` around the call at all, the exact
+     * same shape [com.kevin.legion.pantry.PantryController.writeReceipt]'s own doc comment
+     * describes for `PantryImportScreen`. A raw throw here would crash that composition instead of
+     * showing a worded failure. So the whole write is wrapped below: a genuine failure - Room
+     * throws, [androidx.room.withTransaction] rolls the whole block back on it - is caught and
+     * turned into the same worded message the pre-repoint engine-backed version used.
+     */
     private suspend fun commitPlain(
         context: Context,
         fileName: String,
         transactions: List<LedgerTransaction>,
     ): LedgerImportResult {
+        ensureLegacyReconciled(context)
         val existing = dedupAgainstExisting(allTransactions(context), transactions)
         val fresh = existing.first
         val skipped = existing.second
 
         val database = db(context)
-        val sch = schema(context)
-        val recordStore = store(context)
         try {
             database.withTransaction {
-                for (txn in fresh) {
-                    val result = recordStore.create(
-                        recordTypeId = sch.transaction.recordTypeId,
-                        fieldValues = LedgerRecordBridge.fieldValuesFor(txn, sch.transaction.fieldIds),
-                        provenance = LedgerRecordBridge.provenanceFor(txn.ingestMethod),
-                        now = txn.txnDate,
-                        guid = txn.syncId,
-                    )
-                    if (result !is RecordStore.WriteResult.Success) {
-                        throw EngineWriteFailedException(
-                            "row '${txn.description}': ${(result as RecordStore.WriteResult.Failure).reason}",
-                        )
-                    }
-                }
+                if (fresh.isNotEmpty()) database.ledgerTransactionDao().insertAll(fresh)
             }
-        } catch (e: EngineWriteFailedException) {
-            Log.w(TAG, "commitPlain: engine write failed after the gate passed, rolled back - ${e.reason}")
+        } catch (e: Exception) {
+            Log.w(TAG, "commitPlain: legacy write failed after the gate passed, rolled back - ${e.message}")
             return LedgerImportResult(success = false, message = "This statement's numbers checked out, but I couldn't save it - try again.")
         }
 
@@ -457,9 +456,10 @@ object LedgerController {
      * [LedgerTransaction.pendingLoggedAt]'s doc comment for why the row is still tagged
      * UNRECONCILED without a new [com.kevin.legion.data.local.IngestMethod] constant.
      *
-     * **Cutover 3**: writes through [RecordStore] now, never
-     * [com.kevin.legion.data.local.LedgerTransactionDao.insertAll]. A single-row create needs no
-     * surrounding `db.withTransaction` the way a multi-row statement commit does.
+     * **Engine retirement step 5**: writes through
+     * [com.kevin.legion.data.local.LedgerTransactionDao.insertAll] again, via [writeTransaction].
+     * A single-row insert needs no surrounding `db.withTransaction` the way a multi-row statement
+     * commit does.
      */
     suspend fun logPendingTransaction(
         context: Context,
@@ -494,20 +494,17 @@ object LedgerController {
     /**
      * `clear_pending_transaction`'s write. Returns true only if a row was actually removed.
      *
-     * **Cutover 3**: [id] is now the engine record id (every [LedgerTransaction] this controller
-     * hands back carries `id = EngineRecord.id`, per [LedgerRecordBridge.toTransaction]'s doc
-     * comment). The `AND pendingLoggedAt IS NOT NULL` guard the retired DAO query carried is
-     * replicated here in Kotlin - this can never delete anything but a genuinely pending row, even
-     * if the caller passed the wrong id.
+     * **Engine retirement step 5**: [id] is the `ledger_transactions` row id again - every
+     * [LedgerTransaction] this controller hands back carries `id = LedgerTransaction.id` straight
+     * off [com.kevin.legion.data.local.LedgerTransactionDao.getAll]. The `AND pendingLoggedAt IS
+     * NOT NULL` guard lives directly in
+     * [com.kevin.legion.data.local.LedgerTransactionDao.deletePendingById]'s own SQL, load-bearing
+     * for the identical reason its doc comment states: this can never delete anything but a
+     * genuinely pending row, even if the caller passed the wrong id.
      */
     suspend fun clearPendingTransaction(context: Context, id: Long): Boolean {
-        val database = db(context)
-        val record = database.engineRecordDao().getById(id) ?: return false
-        val sch = schema(context)
-        if (record.recordTypeId != sch.transaction.recordTypeId) return false
-        val pendingLoggedAt = PayloadCodec.readLong(JSONObject(record.payload), sch.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_PENDING_LOGGED_AT))
-        if (pendingLoggedAt == null) return false
-        return store(context).delete(id) is RecordStore.DeleteResult.Trashed
+        ensureLegacyReconciled(context)
+        return db(context).ledgerTransactionDao().deletePendingById(id) > 0
     }
 
     /**
@@ -788,9 +785,10 @@ object LedgerController {
      * so re-running after a scan that added new transactions costs nothing for rows a rule already
      * claimed. Returns how many rows were newly categorised, for a caller that wants to say so.
      *
-     * **Cutover 3**: applies each rule inside its own `db.withTransaction`, writing every matched
-     * row through [RecordStore.update] - a multi-row write, so it is wrapped for atomicity the same
-     * way [IngestPipeline]'s commit is, even though a category correction is not itself money-gated.
+     * Applies each rule inside its own `db.withTransaction` ([updateCategoryOnRows]), writing every
+     * matched row through [com.kevin.legion.data.local.LedgerTransactionDao.updateCategoryById] - a
+     * multi-row write, so it is wrapped for atomicity the same way [IngestPipeline]'s commit is,
+     * even though a category correction is not itself money-gated.
      */
     suspend fun applyCategoryRules(context: Context): Int {
         val db = CarDatabase.getDatabase(context)
@@ -808,29 +806,22 @@ object LedgerController {
     private suspend fun applyToMatching(context: Context, predicate: (LedgerTransaction) -> Boolean): List<LedgerTransaction> =
         allTransactions(context).filter(predicate)
 
-    /** Writes [category]/[categoryPending] onto every one of [rows] via [RecordStore.update], all
-     * inside one `db.withTransaction` - the engine-backed successor to every `UPDATE
-     * ledger_transactions SET category = ...` query this cutover retires. Returns how many rows
-     * were actually updated (a [RecordStore.WriteResult.Failure] on any one row is logged and
-     * skipped, never silently dropped from the count - "in words what did NOT happen" applied to a
-     * bulk write, not just a single one). */
+    /** Writes [category]/[categoryPending] onto every one of [rows] via
+     * [com.kevin.legion.data.local.LedgerTransactionDao.updateCategoryById], all inside one
+     * `db.withTransaction` - the SQL successor to the engine-backed `RecordStore.update` loop
+     * cutover 3 introduced. Returns how many rows were actually updated (a zero-row SQL update -
+     * the id no longer exists - is logged and skipped, never silently dropped from the count, "in
+     * words what did NOT happen" applied to a bulk write, not just a single one). */
     private suspend fun updateCategoryOnRows(context: Context, rows: List<LedgerTransaction>, category: String, categoryPending: Boolean): Int {
         if (rows.isEmpty()) return 0
         val database = db(context)
-        val sch = schema(context)
-        val recordStore = store(context)
+        val dao = database.ledgerTransactionDao()
         var updated = 0
         database.withTransaction {
             for (row in rows) {
-                val result = recordStore.update(
-                    row.id,
-                    mapOf(
-                        sch.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_CATEGORY) to category,
-                        sch.transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_CATEGORY_PENDING) to categoryPending,
-                    ),
-                )
-                if (result is RecordStore.WriteResult.Success) updated++
-                else Log.w(TAG, "updateCategoryOnRows: couldn't update row #${row.id}: ${(result as RecordStore.WriteResult.Failure).reason}")
+                val rowsChanged = dao.updateCategoryById(row.id, category, categoryPending)
+                if (rowsChanged > 0) updated++
+                else Log.w(TAG, "updateCategoryOnRows: couldn't update row #${row.id}: no longer exists")
             }
         }
         return updated
@@ -1089,13 +1080,8 @@ object LedgerController {
      * category directly is as confirmed a fact as this record has.
      */
     suspend fun recategorize(context: Context, transactionId: Long, category: String) {
-        store(context).update(
-            transactionId,
-            mapOf(
-                schema(context).transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_CATEGORY) to category,
-                schema(context).transaction.fieldIds.getValue(LedgerAspectSeeder.FIELD_CATEGORY_PENDING) to false,
-            ),
-        )
+        ensureLegacyReconciled(context)
+        db(context).ledgerTransactionDao().setCategoryConfirmed(transactionId, category)
     }
 
     /** Reasoned "typical" constants for a short merchant-name-plus-category prompt - see [categoryGuessEstimate]'s doc comment for why these aren't measured. */
@@ -1132,13 +1118,11 @@ object LedgerController {
      * caller to report - a destructive action that says nothing about what it
      * destroyed is indistinguishable from one that silently failed.
      *
-     * **Cutover 3**: "every ledger transaction" now means every active engine `Transaction`
-     * record, trashed via [RecordStore.delete] (30-day restorable, matching every other engine
-     * delete in this codebase - a strictly SAFER guarantee than the legacy hard `DELETE`, not a
-     * weaker one) rather than a single `DELETE FROM ledger_transactions`. Both the transaction
-     * trashing loop and the [IngestedFileDao.deleteAll] wipe happen inside ONE `db.withTransaction`
-     * - same "both tables or neither" invariant the legacy version already stated, preserved exactly
-     * across the cutover:
+     * **Engine retirement step 5**: "every ledger transaction" once again means a single
+     * `DELETE FROM ledger_transactions` - back to the pre-cutover-3 shape, since a hard delete on
+     * the legacy table has no engine trash to preserve instead. Both that delete and the
+     * [IngestedFileDao.deleteAll] wipe happen inside ONE `db.withTransaction` - same "both tables
+     * or neither" invariant cutover 3 preserved for the engine-backed version:
      *
      * Dropping only the transactions leaves `ingested_files` claiming every file is already
      * INGESTED, so a rescan skips them all and the ledger stays permanently empty with no way to
@@ -1152,20 +1136,17 @@ object LedgerController {
      * function rather than as an app-data wipe.
      *
      * Not undoable BY THE DRIVER-FACING SURFACE - the caller is responsible for confirming intent
-     * before calling; nothing here asks. (A 30-day engine-side trash restore exists as a technical
-     * safety net, but no UI path exposes it for this action.)
+     * before calling; nothing here asks. **No 30-day trash safety net on this path anymore** - a
+     * legacy `DELETE` is exactly as final as it always was pre-cutover-3, which is why nothing here
+     * asks and the UI caller is expected to confirm first.
      */
     suspend fun purgeAll(context: Context): PurgeResult {
+        ensureLegacyReconciled(context)
         val database = db(context)
-        val sch = schema(context)
-        val recordStore = store(context)
         var transactions = 0
         var files = 0
         database.withTransaction {
-            val active = database.engineRecordDao().activeByRecordType(sch.transaction.recordTypeId)
-            for (rec in active) {
-                if (recordStore.delete(rec.id) is RecordStore.DeleteResult.Trashed) transactions++
-            }
+            transactions = database.ledgerTransactionDao().deleteAll()
             files = database.ingestedFileDao().deleteAll()
         }
         Log.d(TAG, "purgeAll: dropped $transactions transactions and $files file records")

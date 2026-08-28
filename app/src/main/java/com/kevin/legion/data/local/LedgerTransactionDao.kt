@@ -341,6 +341,19 @@ interface LedgerTransactionDao {
     suspend fun setCategoryConfirmed(id: Long, category: String)
 
     /**
+     * Engine retirement step 5 (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`):
+     * the per-row write [com.kevin.legion.ledger.LedgerController.updateCategoryOnRows] needs, now
+     * that its writes go through this DAO rather than `RecordStore.update` against an already
+     * Kotlin-filtered row list. Unlike [setCategoryConfirmed], [categoryPending] is a real
+     * parameter here - the AI-guess path ([applyCategoryGuesses]) lands `true`, the rule/confirm/
+     * hand-set paths land `false`, same three callers [setCategoryConfirmed] alone could never
+     * serve. Returns the row count actually updated (0 or 1) so a caller iterating many ids can
+     * tell a real write from an id that no longer exists.
+     */
+    @Query("UPDATE ledger_transactions SET category = :category, categoryPending = :categoryPending WHERE id = :id")
+    suspend fun updateCategoryById(id: Long, category: String, categoryPending: Boolean): Int
+
+    /**
      * Every FULL row still carrying no category at all - ticket 07 D17's candidate pool for
      * [com.kevin.legion.ledger.LedgerController.uncategorizedMerchants], widened 2026-08-13
      * (`.scratch/car-probe-transfers/`) from a bare `DISTINCT description` fetch to complete rows,

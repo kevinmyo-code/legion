@@ -4,9 +4,6 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
-import com.kevin.legion.engine.RecordStore
-import com.kevin.legion.engine.ledger.LedgerAspectSeeder
-import com.kevin.legion.engine.ledger.LedgerRecordBridge
 import com.kevin.legion.testutil.RoomTestReset
 import java.time.YearMonth
 import kotlinx.coroutines.runBlocking
@@ -52,21 +49,10 @@ class LedgerControllerOwnAccountMovementsTest {
         category = category,
     )
 
-    /** Cutover 3: [LedgerController] reads through the engine now - see
+    /** Engine retirement step 5: [LedgerController] reads through `ledger_transactions` again - see
      * [com.kevin.legion.advisor.digest.CredDigestBuilderTest]'s identical helper for the reasoning. */
     private suspend fun insertEngineTransactions(vararg transactions: LedgerTransaction) {
-        val db = CarDatabase.getDatabase(context)
-        val schema = LedgerAspectSeeder.ensureSeeded(context)
-        val recordStore = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
-        for (t in transactions) {
-            recordStore.create(
-                recordTypeId = schema.transaction.recordTypeId,
-                fieldValues = LedgerRecordBridge.fieldValuesFor(t, schema.transaction.fieldIds),
-                provenance = LedgerRecordBridge.provenanceFor(t.ingestMethod),
-                now = t.txnDate,
-                guid = t.syncId,
-            )
-        }
+        CarDatabase.getDatabase(context).ledgerTransactionDao().insertAll(transactions.toList())
     }
 
     @After
