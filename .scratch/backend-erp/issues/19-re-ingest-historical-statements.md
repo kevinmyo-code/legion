@@ -69,3 +69,65 @@ from the app at all - the same "built, tested, and unreachable" defect that scre
 was written to fix for the other three. It is left out of this commit deliberately rather than
 bolted on: the row is only worth adding once this ticket's re-ingestion decides what `LedgerReconcile`
 actually uploads, since today it can upload nothing but `UNRECONCILED` rows.
+
+## DEVICE PASS 2026-08-28: the dry run is still 0/107, and the cause is NOT a lapsed grant
+
+Run from this machine (the A25 came up on wireless debugging for the first time here). Today's build
+installed with `adb install -r` - **no uninstall, no data loss** - after proving the installed APK's
+signer matches this machine's debug keystore byte for byte
+(`fd819ada7fdbf98f4b072b511d2dff33cb3dc68b720b8a9a0ff862ebd03aac01`). That kills a standing premise:
+MEMORY.md said device work must happen on the Kwin laptop because the keystore lives there. **Both
+machines carry the same debug key.** Install verified by on-device `sha256sum`, not by "Success".
+
+**Ticket 12's diagnosis was incomplete.** It recorded zero persisted URI grants and concluded the
+`connectedAndroidTest` uninstall had killed them. A grant EXISTS now - and the dry run still reports
+**0 recovered, 107 unreachable**, twice, against two different connected folders.
+
+### What the database actually says
+
+`ingested_files` holds 220 rows across FOUR distinct `treeUri` values plus 7 rows with none:
+
+| rows | state | which folder |
+|---|---|---|
+| 77 | INGESTED | DBS - `Cashline Statement_*.pdf`, `Deposit Account Statement_*.pdf` |
+| 24 | INGESTED | BofA - `eStmt_2025-*.pdf` .. `eStmt_2026-08-06.pdf` |
+| 6 | INGESTED | BofA card - `july creditcard.pdf`, `august creditcard.pdf` |
+| 7 | INGESTED | no treeUri at all (CSV, picked as files rather than scanned) |
+| 24 | DUPLICATE_CONTENT | the tree that WAS connected when this session started |
+| 4+36+34+2 | NEW / UNREADABLE | spread across the same trees |
+
+**The folder that was connected held ZERO `INGESTED` rows.** All 28 of its rows are
+DUPLICATE_CONTENT or NEW. So the 2026-08-27 note that "the tree URI matched a saved one character
+for character" was true and misleading: it matched the *duplicates* folder. The dry run covers
+exactly the 107 INGESTED rows that have a treeUri, and none of them lived there.
+
+### Then the second folder failed too, and that is the real finding
+
+Reconnected to the subfolder that visibly CONTAINS those statements (confirmed by eye in the picker
+- the BofA PDFs are right there, printing their beginning and ending balances). Re-ran. **Still
+0/107.**
+
+Its tree URI is `...LUHeuChw1OnQ6JMp87_VQymie_SXvp1z0sBE5vDzyGOzpt36-g8%3D` - **not equal to any of
+the four stored values.** Drive document ids are stable, so this is not the folder those rows were
+ingested from. The rows point at *original* documents; this folder holds *copies*, which is exactly
+why its own rows are DUPLICATE_CONTENT.
+
+### So the design, not the permission, is what blocks this
+
+**The dry run resolves each row by its saved `treeUri` + `driveFileId`.** That only ever works while
+the exact folder a file was ingested from is still connected, still exists, and still holds that
+document id. With four historical folders and one grant at a time, it can never clear more than one
+folder's worth - and where the originals are gone, it can never clear them at all.
+
+**The fix is to resolve by CONTENT, not by address.** Every row already stores `contentSha256` - the
+gate's own identity for a file. Re-ingestion should scan whatever folder IS connected, hash each
+file, and match a row by content hash. The duplicate copies are byte-identical to the originals by
+construction (that is what made them duplicates), so the anchors are recoverable from them even
+though the original document ids are unreachable.
+
+That is a change to what this ticket builds, not a new decision: option 1 said "re-ingest to recover
+real anchors", and content-matching is what makes option 1 reachable. It also removes the four-pass
+folder dance ticket 12 described.
+
+**Not built in this session.** It is a real design change to the money path and it deserves its own
+pass rather than being improvised at the end of a long one.
