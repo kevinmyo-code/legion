@@ -151,6 +151,16 @@
       "color": "1"
     },
     {
+      "id": "adfe58154daafea7",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/20-the-reminder-default-made-the-retraction-delete-appointments.md",
+      "x": 0,
+      "y": 2250,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "0826d5c94a1739ed",
       "type": "file",
       "file": ".scratch/backend-erp/issues/02-auth-and-identity.md",

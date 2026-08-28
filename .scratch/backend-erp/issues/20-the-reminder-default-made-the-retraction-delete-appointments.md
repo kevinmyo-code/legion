@@ -70,3 +70,50 @@ The restore is `deleted_at = null, kind = 'appointment'` for every soft-deleted 
 
 **Do not re-run `Notes + Dates` until 2 is ruled.** The pass will retract again on whatever it still
 believes it owns.
+
+## RESTORED 2026-08-28, and the count that mattered proved the diagnosis
+
+`update public.events set deleted_at = null, kind = 'appointment' where deleted_at is not null and
+google_event_id is not null returning id` → **213 rows**. Verified from the table afterwards, not
+from the panel:
+
+| | before | after |
+|---|---|---|
+| active | 54 | **267** |
+| soft-deleted | 301 | **88** |
+| soft-deleted carrying a `google_event_id` | 213 | **0** |
+| `kind = 'appointment'` | 1 | **214** |
+| `kind = 'reminder'` carrying a `google_event_id` | 213 | **0** |
+| active with `missed_at` | 57 | **17** |
+
+The last two rows are the diagnosis confirming itself. **Zero reminders now carry a Google event id**
+- the contradiction that gave the whole thing away is gone - and the missed count fell to exactly the
+17 genuine overdue reminders, with the 40 deliberately-removed `clock in/out for work` rows out.
+
+## A process finding worth more than the data fix
+
+**Three separate statements today were reported as run and had not run.** Two updates and one
+migration. The cause was the same each time and it was not the database: the SQL was being copied
+out of chat together with the prose around it, and Postgres parses an entire batch before executing
+any of it, so one English sentence silently aborts the whole thing. Twice it surfaced as
+`syntax error at or near "Then"`; once it looked like a successful no-op.
+
+It cost roughly an hour and produced two wrong diagnoses along the way - a suspected RLS block and a
+suspected resurrection bug - both of which were investigated against live data before the real cause
+appeared.
+
+**What actually fixed it: `returning id`.** A statement that reports what it touched cannot be
+mistaken for one that touched nothing. That is the same rule this project keeps re-learning in
+different costumes today - a stale `SCHEMA_VERSION` that disabled restores, a rendered line claiming
+"already all on the server", a migration verified by a success panel - and it now has a fourth
+instance and a cheap remedy: **when a statement matters, make it return its own effect.**
+
+## Still open, unchanged by the restore
+
+Questions 1, 2 and 4 above stand. Question 3 is now less urgent for `google_event_id` (no
+soft-deleted row holds one) but the design question is untouched.
+
+**The specific cause of the 213-row retraction is fixed** - those rows are `appointment` now and the
+pass does not own them. **The general question in item 2 is not**: a retraction that removes hundreds
+of rows and reports it as one line in a success message is still the shape of the problem, and the
+next mislabelled cohort would go the same way.
