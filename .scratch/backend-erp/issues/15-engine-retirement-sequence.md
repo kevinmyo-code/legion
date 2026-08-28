@@ -78,7 +78,12 @@ ticket 16. Step 6 ("delete `engine/`") cannot happen until that ticket is ruled 
    it should not be attempted until the id question is settled the way `b17bc88` settled the
    replica's.
 5. **Ledger** - last, WITH the `commit_statement` RPC move, per ticket 03.
-6. **Only then** delete `engine/`, its entities, its migrations' tables, and the 6,367 test lines.
+6. ~~**Only then** delete `engine/`, its entities, its migrations' tables, and the 6,367 test lines.~~
+   **CORRECTED 2026-08-28 (ticket 18, "the engine SURVIVES, scoped to user-created aspects"): this
+   step does not happen as written.** Steps 1-5 above are what actually retired - every built-in
+   aspect is off the engine - but `engine/` itself stays as the layer a runtime-created aspect
+   (`EngineToolbox.create_aspect`, the generated UI, the widget pager) still needs. See ticket 18's
+   own resolution for the reasoning and `engine/EngineBoundaryTest` for the enforcement.
 
 **Nothing is deleted until every aspect above is repointed and soaked.** Every rollback in this map
 depends on the code deleted at the end still existing during the middle - ruling 8 removed the

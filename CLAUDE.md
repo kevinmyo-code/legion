@@ -78,9 +78,9 @@ If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins 
 - **Aspects:**
   | Aspect | What it is | State |
   |---|---|---|
-  | fleet | OBD, car, maintenance, drives | Ported from Midnight AI, compiles, **engine-native since the 2026-08-24 cutover** (anchors derive from a single row, no independent duplicate) |
-  | ledger | Bank-statement ingestion | Ported from Project Andromeda, done, **engine-native since the 2026-08-24 cutover** (`IngestPipeline.commit` writes through `RecordStore`, rule-7 supersession atomic with the insert) |
-  | pantry | Grocery receipt photo ingestion + macro estimates | New design work, done, **engine-native since the 2026-08-24 cutover** (reconciliation anchors persist on the engine record itself) |
+  | fleet | OBD, car, maintenance, drives | Ported from Midnight AI, compiles. **CORRECTED 2026-08-28: no longer engine-native** - backend-erp ticket 16 repointed `ServiceHistory`/`MaintenanceSchedule` onto the legacy `service_records`/`maintenance_items` tables (fleet has no configured write path, ticket 14: it is a projection); Vehicle identity alone still dual-writes engine + legacy mirror, kept deliberately so `FleetReconcile` has a Vehicle source (`.scratch/backend-erp/issues/18-*.md`) |
+  | ledger | Bank-statement ingestion | Ported from Project Andromeda, done. **CORRECTED 2026-08-28: no longer engine-native** - ticket 15 repointed `IngestPipeline.commit` off `RecordStore` onto `ledger_transactions` directly |
+  | pantry | Grocery receipt photo ingestion + macro estimates | New design work, done. **CORRECTED 2026-08-28: no longer engine-native** - ticket 15 repointed the receipt/line-item write off `RecordStore` onto `pantry_receipts`/`pantry_line_items` directly |
 - **Repo:** `C:\Users\Kwin\StudioProjects\legion` (second machine: `C:\Users\kevin\AndroidStudioProjects\legion`), public, `github.com/kevinmyo-code/legion`.
   Package `com.kevin.legion`. Clean history, seeded 2026-07-31 by copying surviving Midnight AI
   source.
@@ -305,24 +305,34 @@ app/src/main/java/com/kevin/legion/
 ├── ai/            AriaBrain, SubAgent (+ inline image part), AssistantIdentity (resolver) +
 │                  Personas (the ACTUAL register copy: ALFRED, DOROTHY), KeyVault, CrisisDetector,
 │                  OnboardingFlow, PersonaTraits (ORPHANED - see §10), Voices, ReflectionEngine
-├── engine/        THE SPINE (2026-08-24). RecordStore (the one write door), ReconciliationGate
-│                  (rehomed here from ledger/pantry-only), ComputedEvaluator, FieldConfig,
-│                  PayloadCodec, WidgetInstanceStore, DefaultArrangementSeeder, DeviceId;
-│                  dates/, fleet/, ledger/, notes/, pantry/, places/ (per-aspect engine adapters:
-│                  the copiers and cutover glue, not a second copy of each domain's old logic),
+├── engine/        **CORRECTED 2026-08-28: NOT the spine any more - scoped to user-created aspects
+│                  only** (backend-erp ticket 18, "the engine SURVIVES, scoped to user-created
+│                  aspects"). All six built-in aspects (places, pantry, fleet, notes, dates,
+│                  ledger) are off it. What remains: RecordStore backing `create_aspect` and the
+│                  generated list/detail/form/widget-pager UI, ReconciliationGate, ComputedEvaluator,
+│                  FieldConfig, PayloadCodec, WidgetInstanceStore, DefaultArrangementSeeder, DeviceId;
+│                  dates/ (DatesAgenda still reads the engine's dueAt scan for OTHER aspects only,
+│                  Dates' own data lives in `events`), fleet/, ledger/, notes/, pantry/, places/
+│                  (per-aspect engine adapters - copiers and cutover glue, not live storage),
 │                  migration/ (the wave1-4 one-time copiers, still present, writer-less now),
 │                  mirror/ (xlsx export per aspect into the user's Drive folder - the audit
-│                  surface and the two-phone sync channel)
+│                  surface and the two-phone sync channel). `engine/EngineBoundaryTest` enforces
+│                  this boundary in the test suite
 ├── service/       AriaForegroundService, GeminiLiveSession, LiveSessionController, LiveToolbox,
 │                  EngineToolbox (the nine engine meta-tools + clerk + schema generator, folded
 │                  into LiveToolbox's declarations/dispatch), WakeWordEngine (live, Vosk-based -
 │                  AmbientListener was retired 2026-08-21 and no longer exists), ProactiveBus,
 │                  GlanceCardController, Phase
-├── ledger/        LedgerController (now a read/write bridge over engine/RecordStore, not the
-│                  table owner), LedgerStatementAgent, LedgerIngestResult, parsers/
-├── pantry/        PantryController (same bridge shape as ledger), PantryReceiptAgent, PantryIngestResult
-├── vehicle/       fleet aspect: OBD stack, agents, maintenance, recaps, garage (Shelly). Anchors
-│                  (odometer, service due) now derive from the engine via engine/fleet/
+├── ledger/        LedgerController. **CORRECTED 2026-08-28: repointed off `engine/RecordStore`
+│                  onto `ledger_transactions` directly (ticket 15)**, LedgerStatementAgent,
+│                  LedgerIngestResult, parsers/
+├── pantry/        PantryController. **CORRECTED 2026-08-28: repointed off `engine/RecordStore`
+│                  onto `pantry_receipts`/`pantry_line_items` directly (ticket 15)**, PantryReceiptAgent,
+│                  PantryIngestResult
+├── vehicle/       fleet aspect: OBD stack, agents, maintenance, recaps, garage (Shelly).
+│                  **CORRECTED 2026-08-28: `ServiceHistory`/`MaintenanceSchedule` repointed onto
+│                  legacy `service_records`/`maintenance_items` (ticket 16)** - only Vehicle
+│                  identity still dual-writes engine + legacy mirror, kept for `FleetReconcile`
 ├── media/         MusicController, NowPlayingController, SpotifyController, SpotifyWebApi, VolumeController
 ├── location/      LocationController, PlaceController, ReminderController
 ├── sync/          DriveAuth, DriveClient, SyncEngine, SyncMerge, SyncCodec, DatabaseSnapshot(Guard),

@@ -124,8 +124,12 @@ first aspect lands.
   table from the `SyncEngine` registry in the same commit, soak.
 - **Phase 5, interleaved:** widen the Google importer and run it unbounded BEFORE the Notes+Dates
   cutover; the three-anchor CSV path works BEFORE the parsers come out.
-- **Phase 6, deletions only, last:** engine, mirror (gated on phase 0), `SyncEngine` once its
-  registry is empty, parsers, and only genuinely dead tables.
+- **Phase 6, deletions only, last:** mirror (gated on phase 0), `SyncEngine` once its registry is
+  empty, parsers, and only genuinely dead tables. **CORRECTED 2026-08-28 (ticket 18): the engine is
+  NOT deleted here.** All six built-in aspects are off it, but `EngineToolbox`'s `create_aspect` +
+  the generated UI + the widget pager are a shipped, still-wanted feature, so `engine/` narrows to
+  "how a user-created aspect stores data" and stays. `engine/EngineBoundaryTest` enforces the new
+  boundary.
 
 **Two clarifications that prevent real mistakes.** Ticket 03's "engine retirement before or with the
 RPC" does NOT mean deleting 15,885 lines up front: the SERVER schema is typed from day one so the
