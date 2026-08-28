@@ -1694,3 +1694,28 @@ val MIGRATION_43_44 = object : Migration(43, 44) {
         db.execSQL("ALTER TABLE `pantry_receipts` ADD COLUMN `otherChargesCents` INTEGER")
     }
 }
+
+/**
+ * v44 -> v45: `events_replica`/`event_skips_replica` RENAMED to `events`/`event_skips` (engine
+ * retirement step 4, `.scratch/backend-erp/issues/15-engine-retirement-sequence.md`, "RULED
+ * 2026-08-27: notes gets ONE local table"). A real `ALTER TABLE ... RENAME TO`, not a drop/create -
+ * every existing row (and, on a configured install, real user data) survives the migration
+ * untouched; only the name changes. See [Event]'s own class doc for why the rename matters: once
+ * the unconfigured path repoints onto this table too, a name still saying "replica" would promise
+ * a cache of a store that, on an unconfigured install, does not exist.
+ *
+ * `ALTER TABLE ... RENAME TO` does not rename an index derived from the old table name, so the
+ * unique index on `serverId` is dropped and recreated under Room's own naming convention for the
+ * NEW table name (`index_events_serverId`, matching every other Room-generated index name in this
+ * schema) rather than left as the stale `index_events_replica_serverId`. `event_skips` has no
+ * index of its own (its `@Entity` declares a composite primary key, not a Room `@Index`), so its
+ * rename is the bare `RENAME TO` alone.
+ */
+val MIGRATION_44_45 = object : Migration(44, 45) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `events_replica` RENAME TO `events`")
+        db.execSQL("DROP INDEX IF EXISTS `index_events_replica_serverId`")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_events_serverId` ON `events` (`serverId`)")
+        db.execSQL("ALTER TABLE `event_skips_replica` RENAME TO `event_skips`")
+    }
+}

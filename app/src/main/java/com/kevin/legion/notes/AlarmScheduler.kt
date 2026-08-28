@@ -5,16 +5,18 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.service.ReminderAlarmReceiver
 
 // Cutover 1 (`docs/architecture/cutover1-2026-08-24.md`): this file used to write
 // `ListItem.exactDowngraded` and read `ListItemDao.allWithTimeTrigger`/`ListItemSkipDao` directly.
 // Both routes now go through `NotesController`, which is engine-backed - see that object's own
-// class doc. `CarDatabase` is still imported for `listItemSkipDao()`, the one legacy table this
-// wave deliberately keeps a reader on (recurrence's own per-occurrence skip state, plugin-internal,
-// not migrated - `docs/architecture/wave1-carve-2026-08-23.md`).
+// class doc. **Corrected 2026-08-27 (ticket 15 step 4):** this comment used to say CarDatabase was
+// still imported for a direct `listItemSkipDao()` read. It no longer is. That direct read was a
+// real bug once the ticket 11 rewrite branched skip storage - a configured install keeps skips in
+// `event_skips` keyed on the server id, so reading the legacy DAO here returned an empty set and
+// every occurrence the user had explicitly skipped fired anyway. Skips now go through
+// `NotesController.skippedDates`, which branches, and this file holds no DAO reference at all.
 
 /**
  * Owns every `AlarmManager` interaction for the notes/lists/calendar domain -
@@ -128,7 +130,6 @@ object AlarmScheduler {
      * overdue reminder is marked missed on every install again, configured or not.
      */
     suspend fun rescheduleAll(context: Context) {
-        val db = CarDatabase.getDatabase(context)
         val now = System.currentTimeMillis()
 
         for (item in NotesController.allWithTimeTrigger(context)) {
@@ -146,7 +147,14 @@ object AlarmScheduler {
             } else {
                 val rule = ruleFromItem(item) ?: continue
                 val end = endFromItem(item)
-                val skips = db.listItemSkipDao().skippedDatesForItem(item.id).toSet()
+                // Through NotesController, never the DAO directly. `skippedDates` BRANCHES:
+                // configured installs keep skips in `event_skips` keyed on the server id, while
+                // unconfigured ones keep them in `list_item_skips` keyed on the local id. Reading
+                // the legacy DAO here returned an EMPTY set on a configured install, so every
+                // occurrence the user had explicitly skipped came back and fired an alarm anyway.
+                // Introduced by the ticket 11 rewrite, which branched the read in NotesController
+                // and left this call site pointing at the old table; found while tracing step 4.
+                val skips = NotesController.skippedDates(context, item)
                 val next = NextOccurrence.compute(startsAt, rule, end, skips, now) ?: continue
                 schedule(context, item, next)
             }

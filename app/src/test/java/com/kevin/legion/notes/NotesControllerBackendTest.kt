@@ -7,7 +7,7 @@ import com.kevin.legion.backend.EventsBackendException
 import com.kevin.legion.backend.MigratedEvent
 import com.kevin.legion.backend.RemoteEvent
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.EventReplica
+import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.upsert
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
@@ -151,7 +151,7 @@ class NotesControllerBackendTest {
 
         assertEquals("buy milk", item.text)
         assertEquals(1, backend.upsertCalls)
-        val replica = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        val replica = CarDatabase.getDatabase(context).eventDao().getAllActive()
         assertEquals(1, replica.size)
         assertEquals("buy milk", replica.single().title)
     }
@@ -166,7 +166,7 @@ class NotesControllerBackendTest {
         val result = NotesController.renameItem(context, item, "renamed")
 
         assertFalse("a failed remote write must never report success", result)
-        val replica = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive().single()
+        val replica = CarDatabase.getDatabase(context).eventDao().getAllActive().single()
         assertEquals("the replica must be untouched by a failed write", "keep me", replica.title)
     }
 
@@ -176,7 +176,7 @@ class NotesControllerBackendTest {
         NotesController.backendOverride = backend
 
         val item = NotesController.addItem(context, listId = 1L, text = "alarm-bound item")
-        val replicaRow = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive().single()
+        val replicaRow = CarDatabase.getDatabase(context).eventDao().getAllActive().single()
 
         assertEquals(replicaRow.id, item.id)
         val reread = NotesController.itemById(context, item.id)
@@ -212,8 +212,8 @@ class NotesControllerBackendTest {
         // file must never hand one back as a ListItem it owns (the 2026-08-26 incident's other
         // root cause, alongside AlarmScheduler's own sweep - see that file's rescheduleAll doc).
         val db = CarDatabase.getDatabase(context)
-        db.eventReplicaDao().upsert(
-            EventReplica(
+        db.eventDao().upsert(
+            Event(
                 id = 0,
                 serverId = "appointment-1",
                 title = "Dentist",
@@ -226,7 +226,7 @@ class NotesControllerBackendTest {
         )
 
         val all = NotesController.allItems(context)
-        val appointmentId = db.eventReplicaDao().getByServerId("appointment-1")!!.id
+        val appointmentId = db.eventDao().getByServerId("appointment-1")!!.id
 
         assertEquals("only the reminder must come back, never the appointment", 1, all.size)
         assertEquals("a real reminder", all.single().text)
@@ -292,7 +292,7 @@ class NotesControllerBackendTest {
         val removed = NotesController.removeItem(context, item)
 
         assertFalse("a failed remote delete must never report success", removed)
-        val replica = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        val replica = CarDatabase.getDatabase(context).eventDao().getAllActive()
         assertEquals("the replica row must survive a failed remote delete", 1, replica.size)
     }
 }

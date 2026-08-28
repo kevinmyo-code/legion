@@ -264,10 +264,18 @@ import androidx.room.RoomDatabase
  * v38 (backend-erp Phase 4, aspect 4 of 5 - Notes+Dates cut over together, carrying the merge,
  * `.scratch/backend-erp/issues/05-migration-path.md`): `events_replica` + `event_skips_replica` -
  * the Room replica of `public.events`/`public.event_skips`
- * (`supabase/migrations/20260825000400_aspect_dates_notes_merged.sql`). See [EventReplica]'s own
- * doc comment for the field mapping and for why [EventReplica.id] is a local surrogate rather than
+ * (`supabase/migrations/20260825000400_aspect_dates_notes_merged.sql`). See [Event]'s own
+ * doc comment for the field mapping and for why [Event.id] is a local surrogate rather than
  * the server's own uuid. Two additive `CREATE TABLE`s, nothing existing touched. See
  * [MIGRATION_37_38] for the schema itself.
+ *
+ * v45 (engine retirement step 4, `.scratch/backend-erp/issues/15-engine-retirement-sequence.md`,
+ * "RULED 2026-08-27: notes gets ONE local table"): `events_replica`/`event_skips_replica` RENAMED
+ * to `events`/`event_skips` - the table is now the single local store for both the configured and
+ * unconfigured Notes+Dates path, so a name promising "replica" (implying a cache of a store that
+ * lives elsewhere) would be a misdescription on an unconfigured install where it is the only store
+ * there is. See [Event]'s own doc comment and [MIGRATION_44_45] for the rename mechanics (a real
+ * `ALTER TABLE ... RENAME TO`, not a drop/recreate, so no data is lost by the migration itself).
  */
 @Database(
     entities = [
@@ -300,10 +308,10 @@ import androidx.room.RoomDatabase
         WellbeingDigestSchedule::class,
         Aspect::class, RecordType::class, FieldDef::class, EngineRecord::class, WidgetInstance::class,
         MutedReminder::class,
-        EventReplica::class, EventSkipReplica::class,
+        Event::class, EventSkip::class,
         VehicleReplica::class, ServiceHistoryReplica::class,
     ],
-    version = 44,
+    version = 45,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -384,15 +392,19 @@ abstract class CarDatabase : RoomDatabase() {
      * [MutedReminder]'s own doc comment for why this stays outside [com.kevin.legion.engine.RecordStore]'s door. */
     abstract fun mutedReminderDao(): MutedReminderDao
 
-    /** The Notes+Dates merge's Room replica (v38, backend-erp Phase 4) - see [EventReplica]'s own
-     * doc comment. Populated only by [com.kevin.legion.backend.EventsReconcile] and the CONFIGURED
-     * write path in `notes/NotesController.kt`/`engine/dates/DatesAgenda.kt`; read by both when a
-     * Supabase project is configured. */
-    abstract fun eventReplicaDao(): EventReplicaDao
-    abstract fun eventSkipReplicaDao(): EventSkipReplicaDao
+    /** The Notes+Dates merge's local store (v38, renamed from `events_replica`/`EventReplicaDao`
+     * at v45 - engine retirement step 4, `.scratch/backend-erp/issues/15-engine-retirement-sequence.md`)
+     * - see [Event]'s own doc comment. Populated by [com.kevin.legion.backend.EventsReconcile] and
+     * the CONFIGURED write path in `notes/NotesController.kt`/`engine/dates/DatesAgenda.kt` when a
+     * Supabase project is configured, and directly by the UNCONFIGURED write path in
+     * `notes/NotesController.kt` (via [com.kevin.legion.engine.migration.EngineNotesRetirementCopy]'s
+     * one-time reconcile, then ordinary CRUD) when it is not - one table serves both paths now,
+     * same shape as [placeDao]/[pantryReceiptDao]'s own engine-retirement repoints. */
+    abstract fun eventDao(): EventDao
+    abstract fun eventSkipDao(): EventSkipDao
 
     /** The fleet aspect's Room replicas (v42, backend-erp fleet wave 2) - see [VehicleReplica]'s
-     * own doc comment for why this pair exists, and why (unlike [eventReplicaDao]) neither carries
+     * own doc comment for why this pair exists, and why (unlike [eventDao]) neither carries
      * an id-preserving upsert. Populated only by [com.kevin.legion.backend.FleetReconcile]; no
      * CONFIGURED read path wired to either yet (repointing reads is a later wave). */
     abstract fun vehicleReplicaDao(): VehicleReplicaDao
@@ -428,7 +440,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 44
+        const val SCHEMA_VERSION = 45
         // 2026-08-21: found at 26 while `@Database(version=)` was already 27, so the v27 bump was
         // forgotten - exactly the drift this constant's doc predicts and calls benign. Corrected to
         // 28 with the proactive-mode tables. The comment above is right that the drift only makes
@@ -464,6 +476,12 @@ abstract class CarDatabase : RoomDatabase() {
         // guessed one). Note the jump from 38 straight to 40 here too - v39
         // (`pantry_receipts.provenance`/`.unaccountedCents`, ticket 08) never got an entry in
         // THIS constant's own comment trail either, same benign drift the doc above predicts.
+        // 2026-08-27: bumped to 45 alongside `@Database(version=)` in the same edit again
+        // (`events_replica`/`event_skips_replica` renamed to `events`/`event_skips`, engine
+        // retirement step 4 - ticket 15's "RULED 2026-08-27: notes gets ONE local table"). Note
+        // the jump from 40 straight to 45 here too - v41/42/43/44 never got an entry in THIS
+        // constant's own comment trail either, same benign drift the doc above predicts;
+        // `@Database(version=)` itself went 40 -> 41 -> 42 -> 43 -> 44 -> 45 in order.
 
         fun getDatabase(context: Context): CarDatabase {
             return INSTANCE ?: synchronized(LOCK) {
@@ -489,7 +507,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34,
                         MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38,
                         MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42,
-                        MIGRATION_42_43, MIGRATION_43_44,
+                        MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

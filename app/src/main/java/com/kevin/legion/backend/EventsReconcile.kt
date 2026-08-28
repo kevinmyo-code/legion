@@ -2,7 +2,7 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.EventReplica
+import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.upsert
 import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.dates.DatesAspectSeeder
@@ -41,7 +41,7 @@ import org.json.JSONObject
  *
  * **`starts_at` is the agenda's sort key, so nullable means every ordering query needs an explicit
  * null policy.** The policy is NULLS LAST (a dated item outranks an undated one on a timeline) -
- * see [com.kevin.legion.data.local.EventReplica]'s own doc comment for why that has to be spelled
+ * see [com.kevin.legion.data.local.Event]'s own doc comment for why that has to be spelled
  * out by hand rather than relying on the `NULLS LAST` keyword.
  */
 object EventsReconcile {
@@ -99,7 +99,7 @@ object EventsReconcile {
 
     /** @param engineRecordId the engine's own `records.id` this row came from - carried through so
      * the refilled replica row can be minted at THAT id rather than a fresh autoincrement one. See
-     * this file's own `run` for why: [com.kevin.legion.data.local.EventReplica.id] is load-bearing
+     * this file's own `run` for why: [com.kevin.legion.data.local.Event.id] is load-bearing
      * (alarm request codes, notification ids, soft foreign keys), and a wholesale replica refresh
      * used to remint every one of them on every reconcile. */
     private data class EngineEvent(val guid: String, val engineRecordId: Long, val fields: EventFields, val skipDatesEpochMs: List<Long> = emptyList())
@@ -258,8 +258,8 @@ object EventsReconcile {
         // built from `reconciling` (both aspects) so either origin resolves.
         val engineIdByGuid = reconciling.associate { it.guid to it.engineRecordId }
 
-        db.eventReplicaDao().deleteAllForReplicaRefresh()
-        db.eventSkipReplicaDao().deleteAllForReplicaRefresh()
+        db.eventDao().deleteAllForReplicaRefresh()
+        db.eventSkipDao().deleteAllForReplicaRefresh()
 
         // Rows WITH a carried id are refilled first, and this ordering is load-bearing rather than
         // tidy. The table was just emptied, so an ancestor-less row (created after the cutover on
@@ -275,11 +275,11 @@ object EventsReconcile {
         }
         for (row in carried + ancestorless) {
             val carriedId = row.originGuid?.let { engineIdByGuid[it] } ?: 0L
-            db.eventReplicaDao().upsert(row.toReplica(id = carriedId))
+            db.eventDao().upsert(row.toReplica(id = carriedId))
             val skips = backend.fetchSkips(row.serverId).getOrElse { return Result.failure(it) }
             for (skipMs in skips) {
-                db.eventSkipReplicaDao().insert(
-                    com.kevin.legion.data.local.EventSkipReplica(eventServerId = row.serverId, skipDateEpochMs = skipMs),
+                db.eventSkipDao().insert(
+                    com.kevin.legion.data.local.EventSkip(eventServerId = row.serverId, skipDateEpochMs = skipMs),
                 )
             }
         }
@@ -293,7 +293,7 @@ object EventsReconcile {
                 uploaded = uploaded,
                 uploadedUndated = uploadedUndated,
                 serverCountAfter = activeServerEvents.size,
-                replicaCountAfter = db.eventReplicaDao().getAllActive().size,
+                replicaCountAfter = db.eventDao().getAllActive().size,
                 deletedOnServer = deletedOnServer,
                 onlyOnEngine = (engineGuids - serverGuids).sorted(),
                 onlyOnServer = (serverGuids - engineGuids).sorted(),
@@ -301,23 +301,23 @@ object EventsReconcile {
         )
     }
 
-    /** [RemoteEvent] -> [EventReplica], field for field - the Room side of the same shape.
+    /** [RemoteEvent] -> [Event], field for field - the Room side of the same shape.
      * @param id the id to mint this row at, when known - a carried engine `records.id` for a row
-     * that has one, or 0 to let [EventReplicaDao.upsert] autoincrement (a post-cutover row with no
+     * that has one, or 0 to let [EventDao.upsert] autoincrement (a post-cutover row with no
      * engine ancestor). Kept as a parameter rather than mutated at each call site so the mapping
      * from "which id" stays in the one place ([run]'s `engineIdByGuid` lookup).
      *
      * **Deliberately NOT "field for field" for [RemoteEvent.structuredMeta]** - traced every
-     * reader of [EventReplica] and [com.kevin.legion.notes.NotesController.allItems]/every screen
+     * reader of [Event] and [com.kevin.legion.notes.NotesController.allItems]/every screen
      * built on it, and nothing on the phone renders a `LEGION::v1` block today (the only live
      * consumer is the `read_calendar` voice tool at `service/LiveToolbox.kt:3114`, which reads
      * straight off a LIVE Google description via [com.kevin.legion.calendar.CalendarReadToolLogic.structuredBlock],
-     * never off this replica). Adding an unread column to [EventReplica] would be a Room v42 -> v43
+     * never off this replica). Adding an unread column to [Event] would be a Room v42 -> v43
      * migration bought for nothing; the value still reaches the one store that needs to outlive
      * both Google and the engine (`public.events.structured_meta`, via [RemoteEvent.structuredMeta]
      * above) even though this replica does not carry it. Revisit if a screen or widget is ever
      * built to render it. */
-    private fun RemoteEvent.toReplica(id: Long = 0) = EventReplica(
+    private fun RemoteEvent.toReplica(id: Long = 0) = Event(
         id = id,
         serverId = serverId,
         title = title,

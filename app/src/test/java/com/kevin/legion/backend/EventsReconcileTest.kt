@@ -213,7 +213,7 @@ class EventsReconcileTest {
             dentist.createdAtMs != backend.clock,
         )
 
-        val replicaRow = db.eventReplicaDao().getAllActive().single { it.title == "Dentist" }
+        val replicaRow = db.eventDao().getAllActive().single { it.title == "Dentist" }
         assertEquals(originalCreatedAt, replicaRow.createdAt)
     }
 
@@ -241,7 +241,7 @@ class EventsReconcileTest {
         assertTrue(milk.done)
         assertEquals(null, milk.location)
 
-        val replica = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        val replica = CarDatabase.getDatabase(context).eventDao().getAllActive()
         assertEquals(2, replica.size)
         val replicaMilk = replica.single { it.title == "Buy milk" }
         assertTrue(replicaMilk.done)
@@ -268,7 +268,7 @@ class EventsReconcileTest {
         assertEquals(EventKind.APPOINTMENT, dentist.kind)
         assertEquals(EventKind.REMINDER, milk.kind)
 
-        val replica = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        val replica = CarDatabase.getDatabase(context).eventDao().getAllActive()
         assertEquals(EventKind.APPOINTMENT, replica.single { it.title == "Dentist" }.kind)
         assertEquals(EventKind.REMINDER, replica.single { it.title == "Buy milk" }.kind)
     }
@@ -333,7 +333,7 @@ class EventsReconcileTest {
         val vet = backend.rows.values.single { it.title == "Call the vet" }
         assertEquals(null, vet.startsAtMs)
 
-        val replicaVet = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive().single { it.title == "Call the vet" }
+        val replicaVet = CarDatabase.getDatabase(context).eventDao().getAllActive().single { it.title == "Call the vet" }
         assertEquals(null, replicaVet.startsAt)
     }
 
@@ -391,7 +391,7 @@ class EventsReconcileTest {
         )
         assertTrue(
             "the replica refill must not resurrect the just-retracted row - this is the actual fix for the 2026-08-26 incident",
-            CarDatabase.getDatabase(context).eventReplicaDao().getAllActive().none { it.title == "Buy milk" },
+            CarDatabase.getDatabase(context).eventDao().getAllActive().none { it.title == "Buy milk" },
         )
     }
 
@@ -428,7 +428,7 @@ class EventsReconcileTest {
 
         EventsReconcile.run(context, backend).getOrThrow()
 
-        val ordered = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        val ordered = CarDatabase.getDatabase(context).eventDao().getAllActive()
         assertEquals(3, ordered.size)
         // Both dated rows, earliest first, ahead of the undated one - never the raw SQLite
         // default of NULLS FIRST, which would float "undated task" to the head of the list.
@@ -466,7 +466,7 @@ class EventsReconcileTest {
         val serverId = backend.rows.values.single { it.title == "Take out trash" }.serverId
         assertEquals(listOf(20_000L), backend.skips[serverId])
 
-        val replicaSkips = CarDatabase.getDatabase(context).eventSkipReplicaDao().forEvent(serverId)
+        val replicaSkips = CarDatabase.getDatabase(context).eventSkipDao().forEvent(serverId)
         assertEquals(listOf(20_000L), replicaSkips)
     }
 
@@ -478,7 +478,7 @@ class EventsReconcileTest {
         val result = EventsReconcile.run(context, backend)
 
         assertTrue(result.isFailure)
-        assertTrue(CarDatabase.getDatabase(context).eventReplicaDao().getAllActive().isEmpty())
+        assertTrue(CarDatabase.getDatabase(context).eventDao().getAllActive().isEmpty())
     }
 
     @Test
@@ -489,7 +489,7 @@ class EventsReconcileTest {
 
         EventsReconcile.run(context, backend).getOrThrow()
 
-        val replica = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        val replica = CarDatabase.getDatabase(context).eventDao().getAllActive()
         val dentist = replica.single { it.title == "Dentist" }
         val milk = replica.single { it.title == "Buy milk" }
         assertEquals("the replica id must equal the engine records.id it came from, not a reminted one", dentistEngineId, dentist.id)
@@ -503,16 +503,16 @@ class EventsReconcileTest {
         val backend = FakeEventsBackend()
 
         EventsReconcile.run(context, backend).getOrThrow()
-        val idsAfterFirst = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        val idsAfterFirst = CarDatabase.getDatabase(context).eventDao().getAllActive()
             .associate { it.serverId to it.id }
 
         EventsReconcile.run(context, backend).getOrThrow()
-        val idsAfterSecond = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        val idsAfterSecond = CarDatabase.getDatabase(context).eventDao().getAllActive()
             .associate { it.serverId to it.id }
 
         // Before the fix, EventsReconcile.run wipes events_replica and refills it from scratch on
         // EVERY call (`deleteAllForReplicaRefresh` immediately precedes the upsert loop), so
-        // EventReplicaDao.upsert's getByServerId lookup always misses and every row reminted a
+        // EventDao.upsert's getByServerId lookup always misses and every row reminted a
         // fresh autoincremented id on every single reconcile - exactly the defect ticket 11 exists
         // to fix. A caller holding onto `ListItem.id` (an AlarmManager PendingIntent request code,
         // a notification id, a soft foreign key from list_item_skips/muted_reminders) would have
@@ -532,7 +532,7 @@ class EventsReconcileTest {
         val report = EventsReconcile.run(context, backend).getOrThrow()
 
         assertTrue(report.isClean)
-        val replica = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        val replica = CarDatabase.getDatabase(context).eventDao().getAllActive()
         val standalone = replica.single { it.title == "Standalone" }
         assertTrue("a row with no engine ancestor must still get a real, non-zero local id", standalone.id != 0L)
     }
@@ -566,7 +566,7 @@ class EventsReconcileTest {
 
         EventsReconcile.run(context, backend).getOrThrow()
 
-        val replica = CarDatabase.getDatabase(context).eventReplicaDao().getAllActive()
+        val replica = CarDatabase.getDatabase(context).eventDao().getAllActive()
         assertEquals("both rows must survive - neither clobbers the other", 2, replica.size)
         val orphan = replica.single { it.title == "Orphaned migrated row" }
         val dentist = replica.single { it.title == "Dentist" }

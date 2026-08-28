@@ -19,8 +19,8 @@ object EventKind {
  * A `public.events` row as Postgres reports it
  * (`supabase/migrations/20260825000400_aspect_dates_notes_merged.sql`) - the shape
  * [SupabaseEventsBackend] hands back after every write, and the shape [EventsReconcile] copies
- * into the Room replica ([com.kevin.legion.data.local.EventReplicaDao]). Field-for-field mirror of
- * that migration's own header comment mapping table - see [EventReplica][com.kevin.legion.data.local.EventReplica]
+ * into the Room table ([com.kevin.legion.data.local.EventDao]). Field-for-field mirror of
+ * that migration's own header comment mapping table - see [Event][com.kevin.legion.data.local.Event]
  * for the Room side of the same shape.
  *
  * [updatedAtMs] is the server's own `updated_at` - the "as of" clock for the cache-first read path
@@ -31,7 +31,7 @@ object EventKind {
  * widened to nullable server-side (`supabase/migrations/20260826000400_events_starts_at_nullable.sql`)
  * because a genuinely dateless Notes `Item` (measured 53 of 56 real rows) has no date to state. A
  * null here is never a guessed one; see [EventsReconcile]'s class doc for the merge ruling and
- * [com.kevin.legion.data.local.EventReplica]'s own doc comment for the NULLS LAST ordering policy
+ * [com.kevin.legion.data.local.Event]'s own doc comment for the NULLS LAST ordering policy
  * this column now requires everywhere it is sorted on.
  */
 data class RemoteEvent(

@@ -7,7 +7,7 @@ import com.kevin.legion.backend.EventsBackendException
 import com.kevin.legion.backend.MigratedEvent
 import com.kevin.legion.backend.RemoteEvent
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.EventReplica
+import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.upsert
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
@@ -123,8 +123,8 @@ class AlarmSchedulerTest {
         // EventsReconcile refill leaves behind for a Dates Event/Google import - overdue too, and
         // with no missedAt field for a Dates Event to even populate meaningfully, matching the
         // incident's own finding ("the Dates Event record type has no missedAt field at all").
-        db.eventReplicaDao().upsert(
-            EventReplica(
+        db.eventDao().upsert(
+            Event(
                 id = 0,
                 serverId = "appointment-server-1",
                 title = "Dentist",
@@ -145,7 +145,7 @@ class AlarmSchedulerTest {
             rereadReminder?.missedAt != null,
         )
 
-        val appointmentRow = db.eventReplicaDao().getByServerId("appointment-server-1")!!
+        val appointmentRow = db.eventDao().getByServerId("appointment-server-1")!!
         assertNull(
             "the APPOINTMENT must never be touched by this sweep - it is not something NotesController owns",
             appointmentRow.missedAt,

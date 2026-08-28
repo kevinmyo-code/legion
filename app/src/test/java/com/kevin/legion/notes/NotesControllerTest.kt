@@ -15,10 +15,16 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 
 /**
- * **Cutover 1** (`docs/architecture/cutover1-2026-08-24.md`). CRUD against [NotesController]'s
- * now-engine-backed internals, and the recurrence-skip rekey it depends on. Every assertion reads
- * back through [NotesController] itself, never `ListItemDao` - the whole point of this wave is that
- * the legacy DAO no longer sees these writes at all.
+ * **Cutover 1** (`docs/architecture/cutover1-2026-08-24.md`) originally made this the engine-backed
+ * suite for [NotesController]'s UNCONFIGURED path. **Ticket 15 step 4**
+ * (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`) repointed that path onto the
+ * local `events` table, so this file now covers CRUD against `events` via the unconfigured branch;
+ * [EngineNotesRetirementCopy]'s own suite (`engine/migration/EngineNotesRetirementCopyTest.kt`)
+ * covers the one-time reconcile that keeps an item created directly through the engine (before this
+ * repoint, or on an install still mid-soak) from being silently dropped the moment the read flips.
+ * [NotesControllerBackendTest] covers the CONFIGURED path and is untouched by this ticket. Every
+ * assertion reads back through [NotesController] itself, never `ListItemDao` - `list_items` gains
+ * no reader or writer from either path, both before and after this repoint.
  */
 @RunWith(RobolectricTestRunner::class)
 class NotesControllerTest {
@@ -202,5 +208,74 @@ class NotesControllerTest {
         val skips = CarDatabase.getDatabase(context).listItemSkipDao().skippedDatesForItem(item.id)
         assertEquals(listOf(skipDate), skips)
         assertEquals(setOf(skipDate), NotesController.skippedDates(context, withRepeat))
+    }
+
+    // ----------------------------------------------------------------- ticket 15 step 4: events repoint
+
+    @Test
+    fun `unconfigured writes land in the local events table, never list_items`() = runBlocking {
+        val list = NotesController.theList(context)
+        NotesController.addItem(context, list.id, "buy milk")
+
+        val db = CarDatabase.getDatabase(context)
+        assertEquals(1, db.eventDao().getAllActive().size)
+        assertEquals("buy milk", db.eventDao().getAllActive().single().title)
+        assertTrue("list_items must gain no writer from this repoint either", db.listItemDao().allActive().isEmpty())
+    }
+
+    @Test
+    fun `unconfigured reads are NULLS-LAST ordered, matching the configured path's own policy`() = runBlocking {
+        val list = NotesController.theList(context)
+        val undated = NotesController.addItem(context, list.id, "undated todo")
+        val dated = NotesController.addItem(context, list.id, "dated reminder")
+        NotesController.setTime(context, dated, startsAt = 500_000L, endsAt = null, allDay = false)
+
+        // allItems does not itself sort by startsAt (that is the agenda's job), so read the DAO
+        // directly - this is the same query allNotesItems delegates to on the unconfigured branch.
+        val ordered = CarDatabase.getDatabase(context).eventDao().getActiveByKind(
+            com.kevin.legion.backend.EventKind.REMINDER,
+        )
+        assertEquals("dated reminder", ordered.first().title)
+        assertEquals("undated todo", ordered.last().title)
+        assertTrue(undated.id != dated.id)
+    }
+
+    @Test
+    fun `unconfigured start-up sweep marks a genuinely overdue reminder missed and never touches an appointment sitting next to it`() = runBlocking {
+        // The unconfigured-path twin of AlarmSchedulerTest's configured regression test - the same
+        // incident shape (a Dates appointment merged into the same table as Notes reminders) can
+        // recur on EITHER path now that both read/write the same local `events` table, so both get
+        // an explicit test rather than assuming the configured one covers it.
+        val list = NotesController.theList(context)
+        val reminder = NotesController.addItem(context, list.id, "genuinely overdue reminder")
+        NotesController.setTime(context, reminder, startsAt = 1_000L, endsAt = null, allDay = false)
+
+        val db = CarDatabase.getDatabase(context)
+        db.eventDao().insert(
+            com.kevin.legion.data.local.Event(
+                id = 0,
+                serverId = java.util.UUID.randomUUID().toString(),
+                title = "Dentist",
+                startsAt = 2_000L,
+                source = "legion",
+                kind = com.kevin.legion.backend.EventKind.APPOINTMENT,
+                updatedAtMs = 1L,
+                createdAt = 1L,
+            ),
+        )
+
+        AlarmScheduler.rescheduleAll(context)
+
+        val rereadReminder = NotesController.itemById(context, reminder.id)
+        assertTrue(
+            "the genuinely overdue REMINDER must be marked missed",
+            rereadReminder?.missedAt != null,
+        )
+        val appointmentRow = db.eventDao().getAll().single { it.title == "Dentist" }
+        assertEquals(
+            "the APPOINTMENT must never be touched by this sweep - it is not something NotesController owns",
+            null,
+            appointmentRow.missedAt,
+        )
     }
 }
