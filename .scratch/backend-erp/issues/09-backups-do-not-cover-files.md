@@ -1,6 +1,6 @@
 ---
 type: build
-status: open
+status: built
 blocked_by: []
 map: backend-erp
 ---
@@ -108,3 +108,40 @@ dangled; the form screen's null-check passed while every file was gone.
 10 as amended). Storage is not installed in `SupabaseClientProvider` today and pantry's cutover
 deliberately left `photo_object_path` NULL. Until that lands, the photos have NO durable copy
 anywhere - the wording is honest about the gap, it does not close it.
+
+## THE STORAGE HALF IS BUILT AND APPLIED 2026-08-27 (`45898e5`). Ticket closed except a device run.
+
+`20260827000400_receipt_photos_bucket.sql` applied to the live project and verified from the
+catalog rather than the editor's success panel:
+
+| check | result |
+|---|---|
+| `receipt-photos` bucket exists | 1 |
+| bucket is private | true |
+| policies scoped to it | 2 |
+| update or delete policies (must be 0) | **0** |
+
+That last row is the point. There is deliberately no update and no delete policy, so RLS
+default-deny makes it impossible for any caller - the household included - to silently replace or
+remove a photo a receipt row still points at. That is this ticket's own failure shape, moved from
+the backup layer to the storage layer and closed there rather than described again.
+
+The macro `private.apply_household_rls` was NOT used: `storage.objects` is Supabase-owned
+infrastructure shared by every bucket in the project, so a table-level revoke would reach buckets
+this migration knows nothing about. Scoped `bucket_id` policies instead, reusing
+`private.is_household_member()` as-is.
+
+## The worse thing found while wiring it
+
+`PantryPhotoStore.delete` ran on EVERY successful commit, configured or not. So an unconfigured
+install saved a photo, committed the receipt, and then deleted the only copy itself - leaving
+`sourceImagePath` pointing at nothing **by design**, not by the uninstall this ticket investigated.
+The gap was therefore wider than the ticket described, and older.
+
+Now the delete happens only when there is somewhere durable to have put it. A clone-and-run install
+keeps its photos.
+
+## Still owed
+
+A real receipt import on the phone, configured, to prove the upload path against the live bucket.
+Everything above is verified on the server and in Robolectric, not against a camera.
