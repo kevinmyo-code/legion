@@ -226,10 +226,23 @@ interface EventsBackend {
 
     /**
      * The one-time migration upload for an engine record ([MigratedEvent]) not yet mirrored
-     * server-side. `Result.success(false)` means a row with this [MigratedEvent.originGuid] was
-     * already present (a re-run, per ticket 05 phase 4 step 1: "a re-run is free") - the skips are
-     * NOT re-attempted in that case either, since the event row (and therefore its server id) did
-     * not change. `Result.failure` means the request itself did not complete.
+     * server-side. `Result.success(false)` means a row with this [MigratedEvent.originGuid]
+     * AND [EventFields.kind] pair was already present (a re-run, per ticket 05 phase 4 step 1:
+     * "a re-run is free") - the skips are NOT re-attempted in that case either, since the event
+     * row (and therefore its server id) did not change. `Result.failure` means the request itself
+     * did not complete.
+     *
+     * **The existence check is kind-scoped, not guid-only** (backend-erp ticket 10, the fleet
+     * cutover's first on-device run, 2026-08-28): `origin_guid` is migration PROVENANCE, not
+     * identity (`20260826000100_origin_guid.sql`'s own header), and the same engine guid can
+     * legitimately reach `public.events` twice under two different kinds - concretely, a fleet
+     * `car_tasks` row whose guid an earlier Notes-Items migration wave already uploaded as a
+     * [EventKind.REMINDER]. A guid-only guard finds that row, correctly declines to insert a
+     * duplicate, and permanently starves [FleetReconcile]'s kind-scoped diff of the `car_task`
+     * row it is looking for - the upload can never run and the drift can never clear. Matching on
+     * (origin_guid, kind) requires the unique index to be widened the same way
+     * (`supabase/migrations/20260828000200_events_origin_guid_per_kind.sql`) or this guard and the
+     * database would disagree about what counts as a duplicate.
      */
     suspend fun uploadMigratedEvent(event: MigratedEvent): Result<Boolean>
 }

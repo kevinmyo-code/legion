@@ -287,3 +287,47 @@ server already has it.
 
 Both defects are wording-and-diff level. **No data was written wrongly and nothing on the device
 changed.**
+
+## RULED 2026-08-28 (Kevin): "kind-scope the guard and fix the wording."
+
+Defect 1 is fixed by widening rather than by forbidding: the existence guard, the unique index it
+depends on, and the fake test double all move from keying on `origin_guid` alone to keying on
+`(origin_guid, kind)` - `SupabaseEventsBackend.uploadMigratedEvent`, `EventsBackend.uploadMigratedEvent`'s
+doc, `supabase/migrations/20260828000200_events_origin_guid_per_kind.sql` (**UNAPPLIED**, same
+posture as `20260828000100`), and `FleetReconcileTest.FakeEventsBackend`. Defect 2's renderer fix is
+tracked in the same commit; see `ui/settings/BackendMigrationResolver.kt`.
+
+### NEW OPEN QUESTION, not resolved here: is the guid collision systemic across all 14 car tasks?
+
+Traced, not guessed. **`CarTask.syncId` for every row that predates `MIGRATION_9_10` (2026-08-11
+era, `.scratch/notes-lists-calendar/`) is the SAME string as a Notes `ListItem.syncId`, by
+construction**: that migration's `car_tasks -> list_items` copy (`Migrations.kt`, the "Car" list
+insert) selects `syncId` verbatim from `car_tasks` into the new `list_items` row - "every column
+that exists on both sides copied verbatim" is the migration's own comment. `EngineDataMigrationWave1`
+(`copyNotesIfNeeded`) then makes that same value the engine record's `guid` directly - "wave 1's own
+copy reused `syncId` as `guid`", its own doc comment - and `EventsReconcile` uploads that engine
+record to `public.events` as `kind = reminder` using the guid as `origin_guid`.
+
+**`car_tasks` has been a dead table since that fold - "traced (grep, confirmed by reading
+ReminderController.kt and TelemetryRecorder.kt) - nothing in live code writes a new row into
+either one anymore"** (`docs/architecture/wave1-carve-2026-08-23.md`). No production code path
+constructs a `CarTask` at all today (grepped: the only non-`data/local` references are
+`FleetReconcile`'s read, `TelemetryRecorder`'s tombstone-purge sweep, and this ticket's own test
+helper). That means **every `CarTask` row that still exists on the device necessarily predates the
+fold** - there has been no way to create a new one since - and therefore necessarily has a sibling
+`ListItem`/engine-record/`reminder` row sharing its `syncId`/guid.
+
+**Reasoned, not confirmed against the actual device data: all 14 car tasks are at risk of the same
+duplication, not just the one observed.** The one difference that could narrow this - a car task
+created, then later hard-deleted from `list_items` (its Notes sibling gone) while the `car_tasks`
+row survives - is possible in principle (`list_items` has no FK back to `car_tasks` preventing
+independent deletion) but not something this pass can rule in or out without querying the live
+`list_items`/`events` tables on the actual phone. Confirming the true count needs either an
+on-device query (14 `car_tasks.syncId` values against `public.events.origin_guid`) or a second real
+`runFleet` pass read against the server the way the first one was.
+
+**Not a ruling, not a cleanup instruction** - per Kevin's own scope for this pass, no existing row
+is touched. Left here as the next open item: whether the fold now needs to also re-kind or dedupe
+the pre-existing `reminder` siblings, or whether "the same task text exists under two kinds
+server-side" is an accepted, permanent consequence of `car_tasks` never having been a single source
+of truth in the first place.

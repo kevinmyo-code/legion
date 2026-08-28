@@ -299,8 +299,36 @@ class BackendMigrationResolverTest {
         val vehicleLine = lines.first { it.startsWith("Vehicles:") }
         val serviceHistoryLine = lines.first { it.startsWith("Service history:") }
         assertTrue(vehicleLine.contains("none on this device"))
-        assertTrue(serviceHistoryLine.contains("already all on the server"))
+        // "already all on the server" was the wording defect (ticket 10, Kevin's 2026-08-28
+        // ruling: "kind-scope the guard and fix the wording") - it asserted server state that
+        // 0-uploaded-this-run never actually verified. cleanFleetReport's service history really
+        // does have serverCountAfter == engineCount and isClean == true, so this line legitimately
+        // states BOTH "none uploaded" and the real server count, and reads as clean below.
+        assertTrue(serviceHistoryLine.contains("none uploaded this run"))
+        assertTrue(serviceHistoryLine.contains("Server has 5"))
         assertTrue(vehicleLine != serviceHistoryLine)
+    }
+
+    @Test
+    fun `a table held back for an unrelated reason never claims the server already has it`() {
+        // Reproduces the exact observed defect: drive_reassignments had 1 row on-device, 0
+        // uploaded (its vehicle had not migrated yet, so it was held back before ever reaching
+        // the upload call), and the SERVER GENUINELY HAD ZERO. The old wording said "already all
+        // on the server" - false - regardless of isClean. The renderer must never say a report
+        // with an uploaded count of 0 and a server count of 0 already has the rows.
+        val report = cleanFleetReport().copy(
+            driveReassignment = cleanFleetReport().driveReassignment.copy(
+                sourceCount = 1, uploaded = 0, serverCountAfter = 0, replicaCountAfter = 1,
+                skippedUnresolvedVehicle = listOf("reassignment-1: vehicle not yet migrated"),
+                onlyOnSource = listOf("reassignment-1"),
+            ),
+        )
+        val lines = BackendMigrationResolver.renderFleetReport(report)
+        val line = lines.first { it.startsWith("Drive reassignments:") }
+        assertTrue(!line.contains("already all on the server"))
+        assertTrue(line.contains("none uploaded this run"))
+        assertTrue(line.contains("Server has 0"))
+        assertTrue(line.contains("NOT clean"))
     }
 
     @Test

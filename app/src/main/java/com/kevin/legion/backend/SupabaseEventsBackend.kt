@@ -332,9 +332,24 @@ class SupabaseEventsBackend(private val client: SupabaseClient) : EventsBackend 
      */
     override suspend fun uploadMigratedEvent(event: MigratedEvent): Result<Boolean> =
         translating("upload a migrated date or note") {
+            // Kind-scoped on purpose (backend-erp ticket 10, the fleet cutover's on-device run,
+            // 2026-08-28): origin_guid alone is migration PROVENANCE, not identity
+            // (20260826000100's own header), and the SAME engine guid legitimately exists under
+            // more than one kind - a fleet CarTask folded into events as a Notes Item during an
+            // earlier wave, then again as its own `car_task` row here. A guid-only guard found
+            // the Notes-side row, correctly declined to insert a duplicate, and left the
+            // car-task upload permanently unable to run OR to read as done: FleetReconcile's
+            // kind-scoped diff (`fetchActive().filter { kind == CAR_TASK }`) never saw a
+            // `car_task` row for that guid and reported it as drift forever. Matching on
+            // (origin_guid, kind) together mirrors the unique index this depends on
+            // (`supabase/migrations/20260828000200_events_origin_guid_per_kind.sql`) and lets a
+            // guid recur once per kind without ever colliding within one.
             val existing = client.postgrest.from(EVENTS_TABLE)
                 .select {
-                    filter { eq("origin_guid", event.originGuid) }
+                    filter {
+                        eq("origin_guid", event.originGuid)
+                        eq("kind", event.fields.kind)
+                    }
                 }
                 .decodeList<EventRowDto>()
             if (existing.isNotEmpty()) return@translating false

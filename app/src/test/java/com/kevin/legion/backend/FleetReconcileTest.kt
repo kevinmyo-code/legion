@@ -570,9 +570,16 @@ class FleetReconcileTest {
 
     /** A minimal [EventsBackend] fake - the car_tasks wave (backend-erp ticket 10's final item)
      * only ever calls [uploadMigratedEvent] and [fetchActive], never any of the Notes/Dates-shaped
-     * methods [EventsReconcileTest]'s own richer fake exists to exercise. */
+     * methods [EventsReconcileTest]'s own richer fake exists to exercise.
+     *
+     * **Keyed by (originGuid, kind), not by originGuid alone** - mirrors
+     * [SupabaseEventsBackend.uploadMigratedEvent]'s real existence guard after the fleet cutover's
+     * first on-device run surfaced that a guid-only guard permanently strands a car_task upload
+     * whose guid a DIFFERENT wave (Notes/Dates) already used under `kind = reminder` (ticket 10,
+     * "one car task uploaded as 13 of 14"). A fake that stayed guid-only here would not catch a
+     * regression back to that bug. */
     private class FakeEventsBackend : EventsBackend {
-        val rows = mutableMapOf<String, RemoteEvent>() // keyed by originGuid
+        val rows = mutableMapOf<Pair<String, String>, RemoteEvent>() // keyed by (originGuid, kind)
         var nextId = 0
         var failNextUpload = false
 
@@ -585,7 +592,7 @@ class FleetReconcileTest {
         override suspend fun softDelete(serverId: String): Result<Boolean> {
             val existing = rows.values.find { it.serverId == serverId } ?: return Result.success(false)
             if (existing.deleted) return Result.success(false)
-            rows[existing.originGuid!!] = existing.copy(deleted = true)
+            rows[existing.originGuid!! to existing.kind] = existing.copy(deleted = true)
             return Result.success(true)
         }
 
@@ -597,8 +604,9 @@ class FleetReconcileTest {
                 failNextUpload = false
                 return Result.failure(EventsBackendException("simulated transport failure"))
             }
-            if (rows.containsKey(event.originGuid)) return Result.success(false)
-            rows[event.originGuid] = RemoteEvent(
+            val key = event.originGuid to event.fields.kind
+            if (rows.containsKey(key)) return Result.success(false)
+            rows[key] = RemoteEvent(
                 serverId = "event-${++nextId}",
                 title = event.fields.title,
                 createdAtMs = event.fields.createdAtMs ?: 0L,
@@ -1415,7 +1423,7 @@ class FleetReconcileTest {
 
         assertEquals(1, report.carTask.uploaded)
         assertTrue(report.carTask.isClean)
-        val uploaded = eventsBackend.rows.getValue("car-task-1")
+        val uploaded = eventsBackend.rows.getValue("car-task-1" to EventKind.CAR_TASK)
         assertEquals(EventKind.CAR_TASK, uploaded.kind)
         assertEquals("Replace the bushings", uploaded.title)
         // A car task has no date to state - never a guessed one (CLAUDE.md sec 4 rule 5).
@@ -1434,7 +1442,7 @@ class FleetReconcileTest {
 
         FleetReconcile.run(context, FakeFleetBackend(), eventsBackend).getOrThrow()
 
-        val meta = org.json.JSONObject(eventsBackend.rows.getValue("car-task-2").structuredMeta!!)
+        val meta = org.json.JSONObject(eventsBackend.rows.getValue("car-task-2" to EventKind.CAR_TASK).structuredMeta!!)
         assertEquals("project", meta.getString("category"))
         assertTrue(meta.getBoolean("done"))
         assertEquals(5_000L, meta.getLong("doneAt"))
@@ -1463,5 +1471,61 @@ class FleetReconcileTest {
         val result = FleetReconcile.run(context, FakeFleetBackend(), eventsBackend)
 
         assertTrue(result.isFailure)
+    }
+
+    // A guid that already exists under a DIFFERENT kind must not silently strand a car_task
+    // upload (backend-erp ticket 10, the fleet cutover's first on-device run: "one car task
+    // uploaded as 13 of 14"). The guid had already reached `public.events` as a Notes-Items
+    // `reminder` in an earlier wave; a guid-only existence guard found it, correctly declined a
+    // duplicate insert, and the car_task diff - kind-scoped by construction - could then never
+    // see a `car_task` row for that guid and reported it as drift forever.
+    @Test
+    fun `a guid that exists under a different kind does not block a car_task upload`() = runBlocking {
+        createCarTask("fix fuel pump relay fault", syncId = "shared-guid-1")
+        val eventsBackend = FakeEventsBackend()
+        // Seed exactly the collision this test exists to reproduce: the same guid already
+        // uploaded server-side, but as a REMINDER (Notes/Dates path), not a car_task.
+        eventsBackend.rows[Pair("shared-guid-1", EventKind.REMINDER)] = RemoteEvent(
+            serverId = "event-preexisting",
+            title = "fix fuel pump relay fault",
+            createdAtMs = 1_000L,
+            startsAtMs = null,
+            endsAtMs = null,
+            allDay = false,
+            location = null,
+            notes = null,
+            source = "legion",
+            googleEventId = null,
+            done = false,
+            doneAtMs = null,
+            sortOrder = null,
+            triggerPlaceLabel = null,
+            repeatKind = null,
+            repeatEvery = null,
+            repeatDaysOfWeek = null,
+            repeatDay = null,
+            repeatMonth = null,
+            repeatEndKind = null,
+            repeatEndDateMs = null,
+            repeatEndCount = null,
+            exact = false,
+            exactDowngraded = false,
+            missedAtMs = null,
+            missedDismissedAtMs = null,
+            loggedAtMs = null,
+            updatedAtMs = 0L,
+            deleted = false,
+            kind = EventKind.REMINDER,
+            originGuid = "shared-guid-1",
+        )
+
+        val report = FleetReconcile.run(context, FakeFleetBackend(), eventsBackend).getOrThrow()
+
+        assertEquals("the car_task upload must go through despite the guid existing under a different kind", 1, report.carTask.uploaded)
+        assertTrue("the run must read as clean - a genuinely-uploaded row must not still report as drift", report.carTask.isClean)
+        val carTaskRow = eventsBackend.rows.getValue("shared-guid-1" to EventKind.CAR_TASK)
+        assertEquals(EventKind.CAR_TASK, carTaskRow.kind)
+        // Both rows now coexist under the same guid, one per kind - documented, not hidden.
+        assertTrue(eventsBackend.rows.containsKey(Pair("shared-guid-1", EventKind.REMINDER)))
     }
 }

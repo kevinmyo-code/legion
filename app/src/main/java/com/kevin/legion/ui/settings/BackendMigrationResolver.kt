@@ -221,7 +221,7 @@ object BackendMigrationResolver {
                     "anything below.",
             )
             add(if (report.isClean) "Overall: clean - every table matches the server." else "Overall: NOT clean - see the tables below.")
-            add(compactFleetTableLine("Vehicles", report.vehicle.engineCount, report.vehicle.uploaded, report.vehicle.isClean, report.vehicle.onlyOnEngine, report.vehicle.onlyOnServer))
+            add(compactFleetTableLine("Vehicles", report.vehicle.engineCount, report.vehicle.uploaded, report.vehicle.serverCountAfter, report.vehicle.isClean, report.vehicle.onlyOnEngine, report.vehicle.onlyOnServer))
             if (report.vehicle.skippedUnexportable.isNotEmpty()) {
                 add(
                     "Not uploaded, ${report.vehicle.skippedUnexportable.size} " +
@@ -230,20 +230,20 @@ object BackendMigrationResolver {
                         "device was changed - fix the vehicle's own data on the phone and run this again.",
                 )
             }
-            add(compactFleetTableLine("Service history", report.serviceHistory.engineCount, report.serviceHistory.uploaded, report.serviceHistory.isClean, report.serviceHistory.onlyOnEngine, report.serviceHistory.onlyOnServer))
-            add(compactFleetTableLine("Drives", report.drive.sourceCount, report.drive.uploaded, report.drive.isClean, report.drive.onlyOnSource, report.drive.onlyOnServer))
-            add(compactFleetTableLine("Code events", report.codeEvent.sourceCount, report.codeEvent.uploaded, report.codeEvent.isClean, report.codeEvent.onlyOnSource, report.codeEvent.onlyOnServer))
-            add(compactFleetTableLine("Code-clear events", report.codeClearEvent.sourceCount, report.codeClearEvent.uploaded, report.codeClearEvent.isClean, report.codeClearEvent.onlyOnSource, report.codeClearEvent.onlyOnServer))
-            add(compactFleetTableLine("Oil analyses", report.oilAnalysis.sourceCount, report.oilAnalysis.uploaded, report.oilAnalysis.isClean, report.oilAnalysis.onlyOnSource, report.oilAnalysis.onlyOnServer))
-            add(compactFleetTableLine("Chassis quirks", report.chassisQuirk.sourceCount, report.chassisQuirk.uploaded, report.chassisQuirk.isClean, report.chassisQuirk.onlyOnSource, report.chassisQuirk.onlyOnServer))
-            add(compactFleetTableLine("Vehicle specs", report.vehicleSpec.sourceCount, report.vehicleSpec.uploaded, report.vehicleSpec.isClean, report.vehicleSpec.onlyOnSource, report.vehicleSpec.onlyOnServer))
-            add(compactFleetTableLine("Build entries", report.buildEntry.sourceCount, report.buildEntry.uploaded, report.buildEntry.isClean, report.buildEntry.onlyOnSource, report.buildEntry.onlyOnServer))
-            add(compactFleetTableLine("Drive reassignments", report.driveReassignment.sourceCount, report.driveReassignment.uploaded, report.driveReassignment.isClean, report.driveReassignment.onlyOnSource, report.driveReassignment.onlyOnServer))
+            add(compactFleetTableLine("Service history", report.serviceHistory.engineCount, report.serviceHistory.uploaded, report.serviceHistory.serverCountAfter, report.serviceHistory.isClean, report.serviceHistory.onlyOnEngine, report.serviceHistory.onlyOnServer))
+            add(compactFleetTableLine("Drives", report.drive.sourceCount, report.drive.uploaded, report.drive.serverCountAfter, report.drive.isClean, report.drive.onlyOnSource, report.drive.onlyOnServer))
+            add(compactFleetTableLine("Code events", report.codeEvent.sourceCount, report.codeEvent.uploaded, report.codeEvent.serverCountAfter, report.codeEvent.isClean, report.codeEvent.onlyOnSource, report.codeEvent.onlyOnServer))
+            add(compactFleetTableLine("Code-clear events", report.codeClearEvent.sourceCount, report.codeClearEvent.uploaded, report.codeClearEvent.serverCountAfter, report.codeClearEvent.isClean, report.codeClearEvent.onlyOnSource, report.codeClearEvent.onlyOnServer))
+            add(compactFleetTableLine("Oil analyses", report.oilAnalysis.sourceCount, report.oilAnalysis.uploaded, report.oilAnalysis.serverCountAfter, report.oilAnalysis.isClean, report.oilAnalysis.onlyOnSource, report.oilAnalysis.onlyOnServer))
+            add(compactFleetTableLine("Chassis quirks", report.chassisQuirk.sourceCount, report.chassisQuirk.uploaded, report.chassisQuirk.serverCountAfter, report.chassisQuirk.isClean, report.chassisQuirk.onlyOnSource, report.chassisQuirk.onlyOnServer))
+            add(compactFleetTableLine("Vehicle specs", report.vehicleSpec.sourceCount, report.vehicleSpec.uploaded, report.vehicleSpec.serverCountAfter, report.vehicleSpec.isClean, report.vehicleSpec.onlyOnSource, report.vehicleSpec.onlyOnServer))
+            add(compactFleetTableLine("Build entries", report.buildEntry.sourceCount, report.buildEntry.uploaded, report.buildEntry.serverCountAfter, report.buildEntry.isClean, report.buildEntry.onlyOnSource, report.buildEntry.onlyOnServer))
+            add(compactFleetTableLine("Drive reassignments", report.driveReassignment.sourceCount, report.driveReassignment.uploaded, report.driveReassignment.serverCountAfter, report.driveReassignment.isClean, report.driveReassignment.onlyOnSource, report.driveReassignment.onlyOnServer))
             // Car tasks upload through EventsBackend into `public.events` (kind = car_task), not
             // FleetBackend - a different seam from every table above - but it is still reported
             // here, not on the Events row, since the phone's car_tasks table and this reconcile's
             // upload loop are both fleet's own (see FleetReconcile.Report.carTask's own doc).
-            add(compactFleetTableLine("Car tasks", report.carTask.sourceCount, report.carTask.uploaded, report.carTask.isClean, report.carTask.onlyOnSource, report.carTask.onlyOnServer))
+            add(compactFleetTableLine("Car tasks", report.carTask.sourceCount, report.carTask.uploaded, report.carTask.serverCountAfter, report.carTask.isClean, report.carTask.onlyOnSource, report.carTask.onlyOnServer))
             if (skipped.isNotEmpty()) {
                 add(
                     "Held back, not uploaded: ${skipped.size} ${plural(skipped.size, "row")} whose car " +
@@ -255,21 +255,36 @@ object BackendMigrationResolver {
         }
     }
 
-    /** One compact line per fleet table for [renderFleetReport]. [count] is that table's
+    /**
+     * One compact line per fleet table for [renderFleetReport]. [count] is that table's
      * on-device row total, distinct from "clean" (server agrees) so a reader can tell "nothing to
      * export" from "everything already matched" from "this run changed something", three different
-     * facts a single number cannot carry. */
+     * facts a single number cannot carry.
+     *
+     * **AMENDED 2026-08-28 (ticket 10, "the wording that asserted a state nobody checked").** The
+     * `uploaded == 0` branch used to say "already all on the server" - a claim about server state
+     * that "0 uploaded this run" does not establish. A row can upload zero because everything
+     * really is already there, OR because every row was held back before ever reaching the upload
+     * call (a drive reassignment whose vehicle has not migrated yet, in the observed defect) -
+     * those are opposite facts and the old wording could not tell them apart. Every [FleetReconcile]
+     * report type DOES carry a real, verified [serverCountAfter] (queried from the server after
+     * the run, not assumed), so this now says what actually happened - nothing uploaded this run -
+     * and states the real server count plainly rather than asserting anything about it beyond what
+     * that count already says. [isClean]/[onlyOnSource]/[onlyOnServer] still carry the rest of the
+     * truth exactly as before; this amendment touches only the `uploaded == 0` sentence.
+     */
     private fun compactFleetTableLine(
         label: String,
         count: Int,
         uploaded: Int,
+        serverCountAfter: Int,
         isClean: Boolean,
         onlyOnSource: List<String>,
         onlyOnServer: List<String>,
     ): String {
         val base = when {
             count == 0 -> "$label: none on this device."
-            uploaded == 0 -> "$label: $count on this device, already all on the server."
+            uploaded == 0 -> "$label: $count on this device, none uploaded this run. Server has $serverCountAfter."
             else -> "$label: $count on this device, $uploaded uploaded this run."
         }
         if (isClean) return "$base Clean."
