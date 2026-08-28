@@ -1,30 +1,24 @@
 package com.kevin.legion.backend
 
 /**
- * The three values `public.events.kind` may hold (`supabase/migrations/20260827000200_events_kind.sql`
- * for the first two, `supabase/migrations/20260828000100_events_kind_car_task.sql` for the third) -
+ * The two values `public.events.kind` may hold (`supabase/migrations/20260827000200_events_kind.sql`) -
  * what tells [com.kevin.legion.notes.NotesController] and [EventsReconcile] which rows they own. A
  * Notes `Item` is always [REMINDER]; a Dates `Event` (legion-authored or a Google import) is always
- * [APPOINTMENT]; a fleet `car_tasks` row uploaded by [FleetReconcile] (the `car_tasks` fold into
- * events, backend-erp ticket 06's ruling) is always [CAR_TASK]. Set once at upload, from the
- * record type read - never derived from a row's shape (`sortOrder`, `source`, anything else that
- * happens to correlate today). See the first migration's own comment for why the server default is
- * [REMINDER], not a guess: an origin the app cannot identify is treated as something it owns, the
- * direction that fails visibly rather than silently.
+ * [APPOINTMENT]. Set once at upload, from the record type read - never derived from a row's shape
+ * (`sortOrder`, `source`, anything else that happens to correlate today). See the migration's own
+ * comment for why the server default is [REMINDER], not a guess: an origin the app cannot identify
+ * is treated as something it owns, the direction that fails visibly rather than silently.
  *
- * **[CAR_TASK] is a genuinely separate value from [REMINDER], not a convenience alias - see the
- * 20260828000100 migration's own header for why reusing [REMINDER] would have replayed the
- * 2026-08-26 51-false-missed-reminders incident one column over.** [EventsReconcile]'s refill
- * treats [CAR_TASK] as neither a reminder nor an appointment: never wiped/refilled into the local
- * `events` table, never counted toward [EventsReconcile.Report]'s onlyOnServer drift, never
- * retracted by the origin-guid retraction pass (those rows belong to [FleetReconcile], which is
- * their only writer and the only thing that should ever retract them). A row of this kind exists
- * server-side purely so a second phone's fleet aspect can read it back.
+ * A third kind, `car_task`, briefly existed here for a `car_tasks` fold into `events`
+ * (backend-erp ticket 06's original ruling, ticket 10's wave) and was reverted the same day: the
+ * fold turned out to be a duplicate of one Notes had already performed years earlier (`car_tasks`
+ * rows were copied into `list_items` by `MIGRATION_9_10`, and that guid already reaches `events`
+ * as `kind = reminder` today). See `.scratch/backend-erp/issues/06-fleet-has-no-server-home.md`'s
+ * reversal entry and `supabase/migrations/20260828000300_events_kind_car_task_reverted.sql`.
  */
 object EventKind {
     const val REMINDER = "reminder"
     const val APPOINTMENT = "appointment"
-    const val CAR_TASK = "car_task"
 }
 
 /**
@@ -226,23 +220,10 @@ interface EventsBackend {
 
     /**
      * The one-time migration upload for an engine record ([MigratedEvent]) not yet mirrored
-     * server-side. `Result.success(false)` means a row with this [MigratedEvent.originGuid]
-     * AND [EventFields.kind] pair was already present (a re-run, per ticket 05 phase 4 step 1:
-     * "a re-run is free") - the skips are NOT re-attempted in that case either, since the event
-     * row (and therefore its server id) did not change. `Result.failure` means the request itself
-     * did not complete.
-     *
-     * **The existence check is kind-scoped, not guid-only** (backend-erp ticket 10, the fleet
-     * cutover's first on-device run, 2026-08-28): `origin_guid` is migration PROVENANCE, not
-     * identity (`20260826000100_origin_guid.sql`'s own header), and the same engine guid can
-     * legitimately reach `public.events` twice under two different kinds - concretely, a fleet
-     * `car_tasks` row whose guid an earlier Notes-Items migration wave already uploaded as a
-     * [EventKind.REMINDER]. A guid-only guard finds that row, correctly declines to insert a
-     * duplicate, and permanently starves [FleetReconcile]'s kind-scoped diff of the `car_task`
-     * row it is looking for - the upload can never run and the drift can never clear. Matching on
-     * (origin_guid, kind) requires the unique index to be widened the same way
-     * (`supabase/migrations/20260828000200_events_origin_guid_per_kind.sql`) or this guard and the
-     * database would disagree about what counts as a duplicate.
+     * server-side. `Result.success(false)` means a row with this [MigratedEvent.originGuid] was
+     * already present (a re-run, per ticket 05 phase 4 step 1: "a re-run is free") - the skips are
+     * NOT re-attempted in that case either, since the event row (and therefore its server id) did
+     * not change. `Result.failure` means the request itself did not complete.
      */
     suspend fun uploadMigratedEvent(event: MigratedEvent): Result<Boolean>
 }

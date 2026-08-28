@@ -14,15 +14,6 @@ interface CarTaskDao {
     @Query("SELECT * FROM car_tasks WHERE done = 0 AND deleted = 0 ORDER BY createdAt ASC")
     suspend fun getOpen(): List<CarTask>
 
-    /** Every non-tombstoned row, done or not - [FleetReconcile][com.kevin.legion.backend.FleetReconcile]'s
-     * upload source for the car_tasks fold into `events` (backend-erp ticket 10/06). Deliberately
-     * NOT [getOpen]: that query also filters `done = 0`, which is correct for the phone's own todo
-     * list UI but wrong for a cross-device upload - a task marked done on this phone must still
-     * reach the server (as `structured_meta.done = true`) so the OTHER phone's fleet aspect sees it
-     * as done rather than never seeing it disappear. */
-    @Query("SELECT * FROM car_tasks WHERE deleted = 0")
-    suspend fun getActiveForUpload(): List<CarTask>
-
     @Query("SELECT COUNT(*) FROM car_tasks WHERE done = 0 AND deleted = 0")
     suspend fun openCount(): Int
 

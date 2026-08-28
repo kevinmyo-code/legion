@@ -4856,3 +4856,45 @@ deterministic parsers**.
 
 **MEMORY.md was cut from 960 lines to 77**, against its own 80-line cap. Verbatim into
 `session-2026-08-backend-erp.md` and `standing-caveats-2026-08.md`.
+
+## 2026-08-28 (later) - the car-task fold is reversed, and the fleet projection runs
+
+**Ruling 06's `car_tasks` fold into `events` is REVERSED (Kevin).** The ruling's logic held; its
+premise did not. `MIGRATION_9_10` copies `car_tasks.syncId` verbatim into `list_items.syncId`,
+`EngineDataMigrationWave1` reuses it as the engine record `guid`, and `EventsReconcile` uploads it as
+`kind = 'reminder'` - so car tasks were folded into Notes years before ticket 06 proposed folding
+them into events, and `car_tasks` has had no production writer since. Building the wave created a
+second server representation of a task Notes already owned. Dropped rather than reconciled: the
+`vehicle_id` that would justify a fleet-side copy is null on every row.
+
+**How it surfaced:** the first real `FleetReconcile` run reported 13 of 14 car tasks uploaded, one
+"only on this device". That row was on the server under `kind = 'reminder'`. Only one collided
+because only one had a date - undated note items never upload - so the other thirteen were latent.
+
+**Cost of the reversal, recorded rather than tidied away:** `20260828000100` (the third `kind`) was
+applied to the live project and a wave ran against it. `20260828000300` deletes the 13 orphaned rows
+and narrows the constraint back. `20260828000100` is not deleted or edited - it happened.
+
+**Survives the reversal because it was independently right:** `EventsReconcile`'s two-way
+`partition { kind == APPOINTMENT }` had been bucketing every unrecognised kind as a REMINDER, which
+would refill a foreign row into the Notes store. Explicit per-kind filters stay.
+
+**The fleet projection itself RAN on the A25** and eight of ten tables agree exactly between screen,
+device and server (3 vehicles, 4 service history, 17 drives, 59 code events, 2 code-clear, 3 vehicle
+specs, 1 build entry). Two placeholder vehicles with `year 0` are skipped and named; three child rows
+are held back with "vehicle not yet migrated" rather than uploaded against a guessed parent. The
+`skippedUnexportable` pre-check reads `public.vehicles`' own DDL rather than patching the one
+constraint that failed.
+
+**Two defects the run found, both fixed:** a table-wide `origin_guid` guard against a kind-scoped
+diff (a guid under another kind could neither upload nor stop reading as drift); and a rendered line
+claiming "already all on the server" for a table with zero rows on it, derived from "0 uploaded" and
+asserting a state nobody checked.
+
+**`CarDatabase.SCHEMA_VERSION` was stale at 47 against `@Database(version=)` 49**, which disabled
+restore on every backup the running app produced - found mid-restore-drill, on a phone that needed
+that button. `CarDatabaseSchemaVersionTest` now fails the build on the next drift.
+
+**The phase-0 restore drill is DONE**: full round trip on the A25, all 65 tables back to their
+pre-drill counts. Phase-6 mirror deletion is unblocked. And the "device work needs the Kwin laptop"
+constraint was false - both machines carry the same debug key.

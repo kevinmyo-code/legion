@@ -130,3 +130,46 @@ the first was asked.** Worth applying to the remaining aspects before assuming t
 Notes+Dates (aspect 4) does not depend on any of it and is proceeding first. Ledger (aspect 5) has
 its own open question, already recorded in ticket 05: whether its migration upload can route through
 `commit_statement` or needs a key of its own.
+
+## REVERSED 2026-08-28 (Kevin): `car_tasks` does NOT fold into `events`. The fold already existed.
+
+The 2026-08-26 ruling above says: *"`car_tasks` FOLDS INTO `events`, and does not get its own table.
+Ruling 4 already decided todos become Dates events, and a car task is a todo that happens to name a
+vehicle. A second todo table would be exactly the duplication ruling 4 removed."*
+
+**The reasoning was right and the premise was wrong. There was already no second todo table - because
+car tasks had already been folded into Notes, years earlier, by a path this ticket did not know
+about.**
+
+Traced while building the wave:
+
+1. `MIGRATION_9_10` copies `car_tasks.syncId` **verbatim** into `list_items.syncId`.
+2. `EngineDataMigrationWave1.copyNotesIfNeeded` reuses that `syncId` directly as the engine record's
+   `guid`.
+3. `EventsReconcile` uploads that engine record to `public.events` as `kind = 'reminder'`.
+4. `car_tasks` has had **no production writer** since the fold - the only readers left are
+   `FleetReconcile` and a tombstone sweep.
+
+So every surviving `car_tasks` row necessarily has a Notes sibling carrying the same guid, and the
+wave was creating a SECOND server representation of a task Notes already owned. The duplication this
+ruling set out to prevent is exactly what building it would have caused.
+
+**It surfaced the way these things do - as a wrong-looking number.** The first real run reported 13
+of 14 car tasks uploaded with one "only on this device". That row was on the server all along, under
+`kind = 'reminder'`. Only one collided because only one had a date; undated note items never upload.
+Give the other thirteen a date and each duplicates in turn.
+
+**Kevin's call: drop the wave.** Not reconcile the two representations, not keep both - Notes already
+owns these, and the `vehicle_id` column that would have justified a fleet-side copy is null on every
+one of them, so a car task is not currently expressing anything a Notes item cannot.
+
+**What that costs, stated plainly:** `20260828000100` (the third `kind`) was applied to the live
+project and a wave ran against it, so 13 rows exist server-side that nothing will maintain.
+`20260828000300` deletes them and narrows the constraint back. `20260828000100` is NOT deleted or
+edited - it happened, and a migration history that erases its own mistakes is worse than one that
+admits them.
+
+**What survives the reversal, because it was right independently:** `EventsReconcile`'s two-way
+`partition { kind == APPOINTMENT }` was putting every unrecognised kind into the REMINDER bucket by
+default, which would have refilled a foreign row straight into the Notes store. Explicit per-kind
+filters stay. That defect was found only because the car-task work went looking.

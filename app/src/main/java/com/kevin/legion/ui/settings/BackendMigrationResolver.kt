@@ -239,11 +239,6 @@ object BackendMigrationResolver {
             add(compactFleetTableLine("Vehicle specs", report.vehicleSpec.sourceCount, report.vehicleSpec.uploaded, report.vehicleSpec.serverCountAfter, report.vehicleSpec.isClean, report.vehicleSpec.onlyOnSource, report.vehicleSpec.onlyOnServer))
             add(compactFleetTableLine("Build entries", report.buildEntry.sourceCount, report.buildEntry.uploaded, report.buildEntry.serverCountAfter, report.buildEntry.isClean, report.buildEntry.onlyOnSource, report.buildEntry.onlyOnServer))
             add(compactFleetTableLine("Drive reassignments", report.driveReassignment.sourceCount, report.driveReassignment.uploaded, report.driveReassignment.serverCountAfter, report.driveReassignment.isClean, report.driveReassignment.onlyOnSource, report.driveReassignment.onlyOnServer))
-            // Car tasks upload through EventsBackend into `public.events` (kind = car_task), not
-            // FleetBackend - a different seam from every table above - but it is still reported
-            // here, not on the Events row, since the phone's car_tasks table and this reconcile's
-            // upload loop are both fleet's own (see FleetReconcile.Report.carTask's own doc).
-            add(compactFleetTableLine("Car tasks", report.carTask.sourceCount, report.carTask.uploaded, report.carTask.serverCountAfter, report.carTask.isClean, report.carTask.onlyOnSource, report.carTask.onlyOnServer))
             if (skipped.isNotEmpty()) {
                 add(
                     "Held back, not uploaded: ${skipped.size} ${plural(skipped.size, "row")} whose car " +

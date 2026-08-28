@@ -345,17 +345,10 @@ object FleetReconcile {
         /** `drive_reassignments` - same [SyncIdReport] shape; [SyncIdReport.skippedUnresolvedVehicle]
          * here means "either leg's vehicle" per this object's own class doc. */
         val driveReassignment: SyncIdReport,
-        /** `car_tasks`, folded into `public.events` at `kind = car_task` (ticket 06's ruling / this
-         * ticket's own final item) - same [SyncIdReport] shape as every other syncId-keyed table in
-         * this file, even though [SyncIdReport.skippedUnresolvedVehicle] is always empty here: a
-         * [com.kevin.legion.data.local.CarTask] is global, never keyed to a vehicle, so there is
-         * nothing to resolve or skip on that account. See [run]'s own car_tasks section for the
-         * full account. */
-        val carTask: SyncIdReport,
     ) {
         val isClean: Boolean get() = vehicle.isClean && serviceHistory.isClean && drive.isClean &&
             codeEvent.isClean && codeClearEvent.isClean && oilAnalysis.isClean && chassisQuirk.isClean &&
-            vehicleSpec.isClean && buildEntry.isClean && driveReassignment.isClean && carTask.isClean
+            vehicleSpec.isClean && buildEntry.isClean && driveReassignment.isClean
     }
 
     private data class EngineVehicle(
@@ -389,26 +382,7 @@ object FleetReconcile {
         val kind: String,
     )
 
-    /** A no-op [EventsBackend], used as [run]'s default [eventsBackend] - every existing caller of
-     * this file's own test suite (written before the car_tasks fold landed) asserts nothing about
-     * car tasks and has no `car_tasks` rows in its fixture, so threading a real [EventsBackend]
-     * through every one of those call sites would be pure churn. [EventsBackend.uploadMigratedEvent]
-     * reports `false` (never a genuine upload) and [EventsBackend.fetchActive] reports empty - both
-     * correct for a caller whose `sourceCarTasks` list is empty, since the car-task loop below never
-     * calls either method when there is nothing to upload. A caller that wants to exercise or assert
-     * car-task behaviour (the production [com.kevin.legion.ui.settings.BackendMigrationScreen] path,
-     * or this file's own car-task tests) passes a real one explicitly. */
-    private object NoOpEventsBackend : EventsBackend {
-        override suspend fun fetchActive(): Result<List<RemoteEvent>> = Result.success(emptyList())
-        override suspend fun upsert(serverId: String?, fields: EventFields): Result<RemoteEvent> =
-            Result.failure(EventsBackendException("NoOpEventsBackend does not support upsert"))
-        override suspend fun softDelete(serverId: String): Result<Boolean> = Result.success(false)
-        override suspend fun skipOccurrence(serverId: String, skipDateEpochMs: Long): Result<Unit> = Result.success(Unit)
-        override suspend fun fetchSkips(serverId: String): Result<List<Long>> = Result.success(emptyList())
-        override suspend fun uploadMigratedEvent(event: MigratedEvent): Result<Boolean> = Result.success(false)
-    }
-
-    suspend fun run(context: Context, backend: FleetBackend, eventsBackend: EventsBackend = NoOpEventsBackend): Result<Report> {
+    suspend fun run(context: Context, backend: FleetBackend): Result<Report> {
         val db = CarDatabase.getDatabase(context)
         val sch = FleetAspectSeeder.ensureSeeded(context)
 
@@ -1154,14 +1128,6 @@ object FleetReconcile {
             onlyOnServer = (serverDriveReassignmentSyncIds - sourceDriveReassignmentSyncIds).sorted(),
         )
 
-        // ---- CarTask (the fold into `public.events`, backend-erp ticket 06's ruling / this
-        // ticket's own remaining item) -------------------------------------------------------------
-        // Pulled into its own function, unlike every wave above - `run` was already at the JVM
-        // per-method bytecode ceiling (a real "Method too large" compile failure, not a style
-        // preference) before this wave existed, so this is the one wave in the file that cannot be
-        // inlined here without breaking the build.
-        val carTaskReport = runCarTaskWave(db, eventsBackend).getOrElse { return Result.failure(it) }
-
         return Result.success(
             Report(
                 vehicleReport,
@@ -1174,84 +1140,6 @@ object FleetReconcile {
                 vehicleSpecReport,
                 buildEntryReport,
                 driveReassignmentReport,
-                carTaskReport,
-            ),
-        )
-    }
-
-    /**
-     * The `car_tasks` fold into `public.events` (backend-erp ticket 06's ruling, this ticket's own
-     * final item). Uploaded through [EventsBackend], not [FleetBackend] - a car_task IS an events
-     * row now, and this reconcile is its only writer ([com.kevin.legion.data.local.CarTaskDao] has
-     * no live insert/markDone/deleteById caller left in production - grepped, not assumed - so
-     * whatever rows exist today are historical, and this is a one-time/re-runnable upload wave in
-     * the same shape as every other table in this file, not an ongoing live route). No
-     * obdMac/guid/serverId resolution chain like every table above - a
-     * [com.kevin.legion.data.local.CarTask] is deliberately global, never keyed to a vehicle (that
-     * entity's own class doc), so `vehicle_id` is left unset on every upload here. `EventUpsertDto`
-     * ([SupabaseEventsBackend]'s wire DTO) carries no `vehicle_id` property at all today, so
-     * "unset" really does mean the column keeps its own null default - this is not a partial write
-     * papering over a value this wave could have supplied. The column exists on `public.events`
-     * purely so this fold has somewhere to grow into once [com.kevin.legion.data.local.CarTask]
-     * itself gains a real vehicle reference; that day is not today.
-     *
-     * Pulled out of [run] into its own function - [run] was already sitting at the JVM's per-method
-     * bytecode ceiling (a real `MethodTooLargeException` at compile time, not a style preference)
-     * before this wave was added, so this is the one wave in this file that genuinely cannot live
-     * inline the way every other section above does.
-     */
-    private suspend fun runCarTaskWave(db: CarDatabase, eventsBackend: EventsBackend): Result<SyncIdReport> {
-        val sourceCarTasks = db.carTaskDao().getActiveForUpload()
-        var carTasksUploaded = 0
-        for (task in sourceCarTasks) {
-            // category/done/doneAt have no honest column on `public.events` (title/starts_at/etc
-            // are all Notes+Dates shaped) - structured_meta (jsonb, added
-            // supabase/migrations/20260827000100_events_structured_meta.sql) is the documented home
-            // for exactly this kind of per-aspect metadata rather than inventing new events columns
-            // for one fleet-only fact, matching that migration's own "open-ended per event" framing.
-            val meta = JSONObject().apply {
-                put("category", task.category)
-                put("done", task.done)
-                if (task.doneAt != null) put("doneAt", task.doneAt)
-            }
-            val migrated = MigratedEvent(
-                originGuid = task.syncId,
-                fields = EventFields(
-                    title = task.text,
-                    startsAtMs = null,
-                    createdAtMs = task.createdAt,
-                    kind = EventKind.CAR_TASK,
-                    structuredMeta = meta.toString(),
-                ),
-            )
-            val wasNew = eventsBackend.uploadMigratedEvent(migrated).getOrElse { return Result.failure(it) }
-            if (wasNew) carTasksUploaded++
-        }
-
-        val serverCarTasks = eventsBackend.fetchActive().getOrElse { return Result.failure(it) }
-            .filter { it.kind == EventKind.CAR_TASK }
-        val sourceCarTaskSyncIds = sourceCarTasks.map { it.syncId }.toSet()
-        val serverCarTaskOriginGuids = serverCarTasks.mapNotNull { it.originGuid }.toSet()
-
-        return Result.success(
-            SyncIdReport(
-                sourceCount = sourceCarTasks.size,
-                uploaded = carTasksUploaded,
-                // A CarTask is global (never keyed to a vehicle - see this function's own doc
-                // comment), so there is nothing to resolve and this bucket is permanently empty.
-                // Kept as a real field anyway, not folded away, so this wave's report shape matches
-                // every other SyncIdReport in this file.
-                skippedUnresolvedVehicle = emptyList(),
-                serverCountAfter = serverCarTasks.size,
-                // No Room replica for car tasks and none is added here - ticket 14's projection
-                // ruling keeps the phone reading its own local `car_tasks` table, and this fold is
-                // upload-only (nothing pulls a server car_task back into that table). Reading the
-                // local table again reports its true post-run state honestly rather than reusing
-                // sourceCarTasks.size by assumption - the two happen to agree today only because
-                // nothing here writes to it.
-                replicaCountAfter = db.carTaskDao().getActiveForUpload().size,
-                onlyOnSource = (sourceCarTaskSyncIds - serverCarTaskOriginGuids).sorted(),
-                onlyOnServer = (serverCarTaskOriginGuids - sourceCarTaskSyncIds).sorted(),
             ),
         )
     }

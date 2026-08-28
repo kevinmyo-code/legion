@@ -252,7 +252,6 @@ class BackendMigrationResolverTest {
             ),
             buildEntry = syncId,
             driveReassignment = syncId,
-            carTask = syncId,
         )
     }
 
