@@ -312,7 +312,7 @@ import androidx.room.RoomDatabase
         VehicleReplica::class, ServiceHistoryReplica::class,
         VehicleSidecar::class,
     ],
-    version = 53,
+    version = 54,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -445,7 +445,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 53
+        const val SCHEMA_VERSION = 54
         // 2026-08-28: bumped 47 -> 49, and this one was NOT a same-edit bump - it was a REPAIR.
         // Versions 48 and 49 (tickets 17 and 18) each moved `@Database(version=)` and left this
         // constant behind, and the doc comment above was wrong about the consequence. It says a
@@ -543,7 +543,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42,
                         MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46,
                         MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50,
-                        MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53,
+                        MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53, MIGRATION_53_54,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

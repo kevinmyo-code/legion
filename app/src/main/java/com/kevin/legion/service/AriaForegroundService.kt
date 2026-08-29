@@ -688,17 +688,14 @@ class AriaForegroundService : Service() {
             try {
                 val ff = ObdBluetoothManager.getFreezeFrame()
                 val vehicle = VehicleController.currentVehicle(this@AriaForegroundService)
-                com.kevin.legion.data.local.CarDatabase.getDatabase(this@AriaForegroundService)
-                    .codeEventDao()
-                    .insert(
-                        com.kevin.legion.data.local.CodeEvent(
-                            vehicleId = vehicle.obdMac,
-                            timestamp = System.currentTimeMillis(),
-                            mileage = VehicleController.currentMileage(vehicle),
-                            codesJson = org.json.JSONArray(codes.toList()).toString(),
-                            freezeFrameJson = if (ff.isEmpty()) "" else org.json.JSONObject(ff as Map<*, *>).toString(),
-                        )
-                    )
+                com.kevin.legion.vehicle.FleetEngineStore.recordCodeEvent(
+                    context = this@AriaForegroundService,
+                    mac = vehicle.obdMac,
+                    timestamp = System.currentTimeMillis(),
+                    mileage = VehicleController.currentMileage(vehicle),
+                    codesJson = org.json.JSONArray(codes.toList()).toString(),
+                    freezeFrameJson = if (ff.isEmpty()) "" else org.json.JSONObject(ff as Map<*, *>).toString(),
+                )
             } catch (e: Exception) {
                 android.util.Log.w(TAG, "code event capture failed: ${e.message}")
             }

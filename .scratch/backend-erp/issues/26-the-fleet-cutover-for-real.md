@@ -216,3 +216,81 @@ shape with one adaptation: neither `Drive` nor `DriveReassignment` has a domain-
 are append-only), so `syncDriveToServer`/`syncDriveReassignmentToServer` are `internal` rather than
 `private`, letting the test drive a genuine retry of the same local row directly - the only way to
 exercise "a re-run does not remint the local id" for a table with no edit path at all.
+
+## Step 4 done 2026-08-29: `code_events` and `code_clear_events`, and `oil_analyses` is scoped out
+
+Two of the diagnostics trio, cut over together (same shape, same producer pattern). `oil_analyses`
+is deliberately NOT built - see below, this is the ticket's own "stop at a coherent boundary" clause
+exercised for real, not a shortfall.
+
+### Identity, confirmed not assumed
+
+Both tables were already `hasSyncId = true` in `SyncEngine`'s registry and `SupabaseFleetBackend`
+already had working `upsertCodeEvent`/`upsertCodeClearEvent` keyed `onConflict = "sync_id"` -
+verified by reading both files rather than trusting the brief. Neither table is an `EngineRecord`,
+so `syncId` (already unique server-side) is the identity, and the new `serverId` column on each
+(Room v53 -> v54, additive, `DEFAULT NULL`) is bookkeeping only, mirroring `Drive.serverId`/
+`DriveReassignment.serverId` exactly - never consulted to decide insert vs. update, since a repost
+is always free by construction (`ON CONFLICT (sync_id)` server-side).
+
+### The read-side question, answered explicitly
+
+Neither table needed a repoint. Checked: `CodeEvent.id`/`CodeClearEvent.id` have no reader anywhere
+outside their own DAO - no alarm request code, no soft foreign key, no Compose recomposition key
+(`CarToolbelt`, `FleetDigestBuilder`, `CarAspectSummaries`, `FleetScreen`, `MonthlyRecapController`,
+`DailyDriveLogController` all read by `vehicleId`/time range, never by `id`). Same shape as
+`drives`/`drive_reassignments` at step 3, for the identical reason: neither table has an
+engine-record counterpart, so there was never a replica to compose reads from in the first place.
+
+### The producers, and the one genuinely dormant table
+
+`code_events` has exactly one live writer:
+`com.kevin.legion.service.AriaForegroundService.recordCodeEvent`, called from the DTC-watch loop
+whenever a new code trips. `code_clear_events` has exactly one:
+`com.kevin.legion.vehicle.DtcClearController.recordOutcome`, called for the three clear outcomes
+that actually send Mode 04. Both now go through `FleetEngineStore.recordCodeEvent`/
+`recordCodeClearEvent` instead of calling their DAOs directly - one seam each, matching every prior
+step's shape.
+
+**`oil_analyses` has no live write entry point anywhere in the app, and this is a real finding, not
+an assumption.** Grepped every call site of `OilAnalysisDao.insert`: the only one is
+`FleetReconcile`'s own batch download/reconcile path (inserting server rows this device has not
+seen yet), not a user-facing create. `ui/fleet/OilAnalysisDrilldown.kt`'s two `OilAnalysis(...)`
+constructions are Compose `@Preview` fixtures, confirmed by reading the file - they never run
+outside Android Studio's preview renderer. The DAO's own comment already called this table
+"Dormant" for its delete path; the same is true of its insert path. There is no caller to rewire and
+no live producer to give a push function to, so building one would be schema and code for a write
+path that does not exist. `oil_analyses` therefore keeps its Drive-JSON channel in `SyncEngine`'s
+`REGISTRY` unchanged - a table whose writes never moved keeps the only cross-device path it has ever
+had. A future ticket that gives it a real producer (a voice tool or a UI save action) should retire
+this registry entry in the same change, matching this step's own pattern exactly.
+
+### The per-drop check
+
+Dropping `code_events`/`code_clear_events` from `SyncEngine.kt`'s `REGISTRY` costs nothing else -
+grepped the whole `sync/` package and found no other code gated on either table's registry
+membership (unlike `drive_reassignments`' `applyReassignments` call at step 3). `oil_analyses` was
+left in the registry, so there is nothing to drop-check for it this time.
+
+### Tests
+
+`FleetEngineStoreDiagnosticsCutoverTest` (11 tests), matching `FleetEngineStoreDrivesCutoverTest`'s
+shape exactly: neither `CodeEvent` nor `CodeClearEvent` has a domain-level edit call, so
+`syncCodeEventToServer`/`syncCodeClearEventToServer` are `internal` for the same reason
+`syncDriveToServer`/`syncDriveReassignmentToServer` are, letting the test drive a genuine retry of
+the same local row directly.
+
+### Verification
+
+1. `./gradlew compileDebugKotlin -Pnokey` - green.
+2. `./gradlew testDebugUnitTest -Pnokey` - green, 2,756 tests (JUnit XML totals), up from a
+   baseline of 2,745 - the 11 new tests, nothing else moved.
+3. `app/schemas/` - `54.json` is new; `1.json` through `53.json` are byte-unchanged (`git diff
+   --stat` on `53.json` is empty). `CarDatabase.SCHEMA_VERSION` bumped 53 -> 54 alongside
+   `@Database(version = 54)`.
+4. `python tools/docs_check.py` - clean ("no drift").
+5. Migration written: `MIGRATION_53_54` (`code_events.serverId`, `code_clear_events.serverId`,
+   both `TEXT DEFAULT NULL`, additive). **UNAPPLIED** - not run against a real device.
+6. **Unproven on device.** Nothing in this step has been exercised against a live Supabase project
+   or a physical phone - the whole thing is Robolectric plus a fake `FleetBackend`, same posture as
+   every prior step in this ticket.

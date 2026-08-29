@@ -1967,3 +1967,34 @@ val MIGRATION_52_53 = object : Migration(52, 53) {
         db.execSQL("ALTER TABLE `drive_reassignments` ADD COLUMN `serverId` TEXT DEFAULT NULL")
     }
 }
+
+/**
+ * v53 -> v54: the fleet cutover's step 4, the diagnostics trio's live producers - `code_events`
+ * (backend-erp ticket 26, `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`) and
+ * `code_clear_events`, the two of the trio with a real live write entry point
+ * ([com.kevin.legion.service.AriaForegroundService.recordCodeEvent] and
+ * [com.kevin.legion.vehicle.DtcClearController]'s own outcome-recording call respectively). Same
+ * additive, bookkeeping-only shape as [MIGRATION_52_53]: `code_events.syncId`/
+ * `code_clear_events.syncId` are the identity keys the server upsert already matches on
+ * (`ON CONFLICT (sync_id)` in [com.kevin.legion.backend.SupabaseFleetBackend.upsertCodeEvent]/
+ * [upsertCodeClearEvent]) - see [CodeEvent.serverId]/[CodeClearEvent.serverId]'s own doc comments.
+ *
+ * **`oil_analyses` deliberately does NOT get this column in this migration.** It has no live write
+ * entry point anywhere in the app today - [com.kevin.legion.data.local.OilAnalysisDao.insert]'s
+ * only caller is [com.kevin.legion.backend.FleetReconcile]'s own batch download/reconcile path
+ * (`ui/fleet/OilAnalysisDrilldown.kt`'s two `OilAnalysis(...)` constructions are Compose
+ * `@Preview` fixtures, not a save action) - there is no local write to cut over and no producer to
+ * rewire, so there is nothing for a `serverId` bookkeeping column to serve. Adding the column
+ * anyway would be schema for a write path that does not exist, the same shape CLAUDE.md's
+ * feature-add checklist warns against for speculative work. `oil_analyses` therefore also stays in
+ * `sync/SyncEngine.kt`'s `REGISTRY` (`code_events`/`code_clear_events` are dropped from it in this
+ * same step, ruling 05 - their writes moved, so their Drive-JSON channel is retired the same way
+ * `drives`/`drive_reassignments` already were) - a table whose writes never moved keeps the only
+ * cross-device channel it has ever had.
+ */
+val MIGRATION_53_54 = object : Migration(53, 54) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `code_events` ADD COLUMN `serverId` TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE `code_clear_events` ADD COLUMN `serverId` TEXT DEFAULT NULL")
+    }
+}

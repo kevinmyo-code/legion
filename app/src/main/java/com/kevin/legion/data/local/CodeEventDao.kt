@@ -7,8 +7,13 @@ import androidx.room.Query
 
 @Dao
 interface CodeEventDao {
+    /** Returns the inserted row's local id (widened from `Unit`, backend-erp ticket 26 step 4) -
+     * [com.kevin.legion.vehicle.FleetEngineStore.recordCodeEvent] needs it to push the row it just
+     * wrote without a second read, same shape as [com.kevin.legion.data.local.DriveDao.insert].
+     * Every existing caller already ignored the prior `Unit` return, so this widening breaks
+     * nothing. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(event: CodeEvent)
+    suspend fun insert(event: CodeEvent): Long
 
     @Query("SELECT * FROM code_events WHERE vehicleId = :vehicleId ORDER BY timestamp DESC")
     suspend fun getAll(vehicleId: String): List<CodeEvent>
@@ -42,4 +47,15 @@ interface CodeEventDao {
      * and there is no update path), so "already present" is reason enough to skip re-inserting. */
     @Query("SELECT * FROM code_events WHERE syncId = :syncId LIMIT 1")
     suspend fun getBySyncId(syncId: String): CodeEvent?
+
+    /** By the local autoincrement id - [com.kevin.legion.vehicle.FleetEngineStore.syncCodeEventToServer]
+     * reads the just-[insert]ed row fresh before pushing it, same shape as
+     * [com.kevin.legion.data.local.DriveDao.getById]. */
+    @Query("SELECT * FROM code_events WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): CodeEvent?
+
+    /** Records the server's uuid after a first successful push - see [CodeEvent.serverId]'s own
+     * doc comment for why this is bookkeeping only, never consulted for identity. */
+    @Query("UPDATE code_events SET serverId = :serverId WHERE id = :id")
+    suspend fun setServerId(id: Long, serverId: String)
 }

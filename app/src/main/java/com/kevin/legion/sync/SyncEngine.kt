@@ -231,15 +231,24 @@ object SyncEngine {
         // `vehicles` got at ticket 26 step 1. Do not re-add "service_records" here to "restore" a
         // Drive-JSON channel - the live one now is Supabase, not this registry.
         Spec("build_entries", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
-        Spec("code_events", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
-        // code_clear_events (D3, `.scratch/hands-and-senses/issues/01-clear-dtc.md`): append-only
-        // falsifiable facts about the car, same posture as code_events one line up - no
-        // `deleted` tombstone, UNION on the portable syncId.
-        Spec("code_clear_events", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
-        // "drives" RETIRED here at backend-erp ticket 26 step 3 (2026-08-29) - same repoint as
-        // "drive_reassignments" above: com.kevin.legion.vehicle.FleetEngineStore.recordDrive is the
-        // live Supabase channel now. Unlike "drive_reassignments" this table has no other call site
-        // gated on its registry membership - nothing else to move, only to remove. Do not re-add it.
+        // "code_events"/"code_clear_events" RETIRED here at backend-erp ticket 26 step 4
+        // (2026-08-29, `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`) - same
+        // repoint as "drive_reassignments" above and "drives" (formerly listed here too, retired
+        // at step 3): Supabase (`public.code_events`/
+        // `public.code_clear_events`) is the live cross-device channel now, pushed per-row by
+        // com.kevin.legion.vehicle.FleetEngineStore.recordCodeEvent/recordCodeClearEvent. Neither
+        // table has any other call site gated on its registry membership (checked: this loop and
+        // MidnightImport.kt's separate, unrelated one-time legacy import are the only two grep
+        // hits for either table name in `sync/`) - nothing else to move, only to remove. Do not
+        // re-add either one to "restore" a Drive-JSON channel.
+        //
+        // "oil_analyses" is UNCHANGED and stays registered - it has no live write entry point
+        // anywhere in the app (`OilAnalysisDao.insert`'s only caller is
+        // com.kevin.legion.backend.FleetReconcile's own batch reconcile, not a user-facing create),
+        // so there is no write to cut over and this Drive-JSON channel remains the only
+        // cross-device path it has ever had. See FleetEngineStore's own class doc / MIGRATION_53_54
+        // for the full reasoning; a future ticket that gives oil_analyses a real producer should
+        // retire this entry in the same change, matching this step's own pattern.
         Spec("oil_analyses", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         // Mutable, last-write-wins.
         Spec("car_tasks", listOf("syncId"), Mode.LWW, naturalPk = false, hasSyncId = true),

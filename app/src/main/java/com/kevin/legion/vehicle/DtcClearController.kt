@@ -3,7 +3,6 @@ package com.kevin.legion.vehicle
 import android.content.Context
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.car.CarProbeLog
-import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CodeClearEvent
 import com.kevin.legion.data.local.Vehicle
 import org.json.JSONArray
@@ -259,17 +258,16 @@ object DtcClearController {
         val sent = outcome == ClearOutcome.CLEARED || outcome == ClearOutcome.RETURNED || outcome == ClearOutcome.UNVERIFIED
         if (!sent) return
 
-        CarDatabase.getDatabase(context).codeClearEventDao().insert(
-            CodeClearEvent(
-                vehicleId = vehicle.obdMac,
-                timestamp = System.currentTimeMillis(),
-                mileage = VehicleController.currentMileage(vehicle),
-                codesBeforeJson = JSONArray(result.codesBefore).toString(),
-                freezeFrameJson = result.freezeFrameJson,
-                codesAfterJson = result.codesAfter?.let { JSONArray(it).toString() } ?: "",
-                outcome = outcome.name,
-                ackRaw = result.ackRaw,
-            )
+        FleetEngineStore.recordCodeClearEvent(
+            context = context,
+            mac = vehicle.obdMac,
+            timestamp = System.currentTimeMillis(),
+            mileage = VehicleController.currentMileage(vehicle),
+            codesBeforeJson = JSONArray(result.codesBefore).toString(),
+            freezeFrameJson = result.freezeFrameJson,
+            codesAfterJson = result.codesAfter?.let { JSONArray(it).toString() } ?: "",
+            outcome = outcome.name,
+            ackRaw = result.ackRaw,
         )
     }
 }

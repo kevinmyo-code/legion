@@ -3,6 +3,8 @@ package com.kevin.legion.vehicle
 import android.content.Context
 import android.util.Log
 import androidx.room.withTransaction
+import com.kevin.legion.backend.CodeClearEventUpload
+import com.kevin.legion.backend.CodeEventUpload
 import com.kevin.legion.backend.DriveReassignmentUpload
 import com.kevin.legion.backend.DriveUpload
 import com.kevin.legion.backend.FleetBackend
@@ -11,6 +13,8 @@ import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabaseFleetBackend
 import com.kevin.legion.backend.VehicleUpload
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.CodeClearEvent
+import com.kevin.legion.data.local.CodeEvent
 import com.kevin.legion.data.local.Drive
 import com.kevin.legion.data.local.DriveReassignment
 import com.kevin.legion.data.local.EngineRecord
@@ -184,6 +188,31 @@ import com.kevin.legion.engine.migration.EngineFleetServiceHistoryRetirementCopy
  * `obd_samples` again, on every device, regardless of Supabase. `SyncEngine.syncNow` now calls it
  * unconditionally, in the same position in the pass it always ran (immediately before `obd_samples`'
  * own turn).
+ *
+ * **Ticket 26 step 4 (2026-08-29): `code_events` and `code_clear_events`, the two of the
+ * diagnostics trio with a real live producer.** Same "no replica, no read-side repoint" shape as
+ * `drives`/`drive_reassignments`: neither table has an engine-record counterpart, and neither
+ * table's local `id` has any reader outside its own DAO, so a configured read needs no change.
+ * [recordCodeEvent]/[recordCodeClearEvent] are the new entry points -
+ * [com.kevin.legion.service.AriaForegroundService.recordCodeEvent] and
+ * [com.kevin.legion.vehicle.DtcClearController.recordOutcome] call these now instead of
+ * `db.codeEventDao()`/`db.codeClearEventDao()` directly, the one caller each that creates these
+ * rows. Identity is [CodeEvent.syncId]/[CodeClearEvent.syncId], ruled already at the migration that
+ * introduced them (never [EngineRecord]s to begin with) - `serverId` on each is bookkeeping only,
+ * never consulted to decide insert vs. update, since [CodeEventUpload]/[CodeClearEventUpload]
+ * upsert by the natural key server-side (`ON CONFLICT (sync_id)`) exactly like [DriveUpload].
+ * Both are dropped from `sync/SyncEngine.kt`'s `REGISTRY` in this same step (ruling 05) - the
+ * per-drop check found no other code gated on either table's registry membership, unlike
+ * `drive_reassignments`' `applyReassignments` call.
+ *
+ * **`oil_analyses`, the third of the trio, is deliberately NOT cut over in this step.** It has no
+ * live write entry point anywhere in the app: [com.kevin.legion.data.local.OilAnalysisDao.insert]'s
+ * only caller is [com.kevin.legion.backend.FleetReconcile]'s own batch download/reconcile path, not
+ * a user-facing create - `ui/fleet/OilAnalysisDrilldown.kt`'s two `OilAnalysis(...)` calls are
+ * Compose `@Preview` fixtures. There is no local write to cut over and no producer to rewire, so it
+ * keeps reading/writing the legacy table exactly as before and stays in `SyncEngine`'s `REGISTRY` -
+ * a table whose writes never moved keeps the only cross-device channel it has ever had. This is the
+ * ticket's own "stop at a coherent boundary" clause, not an oversight.
  */
 object FleetEngineStore {
 
@@ -1114,6 +1143,158 @@ object FleetEngineStore {
 
         if (reassignment.serverId == null) {
             db.driveReassignmentDao().setServerId(localId, remote.serverId)
+        }
+    }
+
+    // =============================================================================================
+    // CodeEvent (backend-erp ticket 26 step 4) - same "no replica, no read-side repoint" shape as
+    // Drive/DriveReassignment above: `code_events` has no engine-record counterpart and its own id
+    // has no reader outside its own DAO, so a configured read needs no change at all. See this
+    // file's own class doc for the two-of-three scoping this step landed with.
+    // =============================================================================================
+
+    /**
+     * Writes a new [CodeEvent] row for [mac] and, best-effort, pushes it to the server.
+     * [com.kevin.legion.service.AriaForegroundService.recordCodeEvent] calls this now instead of
+     * `db.codeEventDao().insert` directly - the one place a code event is created, so there is
+     * exactly one seam to keep in sync with the push. Mirrors [recordDrive]'s own shape: a plain
+     * insert followed by a best-effort third write, no in-transaction step needed because a code
+     * event, like a drive, is never edited after it is written.
+     */
+    suspend fun recordCodeEvent(
+        context: Context,
+        mac: String,
+        timestamp: Long,
+        mileage: Int?,
+        codesJson: String,
+        freezeFrameJson: String,
+    ): Long {
+        val db = CarDatabase.getDatabase(context)
+        val id = db.codeEventDao().insert(
+            CodeEvent(
+                vehicleId = mac,
+                timestamp = timestamp,
+                mileage = mileage,
+                codesJson = codesJson,
+                freezeFrameJson = freezeFrameJson,
+            ),
+        )
+        syncCodeEventToServer(context, mac, id)
+        return id
+    }
+
+    /**
+     * Best-effort push of one `code_events` row, keyed on [CodeEvent.syncId] - never throws, never
+     * rolls back the local write, same posture as [syncDriveToServer] (see that function's own doc
+     * comment for the full reasoning). **A car must already be synced first** - same "no way to
+     * synthesize a `vehicles.id` on the spot" constraint as [syncDriveToServer]; a car with no
+     * [VehicleSidecar] row yet makes this a no-op, not a retryable error.
+     *
+     * Provenance is always `"DETERMINISTIC"` here - a dongle produced these codes, no person
+     * transcribed anything (CLAUDE.md section 4 rule 4; see [CodeEventUpload]'s own doc comment for
+     * why this is asserted explicitly rather than left to a column default).
+     *
+     * **`internal`, not `private`** - same reasoning as [syncDriveToServer]: a [CodeEvent] has no
+     * domain-level edit call to piggyback a re-run test on, so the test drives a genuine retry of
+     * the same local row directly through this function.
+     */
+    internal suspend fun syncCodeEventToServer(context: Context, mac: String, localId: Long) {
+        val backend = backend(context) ?: return
+        val db = CarDatabase.getDatabase(context)
+        val event = db.codeEventDao().getById(localId) ?: return
+        val vehicleServerId = db.vehicleSidecarDao().getByMac(mac)?.serverId ?: return
+
+        val remote = backend.upsertCodeEvent(
+            CodeEventUpload(
+                syncId = event.syncId,
+                vehicleServerId = vehicleServerId,
+                occurredAtMs = event.timestamp,
+                mileage = event.mileage,
+                codesJson = event.codesJson,
+                freezeFrameJson = event.freezeFrameJson.ifEmpty { null },
+                provenance = "DETERMINISTIC",
+            ),
+        ).getOrElse {
+            Log.w("FleetEngineStore", "Supabase code-event sync failed for event $localId: ${it.message}")
+            return
+        }
+
+        if (event.serverId == null) {
+            db.codeEventDao().setServerId(localId, remote.serverId)
+        }
+    }
+
+    // =============================================================================================
+    // CodeClearEvent (backend-erp ticket 26 step 4) - same shape as CodeEvent above.
+    // =============================================================================================
+
+    /**
+     * Writes a new [CodeClearEvent] row (for the three outcomes that ever earn one - see
+     * [CodeClearEvent]'s own class doc) and, best-effort, pushes it to the server.
+     * [com.kevin.legion.vehicle.DtcClearController.recordOutcome] calls this now instead of
+     * `db.codeClearEventDao().insert` directly - the one place this row is created.
+     */
+    suspend fun recordCodeClearEvent(
+        context: Context,
+        mac: String,
+        timestamp: Long,
+        mileage: Int?,
+        codesBeforeJson: String,
+        freezeFrameJson: String,
+        codesAfterJson: String,
+        outcome: String,
+        ackRaw: String,
+    ): Long {
+        val db = CarDatabase.getDatabase(context)
+        val id = db.codeClearEventDao().insert(
+            CodeClearEvent(
+                vehicleId = mac,
+                timestamp = timestamp,
+                mileage = mileage,
+                codesBeforeJson = codesBeforeJson,
+                freezeFrameJson = freezeFrameJson,
+                codesAfterJson = codesAfterJson,
+                outcome = outcome,
+                ackRaw = ackRaw,
+            ),
+        )
+        syncCodeClearEventToServer(context, mac, id)
+        return id
+    }
+
+    /**
+     * Best-effort push of one `code_clear_events` row, keyed on [CodeClearEvent.syncId] - same
+     * never-throws, never-rolls-back-the-local-write posture as [syncCodeEventToServer]. Provenance
+     * is always `"DETERMINISTIC"` here too - the codes-before/after snapshots come straight off the
+     * ECU, matching [CodeClearEventUpload]'s own doc comment. `internal` for the identical reason
+     * [syncCodeEventToServer] is - no domain-level edit call exists to piggyback a retry test on.
+     */
+    internal suspend fun syncCodeClearEventToServer(context: Context, mac: String, localId: Long) {
+        val backend = backend(context) ?: return
+        val db = CarDatabase.getDatabase(context)
+        val event = db.codeClearEventDao().getById(localId) ?: return
+        val vehicleServerId = db.vehicleSidecarDao().getByMac(mac)?.serverId ?: return
+
+        val remote = backend.upsertCodeClearEvent(
+            CodeClearEventUpload(
+                syncId = event.syncId,
+                vehicleServerId = vehicleServerId,
+                occurredAtMs = event.timestamp,
+                mileage = event.mileage,
+                codesBeforeJson = event.codesBeforeJson,
+                freezeFrameJson = event.freezeFrameJson.ifEmpty { null },
+                codesAfterJson = event.codesAfterJson.ifEmpty { null },
+                outcome = event.outcome,
+                ackRaw = event.ackRaw,
+                provenance = "DETERMINISTIC",
+            ),
+        ).getOrElse {
+            Log.w("FleetEngineStore", "Supabase code-clear-event sync failed for event $localId: ${it.message}")
+            return
+        }
+
+        if (event.serverId == null) {
+            db.codeClearEventDao().setServerId(localId, remote.serverId)
         }
     }
 }

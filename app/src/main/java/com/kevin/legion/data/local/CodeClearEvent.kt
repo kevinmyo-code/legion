@@ -60,4 +60,9 @@ data class CodeClearEvent(
     val ackRaw: String = "",
     // Portable cross-device identity for sync (S1) - see MemoryEntry.syncId.
     @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
+    /** `null` until [com.kevin.legion.vehicle.FleetEngineStore.syncCodeClearEventToServer] first
+     * succeeds - bookkeeping only, same shape and same reasoning as [CodeEvent.serverId]
+     * (backend-erp ticket 26 step 4): [syncId] is the identity key the server upsert matches on,
+     * this field is never consulted to decide insert vs. update. */
+    @ColumnInfo(defaultValue = "NULL") val serverId: String? = null,
 )

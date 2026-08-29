@@ -36,4 +36,15 @@ interface CodeClearEventDao {
      * [CodeEventDao.getBySyncId]. */
     @Query("SELECT * FROM code_clear_events WHERE syncId = :syncId LIMIT 1")
     suspend fun getBySyncId(syncId: String): CodeClearEvent?
+
+    /** By the local autoincrement id - [com.kevin.legion.vehicle.FleetEngineStore.syncCodeClearEventToServer]
+     * reads the just-[insert]ed row fresh before pushing it, same shape as
+     * [com.kevin.legion.data.local.DriveDao.getById]. */
+    @Query("SELECT * FROM code_clear_events WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): CodeClearEvent?
+
+    /** Records the server's uuid after a first successful push - see [CodeClearEvent.serverId]'s
+     * own doc comment for why this is bookkeeping only, never consulted for identity. */
+    @Query("UPDATE code_clear_events SET serverId = :serverId WHERE id = :id")
+    suspend fun setServerId(id: Long, serverId: String)
 }
