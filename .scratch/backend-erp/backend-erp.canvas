@@ -98,7 +98,7 @@
       "y": 1350,
       "width": 320,
       "height": 110,
-      "color": "4"
+      "color": "1"
     },
     {
       "id": "1cbb06b665d5d553",
@@ -196,6 +196,26 @@
       "file": ".scratch/backend-erp/issues/24-do-the-conversation-logs-reach-the-server.md",
       "x": 0,
       "y": 2850,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "ca2ee103a988ad22",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/25-ledger-ingestion-leaves-the-phone.md",
+      "x": 0,
+      "y": 3000,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "deb6cd79e8c18a45",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md",
+      "x": 0,
+      "y": 3150,
       "width": 320,
       "height": 110,
       "color": "1"

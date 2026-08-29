@@ -1,6 +1,6 @@
 ---
 type: decision
-status: resolved
+status: open
 blocked_by: []
 map: backend-erp
 ---
@@ -138,3 +138,58 @@ accordingly and closes on the projection bar, not the cutover bar.
 
 **Owed on the phone, not by this ticket:** `runFleet` has never been tapped on the A25. It is a
 one-way export against the household's own project; the projection is unproven until it runs.
+
+## REVERSED 2026-08-28 (Kevin). Fleet becomes a real cutover.
+
+*"we need to build fleet. obd, maintenance etc. all gotta go to supabase."*
+
+**The projection ruling is withdrawn.** Fleet stops being a one-way export and becomes a cutover
+like every other aspect: writes land server-side, and the PC surface can read fleet data as a first
+class citizen rather than a stale snapshot of the last time somebody tapped a button.
+
+### Why the original ruling was right then and wrong now
+
+It rested on one sentence: *"the phone is where fleet data originates - the dongle, the drives, the
+odometer. Reading it back from a replica of itself is motion without benefit."* That was true when
+the phone was the only surface. **ADR 0040 made the PC the general client**, and a projection that
+nobody can write to means fleet is the one aspect the web app can only look at. `runFleet` being
+manual makes it worse: the laptop's view is as stale as the last tap.
+
+### The blocker this ticket was originally about has not gone away
+
+A `Vehicle` row is **co-owned**, and that is still true. `VehicleReplica` carries what the server
+owns; the legacy `Vehicle` also carries `personaPrompt`, `voiceName`, `personaTraits`, `archived`,
+`onboarded`, `lastOdometerPromptAt`, `tripMilesSinceBaseline` - phone-only by ticket 01 ruling 10,
+and measured as live: `archived` read 15 times, `tripMilesSinceBaseline` 5, `onboarded` 3.
+
+**Option 1 is now the path** - the one this ticket described and rejected: a local sidecar table for
+the phone-owned columns, composed on read. The rejection reasoning ("it adds a table and a join to
+buy the phone something it already has") only held while the phone was the sole surface. It is now
+the cost of letting a second surface write.
+
+**Also still true:** there is no live write primitive. `FleetBackend` has only the insert-only
+`uploadMigrated*` methods built for replay, and `vehicles` has no natural key to upsert against -
+`20260826000100` explicitly rejected a unique `vehicles.name`, and `origin_guid` is provenance, not
+identity. **The cutover needs a real upsert and an identity decision**, which the projection ruling
+let it dodge.
+
+### The open question this ruling does not answer
+
+**Do raw `obd_samples` go too?** Ruling 10 kept them phone-only, and the reason was volume, not
+principle: 18,694 rows on Kevin's device by 2026-08-16, growing continuously while the engine runs,
+and they needed an index before telemetry queries stopped table-scanning.
+
+"OBD gotta go to supabase" plainly covers drives, codes, maintenance and vehicle state. Whether it
+covers the raw sample stream is a storage decision on a 500 MB free tier, and it should be answered
+deliberately rather than by reading the sentence broadly. **Recommendation: drives, codes,
+maintenance and specs go; raw samples stay phone-only until something on the PC actually needs
+them.** Nothing is lost by deferring - the samples are already on the phone and can be uploaded
+later if a use appears.
+
+### Consequences
+
+- `SyncEngine` registry drops come back onto the table. Ruling 05 ties each drop to the commit its
+  writes move; that now applies to fleet after all.
+- The two-phones-via-Drive channel for fleet retires with it, the same way it did for every other
+  cut-over aspect.
+- Ticket 10 closes on the projection bar; **a new build ticket owns the cutover.**
