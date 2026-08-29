@@ -1276,6 +1276,38 @@ object LiveToolbox {
             required = listOf(),
         ))
 
+        // Voice-called modals (ADR 0040: "voice is a LAUNCHER, not a renderer"). Each brings an
+        // existing, hand-reachable screen to the foreground as an interactive bottom sheet -
+        // dispatch() returns null for all three, same UI-scoped contract as show_saved_places/
+        // import_statement/import_receipt just above; LiveSessionController owns the screen.
+        fns.put(fn(
+            name = "show_agenda_modal",
+            description = "Bring up today's due items - reminders, appointments, and any to-do " +
+                "with a date today - as an on-screen list. Use for 'show me my agenda', " +
+                "'what's on today', 'pull up today's list'.",
+            params = obj(),
+            required = listOf(),
+        ))
+
+        fns.put(fn(
+            name = "show_list_modal",
+            description = "Bring up the user's whole persistent list (car to-dos, errands, " +
+                "reminders, notes - the same one manage_item/read_list operate on) as an " +
+                "on-screen list. Use for 'show me my list', 'pull up my to-dos'. NOT for the " +
+                "grocery trip - that is show_groceries_modal.",
+            params = obj(),
+            required = listOf(),
+        ))
+
+        fns.put(fn(
+            name = "show_groceries_modal",
+            description = "Bring up the current grocery/shopping trip list on screen. Use for " +
+                "'show me the shopping list', 'pull up my groceries'. NOT the persistent list - " +
+                "that is show_list_modal.",
+            params = obj(),
+            required = listOf(),
+        ))
+
         fns.put(fn(
             name = "recall_memory",
             description = "Search your long-term memory of past conversations and trips with the " +
@@ -1905,9 +1937,10 @@ object LiveToolbox {
      * math reads back), `activate_garage` (acts on the physical world), `set_goal`/`close_goal`/
      * `accept_proposal` (lifecycle plus an explicit-consent protocol), `set_meal_target`/
      * `set_sleep_target` (config the meters read), `import_receipt`/`import_statement`/
-     * `show_saved_places` (UI-scoped - [dispatch] returns null for these, and a sub-agent has no
-     * screen to hand them to, so dispatching one from inside an investigate loop would be a silent
-     * no-op), and every money/notes/media/place/core tool.
+     * `show_saved_places`/`show_agenda_modal`/`show_list_modal`/`show_groceries_modal` (UI-scoped -
+     * [dispatch] returns null for these, and a sub-agent has no screen to hand them to, so
+     * dispatching one from inside an investigate loop would be a silent no-op), and every
+     * money/notes/media/place/core tool.
      */
     private val DISPATCHED: Map<String, List<String>> = mapOf(
         // WRITES CAME BACK OUT, 2026-08-18 (Kevin's call, measured). Every tool below is a READ.
@@ -2480,6 +2513,9 @@ object LiveToolbox {
             "show_saved_places" -> null // caller launches the saved-places screen and replies
             "import_statement" -> null // caller launches the statement-import screen and replies
             "import_receipt" -> null // caller launches the receipt-import screen and replies
+            "show_agenda_modal" -> null // caller shows the voice-called modal and replies
+            "show_list_modal" -> null // caller shows the voice-called modal and replies
+            "show_groceries_modal" -> null // caller shows the voice-called modal and replies
             else -> result(success = false, message = "Unknown tool: $name")
         }
     }

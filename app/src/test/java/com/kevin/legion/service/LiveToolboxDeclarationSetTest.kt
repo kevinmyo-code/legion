@@ -108,7 +108,10 @@ class LiveToolboxDeclarationSetTest {
                 )
             }
         }
-        val uiScoped = setOf("import_receipt", "import_statement", "show_saved_places")
+        val uiScoped = setOf(
+            "import_receipt", "import_statement", "show_saved_places",
+            "show_agenda_modal", "show_list_modal", "show_groceries_modal",
+        )
         for ((_, toolNames) in DISPATCHED_FOR_TEST) {
             for (name in uiScoped) {
                 assertFalse(
@@ -263,6 +266,37 @@ class LiveToolboxDeclarationSetTest {
     fun `the two declaration sets do not overlap`() {
         val overlap = names(LiveToolbox.declarations()) intersect names(LiveToolbox.onboardingDeclarations())
         assertTrue("a tool declared in both sets has two dispatch regimes: $overlap", overlap.isEmpty())
+    }
+
+    /**
+     * The three voice-called-modal tools (ADR 0040): each must be declared to the live session
+     * with no required params, and [LiveToolbox.dispatch] must return null for all three (the
+     * UI-scoped contract - [LiveSessionController] owns showing the modal, same shape as
+     * `show_saved_places`/`import_statement`/`import_receipt`).
+     */
+    @Test
+    fun `the three voice-modal tools are declared with no required params`() {
+        val live = LiveToolbox.declarations()
+        for (name in listOf("show_agenda_modal", "show_list_modal", "show_groceries_modal")) {
+            val decl = (0 until live.length()).map { live.getJSONObject(it) }
+                .first { it.getString("name") == name }
+            assertEquals(
+                "$name must take no parameters - it names a target, not content",
+                0,
+                decl.getJSONObject("parameters").optJSONArray("required")?.length() ?: 0,
+            )
+        }
+    }
+
+    @Test
+    fun `dispatch returns null for all three voice-modal tools`() = kotlinx.coroutines.runBlocking {
+        for (name in listOf("show_agenda_modal", "show_list_modal", "show_groceries_modal")) {
+            val result = LiveToolbox.dispatch(context, name, org.json.JSONObject())
+            org.junit.Assert.assertNull(
+                "$name is UI-scoped and must return null from dispatch() - the caller owns the screen",
+                result,
+            )
+        }
     }
 
     companion object {

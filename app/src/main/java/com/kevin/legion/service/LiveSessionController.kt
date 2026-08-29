@@ -888,6 +888,28 @@ class LiveSessionController(context: Context) {
                                 openPantryImport()
                                 JSONObject().put("success", true)
                             }
+                            // Voice-called modals (ADR 0040) - VoiceModalController.show() updates
+                            // the StateFlow VoiceModalHost is already collecting immediately, and
+                            // openVoiceModal's startActivity brings the app forward if it was
+                            // backgrounded. Both run every call, including a repeat one while the
+                            // app is already on top - VoiceModalPayload's shownAt (see its own doc)
+                            // is what makes a repeat "show my agenda" re-fire rather than being
+                            // read as an unchanged value.
+                            "show_agenda_modal" -> {
+                                VoiceModalController.show(VoiceModalTarget.AGENDA)
+                                openVoiceModal()
+                                JSONObject().put("success", true)
+                            }
+                            "show_list_modal" -> {
+                                VoiceModalController.show(VoiceModalTarget.WHOLE_LIST)
+                                openVoiceModal()
+                                JSONObject().put("success", true)
+                            }
+                            "show_groceries_modal" -> {
+                                VoiceModalController.show(VoiceModalTarget.GROCERIES)
+                                openVoiceModal()
+                                JSONObject().put("success", true)
+                            }
                             // Ticket 21 (google-account-integration): s.readThroughToolTouchedThisTurn()
                             // is what `remember`'s dispatch branch gates on - see that accessor's doc
                             // for why the flag is read here, off the live session, rather than dispatch
@@ -1008,6 +1030,21 @@ class LiveSessionController(context: Context) {
     private fun openPantryImport() {
         val intent = Intent(appContext, MainActivity::class.java)
             .putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.MONEY_PANTRY_IMPORT)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        appContext.startActivity(intent)
+    }
+
+    /**
+     * Foregrounds [MainActivity] with NO [MainActivity.EXTRA_ROUTE] - unlike [openSavedPlaces]/
+     * [openLedgerImport]/[openPantryImport], a voice-called modal does not navigate anywhere; it
+     * paints over whatever destination is already showing (see [VoiceModalHost]). The actual
+     * modal state was already set by the direct [VoiceModalController.show] call at the tool-call
+     * site above - this only handles the case where the app was backgrounded and needs bringing
+     * forward to see it. If the app is already foregrounded this is a harmless no-op
+     * [android.app.Activity.onNewIntent] redelivery.
+     */
+    private fun openVoiceModal() {
+        val intent = Intent(appContext, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         appContext.startActivity(intent)
     }

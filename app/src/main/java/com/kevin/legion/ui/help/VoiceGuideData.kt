@@ -60,6 +60,9 @@ object VoiceGuideData {
                 Entry(name = "forget_place", say = "Forget the old gym", does = "Removes a saved place.", hands = "Fleet > Saved places screen, delete behind a confirm."),
                 Entry(name = "show_saved_places", say = "Show my saved places", does = "Puts your saved places on screen.", hands = "Is itself the Fleet > Saved places screen."),
                 Entry(name = "open_navigation", say = "Navigate to the hardware store", does = "Hands off to your maps app.", hands = "Fleet > Saved places screen, Navigate button on each place."),
+                Entry(name = "show_agenda_modal", say = "Show me my agenda", does = "Pops up today's due items - reminders, appointments, anything dated today - without leaving where you are.", hands = "Notes tab, tap a day on the calendar and choose Show in list."),
+                Entry(name = "show_list_modal", say = "Show me my list", does = "Pops up your whole list on screen without leaving where you are.", hands = "Notes tab, the main list."),
+                Entry(name = "show_groceries_modal", say = "Show me the shopping list", does = "Pops up the current grocery trip on screen without leaving where you are.", hands = "Notes tab, Grocery mode."),
             ),
         ),
         Group(
@@ -233,6 +236,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 113 as of the last regeneration. */
-    val TOOL_COUNT: Int = 113
+    /** Total entries across every group above - 116 as of the last regeneration. */
+    val TOOL_COUNT: Int = 116
 }

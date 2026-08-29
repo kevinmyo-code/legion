@@ -752,6 +752,12 @@ private fun LegionShell(
         // ordered against BootOverlay; boot was dropped 2026-08-14 and this is
         // now the only overlay.
         GlanceCardOverlay()
+
+        // Voice-called modals (ADR 0040, ticket "voice-called-modals") - a SIBLING to
+        // GlanceCardOverlay, mounted beside it rather than folded into it. See
+        // VoiceModalController's own doc for why one auto-dismiss policy cannot serve both an
+        // ambient glance card and an interactive modal.
+        VoiceModalHost()
     }
 }
 
