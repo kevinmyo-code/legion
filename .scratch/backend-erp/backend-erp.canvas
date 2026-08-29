@@ -161,6 +161,26 @@
       "color": "1"
     },
     {
+      "id": "977887e5246c2e33",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/21-the-engine-loses-its-reason-to-live.md",
+      "x": 0,
+      "y": 2400,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "f29b46d595812e54",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/22-deterministic-parsing-comes-back-on-the-pc.md",
+      "x": 0,
+      "y": 2550,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "0826d5c94a1739ed",
       "type": "file",
       "file": ".scratch/backend-erp/issues/02-auth-and-identity.md",
