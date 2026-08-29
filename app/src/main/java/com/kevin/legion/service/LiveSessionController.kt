@@ -880,10 +880,6 @@ class LiveSessionController(context: Context) {
                                             "The conversation ends when you finish speaking.",
                                     )
                             }
-                            "import_statement" -> {
-                                openLedgerImport()
-                                JSONObject().put("success", true)
-                            }
                             "import_receipt" -> {
                                 openPantryImport()
                                 JSONObject().put("success", true)
@@ -1020,12 +1016,8 @@ class LiveSessionController(context: Context) {
         appContext.startActivity(intent)
     }
 
-    private fun openLedgerImport() {
-        val intent = Intent(appContext, MainActivity::class.java)
-            .putExtra(MainActivity.EXTRA_ROUTE, LegionRoute.MONEY_IMPORT)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        appContext.startActivity(intent)
-    }
+    // openLedgerImport() deleted - backend-erp ticket 25 ("statement ingestion leaves the phone
+    // entirely"). The `import_statement` voice tool it backed is gone with it.
 
     private fun openPantryImport() {
         val intent = Intent(appContext, MainActivity::class.java)

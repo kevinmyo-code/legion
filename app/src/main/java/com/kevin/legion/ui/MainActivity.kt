@@ -250,9 +250,10 @@ class MainActivity : ComponentActivity() {
          * Intent extra a caller with no Compose nav graph of its own can set to
          * land the shell directly on a sub-route, e.g. [LegionRoute.FLEET_PLACES].
          * The only caller today is [com.kevin.legion.service.LiveSessionController]'s
-         * `show_saved_places` / `import_statement` / `import_receipt` voice
-         * tools - they used to `startActivity` the three orphan Activities this
-         * ticket deleted; now they start this Activity with a route instead.
+         * `show_saved_places` / `import_receipt` voice tools (`import_statement` was a third such
+         * tool, deleted along with phone-side statement ingestion - backend-erp ticket 25) - they
+         * used to `startActivity` orphan Activities a prior ticket deleted; now they start this
+         * Activity with a route instead.
          */
         const val EXTRA_ROUTE = "route"
     }
@@ -598,10 +599,6 @@ private fun LegionShell(
 
             composable(LegionRoute.MONEY) {
                 LedgerScreen(
-                    onOpenImport = { navController.navigate(LegionRoute.MONEY_IMPORT) },
-                    // The spend gate (ticket 08 Part 6 item 3) routes here when no
-                    // Gemini key is stored, rather than failing silently.
-                    onOpenKeySettings = { navController.navigate(LegionRoute.SETTINGS_KEY) },
                     // A grocery receipt is a purchase (2026-08-07 brief) - the
                     // pantry read screen moved under Money as a reachable
                     // sub-route rather than staying its own tab.
@@ -611,9 +608,9 @@ private fun LegionShell(
                     onCategoryDrilldownConsumed = { pendingMoneyCategoryNonce = 0 },
                 )
             }
-            composable(LegionRoute.MONEY_IMPORT) {
-                LedgerImportScreen(onBack = { navController.popBackStack() })
-            }
+            // MONEY_IMPORT/LedgerImportScreen deleted - backend-erp ticket 25 ("statement
+            // ingestion leaves the phone entirely"). Bank statements are ingested by the web app
+            // now; the phone only ever shows `ledger_transactions`, never writes to it from a file.
 
             composable(LegionRoute.MONEY_PANTRY) {
                 PantryScreen(onOpenImport = { navController.navigate(LegionRoute.MONEY_PANTRY_IMPORT) })
@@ -655,9 +652,10 @@ private fun LegionShell(
             composable(LegionRoute.SETTINGS_BACKEND_MIGRATION) {
                 com.kevin.legion.ui.settings.BackendMigrationScreen(onBack = { navController.popBackStack() })
             }
-            composable(LegionRoute.SETTINGS_LEDGER_REINGEST_DRY_RUN) {
-                com.kevin.legion.ui.settings.ReingestDryRunScreen(onBack = { navController.popBackStack() })
-            }
+            // SETTINGS_LEDGER_REINGEST_DRY_RUN/ReingestDryRunScreen deleted - backend-erp ticket 25.
+            // That dry run existed to check whether historical LOCAL statement files could recover
+            // their reconciliation anchors; with ingestion moved to the web app there is no phone-
+            // side statement history left to dry-run against.
             composable(LegionRoute.SETTINGS_CONNECTIONS) {
                 com.kevin.legion.ui.settings.ConnectionsScreen(
                     onBack = { navController.popBackStack() },
@@ -665,7 +663,6 @@ private fun LegionShell(
                     onOpenGoogleAccess = { navController.navigate(LegionRoute.SETTINGS_GOOGLE) },
                     onOpenSpotify = { navController.navigate(LegionRoute.SETTINGS_SPOTIFY) },
                     onOpenBackendMigration = { navController.navigate(LegionRoute.SETTINGS_BACKEND_MIGRATION) },
-                    onOpenReingestDryRun = { navController.navigate(LegionRoute.SETTINGS_LEDGER_REINGEST_DRY_RUN) },
                 )
             }
             composable(LegionRoute.SETTINGS_DATA_PRIVACY) {

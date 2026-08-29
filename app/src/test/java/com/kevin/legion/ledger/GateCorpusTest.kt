@@ -30,13 +30,16 @@ import org.robolectric.RobolectricTestRunner
  * the same arithmetic the SQL implements, so a divergence in either direction shows up as a
  * disagreement between this file and the SQL run.
  *
- * **The ledger pre-check landed** (`LegionCsvStatementParser`, ticket 03's CSV import path) and
- * `ledgerOutcome` below calls its production arithmetic, [LedgerReconciliationCheck.check],
- * directly rather than reimplementing it - the corpus's own promise made good: this file, the SQL
- * this corpus also generates, and the actual phone-side pre-check now all agree by construction,
- * not by three people copying the same rule correctly. `pantryOutcome` still reimplements the
- * arithmetic inline because pantry's own pre-check has not landed yet; when it does, apply the
- * same change there.
+ * **AMENDED 2026-08-29, backend-erp ticket 25 ("statement ingestion leaves the phone").** The
+ * ledger pre-check briefly landed (`LegionCsvStatementParser`) and `ledgerOutcome` called its
+ * production arithmetic, `LedgerReconciliationCheck.check`, directly. Kevin then ruled that the
+ * phone never ingests a statement at all - the web app does, against `public.commit_statement`'s
+ * own SQL - so that Kotlin pre-check has no production caller left and was deleted with the rest
+ * of the phone-side parsers (ticket 25). `ledgerOutcome` below reimplements the arithmetic inline
+ * now, the same shape `pantryOutcome` already used (pantry's own pre-check never landed either).
+ * This file's job is unchanged either way: prove the corpus is internally consistent against
+ * CLAUDE.md section 4's rules, so a divergence between this and `tools/gate_corpus_sql.py`'s SQL
+ * run would be caught by *some* copy of the arithmetic even with no Kotlin production path to test.
  */
 @RunWith(RobolectricTestRunner::class)
 class GateCorpusTest {
@@ -48,29 +51,36 @@ class GateCorpusTest {
     }
 
     /**
-     * The ledger gate. Calls [LedgerReconciliationCheck.check] - the same function
-     * `LegionCsvStatementParser`'s own pre-check calls - rather than reimplementing the
-     * arithmetic a third time. See this class's own doc comment for why that matters.
+     * The ledger gate, reimplemented inline (see this class's own doc comment for why there is no
+     * production Kotlin function to call any more) - the same rules `public.commit_statement`'s
+     * SQL implements: rule 6 first (an empty extraction can never pass, whatever the stated
+     * figures are), then the stated-total anchor (skippable only for a DETERMINISTIC extraction
+     * with no printed total), then the balance-delta anchor.
      */
     private fun ledgerOutcome(case: JSONObject): String {
         val lines = case.getJSONArray("lines")
         val amounts = (0 until lines.length()).map { lines.getJSONObject(it).getLong("amount_cents") }
+        if (amounts.isEmpty()) return "QUARANTINED"
+
+        val sum = amounts.sum()
         // A case with no "provenance" key defaults to DETERMINISTIC - every pre-amendment case in
         // the corpus is a three-anchor DETERMINISTIC statement and was never made to say so
         // explicitly; the amendment's new cases DO say so, because their outcome depends on it.
         val provenance = IngestMethod.valueOf(case.optString("provenance", "DETERMINISTIC"))
         val statedTotal = if (case.isNull("stated_total_cents")) null else case.getLong("stated_total_cents")
-        val outcome = LedgerReconciliationCheck.check(
-            amountsCents = amounts,
-            statedTotalCents = statedTotal,
-            openingBalanceCents = case.getLong("opening_balance_cents"),
-            closingBalanceCents = case.getLong("closing_balance_cents"),
-            provenance = provenance,
-        )
-        return when (outcome) {
-            is LedgerGateOutcome.Committed -> "COMMITTED"
-            is LedgerGateOutcome.Quarantined -> "QUARANTINED"
+
+        if (statedTotal == null) {
+            if (provenance != IngestMethod.DETERMINISTIC) return "QUARANTINED"
+            // else: no anchor 1 to check - fall through to the balance-delta check, still mandatory.
+        } else if (sum != statedTotal) {
+            return "QUARANTINED"
         }
+
+        val opening = case.getLong("opening_balance_cents")
+        val closing = case.getLong("closing_balance_cents")
+        if (closing - opening != sum) return "QUARANTINED"
+
+        return "COMMITTED"
     }
 
     /**

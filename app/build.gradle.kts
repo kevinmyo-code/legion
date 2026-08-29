@@ -159,10 +159,11 @@ android {
     }
     testOptions {
         unitTests {
-            // PdfBox-Android's fonts/glyphlists/cmaps ship in the AAR's assets/,
-            // reachable only via Android's AssetManager - not on a plain JVM unit
-            // test's classpath. Robolectric (below) needs this to shadow that
-            // AssetManager with the real merged assets instead of a stub.
+            // Needed for Roborazzi's screenshot tests (below) to shadow AssetManager/resources
+            // with the real merged set rather than a stub. Originally added for PdfBox-Android's
+            // fonts/glyphlists/cmaps, which shipped in the AAR's assets/ and were reachable only
+            // via Android's AssetManager - PdfBox is gone now (backend-erp ticket 25, statement
+            // ingestion left the phone), but this flag has its own live reason to stay.
             isIncludeAndroidResources = true
 
             // Android framework stubs throw "not mocked" by default, so ANY class that calls
@@ -290,10 +291,9 @@ dependencies {
     // play-services-auth above (that one is Drive sign-in only).
     implementation(libs.play.services.location)
 
-    // Ledger aspect (.claude/plans/wiggly-beaming-quasar.md): PDF text/coordinate
-    // extraction for bank-statement parsing. Android has no built-in equivalent
-    // to Python's pdfplumber word-position extraction the DBS parser depends on.
-    implementation(libs.pdfbox.android)
+    // pdfbox-android (PDF text/coordinate extraction for bank-statement parsing) was here -
+    // removed, backend-erp ticket 25: statement ingestion left the phone entirely, and it was the
+    // single largest dependency this app carried.
 
     // Aspect-engine mirror/sync (ticket 20): xlsx workbook read/write. Plain-JVM library, no
     // Android assets - see MirrorCodec's own doc comment for why this needs no Robolectric.
@@ -341,9 +341,10 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation("org.json:json:20231013")
-    // Robolectric: needed so ledger PDF-parsing unit tests can shadow
-    // AssetManager and reach PdfBox-Android's bundled fonts/glyphlists (see
-    // testOptions.unitTests.isIncludeAndroidResources above for why).
+    // Robolectric: originally needed so ledger PDF-parsing unit tests could shadow AssetManager
+    // and reach PdfBox-Android's bundled fonts/glyphlists - those tests are gone (backend-erp
+    // ticket 25), but Roborazzi's screenshot tests and several other Robolectric suites
+    // (GateCorpusTest, PantryReceiptAgentTest, the engine migration tests) still need this.
     testImplementation(libs.robolectric)
     // Compose UI testing (hardening ticket 01's screenshot tests, and any future Compose
     // behaviour test) - createComposeRule()/createAndroidComposeRule<T>() plus the merged-manifest

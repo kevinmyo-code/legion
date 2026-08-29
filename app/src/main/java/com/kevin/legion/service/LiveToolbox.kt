@@ -673,15 +673,6 @@ object LiveToolbox {
         ))
 
         fns.put(fn(
-            name = "import_statement",
-            description = "Open the file picker to import a bank statement PDF into the ledger. " +
-                "Use when the user asks to import, add, or upload a statement, or add a bank " +
-                "account's transactions.",
-            params = obj(),
-            required = listOf(),
-        ))
-
-        fns.put(fn(
             name = "get_balance",
             description = "Report the latest known balance for a ledger account, LEADING WITH THE " +
                 "AVAILABLE FIGURE the way the user's own bank app does. If the user doesn't " +
@@ -1279,7 +1270,7 @@ object LiveToolbox {
         // Voice-called modals (ADR 0040: "voice is a LAUNCHER, not a renderer"). Each brings an
         // existing, hand-reachable screen to the foreground as an interactive bottom sheet -
         // dispatch() returns null for all three, same UI-scoped contract as show_saved_places/
-        // import_statement/import_receipt just above; LiveSessionController owns the screen.
+        // import_receipt just above; LiveSessionController owns the screen.
         fns.put(fn(
             name = "show_agenda_modal",
             description = "Bring up today's due items - reminders, appointments, and any to-do " +
@@ -1936,7 +1927,7 @@ object LiveToolbox {
      * `register_vehicle`/`set_odometer`/`set_maintenance_interval` (identity/config the maintenance
      * math reads back), `activate_garage` (acts on the physical world), `set_goal`/`close_goal`/
      * `accept_proposal` (lifecycle plus an explicit-consent protocol), `set_meal_target`/
-     * `set_sleep_target` (config the meters read), `import_receipt`/`import_statement`/
+     * `set_sleep_target` (config the meters read), `import_receipt`/
      * `show_saved_places`/`show_agenda_modal`/`show_list_modal`/`show_groceries_modal` (UI-scoped -
      * [dispatch] returns null for these, and a sub-agent has no screen to hand them to, so
      * dispatching one from inside an investigate loop would be a silent no-op), and every
@@ -2511,7 +2502,6 @@ object LiveToolbox {
             // Session-scoped tools the owning controller handles (it has the live
             // session / capture controller / activity), so dispatch returns null:
             "show_saved_places" -> null // caller launches the saved-places screen and replies
-            "import_statement" -> null // caller launches the statement-import screen and replies
             "import_receipt" -> null // caller launches the receipt-import screen and replies
             "show_agenda_modal" -> null // caller shows the voice-called modal and replies
             "show_list_modal" -> null // caller shows the voice-called modal and replies
@@ -2546,7 +2536,7 @@ object LiveToolbox {
      * listed - a dispatcher is a router, not a write; whether ONE PARTICULAR call into it wrote
      * anything is exactly what [agentToolsFor]'s `mutatingToolNames` argument (built by intersecting
      * this set with a domain's own [DISPATCHED] list) tells [SubAgent.investigate] to track.
-     * `show_saved_places`/`import_statement`/`import_receipt` are UI-scoped hand-offs - [dispatch]
+     * `show_saved_places`/`import_receipt` are UI-scoped hand-offs - [dispatch]
      * itself writes nothing for them, the screen it launches does, downstream of this file entirely.
      */
     private val MUTATING_TOOLS = setOf(

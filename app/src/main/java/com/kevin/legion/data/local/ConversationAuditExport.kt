@@ -3,7 +3,7 @@ package com.kevin.legion.data.local
 import android.content.Context
 import android.provider.DocumentsContract
 import android.util.Log
-import com.kevin.legion.ledger.LedgerFolderPreferences
+import com.kevin.legion.engine.mirror.MirrorFolderPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -38,12 +38,20 @@ sealed class ConversationAuditExportResult {
  * "a function that writes the recent window to a human-readable file in the user's Drive folder /
  * SAF location on demand".
  *
- * **Deliberately reuses [LedgerFolderPreferences] rather than minting a second folder-connection
+ * **Deliberately reuses [MirrorFolderPreferences] rather than minting a second folder-connection
  * flow.** This is a debugging export, not a new ingestion surface - asking Kevin to connect a
  * SECOND Drive folder just so the assistant can write its own audit trail out would be exactly the
  * kind of surface area CLAUDE.md's "clone-and-run" posture warns against for no real benefit: one
  * connected folder, one grant, one place to look. If that folder is ever wrong for this purpose,
  * splitting it is a one-function change, not a redesign.
+ *
+ * **AMENDED 2026-08-29, backend-erp ticket 25.** This used to reuse `LedgerFolderPreferences` (the
+ * statement-ingestion Drive folder), which this ticket deleted along with the rest of phone-side
+ * statement ingestion - the phone no longer connects a Drive folder for that purpose at all. This
+ * is exactly the "one-function change" the paragraph above anticipated: [MirrorFolderPreferences]
+ * (`engine/mirror/`, the xlsx-mirror/two-phone sync folder) is the one SAF-connected Drive folder
+ * still live on the phone, and its `ConnectionStatus(uri, displayName, permissionGranted)` shape is
+ * identical, so nothing below this point needed to change.
  *
  * On-device only, and only into the driver's own Drive `appDataFolder`-backed SAF tree - no
  * network call of its own, no Kevin-hosted anything (CLAUDE.md sec 7).
@@ -60,16 +68,16 @@ object ConversationAuditExport {
      * the app it exists to debug would be its own kind of bug.
      */
     suspend fun export(context: Context): ConversationAuditExportResult = withContext(Dispatchers.IO) {
-        val status = LedgerFolderPreferences.connectionStatus(context)
+        val status = MirrorFolderPreferences.connectionStatus(context)
         val treeUri = status.uri
         if (treeUri == null) {
             return@withContext ConversationAuditExportResult.NotConfigured(
-                "No Drive folder is connected. Connect one from the ledger tab first.",
+                "No Drive folder is connected. Connect the sync folder from settings first.",
             )
         }
         if (!status.permissionGranted) {
             return@withContext ConversationAuditExportResult.NotConfigured(
-                "The connected Drive folder's permission has been revoked. Reconnect it from the ledger tab.",
+                "The connected Drive folder's permission has been revoked. Reconnect it from settings.",
             )
         }
 

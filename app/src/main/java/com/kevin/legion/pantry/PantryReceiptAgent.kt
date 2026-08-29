@@ -6,7 +6,7 @@ import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.PantryLineItem
 import com.kevin.legion.data.local.PantryReceipt
 import com.kevin.legion.ledger.formatCents
-import com.kevin.legion.ledger.parsers.parseMoneyCents
+import com.kevin.legion.ledger.parseMoneyCents
 import org.json.JSONObject
 
 /**

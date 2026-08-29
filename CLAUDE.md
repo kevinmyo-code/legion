@@ -149,10 +149,17 @@ repeat. Commit map and ticket changes like any other file.
 | Music | Spotify App Remote as the SPINE (`media/SpotifyController`, connection held in the FGS - ADR 0032) + Web API name resolution (`media/SpotifyWebApi`, own library first) + generic MediaSession transport fallback (`media/MusicController`) | BYO Spotify client ID (ADR 0033). `MusicRouter`/`MusicSource`/mixtapes all retired |
 | Location | Android `Geocoder` | The Mapbox-backed `NavGeocoder`, embedded nav, and the phone-to-head-unit GPS beacon are all gone |
 | Sync | Google Drive `appDataFolder`, `drive.appdata` | `sync/`, `play-services-auth` |
-| PDF | PdfBox-Android | Ledger only. Ships fonts/glyphlists as Android **assets**, unreachable from a plain JVM unit test - Robolectric (test-only) is required to shadow `AssetManager` |
 | Crash/observability | `Log.d` via `MidnightEvents` | Firebase is NOT wired up. `google-services.json` is intentionally excluded and gitignored |
 
-Dropped dependencies, deliberately: Mapbox, Firebase, Play Billing, Media3, ZXing.
+**PdfBox-Android REMOVED, 2026-08-29 (backend-erp ticket 25, "statement ingestion leaves the phone
+entirely").** It used to parse bank-statement PDFs on-device (ledger only); Kevin ruled the phone
+never ingests a statement at all now - a statement PDF is already on the laptop, so the web app
+ingests it there, against `public.commit_statement`. It was the single largest dependency this app
+carried, and the Robolectric requirement its bundled fonts/glyphlists forced on ledger's unit tests
+went with it (Robolectric itself stays, for Roborazzi screenshot tests and several unrelated
+Robolectric suites).
+
+Dropped dependencies, deliberately: Mapbox, Firebase, Play Billing, Media3, ZXing, PdfBox-Android.
 
 ---
 

@@ -36,7 +36,6 @@ vosk = "0.3.47"
 # Android port of Apache PDFBox, needed for per-word coordinate extraction
 # (DBS statement column classification) that Android has no built-in equivalent
 # for. Verify this resolves - not yet confirmed against Maven Central directly.
-pdfboxAndroid = "2.0.27.0"
 # Robolectric: test-only, needed because PdfBox-Android's fonts/glyphlists ship
 # as Android assets (not JVM classpath resources) - a plain unit test can't
 # reach them without something shadowing AssetManager.
@@ -149,7 +148,6 @@ play-services-auth = { group = "com.google.android.gms", name = "play-services-a
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 # Custom wake word ("hey <name>"), ported from Midnight AI.
 vosk-android = { group = "com.alphacephei", name = "vosk-android", version.ref = "vosk" }
-pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 media-compat = { group = "androidx.media", name = "media", version.ref = "media-compat" }

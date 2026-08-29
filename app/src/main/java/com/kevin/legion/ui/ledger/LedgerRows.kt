@@ -412,29 +412,16 @@ fun LedgerEmptyState(title: String, body: String, actionLabel: String? = null, o
 }
 
 /**
- * Copy for the three states this ticket names (resolution §7). Kept as
- * named constructors rather than a raw enum so the exact wording lives in
- * one place and reads next to the resolution's own language, which is what
- * the copy is quoting.
+ * **AMENDED 2026-08-29, backend-erp ticket 25** ("statement ingestion leaves the phone entirely").
+ * This object used to hold three copies (`NO_FOLDER`/`NOTHING_NEW`/`LOOKS_EMPTY`, ticket 08
+ * resolution §7) distinguishing folder-connect/scan states that no longer exist on the phone at
+ * all - the phone never connects a statements folder or runs a scan any more; the web app ingests
+ * against `public.commit_statement` instead. One state is left to say.
  */
 object LedgerEmptyCopy {
-    /** No statements folder connected and nothing has ever been imported by hand either. */
-    const val NO_FOLDER_TITLE = "No folder connected"
-    const val NO_FOLDER_BODY = "Point LEGION at a Drive folder of statements, or import one by hand."
-
-    /** A folder is connected and has been scanned; every file it holds is already accounted for. */
-    const val NOTHING_NEW_TITLE = "Nothing new"
-    const val NOTHING_NEW_BODY = "Everything in this folder is already imported."
-
-    /**
-     * A scan came back with literally zero files, which the probe found can
-     * legitimately happen for a file uploaded moments ago - "Design for 'a
-     * scan may legitimately find nothing new'" (memory/MEMORY.md, ticket 05
-     * §9). This copy must never read as an error.
-     */
-    const val LOOKS_EMPTY_TITLE = "Folder looks empty"
-    const val LOOKS_EMPTY_BODY =
-        "Drive may still be syncing. A statement uploaded in the last few minutes often isn't visible yet."
+    /** No `ledger_transactions` rows exist yet - nothing has been ingested by the web app. */
+    const val NO_STATEMENTS_TITLE = "No transactions yet"
+    const val NO_STATEMENTS_BODY = "Import a bank statement from the web app to see it here."
 }
 
 // ------------------------------------------------------------------------ previews
@@ -608,27 +595,8 @@ private fun PreviewQuarantineRow() = LegionTheme {
     }
 }
 
-@Preview(name = "Empty: no folder connected", widthDp = 360)
+@Preview(name = "Empty: no statements yet", widthDp = 360)
 @Composable
-private fun PreviewEmptyNoFolder() = LegionTheme {
-    Surface {
-        LedgerEmptyState(
-            LedgerEmptyCopy.NO_FOLDER_TITLE,
-            LedgerEmptyCopy.NO_FOLDER_BODY,
-            actionLabel = "Import a statement",
-            onAction = {},
-        )
-    }
-}
-
-@Preview(name = "Empty: nothing new", widthDp = 360)
-@Composable
-private fun PreviewEmptyNothingNew() = LegionTheme {
-    Surface { LedgerEmptyState(LedgerEmptyCopy.NOTHING_NEW_TITLE, LedgerEmptyCopy.NOTHING_NEW_BODY) }
-}
-
-@Preview(name = "Empty: folder looks empty, not an error", widthDp = 360)
-@Composable
-private fun PreviewEmptyLooksEmpty() = LegionTheme {
-    Surface { LedgerEmptyState(LedgerEmptyCopy.LOOKS_EMPTY_TITLE, LedgerEmptyCopy.LOOKS_EMPTY_BODY) }
+private fun PreviewEmptyNoStatements() = LegionTheme {
+    Surface { LedgerEmptyState(LedgerEmptyCopy.NO_STATEMENTS_TITLE, LedgerEmptyCopy.NO_STATEMENTS_BODY) }
 }

@@ -49,7 +49,6 @@ fun ConnectionsScreen(
     onOpenGoogleAccess: () -> Unit,
     onOpenSpotify: () -> Unit,
     onOpenBackendMigration: () -> Unit,
-    onOpenReingestDryRun: () -> Unit,
 ) {
     val context = LocalContext.current
 
@@ -147,15 +146,10 @@ fun ConnectionsScreen(
                     onClick = onOpenBackendMigration,
                 )
 
-                // Ticket 12's dry run (`.scratch/backend-erp/issues/12-ledger-rows-have-no-
-                // statement-header.md`) - read-only, re-reads the historical statements to check
-                // whether their anchors could be recovered before any real re-ingest is built.
-                Spacer(Modifier.height(8.dp))
-                SettingsNavRow(
-                    label = "Ledger re-ingest dry run",
-                    status = "Read-only - checks whether historical statements can recover their anchors.",
-                    onClick = onOpenReingestDryRun,
-                )
+                // Ticket 12's dry run row lived here (read-only, re-reading historical LOCAL
+                // statement files to check whether their anchors could be recovered) - removed,
+                // backend-erp ticket 25: statement ingestion moved to the web app, so there is no
+                // phone-side statement history left to dry-run against.
 
                 Spacer(Modifier.height(24.dp))
             }

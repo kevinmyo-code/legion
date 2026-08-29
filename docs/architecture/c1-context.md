@@ -35,7 +35,6 @@ graph TB
     subgraph Local["On the device, no network"]
         OBD["ELM327 dongle<br/>RFCOMM or BLE"]
         Cal["Calendar<br/>ContentProvider"]
-        SAF["Statement folder<br/>SAF tree grant"]
         Vosk["Vosk<br/>bundled ASR model"]
     end
 
@@ -49,7 +48,6 @@ graph TB
     LEGION -->|"no auth"| NHTSA
     LEGION <-->|"AT commands"| OBD
     LEGION <-->|"runtime permission"| Cal
-    LEGION -->|"user-picked folder"| SAF
     LEGION --> Vosk
 ```
 
@@ -74,10 +72,13 @@ graph TB
 expands recurrence via `Instances`. If you find yourself drawing an HTTPS arrow to a Google Calendar
 API, or reaching for an OAuth scope, stop. There is no scope and no network call.
 
-**The ledger's "Drive ingestion" is not the Drive API.** It is a SAF tree grant over a folder the
-driver picks, which in practice is the Drive app's synced folder. `service/IngestScanner.kt` walks it
-with raw `queryChildDocuments`. This is a completely separate path from the `appDataFolder` REST
-sync in `sync/`, which carries the app's own state. Two different things wearing the same word.
+**The ledger no longer ingests anything on the phone.** Backend-erp ticket 25 ("statement ingestion
+leaves the phone entirely") killed the SAF-folder-scan path this paragraph used to describe
+(the old folder scanner, the statement parsers, and `LedgerFolderPreferences`) - bank statements are
+ingested by the web app now, against `public.commit_statement`. The phone only ever reads
+`ledger_transactions`. This is unrelated to the `appDataFolder` REST sync in `sync/`, which carries
+the app's own state - two different things that used to wear the same word ("Drive"), and now only
+one of them exists on the phone at all.
 
 **The garage opener depends on a third-party cloud.** `vehicle/ShellyCloudOpener.kt` posts to Shelly's
 servers. That does not violate "no Kevin-hosted anything" (nobody here runs it) but it *is* the one

@@ -7,8 +7,6 @@ import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.data.MidnightImport
 import com.kevin.legion.engine.mirror.MirrorFolderPreferences
 import com.kevin.legion.engine.mirror.MirrorLifecycleBinder
-import com.kevin.legion.ledger.LedgerAccountMappingPreferences
-import com.kevin.legion.ledger.LedgerFolderPreferences
 import com.kevin.legion.ledger.LedgerNominatedAccountPreferences
 import com.kevin.legion.service.ProactivePreferences
 import kotlinx.coroutines.CoroutineScope
@@ -53,11 +51,9 @@ class MidnightApplication : Application() {
         // the assistant path does not depend on this ordering.
         GeminiKeyProvider.init(this)
         ProactivePreferences.init(this)
-        LedgerFolderPreferences.init(this)
-        // Per-account subfolder mapping (checking/, credit/, ...) - same L12
-        // reasoning as the three above, added for the per-account-subfolder
-        // + CSV ingestion ticket.
-        LedgerAccountMappingPreferences.init(this)
+        // backend-erp ticket 25: LedgerFolderPreferences.init/LedgerAccountMappingPreferences.init
+        // used to seed here too - both classes are gone along with the rest of phone-side
+        // statement ingestion (Kevin: "kill ledger ingestion from phone").
         // HOME's CRED tile balance line (2026-08-18) - same L12 reasoning as the three caches
         // above: must be live before the first Today-tab composition, not just after AriaForegroundService starts.
         LedgerNominatedAccountPreferences.init(this)

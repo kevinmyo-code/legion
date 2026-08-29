@@ -2,49 +2,37 @@
 title: C3 Ingestion
 level: c3
 tags: [architecture]
-verified: 2026-08-24
+verified: 2026-08-29
 ---
 
 # C3: Ingestion and the gate
 
-Two aspects ingest documents: **ledger** reads bank statements, **pantry** reads photographed
-grocery receipts. They share one rule and almost no code, because their inputs are nothing alike.
+**AMENDED 2026-08-29, backend-erp ticket 25 ("statement ingestion leaves the phone entirely").**
+This doc used to cover two aspects ingesting documents on the phone - ledger (bank statements) and
+pantry (photographed grocery receipts). Kevin ruled the phone never ingests a bank statement any
+more: *"kill ledger ingestion from phone. just keep pantry."* A statement PDF is already on the
+laptop; a receipt needs a camera the laptop does not have. Only **pantry** ingests on the phone now.
 
-The rule is [[0006-reconciliation-gate]]. Everything below is that rule made concrete.
+The rule is still [[0006-reconciliation-gate]]. Everything below is that rule made concrete for the
+one aspect left that runs it on-device.
 
-```mermaid
-flowchart TB
-    Folder["SAF folder grant<br/>ui/LedgerScreen.kt"]
-    Scan["IngestScanner<br/>listing only, no bytes"]
-    Led["ingested_files<br/>seen this one already?"]
+## What used to be here, and where it went
 
-    P1["Phase 1: fetch + SHA-256<br/>parallel, limit 4, spill to cacheDir"]
-    Det["dispatchDeterministic<br/>DBS / BofA parsers<br/>no Gemini, no cost"]
-    Gate1{"layout<br/>recognised?"}
-    Spend["spend gate<br/>exact count of unparsed files"]
-    LLM["runLlm<br/>LedgerStatementAgent"]
+the old folder scanner, the five statement parsers plus `StatementDispatcher`,
+the LLM statement fallback, `LedgerFolderPreferences`, `LedgerIngestService`, and
+`ledger/IngestPipeline.kt`'s `stage`/`commit` machinery are all deleted. Bank statements are
+ingested by the web app now, against `public.commit_statement` - a Postgres RPC implementing the
+SAME rules 1-7 below in SQL, run against a CSV the user's own LLM produces (masked, then uploaded).
+CLAUDE.md §4's amendment on this is the source of truth for that side; this doc no longer tracks it
+because there is nothing left on the phone to diagram.
 
-    Rec{"rows sum EXACTLY to<br/>the document's stated total?"}
-    Anchor{"does the document<br/>state a total at all?"}
+`ledger/IngestPipeline.kt` still exists as a single shared utility (`sha256`), because pantry's own
+receipt hashing happens to want the exact same primitive - see that file's own doc comment.
 
-    Commit["commit<br/>DETERMINISTIC or LLM_RECONCILED"]
-    Prov["commit PROVISIONALLY<br/>UNRECONCILED, transient"]
-    Q["QUARANTINE<br/>nothing written"]
+## The gate, stated exactly (still binding, pantry included)
 
-    Folder --> Scan --> Led --> P1 --> Det --> Gate1
-    Gate1 -->|yes| Rec
-    Gate1 -->|no| Spend --> LLM --> Rec
-    Rec -->|yes| Commit
-    Rec -->|no| Anchor
-    Anchor -->|"yes, and it did not match"| Q
-    Anchor -->|"no anchor exists at all"| Prov
-```
-
-## The gate, stated exactly
-
-1. **Deterministic first** where a deterministic path exists. `ledger/parsers/DbsStatementParser.kt`
-   and `ledger/parsers/BofaStatementParser.kt` are primary. The LLM runs only when no parser
-   recognises the layout.
+1. **Deterministic first** where a deterministic path exists. Pantry has none - a receipt is
+   photographed, not born-digital - so LLM vision is primary there by necessity.
 2. **Rows must reconcile against the document's own stated total, exactly.** Not within a tolerance.
    Sum equals printed total, or the whole document quarantines. Nothing partial is ever written.
 3. **Money is `Long` cents.** [[0007-money-as-long-cents]]. The equality in rule 2 is why.
@@ -54,42 +42,15 @@ flowchart TB
 6. **A check that passes when nothing parsed is not a gate.** Inside a recognised section, every
    line that is not the section's own total must parse, or the document quarantines.
 7. **A source with no anchor may be stored provisionally, never as fact.**
-   [[0009-provisional-unreconciled-tier]].
+   [[0009-provisional-unreconciled-tier]]. (Pantry has never needed this rule - a receipt not
+   printing a subtotal still prints a total; ledger's mid-cycle card CSV was the only source that
+   needed it, and it left with the rest of ledger ingestion.)
 
-Rules 6 and 7 are the two that were learned the hard way. Rule 6 exists because BofA's card
-statement prints interest rows in a different shape, all four silently failed to match, and the
-section check reconciled zero parsed rows against a printed $0.00 and passed. It held only because
-interest happened to be zero that month.
-
-**Since [[cutover3-2026-08-24]] (2026-08-24), the gate's own logic above is unchanged, but where its
-result LANDS is not: `ledger/IngestPipeline.kt`'s `commit` writes through `engine/RecordStore.kt`
-(one `Transaction` record per row, `RecordStore.create`) instead of `LedgerTransactionDao.insertAll`,
-and rule 7's supersession (trashing a superseded `UNRECONCILED` row) now happens inside that same
-`db.withTransaction` rather than as a separate legacy-table delete - so a commit and its
-supersession are atomic together, where before they were two independent writes. `LedgerController`
-is now a read/write bridge over the engine rather than the owner of its own table.**
-
-## Money as engine payload, not a schema column
-
-The reconciliation gate's money-as-`Long`-cents rule ([[0007-money-as-long-cents]]) survives the
-cutover unchanged, but its home moved: cents live inside `EngineRecord.payload` (JSON), typed by
-the `Transaction` record type's field defs, not as a dedicated `INTEGER` column the way
-`LedgerTransaction.amountCents` was. `PayloadCodec` is what serialises and deserialises it; nothing
-about the gate's exactness requirement changed, only where the verified number is stored.
-
-## Ledger
-
-| Piece | Does |
-|---|---|
-| `service/IngestScanner.kt` | Walks the SAF tree with raw `queryChildDocuments`. Listing only on app open: no bytes, no parsing, no spend |
-| `ledger/IngestPipeline.kt` | The two-phase run. [[0014-batch-ingestion-two-phase]] |
-| `ledger/parsers/StatementDispatcher.kt` | Split into `dispatchDeterministic` and `runLlm`, with the spend gate between them. [[0016-llm-spend-gate-after-deterministic]] |
-| `ledger/parsers/` | Five parsers: DBS, BofA statement, BofA card, and two CSV variants |
-| `ledger/LedgerStatementAgent.kt` | The LLM fallback, on the driver's own key |
-| `ledger/LedgerDedup.kt` | Counts matching rows per tuple, never tests existence. [[0015-dedup-counts-per-tuple]] |
-| `data/local/IngestedFile.kt` | The per-file record. Work avoidance, not correctness. [[0013-ingested-file-ledger]] |
-
-The batch is deliberately **not atomic**. 39 good statements commit even if the 40th quarantines.
+Rule 6 was learned the hard way, on the ledger side that is now gone: BofA's card statement printed
+interest rows in a different shape, all four silently failed to match, and the section check
+reconciled zero parsed rows against a printed $0.00 and passed. It held only because interest
+happened to be zero that month. The rule survives here because pantry's own line-item sum is
+exactly the same shape of check, and the same blind spot is possible in principle.
 
 ## Pantry
 
@@ -115,7 +76,11 @@ cannot pass on an empty extraction.
 If your source states no anchor at all, you are in [[0009-provisional-unreconciled-tier]] territory
 and all four of its conditions apply together.
 
+**Remember the phone-only scope, though:** if the new source is a document rather than a photo -
+anything that could equally well sit on a laptop - the phone is very likely the wrong place for it
+per Kevin's ruling above. Ask before building a second phone-side document importer.
+
 ## Related
 
-[[c2-containers]] for `LedgerIngestService` and why it is separate. [[adr-index]] for the full
-decision set.
+[[c2-containers]] for the container map (`LedgerIngestService` is gone from it). [[adr-index]] for
+the full decision set.

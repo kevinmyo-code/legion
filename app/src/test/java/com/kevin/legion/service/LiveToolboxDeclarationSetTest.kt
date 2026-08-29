@@ -90,7 +90,7 @@ class LiveToolboxDeclarationSetTest {
     /**
      * [LiveToolbox.agentToolsFor] must return a non-empty list for each of the five domains, and
      * every tool it hands back must actually belong to that domain (never another domain's tool
-     * leaking in, and never a UI-scoped tool - `import_receipt`/`import_statement`/
+     * leaking in, and never a UI-scoped tool - `import_receipt`/
      * `show_saved_places` all return null from [LiveToolbox.dispatch] because they need an
      * Activity a sub-agent doesn't have, so dispatching one from inside an investigate loop would
      * be a silent no-op).
@@ -109,7 +109,7 @@ class LiveToolboxDeclarationSetTest {
             }
         }
         val uiScoped = setOf(
-            "import_receipt", "import_statement", "show_saved_places",
+            "import_receipt", "show_saved_places",
             "show_agenda_modal", "show_list_modal", "show_groceries_modal",
         )
         for ((_, toolNames) in DISPATCHED_FOR_TEST) {
@@ -272,7 +272,7 @@ class LiveToolboxDeclarationSetTest {
      * The three voice-called-modal tools (ADR 0040): each must be declared to the live session
      * with no required params, and [LiveToolbox.dispatch] must return null for all three (the
      * UI-scoped contract - [LiveSessionController] owns showing the modal, same shape as
-     * `show_saved_places`/`import_statement`/`import_receipt`).
+     * `show_saved_places`/`import_receipt`).
      */
     @Test
     fun `the three voice-modal tools are declared with no required params`() {

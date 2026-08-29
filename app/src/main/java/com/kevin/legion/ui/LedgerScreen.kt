@@ -1,13 +1,6 @@
 package com.kevin.legion.ui
 
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
-import android.net.Uri
-import android.os.IBinder
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -49,27 +42,18 @@ import com.kevin.legion.data.local.IngestedFile
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
 import com.kevin.legion.ledger.AccountBalance
-import com.kevin.legion.ledger.DiscoveredAccountFolder
-import com.kevin.legion.ledger.LedgerAccountMappingPreferences
 import com.kevin.legion.ledger.LedgerNominatedAccountPreferences
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ledger.LedgerEntity
 import com.kevin.legion.ledger.BudgetVsActual
 import com.kevin.legion.ledger.groupAccountBalances
-import com.kevin.legion.ledger.LedgerFolderPreferences
 import com.kevin.legion.ledger.uncategorizedExcludedSentence
-import com.kevin.legion.service.FileResults
-import com.kevin.legion.service.IngestScanner
-import com.kevin.legion.service.LedgerIngestService
-import com.kevin.legion.service.ScanState
-import com.kevin.legion.service.SpendEstimate
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRadio
 import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.HalfTile
 import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.SectionHeader
-import com.kevin.legion.ui.ledger.AccountMappingSection
 import com.kevin.legion.ui.ledger.NominatedAccountSection
 import com.kevin.legion.ui.ledger.BalancesDrilldownScreen
 import com.kevin.legion.ui.ledger.BudgetDrilldownScreen
@@ -82,20 +66,15 @@ import com.kevin.legion.ui.ledger.dollarsParseErrorMessage
 import com.kevin.legion.ui.ledger.ExcludedOwnAccountMovementsScreen
 import com.kevin.legion.ui.ledger.monthLabel
 import com.kevin.legion.ui.ledger.parseDollarsToCents
-import com.kevin.legion.ui.ledger.FolderConnectionRow
 import com.kevin.legion.ui.ledger.LedgerCategoryResolver
 import com.kevin.legion.ui.ledger.LedgerEmptyCopy
 import com.kevin.legion.ui.ledger.LedgerEmptyState
-import com.kevin.legion.ui.ledger.LedgerEmptyStateResolver
-import com.kevin.legion.ui.ledger.LedgerFolderUiState
 import com.kevin.legion.ui.ledger.LedgerTransactionRow
 import com.kevin.legion.ui.ledger.QuarantineDrilldownScreen
-import com.kevin.legion.ui.ledger.ScanStatusSection
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import java.time.YearMonth
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import com.kevin.legion.ledger.maskedAccountLabel
 import com.kevin.legion.ledger.sameCard
@@ -144,11 +123,6 @@ data class LedgerUiState(
     val transactions: List<LedgerTransaction> = emptyList(),
     val balances: List<AccountBalance> = emptyList(),
     val quarantined: List<IngestedFile> = emptyList(),
-    val folder: LedgerFolderUiState = LedgerFolderUiState.NotConnected,
-    val scanState: ScanState = ScanState.Idle,
-    val hasGeminiKey: Boolean = true,
-    val accountFolders: List<DiscoveredAccountFolder> = emptyList(),
-    val accountMapping: Map<String, String> = emptyMap(),
     /** Which account HOME's CRED tile shows a balance for (2026-08-18) - null means never picked.
      * See [com.kevin.legion.ledger.LedgerNominatedAccountPreferences]'s own doc comment. */
     val nominatedAccountId: String? = null,
@@ -216,8 +190,6 @@ data class LedgerUiState(
 
 @Composable
 fun LedgerScreen(
-    onOpenImport: () -> Unit,
-    onOpenKeySettings: () -> Unit,
     onOpenGroceries: () -> Unit,
     // Today's category drill-down link (Kevin, 2026-08-07): [MainActivity]'s `LegionShell` holds a
     // pending category + nonce ABOVE the NavHost, the same "state lives above the destination that
@@ -244,30 +216,14 @@ fun LedgerScreen(
     // MainActivity's deepLinkNonce.
     var reloadNonce by remember { mutableStateOf(0) }
 
-    val ingestService = rememberIngestService()
-    val scanner = ingestService?.ingestScanner
-    // A stable fallback StateFlow for the brief window before the service
-    // bind callback lands (Android's bindService is async) - collecting a
-    // nullable flow directly isn't an option, and this must be `remember`ed
-    // rather than built fresh each recomposition (kotlin-flow-state-event-
-    // modeling: "a new sharing coroutine every call").
-    val fallbackScanFlow = remember { MutableStateFlow<ScanState>(ScanState.Idle) }
-    val scanState by (scanner?.state ?: fallbackScanFlow).collectAsStateWithLifecycle()
-
-    val treeUri by LedgerFolderPreferences.treeUri.collectAsStateWithLifecycle()
-    var folderUi by remember { mutableStateOf<LedgerFolderUiState>(LedgerFolderUiState.NotConnected) }
+    // The CATEGORIZE drilldown's own guess-step Gemini gate (unrelated to statement ingestion,
+    // which is gone - ticket 25) - CategorizeDrilldownScreen reads this local var directly, never
+    // through `state`, so it survived the folder/scan-state deletion below untouched.
     var hasGeminiKey by remember { mutableStateOf(GeminiKeyProvider.hasKey()) }
-    // Discovered per-account subfolders (checking/, credit/) directly under
-    // the connected root - a query against the LIVE Drive tree, not derived
-    // from anything in Room, so it's kept separate from LedgerAccountMappingPreferences.mapping
-    // (which is just folderId -> accountId with no notion of what folders
-    // currently exist).
-    var accountFolders by remember { mutableStateOf<List<DiscoveredAccountFolder>>(emptyList()) }
-    val accountMapping by LedgerAccountMappingPreferences.mapping.collectAsStateWithLifecycle()
     val nominatedAccountId by LedgerNominatedAccountPreferences.nominatedAccountId.collectAsStateWithLifecycle()
 
     // The add-category affordance (Kevin 2026-08-07) - live signals, same "outside `state`,
-    // merged into `fullState` each recomposition" split `folder`/`scanState`/`hasGeminiKey` use.
+    // merged into `fullState` each recomposition" split `hasGeminiKey` above already uses.
     var addCategoryError by remember { mutableStateOf<String?>(null) }
     var addCategorySuccessNonce by remember { mutableStateOf(0) }
 
@@ -278,39 +234,11 @@ fun LedgerScreen(
     var setTargetErrorText by remember { mutableStateOf<String?>(null) }
     var setTargetSuccessNonce by remember { mutableStateOf(0) }
 
-    suspend fun refreshAccountFolders() {
-        val uri = treeUri
-        accountFolders = if (uri != null) LedgerAccountMappingPreferences.listAccountFolders(context, uri) else emptyList()
-    }
-
-    suspend fun refreshFolderStatus() {
-        val status = LedgerFolderPreferences.connectionStatus(context)
-        folderUi = when {
-            status.uri == null -> LedgerFolderUiState.NotConnected
-            status.permissionGranted -> LedgerFolderUiState.Connected(status.displayName)
-            else -> LedgerFolderUiState.PermissionRevoked(status.displayName)
-        }
-    }
-
-    // Recomputed whenever the connected folder itself changes (connect,
-    // change, disconnect)...
-    LaunchedEffect(treeUri) {
-        refreshFolderStatus()
-        refreshAccountFolders()
-    }
-    // ...and on resume, since both signals can go stale for reasons entirely
-    // outside this app: a Gemini key saved from `settings/key` (this screen
-    // was never told), or a Drive grant revoked by removing the Google
-    // account or clearing the Drive app's data while this tab sat in the
-    // background. Cheap - one SharedPreferences read and a content-resolver
-    // query, not a poll.
+    // ticket 25 deleted the folder-connect/scan machinery this used to sit next to
+    // (`LedgerFolderPreferences`/`service/IngestScanner`) - a Gemini key saved from `settings/key`
+    // (this screen was never told) is the one remaining reason to re-check on resume.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        scope.launch { refreshFolderStatus() }
         hasGeminiKey = GeminiKeyProvider.hasKey()
-    }
-
-    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) LedgerFolderPreferences.connect(context, uri)
     }
 
     // The P&L's own picked month - null means "not resolved yet", which the
@@ -453,19 +381,9 @@ fun LedgerScreen(
         }
     }
 
-    // A scan writes straight to Room via IngestScanner/IngestPipeline - this
-    // screen otherwise only reads what a PAST scan (or a hand pick) already
-    // committed, so a finished scan has to explicitly trigger a reload to
-    // show what it just did.
-    LaunchedEffect(scanState) {
-        if (scanState is ScanState.Finished) {
-            reloadNonce++
-            // A scan could reveal a newly-created subfolder the mapping UI
-            // hasn't seen yet - cheap to re-list, no reason to wait for the
-            // next folder-change event.
-            refreshAccountFolders()
-        }
-    }
+    // ticket 25: the folder-scan reload trigger this used to be (a finished scan writing straight
+    // to Room via `service/IngestScanner`) is gone along with the scanner itself - a retry-quarantine
+    // commit and a category correction already bump `reloadNonce` at their own call sites below.
 
     // Category drill-down (Kevin, 2026-08-07 item 3: "I want to be able to drill down into a
     // category and see the transactions in there"). Internal Compose state, no nav-graph route -
@@ -846,15 +764,13 @@ fun LedgerScreen(
     // self-triggered recompose loop over fields that already have their own
     // source of truth.
     val fullState = state.copy(
-        folder = folderUi, scanState = scanState, hasGeminiKey = hasGeminiKey,
-        accountFolders = accountFolders, accountMapping = accountMapping, nominatedAccountId = nominatedAccountId,
+        nominatedAccountId = nominatedAccountId,
         addCategoryError = addCategoryError, addCategorySuccessNonce = addCategorySuccessNonce,
         moneyAccountFilterId = moneyAccountFilterId,
     )
 
     LedgerContent(
         state = fullState,
-        onOpenImport = onOpenImport,
         onOpenGroceries = onOpenGroceries,
         // Never let the picker step past what `pnlMonthsWithData` actually
         // bounds (ticket resolution §5: "never let the user page into months
@@ -862,26 +778,6 @@ fun LedgerScreen(
         // either end makes both a safe no-op rather than paging off the list.
         onPrevPnlMonth = onPrevPnlMonth,
         onNextPnlMonth = onNextPnlMonth,
-        onConnectFolder = { pickFolder.launch(null) },
-        onChangeFolder = { pickFolder.launch(null) },
-        onDisconnectFolder = { LedgerFolderPreferences.disconnect(context) },
-        onScanNow = {
-            val uri = treeUri
-            // Handed to the SERVICE's scope, not this composable's - leaving
-            // the ledger tab must not cancel a running scan. See
-            // LedgerIngestService.startScan.
-            if (uri != null) ingestService?.startScan(uri)
-        },
-        // Never auto-approves (ticket 06 resolution §5) - these only ever
-        // fire from the gate card's own buttons, one explicit tap each time
-        // ScanState.AwaitingApproval is reached. A null scanner (bind not
-        // landed yet) makes this a safe no-op rather than a crash.
-        onApproveLlm = { scanner?.approveLlm() },
-        onDeclineLlm = { scanner?.declineLlm() },
-        onOpenKeySettings = onOpenKeySettings,
-        onAssignAccount = { folderId, accountId ->
-            LedgerAccountMappingPreferences.setMapping(context, folderId, accountId)
-        },
         onNominateAccount = { accountId ->
             LedgerNominatedAccountPreferences.setNominated(context, accountId)
         },
@@ -908,52 +804,11 @@ fun LedgerScreen(
     )
 }
 
-/**
- * Binds to [LedgerIngestService] for the composable's lifetime and exposes
- * its [IngestScanner], or null before the (async) bind callback lands. See
- * this file's doc comment for why [LedgerIngestService] rather than
- * `AriaForegroundService`. `BIND_AUTO_CREATE` because the ledger tab being
- * open is reason enough for the service to exist - there is no ignition
- * toggle to check first the way there is for the voice assistant.
- */
-@Composable
-private fun rememberIngestService(): LedgerIngestService? {
-    val context = LocalContext.current
-    var service by remember { mutableStateOf<LedgerIngestService?>(null) }
-    DisposableEffect(Unit) {
-        val connection = object : ServiceConnection {
-            override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-                service = (binder as? LedgerIngestService.LocalBinder)?.service
-            }
-            override fun onServiceDisconnected(name: ComponentName?) {
-                service = null
-            }
-        }
-        val bound = context.bindService(
-            Intent(context, LedgerIngestService::class.java), connection, Context.BIND_AUTO_CREATE,
-        )
-        onDispose {
-            service = null
-            if (bound) context.unbindService(connection)
-        }
-    }
-    return service
-}
-
 /** Plain UI: [state] plus callbacks, no controller/service reference - see the file doc comment. */
 @Composable
 fun LedgerContent(
     state: LedgerUiState,
-    onOpenImport: () -> Unit,
     onOpenGroceries: () -> Unit,
-    onConnectFolder: () -> Unit,
-    onChangeFolder: () -> Unit,
-    onDisconnectFolder: () -> Unit,
-    onScanNow: () -> Unit,
-    onApproveLlm: () -> Unit,
-    onDeclineLlm: () -> Unit,
-    onOpenKeySettings: () -> Unit,
-    onAssignAccount: (folderId: String, accountId: String?) -> Unit,
     // The nomination picker (2026-08-18) - see NominatedAccountSection's own doc comment.
     onNominateAccount: (accountId: String?) -> Unit,
     onPrevPnlMonth: () -> Unit,
@@ -977,7 +832,8 @@ fun LedgerContent(
 ) {
     val sem = LocalLegionSemantics.current
     // 2026-08-18 regression fix: this used to be a plain `Column(fillMaxSize())` holding the title
-    // row, FolderConnectionRow, AccountMappingSection, ScanStatusSection etc. as FIXED (non-scrolling)
+    // row, folder connection/scan/account-mapping rows (all deleted, ticket 25 - statement
+    // ingestion left the phone) etc. as FIXED (non-scrolling)
     // content, with `LedgerListing`'s own LazyColumn as the only scroll surface, sized to whatever
     // height was left over. Adding NominatedAccountSection to that fixed region (commit 77a4fbf) grew
     // it past the viewport on-device: a plain Column's non-weighted children never yield space back,
@@ -1014,9 +870,6 @@ fun LedgerContent(
                                 color = MaterialTheme.colorScheme.primary,
                             )
                         }
-                        TextButton(onClick = onOpenImport) {
-                            Text("IMPORT", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                        }
                     }
                 }
             }
@@ -1027,37 +880,12 @@ fun LedgerContent(
                 ReadStateBanner(state.read, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
             }
 
-            item(key = "money-folder-connection") {
-                FolderConnectionRow(
-                    folder = state.folder,
-                    scanState = state.scanState,
-                    onConnect = onConnectFolder,
-                    onChangeFolder = onChangeFolder,
-                    onDisconnectFolder = onDisconnectFolder,
-                    onScanNow = onScanNow,
-                )
-            }
-            // Only meaningful once a folder is actually connected - renders
-            // nothing itself when state.accountFolders is empty (a flat
-            // connected folder with no per-account subfolders), see
-            // AccountMappingSection's doc comment.
-            if (state.folder is LedgerFolderUiState.Connected) {
-                item(key = "money-account-mapping") {
-                    AccountMappingSection(
-                        folders = state.accountFolders,
-                        mapping = state.accountMapping,
-                        knownAccountIds = state.balances.map { it.accountId }.distinct(),
-                        onAssign = onAssignAccount,
-                    )
-                }
-            }
-            // The nomination picker (2026-08-18) - not gated on a connected folder the way
-            // AccountMappingSection above is: an account can carry balances from a hand-picked PDF
-            // import alone, with no Drive folder ever connected, and it's still nominatable.
-            // Renders nothing itself when state.balances is empty, same "say plainly what applies"
-            // early-return AccountMappingSection's own doc comment states. groupAccountBalances,
-            // not the raw list - same render-site grouping discipline every other reader of
-            // state.balances on this screen follows (see that function's own doc comment).
+            // The nomination picker (2026-08-18) - an account can carry balances from an ingested
+            // statement with no phone-side folder concept at all (ticket 25 deleted that entirely),
+            // and it's still nominatable. Renders nothing itself when state.balances is empty -
+            // groupAccountBalances, not the raw list, same render-site grouping discipline every
+            // other reader of state.balances on this screen follows (see that function's own doc
+            // comment).
             item(key = "money-nominated-account") {
                 NominatedAccountSection(
                     balances = groupAccountBalances(state.balances),
@@ -1065,16 +893,7 @@ fun LedgerContent(
                     onNominate = onNominateAccount,
                 )
             }
-            item(key = "money-hairline-and-scan-status") {
-                Hairline()
-                ScanStatusSection(
-                    scanState = state.scanState,
-                    hasGeminiKey = state.hasGeminiKey,
-                    onApprove = onApproveLlm,
-                    onDecline = onDeclineLlm,
-                    onOpenKeySettings = onOpenKeySettings,
-                )
-            }
+            item(key = "money-hairline") { Hairline() }
 
             when {
                 state.loading -> item(key = "money-loading") {
@@ -1085,13 +904,8 @@ fun LedgerContent(
                         modifier = Modifier.padding(12.dp),
                     )
                 }
-                // Only rendered while nothing is actively scanning -
-                // ScanStatusSection above already communicates progress, and
-                // showing a "nothing here" message next to a live progress
-                // bar would read as contradictory.
-                state.transactions.isEmpty() && state.quarantined.isEmpty() &&
-                    (state.scanState is ScanState.Idle || state.scanState is ScanState.Finished) ->
-                    item(key = "money-empty") { LedgerEmptySection(state, onOpenImport, onScanNow) }
+                state.transactions.isEmpty() && state.quarantined.isEmpty() ->
+                    item(key = "money-empty") { LedgerEmptySection() }
                 else -> ledgerListingItems(
                     state, onPrevPnlMonth, onNextPnlMonth, onOpenCategorize, onOpenQuarantine,
                     onOpenBudget, onOpenBalances, onOpenTrend, onOpenUncategorized, onOpenCategory,
@@ -1103,40 +917,18 @@ fun LedgerContent(
 }
 
 /**
- * Resolves and renders one of ticket 08's three empty-state copies via
- * [LedgerEmptyStateResolver] - Part 5 shipped all three, Part 6 wires the two
- * that need a folder/scan signal to tell apart. [LedgerFolderUiState.PermissionRevoked]
- * is treated as "not connected" here on purpose: [FolderConnectionRow] above
- * already renders the specific revoked-permission explanation and its own
- * RECONNECT action, so this section falls back to the generic no-folder copy
- * rather than repeating that message a second time in different words.
+ * **AMENDED 2026-08-29, backend-erp ticket 25.** This used to resolve one of three copies
+ * (`LedgerEmptyStateResolver`) depending on a folder/scan signal - that whole mechanism is gone
+ * along with phone-side statement ingestion, so there is only one state left to say: no
+ * transactions have landed here yet. Statement ingestion moved to the web app; nothing on the
+ * phone can trigger one to appear, so there is no action button here any more either.
  */
 @Composable
-private fun LedgerEmptySection(state: LedgerUiState, onOpenImport: () -> Unit, onScanNow: () -> Unit) {
-    val kind = LedgerEmptyStateResolver.resolve(
-        folderConnected = state.folder is LedgerFolderUiState.Connected,
-        lastFinished = (state.scanState as? ScanState.Finished)?.results,
+private fun LedgerEmptySection() {
+    LedgerEmptyState(
+        title = LedgerEmptyCopy.NO_STATEMENTS_TITLE,
+        body = LedgerEmptyCopy.NO_STATEMENTS_BODY,
     )
-    when (kind) {
-        LedgerEmptyStateResolver.Kind.NO_FOLDER -> LedgerEmptyState(
-            title = LedgerEmptyCopy.NO_FOLDER_TITLE,
-            body = LedgerEmptyCopy.NO_FOLDER_BODY,
-            actionLabel = "Import a statement",
-            onAction = onOpenImport,
-        )
-        LedgerEmptyStateResolver.Kind.NOTHING_NEW -> LedgerEmptyState(
-            title = LedgerEmptyCopy.NOTHING_NEW_TITLE,
-            body = LedgerEmptyCopy.NOTHING_NEW_BODY,
-            actionLabel = "Scan again",
-            onAction = onScanNow,
-        )
-        LedgerEmptyStateResolver.Kind.LOOKS_EMPTY -> LedgerEmptyState(
-            title = LedgerEmptyCopy.LOOKS_EMPTY_TITLE,
-            body = LedgerEmptyCopy.LOOKS_EMPTY_BODY,
-            actionLabel = "Scan folder",
-            onAction = onScanNow,
-        )
-    }
 }
 
 /**
@@ -1470,122 +1262,6 @@ private fun buildBalancesTile(grouped: List<AccountBalance>): BalancesTileData {
     return BalancesTileData(hero, caption)
 }
 
-/**
- * `ledger/import` - absorbed from the deleted `LedgerImportActivity`. Content
- * unchanged (`ACTION_OPEN_DOCUMENT` picks a PDF, [LedgerController] ingests
- * it, the result - success/count, or the quarantine reason - is shown); only
- * the hosting changed, and the activity-result launcher moved from
- * `registerForActivityResult` (needs an Activity) to
- * `rememberLauncherForActivityResult` (the Compose-native equivalent, now
- * that this is a screen inside the shell rather than its own Activity).
- */
-/**
- * What `ACTION_OPEN_DOCUMENT` will let the driver select.
- *
- * **Deliberately wider than the two formats actually supported**, because the
- * cost of being wrong runs one way only. A mime type missing from this list
- * greys the file out in the picker with no explanation - the failure Kevin hit
- * trying to import a CSV against the old `arrayOf("application/pdf")`. A mime
- * type wrongly INCLUDED costs nothing: the file is sniffed by content, not by
- * what the provider claimed (`StatementDispatcher` matches CSV header lines and
- * the `%PDF` magic bytes), so a wrong pick quarantines with a message saying so.
- *
- * The generic types are here because SAF providers disagree about what a `.csv`
- * is - `text/csv`, `text/comma-separated-values`, `application/vnd.ms-excel`,
- * and `application/octet-stream` are all observed in the wild, which is exactly
- * why [com.kevin.legion.ledger.IngestPipeline.isAcceptableStatementFile] gates
- * the FOLDER-scan path on the `.csv` extension rather than on mime type. This
- * list is the picker-path equivalent of that same decision.
- *
- * Not a wildcard match-everything filter: that would show every file on the
- * device, which makes finding a statement harder, not easier.
- */
-private val STATEMENT_PICKER_MIME_TYPES = arrayOf(
-    "application/pdf",
-    "text/csv",
-    "text/comma-separated-values",
-    "application/vnd.ms-excel",
-    "text/plain",
-    "application/octet-stream",
-)
-
-@Composable
-fun LedgerImportScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    var status by remember { mutableStateOf("Pick a bank statement PDF or CSV to import.") }
-    var pendingUri by remember { mutableStateOf<Uri?>(null) }
-    // Set when the file reconciled but states no account of its own (Bank of
-    // America's checking CSV prints none anywhere). The folder-scan path answers
-    // this from the folder's mapping; a hand-picked file has no folder, so it
-    // asks here instead of sending the driver to a mapping screen for a mapping
-    // that cannot apply.
-    var askAccount by remember { mutableStateOf(false) }
-    var knownAccounts by remember { mutableStateOf<List<String>>(emptyList()) }
-    var typedAccount by remember { mutableStateOf("") }
-    var chosenHint by remember { mutableStateOf<String?>(null) }
-    var attempt by remember { mutableStateOf(0) }
-
-    val pickStatement = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        chosenHint = null
-        askAccount = false
-        typedAccount = ""
-        pendingUri = uri
-    }
-
-    // Keyed on `attempt` as well as the uri so answering the account question
-    // re-runs the import for the SAME file - a plain uri key would not fire
-    // twice for one pick.
-    LaunchedEffect(pendingUri, attempt) {
-        val current = pendingUri ?: return@LaunchedEffect
-        status = "Importing..."
-        val result = LedgerController.importStatement(context, current, chosenHint)
-        status = result.message
-        askAccount = result.needsAccount
-        if (result.needsAccount && knownAccounts.isEmpty()) {
-            knownAccounts = LedgerController.accountBalances(context).map { it.accountId }.distinct().sorted()
-        }
-    }
-
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Button(onClick = onBack) {
-                Text("< Back")
-            }
-            Text(status)
-            if (askAccount) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "This export doesn't print an account number. Pick the account it belongs to.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                for (account in knownAccounts) {
-                    TextButton(onClick = {
-                        chosenHint = account
-                        askAccount = false
-                        attempt++
-                    }) { Text(account) }
-                }
-                OutlinedTextField(
-                    value = typedAccount,
-                    onValueChange = { typedAccount = it },
-                    label = { Text("Or type an account name") },
-                    singleLine = true,
-                )
-                TextButton(
-                    onClick = {
-                        chosenHint = typedAccount.trim()
-                        askAccount = false
-                        attempt++
-                    },
-                    enabled = typedAccount.isNotBlank(),
-                ) { Text("Import into this account") }
-            }
-            Button(onClick = { pickStatement.launch(STATEMENT_PICKER_MIME_TYPES) }) {
-                Text("Pick statement file")
-            }
-        }
-    }
-}
 
 // ------------------------------------------------------------------------ previews
 
@@ -1594,67 +1270,17 @@ fun LedgerImportScreen(onBack: () -> Unit) {
 private fun PreviewLedgerLoading() = LegionTheme {
     LedgerContent(
         LedgerUiState(loading = true),
-        onOpenImport = {}, onOpenGroceries = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
+        onOpenGroceries = {}, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
         onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
     )
 }
 
-@Preview(name = "Ledger empty: no folder connected", widthDp = 360, heightDp = 720)
+@Preview(name = "Ledger empty: no statements yet", widthDp = 360, heightDp = 720)
 @Composable
-private fun PreviewLedgerEmptyNoFolder() = LegionTheme {
+private fun PreviewLedgerEmptyNoStatements() = LegionTheme {
     LedgerContent(
         LedgerUiState(loading = false),
-        onOpenImport = {}, onOpenGroceries = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
-        onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
-    )
-}
-
-@Preview(name = "Ledger empty: connected, nothing new", widthDp = 360, heightDp = 720)
-@Composable
-private fun PreviewLedgerEmptyNothingNew() = LegionTheme {
-    LedgerContent(
-        LedgerUiState(
-            loading = false,
-            folder = LedgerFolderUiState.Connected("LegionStatements"),
-            scanState = ScanState.Finished(FileResults(skipped = 6)),
-        ),
-        onOpenImport = {}, onOpenGroceries = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
-        onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
-    )
-}
-
-@Preview(name = "Ledger empty: connected, folder looks empty", widthDp = 360, heightDp = 720)
-@Composable
-private fun PreviewLedgerEmptyLooksEmpty() = LegionTheme {
-    LedgerContent(
-        LedgerUiState(
-            loading = false,
-            folder = LedgerFolderUiState.Connected("LegionStatements"),
-            scanState = ScanState.Finished(FileResults()),
-        ),
-        onOpenImport = {}, onOpenGroceries = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
-        onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
-    )
-}
-
-@Preview(name = "Ledger: awaiting the spend gate", widthDp = 360, heightDp = 720)
-@Composable
-private fun PreviewLedgerAwaitingApproval() = LegionTheme {
-    LedgerContent(
-        LedgerUiState(
-            loading = false,
-            folder = LedgerFolderUiState.Connected("LegionStatements"),
-            scanState = ScanState.AwaitingApproval(
-                newFiles = 14,
-                estimate = SpendEstimate(14, 3_220, 915, basedOnMeasuredAverage = false),
-            ),
-        ),
-        onOpenImport = {}, onOpenGroceries = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
+        onOpenGroceries = {}, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
         onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
     )
 }
@@ -1665,7 +1291,6 @@ private fun PreviewLedgerPopulated() = LegionTheme {
     LedgerContent(
         state = LedgerUiState(
             loading = false,
-            folder = LedgerFolderUiState.Connected("LegionStatements"),
             balances = listOf(
                 AccountBalance("BOFA ****4471", LedgerCurrency.USD, 119_80),
                 AccountBalance("DBS ****8802", LedgerCurrency.SGD, 216_582),
@@ -1733,8 +1358,7 @@ private fun PreviewLedgerPopulated() = LegionTheme {
                 ),
             ),
         ),
-        onOpenImport = {}, onOpenGroceries = {}, onConnectFolder = {}, onChangeFolder = {},
-        onDisconnectFolder = {}, onScanNow = {}, onApproveLlm = {}, onDeclineLlm = {}, onOpenKeySettings = {}, onAssignAccount = { _, _ -> }, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
+        onOpenGroceries = {}, onNominateAccount = {}, onPrevPnlMonth = {}, onNextPnlMonth = {},
         onOpenCategorize = {}, onOpenQuarantine = {}, onOpenBudget = {}, onOpenBalances = {}, onOpenTrend = {},
     )
 }

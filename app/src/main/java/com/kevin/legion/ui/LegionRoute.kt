@@ -83,8 +83,8 @@ object LegionRoute {
 
     /** Was `ledger` - renamed for the tab, the screen underneath is still [LedgerScreen] unchanged. */
     const val MONEY = "money"
-    /** Was `ledger/import`. */
-    const val MONEY_IMPORT = "money/import"
+    // MONEY_IMPORT ("money/import") deleted - backend-erp ticket 25 ("statement ingestion leaves
+    // the phone entirely"). Bank statements are ingested by the web app now.
     /** Was the standalone `pantry` tab - a grocery receipt is a purchase, so it now lives under Money (2026-08-07 brief). Still [PantryScreen] unchanged, only the route and its tab moved. */
     const val MONEY_PANTRY = "money/pantry"
     /** Was `pantry/import`. */
@@ -139,13 +139,10 @@ object LegionRoute {
      */
     const val SETTINGS_BACKEND_MIGRATION = "settings/backend-migration"
 
-    /**
-     * Ticket 12's dry run (`.scratch/backend-erp/issues/12-ledger-rows-have-no-statement-header.md`)
-     * - the hands path for [com.kevin.legion.ledger.ReingestDryRun]. Reached from
-     * [SETTINGS_CONNECTIONS], same shape as [SETTINGS_BACKEND_MIGRATION]. **Read-only** - unlike
-     * every other screen this route sits next to, nothing here ever reaches a write path.
-     */
-    const val SETTINGS_LEDGER_REINGEST_DRY_RUN = "settings/ledger-reingest-dry-run"
+    // SETTINGS_LEDGER_REINGEST_DRY_RUN ("settings/ledger-reingest-dry-run") deleted - backend-erp
+    // ticket 25. That dry run checked whether historical LOCAL statement files could recover their
+    // reconciliation anchors; with ingestion moved to the web app there is nothing local left to
+    // dry-run against.
 
     /**
      * The driver's own editor for [com.kevin.legion.advisor.PrimingTopic]'s four bodies of

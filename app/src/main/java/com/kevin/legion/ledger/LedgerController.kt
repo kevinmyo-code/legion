@@ -1,8 +1,6 @@
 package com.kevin.legion.ledger
 
 import android.content.Context
-import android.net.Uri
-import android.provider.DocumentsContract
 import android.util.Log
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.IngestedFile
@@ -11,21 +9,29 @@ import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.LedgerTransaction
 import androidx.room.withTransaction
 import com.kevin.legion.engine.migration.EngineLedgerRetirementCopy
-import com.kevin.legion.ledger.parsers.DeterministicResult
-import com.kevin.legion.ledger.parsers.PdfWords
-import com.kevin.legion.ledger.parsers.StatementDispatcher
 import com.kevin.legion.service.SpendEstimate
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneOffset
 
 /**
- * Orchestrates ledger statement ingestion - mirrors
+ * Reads and manages `ledger_transactions` for the money surfaces on the phone - mirrors
  * [com.kevin.legion.vehicle.VehicleController]/
  * [com.kevin.legion.vehicle.BuildSheetController]'s naming and shape.
  * `.claude/plans/wiggly-beaming-quasar.md`.
+ *
+ * **AMENDED 2026-08-29, backend-erp ticket 25 ("statement ingestion leaves the phone
+ * entirely").** This object's original purpose was named "orchestrates ledger statement
+ * ingestion" - Kevin ruled the phone never ingests a statement at all now (the web app does,
+ * against `public.commit_statement`). Every statement-import function
+ * (`importStatement`/`commitResult`/`importWithoutRecord`/`commitPlain`/`dedupAgainstExisting`
+ * and the SAF-URI helpers that fed them) is gone, along with `ledger/parsers/`,
+ * `LedgerFolderPreferences`, `service/IngestScanner`, and `service/ScanState`. What remains is
+ * every READ surface (`allTransactions` and everything built on it), the categorisation/budget
+ * tools, [logPendingTransaction] (a voice-logged charge, never a file), and the quarantine
+ * read/retry functions ([quarantinedFiles]/[retryQuarantined]/[retryAllQuarantined]) - `ingested_files`
+ * itself is untouched (no Room migration here) and these still work exactly as before against
+ * whatever rows already exist there; there is simply no phone-side producer left to add more.
  *
  * **Engine retirement step 5** (`.scratch/backend-erp/issues/15-engine-retirement-sequence.md`),
  * the "before" half of ticket 03's "lands before or with the `commit_statement` RPC move". Every
@@ -118,238 +124,6 @@ object LedgerController {
     private suspend fun writeTransaction(context: Context, txn: LedgerTransaction) {
         ensureLegacyReconciled(context)
         db(context).ledgerTransactionDao().insertAll(listOf(txn))
-    }
-
-    /**
-     * Reads [uri] and runs it through [IngestPipeline] as a **one-element
-     * run through the same pipeline** the folder scan uses -
-     * `.scratch/ledger-drive-ingestion/issues/05-batch-ingestion-mechanics.md`
-     * resolution §8. [uri] is expected to be a SAF document URI (the result
-     * of `ACTION_OPEN_DOCUMENT`), so its own document id becomes the
-     * [com.kevin.legion.data.local.IngestedFile.driveFileId] - a hand-picked
-     * file gets a real record, content hash and `sourceFileId` exactly like a
-     * scanned one, with `treeUri = null` marking "arrived via a single-file
-     * pick" (ticket 03 amendment 1). Concrete payoff: pick a statement by
-     * hand today, and if that same file later turns up in a connected
-     * folder, the hash check recognises it and records `DUPLICATE_CONTENT`
-     * instead of re-parsing (and possibly re-paying for) it.
-     *
-     * Falls back to the pre-ticket-05 dedup-only behavior (no [IngestedFile]
-     * bookkeeping) for the rare case [uri] isn't a SAF document URI at all -
-     * this must never crash an import over an identity it can't derive.
-     */
-    suspend fun importStatement(
-        context: Context,
-        uri: Uri,
-        accountHint: String? = null,
-    ): LedgerImportResult = withContext(Dispatchers.IO) {
-        PdfWords.init(context)
-
-        val bytes = try {
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        } catch (e: Exception) {
-            Log.w(TAG, "failed to read $uri: ${e.message}")
-            null
-        } ?: return@withContext LedgerImportResult(
-            success = false,
-            message = "I couldn't read that file - try picking it again.",
-        )
-
-        // The display name is load-bearing for CSV, not just cosmetic:
-        // BofaCardCsvStatementParser reads the card's last-4 out of the
-        // filename (`currentTransaction_7823.csv`) because that export prints
-        // no account number anywhere in its body. Drive's DocumentsProvider
-        // returns the real name here, so a picked file keeps it - but the
-        // fallback deliberately stays a PDF name, since a fabricated CSV name
-        // would produce a fabricated account id rather than a clean failure.
-        val fileName = queryDisplayName(context, uri) ?: "statement.pdf"
-        val driveFileId = documentIdFor(uri)?.let { IngestPipeline.stripAccountPrefix(it) }
-            ?: return@withContext importWithoutRecord(context, fileName, bytes, accountHint)
-
-        val lastModified = queryLastModified(context, uri)
-        when (val staged = IngestPipeline.stage(
-            context = context,
-            driveFileId = driveFileId,
-            treeUri = null,
-            displayName = fileName,
-            sizeBytes = bytes.size.toLong(),
-            lastModified = lastModified,
-            // The provider's ACTUAL mime type, not a hardcoded
-            // "application/pdf". The old constant made
-            // isAcceptableStatementFile's PDF branch pass unconditionally, so
-            // the acceptance gate was never really consulted on this path AND
-            // every picked file was recorded in `ingested_files` as a PDF
-            // regardless of what it was. Falling back to octet-stream when the
-            // provider says nothing is safe: acceptance then falls through to
-            // the `.csv` extension check, which is the same signal the
-            // folder-scan path uses.
-            mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream",
-        ) { bytes }) {
-            is IngestPipeline.StageOutcome.Skipped -> LedgerImportResult(
-                success = false,
-                message = "I've already imported this exact file - nothing new to add.",
-            )
-            is IngestPipeline.StageOutcome.DuplicateContent -> LedgerImportResult(
-                success = false,
-                message = "This file's contents match a statement I've already imported.",
-            )
-            is IngestPipeline.StageOutcome.Unreadable -> LedgerImportResult(
-                success = false,
-                message = "I couldn't read that as a statement: ${staged.reason}",
-            )
-            is IngestPipeline.StageOutcome.Staged -> when (
-                val det = StatementDispatcher.dispatchDeterministic(fileName, bytes, accountHint)
-            ) {
-                // The numbers reconciled; only the account is unknown. NOT
-                // committed as a quarantine - nothing is wrong with the file,
-                // and recording it as failed would make the retry look like a
-                // second attempt at a broken document rather than the answer to
-                // a question. The screen asks which account and calls back with
-                // a hint.
-                is DeterministicResult.NeedsAccount -> LedgerImportResult(
-                    success = false,
-                    message = "Which account is this statement for?",
-                    needsAccount = true,
-                )
-                is DeterministicResult.Success -> commitResult(
-                    context, driveFileId, fileName, staged, LedgerIngestResult.Success(det.transactions),
-                )
-                is DeterministicResult.Quarantined -> {
-                    IngestPipeline.commit(
-                        context, driveFileId, null, fileName, staged,
-                        LedgerIngestResult.Quarantined(det.reason),
-                    )
-                    LedgerImportResult(success = false, message = det.reason)
-                }
-                is DeterministicResult.NeedsLlm -> {
-                    // No approval surface exists yet for a single hand-picked
-                    // file (ticket 06's gate UI belongs to ticket 08, out of
-                    // scope here). NEEDS_LLM is still the correct terminal
-                    // state either way: the gate's rule is "ask every time,
-                    // never silently spend" (ticket 06 resolution §5), so
-                    // this must never auto-approve. The file is left exactly
-                    // where a decline in the folder-scan gate would leave it
-                    // - re-offered on the next scan, not lost.
-                    IngestPipeline.markNeedsLlm(context, driveFileId, null, fileName)
-                    LedgerImportResult(
-                        success = false,
-                        message = "This statement doesn't match a known layout and needs AI reading, " +
-                            "which uses your own Gemini key - connect a statements folder and approve " +
-                            "it from a scan.",
-                    )
-                }
-            }
-        }
-    }
-
-    private suspend fun commitResult(
-        context: Context,
-        driveFileId: String,
-        fileName: String,
-        staged: IngestPipeline.StageOutcome.Staged,
-        result: LedgerIngestResult,
-    ): LedgerImportResult = when (
-        val outcome = IngestPipeline.commit(context, driveFileId, null, fileName, staged, result)
-    ) {
-        is IngestPipeline.CommitOutcome.Ingested -> {
-            val message = buildString {
-                append("Imported ${outcome.transactionCount} transaction(s) from $fileName.")
-                if (outcome.duplicatesSkipped > 0) append(" (${outcome.duplicatesSkipped} already on file, skipped.)")
-                // Named separately from the exact-duplicate count: this one is
-                // an inference (same account, date and amount inside a span an
-                // earlier statement already reconciled), and an inference the
-                // driver cannot see is an inference they cannot dispute.
-                if (outcome.restatementsSkipped > 0) {
-                    append(" ${outcome.restatementsSkipped} of those were the same transactions worded differently by an overlapping statement.")
-                }
-                // Ticket 12 §5: a reconciled statement replacing card-CSV
-                // provisional rows it now covers - said out loud so a total
-                // that shrinks (the provisional rows are gone, replaced by
-                // this statement's own) never reads as data loss.
-                if (outcome.provisionalSuperseded > 0) {
-                    append(" ${outcome.provisionalSuperseded} pending transaction(s) replaced by this statement.")
-                }
-            }
-            LedgerImportResult(success = true, message = message, importedCount = outcome.transactionCount)
-        }
-        is IngestPipeline.CommitOutcome.Quarantined -> LedgerImportResult(success = false, message = outcome.reason)
-        // Cutover 3: a gate-passed statement whose engine write failed after reconciliation - the
-        // whole commit rolled back, nothing landed, told in words rather than as a false success
-        // (CLAUDE.md §7).
-        is IngestPipeline.CommitOutcome.EngineWriteFailed -> LedgerImportResult(
-            success = false,
-            message = "This statement's numbers checked out, but I couldn't save it - try again.",
-        )
-    }
-
-    /**
-     * Pre-ticket-05 fallback for a [Uri] that isn't a SAF document URI, so
-     * there is no stable id to key an [com.kevin.legion.data.local.IngestedFile]
-     * record on. Only [resolveDedup]'s transaction-level dedup applies here -
-     * no file-level skip/duplicate/replace bookkeeping. Expected to be rare
-     * in practice (`ACTION_OPEN_DOCUMENT` results are SAF document URIs), but
-     * an import must never crash over an identity it can't derive.
-     */
-    private suspend fun importWithoutRecord(
-        context: Context,
-        fileName: String,
-        bytes: ByteArray,
-        accountHint: String? = null,
-    ): LedgerImportResult =
-        when (val det = StatementDispatcher.dispatchDeterministic(fileName, bytes, accountHint)) {
-            is DeterministicResult.NeedsAccount -> LedgerImportResult(
-                success = false,
-                message = "Which account is this statement for?",
-                needsAccount = true,
-            )
-            is DeterministicResult.Quarantined -> LedgerImportResult(success = false, message = det.reason)
-            is DeterministicResult.Success -> commitPlain(context, fileName, det.transactions)
-            is DeterministicResult.NeedsLlm -> {
-                val llm = StatementDispatcher.runLlm(fileName, det.statementText)
-                when (val result = llm.result) {
-                    is LedgerIngestResult.Success -> commitPlain(context, fileName, result.transactions)
-                    is LedgerIngestResult.Quarantined -> LedgerImportResult(success = false, message = result.reason)
-                }
-            }
-        }
-
-    /**
-     * **A Room `@Insert` throws on failure rather than returning a false/failed result**, and every
-     * caller up the chain has no try/catch of its own to word it (traced): this function is reached
-     * only through [importWithoutRecord], from [importStatement], whose own production caller is
-     * `ui/LedgerScreen.kt`'s `LedgerImportScreen` - a bare `LaunchedEffect` that reads `.message`
-     * off the returned [LedgerImportResult] with no `try`/`catch` around the call at all, the exact
-     * same shape [com.kevin.legion.pantry.PantryController.writeReceipt]'s own doc comment
-     * describes for `PantryImportScreen`. A raw throw here would crash that composition instead of
-     * showing a worded failure. So the whole write is wrapped below: a genuine failure - Room
-     * throws, [androidx.room.withTransaction] rolls the whole block back on it - is caught and
-     * turned into the same worded message the pre-repoint engine-backed version used.
-     */
-    private suspend fun commitPlain(
-        context: Context,
-        fileName: String,
-        transactions: List<LedgerTransaction>,
-    ): LedgerImportResult {
-        ensureLegacyReconciled(context)
-        val existing = dedupAgainstExisting(allTransactions(context), transactions)
-        val fresh = existing.first
-        val skipped = existing.second
-
-        val database = db(context)
-        try {
-            database.withTransaction {
-                if (fresh.isNotEmpty()) database.ledgerTransactionDao().insertAll(fresh)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "commitPlain: legacy write failed after the gate passed, rolled back - ${e.message}")
-            return LedgerImportResult(success = false, message = "This statement's numbers checked out, but I couldn't save it - try again.")
-        }
-
-        val message = buildString {
-            append("Imported ${fresh.size} transaction(s) from $fileName.")
-            if (skipped > 0) append(" ($skipped already on file, skipped.)")
-        }
-        return LedgerImportResult(success = true, message = message, importedCount = fresh.size)
     }
 
     suspend fun latestBalanceCents(context: Context, accountId: String): Long? =
@@ -1187,74 +961,7 @@ object LedgerController {
      */
     suspend fun retryAllQuarantined(context: Context): Int =
         CarDatabase.getDatabase(context).ingestedFileDao().retryAllQuarantined()
-
-    /**
-     * Fetches the existing-row candidate set per account across [incoming]'s
-     * own date range, then hands off to [resolveDedup] - ticket 04's pure
-     * per-tuple counting comparison, run in Kotlin rather than SQL. Grouped by
-     * [LedgerTransaction.accountId] first because a single statement is one
-     * account in practice, but this stays correct even if a future producer
-     * ever mixes them. Returns the rows to insert and how many were dropped as
-     * duplicates. Only used by [importWithoutRecord]/[commitPlain] now -
-     * [IngestPipeline.commit] does the equivalent for anything with an
-     * [com.kevin.legion.data.local.IngestedFile] record, reading its own engine
-     * snapshot directly rather than through this function.
-     */
-    private fun dedupAgainstExisting(
-        existing: List<LedgerTransaction>,
-        incoming: List<LedgerTransaction>,
-    ): Pair<List<LedgerTransaction>, Int> {
-        val toInsert = mutableListOf<LedgerTransaction>()
-        var skipped = 0
-        for ((accountId, group) in incoming.groupBy { it.accountId }) {
-            val minDate = group.minOf { it.txnDate }
-            val maxDate = group.maxOf { it.txnDate }
-            val existingForAccount = existing.filter { it.accountId == accountId && it.txnDate in minDate..maxDate }
-            val resolution = resolveDedup(existingForAccount, group)
-            toInsert += resolution.toInsert
-            skipped += resolution.duplicatesSkipped
-        }
-        return toInsert to skipped
-    }
-
-    /** Best-effort human-readable filename for the import confirmation message. */
-    private fun queryDisplayName(context: Context, uri: Uri): String? = try {
-        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-    } catch (e: Exception) {
-        null
-    }
-
-    /** [uri]'s SAF document id, or null if it isn't a document URI at all (not expected for an `ACTION_OPEN_DOCUMENT` result, but never crash the import over it). */
-    private fun documentIdFor(uri: Uri): String? = try {
-        DocumentsContract.getDocumentId(uri)
-    } catch (e: Exception) {
-        null
-    }
-
-    /** Best-effort last-modified for [uri], used only as a change signal - 0L (never used for identity) if the provider doesn't report one. */
-    private fun queryLastModified(context: Context, uri: Uri): Long = try {
-        context.contentResolver.query(
-            uri, arrayOf(DocumentsContract.Document.COLUMN_LAST_MODIFIED), null, null, null,
-        )?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else 0L } ?: 0L
-    } catch (e: Exception) {
-        0L
-    }
 }
-
-/**
- * [needsAccount] means the file reconciled and only its account is unknown -
- * the caller should ask which one and retry with an `accountHint`, NOT report a
- * failure. It is a separate flag rather than a message the screen pattern-matches
- * on, because the folder-scan path and the single-file path need different words
- * for the same condition: a hand-picked file has no folder to map.
- */
-data class LedgerImportResult(
-    val success: Boolean,
-    val message: String,
-    val importedCount: Int = 0,
-    val needsAccount: Boolean = false,
-)
 
 /**
  * One account's latest known balance, in its own currency. See

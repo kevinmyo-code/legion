@@ -58,3 +58,42 @@ stored, not that something remembered to exclude it."* This design already satis
 
 Nothing depends on it. It is filed so that when the web app grows an audit view, whoever builds it
 finds this rather than assuming the table is already there.
+
+
+## RULED 2026-08-29 (Kevin): the conversation audit goes to the server.
+
+*"same for conversations for audit."*
+
+Schema landed in `20260829000100_obd_samples_and_conversation_audit.sql`, UNAPPLIED. 197 rows today,
+so volume is a non-issue.
+
+**Why this is safe, restated as the reason rather than a hope:** the read-through rule is satisfied
+at the SOURCE. `ConversationAudit`'s redaction is per-ROW and happens at WRITE - an
+`EPISODIC_EXCLUDED_TOOLS` result is replaced before insert while the fact the tool ran survives - so
+the phone's table never held the protected content and neither can the server's. Section 7's own
+words: the guarantee is *"that it was never stored, not that something remembered to exclude it."*
+
+**Identity: `(device_id, local_id)`.** Unlike a telemetry sample, a conversation row is not a shared
+fact - it is what ONE phone heard and said. Two phones can both hold turn 41 and both are real, so
+the key carries which device produced it and `turn_seq` stays an ordinary column for regrouping.
+
+### The three checks this ticket listed are still owed, and one is now urgent
+
+1. **Is every currently-excluded tool's result actually redacted before insert?** The doc comment
+   names the mechanism; confirm it against `EPISODIC_EXCLUDED_TOOLS` as it stands TODAY. A tool added
+   since that comment was written is the gap, and it is now a gap that reaches a server.
+2. **Do `Kind.USER` rows contain third-party content by transcription?** Kevin reading an email aloud
+   is his own words by the letter of the rule and someone else's content in substance. **This needs a
+   ruling before upload, not after** - it is the one case where the source-side guarantee does not
+   cover what actually lands.
+3. **Retention.** A phone-local log is bounded by the device; a server-side one is not. 197 rows is
+   nothing, but nothing is what every large table starts as.
+
+### And one thing the schema change forces
+
+**`engine/DeviceId.kt`'s doc comment becomes false.** It states the value *"never leaves the device,
+and nothing here transmits it anywhere"* - true while it only scoped widget layouts, false the
+moment a conversation row carries it. ANDROID_ID going to the household's own project is fine; the
+comment claiming it does not is not. **Correct it in the same commit that builds the upload**, or it
+joins `EventReplicaDao.upsert` and `GeneratedFormScreen`'s "PHOTO ON FILE" on the list of comments
+this repo believed until it checked.

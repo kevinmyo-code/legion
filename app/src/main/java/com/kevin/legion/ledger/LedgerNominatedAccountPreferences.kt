@@ -14,9 +14,10 @@ import kotlinx.coroutines.flow.asStateFlow
  * [com.kevin.legion.ui.TodayGapResolvers.buildCredBalanceLine]'s own doc comment for the four
  * distinct states this produces).
  *
- * Plain app-global SharedPreferences, same shape as [LedgerFolderPreferences]/
- * [LedgerAccountMappingPreferences]: a [StateFlow] seeded from disk on [init] so HOME reads the
- * current nomination immediately on first composition, never a blank flash before a suspend read
+ * Plain app-global SharedPreferences, same shape `LedgerFolderPreferences`/
+ * `LedgerAccountMappingPreferences` used before backend-erp ticket 25 deleted both: a [StateFlow]
+ * seeded from disk on [init] so HOME reads the current nomination immediately on first composition,
+ * never a blank flash before a suspend read
  * completes. Same L12 seeding discipline (`playbook-coding.md`'s "Application initialization and
  * process-global state") - [init] must run from
  * [com.kevin.legion.MidnightApplication.onCreate], never a conditionally-started service.
@@ -39,7 +40,7 @@ object LedgerNominatedAccountPreferences {
     private val _nominatedAccountId = MutableStateFlow<String?>(null)
     val nominatedAccountId: StateFlow<String?> = _nominatedAccountId.asStateFlow()
 
-    /** Call once, early (see this object's doc comment), to seed [nominatedAccountId] from disk - same convention as [LedgerFolderPreferences.init]. */
+    /** Call once, early (see this object's doc comment), to seed [nominatedAccountId] from disk. */
     fun init(context: Context) {
         _nominatedAccountId.value = prefs(context).getString(KEY_ACCOUNT_ID, null)
     }

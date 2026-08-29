@@ -106,7 +106,6 @@ COPY = {
     "control_volume": ("Turn it up", "Changes the volume.", "Media panel, volume control."),
 
     # --- Money ---
-    "import_statement": ("Import my bank statement", "Opens the statement importer.", "Money tab, import flow."),
     "get_balance": ("What's my balance?", "Balance from your imported statements.", "Money tab, balances."),
     "get_spend": ("How much did I spend on fuel?", "Spending in a category or over a period.", "Money tab, spend view."),
     "get_monthly_spend": ("What did I spend last month?", "A month's total.", "Money tab, monthly spend view."),
@@ -198,7 +197,7 @@ GROUPS = {
     "Your day": ["manage_item", "read_list", "set_reminder", "read_calendar", "tag_place", "forget_place", "show_saved_places", "open_navigation", "show_agenda_modal", "show_list_modal", "show_groceries_modal"],
     "The cars": ["get_codes", "diagnose_codes", "clear_codes", "get_code_history", "triage_symptom", "check_readiness", "check_cold_start", "get_vehicle_data", "read_vehicle_sensor", "get_health", "get_mpg", "get_trend", "get_specs", "lookup_vin", "check_recalls", "get_next_service", "ask_maintenance", "log_service", "log_past_service", "set_maintenance_interval", "set_odometer", "log_build_entry", "list_build_history", "register_car", "register_vehicle", "manage_vehicle", "list_vehicles", "ask_fleet"],
     "Driving": ["activate_garage", "control_volume"],
-    "Money": ["import_statement", "get_balance", "get_spend", "get_monthly_spend", "list_recent_transactions", "categorize_transactions", "set_category", "set_budget", "list_budget_categories", "log_pending_transaction", "list_pending_transactions", "clear_pending_transaction"],
+    "Money": ["get_balance", "get_spend", "get_monthly_spend", "list_recent_transactions", "categorize_transactions", "set_category", "set_budget", "list_budget_categories", "log_pending_transaction", "list_pending_transactions", "clear_pending_transaction"],
     "Food and shopping": ["import_receipt", "manage_grocery", "list_recent_groceries", "get_grocery_spend", "log_meal", "list_recent_meals", "get_meal_gap", "set_meal_target", "ask_pantry"],
     "Training and sleep": ["log_workout_set", "list_recent_workouts", "get_workout_gap", "create_workout_plan", "log_bodyweight", "log_sleep", "list_recent_sleep", "get_sleep_gap", "set_sleep_target", "ask_body"],
     "Goals and advice": ["set_goal", "list_goals", "close_goal", "ask_goals", "ask_advisor", "accept_proposal", "generate_goal_plan", "accept_goal_plan", "undo_last_log"],

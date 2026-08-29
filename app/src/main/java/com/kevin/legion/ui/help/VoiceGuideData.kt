@@ -111,7 +111,6 @@ object VoiceGuideData {
             title = "Money",
             blurb = "Bank statements, budgets and spending. Figures come from your own imported statements.",
             entries = listOf(
-                Entry(name = "import_statement", say = "Import my bank statement", does = "Opens the statement importer.", hands = "Money tab, import flow."),
                 Entry(name = "get_balance", say = "What's my balance?", does = "Balance from your imported statements.", hands = "Money tab, balances."),
                 Entry(name = "get_spend", say = "How much did I spend on fuel?", does = "Spending in a category or over a period.", hands = "Money tab, spend view."),
                 Entry(name = "get_monthly_spend", say = "What did I spend last month?", does = "A month's total.", hands = "Money tab, monthly spend view."),
@@ -236,6 +235,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 116 as of the last regeneration. */
-    val TOOL_COUNT: Int = 116
+    /** Total entries across every group above - 115 as of the last regeneration. */
+    val TOOL_COUNT: Int = 115
 }

@@ -193,3 +193,26 @@ later if a use appears.
 - The two-phones-via-Drive channel for fleet retires with it, the same way it did for every other
   cut-over aspect.
 - Ticket 10 closes on the projection bar; **a new build ticket owns the cutover.**
+
+
+## The obd_samples question is ANSWERED 2026-08-29 (Kevin): they go too.
+
+*"obd samples also goes to supabase."*
+
+**My recommendation was to defer them, and the numbers say I was over-cautious.** Measured rather
+than assumed: 26,059 rows on the device 2026-08-29, up from 18,694 on 2026-08-16 - about 600/day. At
+roughly 100 bytes a row that is ~22 MB/year against a 500 MB free tier. It fits for years, and
+deferring would have bought nothing but a second migration later.
+
+Schema landed in `20260829000100_obd_samples_and_conversation_audit.sql`, UNAPPLIED.
+
+**The identity problem this exposed, because it applies to the whole cutover.** `OdbSample` has no
+`syncId` and no `origin_guid` - only a local autoincrement id, which is a per-DEVICE counter that
+collides the moment a second phone uploads. So the server key is the natural one:
+**`(vehicle_id, pid, recorded_at)`**. A sample IS its car, its PID and its instant; two phones
+observing the same car at the same millisecond observed the same fact, so re-upload is a no-op by
+construction rather than by a guard someone maintains.
+
+That is the same class of question ticket 26 must answer for `vehicles` itself, and it is worth
+noticing that the answer here was easy precisely because a natural key genuinely exists. For
+`vehicles` it does not - which is why that one is a decision and this one was not.

@@ -87,13 +87,11 @@ class AriaForegroundService : Service() {
     // toggle, which is OFF by default (ticket 07 resolution §1, "a fresh
     // install asks for nothing") - so a driver opening the Ledger tab on a
     // fresh install must never cause Zero to start talking and the OBD radio
-    // to spin up. IngestScanner now lives in its own
-    // [com.kevin.legion.service.LedgerIngestService] instead, a small
-    // `dataSync`-only foreground service with no dependency on this one -
-    // see that class's doc comment for the full reasoning. Nothing under this
-    // comment references IngestScanner anymore; this note stays so the next
-    // person doesn't reintroduce it here for the same reason ticket 05 first
-    // reached for it.
+    // to spin up. `IngestScanner`/`LedgerIngestService` both existed for exactly this reason
+    // (statement folder scanning kept off this service's boot path) and are now DELETED entirely
+    // (backend-erp ticket 25, 2026-08-29 - the phone never ingests a statement any more). This
+    // note stays anyway: the underlying hazard - anything ledger/pantry/fleet-adjacent must never
+    // depend on THIS service's lifecycle - is still real for whatever the ledger tab does next.
 
     // Highest 10k-mile milestone already celebrated, so the proactive check fires
     // only on new crossings (not retroactively). -1 = not yet seeded. Process-life.
@@ -146,9 +144,8 @@ class AriaForegroundService : Service() {
         // Own the Live session (driven by the Cruise screen's tap-to-talk).
         sessionController = LiveSessionController(this)
 
-        // IngestScanner construction used to happen here (ticket 05) - moved
-        // to LedgerIngestService. See the doc comment above where
-        // `ingestScanner` used to be declared for the full reasoning.
+        // IngestScanner construction used to happen here (ticket 05), then moved to
+        // LedgerIngestService (ticket 08) - both are deleted now (backend-erp ticket 25).
 
         // Pre-open a warm Gemini Live socket so the driver's first tap doesn't pay
         // the connect + setup handshake. Only once onboarding is done, so we don't
