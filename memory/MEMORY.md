@@ -18,11 +18,23 @@ trusting a green suite.
 - **One ticket left open on purpose: 19, re-ingest the historical statements.** It waits on a human
   with the phone, not on code.
 
-## Blocking, and all four are Kevin's, not code's
+## THE GOAL, restated by Kevin 2026-08-28 (late), and it narrows the map
 
-1. **Re-connect the Drive statement folders on the A25 and re-run the ledger dry run.** 107 of 107
-   files were unreachable - a lapsed SAF grant, killed by the 2026-08-26 `connectedAndroidTest`
-   uninstall. The grants come back one folder at a time; Kevin's files span four. Ticket 19.
+*"we dont need the old data to port over fully. we control the backend now. we just connect new data
+from the phone, keep what we have, if we cant recover or migrate fully just kill it. the data is not
+important. whats important is we set up the backend properly for new data from the phone or any
+other surface to be ingested."*
+
+**Historical migration is no longer a goal. A correct ingestion path for NEW data is.** Ticket 19
+(re-ingest historical statements) is KILLED on that basis; the pre-cutover `DETERMINISTIC` rows stay
+on the phone, unuploaded, neither deleted nor relabelled. The server's history begins with the first
+record written under the new path.
+
+Consequence worth carrying: ticket 12's gate on retiring the deterministic parsers is RELEASED
+(nothing is re-reading those statements by any route). C4's own gate - the three-anchor CSV path
+must work first - still stands.
+
+## Blocking, and they are Kevin's, not code's
 2. ~~Exercise a real `DatabaseSnapshot` RESTORE on the A25.~~ **DONE 2026-08-28.** Full round trip,
    all 65 tables back to their pre-drill counts. It found a real defect on the way: `SCHEMA_VERSION`
    was stale at 47 against `@Database(version=)` 49, which disabled restore on every backup the

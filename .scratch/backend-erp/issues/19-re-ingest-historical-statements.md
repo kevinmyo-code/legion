@@ -1,6 +1,6 @@
 ---
 type: build
-status: open
+status: killed
 blocked_by: []
 map: backend-erp
 ---
@@ -131,3 +131,46 @@ folder dance ticket 12 described.
 
 **Not built in this session.** It is a real design change to the money path and it deserves its own
 pass rather than being improvised at the end of a long one.
+
+## KILLED 2026-08-28 (Kevin). The history is not worth recovering.
+
+Verbatim: *"we dont need the old data to port over fully. we control the backend now. we just
+connect new data from the phone, keep what we have, if we cant recover or migrate fully just kill
+it. the data is not important. whats important is we set up the backend properly for new data from
+the phone or any other surface to be ingested."*
+
+**This closes the ticket, and it closes the right one.** Everything this ticket chased was about
+reconstructing anchors for statements ingested months ago. That work was expensive, it was the
+source of most of today's device time, and it buys a cleaner past rather than a working future.
+
+### What stands, because it was built and works
+
+- **Content-based resolution is built and correct.** The dry run tries the saved `treeUri` +
+  `driveFileId` first, then hashes the connected folder and matches on `contentSha256` using the
+  same function ingestion used. It is not wasted: the same mechanism is how any future "is this file
+  already ingested" question gets answered without depending on a folder grant.
+- **The PdfBox init bug it exposed is fixed**, and that one mattered independently - it would have
+  hit any screen that parsed a PDF outside `IngestScanner`/`LedgerController`.
+
+### What is now released, and this is the real consequence
+
+Ticket 12 held a gate: **"the deterministic statement parsers must NOT be retired until this
+closes."** The reasoning was that retiring them first would force every historical statement through
+an LLM by hand to recover anchors a parser reads for free. **With recovery abandoned, that gate has
+nothing left to protect** - nobody is re-reading those statements by any route.
+
+So ticket 03 ruling 3 (the parsers retire in favour of the user's-own-LLM CSV path) is unblocked by
+this closure. **It still owes its OWN condition**, unchanged: C4 gates parser removal on the
+three-anchor CSV path working. One gate lifts; the other stands.
+
+### What the verified history actually is now
+
+The `DETERMINISTIC` and `LLM_RECONCILED` rows stay on the phone, unuploaded, exactly as they are.
+They are not deleted and not relabelled - CLAUDE.md section 4 rule 5 still forbids asserting a
+provenance the evidence cannot support, and it equally forbids destroying a true record because it
+is inconvenient. They simply never reach the server, and the server's history begins with the first
+statement ingested under the new path.
+
+**That is a legitimate answer to rule 8**, not a dodge of it: the anchors were never persisted, they
+cannot honestly be reconstructed, and the app now says so by declining to upload rather than by
+inventing a header. Rule 8 remains binding on every path built from here.
