@@ -181,6 +181,16 @@
       "color": "1"
     },
     {
+      "id": "b73758202685f940",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/23-the-second-household-account.md",
+      "x": 0,
+      "y": 2700,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "0826d5c94a1739ed",
       "type": "file",
       "file": ".scratch/backend-erp/issues/02-auth-and-identity.md",

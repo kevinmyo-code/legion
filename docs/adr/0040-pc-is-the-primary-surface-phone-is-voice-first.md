@@ -32,15 +32,59 @@ had been treating as a someday.
 And ledger ingestion - the heaviest, most error-prone thing the phone does - is moving to the PC,
 where the files already are.
 
+**The shape Kevin is after, in his own words: Lattice.** *"one central database, perhaps with AI,
+many things connecting to it."* That is the right north star for this system and it is worth naming,
+because it decides where capability lives: **in the data layer, not in a client.** N clients over one
+record must not each reimplement the rules, or they will disagree - and the disagreement will be
+found in the data, months later, by someone reading a wrong number.
+
+This project has already followed that instinct once, before it had a name for it: the
+reconciliation gate lives in SQL as `commit_statement`, with the phone holding only a pre-check and a
+shared corpus proving the two agree. Every new client inherits the gate for free. That is the pattern
+to repeat, not a special case.
+
+**The limit of the analogy, stated so it does not get over-applied:** Lattice is a product with a
+company behind it. This is two adults, two phones and a laptop. The useful part is the SHAPE - one
+record, many thin clients, capability in the middle - not the scale. Nothing here justifies building
+a platform, an abstraction layer for clients that do not exist, or a plugin system. CLAUDE.md's
+existing rule stands: no Kevin-hosted anything, no speculative generality.
+
 ## Decision
 
 **The PC is where the work happens. The phone is where the day happens.**
 
+**AMENDED 2026-08-28, same day, and the amendment is a better split than the original.** This ADR
+first said "PC" and "phone" as though there were two clients. There are two KINDS of client, and the
+PC is not one of them - it is one viewport of the general client.
+
 | Surface | Role |
 |---|---|
-| Supabase | System of record. Both surfaces are clients; neither owns the schema at runtime |
-| PC (new repo) | Read, write, edit, monitor, ingest. React + Vite + TypeScript on `supabase-js`; Python only where a library demands it |
-| Phone (LEGION) | OBD and the car, the AI voice companion, calendar, todos, lists, groceries, notes. **Minimal UI, voice-first** |
+| Supabase | System of record. Every client is a consumer; none owns the schema at runtime |
+| **Web app** (one codebase, responsive) | The **GENERAL** client. Wide viewport gets ingest, monitor, bulk edit; narrow viewport gets calendar, todos, lists, groceries, notes. React + Vite + TypeScript on `supabase-js`; Python only where a library demands it |
+| **Android** (LEGION) | The **SPECIALIZED** client. OBD and the car, wake word, background audio, the Alfred voice companion - **the things a browser cannot reach** |
+
+**What forced the amendment: the second phone is an iPhone.** Kevin will not pay Apple's developer
+costs, and does not need to - the same React app, added to the Home Screen from Safari, gives that
+phone everything the Android app offers minus the hardware-bound parts. So the general client is
+already cross-platform for free, and building a second native app would be paying to duplicate it.
+
+**This is the sharper reason for LEGION to exist.** Not "the phone client", which invites every
+feature to be built twice, but "the client for what needs hardware a browser cannot touch." Anything
+that does NOT need OBD, a wake word, background audio or an always-on service should be built once,
+in the web app, and reached from both phones.
+
+**What the iPhone gives up, recorded so it is not discovered later:** push notifications work on iOS
+16.4+ but only once the page is added to the Home Screen, and less reliably than native; there is no
+geofencing, no background location, no wake word, no Bluetooth. None of that is in scope for the
+domains the general client serves. **Reminders that must actually FIRE are the one thing to test
+early rather than assume**, since that is the single capability where the web app's ceiling is lower
+than the Android app's and the difference is silent.
+
+**A public URL raises the stakes on RLS.** The anon key is public by design and RLS plus auth is the
+entire boundary between the internet and the household's data. That was already true; a hosted page
+makes it reachable rather than theoretical. The schema's deliberate absence of insert/update/delete
+policies on `household_members` ([[0038-byo-supabase-is-the-system-of-record]], ticket 02) is the
+right instinct and should be re-read before the app is public.
 
 **The phone's interaction model is a set of PRE-MADE modals that voice brings to the foreground.**
 
