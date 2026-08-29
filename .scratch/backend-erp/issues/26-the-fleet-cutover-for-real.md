@@ -51,3 +51,33 @@ Writes land server-side on the ordinary path, not on a button. The phone compose
 replica plus the sidecar. Every fleet table is out of the `SyncEngine` registry. The diff is clean
 per table. Same bar the other aspects were held to - the bar ticket 14 amended away and this ticket
 restores.
+
+## RULED 2026-08-29: identity is the server's uuid, carried as `serverId`. Not `origin_guid`.
+
+Delegated call, open to reversal. **The answer turned out to already exist in the codebase**, which
+is the best kind.
+
+`VehicleReplica` already carries BOTH `serverId` and `originGuid`. So does `Event`, and its doc
+comment states the rule outright: *"[id] is a LOCAL surrogate, never the server row's identity -
+[serverId] is that."* Fleet does not need a new identity scheme; it needs to use the one every other
+cut-over aspect already uses.
+
+- **`serverId` (the server's `id` uuid) is canonical.** Upsert by it when the phone has it; insert
+  when it does not, and store the uuid the insert returns.
+- **`origin_guid` keeps the meaning `20260826000100` gave it** - migration provenance, not identity.
+  It stays useful for exactly what it was built for: making the one-time replay idempotent.
+- **`obdMac` is not a candidate.** It is the phone's own key, it is a MAC address, and a car can
+  change dongles. It stays local.
+
+**The trap this must not walk into, already documented and already paid for once.** `Event`'s doc
+warns that `OnConflictStrategy.REPLACE` keyed on a unique `serverId` would DELETE-then-REINSERT,
+minting a new local `id`. On Notes that id is an `AlarmManager` request code and a soft foreign key
+from three tables, and `b17bc88` was the incident where every reconcile silently reminted every one
+of them. **Fleet has the same shape**: `Vehicle.obdMac` is referenced by drives, service records,
+code events and specs. Read by `serverId` first and reuse the existing row's id, exactly as the
+events path does.
+
+**Why this also settles the co-owned row.** With `serverId` as the join key, the phone-only columns
+(`personaPrompt`, `voiceName`, `personaTraits`, `archived`, `onboarded`, `lastOdometerPromptAt`,
+`tripMilesSinceBaseline`) live in a local sidecar keyed on the same `serverId`, and a configured read
+composes replica + sidecar. Ticket 14's option 1, with the join key already chosen.
