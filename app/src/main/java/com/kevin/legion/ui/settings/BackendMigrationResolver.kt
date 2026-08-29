@@ -1,8 +1,10 @@
 package com.kevin.legion.ui.settings
 
+import com.kevin.legion.backend.ConversationAuditReconcile
 import com.kevin.legion.backend.EventsReconcile
 import com.kevin.legion.backend.FleetReconcile
 import com.kevin.legion.backend.MembershipResult
+import com.kevin.legion.backend.ObdSampleReconcile
 import com.kevin.legion.backend.PantryReconcile
 import com.kevin.legion.backend.PlacesReconcile
 
@@ -304,6 +306,46 @@ object BackendMigrationResolver {
             if (onlyOnServer.isNotEmpty()) append(" Only on the server: ${onlyOnServer.joinToString(", ")}.")
         }
         return "$base NOT clean.$detail"
+    }
+
+    /**
+     * [ObdSampleReconcile] has no "clean" concept - see that object's own class doc for why it
+     * does not attempt a symmetric server diff at all - so this reads entirely differently from
+     * [renderFleetReport]: it states what this run sent, not whether the two sides now agree.
+     */
+    fun renderObdSampleReport(report: ObdSampleReconcile.Report): List<String> = buildList {
+        add(
+            "This uploads new OBD telemetry to your own Supabase project in batches, resuming " +
+                "from where the last run left off - it does not re-scan or re-check the whole " +
+                "table every time.",
+        )
+        add("${report.sourceCount} ${plural(report.sourceCount, "sample")} on this device; ${report.uploaded} uploaded this run.")
+        if (report.skippedUnresolvedVehicle.isNotEmpty()) {
+            add(
+                "Stopped early: ${report.skippedUnresolvedVehicle.joinToString("; ")}. Samples " +
+                    "past this point were not checked this run - run Fleet's vehicle upload, then " +
+                    "run this again.",
+            )
+        } else if (report.uploaded == 0) {
+            add("Nothing new since the last run.")
+        }
+    }
+
+    /**
+     * [ConversationAuditReconcile] carries no redaction decision of its own - every row already
+     * arrived redacted-or-not from the phone's own table (see that object's own class doc) - so
+     * this wording says only what was sent, with no "clean" claim either, same shape as
+     * [renderObdSampleReport].
+     */
+    fun renderConversationAuditReport(report: ConversationAuditReconcile.Report): List<String> = buildList {
+        add(
+            "This uploads your conversation-and-tool-call audit trail to your own Supabase " +
+                "project, resuming from where the last run left off. Read-through redaction " +
+                "already happened on this device before any of it was ever stored, so nothing " +
+                "sent here is content this app promised to keep off a server.",
+        )
+        add("${report.sourceCount} ${plural(report.sourceCount, "row")} on this device; ${report.uploaded} uploaded this run.")
+        if (report.uploaded == 0) add("Nothing new since the last run.")
     }
 
     /**

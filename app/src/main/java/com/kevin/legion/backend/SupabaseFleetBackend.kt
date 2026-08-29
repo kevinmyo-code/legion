@@ -24,6 +24,7 @@ private const val CHASSIS_QUIRKS_TABLE = "chassis_quirks"
 private const val VEHICLE_SPECS_TABLE = "vehicle_specs"
 private const val BUILD_ENTRIES_TABLE = "build_entries"
 private const val DRIVE_REASSIGNMENTS_TABLE = "drive_reassignments"
+private const val OBD_SAMPLES_TABLE = "obd_samples"
 
 // codes/freeze_frame/codes_after are jsonb server-side but raw JSON TEXT at the FleetBackend
 // interface boundary (see RemoteCodeEvent's own doc comment) - these two helpers are the one place
@@ -1105,5 +1106,53 @@ class SupabaseFleetBackend(private val client: SupabaseClient) : FleetBackend {
                 }
                 .decodeSingle<DriveReassignmentRowDto>()
                 .toRemoteDriveReassignment()
+        }
+
+    /**
+     * The wire shape for [uploadObdSampleBatch]. `recorded_at` reuses [tsOrNull]'s non-nullable
+     * sibling ([Instant.toString], called directly at the call site) rather than a shared helper -
+     * every sample in a batch upload genuinely has a timestamp, unlike the many-optional-timestamp
+     * DTOs elsewhere in this file.
+     */
+    @Serializable
+    private data class ObdSampleUpsertDto(
+        @SerialName("vehicle_id") val vehicleId: String,
+        val pid: String,
+        val value: Double,
+        val unit: String,
+        @SerialName("recorded_at") val recordedAt: String,
+        val lat: Double?,
+        val lng: Double?,
+    )
+
+    /**
+     * A single Postgrest `upsert` call over the whole batch, `on_conflict` set to the table's own
+     * natural key and `ignoreDuplicates = true` (the client-side name for `Prefer:
+     * resolution=ignore-duplicates`, which is what makes a re-post of an already-present sample a
+     * no-op rather than a merge or an error). No `select()` on the response - [ObdSampleReconcile]
+     * does not need the rows Postgres now holds back, only whether the call succeeded, and skipping
+     * the round-trip payload matters here specifically because a batch can be hundreds of rows.
+     */
+    override suspend fun uploadObdSampleBatch(batch: List<ObdSampleUpload>): Result<Unit> =
+        translating("upload OBD samples") {
+            if (batch.isNotEmpty()) {
+                client.postgrest.from(OBD_SAMPLES_TABLE).upsert(
+                    batch.map { sample ->
+                        ObdSampleUpsertDto(
+                            vehicleId = sample.vehicleServerId,
+                            pid = sample.pid,
+                            value = sample.value,
+                            unit = sample.unit,
+                            recordedAt = Instant.ofEpochMilli(sample.recordedAtMs).toString(),
+                            lat = sample.lat,
+                            lng = sample.lng,
+                        )
+                    },
+                ) {
+                    onConflict = "vehicle_id,pid,recorded_at"
+                    ignoreDuplicates = true
+                }
+            }
+            Unit
         }
 }

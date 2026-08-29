@@ -10,8 +10,22 @@ import android.provider.Settings
  * (CLAUDE.md §2's "clone-and-run"), nothing here needs to survive a reinstall or match across
  * Kevin's two phones; a value that is stable for the life of one app install on one device is
  * exactly the granularity a home-screen arrangement is supposed to have. `ANDROID_ID` also asks for
- * no permission and needs no Play Services dependency, keeping this consistent with CLAUDE.md §7's
- * "no backend, ever" posture - this never leaves the device, and nothing here transmits it anywhere.
+ * no permission and needs no Play Services dependency.
+ *
+ * **CORRECTED 2026-08-29 (`.scratch/backend-erp/issues/24-*.md`,
+ * `.scratch/backend-erp/issues/14-*.md`): this value DOES now leave the device.**
+ * [com.kevin.legion.backend.ConversationAuditReconcile] uploads it as `conversation_audit.device_id`
+ * so a conversation row can be told apart from the same turn number recorded by the other phone -
+ * see that table's own migration comment (`20260829000100_obd_samples_and_conversation_audit.sql`)
+ * for why a conversation row is NOT a shared fact the way a vehicle or a place is. The claim below
+ * used to be true when this only scoped widget layouts; it is false the moment a conversation row
+ * carries it. **What is still true and still the point:** this is a device identifier, not a person
+ * identifier, and it only ever reaches the household's OWN Supabase project (ADR 0038) - never a
+ * third party, never a Kevin-run backend beyond the one the household already owns. A comment that
+ * promises what the code no longer does is the exact shape that has bitten this repo twice
+ * ([com.kevin.legion.data.local.EventReplicaDao.upsert]'s defeated guarantee,
+ * `GeneratedFormScreen`'s "PHOTO ON FILE") - correcting it here rather than leaving the sentence
+ * above as a fossil.
  */
 object DeviceId {
     /** Never blank in practice on a real device - `ANDROID_ID` is populated at first boot - but a

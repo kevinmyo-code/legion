@@ -552,6 +552,28 @@ data class BuildEntryUpload(
  * instead - ticket 10 calls a lost or mis-parented row here the serious case, not a cosmetic one,
  * because it is the record of a drive having been attributed to the wrong car.
  */
+/**
+ * One [com.kevin.legion.data.local.OdbSample] row, ready for [FleetBackend.uploadObdSampleBatch] -
+ * built and uploaded by [ObdSampleReconcile], not by this file's own [FleetReconcile] wave. See
+ * that reconcile's own class doc for why the last of fleet's tables gets a sibling object instead
+ * of a twelfth wave here: volume (26,059 rows and ~600/day as of 2026-08-29,
+ * `.scratch/backend-erp/issues/14-a-vehicle-row-is-co-owned.md`'s "obd_samples question") needs a
+ * resumable batched upload, not the whole-table diff every other wave in this file does.
+ *
+ * [vehicleServerId] is already resolved to the server's vehicle uuid, same convention as
+ * [DriveUpload]/[CodeEventUpload] - the obdMac -> guid -> server-uuid translation is
+ * [ObdSampleReconcile]'s job, not this DTO's or [SupabaseFleetBackend]'s.
+ */
+data class ObdSampleUpload(
+    val vehicleServerId: String,
+    val pid: String,
+    val value: Double,
+    val unit: String,
+    val recordedAtMs: Long,
+    val lat: Double?,
+    val lng: Double?,
+)
+
 data class RemoteDriveReassignment(
     val serverId: String,
     val syncId: String,
@@ -712,6 +734,19 @@ interface FleetBackend {
      * retry of an already-applied correction is a legitimate no-op re-post, per the migration file's
      * own comment on why this table carries no CHECK against naming the same vehicle twice. */
     suspend fun upsertDriveReassignment(reassignment: DriveReassignmentUpload): Result<RemoteDriveReassignment>
+
+    /**
+     * Bulk-upserts a batch onto `(vehicle_id, pid, recorded_at)` (the table's own natural key,
+     * `on conflict do nothing` server-side per the migration's own comment) - a re-post of an
+     * already-present sample is silently ignored, never an error. Returns `Result.success(Unit)`
+     * rather than a per-row "was this new" signal: unlike [uploadMigratedVehicle]'s
+     * check-then-insert shape, there is nothing here to check first, and decoding 500 rows back
+     * just to count how many were genuinely new would spend the exact request-size budget
+     * [ObdSampleReconcile]'s batching exists to protect. [ObdSampleReconcile.Report.uploaded]
+     * counts by batch size attempted instead, the same "a repost still counts" convention
+     * [DriveReport.uploaded]'s own doc comment states for `drives`.
+     */
+    suspend fun uploadObdSampleBatch(batch: List<ObdSampleUpload>): Result<Unit>
 }
 
 /** Thrown (wrapped in [Result.failure]) by [SupabaseFleetBackend] for every failure branch - owned

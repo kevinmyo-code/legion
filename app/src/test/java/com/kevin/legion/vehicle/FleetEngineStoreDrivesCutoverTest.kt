@@ -9,6 +9,7 @@ import com.kevin.legion.backend.DriveUpload
 import com.kevin.legion.backend.FleetBackend
 import com.kevin.legion.backend.FleetBackendException
 import com.kevin.legion.backend.MigratedServiceHistory
+import com.kevin.legion.backend.ObdSampleUpload
 import com.kevin.legion.backend.MigratedVehicle
 import com.kevin.legion.backend.OilAnalysisUpload
 import com.kevin.legion.backend.RemoteBuildEntry
@@ -129,6 +130,8 @@ class FleetEngineStoreDrivesCutoverTest {
             reassignments[row.syncId] = row
             return Result.success(row)
         }
+
+        override suspend fun uploadObdSampleBatch(batch: List<ObdSampleUpload>): Result<Unit> = error("out of scope")
     }
 
     @Before

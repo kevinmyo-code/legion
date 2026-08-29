@@ -20,6 +20,7 @@ import com.kevin.legion.backend.CodeEventUpload
 import com.kevin.legion.backend.DriveReassignmentUpload
 import com.kevin.legion.backend.DriveUpload
 import com.kevin.legion.backend.MigratedServiceHistory
+import com.kevin.legion.backend.ObdSampleUpload
 import com.kevin.legion.backend.OilAnalysisUpload
 import com.kevin.legion.backend.VehicleSpecUpload
 import com.kevin.legion.backend.VehicleUpload
@@ -109,6 +110,7 @@ class FleetEngineStoreVehicleCutoverTest {
         override suspend fun upsertBuildEntry(entry: BuildEntryUpload): Result<RemoteBuildEntry> = error("out of scope")
         override suspend fun fetchActiveDriveReassignments(): Result<List<RemoteDriveReassignment>> = error("out of scope")
         override suspend fun upsertDriveReassignment(reassignment: DriveReassignmentUpload): Result<RemoteDriveReassignment> = error("out of scope")
+        override suspend fun uploadObdSampleBatch(batch: List<ObdSampleUpload>): Result<Unit> = error("out of scope")
     }
 
     @Before

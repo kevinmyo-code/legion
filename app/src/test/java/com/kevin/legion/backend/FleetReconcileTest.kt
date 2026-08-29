@@ -393,6 +393,24 @@ class FleetReconcileTest {
             driveReassignments[reassignment.syncId] = row
             return Result.success(row)
         }
+
+        /** [ObdSampleReconcile]'s upload target - see [ObdSampleReconcileTest] for the suite that
+         *  actually exercises this, kept here rather than a second fake so both reconciles share
+         *  one [FleetBackend] fake, matching production's own single-interface shape. */
+        val obdSampleBatches = mutableListOf<List<ObdSampleUpload>>()
+
+        /** Set to make the NEXT [uploadObdSampleBatch] call fail - same hook shape as
+         *  [failNextVehicleUpload]. */
+        var failNextObdSampleBatch = false
+
+        override suspend fun uploadObdSampleBatch(batch: List<ObdSampleUpload>): Result<Unit> {
+            if (failNextObdSampleBatch) {
+                failNextObdSampleBatch = false
+                return Result.failure(FleetBackendException("simulated transport failure"))
+            }
+            obdSampleBatches.add(batch)
+            return Result.success(Unit)
+        }
     }
 
     @Before

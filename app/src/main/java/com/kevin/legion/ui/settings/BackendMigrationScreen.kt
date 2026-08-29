@@ -26,14 +26,17 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.kevin.legion.backend.ConversationAuditReconcile
 import com.kevin.legion.backend.EventsReconcile
 import com.kevin.legion.backend.FleetReconcile
 import com.kevin.legion.backend.MembershipResult
+import com.kevin.legion.backend.ObdSampleReconcile
 import com.kevin.legion.backend.PantryReconcile
 import com.kevin.legion.backend.PlacesReconcile
 import com.kevin.legion.backend.SupabaseAuth
 import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabaseConfig
+import com.kevin.legion.backend.SupabaseConversationAuditBackend
 import com.kevin.legion.backend.SupabaseEventsBackend
 import com.kevin.legion.backend.SupabaseFleetBackend
 import com.kevin.legion.backend.SupabasePantryBackend
@@ -78,6 +81,8 @@ fun BackendMigrationScreen(onBack: () -> Unit) {
     var pantry by remember { mutableStateOf(ReconcileRowUiState()) }
     var events by remember { mutableStateOf(ReconcileRowUiState()) }
     var fleet by remember { mutableStateOf(ReconcileRowUiState()) }
+    var obdSamples by remember { mutableStateOf(ReconcileRowUiState()) }
+    var conversationAudit by remember { mutableStateOf(ReconcileRowUiState()) }
 
     // Re-checked on every resume, same reasoning as ConnectionsScreen/KeyScreen: coming back
     // from the Gemini key screen having just configured or signed in is exactly the moment this
@@ -157,6 +162,41 @@ fun BackendMigrationScreen(onBack: () -> Unit) {
         }
     }
 
+    // The last two phone-only tables (ticket 14's obd_samples question, ticket 24's conversation
+    // audit ruling, both 2026-08-29). Separate rows from Fleet's own, not folded into runFleet -
+    // see ObdSampleReconcile's own class doc for why it is a sibling object, not a thirteenth wave.
+    fun runObdSamples() {
+        obdSamples = obdSamples.copy(running = true, resultLines = null, failure = null)
+        scope.launch {
+            val client = SupabaseClientProvider.get(context)
+            if (client == null) {
+                obdSamples = obdSamples.copy(running = false, failure = BackendMigrationResolver.renderFailure("Supabase is not configured"))
+                return@launch
+            }
+            val result = ObdSampleReconcile.run(context, SupabaseFleetBackend(client))
+            obdSamples = result.fold(
+                onSuccess = { report -> ReconcileRowUiState(resultLines = BackendMigrationResolver.renderObdSampleReport(report)) },
+                onFailure = { t -> ReconcileRowUiState(failure = BackendMigrationResolver.renderFailure(failureReason(t))) },
+            )
+        }
+    }
+
+    fun runConversationAudit() {
+        conversationAudit = conversationAudit.copy(running = true, resultLines = null, failure = null)
+        scope.launch {
+            val client = SupabaseClientProvider.get(context)
+            if (client == null) {
+                conversationAudit = conversationAudit.copy(running = false, failure = BackendMigrationResolver.renderFailure("Supabase is not configured"))
+                return@launch
+            }
+            val result = ConversationAuditReconcile.run(context, SupabaseConversationAuditBackend(client))
+            conversationAudit = result.fold(
+                onSuccess = { report -> ReconcileRowUiState(resultLines = BackendMigrationResolver.renderConversationAuditReport(report)) },
+                onFailure = { t -> ReconcileRowUiState(failure = BackendMigrationResolver.renderFailure(failureReason(t))) },
+            )
+        }
+    }
+
     val readiness = BackendMigrationResolver.readiness(configured, membership)
     val disabledReason = BackendMigrationResolver.disabledReason(readiness, membership)
 
@@ -168,11 +208,15 @@ fun BackendMigrationScreen(onBack: () -> Unit) {
             pantry = pantry,
             events = events,
             fleet = fleet,
+            obdSamples = obdSamples,
+            conversationAudit = conversationAudit,
         ),
         onRunPlaces = ::runPlaces,
         onRunPantry = ::runPantry,
         onRunEvents = ::runEvents,
         onRunFleet = ::runFleet,
+        onRunObdSamples = ::runObdSamples,
+        onRunConversationAudit = ::runConversationAudit,
         onBack = onBack,
     )
 }
@@ -195,6 +239,8 @@ data class BackendMigrationUiState(
     val pantry: ReconcileRowUiState,
     val events: ReconcileRowUiState,
     val fleet: ReconcileRowUiState,
+    val obdSamples: ReconcileRowUiState,
+    val conversationAudit: ReconcileRowUiState,
 )
 
 /** Plain state-plus-callbacks content - previewable with no Android services. */
@@ -205,6 +251,8 @@ fun BackendMigrationContent(
     onRunPantry: () -> Unit,
     onRunEvents: () -> Unit,
     onRunFleet: () -> Unit,
+    onRunObdSamples: () -> Unit,
+    onRunConversationAudit: () -> Unit,
     onBack: () -> Unit,
 ) {
     val sem = LocalLegionSemantics.current
@@ -288,6 +336,31 @@ fun BackendMigrationContent(
                     onRun = onRunFleet,
                 )
 
+                Spacer(Modifier.height(16.dp))
+                BackendMigrationRow(
+                    label = "OBD telemetry",
+                    description = "Uploads new OBD samples to your Supabase project in batches, " +
+                        "resuming from where the last run left off. The last of fleet's tables to " +
+                        "reach the server.",
+                    enabled = ready,
+                    disabledReason = if (ready) null else state.disabledReason,
+                    row = state.obdSamples,
+                    onRun = onRunObdSamples,
+                )
+
+                Spacer(Modifier.height(16.dp))
+                BackendMigrationRow(
+                    label = "Conversation audit",
+                    description = "Uploads your conversation-and-tool-call audit trail to your " +
+                        "Supabase project, resuming from where the last run left off. " +
+                        "Read-through redaction already happened on this device before any of " +
+                        "it was ever stored.",
+                    enabled = ready,
+                    disabledReason = if (ready) null else state.disabledReason,
+                    row = state.conversationAudit,
+                    onRun = onRunConversationAudit,
+                )
+
                 Spacer(Modifier.height(24.dp))
             }
         }
@@ -351,11 +424,15 @@ private fun BackendMigrationContentNotConfiguredPreview() {
                 pantry = ReconcileRowUiState(),
                 events = ReconcileRowUiState(),
                 fleet = ReconcileRowUiState(),
+                obdSamples = ReconcileRowUiState(),
+                conversationAudit = ReconcileRowUiState(),
             ),
             onRunPlaces = {},
             onRunPantry = {},
             onRunEvents = {},
             onRunFleet = {},
+            onRunObdSamples = {},
+            onRunConversationAudit = {},
             onBack = {},
         )
     }
@@ -381,11 +458,15 @@ private fun BackendMigrationContentReadyPreview() {
                     failure = BackendMigrationResolver.renderFailure("couldn't reach the server"),
                 ),
                 fleet = ReconcileRowUiState(),
+                obdSamples = ReconcileRowUiState(),
+                conversationAudit = ReconcileRowUiState(),
             ),
             onRunPlaces = {},
             onRunPantry = {},
             onRunEvents = {},
             onRunFleet = {},
+            onRunObdSamples = {},
+            onRunConversationAudit = {},
             onBack = {},
         )
     }
@@ -421,11 +502,31 @@ private fun BackendMigrationContentOneSidedPreview() {
                         "Drives: 12 on this device, already all on the server. NOT clean. Only on the server: sync-9f2.",
                     ),
                 ),
+                obdSamples = ReconcileRowUiState(
+                    resultLines = listOf(
+                        "This uploads new OBD telemetry to your own Supabase project in batches, " +
+                            "resuming from where the last run left off - it does not re-scan or " +
+                            "re-check the whole table every time.",
+                        "26059 samples on this device; 412 uploaded this run.",
+                    ),
+                ),
+                conversationAudit = ReconcileRowUiState(
+                    resultLines = listOf(
+                        "This uploads your conversation-and-tool-call audit trail to your own " +
+                            "Supabase project, resuming from where the last run left off. " +
+                            "Read-through redaction already happened on this device before any " +
+                            "of it was ever stored, so nothing sent here is content this app " +
+                            "promised to keep off a server.",
+                        "197 rows on this device; 3 uploaded this run.",
+                    ),
+                ),
             ),
             onRunPlaces = {},
             onRunPantry = {},
             onRunEvents = {},
             onRunFleet = {},
+            onRunObdSamples = {},
+            onRunConversationAudit = {},
             onBack = {},
         )
     }

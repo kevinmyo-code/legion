@@ -88,4 +88,20 @@ interface OdbSampleDao {
             "WHERE vehicleId=:vehicleId AND pid=:pid AND timestamp>=:fromMs AND timestamp<=:toMs"
     )
     suspend fun summarize(vehicleId: String, pid: String, fromMs: Long, toMs: Long): PidSummary?
+
+    /**
+     * Rows with a local [OdbSample.id] greater than [afterId], oldest-first, capped at [limit] -
+     * the next batch [com.kevin.legion.backend.ObdSampleReconcile]'s resumable upload reads. `id`
+     * rather than `timestamp` because it is the monotonic, gap-free ordering already guaranteed by
+     * SQLite's own autoincrement, and every device's `id` sequence is local to it anyway (this
+     * table has no cross-device meaning for its own primary key - see [OdbSample]'s own class doc
+     * and the natural server key `(vehicleId, pid, timestamp)` that replaces it upstream).
+     */
+    @Query("SELECT * FROM obd_samples WHERE id > :afterId ORDER BY id ASC LIMIT :limit")
+    suspend fun getAfterId(afterId: Long, limit: Int): List<OdbSample>
+
+    /** Every sample across every vehicle - [totalCount] scopes to one vehicle, this is the whole
+     *  table's own count, for [com.kevin.legion.backend.ObdSampleReconcile]'s report. */
+    @Query("SELECT COUNT(*) FROM obd_samples")
+    suspend fun totalCountAll(): Int
 }

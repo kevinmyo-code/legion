@@ -155,6 +155,17 @@ interface ConversationAuditDao {
 
     @Query("SELECT COUNT(*) FROM conversation_audit")
     suspend fun count(): Int
+
+    /**
+     * Rows with a local [ConversationAudit.id] greater than [afterId], oldest-first, capped at
+     * [limit] - the next batch [com.kevin.legion.backend.ConversationAuditReconcile]'s resumable
+     * upload reads. Same "id, not timestamp" reasoning as
+     * [com.kevin.legion.data.local.OdbSampleDao.getAfterId]: `id` is this device's own monotonic
+     * sequence, and the server's real identity is `(device_id, local_id)` - `local_id` IS this
+     * column, carried verbatim by the reconcile, never re-derived.
+     */
+    @Query("SELECT * FROM conversation_audit WHERE id > :afterId ORDER BY id ASC LIMIT :limit")
+    suspend fun getAfterId(afterId: Long, limit: Int): List<ConversationAudit>
 }
 
 /** The rolling retention window (ticket 23 decision 4). 14 days per the ticket's own suggested
