@@ -199,6 +199,57 @@ object FleetReconcile {
         }
     }
 
+    /** Same parse [run] uses for its own `engineVehicles` local - pulled out so
+     * [engineVehicleRejectionReasonsByGuid] can share it rather than re-deriving `EngineVehicle`
+     * from the raw engine record a second way (ticket 30's "no second resolver" instruction
+     * applied to vehicle parsing, not just vehicle-id resolution). */
+    private suspend fun loadEngineVehicles(context: Context): List<EngineVehicle> {
+        val db = CarDatabase.getDatabase(context)
+        val sch = FleetAspectSeeder.ensureSeeded(context)
+        return db.engineRecordDao().activeByRecordType(sch.vehicle.recordTypeId).mapNotNull { record ->
+            val payload = JSONObject(record.payload)
+            fun s(name: String) = PayloadCodec.readString(payload, sch.vehicle.fieldIds.getValue(name))
+            fun l(name: String) = PayloadCodec.readLong(payload, sch.vehicle.fieldIds.getValue(name))
+            val name = s(FleetAspectSeeder.FIELD_NAME) ?: return@mapNotNull null
+            val make = s(FleetAspectSeeder.FIELD_MAKE) ?: return@mapNotNull null
+            val model = s(FleetAspectSeeder.FIELD_MODEL) ?: return@mapNotNull null
+            val year = l(FleetAspectSeeder.FIELD_YEAR)?.toInt() ?: return@mapNotNull null
+            EngineVehicle(
+                engineRecordId = record.id,
+                guid = record.guid,
+                name = name,
+                make = make,
+                model = model,
+                year = year,
+                trim = s(FleetAspectSeeder.FIELD_TRIM),
+                engine = s(FleetAspectSeeder.FIELD_ENGINE),
+                confirmed = PayloadCodec.readBoolean(payload, sch.vehicle.fieldIds.getValue(FleetAspectSeeder.FIELD_CONFIRMED)),
+                odometerBaseline = l(FleetAspectSeeder.FIELD_ODOMETER_BASELINE)?.toInt(),
+                odometerBaselineAtMs = l(FleetAspectSeeder.FIELD_ODOMETER_BASELINE_AT),
+            )
+        }
+    }
+
+    /**
+     * Guid -> [vehicleRejectionReasons] for every active engine `Vehicle` record this device has,
+     * exposed so [ObdSampleReconcile] can tell "not yet migrated" (absent from the server, but
+     * exportable, so a halt is still worth retrying) apart from "will never migrate" (present here
+     * with a non-empty reasons list, so the cursor may safely skip past it forever) **without a
+     * second copy of the rejection rule** - see
+     * `.scratch/backend-erp/issues/30-the-obd-cursor-cannot-get-past-a-dead-vehicle.md`, which is
+     * exactly the "two implementations of can-this-vehicle-be-exported" drift this codebase keeps
+     * getting bitten by. Only the `EngineVehicle` -> reasons predicate is shared, not the private
+     * `EngineVehicle` type itself - a plain `Map<String, List<String>>` is enough for the caller and
+     * keeps `EngineVehicle` from having to become part of this file's public surface. An empty list
+     * means the vehicle parsed and passed every check; a guid simply absent from the map means no
+     * active engine `Vehicle` record exists for it at all (never actually happens for a real
+     * `obdMac` - every legacy [com.kevin.legion.data.local.Vehicle] row is dual-written into the
+     * engine by [com.kevin.legion.vehicle.FleetEngineStore]), and a caller must treat that the same
+     * as "not yet migrated", never as "safe to skip".
+     */
+    internal suspend fun engineVehicleRejectionReasonsByGuid(context: Context): Map<String, List<String>> =
+        loadEngineVehicles(context).associate { it.guid to vehicleRejectionReasons(it) }
+
 
     /** @param engineCount active engine `Vehicle` records this device had.
      * @param uploaded how many were genuinely NEW server-side this run (a re-run reporting 0 is the
@@ -384,31 +435,11 @@ object FleetReconcile {
 
     suspend fun run(context: Context, backend: FleetBackend): Result<Report> {
         val db = CarDatabase.getDatabase(context)
-        val sch = FleetAspectSeeder.ensureSeeded(context)
 
         // ---- Vehicles ---------------------------------------------------------------------------
-        val engineVehicles = db.engineRecordDao().activeByRecordType(sch.vehicle.recordTypeId).mapNotNull { record ->
-            val payload = JSONObject(record.payload)
-            fun s(name: String) = PayloadCodec.readString(payload, sch.vehicle.fieldIds.getValue(name))
-            fun l(name: String) = PayloadCodec.readLong(payload, sch.vehicle.fieldIds.getValue(name))
-            val name = s(FleetAspectSeeder.FIELD_NAME) ?: return@mapNotNull null
-            val make = s(FleetAspectSeeder.FIELD_MAKE) ?: return@mapNotNull null
-            val model = s(FleetAspectSeeder.FIELD_MODEL) ?: return@mapNotNull null
-            val year = l(FleetAspectSeeder.FIELD_YEAR)?.toInt() ?: return@mapNotNull null
-            EngineVehicle(
-                engineRecordId = record.id,
-                guid = record.guid,
-                name = name,
-                make = make,
-                model = model,
-                year = year,
-                trim = s(FleetAspectSeeder.FIELD_TRIM),
-                engine = s(FleetAspectSeeder.FIELD_ENGINE),
-                confirmed = PayloadCodec.readBoolean(payload, sch.vehicle.fieldIds.getValue(FleetAspectSeeder.FIELD_CONFIRMED)),
-                odometerBaseline = l(FleetAspectSeeder.FIELD_ODOMETER_BASELINE)?.toInt(),
-                odometerBaselineAtMs = l(FleetAspectSeeder.FIELD_ODOMETER_BASELINE_AT),
-            )
-        }
+        // Parse pulled out into loadEngineVehicles so engineVehicleRejectionReasonsByGuid (used by
+        // ObdSampleReconcile) shares it instead of re-deriving EngineVehicle a second way.
+        val engineVehicles = loadEngineVehicles(context)
 
         var vehiclesUploaded = 0
         val skippedUnexportableVehicles = mutableListOf<String>()

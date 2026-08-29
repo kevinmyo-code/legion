@@ -81,19 +81,40 @@ internal object ObdSampleUploadCursor {
  * the SAME process, while still depending on it having run EVENTUALLY (a vehicle must exist
  * server-side before its samples can).
  *
- * **An unresolved vehicle HALTS the run at that point, rather than being skipped and the scan
- * continuing past it.** This is the one real tradeoff of the batching/cursor design, stated
- * plainly rather than left implicit: [FleetReconcile]'s waves re-scan their WHOLE table every run,
- * so a row skipped for "vehicle not yet migrated" is retried for free on the next run once the
- * vehicle appears. A cursor-based scan cannot offer that for free - advancing the cursor PAST an
- * unresolved sample would mean it is never retried again, silently. Halting instead means the
- * cursor never advances past a point this run could not honestly resolve, so the exact same
- * samples are retried, in order, the next time this reconcile runs - at the cost of also holding
- * back any LATER, already-resolvable samples from a different vehicle that happen to sit after it
- * in insertion order. In practice this is a non-issue: `TelemetryRecorder` only ever writes
- * samples for a vehicle already registered locally, so the ordering that matters is "run Fleet's
- * vehicle upload before this", not "upload vehicles and drive at the same time" - but it is a real
- * ordering dependency and this paragraph is where it is written down.
+ * **An unresolved vehicle HALTS the run at that point, UNLESS the vehicle can never resolve at
+ * all, in which case its samples are skipped and the cursor advances past them** (ticket 30,
+ * found 2026-08-29 on the first real device run: two legacy placeholder vehicles - `default` and
+ * a year-0 OBD-MAC row - carry 5,263 samples that halted the cursor 7,989 real samples short of
+ * done, waiting on a Fleet vehicle upload that refuses those two rows BY DESIGN and therefore
+ * would never unblock them). The halt itself is the one real tradeoff of the batching/cursor
+ * design, stated plainly rather than left implicit: [FleetReconcile]'s waves re-scan their WHOLE
+ * table every run, so a row skipped for "vehicle not yet migrated" is retried for free on the next
+ * run once the vehicle appears. A cursor-based scan cannot offer that for free - advancing the
+ * cursor PAST an unresolved sample would mean it is never retried again, silently. Halting instead
+ * means the cursor never advances past a point this run could not honestly resolve, so the exact
+ * same samples are retried, in order, the next time this reconcile runs - at the cost of also
+ * holding back any LATER, already-resolvable samples from a different vehicle that happen to sit
+ * after it in insertion order. In practice this is a non-issue for a genuinely temporary
+ * unresolved vehicle: `TelemetryRecorder` only ever writes samples for a vehicle already
+ * registered locally, so the ordering that matters is "run Fleet's vehicle upload before this",
+ * not "upload vehicles and drive at the same time".
+ *
+ * **That reasoning assumed every unresolved vehicle is TEMPORARY, and one day after this object
+ * was written the fleet cutover created a PERMANENT kind** -
+ * [FleetReconcile.engineVehicleRejectionReasonsByGuid] already knows exactly which engine
+ * `Vehicle` records `public.vehicles`' own check constraints would refuse (year outside
+ * 1885-2200, a negative or unpaired odometer baseline), because [FleetReconcile] itself must skip
+ * those rows rather than post a value the server is guaranteed to reject. A sample whose vehicle
+ * is on that list is not "not yet migrated" - no future run of [FleetReconcile] would ever migrate
+ * it either, so halting and waiting is pointless, and this object instead skips the sample,
+ * advances the cursor past it, and names both the vehicle and the sample count in
+ * [Report.skippedPermanentlyUnexportableVehicles] /
+ * [Report.skippedPermanentlyUnexportableSampleCount] - deliberately never merged into
+ * [Report.skippedUnresolvedVehicle], because "I should run Fleet first" and "this will never go"
+ * are different sentences and a caller must be able to tell them apart. **The rejection rule
+ * itself is never duplicated** - [FleetReconcile.engineVehicleRejectionReasonsByGuid] is called
+ * directly, not re-derived, per this codebase's own standing lesson about two implementations of
+ * one predicate drifting apart.
  */
 object ObdSampleReconcile {
     private const val BATCH_SIZE = 500
@@ -108,14 +129,32 @@ object ObdSampleReconcile {
      * @param skippedUnresolvedVehicle named per-vehicle, not per-sample - a stalled vehicle can
      *   account for thousands of samples, and naming each one would make the report itself the
      *   next performance problem. Empty on the (expected, steady-state) run where every vehicle
-     *   with samples has already been uploaded by [FleetReconcile].
+     *   with samples has already been uploaded by [FleetReconcile]. **Only ever holds a vehicle
+     *   this run judged TEMPORARY - see [skippedPermanentlyUnexportable] for the other kind**,
+     *   ticket 30's whole point being that those two words describe different situations and must
+     *   never be reported as one.
+     * @param skippedPermanentlyUnexportableVehicles named per-vehicle, worded with
+     *   [FleetReconcile]'s own rejection reason (year outside 1885-2200, negative odometer
+     *   baseline, etc. - see [FleetReconcile.engineVehicleRejectionReasonsByGuid]'s own doc) - a
+     *   vehicle no future run of Fleet's own vehicle upload would ever accept, so waiting for it is
+     *   pointless. Distinct from [skippedUnresolvedVehicle] on purpose: this is "will never go",
+     *   that is "run Fleet first", and a reader must be able to tell them apart in words, not just
+     *   infer it from a shared bucket. `.scratch/backend-erp/issues/30-*.md`.
+     * @param skippedPermanentlyUnexportableSampleCount how many samples this run skipped and
+     *   advanced the cursor past because their vehicle is in
+     *   [skippedPermanentlyUnexportableVehicles] - the count half of the same fact, since a vehicle
+     *   name alone does not say whether it carried one sample or ten thousand.
      * @param cursorAt the local id this run's upload has now reached - exposed for the report
-     *   words and for tests, mirrors [ObdSampleUploadCursor.lastUploadedId] after this call.
+     *   words and for tests, mirrors [ObdSampleUploadCursor.lastUploadedId] after this call. Now
+     *   advances past a permanently-unexportable sample too, not only past uploaded ones - see
+     *   [run]'s own per-sample loop comment.
      */
     data class Report(
         val sourceCount: Int,
         val uploaded: Int,
         val skippedUnresolvedVehicle: List<String>,
+        val skippedPermanentlyUnexportableVehicles: List<String>,
+        val skippedPermanentlyUnexportableSampleCount: Int,
         val cursorAt: Long,
     )
 
@@ -130,10 +169,18 @@ object ObdSampleReconcile {
         val serverVehicles = backend.fetchActiveVehicles().getOrElse { return Result.failure(it) }
         val serverIdByOriginGuid = serverVehicles.mapNotNull { row -> row.originGuid?.let { it to row.serverId } }.toMap()
 
+        // Ticket 30: the same rejection predicate FleetReconcile itself uses to decide which
+        // engine Vehicle records public.vehicles' own check constraints would refuse - never
+        // re-derived here, see this object's own class doc.
+        val rejectionReasonsByGuid = FleetReconcile.engineVehicleRejectionReasonsByGuid(context)
+
         val sourceCount = db.odbSampleDao().totalCountAll()
         var cursor = ObdSampleUploadCursor.lastUploadedId(context)
         var uploadedThisRun = 0
         val skippedUnresolvedVehicle = mutableListOf<String>()
+        val skippedPermanentlyUnexportableVehicles = mutableListOf<String>()
+        val namedPermanentlyUnexportableObdMacs = mutableSetOf<String>()
+        var skippedPermanentlyUnexportableSampleCount = 0
 
         run@ while (true) {
             val batch = db.odbSampleDao().getAfterId(cursor, BATCH_SIZE)
@@ -144,30 +191,53 @@ object ObdSampleReconcile {
             var stuckVehicle: String? = null
 
             for (sample in batch) {
-                val vehicleServerId = guidByObdMac[sample.vehicleId]?.let { serverIdByOriginGuid[it] }
-                if (vehicleServerId == null) {
-                    // Halt right here - see this object's own class doc for why this is a halt,
-                    // not a skip-and-continue.
-                    stuckVehicle = sample.vehicleId
-                    break
+                val guid = guidByObdMac[sample.vehicleId]
+                val vehicleServerId = guid?.let { serverIdByOriginGuid[it] }
+                if (vehicleServerId != null) {
+                    uploads.add(
+                        ObdSampleUpload(
+                            vehicleServerId = vehicleServerId,
+                            pid = sample.pid,
+                            value = sample.value,
+                            unit = sample.unit,
+                            recordedAtMs = sample.timestamp,
+                            lat = sample.lat,
+                            lng = sample.lng,
+                        ),
+                    )
+                    batchCursor = sample.id
+                    continue
                 }
-                uploads.add(
-                    ObdSampleUpload(
-                        vehicleServerId = vehicleServerId,
-                        pid = sample.pid,
-                        value = sample.value,
-                        unit = sample.unit,
-                        recordedAtMs = sample.timestamp,
-                        lat = sample.lat,
-                        lng = sample.lng,
-                    ),
-                )
-                batchCursor = sample.id
+
+                // Not resolvable to a server vehicle this run. Ticket 30: that is TWO different
+                // situations, not one - a vehicle present here with a reason is one no future run
+                // would ever resolve either, so this sample is skipped and the cursor advances
+                // past it forever. A guid this reconcile could not even find a reasons entry for
+                // (no active engine Vehicle record at all) is treated as the temporary case, never
+                // as safe-to-skip - see engineVehicleRejectionReasonsByGuid's own doc for why.
+                val reasons = guid?.let { rejectionReasonsByGuid[it] }
+                if (reasons != null && reasons.isNotEmpty()) {
+                    if (namedPermanentlyUnexportableObdMacs.add(sample.vehicleId)) {
+                        skippedPermanentlyUnexportableVehicles.add(
+                            "${sample.vehicleId}: ${reasons.joinToString("; ")}",
+                        )
+                    }
+                    skippedPermanentlyUnexportableSampleCount++
+                    batchCursor = sample.id
+                    continue
+                }
+
+                // Halt right here - see this object's own class doc for why this is a halt, not a
+                // skip-and-continue, for a genuinely temporary unresolved vehicle.
+                stuckVehicle = sample.vehicleId
+                break
             }
 
             if (uploads.isNotEmpty()) {
                 backend.uploadObdSampleBatch(uploads).getOrElse { return Result.failure(it) }
                 uploadedThisRun += uploads.size
+            }
+            if (batchCursor != cursor) {
                 cursor = batchCursor
                 ObdSampleUploadCursor.advance(context, cursor)
             }
@@ -183,6 +253,8 @@ object ObdSampleReconcile {
                 sourceCount = sourceCount,
                 uploaded = uploadedThisRun,
                 skippedUnresolvedVehicle = skippedUnresolvedVehicle,
+                skippedPermanentlyUnexportableVehicles = skippedPermanentlyUnexportableVehicles,
+                skippedPermanentlyUnexportableSampleCount = skippedPermanentlyUnexportableSampleCount,
                 cursorAt = cursor,
             ),
         )

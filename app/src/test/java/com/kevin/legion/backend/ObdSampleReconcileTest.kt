@@ -2,7 +2,10 @@ package com.kevin.legion.backend
 
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.OdbSample
+import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.data.local.Vehicle
+import com.kevin.legion.engine.RecordStore
+import com.kevin.legion.engine.fleet.FleetAspectSeeder
 import com.kevin.legion.engine.fleet.FleetRecordBridge
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
@@ -92,6 +95,32 @@ class ObdSampleReconcileTest {
         )
     }
 
+    /** Same fixture shape as [FleetReconcileTest]'s own `createEngineVehicle` - a real engine
+     * `Vehicle` record keyed by [FleetRecordBridge.vehicleGuid], so [FleetReconcile]'s own
+     * rejection predicate has something real to evaluate rather than an invented shortcut. `year =
+     * 0` reproduces ticket 30's actual on-device placeholder vehicles exactly. */
+    private suspend fun createRejectableEngineVehicle(obdMac: String, year: Int = 0) {
+        val db = CarDatabase.getDatabase(context)
+        val sch = FleetAspectSeeder.ensureSeeded(context)
+        val store = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
+        store.create(
+            sch.vehicle.recordTypeId,
+            mapOf(
+                sch.vehicle.fieldIds.getValue(FleetAspectSeeder.FIELD_NAME) to "",
+                sch.vehicle.fieldIds.getValue(FleetAspectSeeder.FIELD_MAKE) to "",
+                sch.vehicle.fieldIds.getValue(FleetAspectSeeder.FIELD_MODEL) to "",
+                sch.vehicle.fieldIds.getValue(FleetAspectSeeder.FIELD_YEAR) to year,
+                sch.vehicle.fieldIds.getValue(FleetAspectSeeder.FIELD_TRIM) to null,
+                sch.vehicle.fieldIds.getValue(FleetAspectSeeder.FIELD_ENGINE) to null,
+                sch.vehicle.fieldIds.getValue(FleetAspectSeeder.FIELD_CONFIRMED) to false,
+                sch.vehicle.fieldIds.getValue(FleetAspectSeeder.FIELD_ODOMETER_BASELINE) to null,
+                sch.vehicle.fieldIds.getValue(FleetAspectSeeder.FIELD_ODOMETER_BASELINE_AT) to null,
+            ),
+            RecordProvenance.USER,
+            guid = FleetRecordBridge.vehicleGuid(obdMac),
+        )
+    }
+
     private suspend fun insertSample(obdMac: String, pid: String = "010C", ts: Long = 1_000L): Long {
         val db = CarDatabase.getDatabase(context)
         db.odbSampleDao().insert(OdbSample(vehicleId = obdMac, pid = pid, value = 850.0, unit = "rpm", timestamp = ts))
@@ -156,5 +185,87 @@ class ObdSampleReconcileTest {
         assertEquals(3, report.sourceCount)
         assertEquals(3, report.uploaded)
         assertEquals(3, backend.batches.sumOf { it.size })
+    }
+
+    @Test
+    fun `a sample whose vehicle is permanently unexportable is skipped, counted, named, and the cursor advances past it`() = runBlocking {
+        val obdMac = "66:1E:11:0E:82:0E" // ticket 30's real year-0 placeholder
+        insertLegacyVehicle(obdMac)
+        createRejectableEngineVehicle(obdMac, year = 0)
+        val backend = FakeObdFleetBackend() // never migrated, and never WILL be - year 0 is rejected
+        val lastId = insertSample(obdMac)
+
+        val report = ObdSampleReconcile.run(context, backend).getOrThrow()
+
+        assertTrue(backend.batches.isEmpty())
+        assertTrue(report.skippedUnresolvedVehicle.isEmpty()) // this is NOT the "run Fleet first" bucket
+        assertEquals(1, report.skippedPermanentlyUnexportableSampleCount)
+        assertEquals(1, report.skippedPermanentlyUnexportableVehicles.size)
+        assertTrue(report.skippedPermanentlyUnexportableVehicles.single().contains(obdMac))
+        assertTrue(report.skippedPermanentlyUnexportableVehicles.single().contains("1885"))
+        // The cursor must move past the dead sample, or every future run re-discovers the same
+        // permanent dead end forever.
+        assertEquals(lastId, report.cursorAt)
+    }
+
+    @Test
+    fun `a sample whose vehicle is merely not yet migrated still halts with the existing wording`() = runBlocking {
+        val obdMac = "AA:BB:CC:DD:EE:05"
+        insertLegacyVehicle(obdMac)
+        // An engine Vehicle record that WOULD pass the rejection check - just not uploaded yet.
+        createRejectableEngineVehicle(obdMac, year = 1998)
+        val backend = FakeObdFleetBackend() // no matching RemoteVehicle
+        insertSample(obdMac)
+
+        val report = ObdSampleReconcile.run(context, backend).getOrThrow()
+
+        assertTrue(backend.batches.isEmpty())
+        assertTrue(report.skippedPermanentlyUnexportableVehicles.isEmpty())
+        assertEquals(0, report.skippedPermanentlyUnexportableSampleCount)
+        assertEquals(1, report.skippedUnresolvedVehicle.size)
+        assertTrue(report.skippedUnresolvedVehicle.single().contains("not yet migrated"))
+    }
+
+    @Test
+    fun `a run with both a dead vehicle and a temporary one skips the dead one and halts on the temporary one`() = runBlocking {
+        val deadObdMac = "66:1E:11:0E:82:0E"
+        val tempObdMac = "AA:BB:CC:DD:EE:06"
+        insertLegacyVehicle(deadObdMac)
+        insertLegacyVehicle(tempObdMac)
+        createRejectableEngineVehicle(deadObdMac, year = 0)
+        createRejectableEngineVehicle(tempObdMac, year = 1998)
+        val backend = FakeObdFleetBackend() // neither vehicle is on the server
+        insertSample(deadObdMac, ts = 1_000L)
+        insertSample(tempObdMac, ts = 2_000L)
+
+        val report = ObdSampleReconcile.run(context, backend).getOrThrow()
+
+        assertEquals(1, report.skippedPermanentlyUnexportableSampleCount)
+        assertTrue(report.skippedPermanentlyUnexportableVehicles.single().contains(deadObdMac))
+        assertEquals(1, report.skippedUnresolvedVehicle.size)
+        assertTrue(report.skippedUnresolvedVehicle.single().contains(tempObdMac))
+    }
+
+    @Test
+    fun `a re-run after a halt resumes rather than restarting`() = runBlocking {
+        val resolvedObdMac = "AA:BB:CC:DD:EE:07"
+        val stuckObdMac = "AA:BB:CC:DD:EE:08"
+        insertLegacyVehicle(resolvedObdMac)
+        insertLegacyVehicle(stuckObdMac)
+        createRejectableEngineVehicle(stuckObdMac, year = 1998)
+        val backend = FakeObdFleetBackend().apply { vehicles[resolvedObdMac] = remoteVehicleFor(resolvedObdMac, "vehicle-1") }
+        insertSample(resolvedObdMac, ts = 1_000L)
+        insertSample(stuckObdMac, ts = 2_000L)
+
+        val first = ObdSampleReconcile.run(context, backend).getOrThrow()
+        assertEquals(1, first.uploaded)
+        assertEquals(1, first.skippedUnresolvedVehicle.size)
+
+        // Nothing changes about the stuck vehicle server-side, so a second run must not re-upload
+        // the resolved sample and must report the same halt, not restart from zero.
+        val second = ObdSampleReconcile.run(context, backend).getOrThrow()
+        assertEquals(0, second.uploaded)
+        assertEquals(1, second.skippedUnresolvedVehicle.size)
+        assertEquals(first.cursorAt, second.cursorAt)
     }
 }

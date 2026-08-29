@@ -320,13 +320,24 @@ object BackendMigrationResolver {
                 "table every time.",
         )
         add("${report.sourceCount} ${plural(report.sourceCount, "sample")} on this device; ${report.uploaded} uploaded this run.")
+        // Ticket 30: these are two different sentences on purpose. One says "run Fleet first and
+        // this will pick back up"; the other says "no run of Fleet will ever take this vehicle, so
+        // its samples are skipped for good." Never merged into one line.
+        if (report.skippedPermanentlyUnexportableVehicles.isNotEmpty()) {
+            add(
+                "${report.skippedPermanentlyUnexportableSampleCount} " +
+                    "${plural(report.skippedPermanentlyUnexportableSampleCount, "sample")} skipped for good - " +
+                    "their vehicle can never be exported: " +
+                    "${report.skippedPermanentlyUnexportableVehicles.joinToString("; ")}.",
+            )
+        }
         if (report.skippedUnresolvedVehicle.isNotEmpty()) {
             add(
                 "Stopped early: ${report.skippedUnresolvedVehicle.joinToString("; ")}. Samples " +
                     "past this point were not checked this run - run Fleet's vehicle upload, then " +
                     "run this again.",
             )
-        } else if (report.uploaded == 0) {
+        } else if (report.uploaded == 0 && report.skippedPermanentlyUnexportableVehicles.isEmpty()) {
             add("Nothing new since the last run.")
         }
     }

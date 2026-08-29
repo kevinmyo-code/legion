@@ -142,10 +142,22 @@ fun BackendMigrationScreen(onBack: () -> Unit) {
         }
     }
 
-    // Fleet is a PROJECTION, not a cutover (ticket 14's ruling) - the write path (waves 1-4) was
-    // built and had zero callers. This makes it reachable so the export can actually run and be
-    // diffed. It touches no fleet read: the phone keeps reading its own tables, and Drive keeps
-    // syncing fleet between the two phones exactly as it does today.
+    // **CORRECTED 2026-08-29. This copy described the world for one day and then outlived it.**
+    // It used to say fleet was a PROJECTION rather than a cutover, that the phone kept reading its
+    // own tables, and that Drive kept syncing fleet between the two phones "exactly as it does
+    // today". Ticket 14 was REVERSED the next day: fleet writes go to Supabase on the ordinary
+    // path, and every cut-over table left the `SyncEngine` registry, so the Drive clause is false
+    // too. All three clauses were wrong at once, on a screen a person reads before deciding whether
+    // to tap something that writes to a live server.
+    //
+    // Third time this session that a comment or a label promised what the code no longer did -
+    // `SyncEngine`'s registry claimed `MirrorSync` was live, `DeviceId` claimed its value never
+    // leaves the device. Worth noticing that all three were about a change that happened LATER than
+    // the text, which is the only kind of stale that a careful author cannot catch at writing time.
+    // The defence is re-reading the copy next to the diff that falsifies it, not writing it better.
+    //
+    // What runFleet does now: it is a catch-up for rows that predate the cutover. The normal path
+    // is `FleetEngineStore`, which writes through on every edit.
     fun runFleet() {
         fleet = fleet.copy(running = true, resultLines = null, failure = null)
         scope.launch {
@@ -326,10 +338,10 @@ fun BackendMigrationContent(
                 Spacer(Modifier.height(16.dp))
                 BackendMigrationRow(
                     label = "Fleet",
-                    description = "Exports your fleet data to your Supabase project for the " +
-                        "laptop surface and for durability. This is a PROJECTION, not a cutover - " +
-                        "the phone keeps reading its own fleet tables and Drive keeps syncing " +
-                        "fleet between your two phones, unchanged.",
+                    description = "Uploads any fleet rows that have not reached your Supabase " +
+                        "project yet - vehicles, service history, drives, codes, specs and build " +
+                        "entries. Fleet writes go to the server as they happen now, so this is a " +
+                        "catch-up for anything from before the cutover, not the normal path.",
                     enabled = ready,
                     disabledReason = if (ready) null else state.disabledReason,
                     row = state.fleet,
