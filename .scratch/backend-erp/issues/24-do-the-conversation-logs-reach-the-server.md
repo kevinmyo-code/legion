@@ -97,3 +97,37 @@ moment a conversation row carries it. ANDROID_ID going to the household's own pr
 comment claiming it does not is not. **Correct it in the same commit that builds the upload**, or it
 joins `EventReplicaDao.upsert` and `GeneratedFormScreen`'s "PHOTO ON FILE" on the list of comments
 this repo believed until it checked.
+
+## RULED 2026-08-29 on the USER-row question: upload them as they are.
+
+Delegated ("go per ur recommendations"). This is the check the ticket said was owed **before** the
+upload exists, so here it is before the upload exists.
+
+**The question:** a `Kind.USER` row is never redacted - the user's own words are his. But Kevin
+reading a message aloud puts someone else's content into a USER row by transcription. Does §7's
+read-through rule reach it?
+
+**No, and the reason is what §7 is actually about.** That rule governs content **the app fetched on
+his behalf** - mail first, and anything of that shape later. Its mechanism is
+`LiveToolbox.EPISODIC_EXCLUDED_TOOLS`, applied at the write sites, and its stated guarantee is that
+such content *"was never stored"*. The app is the thing doing the fetching, and the rule stops the
+app from building a durable store of other people's messages.
+
+**A person speaking is not the app fetching.** Kevin saying a sentence out loud is his own utterance,
+whatever it quotes. Treating a transcript of his speech as third-party content would mean the app
+must decide, per sentence, whose words those originally were - which is not a judgement any code can
+make, and pretending otherwise would produce a rule that is either useless or wrong.
+
+**And the upload changes nothing about who can read it.** The destination is the household's own
+Supabase project, visible to exactly the two people ticket 02's RLS already grants - all rows, no
+roles. Nothing crosses a boundary it was not already inside. That is the same reasoning ADR 0038
+used to accept a cloud system of record at all.
+
+**What stays binding, and is not weakened by this:**
+- **Tool results keep their redaction.** That is the mechanism that satisfies §7, it happens at write
+  on the phone, and it is exactly why this table is safe to sync. Nothing here touches it.
+- **Check 1 of this ticket is still owed and is now the load-bearing one**: confirm every tool
+  currently in `EPISODIC_EXCLUDED_TOOLS` really is redacted before insert, as it stands today rather
+  than as the doc comment described it when written. A tool added since is the gap, and it is now a
+  gap that reaches a server.
+- **Retention is still unanswered.** 197 rows is nothing; nothing is what every large table starts as.
