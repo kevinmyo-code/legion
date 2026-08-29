@@ -194,11 +194,18 @@ object SyncEngine {
     )
 
     private val REGISTRY = listOf(
-        // FIRST on purpose (car manager, 2026-07-16): these are the "this drive
-        // belongs to a different car" rules, and they must be present locally
-        // BEFORE obd_samples merges, so a rule another device made is already known
-        // when that device's old-keyed rows arrive. Tiny + LWW.
-        Spec("drive_reassignments", listOf("syncId"), Mode.LWW, naturalPk = false, hasSyncId = true),
+        // "drive_reassignments" RETIRED here at backend-erp ticket 26 step 3 (2026-08-29,
+        // `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`) - Supabase
+        // (`public.drive_reassignments`), not Drive-JSON, is the live cross-device channel now;
+        // com.kevin.legion.vehicle.FleetEngineStore.recordDriveReassignment pushes every write
+        // straight to it, the same per-table Postgres channel `vehicles`/`service_records` already
+        // got at steps 1/2. The LOCAL re-apply to obd_samples this table used to gate
+        // (`applyReassignments`, below) is UNCHANGED and still runs every pass, right before
+        // obd_samples's own turn - that re-apply has nothing to do with which channel populated
+        // this table, so the call site moved out of this loop entirely rather than being deleted
+        // along with the registry entry. Do not re-add "drive_reassignments" here to "restore" a
+        // Drive-JSON channel - the live one now is Supabase, not this registry.
+        //
         // High-volume append-only, sharded by month, natural composite identity.
         Spec("obd_samples", listOf("vehicleId", "pid", "timestamp"), Mode.UNION, naturalPk = false, shardTs = "timestamp"),
         // music_plays was registered here until 2026-08-03. The table was dropped in
@@ -229,11 +236,10 @@ object SyncEngine {
         // falsifiable facts about the car, same posture as code_events one line up - no
         // `deleted` tombstone, UNION on the portable syncId.
         Spec("code_clear_events", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
-        // drives (`.scratch/drive-ui/issues/05-trip-content.md` Q14): the drive-boundary object -
-        // append-only falsifiable facts about the car, same posture as code_events/code_clear_events
-        // two lines up. A finalised drive never changes after the fact, so UNION on the portable
-        // syncId, no `deleted` tombstone.
-        Spec("drives", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
+        // "drives" RETIRED here at backend-erp ticket 26 step 3 (2026-08-29) - same repoint as
+        // "drive_reassignments" above: com.kevin.legion.vehicle.FleetEngineStore.recordDrive is the
+        // live Supabase channel now. Unlike "drive_reassignments" this table has no other call site
+        // gated on its registry membership - nothing else to move, only to remove. Do not re-add it.
         Spec("oil_analyses", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         // Mutable, last-write-wins.
         Spec("car_tasks", listOf("syncId"), Mode.LWW, naturalPk = false, hasSyncId = true),
@@ -393,6 +399,20 @@ object SyncEngine {
                 val existing = drive.listAppData()
                 val db = CarDatabase.getDatabase(context).openHelper.writableDatabase
                 var failures = 0
+                // Re-key `obd_samples` per whatever `drive_reassignments` rules already exist
+                // locally, BEFORE obd_samples' own registry turn merges in rows from the other
+                // device - unchanged ordering and unchanged reasoning from when this ran gated on
+                // "drive_reassignments" being a registry entry (backend-erp ticket 26 step 3 retired
+                // that entry; this call did not move with it, on purpose - see REGISTRY's own
+                // comment on "drive_reassignments" for the full reasoning). A rule created on THIS
+                // device, or pulled down via Supabase by com.kevin.legion.backend.FleetReconcile,
+                // is applied here identically either way - this operates purely on the local table.
+                runCatching { applyReassignments(db) }
+                    .onFailure {
+                        failures++
+                        Log.w(TAG, "apply reassignments (pre) failed", it)
+                        MidnightEvents.recordError("sync_reassignments", it)
+                    }
                 for (spec in REGISTRY) {
                     // getOrElse, not onFailure: syncTable now returns false for a
                     // conflict-exhausted skip, which throws nothing and would
@@ -405,17 +425,6 @@ object SyncEngine {
                             false
                         }
                     if (!ok) failures++
-                    // Re-key immediately after the rules themselves land, so any
-                    // correction another device made is applied to this device's
-                    // rows before obd_samples (the very next spec) merges.
-                    if (spec.table == "drive_reassignments") {
-                        runCatching { applyReassignments(db) }
-                            .onFailure {
-                                failures++
-                                Log.w(TAG, "apply reassignments (pre) failed", it)
-                                MidnightEvents.recordError("sync_reassignments", it)
-                            }
-                    }
                 }
                 // companion_profiles has already merged as an ordinary REGISTRY
                 // table by this point (LWW, same as vehicles/maintenance_items).

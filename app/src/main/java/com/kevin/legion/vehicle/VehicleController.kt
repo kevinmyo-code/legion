@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.data.local.CarDatabase
-import com.kevin.legion.data.local.DriveReassignment
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.data.local.intervalIsUnconfirmed
@@ -1334,6 +1333,10 @@ object VehicleController {
      *
      * The local apply here is just for immediacy; [com.kevin.legion.sync.SyncEngine]
      * re-applies the rule on every pass, which is what makes it converge.
+     *
+     * **Routed through [FleetEngineStore.recordDriveReassignment] (backend-erp ticket 26 step 3)** -
+     * the local insert-and-apply-to-`obd_samples` shape is unchanged (moved verbatim), and the
+     * facade also pushes the rule to Supabase on a configured install, best-effort.
      */
     suspend fun reassignDrive(
         context: Context,
@@ -1342,22 +1345,7 @@ object VehicleController {
         fromMs: Long,
         toMs: Long,
     ) {
-        if (fromVehicleId == toVehicleId) return
-        val db = CarDatabase.getDatabase(context)
-        db.driveReassignmentDao().insert(
-            DriveReassignment(
-                syncId = java.util.UUID.randomUUID().toString(),
-                vehicleId = fromVehicleId,
-                fromMs = fromMs,
-                toMs = toMs,
-                newVehicleId = toVehicleId,
-                updatedAt = System.currentTimeMillis(),
-            )
-        )
-        db.openHelper.writableDatabase.execSQL(
-            "UPDATE `obd_samples` SET `vehicleId` = ? WHERE `vehicleId` = ? AND `timestamp` BETWEEN ? AND ?",
-            arrayOf(toVehicleId, fromVehicleId, fromMs, toMs),
-        )
+        FleetEngineStore.recordDriveReassignment(context, fromVehicleId, toVehicleId, fromMs, toMs)
     }
 
     /**

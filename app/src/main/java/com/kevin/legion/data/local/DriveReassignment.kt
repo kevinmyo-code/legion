@@ -27,6 +27,15 @@ import androidx.room.PrimaryKey
  *
  * A time RANGE, not a list of row ids, on purpose: if another device later syncs
  * more samples into the same window, the rule still catches them.
+ *
+ * **CORRECTED 2026-08-29, backend-erp ticket 26 step 3 (`.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`):**
+ * this table is RETIRED from `sync/SyncEngine.kt`'s `REGISTRY` - the live cross-device channel is
+ * now Supabase (`public.drive_reassignments`), pushed per-row by
+ * [com.kevin.legion.vehicle.FleetEngineStore.recordDriveReassignment]. The LOCAL re-apply to
+ * `obd_samples` (`SyncEngine.applyReassignments`) is unrelated to which channel populated this
+ * table and keeps running on every sync pass regardless - see that function's own call site.
+ * [serverId] plays the same non-identity, troubleshooting-only role as [Drive.serverId] - the real
+ * identity is still [syncId] (`public.drive_reassignments.sync_id`).
  */
 @Entity(tableName = "drive_reassignments")
 data class DriveReassignment(
@@ -43,4 +52,7 @@ data class DriveReassignment(
     val newVehicleId: String,
     /** LWW clock, and the order rules are applied in so a re-correction wins. */
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    /** `null` until [com.kevin.legion.vehicle.FleetEngineStore.syncDriveReassignmentToServer] first
+     * succeeds - see [Drive.serverId]'s own doc for why this is never the identity key. */
+    @ColumnInfo(defaultValue = "NULL") val serverId: String? = null,
 )

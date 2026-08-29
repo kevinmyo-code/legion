@@ -48,8 +48,20 @@ import androidx.room.PrimaryKey
  * readout has something correct to eventually read.
  *
  * **Sync `Mode.UNION` on [syncId], no update, no delete** - append-only falsifiable facts about the
- * car, the same posture `obd_samples`/`code_events`/`code_clear_events` already carry (see
- * `sync/SyncEngine.kt`'s `REGISTRY`). A drive, once finalised, never changes.
+ * car, the same posture `obd_samples`/`code_events`/`code_clear_events` already carry.
+ * **CORRECTED 2026-08-29, backend-erp ticket 26 step 3 (`.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`):**
+ * this table is RETIRED from `sync/SyncEngine.kt`'s `REGISTRY` - the live cross-device channel is
+ * now Supabase (`public.drives`), pushed per-row by [com.kevin.legion.vehicle.FleetEngineStore.recordDrive]
+ * on a configured install, the same repoint `vehicles`/`service_history` already got at steps 1/2.
+ * A drive, once finalised, never changes.
+ *
+ * **[serverId] mirrors [com.kevin.legion.data.local.ServiceRecord.serverId]'s own shape** -
+ * co-located, not a sidecar, `null` until the first successful push. Unlike `ServiceRecord` this is
+ * NOT the identity key the server upsert matches on (that is [syncId], already unique server-side,
+ * `public.drives.sync_id` - see [com.kevin.legion.backend.DriveUpload]'s own doc comment for why a
+ * drive's upsert needs no `serverId` round-trip to stay idempotent). It exists purely so a
+ * re-attempted push can be recognised as "already landed" for troubleshooting/audit, never consulted
+ * to decide insert vs. update.
  */
 @Entity(tableName = "drives")
 data class Drive(
@@ -66,4 +78,7 @@ data class Drive(
     val endReason: String,
     // Portable cross-device identity for sync (S1) - see MemoryEntry.syncId.
     @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
+    /** `null` until [com.kevin.legion.vehicle.FleetEngineStore.syncDriveToServer] first succeeds -
+     * see this field's own paragraph in the class doc above. */
+    @ColumnInfo(defaultValue = "NULL") val serverId: String? = null,
 )

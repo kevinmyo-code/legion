@@ -533,15 +533,19 @@ object TelemetryRecorder {
             // unreachable-in-practice case where a drive accumulated real miles/gallons without
             // driveStartedAt ever being set (defensive only - see driveStartedAt's own doc for why
             // it is always set in the same tick engineWasOn first flips true).
-            db.driveDao().insert(
-                Drive(
-                    vehicleId = vehicleId(context),
-                    startedAt = if (startedAt != 0L) startedAt else now,
-                    endedAt = now,
-                    miles = miles,
-                    gallons = driveGallonsFor(decision, gallons),
-                    endReason = endReason.name,
-                )
+            //
+            // Routed through FleetEngineStore.recordDrive (backend-erp ticket 26 step 3) rather than
+            // db.driveDao().insert directly - this is the one caller that creates drives, and the
+            // facade also pushes the row to Supabase on a configured install (best-effort, never
+            // blocking this tick).
+            FleetEngineStore.recordDrive(
+                context = context,
+                mac = vehicleId(context),
+                startedAt = if (startedAt != 0L) startedAt else now,
+                endedAt = now,
+                miles = miles,
+                gallons = driveGallonsFor(decision, gallons),
+                endReason = endReason.name,
             )
         }
         // Lifetime gal/mi aggregates (SharedPreferences, read by lifetimeMpg): only meaningful

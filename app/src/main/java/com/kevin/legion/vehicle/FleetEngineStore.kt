@@ -3,12 +3,16 @@ package com.kevin.legion.vehicle
 import android.content.Context
 import android.util.Log
 import androidx.room.withTransaction
+import com.kevin.legion.backend.DriveReassignmentUpload
+import com.kevin.legion.backend.DriveUpload
 import com.kevin.legion.backend.FleetBackend
 import com.kevin.legion.backend.ServiceHistoryUpload
 import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabaseFleetBackend
 import com.kevin.legion.backend.VehicleUpload
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.Drive
+import com.kevin.legion.data.local.DriveReassignment
 import com.kevin.legion.data.local.EngineRecord
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.RecordProvenance
@@ -142,6 +146,44 @@ import com.kevin.legion.engine.migration.EngineFleetServiceHistoryRetirementCopy
  * so every existing id-keyed accessor keeps working unmodified) is real, separable follow-up work,
  * not a mechanical port of [composeVehicle]'s shape - flagged rather than built ad hoc against
  * Kevin's real service history.
+ *
+ * **Ticket 26 step 3 (2026-08-29): `drives` and `drive_reassignments`, together, per ticket 06's own
+ * ruling that a fact and its corrections must not split across two systems.** [recordDrive] and
+ * [recordDriveReassignment] are the new live write entry points - [com.kevin.legion.vehicle.TelemetryRecorder.finalizeDrive]
+ * and [com.kevin.legion.vehicle.VehicleController.reassignDrive] call these now instead of
+ * `db.driveDao()`/`db.driveReassignmentDao()` directly, matching this file's own "the facade keeps
+ * the callers' seam" shape.
+ *
+ * **No new replica table for either.** [FleetBackend]'s own class doc records that `drives` and
+ * five siblings already play the dual role [VehicleReplica]/[ServiceHistoryReplica] were built for -
+ * the legacy `drives`/`drive_reassignments` tables are themselves what [com.kevin.legion.backend.FleetReconcile]
+ * refills from the server (insert-if-absent by [Drive.syncId]/[DriveReassignment.syncId]), so a
+ * configured read needs no repoint at all: it already reads the table both channels write to. This
+ * is a materially SIMPLER cutover than step 2's, not an oversight - checked, not assumed, against
+ * [com.kevin.legion.data.local.DriveDao]/[com.kevin.legion.data.local.DriveReassignmentDao]: neither
+ * [Drive.id] nor [DriveReassignment.id] has any reader outside its own DAO (no alarm request code,
+ * no soft foreign key, no Compose recomposition key even) - `service_records`' `b17bc88` hazard
+ * simply does not apply here, so reads were never split from writes in the first place.
+ *
+ * **Identity stays [Drive.syncId]/[DriveReassignment.syncId] - ruled already, not reopened.** Ticket
+ * 06 built `drives` keyed on `sync_id` specifically because it is NOT an engine record; this step
+ * only adds the LIVE per-row push [com.kevin.legion.backend.FleetReconcile]'s batch job never had.
+ * [Drive.serverId]/[DriveReassignment.serverId] are bookkeeping, never consulted to decide insert vs.
+ * update - [com.kevin.legion.backend.DriveUpload]/[com.kevin.legion.backend.DriveReassignmentUpload]
+ * upsert by the natural key server-side (`ON CONFLICT (sync_id)`), so a repost is always free by
+ * construction, unlike [VehicleUpload]/[ServiceHistoryUpload]'s serverId-gated insert-vs-update
+ * branch.
+ *
+ * **`drives`/`drive_reassignments` are dropped from `sync/SyncEngine.kt`'s `REGISTRY` in this same
+ * step (ruling 05)** - Supabase is the live cross-device channel for both now. The per-drop check
+ * this ticket calls for found one real thing to preserve: `SyncEngine.applyReassignments` (the
+ * re-key of `obd_samples` per stored [DriveReassignment] rule) used to run gated on
+ * `drive_reassignments` still being a registry entry, but that re-apply is a LOCAL SQLite operation
+ * with no dependency on which channel populated the table - dropping the registry entry without
+ * decoupling that call would have silently stopped reassignment rules from ever reaching
+ * `obd_samples` again, on every device, regardless of Supabase. `SyncEngine.syncNow` now calls it
+ * unconditionally, in the same position in the pass it always ran (immediately before `obd_samples`'
+ * own turn).
  */
 object FleetEngineStore {
 
@@ -915,5 +957,163 @@ object FleetEngineStore {
         val existing = db.maintenanceItemDao().getForVehicleIncludingDeleted(mac).firstOrNull { it.serviceName == serviceName } ?: return 0
         if (!existing.deleted) return 0 // was never tombstoned - restore is a no-op by contract
         return db.maintenanceItemDao().restore(mac, serviceName, miles, months, source, now)
+    }
+
+    // =============================================================================================
+    // Drive (backend-erp ticket 26 step 3) - no replica, no read-side repoint needed. See this
+    // file's own class doc for why.
+    // =============================================================================================
+
+    /**
+     * Writes a new, finalised [Drive] row for [mac] and, best-effort, pushes it to the server.
+     * [com.kevin.legion.vehicle.TelemetryRecorder.finalizeDrive] calls this now instead of
+     * `db.driveDao().insert` directly - the one caller that creates drives, so there is exactly one
+     * seam to keep in sync with the push.
+     *
+     * A drive is never edited after this call (`Drive`'s own class doc: "no update, no delete"), so
+     * unlike [insertObserved] there is no in-transaction supersession step - this is a plain insert
+     * followed by [syncDriveToServer], mirroring [syncVehicleToServer]'s own "local write already
+     * committed, the server push is a best-effort third write" posture.
+     */
+    suspend fun recordDrive(
+        context: Context,
+        mac: String,
+        startedAt: Long,
+        endedAt: Long,
+        miles: Double,
+        gallons: Double?,
+        endReason: String,
+    ): Long {
+        val db = CarDatabase.getDatabase(context)
+        val id = db.driveDao().insert(
+            Drive(
+                vehicleId = mac,
+                startedAt = startedAt,
+                endedAt = endedAt,
+                miles = miles,
+                gallons = gallons,
+                endReason = endReason,
+            ),
+        )
+        syncDriveToServer(context, mac, id)
+        return id
+    }
+
+    /**
+     * Best-effort push of one `drives` row, keyed on [Drive.syncId] - never throws, never rolls back
+     * the local write, same posture as [syncServiceHistoryToServer] (see that function's own doc
+     * comment for the full reasoning). **A car must already be synced first** - same "no way to
+     * synthesize a `vehicles.id` on the spot" constraint as [syncServiceHistoryToServer]; a car with
+     * no [VehicleSidecar] row yet makes this a no-op, not a retryable error.
+     *
+     * **`internal`, not `private`** - unlike `service_records`, a `Drive` is never edited, so there
+     * is no domain-level "edit" call this function can piggyback a re-run test on the way
+     * [editMileageAndCost] lets [FleetEngineStoreServiceHistoryCutoverTest] exercise
+     * [syncServiceHistoryToServer] twice. Exposing this at module visibility lets the test drive a
+     * genuine retry of the SAME local row directly, which is the only way to exercise "a re-run does
+     * not remint the local row id" for a table with no edit path at all.
+     */
+    internal suspend fun syncDriveToServer(context: Context, mac: String, localId: Long) {
+        val backend = backend(context) ?: return
+        val db = CarDatabase.getDatabase(context)
+        val drive = db.driveDao().getById(localId) ?: return
+        val vehicleServerId = db.vehicleSidecarDao().getByMac(mac)?.serverId ?: return
+
+        val remote = backend.upsertDrive(
+            DriveUpload(
+                syncId = drive.syncId,
+                vehicleServerId = vehicleServerId,
+                startedAtMs = drive.startedAt,
+                endedAtMs = drive.endedAt,
+                miles = drive.miles,
+                gallons = drive.gallons,
+                endReason = drive.endReason,
+            ),
+        ).getOrElse {
+            Log.w("FleetEngineStore", "Supabase drive sync failed for drive $localId: ${it.message}")
+            return
+        }
+
+        if (drive.serverId == null) {
+            db.driveDao().setServerId(localId, remote.serverId)
+        }
+    }
+
+    // =============================================================================================
+    // DriveReassignment (backend-erp ticket 26 step 3) - built in the same change as Drive per
+    // ticket 06's ruling: a fact and its corrections must not split across two systems.
+    // =============================================================================================
+
+    /**
+     * Records a "this drive belongs to another car" correction, applies it to `obd_samples`
+     * immediately (unchanged local behaviour, moved here from
+     * [com.kevin.legion.vehicle.VehicleController.reassignDrive] verbatim), and, best-effort, pushes
+     * the rule to the server. Returns `null` on the no-op self-correction case
+     * ([fromVehicleId] == [toVehicleId]) - matching [VehicleController.reassignDrive]'s own early
+     * return, now made an explicit result instead of a silent void.
+     *
+     */
+    suspend fun recordDriveReassignment(
+        context: Context,
+        fromVehicleId: String,
+        toVehicleId: String,
+        fromMs: Long,
+        toMs: Long,
+    ): Long? {
+        if (fromVehicleId == toVehicleId) return null
+        val db = CarDatabase.getDatabase(context)
+        val id = db.driveReassignmentDao().insert(
+            DriveReassignment(
+                syncId = java.util.UUID.randomUUID().toString(),
+                vehicleId = fromVehicleId,
+                fromMs = fromMs,
+                toMs = toMs,
+                newVehicleId = toVehicleId,
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
+        db.openHelper.writableDatabase.execSQL(
+            "UPDATE `obd_samples` SET `vehicleId` = ? WHERE `vehicleId` = ? AND `timestamp` BETWEEN ? AND ?",
+            arrayOf(toVehicleId, fromVehicleId, fromMs, toMs),
+        )
+        syncDriveReassignmentToServer(context, id)
+        return id
+    }
+
+    /**
+     * Best-effort push of one `drive_reassignments` row, keyed on [DriveReassignment.syncId] - same
+     * never-throws, never-rolls-back-the-local-write posture as [syncDriveToServer]. **Both cars
+     * named by the rule must already be synced** - resolves `vehicleServerId` (the car the window is
+     * currently attributed to) AND `newVehicleServerId` (the car it should move to) through
+     * [VehicleSidecar], and a rule naming either car before it has synced is a no-op push, not a
+     * retryable error, same shape as [syncServiceHistoryToServer]'s single-car resolution.
+     *
+     * `internal` for the identical reason [syncDriveToServer] is - a [DriveReassignment] is never
+     * edited by a domain call either, so a direct re-run is the only way to test push idempotency.
+     */
+    internal suspend fun syncDriveReassignmentToServer(context: Context, localId: Long) {
+        val backend = backend(context) ?: return
+        val db = CarDatabase.getDatabase(context)
+        val reassignment = db.driveReassignmentDao().getById(localId) ?: return
+        val vehicleServerId = db.vehicleSidecarDao().getByMac(reassignment.vehicleId)?.serverId ?: return
+        val newVehicleServerId = db.vehicleSidecarDao().getByMac(reassignment.newVehicleId)?.serverId ?: return
+
+        val remote = backend.upsertDriveReassignment(
+            DriveReassignmentUpload(
+                syncId = reassignment.syncId,
+                vehicleServerId = vehicleServerId,
+                newVehicleServerId = newVehicleServerId,
+                fromAtMs = reassignment.fromMs,
+                toAtMs = reassignment.toMs,
+                provenance = "USER",
+            ),
+        ).getOrElse {
+            Log.w("FleetEngineStore", "Supabase drive-reassignment sync failed for row $localId: ${it.message}")
+            return
+        }
+
+        if (reassignment.serverId == null) {
+            db.driveReassignmentDao().setServerId(localId, remote.serverId)
+        }
     }
 }

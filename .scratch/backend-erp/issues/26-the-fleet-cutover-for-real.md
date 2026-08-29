@@ -167,3 +167,52 @@ missing for days.
 inferred. No `sync_id`, no backfill. `ServiceRecord` gains a nullable `serverId` co-located on the
 row rather than in a sidecar, because unlike `Vehicle` there is no phone-only/server-owned split to
 keep apart. Room v51 -> v52, UNAPPLIED.
+
+## Step 3 done 2026-08-29: `drives` and `drive_reassignments`, together, and it is a SIMPLER cutover than step 2's
+
+Both writes are cut over. `com.kevin.legion.vehicle.TelemetryRecorder.finalizeDrive` and
+`com.kevin.legion.vehicle.VehicleController.reassignDrive` now call `FleetEngineStore.recordDrive`/
+`recordDriveReassignment` instead of `db.driveDao()`/`db.driveReassignmentDao()` directly - the two
+callers that create these rows, so there was exactly one seam each to rewire.
+
+### The read-side question, answered explicitly
+
+Neither table needed a repoint, and neither needed a merge the way ticket 28 owes `service_records`.
+Checked, not assumed: `Drive.id` and `DriveReassignment.id` have no reader anywhere outside their own
+DAO - no alarm request code, no soft foreign key, no Compose recomposition key. `FleetBackend`'s own
+class doc already records why: `drives`/`drive_reassignments` are two of the six tables that already
+play the dual role `VehicleReplica`/`ServiceHistoryReplica` were built for - the legacy table itself
+is what `FleetReconcile`'s batch refill inserts into (insert-if-absent by `syncId`), so an ordinary
+read already serves whatever either channel (the new live push, or the older batch reconcile) wrote.
+`b17bc88`'s hazard - a wholesale replica refresh reminting a locally-relied-on id - simply does not
+apply here, because reads and writes were never split from the same table to begin with.
+
+### Identity, ruled already, not reopened
+
+`Drive.syncId`/`DriveReassignment.syncId` were the identity before this step (ticket 06's own
+ruling, because neither is an engine record) - this step only adds the LIVE per-row push
+`FleetReconcile`'s batch job never had. `Drive.serverId`/`DriveReassignment.serverId` (new, nullable,
+co-located like `ServiceRecord.serverId`) are bookkeeping only, never consulted to decide insert vs.
+update: `DriveUpload`/`DriveReassignmentUpload` upsert by the natural key server-side
+(`ON CONFLICT (sync_id)`), so a repost is always free by construction. Room v52 -> v53, UNAPPLIED.
+
+### The per-drop check found one thing worth preserving, not removing
+
+Dropping `drives` from `sync/SyncEngine.kt`'s `REGISTRY` cost nothing else - no other code was gated
+on its presence. `drive_reassignments` was different: `SyncEngine.syncNow` used to call
+`applyReassignments` (the local re-key of `obd_samples` per stored correction rule) gated on
+`drive_reassignments` still being iterated as a registry entry. That re-apply is a LOCAL SQLite
+operation with no dependency on which channel populated the table - dropping the registry entry
+without decoupling the call would have silently stopped reassignment rules from ever reaching
+`obd_samples` again, on every device, regardless of Supabase. The call now runs unconditionally, in
+the same position in the pass it always ran (immediately before `obd_samples`' own turn). Opposite
+shape from ticket 27's finding and from step 2's own SyncEngine finding: this one would have been a
+silent REMOVAL of a still-needed local behaviour, not a silent absence already in place.
+
+### Tests
+
+`FleetEngineStoreDrivesCutoverTest` (9 tests), matching `FleetEngineStoreServiceHistoryCutoverTest`'s
+shape with one adaptation: neither `Drive` nor `DriveReassignment` has a domain-level edit call (both
+are append-only), so `syncDriveToServer`/`syncDriveReassignmentToServer` are `internal` rather than
+`private`, letting the test drive a genuine retry of the same local row directly - the only way to
+exercise "a re-run does not remint the local id" for a table with no edit path at all.

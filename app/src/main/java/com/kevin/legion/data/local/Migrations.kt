@@ -1949,3 +1949,21 @@ val MIGRATION_51_52 = object : Migration(51, 52) {
         db.execSQL("ALTER TABLE `service_records` ADD COLUMN `serverId` TEXT DEFAULT NULL")
     }
 }
+
+/**
+ * v52 -> v53: the fleet cutover's step 3, `drives` and `drive_reassignments` together (backend-erp
+ * ticket 26, `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`'s own sequencing -
+ * "service_history -> drives with drive_reassignments" - and ticket 06's ruling that a fact and its
+ * corrections must not split across two systems). Two additive columns, same shape as
+ * [MIGRATION_51_52]: see [Drive.serverId]/[DriveReassignment.serverId]'s own doc comments for why
+ * this is bookkeeping only, never the identity key ([Drive.syncId]/[DriveReassignment.syncId]
+ * already are, and already were before this migration). `DEFAULT NULL` is correct for every
+ * pre-existing row for the identical reason [MIGRATION_51_52]'s own doc gives: nothing wrote this
+ * column before it existed.
+ */
+val MIGRATION_52_53 = object : Migration(52, 53) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `drives` ADD COLUMN `serverId` TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE `drive_reassignments` ADD COLUMN `serverId` TEXT DEFAULT NULL")
+    }
+}

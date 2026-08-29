@@ -7,8 +7,10 @@ import androidx.room.Query
 
 @Dao
 interface DriveReassignmentDao {
+    /** Returns the row id Room assigned - [com.kevin.legion.vehicle.FleetEngineStore.recordDriveReassignment]
+     * reads it back to push the row to the server without a second [getBySyncId] round trip. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(reassignment: DriveReassignment)
+    suspend fun insert(reassignment: DriveReassignment): Long
 
     /**
      * Oldest first: rules are applied in [DriveReassignment.updatedAt] order so a
@@ -32,4 +34,13 @@ interface DriveReassignmentDao {
      * `CodeEventDao.getBySyncId` plays for `CodeEvent`. */
     @Query("SELECT * FROM drive_reassignments WHERE syncId = :syncId LIMIT 1")
     suspend fun getBySyncId(syncId: String): DriveReassignment?
+
+    /** By the local autoincrement id - same role [DriveDao.getById] plays for [Drive]. */
+    @Query("SELECT * FROM drive_reassignments WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): DriveReassignment?
+
+    /** Records the server's uuid after a first successful push - see [DriveReassignment.serverId]'s
+     * own doc comment for why this is bookkeeping only, never consulted for identity. */
+    @Query("UPDATE drive_reassignments SET serverId = :serverId WHERE id = :id")
+    suspend fun setServerId(id: Long, serverId: String)
 }
