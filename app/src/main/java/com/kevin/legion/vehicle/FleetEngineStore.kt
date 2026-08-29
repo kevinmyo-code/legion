@@ -5,13 +5,16 @@ import android.util.Log
 import androidx.room.withTransaction
 import com.kevin.legion.backend.CodeClearEventUpload
 import com.kevin.legion.backend.CodeEventUpload
+import com.kevin.legion.backend.BuildEntryUpload
 import com.kevin.legion.backend.DriveReassignmentUpload
 import com.kevin.legion.backend.DriveUpload
 import com.kevin.legion.backend.FleetBackend
 import com.kevin.legion.backend.ServiceHistoryUpload
 import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabaseFleetBackend
+import com.kevin.legion.backend.VehicleSpecUpload
 import com.kevin.legion.backend.VehicleUpload
+import com.kevin.legion.data.local.BuildEntry
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.CodeClearEvent
 import com.kevin.legion.data.local.CodeEvent
@@ -25,6 +28,7 @@ import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.data.local.VehicleReplica
 import com.kevin.legion.data.local.VehicleSidecar
+import com.kevin.legion.data.local.VehicleSpec
 import com.kevin.legion.data.local.upsert
 import com.kevin.legion.engine.RecordStore
 import com.kevin.legion.engine.fleet.FleetAspectSeeder
@@ -213,6 +217,48 @@ import com.kevin.legion.engine.migration.EngineFleetServiceHistoryRetirementCopy
  * keeps reading/writing the legacy table exactly as before and stays in `SyncEngine`'s `REGISTRY` -
  * a table whose writes never moved keeps the only cross-device channel it has ever had. This is the
  * ticket's own "stop at a coherent boundary" clause, not an oversight.
+ *
+ * **Ticket 26 step 5, the last one (2026-08-29): `build_entries`, and `vehicle_specs`/
+ * `chassis_quirks` are scoped as NOT-cut-over/genuinely-cut-over respectively for two different
+ * reasons.** `build_entries` gets the identical "no replica, no read-side repoint" shape as
+ * `drives`/`code_events` above - [recordBuildEntry] is the new entry point,
+ * [com.kevin.legion.vehicle.BuildSheetController.add] calls it instead of
+ * `db.buildEntryDao().insert` directly, identity is [BuildEntry.syncId] (`hasSyncId = true` in
+ * `SyncEngine`'s registry, confirmed by reading it, not assumed), and [BuildEntry.serverId] is
+ * bookkeeping only, mirroring [Drive.serverId] exactly.
+ *
+ * **`vehicle_specs` is a FOURTH identity shape, distinct from every table cut over so far.**
+ * `SyncEngine` registers it with `naturalPk = true` on `vehicleId` (confirmed, not assumed), and
+ * [com.kevin.legion.backend.VehicleSpecUpload]'s own doc comment confirms the server side matches:
+ * `vehicle_specs.vehicle_id` IS the primary key (one row per car, REPLACE-on-conflict), not a
+ * separate row id a `syncId` or `serverId` would need to track. So [upsertVehicleSpec]/
+ * [syncVehicleSpecToServer] need no bookkeeping column at all - the server upsert is keyed on the
+ * uuid [VehicleSidecar.serverId] already maps this car's [Vehicle.obdMac] to, and every push
+ * overwrites every column, matching [com.kevin.legion.data.local.VehicleSpecDao.upsertStamped]'s
+ * own local REPLACE semantics. The two producers -
+ * [com.kevin.legion.vehicle.VehicleSpecController.refreshFromVin] (VIN decode) and `saveManual`
+ * (driver-entered paint/notes) - both call [upsertVehicleSpec] now instead of
+ * `db.vehicleSpecDao().upsert` directly.
+ *
+ * **`chassis_quirks` is deliberately NOT cut over in this step, for the identical reason
+ * `oil_analyses` was scoped out at step 4.** Grepped every call site of
+ * [com.kevin.legion.data.local.ChassisQuirkDao.upsertAll]: the only one is
+ * [com.kevin.legion.backend.FleetReconcile]'s own batch download/reconcile path - there is no
+ * bundled `assets/quirks.json` in this checkout at all (`ChassisQuirk`'s own class doc: "Parsed to
+ * Room on first launch", but no loader exists to do that parsing), so
+ * [com.kevin.legion.vehicle.CarToolbelt.quirksList]'s "No quirk index loaded yet" branch is not a
+ * hypothetical - it is the only state this table has ever actually been in on a real device. There
+ * is no local write to cut over and no producer to rewire, so `chassis_quirks` keeps reading/
+ * writing the legacy table exactly as before and stays in `SyncEngine`'s `REGISTRY` - a table whose
+ * writes never moved keeps the only cross-device channel it has ever had. A future ticket that
+ * ships a real quirk-index asset and a loader should retire this registry entry in the same change,
+ * matching [MIGRATION_53_54]'s own `oil_analyses` precedent.
+ *
+ * **This is the LAST step of ticket 26.** Every fleet table that ever had a live local producer now
+ * writes through this facade and pushes to Supabase best-effort. What remains, named rather than
+ * silently dropped: ticket 28 (`service_records` reads still serve the legacy table unconditionally,
+ * by design - see step 2's own section above) and the `obd_samples`/`conversation_audit` upload
+ * paths, whose migration `20260829000100` exists on the server side but is UNAPPLIED.
  */
 object FleetEngineStore {
 
@@ -1295,6 +1341,183 @@ object FleetEngineStore {
 
         if (event.serverId == null) {
             db.codeClearEventDao().setServerId(localId, remote.serverId)
+        }
+    }
+
+    // =============================================================================================
+    // VehicleSpec (backend-erp ticket 26 step 5, the last one) - no replica, no read-side repoint,
+    // and no bookkeeping serverId column either. See this file's own class doc for the full
+    // reasoning: [VehicleSpec.vehicleId] IS the natural key both locally and (via
+    // [VehicleSidecar.serverId]) on the server, so there is no separate row id to remember.
+    // =============================================================================================
+
+    /**
+     * Upserts a [VehicleSpec] row locally and, best-effort, pushes it to the server - the single
+     * seam [com.kevin.legion.vehicle.VehicleSpecController.refreshFromVin]/`saveManual` now call
+     * instead of `db.vehicleSpecDao().upsert` directly, mirroring [recordDrive]'s "the facade
+     * writes local then pushes" shape. Unlike every prior table in this step, there is no
+     * insert-vs-update branch to make - [VehicleSpecUpload] is a genuine REPLACE-on-conflict
+     * (matching [com.kevin.legion.data.local.VehicleSpecDao.upsertStamped]'s own local REPLACE
+     * semantics), so the local write and the push both simply overwrite every column every time.
+     */
+    suspend fun upsertVehicleSpec(context: Context, spec: VehicleSpec) {
+        val db = CarDatabase.getDatabase(context)
+        db.vehicleSpecDao().upsert(spec)
+        syncVehicleSpecToServer(context, spec.vehicleId)
+    }
+
+    /**
+     * Best-effort push of one `vehicle_specs` row, keyed on its own `vehicle_id` (the same uuid
+     * [VehicleSidecar.serverId] already maps [mac] to) - never throws, never rolls back the local
+     * write, same posture as [syncServiceHistoryToServer]. **A car must already be synced first**
+     * - same "no way to synthesize a `vehicles.id` on the spot" constraint as every other syncer in
+     * this file; a car with no [VehicleSidecar] row yet makes this a no-op, not a retryable error.
+     *
+     * Provenance is always `"DETERMINISTIC"` - mostly a machine VIN decode via vPIC, the three
+     * manual paint/notes columns notwithstanding (matching [VehicleSpecUpload]'s own doc comment
+     * and [com.kevin.legion.backend.FleetReconcile]'s identical assertion for this table).
+     * `decodedAtMs` crosses the wire as a real `null` for "never decoded" rather than the phone's
+     * `0L` sentinel - [VehicleSpec.decodedAt]'s own doc comment, same translation
+     * [com.kevin.legion.backend.FleetReconcile] already performs for this exact field.
+     *
+     * `internal`, not `private` - a [VehicleSpec] has no domain-level "edit" call distinct from a
+     * fresh upsert (every write IS a full overwrite), so the test drives a genuine retry of the
+     * same local row directly through this function, same reasoning as [syncDriveToServer].
+     */
+    internal suspend fun syncVehicleSpecToServer(context: Context, mac: String) {
+        val backend = backend(context) ?: return
+        val db = CarDatabase.getDatabase(context)
+        val spec = db.vehicleSpecDao().get(mac) ?: return
+        val vehicleServerId = db.vehicleSidecarDao().getByMac(mac)?.serverId ?: return
+
+        backend.upsertVehicleSpec(
+            VehicleSpecUpload(
+                vehicleServerId = vehicleServerId,
+                vin = spec.vin,
+                engineCylinders = spec.engineCylinders,
+                displacementL = spec.displacementL,
+                engineHp = spec.engineHp,
+                engineConfig = spec.engineConfig,
+                fuelType = spec.fuelType,
+                transmissionStyle = spec.transmissionStyle,
+                transmissionSpeeds = spec.transmissionSpeeds,
+                driveType = spec.driveType,
+                bodyClass = spec.bodyClass,
+                doors = spec.doors,
+                series = spec.series,
+                vehicleType = spec.vehicleType,
+                manufacturer = spec.manufacturer,
+                plantCity = spec.plantCity,
+                plantCountry = spec.plantCountry,
+                paintColor = spec.paintColor,
+                paintCode = spec.paintCode,
+                buildNotes = spec.buildNotes,
+                decodedAtMs = spec.decodedAt.takeIf { it != 0L },
+                provenance = "DETERMINISTIC",
+            ),
+        ).getOrElse {
+            Log.w("FleetEngineStore", "Supabase vehicle-spec sync failed for $mac: ${it.message}")
+        }
+        // No local write-back: unlike every syncId-keyed table above, there is no bookkeeping
+        // serverId column here to set - see this section's own class doc.
+    }
+
+    // =============================================================================================
+    // BuildEntry (backend-erp ticket 26 step 5) - same "no replica, no read-side repoint" shape as
+    // Drive/CodeEvent: `build_entries` has no engine-record counterpart and its own local `id` has
+    // no reader outside its own DAO (checked: `FleetScreen`/`BuildSheetController` read by
+    // `vehicleId`/`type`, never by `id`), so a configured read needs no change at all.
+    // =============================================================================================
+
+    /**
+     * Writes a new [BuildEntry] row for [mac] and, best-effort, pushes it to the server.
+     * [com.kevin.legion.vehicle.BuildSheetController.add] calls this now instead of
+     * `db.buildEntryDao().insert` directly - the one caller that creates a build-sheet line, so
+     * there is exactly one seam to keep in sync with the push. A build entry, like a [Drive], is
+     * never edited after this call ([BuildEntryDao]'s own doc comment on why `delete` is dormant),
+     * so this is a plain insert followed by [syncBuildEntryToServer], mirroring [recordDrive]'s own
+     * shape exactly.
+     */
+    suspend fun recordBuildEntry(
+        context: Context,
+        mac: String,
+        type: String,
+        title: String,
+        vendor: String,
+        partNumber: String,
+        cost: Double?,
+        date: Long,
+        mileage: Int?,
+        notes: String,
+    ): Long {
+        val db = CarDatabase.getDatabase(context)
+        val id = db.buildEntryDao().insert(
+            BuildEntry(
+                vehicleId = mac,
+                type = type,
+                title = title,
+                vendor = vendor,
+                partNumber = partNumber,
+                cost = cost,
+                date = date,
+                mileage = mileage,
+                notes = notes,
+            ),
+        )
+        syncBuildEntryToServer(context, mac, id)
+        return id
+    }
+
+    /** [BuildEntry.cost] is `Double` dollars; `build_entries.cost_cents` is `Long` cents. Rounds to
+     * the nearest cent rather than truncating, same reasoning and same one-line choice as
+     * [com.kevin.legion.backend.FleetReconcile]'s own private copy of this exact conversion (that
+     * object's own doc comment on the rounding decision applies verbatim here; duplicated rather
+     * than shared because that copy is `private` to a different object and this cutover does not
+     * own a reason to widen its visibility). */
+    private fun dollarsToCentsOrNull(dollars: Double?): Long? = dollars?.let { Math.round(it * 100.0) }
+
+    /**
+     * Best-effort push of one `build_entries` row, keyed on [BuildEntry.syncId] - never throws,
+     * never rolls back the local write, same posture as [syncDriveToServer] (see that function's
+     * own doc comment for the full reasoning). **A car must already be synced first** - same "no
+     * way to synthesize a `vehicles.id` on the spot" constraint as every other syncer in this file;
+     * a car with no [VehicleSidecar] row yet makes this a no-op, not a retryable error.
+     *
+     * Provenance is always `"USER"` here - a driver-authored logbook line, matching
+     * [BuildEntryUpload]'s own doc comment and [com.kevin.legion.backend.FleetReconcile]'s
+     * identical assertion for this table.
+     *
+     * **`internal`, not `private`** - same reasoning as [syncDriveToServer]: a [BuildEntry] has no
+     * domain-level edit call to piggyback a re-run test on, so the test drives a genuine retry of
+     * the same local row directly through this function.
+     */
+    internal suspend fun syncBuildEntryToServer(context: Context, mac: String, localId: Long) {
+        val backend = backend(context) ?: return
+        val db = CarDatabase.getDatabase(context)
+        val entry = db.buildEntryDao().getById(localId) ?: return
+        val vehicleServerId = db.vehicleSidecarDao().getByMac(mac)?.serverId ?: return
+
+        val remote = backend.upsertBuildEntry(
+            BuildEntryUpload(
+                syncId = entry.syncId,
+                vehicleServerId = vehicleServerId,
+                entryType = entry.type,
+                title = entry.title,
+                vendor = entry.vendor,
+                partNumber = entry.partNumber,
+                costCents = dollarsToCentsOrNull(entry.cost),
+                loggedAtMs = entry.date,
+                mileage = entry.mileage,
+                notes = entry.notes,
+                provenance = "USER",
+            ),
+        ).getOrElse {
+            Log.w("FleetEngineStore", "Supabase build-entry sync failed for entry $localId: ${it.message}")
+            return
+        }
+
+        if (entry.serverId == null) {
+            db.buildEntryDao().setServerId(localId, remote.serverId)
         }
     }
 }

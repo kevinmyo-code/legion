@@ -39,17 +39,17 @@ object BuildSheetController {
         if (t.isBlank()) return "I didn't catch what to log - say it again?"
         val vehicle = VehicleController.vehicleFor(context, vehicleId)
         val mileage = VehicleController.currentMileage(vehicle).takeIf { it > 0 }
-        dao(context).insert(
-            BuildEntry(
-                vehicleId = vehicle.obdMac,
-                type = normalizeType(type),
-                title = t,
-                vendor = vendor.trim(),
-                cost = cost,
-                date = System.currentTimeMillis(),
-                mileage = mileage,
-                notes = notes.trim(),
-            )
+        FleetEngineStore.recordBuildEntry(
+            context = context,
+            mac = vehicle.obdMac,
+            type = normalizeType(type),
+            title = t,
+            vendor = vendor.trim(),
+            partNumber = "",
+            cost = cost,
+            date = System.currentTimeMillis(),
+            mileage = mileage,
+            notes = notes.trim(),
         )
         return "Logged \"$t\" on your build sheet."
     }

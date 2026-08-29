@@ -51,7 +51,8 @@ object VehicleSpecController {
         all.specs?.let { specs ->
             val dao = CarDatabase.getDatabase(context).vehicleSpecDao()
             val existing = dao.get(id)
-            dao.upsert(
+            FleetEngineStore.upsertVehicleSpec(
+                context,
                 VehicleSpec(
                     vehicleId = id,
                     vin = specs.vin,
@@ -75,7 +76,7 @@ object VehicleSpecController {
                     paintCode = existing?.paintCode ?: "",
                     buildNotes = existing?.buildNotes ?: "",
                     decodedAt = System.currentTimeMillis(),
-                )
+                ),
             )
             specsSaved = true
         }

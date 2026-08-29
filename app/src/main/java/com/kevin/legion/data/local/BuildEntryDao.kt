@@ -53,4 +53,14 @@ interface BuildEntryDao {
      * on why `delete` is dormant), so "already present" is reason enough to skip re-inserting. */
     @Query("SELECT * FROM build_entries WHERE syncId = :syncId LIMIT 1")
     suspend fun getBySyncId(syncId: String): BuildEntry?
+
+    /** Looks a build entry up by its Room row id - what a fresh [FleetEngineStore.recordBuildEntry]
+     * call reads back to push, mirroring `DriveDao.getById`'s role for [Drive]. */
+    @Query("SELECT * FROM build_entries WHERE id = :id")
+    suspend fun getById(id: Long): BuildEntry?
+
+    /** Records the server's uuid after a first successful push - see [BuildEntry.serverId]'s own
+     * doc comment. Mirrors [DriveDao.setServerId]/[CodeEventDao.setServerId] exactly. */
+    @Query("UPDATE build_entries SET serverId = :serverId WHERE id = :id")
+    suspend fun setServerId(id: Long, serverId: String)
 }

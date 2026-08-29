@@ -35,4 +35,11 @@ data class BuildEntry(
     val notes: String = "",
     // Portable cross-device identity for sync (S1) - see MemoryEntry.syncId.
     @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
+    /** The server's `build_entries.id` uuid, recorded after a first successful Supabase push -
+     * bookkeeping only, mirroring [com.kevin.legion.data.local.Drive.serverId]'s own shape.
+     * [syncId] above (not this column) is what [com.kevin.legion.backend.SupabaseFleetBackend.upsertBuildEntry]
+     * actually matches on (`ON CONFLICT (sync_id)`), so a re-push after a lost [serverId] would
+     * still update the same server row rather than duplicate it - this column exists purely so a
+     * caller can tell "already synced once" from "never synced" without a round trip. */
+    @ColumnInfo(defaultValue = "NULL") val serverId: String? = null,
 )

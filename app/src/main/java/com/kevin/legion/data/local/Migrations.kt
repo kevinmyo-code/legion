@@ -1998,3 +1998,27 @@ val MIGRATION_53_54 = object : Migration(53, 54) {
         db.execSQL("ALTER TABLE `code_clear_events` ADD COLUMN `serverId` TEXT DEFAULT NULL")
     }
 }
+
+/**
+ * v54 -> v55: the fleet cutover's step 5, the last one - `build_entries` (backend-erp ticket 26,
+ * `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`). Same additive,
+ * bookkeeping-only shape as [MIGRATION_52_53]/[MIGRATION_53_54]: `build_entries.syncId` is the
+ * identity the server upsert already matches on (`ON CONFLICT (sync_id)` in
+ * [com.kevin.legion.backend.SupabaseFleetBackend.upsertBuildEntry]) - see [BuildEntry.serverId]'s
+ * own doc comment.
+ *
+ * **`vehicle_specs` and `chassis_quirks`, this step's other two tables, get NO column here.**
+ * `vehicle_specs` upserts server-side by its own `vehicle_id` (the same uuid
+ * [com.kevin.legion.data.local.VehicleSidecar.serverId] already maps `obdMac` to) - a genuine
+ * REPLACE-on-conflict with no separate row id to remember, so there is nothing for a bookkeeping
+ * column to hold; see [com.kevin.legion.vehicle.FleetEngineStore.syncVehicleSpecToServer]'s own doc
+ * comment. `chassis_quirks` has no live local producer at all (household-shared reference data,
+ * parsed from a bundled JSON asset that does not exist yet) - the identical "nothing to cut over"
+ * finding [MIGRATION_53_54]'s own doc comment already recorded for `oil_analyses`, so it keeps its
+ * Drive-JSON channel in `sync/SyncEngine.kt`'s `REGISTRY` unchanged.
+ */
+val MIGRATION_54_55 = object : Migration(54, 55) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `build_entries` ADD COLUMN `serverId` TEXT DEFAULT NULL")
+    }
+}

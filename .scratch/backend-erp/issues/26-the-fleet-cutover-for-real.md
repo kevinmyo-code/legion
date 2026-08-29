@@ -294,3 +294,105 @@ the same local row directly.
 6. **Unproven on device.** Nothing in this step has been exercised against a live Supabase project
    or a physical phone - the whole thing is Robolectric plus a fake `FleetBackend`, same posture as
    every prior step in this ticket.
+
+## Step 5 done 2026-08-29, and it is the LAST step of this ticket
+
+`vehicle_specs`, `build_entries`, `chassis_quirks` - the three tables step 1b's own sizing section
+sequenced last. Two get real write cutovers; one is scoped out, for the identical reason
+`oil_analyses` was at step 4.
+
+### Identity, confirmed per table, not assumed
+
+- **`build_entries`**: `SyncEngine`'s registry really does say `hasSyncId = true`
+  (`Spec("build_entries", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true)`,
+  read before this step, not trusted from the brief) - same shape as `drives`/`code_events`.
+  `BuildEntry.syncId` is the identity; the new `BuildEntry.serverId` (Room v54 -> v55, additive,
+  `TEXT DEFAULT NULL`) is bookkeeping only, mirroring `Drive.serverId` exactly, never consulted to
+  decide insert vs. update since `SupabaseFleetBackend.upsertBuildEntry` upserts by
+  `ON CONFLICT (sync_id)` server-side.
+- **`vehicle_specs`**: `SyncEngine`'s registry really does say `naturalPk = true` on `vehicleId`
+  (confirmed, not assumed), and `VehicleSpecUpload`'s own doc comment confirms the server agrees:
+  `vehicle_specs.vehicle_id` IS the primary key (one row per car), not a separate row id. **This is
+  a fourth identity shape, distinct from every table cut over in steps 1-4** - no bookkeeping
+  column is needed at all, because there is no insert-vs-update branch to make: every push is a
+  full REPLACE-on-conflict overwrite, keyed on the uuid `VehicleSidecar.serverId` already maps this
+  car's `obdMac` to. No Room migration was needed for this table.
+- **`chassis_quirks`**: confirmed to have no local producer at all, the identical finding
+  `oil_analyses` got at step 4. Grepped every call site of `ChassisQuirkDao.upsertAll`: the only
+  one is `FleetReconcile`'s own batch download/reconcile path. There is no `assets/quirks.json` in
+  this checkout and no loader that would parse one - `ChassisQuirk`'s own class doc describes a
+  bundled-asset seeding path that was never built, so `CarToolbelt.quirksList`'s "No quirk index
+  loaded yet" branch is not a hypothetical, it is the only state this table has ever actually held
+  on a real device. Nothing to cut over, so nothing was built for it.
+
+### The read-side question, answered explicitly
+
+Neither `build_entries` nor `vehicle_specs` needed a repoint. Checked, not assumed:
+`BuildEntry.id` has no reader outside `BuildEntryDao` (`FleetScreen`/`BuildSheetController` read by
+`vehicleId`/`type`, never by `id`) - same shape as `drives`/`code_events`. `vehicle_specs` needed no
+repoint for a different reason: `VehicleSpecDao.upsertStamped`'s local REPLACE-on-conflict semantics
+already match what a server push should do, and `FleetReconcile`'s own batch refill writes into the
+exact same table by the exact same key, so an ordinary read already serves whatever either channel
+wrote - the identical "reads and writes were never split from the same table" shape `drives`/
+`code_events` already established.
+
+### The producers
+
+- **`build_entries`**: one live writer, `BuildSheetController.add`, now calls
+  `FleetEngineStore.recordBuildEntry` instead of `dao(context).insert` directly.
+- **`vehicle_specs`**: two live writers, `VehicleSpecController.refreshFromVin` (VIN decode) and
+  `saveManual` (driver-entered paint/notes), both now call the new
+  `FleetEngineStore.upsertVehicleSpec` instead of `dao.upsert` directly - one seam covering two call
+  sites, since both already funnelled through the same DAO method.
+
+### The per-drop check
+
+Dropped `build_entries` and `vehicle_specs` from `sync/SyncEngine.kt`'s `REGISTRY` in this same
+step. Grepped the whole app for both table names: the only other hits are `MidnightImport.kt`'s own
+separate, unrelated one-time legacy import (same finding `code_events`/`code_clear_events` already
+recorded at step 4) - nothing else gated on either table's registry membership, so both drops cost
+nothing else. `chassis_quirks` was left in the registry, so there is nothing to drop-check for it.
+
+### Tests
+
+`FleetEngineStoreSpecsCutoverTest` (12 tests), matching `FleetEngineStoreDiagnosticsCutoverTest`'s
+shape: `build_entries` gets the same "no domain-level edit call, so the test drives a genuine retry
+directly through the `internal` sync function" treatment as `drives`/`code_events`; `vehicle_specs`
+gets the same treatment for a different reason - every write IS a full overwrite, so there is no
+edit call distinct from a fresh upsert either. One additional case beyond the established shape:
+"a null-cost build entry never fabricates a cost" - asserts `dollarsToCentsOrNull(null) == null`
+end to end through the real push path, not just the currency-conversion helper in isolation.
+
+### Verification
+
+1. `./gradlew compileDebugKotlin -Pnokey` - green.
+2. `./gradlew testDebugUnitTest -Pnokey` - green, 2,768 tests (JUnit XML totals), up from the
+   2,756 baseline - the 12 new tests, nothing else moved.
+3. `app/schemas/` - `55.json` is new; `1.json` through `54.json` are byte-unchanged (`git diff
+   --stat` on `54.json` is empty). `CarDatabase.SCHEMA_VERSION` bumped 54 -> 55 alongside
+   `@Database(version = 55)`.
+4. `python tools/docs_check.py` - clean ("no drift").
+5. Migration written: `MIGRATION_54_55` (`build_entries.serverId`, `TEXT DEFAULT NULL`, additive).
+   **UNAPPLIED** - not run against a real device. No migration was needed for `vehicle_specs`
+   (no new column - see the identity section above) or `chassis_quirks` (nothing changed).
+6. **Unproven on device.** Same posture as every prior step: Robolectric plus a fake `FleetBackend`,
+   never a real SupabaseClient or a physical phone.
+
+### What remains before fleet can be called cut over
+
+This closes ticket 26's own sequence (`service_history` -> `drives`/`drive_reassignments` -> the
+diagnostics trio -> specs/build entries/quirks) - every fleet table that has ever had a live local
+producer now writes through `FleetEngineStore` and pushes to Supabase best-effort. What is left,
+named rather than silently dropped:
+
+- **Ticket 28** - `service_records` reads still serve the legacy table unconditionally, by design
+  (step 2's own section above); a safe read-side merge onto a configured replica is separate,
+  scoped follow-up work, not a gap in this ticket.
+- **`obd_samples`/`conversation_audit` upload paths** - migration `20260829000100` exists
+  server-side but is **UNAPPLIED**; no phone-side write cutover exists for either table and none
+  was attempted here (ticket 26's own "Owed alongside" section already scoped raw OBD samples out
+  unless a later ticket answers otherwise).
+- **`chassis_quirks`** - stays on its Drive-JSON channel until a real quirk-index asset and loader
+  exist to give it a producer; the registry entry is intentionally still live.
+- **Nothing in this ticket has been run against a live Supabase project or a real phone.** Every
+  step, including this one, is Robolectric-and-a-fake-backend only.

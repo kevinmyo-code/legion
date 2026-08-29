@@ -230,7 +230,16 @@ object SyncEngine {
         // (`public.service_history`) on a configured install, the same per-table Postgres channel
         // `vehicles` got at ticket 26 step 1. Do not re-add "service_records" here to "restore" a
         // Drive-JSON channel - the live one now is Supabase, not this registry.
-        Spec("build_entries", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
+        // "build_entries" RETIRED here at backend-erp ticket 26 step 5, the cutover's last one
+        // (2026-08-29, `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`) - same
+        // repoint as "code_events"/"code_clear_events" below: Supabase (`public.build_entries`) is
+        // the live cross-device channel now, pushed per-row by
+        // com.kevin.legion.vehicle.FleetEngineStore.recordBuildEntry. No other call site is gated
+        // on this table's registry membership (checked: MidnightImport.kt's own separate,
+        // unrelated one-time legacy import is the only other grep hit for "build_entries" in the
+        // app, same finding "code_events"/"code_clear_events" already recorded below). Do not
+        // re-add it to "restore" a Drive-JSON channel.
+        //
         // "code_events"/"code_clear_events" RETIRED here at backend-erp ticket 26 step 4
         // (2026-08-29, `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`) - same
         // repoint as "drive_reassignments" above and "drives" (formerly listed here too, retired
@@ -279,7 +288,21 @@ object SyncEngine {
         // "maintenance_items" retired here at cutover 4 - same reasoning as "service_records" two
         // lines up. MaintenanceSchedule writes are engine-native now (zero legacy writers). Do not
         // re-add it.
-        Spec("vehicle_specs", listOf("vehicleId"), Mode.LWW, naturalPk = true),
+        // "vehicle_specs" RETIRED here at backend-erp ticket 26 step 5, the cutover's last one
+        // (2026-08-29) - com.kevin.legion.vehicle.FleetEngineStore.upsertVehicleSpec/
+        // syncVehicleSpecToServer push every write straight to Supabase (`public.vehicle_specs`)
+        // on a configured install now. No other call site is gated on this table's registry
+        // membership (same "MidnightImport.kt's own separate, unrelated one-time legacy import is
+        // the only other grep hit" finding as "build_entries" above). Do not re-add it.
+        //
+        // "chassis_quirks" is UNCHANGED and stays registered - it has no live local producer at
+        // all: `ChassisQuirkDao.upsertAll`'s only caller is
+        // com.kevin.legion.backend.FleetReconcile's own batch download/reconcile path, and no
+        // `assets/quirks.json` exists yet for a loader to seed it from (`ChassisQuirk`'s own class
+        // doc describes a bundled-asset seeding path that has never been built). Same "nothing to
+        // cut over" shape as "oil_analyses" above - see FleetEngineStore's own class doc for the
+        // full reasoning. A future ticket that ships a real quirk-index asset and a loader should
+        // retire this entry in the same change.
         Spec("chassis_quirks", listOf("quirkId"), Mode.LWW, naturalPk = true),
         // Recaps (light-data cut): autoincrement id + a natural per-period key,
         // no syncId/updatedAt. Monthly/yearly are UNION - a finished period's
