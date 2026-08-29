@@ -81,3 +81,46 @@ events path does.
 (`personaPrompt`, `voiceName`, `personaTraits`, `archived`, `onboarded`, `lastOdometerPromptAt`,
 `tripMilesSinceBaseline`) live in a local sidecar keyed on the same `serverId`, and a configured read
 composes replica + sidecar. Ticket 14's option 1, with the join key already chosen.
+
+## Step 1b done, and the `service_history` identity blocker dissolves
+
+**Part A (ticket 27's correction) landed 2026-08-29.** The sidecar is down to its three genuinely
+per-device columns; `archived` moved to `public.vehicles`
+(`20260829000200_vehicles_archived.sql`, UNAPPLIED); the three vestigial persona columns stay in the
+legacy `Vehicle` table, unread, with a doc comment saying what killed them. Room v50 -> v51.
+
+### The `service_history` blocker, and why it is not one
+
+The build agent stopped before `service_history` on a real finding: `public.service_history` has no
+`sync_id`, its only write path is the one-time `uploadMigratedServiceHistory` keyed on `origin_guid`,
+and four rows are already on the server that way. It framed the choice as *add a nullable `sync_id`
+and accept those four can never be matched*, or *backfill `sync_id` by looking up `origin_guid`*.
+
+**Neither is needed. `ServiceHistoryReplica` already carries `serverId`** - exactly like
+`VehicleReplica` - so this table falls under the identity ruling already made above: **the server's
+`id` uuid is the identity.** No new column, no backfill.
+
+The four migrated rows are not a problem either. A first configured read calls
+`fetchActiveServiceHistory`, gets those rows with their real uuids, and records them into the
+replica. From then on `upsert` matches on `serverId` and cannot duplicate them. That is the same
+"fetch first, record the uuid" shape vehicles uses.
+
+**Why the agent reached for `sync_id`:** eight of the nine remaining tables genuinely key on it, so
+it is the local pattern. `service_history` and `vehicles` are the two that do not, and
+`FleetBackend`'s own doc already records that fleet carries two identity shapes inside one aspect
+deliberately. **Confirm per table, as this ticket says - and the answer for these two is `serverId`.**
+
+### What is genuinely left, sized honestly
+
+The other eight tables have their server-side upsert primitives BUILT already (`upsertX`/`RemoteX`/
+`XUpload` in `FleetBackend`, keyed on `sync_id` or a natural key). What they lack is the Room half:
+no replica entities beside `VehicleReplica`/`ServiceHistoryReplica`, and **no facade** - twelve files
+write those legacy DAOs directly (`FleetDigestBuilder`, `CarAspectSummaries`, `DrivingModeScreen`,
+`FleetScreen`, `CarToolbelt`, `DailyDriveLogController`, `DtcClearController`,
+`MonthlyRecapController`, `TelemetryRecorder`, `VehicleController`, `VehicleSpecController`,
+`FleetReconcile`), where vehicles and service history funnel through `FleetEngineStore`.
+
+So each remaining table is a replica entity + a Room migration + a facade seam + rewiring its
+callers. **That is the real size of it, and it is several sessions, not one.** Sequence:
+`service_history` -> `drives` with `drive_reassignments` -> the diagnostics trio -> specs, build
+entries, quirks.

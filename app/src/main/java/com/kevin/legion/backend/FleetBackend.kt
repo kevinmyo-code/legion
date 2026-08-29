@@ -18,6 +18,11 @@ package com.kevin.legion.backend
  * migration-provenance column (`supabase/migrations/20260826000100_origin_guid.sql`) - null for a
  * vehicle created directly against the server, set only on a row [FleetBackend.uploadMigratedVehicle]
  * wrote. [FleetReconcile]'s diff reads it the same way [EventsReconcile]/[PantryReconcile] do.
+ *
+ * [archived] joined this shape at ticket 27 (`.scratch/backend-erp/issues/27-the-sidecar-has-no-cross-device-channel.md`,
+ * "RULED 2026-08-29") - `supabase/migrations/20260829000200_vehicles_archived.sql`. It is USER
+ * state, not device state (a car Kevin retired is retired everywhere), which is why it lives here
+ * rather than in [com.kevin.legion.data.local.VehicleSidecar].
  */
 data class RemoteVehicle(
     val serverId: String,
@@ -33,6 +38,7 @@ data class RemoteVehicle(
     val updatedAtMs: Long,
     val deleted: Boolean,
     val originGuid: String?,
+    val archived: Boolean,
 )
 
 /**
@@ -81,6 +87,10 @@ data class MigratedVehicle(
  * [RemoteVehicle] and the same server-side constraint (`vehicles_odometer_baseline_paired`) - the
  * caller (`vehicle/FleetEngineStore.kt`) is responsible for null-ing both together when the
  * driver has never actually stated an odometer reading, never sending a fabricated `0`.
+ *
+ * [archived] joined ticket 27 - see [RemoteVehicle.archived]'s own doc comment. Always sent
+ * explicitly (never omitted): this is a full PATCH of every column this type carries, same
+ * "every column always touched" posture the rest of this type already has.
  */
 data class VehicleUpload(
     val serverId: String?,
@@ -93,6 +103,7 @@ data class VehicleUpload(
     val confirmed: Boolean,
     val odometerBaseline: Int?,
     val odometerBaselineAtMs: Long?,
+    val archived: Boolean,
 )
 
 /**

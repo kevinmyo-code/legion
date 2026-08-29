@@ -1,5 +1,6 @@
 package com.kevin.legion.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Entity
 import androidx.room.Index
@@ -62,6 +63,11 @@ data class VehicleReplica(
      * itself carries, so it is kept here rather than dropped, in case a later wave needs to trace a
      * replica row back to the engine record it came from. */
     val originGuid: String?,
+    /** Server-owned USER state (ticket 27, `.scratch/backend-erp/issues/27-the-sidecar-has-no-cross-device-channel.md`,
+     * "RULED 2026-08-29") - moved OFF [VehicleSidecar] here because archiving a car is a fact about
+     * the car, not about which phone is holding it. See [com.kevin.legion.backend.RemoteVehicle.archived]'s
+     * own doc comment. */
+    @ColumnInfo(defaultValue = "0") val archived: Boolean = false,
 )
 
 /**

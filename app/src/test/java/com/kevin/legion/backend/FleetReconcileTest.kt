@@ -94,6 +94,7 @@ class FleetReconcileTest {
                 updatedAtMs = ++clock,
                 deleted = false,
                 originGuid = vehicle.originGuid,
+                archived = false,
             )
             return Result.success(true)
         }
@@ -120,6 +121,7 @@ class FleetReconcileTest {
                     updatedAtMs = ++clock,
                     deleted = false,
                     originGuid = null,
+                    archived = vehicle.archived,
                 )
             } else {
                 val existing = liveVehicles[vehicle.serverId]
@@ -135,6 +137,7 @@ class FleetReconcileTest {
                     odometerBaseline = vehicle.odometerBaseline,
                     odometerBaselineAtMs = vehicle.odometerBaselineAtMs,
                     updatedAtMs = ++clock,
+                    archived = vehicle.archived,
                 )
             }
             liveVehicles[row.serverId] = row

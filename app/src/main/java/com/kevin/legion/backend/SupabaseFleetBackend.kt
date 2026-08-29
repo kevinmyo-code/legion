@@ -81,6 +81,7 @@ private data class VehicleWriteDto(
     val confirmed: Boolean,
     @SerialName("odometer_baseline") val odometerBaseline: Int?,
     @SerialName("odometer_baseline_at") val odometerBaselineAt: String?,
+    val archived: Boolean,
 )
 
 /** The wire shape read back off `public.vehicles` for every operation. */
@@ -99,6 +100,7 @@ private data class VehicleRowDto(
     @SerialName("origin_guid") val originGuid: String? = null,
     @SerialName("updated_at") val updatedAt: String,
     @SerialName("deleted_at") val deletedAt: String? = null,
+    val archived: Boolean = false,
 ) {
     fun toRemoteVehicle() = RemoteVehicle(
         serverId = id,
@@ -114,6 +116,7 @@ private data class VehicleRowDto(
         updatedAtMs = parseTs(updatedAt),
         deleted = deletedAt != null,
         originGuid = originGuid,
+        archived = archived,
     )
 }
 
@@ -717,6 +720,7 @@ class SupabaseFleetBackend(private val client: SupabaseClient) : FleetBackend {
                 confirmed = vehicle.confirmed,
                 odometerBaseline = vehicle.odometerBaseline,
                 odometerBaselineAt = tsOrNull(vehicle.odometerBaselineAtMs),
+                archived = vehicle.archived,
             )
             if (vehicle.serverId == null) {
                 client.postgrest.from(VEHICLES_TABLE)

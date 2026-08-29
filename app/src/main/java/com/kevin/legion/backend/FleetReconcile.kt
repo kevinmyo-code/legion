@@ -1162,6 +1162,7 @@ object FleetReconcile {
         updatedAtMs = updatedAtMs,
         deleted = deleted,
         originGuid = originGuid,
+        archived = archived,
     )
 
     /** [RemoteServiceHistory] -> [ServiceHistoryReplica], field for field - same posture as

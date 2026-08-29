@@ -104,13 +104,21 @@ import com.kevin.legion.engine.migration.EngineFleetServiceHistoryRetirementCopy
  * this ticket on purpose: drives/service history/codes/specs are explicitly NOT in scope), so a
  * failed server push is logged and swallowed rather than rolled back, the same "the local write
  * already happened, do not lie about where else it landed" posture [createVehicle]'s own
- * `EngineWriteFailedException` catch block already established for the engine half. `archived`/
- * `lastOdometerPromptAt`/`tripMilesSinceBaseline` writes ([setArchived], [markOdometerPrompted],
- * [addTripMiles]) mirror into [VehicleSidecar] too, so a configured read never serves a stale
- * phone-only value - see [VehicleSidecar]'s own class doc for the real, stated consequence this
- * carries: dropping `vehicles` from [com.kevin.legion.sync.SyncEngine]'s registry in this same
- * ticket retires the Drive channel that used to carry these columns across Kevin's two phones, so
- * they are now per-device rather than per-user on a configured install.
+ * `EngineWriteFailedException` catch block already established for the engine half.
+ * `lastOdometerPromptAt`/`tripMilesSinceBaseline` writes ([markOdometerPrompted], [addTripMiles])
+ * mirror into [VehicleSidecar] too, so a configured read never serves a stale phone-only value -
+ * see [VehicleSidecar]'s own class doc for the real, stated consequence this carries: dropping
+ * `vehicles` from [com.kevin.legion.sync.SyncEngine]'s registry in this same ticket retires the
+ * Drive channel that used to carry these columns across Kevin's two phones, so they are now
+ * per-device rather than per-user on a configured install.
+ *
+ * **CORRECTED 2026-08-29, ticket 27 (`.scratch/backend-erp/issues/27-the-sidecar-has-no-cross-device-channel.md`,
+ * "RULED 2026-08-29"): `archived` is NOT one of those per-device columns after all.** It moved onto
+ * `public.vehicles`/[VehicleReplica] instead - [setArchived] now pushes it through
+ * [syncVehicleToServer] like any other identity field, and [composeVehicle] reads it off the
+ * replica. `personaPrompt`/`voiceName`/`personaTraits` left [VehicleSidecar] in the same ticket, but
+ * for the opposite reason: not because they needed a server home, but because nothing reads them at
+ * all - see [Vehicle]'s own doc comment on those three fields.
  */
 object FleetEngineStore {
 
@@ -148,24 +156,28 @@ object FleetEngineStore {
      * though [VehicleReplica.trim]/[VehicleReplica.engine] are nullable server-side - `""` is
      * exactly what a blank driver-entered value already meant on the legacy row, so this is not a
      * new sentinel, only the existing one applied at a new boundary. */
+    /** [personaPrompt]/[voiceName]/[personaTraits] are never sourced from the sidecar or the
+     * replica - ticket 26/27 ruled them vestigial (nothing reads them, see [Vehicle]'s own doc
+     * comment on those three fields), so a configured read simply supplies the same blank default
+     * a fresh unconfigured row would have, rather than carrying dead data through a new store. */
     private fun composeVehicle(replica: VehicleReplica, sidecar: VehicleSidecar): Vehicle = Vehicle(
         obdMac = sidecar.obdMac,
         name = replica.name,
         make = replica.make,
         model = replica.model,
         year = replica.year,
-        personaPrompt = sidecar.personaPrompt,
+        personaPrompt = "",
         odometerBaseline = replica.odometerBaseline ?: 0,
         odometerBaselineAt = replica.odometerBaselineAtMs ?: 0L,
         tripMilesSinceBaseline = sidecar.tripMilesSinceBaseline,
         lastOdometerPromptAt = sidecar.lastOdometerPromptAt,
         onboarded = sidecar.onboarded,
-        voiceName = sidecar.voiceName,
-        personaTraits = sidecar.personaTraits,
+        voiceName = "",
+        personaTraits = "",
         trim = replica.trim ?: "",
         confirmed = replica.confirmed,
         updatedAt = replica.updatedAtMs,
-        archived = sidecar.archived,
+        archived = replica.archived,
         engine = replica.engine ?: "",
     )
 
@@ -245,6 +257,7 @@ object FleetEngineStore {
                 confirmed = vehicle.confirmed,
                 odometerBaseline = odometerAtMs?.let { vehicle.odometerBaseline },
                 odometerBaselineAtMs = odometerAtMs,
+                archived = vehicle.archived,
             ),
         ).getOrElse {
             Log.w("FleetEngineStore", "Supabase vehicle sync failed for $mac: ${it.message}")
@@ -266,16 +279,13 @@ object FleetEngineStore {
                 updatedAtMs = remote.updatedAtMs,
                 deleted = remote.deleted,
                 originGuid = remote.originGuid,
+                archived = remote.archived,
             ),
         )
         db.vehicleSidecarDao().upsert(
             VehicleSidecar(
                 serverId = remote.serverId,
                 obdMac = mac,
-                personaPrompt = vehicle.personaPrompt,
-                voiceName = vehicle.voiceName,
-                personaTraits = vehicle.personaTraits,
-                archived = vehicle.archived,
                 onboarded = vehicle.onboarded,
                 lastOdometerPromptAt = vehicle.lastOdometerPromptAt,
                 tripMilesSinceBaseline = vehicle.tripMilesSinceBaseline,
@@ -393,18 +403,20 @@ object FleetEngineStore {
      * this cutover is bound by, not empowered to reopen (wave4-carve: "revisited only if a
      * follow-up wave's cutover finds a live need").
      *
-     * **CORRECTED 2026-08-29, ticket 26: also mirrors into [com.kevin.legion.data.local.VehicleSidecar]
-     * when a sidecar row already exists for [mac]** - a phone-only column with no engine home is
-     * exactly the shape the sidecar exists to carry, and a configured read (see [composeVehicle])
-     * would otherwise keep serving whatever [archived] value the LAST sync happened to snapshot,
-     * silently outliving every archive/unarchive toggle after it. No-op when unconfigured or not
-     * yet synced (`getByMac` returns null) - there is nothing stale to correct on that path, since
-     * an unsynced/unconfigured read never consults the sidecar at all.
+     * **CORRECTED 2026-08-29, ticket 27 (`.scratch/backend-erp/issues/27-the-sidecar-has-no-cross-device-channel.md`,
+     * "RULED 2026-08-29"): `archived` moved OFF the sidecar and onto the server.** It is USER state
+     * ("a car Kevin retired is retired everywhere"), not device state, so this now pushes through
+     * [syncVehicleToServer] - the same best-effort third write every identity setter already
+     * performs - rather than mirroring into [com.kevin.legion.data.local.VehicleSidecar]. A
+     * configured read (see [composeVehicle]) sources `archived` from [VehicleReplica] now, so a
+     * failed push here means the NEXT successful sync (of anything) still corrects it, same
+     * "logged, not thrown, local write already happened" posture [syncVehicleToServer]'s own doc
+     * comment establishes.
      */
     suspend fun setArchived(context: Context, mac: String, archived: Boolean, now: Long) {
         val db = CarDatabase.getDatabase(context)
         db.vehicleDao().setArchived(mac, archived, now)
-        db.vehicleSidecarDao().getByMac(mac)?.let { db.vehicleSidecarDao().setArchived(it.serverId, archived) }
+        syncVehicleToServer(context, mac)
     }
 
     suspend fun setOdometerBaseline(context: Context, mac: String, miles: Int, at: Long, now: Long): Int {

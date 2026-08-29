@@ -1879,3 +1879,51 @@ val MIGRATION_49_50 = object : Migration(49, 50) {
         )
     }
 }
+
+/**
+ * v50 -> v51: the sidecar correction (backend-erp ticket 27,
+ * `.scratch/backend-erp/issues/27-the-sidecar-has-no-cross-device-channel.md`, "RULED 2026-08-29").
+ * Two independent fixes to the fleet cutover's own step 1, landed together because they are the
+ * same ticket and touch two adjacent tables:
+ *
+ * 1. **`vehicles_replica` gains `archived`** - a plain additive `ADD COLUMN`, `NOT NULL DEFAULT 0`
+ *    so every row already replicated from the server (which, pre-migration, never had a concept of
+ *    `archived` at all) reads as "not archived" until the next sync corrects it - see
+ *    [VehicleReplica.archived]'s own doc comment for why this column moved onto the server side of
+ *    the co-owned row instead of staying phone-only.
+ * 2. **`vehicle_sidecar` loses `personaPrompt`/`voiceName`/`personaTraits`/`archived`.** SQLite's
+ *    `ALTER TABLE ... DROP COLUMN` support is too recent to rely on here (no precedent for it
+ *    anywhere else in this file - every prior column removal in this codebase used the
+ *    create-new/copy/drop-old/rename-new shape, e.g. [MIGRATION_46_47]), so this migration follows
+ *    that same precedent: a fresh `vehicle_sidecar_new` with only the three genuinely per-device
+ *    columns ([VehicleSidecar.onboarded]/[VehicleSidecar.lastOdometerPromptAt]/
+ *    [VehicleSidecar.tripMilesSinceBaseline], plus the `serverId` primary key and the `obdMac`
+ *    lookup column), the surviving columns copied in, the old table dropped, the new one renamed
+ *    into place. Nothing is copied for the four departing columns - `archived` is recovered by the
+ *    very next [com.kevin.legion.vehicle.FleetEngineStore.syncVehicleToServer] call rather than
+ *    migrated (a stale phone-only `archived` snapshot copied verbatim into `vehicles_replica` would
+ *    be exactly the kind of silent disagreement ticket 27 exists to prevent - the server's own
+ *    `archived` column, once populated by the paired supabase migration, is the row of record), and
+ *    the three persona columns are dropped outright because ticket 26/27 found nothing reads them
+ *    at all (see [Vehicle]'s own doc comment on those three fields for the trace).
+ */
+val MIGRATION_50_51 = object : Migration(50, 51) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `vehicles_replica` ADD COLUMN `archived` INTEGER NOT NULL DEFAULT 0")
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `vehicle_sidecar_new` (`serverId` TEXT NOT NULL, `obdMac` TEXT NOT NULL, " +
+                "`onboarded` INTEGER NOT NULL, `lastOdometerPromptAt` INTEGER NOT NULL, " +
+                "`tripMilesSinceBaseline` REAL NOT NULL, PRIMARY KEY(`serverId`))"
+        )
+        db.execSQL(
+            "INSERT INTO `vehicle_sidecar_new` (`serverId`, `obdMac`, `onboarded`, `lastOdometerPromptAt`, `tripMilesSinceBaseline`) " +
+                "SELECT `serverId`, `obdMac`, `onboarded`, `lastOdometerPromptAt`, `tripMilesSinceBaseline` FROM `vehicle_sidecar`"
+        )
+        db.execSQL("DROP TABLE `vehicle_sidecar`")
+        db.execSQL("ALTER TABLE `vehicle_sidecar_new` RENAME TO `vehicle_sidecar`")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_vehicle_sidecar_obdMac` ON `vehicle_sidecar` (`obdMac`)"
+        )
+    }
+}

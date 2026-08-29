@@ -75,7 +75,7 @@ class FleetEngineStoreVehicleCutoverTest {
                     name = vehicle.name, make = vehicle.make, model = vehicle.model, year = vehicle.year,
                     trim = vehicle.trim, engine = vehicle.engine, confirmed = vehicle.confirmed,
                     odometerBaseline = vehicle.odometerBaseline, odometerBaselineAtMs = vehicle.odometerBaselineAtMs,
-                    updatedAtMs = ++clock, deleted = false, originGuid = null,
+                    updatedAtMs = ++clock, deleted = false, originGuid = null, archived = vehicle.archived,
                 )
             } else {
                 val existing = vehicles[vehicle.serverId] ?: return Result.failure(FleetBackendException("no such row"))
@@ -83,7 +83,7 @@ class FleetEngineStoreVehicleCutoverTest {
                     name = vehicle.name, make = vehicle.make, model = vehicle.model, year = vehicle.year,
                     trim = vehicle.trim, engine = vehicle.engine, confirmed = vehicle.confirmed,
                     odometerBaseline = vehicle.odometerBaseline, odometerBaselineAtMs = vehicle.odometerBaselineAtMs,
-                    updatedAtMs = ++clock,
+                    updatedAtMs = ++clock, archived = vehicle.archived,
                 )
             }
             vehicles[row.serverId] = row
@@ -191,7 +191,11 @@ class FleetEngineStoreVehicleCutoverTest {
     }
 
     @Test
-    fun `a configured read composes replica and sidecar and returns every phone-only column`() = runBlocking {
+    fun `a configured read composes replica and sidecar - archived from the replica, persona blank`() = runBlocking {
+        // CORRECTED 2026-08-29, ticket 27: archived moved OFF the sidecar onto VehicleReplica
+        // (it is USER state, not device state), and personaPrompt/voiceName/personaTraits left the
+        // sidecar entirely - nothing reads them, so a configured read supplies the same blank
+        // default an unconfigured row would, rather than carrying them through a new store.
         val backend = FakeVehicleBackend()
         FleetEngineStore.backendOverride = backend
         FleetEngineStore.createVehicle(context, freshVehicle())
@@ -206,13 +210,15 @@ class FleetEngineStoreVehicleCutoverTest {
         // Server-owned columns come from the replica (post the setIdentity edit).
         assertEquals("Renamed", composed!!.name)
         assertEquals(2001, composed.year)
-        // Phone-only columns come from the sidecar, and must not have been dropped.
+        // archived is server-owned now too - it must survive a configured read via the replica.
         assertTrue("archived must survive a configured read", composed.archived)
+        // Phone-only columns still come from the sidecar.
         assertEquals(5_000L, composed.lastOdometerPromptAt)
         assertEquals(12.5, composed.tripMilesSinceBaseline, 0.0001)
-        assertEquals("buckle up", composed.personaPrompt)
-        assertEquals("Kore", composed.voiceName)
-        assertEquals("{}", composed.personaTraits)
+        // Vestigial - never carried through a configured read.
+        assertEquals("", composed.personaPrompt)
+        assertEquals("", composed.voiceName)
+        assertEquals("", composed.personaTraits)
     }
 
     @Test

@@ -11,13 +11,38 @@ import androidx.room.Query
 /**
  * The local half of a co-owned `vehicles` row (backend-erp ticket 26,
  * `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`, resolving ticket 14's option 1).
- * A `Vehicle` row is co-owned: the household's Supabase project owns identity/specs (mirrored by
- * [VehicleReplica]), and THIS phone owns [personaPrompt]/[voiceName]/[personaTraits]/[archived]/
- * [onboarded]/[lastOdometerPromptAt]/[tripMilesSinceBaseline] - measured live by grep across `ui/`
- * and `vehicle/` (ticket 14: `archived` read 15 times, `tripMilesSinceBaseline` 5, `onboarded` 3),
- * and kept off the server on purpose (ticket 01 ruling 10). A configured read composes
- * [VehicleReplica] (server-owned columns) with this table (phone-owned columns) - see
- * [com.kevin.legion.vehicle.FleetEngineStore]'s own class doc for where that composition happens.
+ *
+ * **CORRECTED 2026-08-29, ticket 27
+ * (`.scratch/backend-erp/issues/27-the-sidecar-has-no-cross-device-channel.md`, "RULED 2026-08-29").**
+ * This table used to carry seven columns. Four of them were wrong to carry here and have moved on:
+ *
+ * - `personaPrompt`/`voiceName`/`personaTraits` are gone from this table entirely, not relocated.
+ *   Traced every reader: the only consumer was this same sidecar's own copy-through, and nothing
+ *   downstream ever read the copy - `LiveSessionController` gets its voice from
+ *   `CompanionProfile.voice(appContext)` at every socket-open site, never from a `Vehicle` field.
+ *   They are leftovers from the per-car identity model CLAUDE.md section 2 killed ("Cars are data,
+ *   not identities"). Still present, unread, on the legacy [Vehicle] entity - see that class's own
+ *   doc comment - because CLAUDE.md section 5 is additive-migrations-only and a dead column costs
+ *   nothing where it already sits.
+ * - `archived` moved to the server (`public.vehicles.archived`, carried on [VehicleReplica]) - it is
+ *   USER state, not device state: a car Kevin retired is retired everywhere, the same reasoning
+ *   `public.vehicles` already applies to every other identity field.
+ *
+ * **This table now keeps exactly three columns, and all three are genuinely per-device:**
+ *
+ * - [onboarded] - whether THIS phone has already run its one-time maintenance-interval populate
+ *   for this car. A statement about what this install has already asked, not about the car.
+ * - [lastOdometerPromptAt] - when THIS phone last nagged for an odometer reading, so the monthly
+ *   check-in cadence is per-install rather than shared (a value that would otherwise suppress the
+ *   nag on a second phone that never actually asked).
+ * - [tripMilesSinceBaseline] - accumulates from whichever phone's OBD dongle is actually in the
+ *   car right now (`vehicle/TelemetryRecorder.kt`'s live tick). It means "since baseline, as
+ *   observed by this device's dongle session" and has no coherent cross-device value to reconcile
+ *   against - two phones summing their own accumulations would double-count the same drive.
+ *
+ * A configured read composes [VehicleReplica] (server-owned columns, including `archived`) with
+ * this table (phone-owned columns) - see [com.kevin.legion.vehicle.FleetEngineStore]'s own class
+ * doc for where that composition happens.
  *
  * **Keyed on [serverId], not [obdMac]** - ticket 26's own ruling: "the phone-only columns live in
  * a local sidecar keyed on the same serverId, and a configured read composes replica + sidecar."
@@ -28,14 +53,14 @@ import androidx.room.Query
  * server** - ticket 26's own ruling 14: "It is a MAC address, and a car can change dongles."
  *
  * **This table intentionally has no `updatedAtMs`/sync machinery of its own.** These columns are
- * phone-only by design (never reconciled against a server value), and dropping `vehicles` from
- * [com.kevin.legion.sync.SyncEngine]'s registry in this same ticket retires the old Drive-based
- * cross-phone channel that used to carry them - see that registry's own comment on the `"vehicles"`
- * entry for the full account of what is and is not still true post-cutover. A real consequence,
- * not a silent one: archived/persona/trip-miles state is now per-DEVICE on a configured install,
- * where it used to be per-USER (synced across Kevin's two phones via Drive). If that is ever
- * unwanted, it is this table (and the registry drop) that would need to grow a real sync channel,
- * not a reason to leave `vehicles` in the registry pointing at a table this cutover is replacing.
+ * phone-only by design (never reconciled against a server value), and `vehicles` was dropped from
+ * [com.kevin.legion.sync.SyncEngine]'s registry at ticket 26 - see that registry's own comment on
+ * the `"vehicles"` entry for the full account of what is and is not still true post-cutover.
+ * `onboarded`/`lastOdometerPromptAt`/`tripMilesSinceBaseline` were never meant to agree across two
+ * phones in the first place (unlike `archived`, which is why that one got a real server column
+ * instead of staying here), so losing their old Drive-based channel is not a regression - see
+ * ticket 27's own "RULED" section for the reasoning that separated the three that stayed here from
+ * the four that left.
  */
 @Entity(
     tableName = "vehicle_sidecar",
@@ -44,10 +69,6 @@ import androidx.room.Query
 data class VehicleSidecar(
     @PrimaryKey val serverId: String,
     val obdMac: String,
-    val personaPrompt: String = "",
-    val voiceName: String = "",
-    val personaTraits: String = "",
-    val archived: Boolean = false,
     val onboarded: Boolean = false,
     val lastOdometerPromptAt: Long = 0L,
     val tripMilesSinceBaseline: Double = 0.0,
@@ -74,9 +95,6 @@ interface VehicleSidecarDao {
      * columns (this same sidecar sync path), never a second one racing it. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(row: VehicleSidecar)
-
-    @Query("UPDATE vehicle_sidecar SET archived = :archived WHERE serverId = :serverId")
-    suspend fun setArchived(serverId: String, archived: Boolean)
 
     @Query("UPDATE vehicle_sidecar SET lastOdometerPromptAt = :at WHERE serverId = :serverId")
     suspend fun markOdometerPrompted(serverId: String, at: Long)

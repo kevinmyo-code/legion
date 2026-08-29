@@ -16,6 +16,17 @@ data class Vehicle(
     val make: String,
     val model: String,
     val year: Int,
+    // VESTIGIAL (backend-erp ticket 26/27, 2026-08-29). Left over from the per-car identity model
+    // CLAUDE.md section 2 killed at the 2026-07-30 pivot ("Cars are data, not identities. Per-car
+    // CompanionProfile keying... dead"). Traced every reader before ruling this dead, not assumed:
+    // the only consumer of personaPrompt/voiceName/personaTraits was FleetEngineStore's own
+    // copy-through into VehicleSidecar, and nothing downstream ever read THAT copy either -
+    // LiveSessionController gets its voice from CompanionProfile.voice(appContext) at all four of
+    // its socket-open sites, never from a field on this class. Ticket 26/27 removed the three from
+    // VehicleSidecar entirely (there was never a cross-device channel worth building for them) but
+    // left them here UNTOUCHED - CLAUDE.md section 5 is additive-migrations-only, and a column
+    // nothing reads costs nothing where it already sits. Do not wire a new caller to any of the
+    // three below; do not carry them into a new store either.
     val personaPrompt: String,
     // Driver-reported odometer reading and when it was given. Between
     // readings, mileage is estimated as baseline + tripMilesSinceBaseline.
