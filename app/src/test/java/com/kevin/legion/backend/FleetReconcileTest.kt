@@ -98,6 +98,49 @@ class FleetReconcileTest {
             return Result.success(true)
         }
 
+        /** Ticket 26's live write - a separate map, keyed by [RemoteVehicle.serverId] rather than
+         * [vehicles]' `originGuid` keying, mirroring [SupabaseFleetBackend.upsertVehicle]'s own
+         * "insert when null, update by id otherwise" contract without pretending origin_guid is
+         * involved at all. */
+        val liveVehicles = mutableMapOf<String, RemoteVehicle>()
+
+        override suspend fun upsertVehicle(vehicle: VehicleUpload): Result<RemoteVehicle> {
+            val row = if (vehicle.serverId == null) {
+                RemoteVehicle(
+                    serverId = "live-vehicle-${++vehicleCounter}",
+                    name = vehicle.name,
+                    make = vehicle.make,
+                    model = vehicle.model,
+                    year = vehicle.year,
+                    trim = vehicle.trim,
+                    engine = vehicle.engine,
+                    confirmed = vehicle.confirmed,
+                    odometerBaseline = vehicle.odometerBaseline,
+                    odometerBaselineAtMs = vehicle.odometerBaselineAtMs,
+                    updatedAtMs = ++clock,
+                    deleted = false,
+                    originGuid = null,
+                )
+            } else {
+                val existing = liveVehicles[vehicle.serverId]
+                    ?: return Result.failure(FleetBackendException("no row for ${vehicle.serverId}"))
+                existing.copy(
+                    name = vehicle.name,
+                    make = vehicle.make,
+                    model = vehicle.model,
+                    year = vehicle.year,
+                    trim = vehicle.trim,
+                    engine = vehicle.engine,
+                    confirmed = vehicle.confirmed,
+                    odometerBaseline = vehicle.odometerBaseline,
+                    odometerBaselineAtMs = vehicle.odometerBaselineAtMs,
+                    updatedAtMs = ++clock,
+                )
+            }
+            liveVehicles[row.serverId] = row
+            return Result.success(row)
+        }
+
         override suspend fun fetchActiveServiceHistory(): Result<List<RemoteServiceHistory>> =
             Result.success(serviceHistory.values.filterNot { it.deleted })
 

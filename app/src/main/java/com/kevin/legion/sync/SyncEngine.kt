@@ -232,17 +232,25 @@ object SyncEngine {
         // full reasoning and the stated transition consequence. Do not re-add it: the live path is
         // com.kevin.legion.engine.mirror.MirrorSync now.
         //
-        // "vehicles" is KEPT, deliberately, at cutover 4 - unlike "places"/"service_records"/
-        // "maintenance_items", this table is NOT retired: it is still a real, actively-written
-        // legacy mirror (vehicle/FleetEngineStore.kt's own class doc), kept in sync with the engine
-        // Vehicle record for two reasons that are still true post-cutover - OBD-plugin-internal
-        // columns (tripMilesSinceBaseline, lastOdometerPromptAt, archived, etc.) that were
-        // deliberately never carried onto the engine record type (wave4-carve's field mapping), and
-        // TelemetryRecorder.run's own high-frequency write, which still targets this exact table.
-        // This Spec is what carries that mirror - and so those columns - across Kevin's two phones;
-        // removing it would silently strand tripMilesSinceBaseline/archived on whichever phone last
-        // wrote them.
-        Spec("vehicles", listOf("obdMac"), Mode.LWW, naturalPk = true),
+        // "vehicles" RETIRED here at backend-erp ticket 26 (2026-08-29,
+        // `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`) - fleet's Vehicle identity
+        // is a real cutover now, not the cutover-4 legacy mirror this comment used to describe.
+        // vehicle/FleetEngineStore.kt writes identity to Supabase (vehicles_replica) directly; the
+        // household's own Postgres project is the cross-device channel for identity now, the same
+        // repoint every other cut-over aspect's registry drop already made.
+        //
+        // **Named consequence, not a silent one (see com.kevin.legion.data.local.VehicleSidecar's
+        // own class doc for the full account): the phone-only columns this comment used to say this
+        // Spec carried across Kevin's two phones - tripMilesSinceBaseline, lastOdometerPromptAt,
+        // archived, personaPrompt, voiceName, personaTraits, onboarded - do NOT move onto Supabase
+        // (ticket 01 ruling 10 keeps them phone-only) and have no other sync channel post-drop.**
+        // They live in the new per-device VehicleSidecar table instead, so they are now per-DEVICE
+        // state rather than per-USER state on a configured install - a real behavioural narrowing
+        // this drop causes, accepted because ruling 05 ties every registry drop to the commit its
+        // writes move, and vehicle identity's writes just did. Do not re-add "vehicles" to restore
+        // this: growing a real sync channel for the sidecar (if that is ever wanted) is the
+        // deliberate follow-up, not a reason to leave a legacy table double-writing here.
+        //
         // "maintenance_items" retired here at cutover 4 - same reasoning as "service_records" two
         // lines up. MaintenanceSchedule writes are engine-native now (zero legacy writers). Do not
         // re-add it.

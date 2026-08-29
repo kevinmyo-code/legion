@@ -402,19 +402,20 @@ object TelemetryRecorder {
                 // VehicleController.seedVehicle's doc for why a no-op here, for an
                 // unregistered vehicle id, is the correct behavior now rather than a bug.
                 //
-                // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): DELIBERATELY still writes
-                // the legacy vehicles row directly, never FleetEngineStore - tripMilesSinceBaseline
-                // is one of the seven columns wave4-carve's own field mapping ruled OUT of the
-                // engine Vehicle record type ("transient session state, not a stated fact"), and
+                // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): tripMilesSinceBaseline is
+                // one of the seven columns wave4-carve's own field mapping ruled OUT of the engine
+                // Vehicle record type ("transient session state, not a stated fact"), and
                 // instruction 4 of this cutover's brief says outright: "OBD-live state, telemetry...
-                // stay plugin-internal... the OBD stack keeps writing its own tables untouched."
-                // FleetEngineStore.createVehicle/setIdentity/etc. keep this exact legacy row in sync
-                // for identity/odometerBaseline (see that file's own class doc on why Vehicle reads
-                // are served from this mirror), so a row always exists here for a registered car to
-                // accumulate trip miles onto - this write only ever touches the ONE column nothing
-                // else in this cutover claims.
+                // stay plugin-internal... the OBD stack keeps writing its own tables untouched." That
+                // is still true - this is not an engine write.
+                //
+                // CORRECTED 2026-08-29 (ticket 26): routed through FleetEngineStore.addTripMiles
+                // instead of calling db.vehicleDao() directly, so the phone-only VehicleSidecar
+                // mirror (ticket 14's co-owned-row sidecar) never drifts behind the legacy row on a
+                // configured install - see that function's own doc comment. The legacy write itself
+                // is byte-identical to before.
                 runCatching {
-                    db.vehicleDao().addTripMiles(vehicleId(context), tickMiles, now)
+                    FleetEngineStore.addTripMiles(context, vehicleId(context), tickMiles, now)
                 }.onFailure { Log.w(TAG, "trip-mile update failed: ${it.message}") }
             }
             lastTickAt = now

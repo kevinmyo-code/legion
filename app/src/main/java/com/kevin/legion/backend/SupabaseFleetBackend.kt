@@ -60,6 +60,29 @@ private data class VehicleInsertDto(
     @SerialName("origin_guid") val originGuid: String,
 )
 
+/**
+ * The wire shape for [SupabaseFleetBackend.upsertVehicle] (ticket 26's live write, as opposed to
+ * [VehicleInsertDto]'s one-time migration insert). **Deliberately carries no `origin_guid`** -
+ * unlike [VehicleInsertDto], which always writes one, a live-created or live-edited vehicle has no
+ * migration provenance to assert. This same DTO serves BOTH the insert branch (a fresh row, every
+ * field meaningful) and the update branch (`PATCH` semantics: only the columns present here are
+ * touched, so an existing row's `origin_guid` - if any - rides along untouched because this type
+ * never mentions that column at all, the identical "omission preserves the existing value" posture
+ * every partial-update DTO in this file already relies on for `updated_at`/`deleted_at`).
+ */
+@Serializable
+private data class VehicleWriteDto(
+    val name: String,
+    val make: String,
+    val model: String,
+    val year: Int,
+    val trim: String?,
+    val engine: String?,
+    val confirmed: Boolean,
+    @SerialName("odometer_baseline") val odometerBaseline: Int?,
+    @SerialName("odometer_baseline_at") val odometerBaselineAt: String?,
+)
+
 /** The wire shape read back off `public.vehicles` for every operation. */
 @Serializable
 private data class VehicleRowDto(
@@ -674,6 +697,41 @@ class SupabaseFleetBackend(private val client: SupabaseClient) : FleetBackend {
                 ),
             )
             true
+        }
+
+    /** Ticket 26's live write. `null` [VehicleUpload.serverId] means "no row yet" - a plain
+     * insert, letting Postgres mint the uuid. A non-null [VehicleUpload.serverId] filters an
+     * `UPDATE` to exactly that row - no `onConflict`/`upsert()` call needed, because the caller
+     * already knows whether the row exists (that is what [VehicleUpload.serverId] being non-null
+     * MEANS), unlike the `syncId`-keyed tables in this file that genuinely don't know until they
+     * try. */
+    override suspend fun upsertVehicle(vehicle: VehicleUpload): Result<RemoteVehicle> =
+        translating("save that vehicle") {
+            val dto = VehicleWriteDto(
+                name = vehicle.name,
+                make = vehicle.make,
+                model = vehicle.model,
+                year = vehicle.year,
+                trim = vehicle.trim,
+                engine = vehicle.engine,
+                confirmed = vehicle.confirmed,
+                odometerBaseline = vehicle.odometerBaseline,
+                odometerBaselineAt = tsOrNull(vehicle.odometerBaselineAtMs),
+            )
+            if (vehicle.serverId == null) {
+                client.postgrest.from(VEHICLES_TABLE)
+                    .insert(dto) { select() }
+                    .decodeSingle<VehicleRowDto>()
+                    .toRemoteVehicle()
+            } else {
+                client.postgrest.from(VEHICLES_TABLE)
+                    .update(dto) {
+                        filter { eq("id", vehicle.serverId) }
+                        select()
+                    }
+                    .decodeSingle<VehicleRowDto>()
+                    .toRemoteVehicle()
+            }
         }
 
     override suspend fun fetchActiveServiceHistory(): Result<List<RemoteServiceHistory>> =

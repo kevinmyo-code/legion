@@ -23,6 +23,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[24-do-the-conversation-logs-reach-the-server\|24]] | decision | 24-do-the-conversation-logs-reach-the-server |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[25-ledger-ingestion-leaves-the-phone\|25]] | decision | 25-ledger-ingestion-leaves-the-phone |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[26-the-fleet-cutover-for-real\|26]] | build | 26-the-fleet-cutover-for-real |
+| [[.scratch/backend-erp/map\|backend-erp]] | [[27-the-sidecar-has-no-cross-device-channel\|27]] | decision | 27-the-sidecar-has-no-cross-device-channel |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
@@ -131,7 +132,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 4 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
-| [[.scratch/backend-erp/map\|backend-erp]] | 26 | 14 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
+| [[.scratch/backend-erp/map\|backend-erp]] | 27 | 15 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |

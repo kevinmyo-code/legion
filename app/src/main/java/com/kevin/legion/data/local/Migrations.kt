@@ -1858,3 +1858,24 @@ val MIGRATION_48_49 = object : Migration(48, 49) {
         )
     }
 }
+
+/**
+ * v49 -> v50: `vehicle_sidecar`, the local half of a co-owned `vehicles` row (backend-erp ticket 26,
+ * `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`, resolving ticket 14's option 1).
+ * A plain additive `CREATE TABLE`, nothing existing touched - see [VehicleSidecar]'s own class doc
+ * for the field mapping and for why this table is keyed on `serverId` (the server uuid) rather
+ * than [Vehicle.obdMac] (the phone's own key, carried here only as a unique lookup column).
+ */
+val MIGRATION_49_50 = object : Migration(49, 50) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `vehicle_sidecar` (`serverId` TEXT NOT NULL, `obdMac` TEXT NOT NULL, " +
+                "`personaPrompt` TEXT NOT NULL, `voiceName` TEXT NOT NULL, `personaTraits` TEXT NOT NULL, " +
+                "`archived` INTEGER NOT NULL, `onboarded` INTEGER NOT NULL, `lastOdometerPromptAt` INTEGER NOT NULL, " +
+                "`tripMilesSinceBaseline` REAL NOT NULL, PRIMARY KEY(`serverId`))"
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_vehicle_sidecar_obdMac` ON `vehicle_sidecar` (`obdMac`)"
+        )
+    }
+}

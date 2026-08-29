@@ -310,8 +310,9 @@ import androidx.room.RoomDatabase
         MutedReminder::class,
         Event::class, EventSkip::class,
         VehicleReplica::class, ServiceHistoryReplica::class,
+        VehicleSidecar::class,
     ],
-    version = 49,
+    version = 50,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -410,6 +411,10 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun vehicleReplicaDao(): VehicleReplicaDao
     abstract fun serviceHistoryReplicaDao(): ServiceHistoryReplicaDao
 
+    /** The vehicle co-owned-row sidecar (v50, backend-erp ticket 26) - see [VehicleSidecar]'s own
+     * class doc for what it carries and why it exists alongside [vehicleReplicaDao]. */
+    abstract fun vehicleSidecarDao(): VehicleSidecarDao
+
     companion object {
         @Volatile
         private var INSTANCE: CarDatabase? = null
@@ -440,7 +445,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 49
+        const val SCHEMA_VERSION = 50
         // 2026-08-28: bumped 47 -> 49, and this one was NOT a same-edit bump - it was a REPAIR.
         // Versions 48 and 49 (tickets 17 and 18) each moved `@Database(version=)` and left this
         // constant behind, and the doc comment above was wrong about the consequence. It says a
@@ -537,7 +542,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38,
                         MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42,
                         MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46,
-                        MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49,
+                        MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

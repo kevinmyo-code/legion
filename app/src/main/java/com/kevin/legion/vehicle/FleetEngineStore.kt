@@ -1,13 +1,21 @@
 package com.kevin.legion.vehicle
 
 import android.content.Context
+import android.util.Log
 import androidx.room.withTransaction
+import com.kevin.legion.backend.FleetBackend
+import com.kevin.legion.backend.SupabaseClientProvider
+import com.kevin.legion.backend.SupabaseFleetBackend
+import com.kevin.legion.backend.VehicleUpload
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.EngineRecord
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.data.local.Vehicle
+import com.kevin.legion.data.local.VehicleReplica
+import com.kevin.legion.data.local.VehicleSidecar
+import com.kevin.legion.data.local.upsert
 import com.kevin.legion.engine.RecordStore
 import com.kevin.legion.engine.fleet.FleetAspectSeeder
 import com.kevin.legion.engine.fleet.FleetRecordBridge
@@ -82,6 +90,27 @@ import com.kevin.legion.engine.migration.EngineFleetServiceHistoryRetirementCopy
  * `FleetReconcile` itself gets its own follow-up repoint - the same shape of gap
  * [MonthlyRecapController.generate]'s own comment already named for the read side pre-repoint, now
  * on the upload side post-repoint.
+ *
+ * **CORRECTED 2026-08-29, ticket 26 (`.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`,
+ * "REVERSED 2026-08-28... fleet becomes a real cutover") - Vehicle identity ONLY, the other tables
+ * are a later step.** [getByMac]/[getAll]/[getAllIncludingArchived] now compose a CONFIGURED read
+ * from [VehicleReplica] (server-owned columns) + [VehicleSidecar] (phone-owned columns, ticket 14's
+ * option 1) when a car has already been synced; an unconfigured install, or a car not yet synced,
+ * still reads the legacy mirror exactly as before - see [composeVehicle]'s own doc comment. Every
+ * identity write below (`createVehicle`/`setIdentity`/`setEngine`/`applyDecodedIdentity`/
+ * `setOdometerBaseline`) still performs the engine+legacy dual write UNCHANGED, then calls
+ * [syncVehicleToServer] as a best-effort THIRD write when Supabase is configured - the legacy
+ * mirror stays the backbone every other fleet table's `obdMac` foreign key depends on (untouched by
+ * this ticket on purpose: drives/service history/codes/specs are explicitly NOT in scope), so a
+ * failed server push is logged and swallowed rather than rolled back, the same "the local write
+ * already happened, do not lie about where else it landed" posture [createVehicle]'s own
+ * `EngineWriteFailedException` catch block already established for the engine half. `archived`/
+ * `lastOdometerPromptAt`/`tripMilesSinceBaseline` writes ([setArchived], [markOdometerPrompted],
+ * [addTripMiles]) mirror into [VehicleSidecar] too, so a configured read never serves a stale
+ * phone-only value - see [VehicleSidecar]'s own class doc for the real, stated consequence this
+ * carries: dropping `vehicles` from [com.kevin.legion.sync.SyncEngine]'s registry in this same
+ * ticket retires the Drive channel that used to carry these columns across Kevin's two phones, so
+ * they are now per-device rather than per-user on a configured install.
  */
 object FleetEngineStore {
 
@@ -94,19 +123,165 @@ object FleetEngineStore {
     private suspend fun engineVehicleId(db: CarDatabase, mac: String): Long? =
         db.engineRecordDao().getByGuid(FleetRecordBridge.vehicleGuid(mac))?.id
 
+    /** Test seam: settable so a [FleetBackend] fake can be injected without touching
+     * [SupabaseClientProvider] - same shape as
+     * [com.kevin.legion.location.PlaceController.backendOverride]. */
+    internal var backendOverride: FleetBackend? = null
+
+    /** Resolves the live [FleetBackend], or null when Supabase is not configured - the caller
+     * words the null case itself (here: "stay on the legacy mirror"), matching
+     * [com.kevin.legion.location.PlaceController]'s own `backend(Context)` contract. */
+    private fun backend(context: Context): FleetBackend? {
+        backendOverride?.let { return it }
+        val client = SupabaseClientProvider.get(context) ?: return null
+        return SupabaseFleetBackend(client)
+    }
+
     // =============================================================================================
     // Vehicle
     // =============================================================================================
 
-    suspend fun getByMac(context: Context, mac: String): Vehicle? =
-        CarDatabase.getDatabase(context).vehicleDao().getByMac(mac)
+    /** Composes a configured-path [Vehicle] view from the server-owned [VehicleReplica] and the
+     * phone-owned [VehicleSidecar] - ticket 14's option 1, keyed on [VehicleSidecar.serverId].
+     * [Vehicle.obdMac] comes from the sidecar (the only one of the two that carries it - see
+     * [VehicleSidecar]'s own class doc for why). Every field is real (not `""`/`0` guessed) even
+     * though [VehicleReplica.trim]/[VehicleReplica.engine] are nullable server-side - `""` is
+     * exactly what a blank driver-entered value already meant on the legacy row, so this is not a
+     * new sentinel, only the existing one applied at a new boundary. */
+    private fun composeVehicle(replica: VehicleReplica, sidecar: VehicleSidecar): Vehicle = Vehicle(
+        obdMac = sidecar.obdMac,
+        name = replica.name,
+        make = replica.make,
+        model = replica.model,
+        year = replica.year,
+        personaPrompt = sidecar.personaPrompt,
+        odometerBaseline = replica.odometerBaseline ?: 0,
+        odometerBaselineAt = replica.odometerBaselineAtMs ?: 0L,
+        tripMilesSinceBaseline = sidecar.tripMilesSinceBaseline,
+        lastOdometerPromptAt = sidecar.lastOdometerPromptAt,
+        onboarded = sidecar.onboarded,
+        voiceName = sidecar.voiceName,
+        personaTraits = sidecar.personaTraits,
+        trim = replica.trim ?: "",
+        confirmed = replica.confirmed,
+        updatedAt = replica.updatedAtMs,
+        archived = sidecar.archived,
+        engine = replica.engine ?: "",
+    )
 
-    /** Active (non-archived) cars only - see [com.kevin.legion.data.local.VehicleDao.getAll]'s own doc. */
-    suspend fun getAll(context: Context): List<Vehicle> =
-        CarDatabase.getDatabase(context).vehicleDao().getAll()
+    /** Configured-path compose for one [mac] - null when unconfigured, when this car has never
+     * synced (no [VehicleSidecar] row yet), or when the server has tombstoned it (soft-deleted
+     * remotely, [VehicleReplica.deleted]). Every one of those falls back to the legacy mirror in
+     * the caller, never to a silently empty result. */
+    private suspend fun composedVehicle(context: Context, db: CarDatabase, mac: String): Vehicle? {
+        if (backend(context) == null) return null
+        val sidecar = db.vehicleSidecarDao().getByMac(mac) ?: return null
+        val replica = db.vehicleReplicaDao().getByServerId(sidecar.serverId) ?: return null
+        if (replica.deleted) return null
+        return composeVehicle(replica, sidecar)
+    }
 
-    suspend fun getAllIncludingArchived(context: Context): List<Vehicle> =
-        CarDatabase.getDatabase(context).vehicleDao().getAllIncludingArchived()
+    suspend fun getByMac(context: Context, mac: String): Vehicle? {
+        val db = CarDatabase.getDatabase(context)
+        return composedVehicle(context, db, mac) ?: db.vehicleDao().getByMac(mac)
+    }
+
+    /** Active (non-archived) cars only - see [com.kevin.legion.data.local.VehicleDao.getAll]'s own doc.
+     * The legacy mirror still decides WHICH macs are active (its own `archived` column is kept in
+     * sync with [VehicleSidecar.archived] by every writer below), each one then composed with the
+     * server view when one exists. */
+    suspend fun getAll(context: Context): List<Vehicle> {
+        val db = CarDatabase.getDatabase(context)
+        return db.vehicleDao().getAll().map { legacy ->
+            composedVehicle(context, db, legacy.obdMac) ?: legacy
+        }
+    }
+
+    suspend fun getAllIncludingArchived(context: Context): List<Vehicle> {
+        val db = CarDatabase.getDatabase(context)
+        return db.vehicleDao().getAllIncludingArchived().map { legacy ->
+            composedVehicle(context, db, legacy.obdMac) ?: legacy
+        }
+    }
+
+    /**
+     * Best-effort THIRD write, after the engine+legacy dual write every caller below already
+     * performs unchanged. Reads the just-written legacy [Vehicle] row fresh (so it always uploads
+     * the caller's actual post-write state, never a stale in-memory copy) and pushes it to
+     * Supabase via [FleetBackend.upsertVehicle] - insert (mints a `serverId`) the first time a car
+     * syncs, update by that `serverId` every time after ([VehicleSidecar.getByMac] is the local
+     * obdMac -> serverId map, ticket 26's own "read by serverId first" rule applied here: an
+     * existing mapping is always looked up before deciding insert vs. update, so a re-sync can
+     * never mint a second server row for the same car).
+     *
+     * **Never throws, never rolls back the local write.** A network failure here means the driver's
+     * action already landed locally (the engine + legacy mirror writes already committed) - failing
+     * this function loudly would be reporting a LOCAL success as a total failure, the mirror image
+     * of the false-success problem CLAUDE.md section 7 forbids. Logged instead, same posture
+     * [createVehicle]'s own `EngineWriteFailedException` catch block already uses for the engine
+     * half of this same tri-write.
+     *
+     * [odometerBaseline]/[odometerBaselineAtMs] are sent null-paired when the driver has never
+     * actually stated a reading (`odometerBaselineAt == 0L`, the legacy "never set" sentinel) -
+     * never a fabricated `0`, matching [VehicleUpload]'s own doc comment and CLAUDE.md section 4
+     * rule 5.
+     */
+    private suspend fun syncVehicleToServer(context: Context, mac: String) {
+        val backend = backend(context) ?: return
+        val db = CarDatabase.getDatabase(context)
+        val vehicle = db.vehicleDao().getByMac(mac) ?: return
+        val existingSidecar = db.vehicleSidecarDao().getByMac(mac)
+        val odometerAtMs = vehicle.odometerBaselineAt.takeIf { it != 0L }
+
+        val remote = backend.upsertVehicle(
+            VehicleUpload(
+                serverId = existingSidecar?.serverId,
+                name = vehicle.name,
+                make = vehicle.make,
+                model = vehicle.model,
+                year = vehicle.year,
+                trim = vehicle.trim.ifBlank { null },
+                engine = vehicle.engine.ifBlank { null },
+                confirmed = vehicle.confirmed,
+                odometerBaseline = odometerAtMs?.let { vehicle.odometerBaseline },
+                odometerBaselineAtMs = odometerAtMs,
+            ),
+        ).getOrElse {
+            Log.w("FleetEngineStore", "Supabase vehicle sync failed for $mac: ${it.message}")
+            return
+        }
+
+        db.vehicleReplicaDao().upsert(
+            VehicleReplica(
+                serverId = remote.serverId,
+                name = remote.name,
+                make = remote.make,
+                model = remote.model,
+                year = remote.year,
+                trim = remote.trim,
+                engine = remote.engine,
+                confirmed = remote.confirmed,
+                odometerBaseline = remote.odometerBaseline,
+                odometerBaselineAtMs = remote.odometerBaselineAtMs,
+                updatedAtMs = remote.updatedAtMs,
+                deleted = remote.deleted,
+                originGuid = remote.originGuid,
+            ),
+        )
+        db.vehicleSidecarDao().upsert(
+            VehicleSidecar(
+                serverId = remote.serverId,
+                obdMac = mac,
+                personaPrompt = vehicle.personaPrompt,
+                voiceName = vehicle.voiceName,
+                personaTraits = vehicle.personaTraits,
+                archived = vehicle.archived,
+                onboarded = vehicle.onboarded,
+                lastOdometerPromptAt = vehicle.lastOdometerPromptAt,
+                tripMilesSinceBaseline = vehicle.tripMilesSinceBaseline,
+            ),
+        )
+    }
 
     /**
      * Genuine create only (a new dongle MAC or synthetic car-profile id with no row on file yet) -
@@ -142,6 +317,7 @@ object FleetEngineStore {
             android.util.Log.w("FleetEngineStore", "createVehicle engine write failed for ${vehicle.obdMac}: ${e.reason}")
             db.vehicleDao().upsert(vehicle)
         }
+        syncVehicleToServer(context, vehicle.obdMac)
     }
 
     suspend fun setIdentity(context: Context, mac: String, year: Int, make: String, model: String, trim: String, name: String, now: Long): Int {
@@ -165,6 +341,7 @@ object FleetEngineStore {
             if (result is RecordStore.WriteResult.Failure) throw EngineWriteFailedException(result.reason)
             db.vehicleDao().setIdentity(mac, year, make, model, trim, name, now)
         }
+        syncVehicleToServer(context, mac)
         return 1
     }
 
@@ -178,6 +355,7 @@ object FleetEngineStore {
             if (result is RecordStore.WriteResult.Failure) throw EngineWriteFailedException(result.reason)
             db.vehicleDao().setEngine(mac, engine, now)
         }
+        syncVehicleToServer(context, mac)
         return 1
     }
 
@@ -203,16 +381,30 @@ object FleetEngineStore {
             if (result is RecordStore.WriteResult.Failure) throw EngineWriteFailedException(result.reason)
             db.vehicleDao().applyDecodedIdentity(mac, year, make, model, trim, now)
         }
+        syncVehicleToServer(context, mac)
         return 1
     }
 
+    /**
+     * `archived` is a legacy-only field (wave4-carve's own ruling) - the legacy mirror stays the
+     * sole SERVER-side-of-the-boundary store for it, same as `tripMilesSinceBaseline`/
+     * `lastOdometerPromptAt`. No engine write: nothing on the engine Vehicle record type represents
+     * "hidden from the roster", and inventing a field for it now would re-litigate a carve decision
+     * this cutover is bound by, not empowered to reopen (wave4-carve: "revisited only if a
+     * follow-up wave's cutover finds a live need").
+     *
+     * **CORRECTED 2026-08-29, ticket 26: also mirrors into [com.kevin.legion.data.local.VehicleSidecar]
+     * when a sidecar row already exists for [mac]** - a phone-only column with no engine home is
+     * exactly the shape the sidecar exists to carry, and a configured read (see [composeVehicle])
+     * would otherwise keep serving whatever [archived] value the LAST sync happened to snapshot,
+     * silently outliving every archive/unarchive toggle after it. No-op when unconfigured or not
+     * yet synced (`getByMac` returns null) - there is nothing stale to correct on that path, since
+     * an unsynced/unconfigured read never consults the sidecar at all.
+     */
     suspend fun setArchived(context: Context, mac: String, archived: Boolean, now: Long) {
-        // archived is a legacy-only field (wave4-carve's own ruling) - the mirror is the sole store
-        // for it, same as tripMilesSinceBaseline/lastOdometerPromptAt. No engine write: nothing on
-        // the engine Vehicle record type represents "hidden from the roster", and inventing a field
-        // for it now would re-litigate a carve decision this cutover is bound by, not empowered to
-        // reopen (wave4-carve: "revisited only if a follow-up wave's cutover finds a live need").
-        CarDatabase.getDatabase(context).vehicleDao().setArchived(mac, archived, now)
+        val db = CarDatabase.getDatabase(context)
+        db.vehicleDao().setArchived(mac, archived, now)
+        db.vehicleSidecarDao().getByMac(mac)?.let { db.vehicleSidecarDao().setArchived(it.serverId, archived) }
     }
 
     suspend fun setOdometerBaseline(context: Context, mac: String, miles: Int, at: Long, now: Long): Int {
@@ -232,12 +424,37 @@ object FleetEngineStore {
             if (result is RecordStore.WriteResult.Failure) throw EngineWriteFailedException(result.reason)
             db.vehicleDao().setOdometerBaseline(mac, miles, at, now)
         }
+        // A fresh baseline also resets the sidecar's own trip accumulator, mirroring
+        // VehicleDao.setOdometerBaseline's own "tripMilesSinceBaseline = 0.0" - see addTripMiles's
+        // own doc comment for why that column needs a sidecar mirror at all.
+        db.vehicleSidecarDao().getByMac(mac)?.let { db.vehicleSidecarDao().resetTripMiles(it.serverId) }
+        syncVehicleToServer(context, mac)
         return 1
     }
 
-    /** Legacy-only column (nag cadence) - see this file's own class doc. */
+    /** Legacy-only column (nag cadence) - see this file's own class doc. Mirrors into
+     * [com.kevin.legion.data.local.VehicleSidecar] when synced, same reasoning as [setArchived]'s
+     * own doc comment. */
     suspend fun markOdometerPrompted(context: Context, mac: String, at: Long, now: Long) {
-        CarDatabase.getDatabase(context).vehicleDao().markOdometerPrompted(mac, at, now)
+        val db = CarDatabase.getDatabase(context)
+        db.vehicleDao().markOdometerPrompted(mac, at, now)
+        db.vehicleSidecarDao().getByMac(mac)?.let { db.vehicleSidecarDao().markOdometerPrompted(it.serverId, at) }
+    }
+
+    /**
+     * Accumulates [Vehicle.tripMilesSinceBaseline] in both the legacy mirror (unchanged,
+     * [com.kevin.legion.data.local.VehicleDao.addTripMiles]'s own SQL-side accumulation, still the
+     * value every OBD-plugin-internal reader outside this file consults) and, when synced, the
+     * [com.kevin.legion.data.local.VehicleSidecar] mirror - the same "don't let a configured read
+     * serve a stale phone-only value" reasoning as [setArchived]. Routes
+     * [com.kevin.legion.vehicle.TelemetryRecorder]'s own 30-second tick through this ONE function
+     * rather than a direct `db.vehicleDao()` call, so the sidecar mirror cannot silently drift
+     * behind the legacy row the way it would if a second, unaudited writer kept calling the DAO
+     * directly. */
+    suspend fun addTripMiles(context: Context, mac: String, delta: Double, now: Long) {
+        val db = CarDatabase.getDatabase(context)
+        db.vehicleDao().addTripMiles(mac, delta, now)
+        db.vehicleSidecarDao().getByMac(mac)?.let { db.vehicleSidecarDao().addTripMiles(it.serverId, delta) }
     }
 
     /** Legacy-only sentinel cleanup - see [com.kevin.legion.data.local.VehicleDao.clearThisCarSentinel]'s own doc. */

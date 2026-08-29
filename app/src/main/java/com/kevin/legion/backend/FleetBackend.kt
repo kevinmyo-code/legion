@@ -40,15 +40,50 @@ data class RemoteVehicle(
  * ([FleetBackend.uploadMigratedVehicle]). [originGuid] is the record's own `records.guid`
  * (`EngineRecord.guid`) - the same idempotency key every other Phase 4 aspect uses.
  *
- * **No live upsert-by-serverId exists yet, deliberately** - unlike [RemoteEvent]'s
- * [EventFields]/[EventsBackend.upsert] pair, this wave has no production caller wiring
- * `vehicle/VehicleController.kt` onto the server (that is later work per ticket 10's own "later
- * waves add the rest"). Building an untested, uncalled live-edit path now would be exactly the
- * scope creep CLAUDE.md's "no false success" posture warns against - a method with no caller and
- * no test is not established shape, it is speculation wearing the pattern's clothes.
+ * **CORRECTED 2026-08-29, ticket 26 (`.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`):
+ * this doc comment used to say no live upsert-by-serverId would ever exist. [FleetBackend.upsertVehicle]/
+ * [VehicleUpload] is exactly that, now that fleet is a real cutover rather than a one-way
+ * projection - see [VehicleUpload]'s own doc comment. [uploadMigratedVehicle] stays exactly as it
+ * was: the one-time migration replay still needs an insert-if-absent-by-`origin_guid` primitive,
+ * and the two coexist the same way [EventsBackend.uploadMigratedEvent]/[EventsBackend.upsert]
+ * already do for Notes+Dates.
  */
 data class MigratedVehicle(
     val originGuid: String,
+    val name: String,
+    val make: String,
+    val model: String,
+    val year: Int,
+    val trim: String?,
+    val engine: String?,
+    val confirmed: Boolean,
+    val odometerBaseline: Int?,
+    val odometerBaselineAtMs: Long?,
+)
+
+/**
+ * One vehicle's identity fields, ready for [FleetBackend.upsertVehicle] - the LIVE write primitive
+ * ticket 26 (`.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`) adds alongside
+ * [MigratedVehicle]'s one-time-replay insert. **[serverId] is the whole of the identity decision**
+ * (that ticket's "RULED 2026-08-29"): `null` means "no server row exists yet for this car" and
+ * [SupabaseFleetBackend.upsertVehicle] does a genuine INSERT, returning the uuid Postgres assigns;
+ * non-null means "update the row at this uuid", an ordinary `UPDATE ... WHERE id = :serverId`
+ * touching only the columns this type carries (never `origin_guid`, which a live edit has no
+ * business rewriting - see [RemoteVehicle.originGuid]'s own doc comment for what that column
+ * means and why a live write leaves it alone).
+ *
+ * No `originGuid` field here at all, unlike [MigratedVehicle] - a live-created vehicle has no
+ * migration provenance to record, and an existing row's `origin_guid` (if any) is preserved by the
+ * UPDATE simply never mentioning that column, exactly as every other partial-PATCH DTO in this
+ * package already does (see [VehicleWriteDto]'s own doc comment in [SupabaseFleetBackend]).
+ *
+ * [odometerBaseline]/[odometerBaselineAtMs] are paired-or-neither, same convention as
+ * [RemoteVehicle] and the same server-side constraint (`vehicles_odometer_baseline_paired`) - the
+ * caller (`vehicle/FleetEngineStore.kt`) is responsible for null-ing both together when the
+ * driver has never actually stated an odometer reading, never sending a fabricated `0`.
+ */
+data class VehicleUpload(
+    val serverId: String?,
     val name: String,
     val make: String,
     val model: String,
@@ -540,6 +575,13 @@ interface FleetBackend {
      * (a re-run, per ticket 05 phase 4 step 1: "a re-run is free"). `Result.failure` means the
      * request itself did not complete. */
     suspend fun uploadMigratedVehicle(vehicle: MigratedVehicle): Result<Boolean>
+
+    /** The live cutover write (ticket 26): insert when [VehicleUpload.serverId] is null, update
+     * the named row otherwise. See [VehicleUpload]'s own doc comment for the full identity
+     * contract - this is deliberately NOT keyed on `origin_guid`, which stays a migration-only
+     * concept. Returns the row Postgres now holds, so a first insert can record the uuid it was
+     * just assigned. */
+    suspend fun upsertVehicle(vehicle: VehicleUpload): Result<RemoteVehicle>
 
     /** Every active (not soft-deleted) service-history row, server-side. Used to refresh a Room
      * replica once one exists. Never called from a hot-path read. */

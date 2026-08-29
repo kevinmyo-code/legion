@@ -6,6 +6,7 @@ import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import androidx.room.Update
 
 /**
  * The Room replica of a `public.vehicles` row (backend-erp fleet wave 2,
@@ -25,12 +26,16 @@ import androidx.room.Query
  * table has no equivalent exposure - **traced, not assumed** - before choosing autoincrement:
  * grepping `vehicle/`, `engine/fleet/`, and `ui/fleet/` for `PendingIntent`/`requestCode`/
  * `notificationId` turns up nothing, and grepping the whole app for `NotificationManager`/`notify(`
- * turns up no fleet-related file at all (the hits are all notes/dates/calls/ledger). Nothing in this
- * wave repoints a live read at this replica yet either (that is later work, per the fleet-cutover
- * ticket's own "later waves add the rest"), so there is no consumer of [id] to protect. If a later
- * wave wires a vehicle-scoped alarm or notification to this table's [id], THAT is the moment to
- * port [EventReplica]'s carried-id upsert over - doing it now would be exactly the "mechanism whose
- * reason is not understood" `b17bc88`'s lesson warns against building reflexively.
+ * turns up no fleet-related file at all (the hits are all notes/dates/calls/ledger).
+ *
+ * **CORRECTED 2026-08-29, ticket 26 (`.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`):
+ * this table now HAS a live writer** - [com.kevin.legion.vehicle.FleetEngineStore]'s
+ * `syncVehicleToServer` upserts a row here on every configured vehicle identity write. [upsert]
+ * still reads by [serverId] first and reuses any existing row's [id] rather than blindly
+ * REPLACE-ing (the exact trap [Event]'s own doc comment and `b17bc88` warn about), even though the
+ * trace above still finds no consumer of [id] to protect today - the caution costs one extra
+ * `SELECT`, and building the habit now is cheaper than re-learning `b17bc88` a second time the day
+ * a vehicle-scoped alarm or notification DOES get wired to this column.
  */
 @Entity(
     tableName = "vehicles_replica",
@@ -93,14 +98,18 @@ data class ServiceHistoryReplica(
 )
 
 /**
- * Same shape as [EventReplicaDao] minus the carried-id [upsert]/[getById] machinery - see
- * [VehicleReplica]'s own doc comment for why a plain wipe-and-refill is the right amount of
- * mechanism here, not a shortcut taken past it.
+ * **CORRECTED 2026-08-29, ticket 26.** No longer "minus the carried-id upsert machinery" - [update]
+ * plus the top-level [upsert] extension function below give this DAO the identical
+ * "read-by-serverId-first, reuse the existing local id" shape [EventDao.upsert] established for
+ * [Event], now that [com.kevin.legion.vehicle.FleetEngineStore] is a genuine live caller.
+ * [com.kevin.legion.backend.FleetReconcile]'s own wipe-and-refill still uses [insert] directly
+ * (unchanged, out of this ticket's scope) - the two writers do not collide because reconcile only
+ * ever runs against an empty table right after [deleteAllForReplicaRefresh].
  */
 @Dao
 interface VehicleReplicaDao {
-    /** Active (not tombstoned) vehicles - what a future CONFIGURED read path would render from.
-     * No live caller yet (repointing reads is a later wave, per the fleet-cutover ticket). */
+    /** Active (not tombstoned) vehicles - what the CONFIGURED read path in
+     * [com.kevin.legion.vehicle.FleetEngineStore] composes with [VehicleSidecar]. */
     @Query("SELECT * FROM vehicles_replica WHERE deleted = 0")
     suspend fun getAllActive(): List<VehicleReplica>
 
@@ -112,8 +121,14 @@ interface VehicleReplicaDao {
     @Query("SELECT * FROM vehicles_replica WHERE serverId = :serverId")
     suspend fun getByServerId(serverId: String): VehicleReplica?
 
+    @Query("SELECT * FROM vehicles_replica WHERE id = :id")
+    suspend fun getById(id: Long): VehicleReplica?
+
     @Insert
     suspend fun insert(row: VehicleReplica): Long
+
+    @Update
+    suspend fun update(row: VehicleReplica)
 
     /** Wipes the replica clean before [com.kevin.legion.backend.FleetReconcile] refills it - same
      * role as [EventReplicaDao.deleteAllForReplicaRefresh]. Never called from a regular read/write
@@ -122,6 +137,23 @@ interface VehicleReplicaDao {
      * comment for the trace that established this. */
     @Query("DELETE FROM vehicles_replica")
     suspend fun deleteAllForReplicaRefresh()
+}
+
+/**
+ * Same "read by [VehicleReplica.serverId] first, reuse the existing row's [VehicleReplica.id]"
+ * shape as [EventDao.upsert] - see that function's own doc comment for the full reasoning and the
+ * `b17bc88` incident it exists to never repeat. Used only by
+ * [com.kevin.legion.vehicle.FleetEngineStore]'s `syncVehicleToServer`, the one live caller ticket
+ * 26 adds - [com.kevin.legion.backend.FleetReconcile] keeps using [VehicleReplicaDao.insert]
+ * directly against an always-empty (just-wiped) table, so the two writers never contend.
+ */
+suspend fun VehicleReplicaDao.upsert(row: VehicleReplica): Long {
+    val existing = getByServerId(row.serverId)
+    if (existing != null) {
+        update(row.copy(id = existing.id))
+        return existing.id
+    }
+    return insert(row)
 }
 
 @Dao
