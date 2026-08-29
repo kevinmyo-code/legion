@@ -73,3 +73,51 @@ phone-only column that table's write used to carry loses its cross-device channe
 `Spec` goes**, unless a replacement already exists. That is not obvious from the call site and it
 has now bitten once. It belongs in the checklist for every remaining registry drop in this cutover,
 of which there are nine.
+
+## RULED 2026-08-29, and the recommendation above is WITHDRAWN. Three of the seven are dead.
+
+Delegated ("go per ur recommendations"), so this is my call - and checking before building changed
+the answer. I recommended splitting the sidecar by ownership and moving persona to the server.
+**Persona should not go to the server. It should stop being carried at all.**
+
+### `personaPrompt`, `voiceName`, `personaTraits` are vestigial
+
+Traced every reader. The only consumers are `FleetEngineStore`'s own copy-through - it reads them off
+the legacy row and writes them into the sidecar, and nothing else ever looks at them. **The live
+session does not use them:** `LiveSessionController` calls `CompanionProfile.voice(appContext)` at
+every one of its four socket-open sites, never `Vehicle.voiceName`.
+
+They are leftovers from the per-car identity model **the 2026-07-30 pivot killed**. CLAUDE.md §2, a
+locked decision: *"One global assistant identity. Cars are data, not identities. Per-car
+`CompanionProfile` keying and Midnight AI's `CompanionIdentity` Zero-vs-car-self split are both
+dead."* And §10 records `PersonaTraits.kt` as ported, complete and orphaned - its only caller has no
+production caller.
+
+**So there was never a cross-device channel to lose here.** Three of the seven columns this ticket
+worried about carry nothing anyone reads. Syncing them would have been building a channel for dead
+data, which is worse than the gap it fixed.
+
+### `archived` is the one that genuinely needs a channel
+
+42 references, live, and it is USER state rather than device state: a car Kevin retired is retired
+everywhere. It gets a real column on `public.vehicles` and syncs like any other server-owned field.
+
+### The remaining three stay per-device, and that is correct
+
+`tripMilesSinceBaseline` accumulates from whichever phone was in the car. `onboarded` and
+`lastOdometerPromptAt` are about what THIS install has already asked. None of them means anything on
+another device.
+
+### What is built
+
+1. **`archived` moves to the server** - a column on `public.vehicles`, out of the sidecar.
+2. **The three persona columns leave the sidecar.** They are NOT dropped from the legacy `Vehicle`
+   table: CLAUDE.md §5 is additive-migrations-only, and a dead column costs nothing where it sits.
+   They stop being read, written or carried, and `Vehicle`'s own doc says why.
+3. **The sidecar keeps three columns**, all genuinely per-device, and its doc comment says which and
+   why - so the next person does not re-derive this.
+
+**The general lesson, which is the reason this ticket earned its keep:** a column that stopped being
+read does not announce itself. Three of these have been copied through every fleet refactor since the
+port, and the cutover was about to give them a server table. **Before syncing a column, check that
+something reads it.**
