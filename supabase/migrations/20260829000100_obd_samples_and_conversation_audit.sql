@@ -87,7 +87,11 @@ create table if not exists public.conversation_audit (
     device_id     text        not null check (length(trim(device_id)) > 0),
     local_id      bigint      not null,
     turn_seq      bigint      not null,
-    kind          text        not null check (kind in ('USER', 'COMPANION', 'TOOL_RESULT')),
+    -- LOWERCASE, and this was got wrong once. The entity's doc comment says "USER, COMPANION, or
+    -- TOOL_RESULT" and this constraint was written from that prose; the column actually stores
+    -- 'user'/'companion'/'tool_result'. The first real upload was rejected by
+    -- conversation_audit_kind_check on 2026-08-29. Read the DATA, not the description of it.
+    kind          text        not null check (kind in ('user', 'companion', 'tool_result')),
     tool_name     text        not null default '',
     args          text        not null default '',
     content       text        not null,

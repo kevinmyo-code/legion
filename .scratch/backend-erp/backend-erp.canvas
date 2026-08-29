@@ -251,6 +251,16 @@
       "color": "1"
     },
     {
+      "id": "c9ade6cdfc02b900",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/30-the-obd-cursor-cannot-get-past-a-dead-vehicle.md",
+      "x": 0,
+      "y": 3750,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
       "id": "0826d5c94a1739ed",
       "type": "file",
       "file": ".scratch/backend-erp/issues/02-auth-and-identity.md",
