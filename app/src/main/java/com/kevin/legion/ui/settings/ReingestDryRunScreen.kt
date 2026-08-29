@@ -31,6 +31,7 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.ledger.IngestPipeline
 import com.kevin.legion.ledger.LedgerFolderPreferences
 import com.kevin.legion.ledger.ReingestDryRun
+import com.kevin.legion.ledger.parsers.PdfWords
 import com.kevin.legion.service.SafListing
 import com.kevin.legion.ui.common.DeckScreenHeader
 import com.kevin.legion.ui.theme.LegionType
@@ -81,6 +82,24 @@ fun ReingestDryRunScreen(onBack: () -> Unit) {
                             )
                         }
                 }
+                // PdfBox loads its glyph list and AFM metrics from Android ASSETS, and nothing
+                // does that for you - `PDFBoxResourceLoader.init` has to run once per process
+                // before any parser touches a PDF. Every other real caller does it at exactly
+                // this point (`IngestScanner.scan`, `LedgerController`), and this screen did not.
+                //
+                // It went unnoticed because until content matching landed the dry run never
+                // resolved a single file, so no parser ever ran. The first run that actually
+                // found bytes died on `ExceptionInInitializerError: GlyphList ... not found`,
+                // three times, and the app vanished to the launcher with nothing rendered.
+                //
+                // **No test could have caught it**, and that is the part worth remembering:
+                // every parser test - `ReingestDryRunRobolectricTest` included - calls
+                // `PdfWords.init` in its own `@Before`. The suite set up the precondition the
+                // production path was missing, so a green suite and a crashing screen were
+                // perfectly consistent. `PdfWords.extractWords` now fails with a sentence naming
+                // this call instead of a PdfBox class-init error, so the next caller that forgets
+                // is told what to do rather than left with a stack trace from a vendored library.
+                PdfWords.init(context)
                 val reports = ReingestDryRun.run(inputs, safReader(context), connectedFolderScanner(context))
                 val aggregate = ReingestDryRun.aggregate(reports)
                 uiState = uiState.copy(

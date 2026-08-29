@@ -29,12 +29,38 @@ data class PdfWord(val text: String, val x0: Float, val x1: Float, val y: Float)
  * PdfBox-Android's own contract).
  */
 object PdfWords {
+    /**
+     * Whether [init] has run in this process.
+     *
+     * **This exists because a missing [init] is invisible until it is catastrophic.** PdfBox
+     * loads its glyph list from Android assets inside a STATIC initializer, so forgetting the
+     * call does not produce a null or a bad parse - it throws `ExceptionInInitializerError` out
+     * of `LegacyPDFStreamEngine.<clinit>`, a class this codebase never names, and the process
+     * dies. That happened three times on 2026-08-28 on the ledger dry run screen, which was the
+     * one real caller that did not init, and the app simply vanished to the launcher.
+     *
+     * **No test could have caught it.** Every parser test calls [init] in its own `@Before` -
+     * that is the only way to make PdfBox work under Robolectric at all - so the suite always
+     * supplies the precondition the production path was missing. A green suite and a crashing
+     * screen were perfectly consistent, which is exactly the shape that makes this worth a
+     * runtime guard rather than another test.
+     */
+    private var initialized = false
+
     fun init(context: Context) {
         PDFBoxResourceLoader.init(context.applicationContext)
+        initialized = true
     }
 
     /** All words on every page, in reading order, one list per page. */
     fun extractWords(input: InputStream): List<List<PdfWord>> {
+        check(initialized) {
+            "PdfWords.init(context) must run once before extractWords - PdfBox loads its glyph " +
+                "list and font metrics from Android assets, and without it the first PDF parsed " +
+                "kills the process with ExceptionInInitializerError from inside PdfBox itself. " +
+                "Call it where IngestScanner.scan and LedgerController do: immediately before the " +
+                "work that parses."
+        }
         PDDocument.load(input).use { doc ->
             val pages = mutableListOf<MutableList<PdfWord>>()
             val stripper = object : PDFTextStripper() {
