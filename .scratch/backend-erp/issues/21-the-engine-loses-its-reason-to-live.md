@@ -24,12 +24,18 @@ That was correct on 2026-08-28 morning. By evening the phone's role had changed.
 ## What changed
 
 ADR 0040: the PC becomes the surface for read/write/edit/monitor/ingest, and the phone becomes
-voice-first with minimal UI - *"i ask it via voice, it generates a pop up modal."* The phone keeps
-OBD, the voice companion, calendar, todos, lists, groceries and notes.
+voice-first with minimal UI. The phone keeps OBD, the voice companion, calendar, todos, lists,
+groceries and notes.
 
-**A generated list/detail/form screen and a widget pager are browsing surfaces.** They are the
-category of thing the phone is explicitly shedding. If nobody browses on the phone, the feature
-`engine/` exists to serve may have no user left.
+**The replacement is PRE-MADE modals that voice foregrounds** (Kevin, clarifying the same day: *"not
+voice generated, voice called. pre made modals, voice calls it to trigger it to foreground"*), and
+that distinction is the whole of this ticket. A hand-written modal per capability is the OPPOSITE of
+a screen composed at runtime from field definitions - it is deterministic, previewable, and diffable.
+
+**So the engine's generated list/detail/form screens are not being replaced by something similar.
+They are being replaced by their opposite.** They and the widget pager are browsing surfaces
+composed at runtime, which is precisely the category the phone is shedding. If nobody browses on the
+phone, the feature `engine/` exists to serve may have no user left.
 
 ## The question
 

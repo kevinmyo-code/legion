@@ -42,9 +42,30 @@ where the files already are.
 | PC (new repo) | Read, write, edit, monitor, ingest. React + Vite + TypeScript on `supabase-js`; Python only where a library demands it |
 | Phone (LEGION) | OBD and the car, the AI voice companion, calendar, todos, lists, groceries, notes. **Minimal UI, voice-first** |
 
-**The phone's interaction model is voice asking and a modal answering**, not a screen per aspect.
-Kevin's own framing: *"i ask it via voice, it generates a pop up modal."* The phone stops being a
-place to browse data and becomes a place to say a thing and see the answer.
+**The phone's interaction model is a set of PRE-MADE modals that voice brings to the foreground.**
+
+**CORRECTED 2026-08-28, same day, and the correction matters more than the sentence it replaces.**
+This ADR first said the phone was "voice asking and a modal answering... it generates a pop up
+modal", read off Kevin's earlier shorthand. He clarified: *"not voice generated, voice called. pre
+made modals, voice calls it to trigger it to foreground."*
+
+**The modals are ordinary hand-built UI that exists whether or not anyone speaks. Voice is a
+LAUNCHER, not a renderer.** Saying "what's due today" foregrounds the same modal a tap would reach.
+Nothing is composed at runtime from a model's output.
+
+That is a different architecture from the one the wrong sentence described, in three ways that all
+matter:
+
+- **The UI is deterministic.** Hand-written, previewable, screenshot-testable, reviewable in a diff.
+  Generated-at-runtime UI is none of those.
+- **Voice failure degrades to inconvenience, not to loss.** If the wake word misses or the mic opens
+  deaf, the modal is still there to be tapped. The capability does not disappear with the microphone.
+- **The phone shrinks in SURFACE, not in capability.** Fewer screens to browse, not fewer things it
+  can do. A modal per capability is still a full hands path.
+
+This is also not the engine's generated UI wearing a new name. Those screens are composed from field
+definitions at runtime; these are written by hand, one per capability, and there are few of them
+because the phone keeps few capabilities.
 
 **Django was considered and rejected.** Its value is ORM, migrations, auth and admin; Supabase
 already owns all four, and adopting Django means teaching its ORM not to own a schema it did not
@@ -69,13 +90,18 @@ specifically because `create_aspect`, the generated list/detail/form screens and
 were "a shipped, still-wanted feature." If the phone is a voice-first consumer with minimal UI, that
 justification is much thinner and the engine may finally be deletable. Its own ticket.
 
-**[[0035-every-voice-capability-has-a-hands-path]] is in tension, and this ADR does not resolve it.**
-That ADR exists because voice is the path that FAILS - a loud car, a sleeping person, a wake word
-that does not fire, a mic that opens deaf, all observed on this phone. A voice-generated modal is
-still voice-INITIATED, so it is not a hands path. The domains the phone keeps (calendar, todos,
-lists, notes) have hands paths today and must keep them. **What is not settled is whether a NEW
-phone capability may ship voice-only on the grounds that the PC is its hands path** - the PC is not
-in the car, which is where voice fails hardest. Flagged deliberately rather than quietly dropped.
+**[[0035-every-voice-capability-has-a-hands-path]] is SATISFIED BY CONSTRUCTION, and the corrected
+model is why.** An earlier draft of this ADR flagged a tension here, on the mistaken premise that
+voice GENERATED the modal - in which case the modal would be voice-initiated and therefore not a
+hands path at all. With pre-made modals the tension does not exist: every modal is reachable by hand
+because it has to be built and navigated to anyway, and voice is a shortcut to a destination that
+already exists.
+
+**The rule that falls out, and it is the one to enforce:** a modal that ONLY voice can summon would
+break ADR 0035, and nothing about this architecture prevents someone building one. So - **every
+modal has a hands route to it, and voice never creates a destination that hands cannot reach.**
+That is a cheaper invariant to hold than the old one, because it is structural rather than a
+discipline: both paths open the same composable.
 
 **Repo split, and the schema stays put for now.** The PC app is a new repo. `supabase/migrations/`
 remains in LEGION, because it is twenty-odd files with real headers and a working applied history
