@@ -208,11 +208,21 @@ object SyncEngine {
         // on a device - it was structurally unreachable until 7ea4725.
         // Append-only logbook, portable syncId identity.
         Spec("memories", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
-        // "service_records" retired here at cutover 4 (docs/architecture/cutover4-2026-08-24.md) -
-        // same reasoning and the same stated transition consequence as "places" at cutover 1 (see
-        // this file's own class doc). ServiceHistory writes are engine-native now (zero legacy
-        // writers, per that doc's own ruling table) - com.kevin.legion.engine.mirror.MirrorSync is
-        // the live cross-device path. Do not re-add it.
+        // "service_records" retired here at cutover 4 (docs/architecture/cutover4-2026-08-24.md).
+        // **STALE by backend-erp ticket 16 (2026-08-27) and CORRECTED here, 2026-08-29**: this
+        // comment used to say ServiceHistory writes were engine-native with
+        // com.kevin.legion.engine.mirror.MirrorSync as the live cross-device path. Ticket 16
+        // repointed ServiceHistory/MaintenanceSchedule straight back onto this legacy table
+        // (`.scratch/backend-erp/issues/16-fleet-service-history-is-not-a-configured-split.md`),
+        // and per that ticket's own finding fleet had NO configured write path at all at the time -
+        // so from cutover 4 until backend-erp ticket 26 step 2 (2026-08-29), `service_records` had
+        // NO cross-device channel whatsoever, Drive-JSON or otherwise, a gap nobody had reason to
+        // notice because sync/ has never actually run on Kevin's own device (memory/MEMORY.md).
+        // Ticket 26 step 2 gives it a real one: `com.kevin.legion.vehicle.FleetEngineStore`'s
+        // `syncServiceHistoryToServer` pushes every write straight to Supabase
+        // (`public.service_history`) on a configured install, the same per-table Postgres channel
+        // `vehicles` got at ticket 26 step 1. Do not re-add "service_records" here to "restore" a
+        // Drive-JSON channel - the live one now is Supabase, not this registry.
         Spec("build_entries", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         Spec("code_events", listOf("syncId"), Mode.UNION, naturalPk = false, hasSyncId = true),
         // code_clear_events (D3, `.scratch/hands-and-senses/issues/01-clear-dtc.md`): append-only

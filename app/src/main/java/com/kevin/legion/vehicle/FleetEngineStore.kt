@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.room.withTransaction
 import com.kevin.legion.backend.FleetBackend
+import com.kevin.legion.backend.ServiceHistoryUpload
 import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabaseFleetBackend
 import com.kevin.legion.backend.VehicleUpload
@@ -11,6 +12,7 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.EngineRecord
 import com.kevin.legion.data.local.MaintenanceItem
 import com.kevin.legion.data.local.RecordProvenance
+import com.kevin.legion.data.local.ServiceHistoryReplica
 import com.kevin.legion.data.local.ServiceRecord
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.data.local.VehicleReplica
@@ -119,6 +121,27 @@ import com.kevin.legion.engine.migration.EngineFleetServiceHistoryRetirementCopy
  * replica. `personaPrompt`/`voiceName`/`personaTraits` left [VehicleSidecar] in the same ticket, but
  * for the opposite reason: not because they needed a server home, but because nothing reads them at
  * all - see [Vehicle]'s own doc comment on those three fields.
+ *
+ * **Ticket 26 step 2 (2026-08-29): `service_history` gets the identical WRITE-side cutover** -
+ * every `service_records` write below ([insertObserved], [editMileageAndCost], and the ASSERTED
+ * anchor path via [writeAssertedAnchorLegacy]/[syncAssertedAnchorToServer]) now also performs a
+ * best-effort third write via [syncServiceHistoryToServer], same never-throws posture as
+ * [syncVehicleToServer]. **Reads are deliberately NOT repointed at the replica, unlike
+ * [composeVehicle]** - every accessor below ([serviceRecordsForVehicle], [getForVehicle] via
+ * [toItemsLegacy], [getServiceRecordById], etc.) still reads `service_records` unconditionally, on
+ * both a configured and an unconfigured install. This is a real, considered scope line, not an
+ * oversight: `Vehicle` has no numeric id at all (every reader keys on `obdMac`), so composing a
+ * configured read from [VehicleReplica] cost nothing. `ServiceRecord.id` is a load-bearing local
+ * surrogate - `VehicleController.editServiceRecordDirect`/`deleteServiceRecordDirect` address a row
+ * by it directly, and [toItemsLegacy]'s `MaintenanceSchedule` anchor derivation groups by the same
+ * rows [allHistoryForVehicle] returns - and [ServiceHistoryReplica.id] is refilled wholesale by
+ * [com.kevin.legion.backend.FleetReconcile]'s own wipe-and-refill, exactly the `b17bc88` surrogate-id
+ * hazard [ServiceHistoryReplica]'s own doc comment warns about, the moment ANY caller starts
+ * depending on that id staying put. Building a safe read-side merge (materializing a
+ * replica-only row - one written on another device - into `service_records` with a fresh local id,
+ * so every existing id-keyed accessor keeps working unmodified) is real, separable follow-up work,
+ * not a mechanical port of [composeVehicle]'s shape - flagged rather than built ad hoc against
+ * Kevin's real service history.
  */
 object FleetEngineStore {
 
@@ -534,6 +557,74 @@ object FleetEngineStore {
     private suspend fun allHistoryForVehicle(db: CarDatabase, mac: String): List<ServiceRecord> =
         db.serviceRecordDao().getRecordsForVehicleOnce(mac)
 
+    /**
+     * Best-effort THIRD write for one `service_records` row (backend-erp ticket 26 step 2,
+     * `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`) - same role and same
+     * never-throws, never-rolls-back-the-local-write posture as [syncVehicleToServer], see that
+     * function's own doc comment for the full reasoning (a network failure here means the local
+     * write already committed; failing loudly would report a local success as a total failure).
+     *
+     * **A car must already be synced before its service history can be** - [RemoteServiceHistory]'s
+     * own doc comment says a `service_history` row can never upload ahead of its vehicle, and this
+     * function has no way to synthesize a `vehicles.id` on the spot. A car with no
+     * [VehicleSidecar] row yet (never synced, or the very first `syncVehicleToServer` for it is
+     * still pending/failed) means this is a no-op, not a retryable error - the next successful
+     * vehicle sync does not automatically retry this row, a named gap rather than a silent one.
+     *
+     * **Identity is [ServiceRecord.serverId]**, read off the row directly (co-located, not a
+     * sidecar - see that field's own doc comment for why). `null` means insert; non-null means
+     * PATCH by that uuid. On a fresh insert the returned uuid is written back onto the SAME local
+     * row via [com.kevin.legion.data.local.ServiceRecordDao.setServerId], so a later edit of this
+     * row updates the one server row it already has rather than minting a second.
+     *
+     * **Deletes are NOT pushed** (a real, out-loud scope decision, not an oversight): local
+     * `softDeleteServiceRecord` stays exactly as documented - LOCAL ONLY, matching
+     * [ServiceRecord.deleted]'s own doc comment - because [ServiceHistoryUpload] carries no
+     * `deleted` field, mirroring [VehicleUpload]'s own identical lack of one. A server row for a
+     * since-deleted local record keeps existing on Postgres/the replica until a future ticket
+     * builds a real delete-sync path; a caller that already deleted the row locally simply never
+     * calls this function again for it, so nothing here silently resurrects it either.
+     */
+    private suspend fun syncServiceHistoryToServer(context: Context, mac: String, localId: Long) {
+        val backend = backend(context) ?: return
+        val db = CarDatabase.getDatabase(context)
+        val record = db.serviceRecordDao().getById(localId) ?: return
+        val vehicleServerId = db.vehicleSidecarDao().getByMac(mac)?.serverId ?: return
+
+        val remote = backend.upsertServiceHistory(
+            ServiceHistoryUpload(
+                serverId = record.serverId,
+                vehicleServerId = vehicleServerId,
+                serviceName = record.serviceName,
+                mileage = record.mileage,
+                serviceDateEpochMs = record.date,
+                costCents = record.costCents,
+                kind = record.kind,
+            ),
+        ).getOrElse {
+            Log.w("FleetEngineStore", "Supabase service-history sync failed for record $localId: ${it.message}")
+            return
+        }
+
+        if (record.serverId == null) {
+            db.serviceRecordDao().setServerId(localId, remote.serverId)
+        }
+        db.serviceHistoryReplicaDao().upsert(
+            ServiceHistoryReplica(
+                serverId = remote.serverId,
+                vehicleServerId = remote.vehicleServerId,
+                serviceName = remote.serviceName,
+                mileage = remote.mileage,
+                serviceDateEpochMs = remote.serviceDateEpochMs,
+                costCents = remote.costCents,
+                kind = remote.kind,
+                updatedAtMs = remote.updatedAtMs,
+                deleted = remote.deleted,
+                originGuid = remote.originGuid,
+            ),
+        )
+    }
+
     /** All logged (OBSERVED) service records for [mac], newest first. */
     suspend fun serviceRecordsForVehicle(context: Context, mac: String): List<ServiceRecord> {
         ensureServiceHistoryReconciled(context)
@@ -619,15 +710,27 @@ object FleetEngineStore {
         } catch (e: EngineWriteFailedException) {
             outcome = InsertObservedResult.Failure(e.reason)
         }
+        if (outcome is InsertObservedResult.Success) {
+            // Best-effort THIRD write, after the local insert (and any same-transaction ASSERTED
+            // supersession) already committed - see syncServiceHistoryToServer's own doc comment.
+            syncServiceHistoryToServer(context, mac, outcome.recordId)
+        }
         return outcome
     }
 
     suspend fun editMileageAndCost(context: Context, id: Long, mileageMiles: Int, costCents: Long?): Int {
         ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
-        return db.serviceRecordDao().editMileageAndCost(id, mileageMiles, costCents)
+        val written = db.serviceRecordDao().editMileageAndCost(id, mileageMiles, costCents)
+        if (written > 0) {
+            db.serviceRecordDao().getById(id)?.let { syncServiceHistoryToServer(context, it.vehicleId, id) }
+        }
+        return written
     }
 
+    /** **LOCAL ONLY, and this stays true after ticket 26 step 2** - see [syncServiceHistoryToServer]'s
+     * own doc comment for why a soft-delete is deliberately never pushed to the server: a delete-sync
+     * path is a real, separate decision this ticket does not make. */
     suspend fun softDeleteServiceRecord(context: Context, id: Long): Int {
         ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
@@ -678,6 +781,7 @@ object FleetEngineStore {
         db.maintenanceItemDao().upsert(item.copy(lastDoneMileage = null, lastDoneDate = null))
         if (item.lastDoneMileage != null || item.lastDoneDate != null) {
             writeAssertedAnchorLegacy(db, item.vehicleId, item.serviceName, item.lastDoneMileage, item.lastDoneDate, System.currentTimeMillis())
+            syncAssertedAnchorToServer(context, item.vehicleId, item.serviceName)
         }
     }
 
@@ -704,7 +808,17 @@ object FleetEngineStore {
      * in every rule, only in what it writes to. A full-row REPLACE (via [ServiceRecordDao.insert]'s
      * `OnConflictStrategy.REPLACE` on `id`) both creates a fresh row AND "restores" a previously
      * soft-deleted one in one call - there is no separate restore-before-update step the engine
-     * version needed, because SQLite REPLACE overwrites `deleted` along with everything else. */
+     * version needed, because SQLite REPLACE overwrites `deleted` along with everything else.
+     *
+     * **CORRECTED ticket 26 step 2: the REPLACE now carries [existing]'s `serverId` forward.**
+     * Before this row gained a `serverId` column, a REPLACE that rebuilt the whole row from scratch
+     * cost nothing extra; now it would silently wipe the row's link to its own server counterpart on
+     * every single edit, forcing [syncServiceHistoryToServer] to mint a brand new server row each
+     * time a driver corrects an anchor - exactly the kind of identity churn ticket 26's own "RULED"
+     * section exists to prevent, just one layer further in. No `context`/network call happens here -
+     * this runs inside [setAnchor]/[upsertNewItem]'s `db.withTransaction` block, and a network call
+     * has no business inside a Room transaction; each caller pushes to the server itself, after the
+     * transaction commits, using the id this function leaves behind. */
     private suspend fun writeAssertedAnchorLegacy(db: CarDatabase, mac: String, serviceName: String, mileage: Int?, date: Long?, now: Long) {
         val syncId = FleetRecordBridge.assertedAnchorGuid(mac, serviceName)
         val existing = db.serviceRecordDao().getBySyncId(syncId)
@@ -718,8 +832,21 @@ object FleetEngineStore {
             ServiceRecord(
                 id = existing?.id ?: 0, vehicleId = mac, serviceName = serviceName, mileage = mileage, date = date,
                 costCents = null, syncId = syncId, deleted = false, kind = FleetAspectSeeder.KIND_ASSERTED, updatedAt = now,
+                serverId = existing?.serverId,
             ),
         )
+    }
+
+    /** Resolves the `ASSERTED` row [writeAssertedAnchorLegacy] just wrote (or left cleared) for
+     * `(mac, serviceName)` and pushes it to the server if it still exists - the after-the-transaction
+     * half of that function's own doc comment. A no-op when the anchor was cleared (soft-deleted,
+     * per [syncServiceHistoryToServer]'s own "deletes are not pushed" rule) or never existed. */
+    private suspend fun syncAssertedAnchorToServer(context: Context, mac: String, serviceName: String) {
+        val db = CarDatabase.getDatabase(context)
+        val syncId = FleetRecordBridge.assertedAnchorGuid(mac, serviceName)
+        val row = db.serviceRecordDao().getBySyncId(syncId) ?: return
+        if (row.deleted) return
+        syncServiceHistoryToServer(context, mac, row.id)
     }
 
     /**
@@ -737,6 +864,7 @@ object FleetEngineStore {
             db.maintenanceItemDao().clearNeverDone(mac, serviceName, now)
             writeAssertedAnchorLegacy(db, mac, serviceName, mileage, date, now)
         }
+        syncAssertedAnchorToServer(context, mac, serviceName)
         return 1
     }
 

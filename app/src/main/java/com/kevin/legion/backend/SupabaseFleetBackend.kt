@@ -133,6 +133,22 @@ private data class ServiceHistoryInsertDto(
     @SerialName("origin_guid") val originGuid: String,
 )
 
+/**
+ * The wire shape for [SupabaseFleetBackend.upsertServiceHistory] (ticket 26 step 2's live write, as
+ * opposed to [ServiceHistoryInsertDto]'s one-time migration insert) - same "no origin_guid, serves
+ * both the insert and the PATCH branch" posture as [VehicleWriteDto]. See that type's own doc
+ * comment for the full reasoning; it applies here verbatim.
+ */
+@Serializable
+private data class ServiceHistoryWriteDto(
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("service_name") val serviceName: String,
+    val mileage: Int?,
+    @SerialName("service_date") val serviceDate: String?,
+    @SerialName("cost_cents") val costCents: Long?,
+    val kind: String,
+)
+
 /** The wire shape read back off `public.service_history` for every operation. */
 @Serializable
 private data class ServiceHistoryRowDto(
@@ -769,6 +785,34 @@ class SupabaseFleetBackend(private val client: SupabaseClient) : FleetBackend {
                 ),
             )
             true
+        }
+
+    /** Ticket 26 step 2's live write - same "caller already knows insert-vs-update from whether
+     * serverId is null" shape as [upsertVehicle]; see that function's own doc comment. */
+    override suspend fun upsertServiceHistory(history: ServiceHistoryUpload): Result<RemoteServiceHistory> =
+        translating("save that service record") {
+            val dto = ServiceHistoryWriteDto(
+                vehicleId = history.vehicleServerId,
+                serviceName = history.serviceName,
+                mileage = history.mileage,
+                serviceDate = dateOrNull(history.serviceDateEpochMs),
+                costCents = history.costCents,
+                kind = history.kind,
+            )
+            if (history.serverId == null) {
+                client.postgrest.from(SERVICE_HISTORY_TABLE)
+                    .insert(dto) { select() }
+                    .decodeSingle<ServiceHistoryRowDto>()
+                    .toRemoteServiceHistory()
+            } else {
+                client.postgrest.from(SERVICE_HISTORY_TABLE)
+                    .update(dto) {
+                        filter { eq("id", history.serverId) }
+                        select()
+                    }
+                    .decodeSingle<ServiceHistoryRowDto>()
+                    .toRemoteServiceHistory()
+            }
         }
 
     override suspend fun fetchActiveDrives(): Result<List<RemoteDrive>> = translating("load your drives") {

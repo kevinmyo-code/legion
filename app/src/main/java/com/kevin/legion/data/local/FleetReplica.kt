@@ -111,6 +111,10 @@ data class ServiceHistoryReplica(
  * [com.kevin.legion.backend.FleetReconcile]'s own wipe-and-refill still uses [insert] directly
  * (unchanged, out of this ticket's scope) - the two writers do not collide because reconcile only
  * ever runs against an empty table right after [deleteAllForReplicaRefresh].
+ *
+ * [ServiceHistoryReplicaDao] gets the identical `update`/[upsert] pair below, for the identical
+ * reason - backend-erp ticket 26 step 2's `syncServiceHistoryToServer` is [ServiceHistoryReplica]'s
+ * own first live, single-row caller.
  */
 @Dao
 interface VehicleReplicaDao {
@@ -162,6 +166,14 @@ suspend fun VehicleReplicaDao.upsert(row: VehicleReplica): Long {
     return insert(row)
 }
 
+/**
+ * **CORRECTED 2026-08-29, ticket 26 step 2.** [update] plus the top-level [upsert] extension below
+ * give this DAO the same "read-by-serverId-first, reuse the existing local id" shape
+ * [VehicleReplicaDao]'s own doc comment describes - see that interface's doc for the full
+ * `b17bc88` reasoning. [com.kevin.legion.backend.FleetReconcile]'s own wipe-and-refill still uses
+ * [insert] directly against an always-empty (just-wiped) table, same non-collision argument as
+ * [VehicleReplicaDao].
+ */
 @Dao
 interface ServiceHistoryReplicaDao {
     @Query("SELECT * FROM service_history_replica WHERE deleted = 0")
@@ -176,7 +188,28 @@ interface ServiceHistoryReplicaDao {
     @Insert
     suspend fun insert(row: ServiceHistoryReplica): Long
 
+    @Update
+    suspend fun update(row: ServiceHistoryReplica)
+
     /** Same role and same safety argument as [VehicleReplicaDao.deleteAllForReplicaRefresh]. */
     @Query("DELETE FROM service_history_replica")
     suspend fun deleteAllForReplicaRefresh()
+}
+
+/**
+ * Same "read by [ServiceHistoryReplica.serverId] first, reuse the existing row's
+ * [ServiceHistoryReplica.id]" shape as [VehicleReplicaDao.upsert] - see that function's own doc
+ * comment for the full reasoning. Used only by
+ * [com.kevin.legion.vehicle.FleetEngineStore]'s `syncServiceHistoryToServer`, ticket 26 step 2's
+ * one live caller - [com.kevin.legion.backend.FleetReconcile] keeps using
+ * [ServiceHistoryReplicaDao.insert] directly against an always-empty (just-wiped) table, so the two
+ * writers never contend.
+ */
+suspend fun ServiceHistoryReplicaDao.upsert(row: ServiceHistoryReplica): Long {
+    val existing = getByServerId(row.serverId)
+    if (existing != null) {
+        update(row.copy(id = existing.id))
+        return existing.id
+    }
+    return insert(row)
 }

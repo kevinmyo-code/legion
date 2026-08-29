@@ -77,4 +77,16 @@ data class ServiceRecord(
     // to its own `date`, the closest fact on file for when an already-migrated OBSERVED row was
     // last true, and every row this table gains from here on stamps a real value at write time.
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    // v51->v52 (backend-erp ticket 26 step 2, `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`
+    // "Step 2: service_history"). The identity bridge from THIS legacy row to its
+    // `public.service_history` counterpart - null means "never pushed" (a plain INSERT is correct
+    // next sync), non-null names the exact server uuid to PATCH instead of re-inserting. Same role
+    // as [com.kevin.legion.data.local.VehicleSidecar.serverId] plays for [Vehicle], but co-located on
+    // the row itself rather than a separate sidecar table: unlike Vehicle, this row has no
+    // phone-only/server-owned column split to keep apart (every field here is meant to reach the
+    // server), and `service_records.id` (the local autoincrement) is genuinely load-bearing
+    // elsewhere (`editMileageAndCost`/`softDelete`/`getById` all address a row by it), so - unlike
+    // `service_history_replica.id` - it can never be treated as an interchangeable cache surrogate.
+    // `FleetEngineStore.syncServiceHistoryToServer` is the only writer of this column.
+    @ColumnInfo(defaultValue = "NULL") val serverId: String? = null,
 )

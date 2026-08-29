@@ -148,6 +148,33 @@ data class MigratedServiceHistory(
 )
 
 /**
+ * One `service_history` row's identity + content fields, ready for
+ * [FleetBackend.upsertServiceHistory] - the LIVE write primitive ticket 26 step 2
+ * (`.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`) adds alongside
+ * [MigratedServiceHistory]'s one-time-replay insert, mirroring [VehicleUpload]'s shape exactly.
+ * **[serverId] is the whole of the identity decision** (that ticket's "RULED 2026-08-29" - the
+ * server's `id` uuid is canonical, never `origin_guid`): `null` means "no server row exists yet for
+ * this local record" and [SupabaseFleetBackend.upsertServiceHistory] does a genuine INSERT,
+ * returning the uuid Postgres assigns; non-null means "update the row at this uuid", an ordinary
+ * `UPDATE ... WHERE id = :serverId` touching only the columns this type carries (never
+ * `origin_guid`, for the identical reason [VehicleUpload]'s own doc comment gives - a live edit has
+ * no business rewriting migration provenance).
+ *
+ * No `originGuid` field here, unlike [MigratedServiceHistory] - a live-created or live-edited row
+ * has no migration provenance to record, and an existing row's `origin_guid` (if any) is preserved
+ * by the UPDATE simply never mentioning that column.
+ */
+data class ServiceHistoryUpload(
+    val serverId: String?,
+    val vehicleServerId: String,
+    val serviceName: String,
+    val mileage: Int?,
+    val serviceDateEpochMs: Long?,
+    val costCents: Long?,
+    val kind: String,
+)
+
+/**
  * A `public.drives` row as Postgres reports it (`supabase/migrations/20260826000200_fleet_drives.sql`).
  * [syncId] is [com.kevin.legion.data.local.Drive.syncId] carried verbatim - drives are NOT engine
  * records (`FleetAspectSeeder` defines only Vehicle/ServiceHistory/MaintenanceSchedule), so there is
@@ -604,6 +631,13 @@ interface FleetBackend {
      * into a friendlier failure, because it means [FleetReconcile] tried to upload a service-history
      * row ahead of its vehicle, which is a caller bug, not an expected outcome. */
     suspend fun uploadMigratedServiceHistory(history: MigratedServiceHistory): Result<Boolean>
+
+    /** The live cutover write (ticket 26 step 2): insert when [ServiceHistoryUpload.serverId] is
+     * null, update the named row otherwise. See [ServiceHistoryUpload]'s own doc comment for the
+     * full identity contract - same shape as [upsertVehicle], deliberately NOT keyed on
+     * `origin_guid`. Returns the row Postgres now holds, so a first insert can record the uuid it
+     * was just assigned. */
+    suspend fun upsertServiceHistory(history: ServiceHistoryUpload): Result<RemoteServiceHistory>
 
     /** Every active (not soft-deleted) drive, server-side. Used to refresh the Room replica (the
      * `drives` table itself - see [FleetReconcile]'s own class doc for why no separate replica

@@ -124,3 +124,46 @@ So each remaining table is a replica entity + a Room migration + a facade seam +
 callers. **That is the real size of it, and it is several sessions, not one.** Sequence:
 `service_history` -> `drives` with `drive_reassignments` -> the diagnostics trio -> specs, build
 entries, quirks.
+
+## Step 2 done 2026-08-29, and it is a PARTIAL cutover on purpose
+
+`service_history` **writes** are cut over. **Reads still serve `service_records` unconditionally**,
+configured or not. That asymmetry is deliberate, and it is not a shortcut.
+
+### Why reads did not move, and why it is the right call
+
+`composeVehicle` works for vehicles because **`Vehicle` has no numeric id at all** - everything keys
+on `obdMac`. `ServiceRecord.id` is different: it is a load-bearing local surrogate.
+`VehicleController.editServiceRecordDirect`/`deleteServiceRecordDirect` address a row by it, and
+`MaintenanceSchedule`'s anchor derivation groups by those rows.
+
+`ServiceHistoryReplica` is refilled **wholesale** by `FleetReconcile` - wipe and refill. Serving
+reads from it would hand callers ids that change under them on every reconcile. **That is `b17bc88`
+exactly**: the incident where a wholesale replica refresh reminted every local id, and those ids were
+alarm request codes and soft foreign keys.
+
+So: full cutover on the write side, legacy on the read side, and `FleetEngineStore`'s class doc
+carries the reasoning. A safe read-side merge - materialising a replica-only row into
+`service_records` with a fresh local id - is real follow-up work and is **ticket 28**.
+
+### Two findings from the build, both worth keeping
+
+**A live bug, found while wiring and fixed with a test.**
+`writeAssertedAnchorLegacy`'s `REPLACE` rebuilt the whole row from scratch, which would have silently
+wiped `serverId` on **every anchor edit** - breaking the identity the cutover had just established,
+invisibly, on the path most likely to be used.
+
+**The `SyncEngine` comment was a lie and is corrected.** `service_records`/`maintenance_items` were
+already absent from the registry - retired at cutover 4, before ticket 16 repointed writes back onto
+those tables - and the surviving comment claimed `MirrorSync` was the live cross-device path, which
+ticket 16 had already falsified. **So since cutover 4, service records have had NO cross-device
+channel of any kind.** This step restores one rather than removing one, which is the opposite of
+ticket 27's finding and worth noting: the per-drop check found a channel that had been silently
+missing for days.
+
+### Identity confirmed, not assumed
+
+`fetchActiveServiceHistory` really does return the server's own `id` as `serverId` - read, not
+inferred. No `sync_id`, no backfill. `ServiceRecord` gains a nullable `serverId` co-located on the
+row rather than in a sidecar, because unlike `Vehicle` there is no phone-only/server-owned split to
+keep apart. Room v51 -> v52, UNAPPLIED.

@@ -92,6 +92,7 @@ class FleetEngineStoreVehicleCutoverTest {
 
         override suspend fun fetchActiveServiceHistory(): Result<List<RemoteServiceHistory>> = error("out of scope")
         override suspend fun uploadMigratedServiceHistory(history: MigratedServiceHistory): Result<Boolean> = error("out of scope")
+        override suspend fun upsertServiceHistory(history: com.kevin.legion.backend.ServiceHistoryUpload): Result<RemoteServiceHistory> = error("out of scope")
         override suspend fun fetchActiveDrives(): Result<List<RemoteDrive>> = error("out of scope")
         override suspend fun upsertDrive(drive: DriveUpload): Result<RemoteDrive> = error("out of scope")
         override suspend fun fetchActiveCodeEvents(): Result<List<RemoteCodeEvent>> = error("out of scope")

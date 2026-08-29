@@ -1927,3 +1927,25 @@ val MIGRATION_50_51 = object : Migration(50, 51) {
         )
     }
 }
+
+/**
+ * v51 -> v52: the fleet cutover's step 2, `service_history` (backend-erp ticket 26,
+ * `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`, "Step 2 of the fleet cutover:
+ * service_history ONLY"). A single additive column - see [ServiceRecord.serverId]'s own doc
+ * comment for why this is co-located on the legacy row rather than a separate sidecar table the
+ * way [Vehicle]'s server linkage is. `DEFAULT NULL` is correct for every pre-existing row without
+ * exception: nothing wrote this column before it existed, so "never pushed to the server yet" is
+ * simply true of all of them, including the four rows [FleetBackend.uploadMigratedServiceHistory]
+ * already put on the server one-time-migration-style - the very next
+ * [com.kevin.legion.vehicle.FleetEngineStore.syncServiceHistoryToServer] call for one of those
+ * pairs will insert a SECOND server row rather than matching the existing one, because this local
+ * row genuinely has no memory of that first upload. Named, not silently accepted:
+ * `.scratch/backend-erp/issues/26-the-fleet-cutover-for-real.md`'s own follow-up section covers it
+ * (matching those four rows back up by `origin_guid`/`syncId` is future work, not part of this
+ * migration).
+ */
+val MIGRATION_51_52 = object : Migration(51, 52) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `service_records` ADD COLUMN `serverId` TEXT DEFAULT NULL")
+    }
+}

@@ -167,4 +167,15 @@ interface ServiceRecordDao {
      */
     @Query("UPDATE service_records SET deleted = 1 WHERE id = :id AND deleted = 0")
     suspend fun softDelete(id: Long): Int
+
+    /**
+     * Records the server uuid a first [com.kevin.legion.backend.FleetBackend.upsertServiceHistory]
+     * insert returned (backend-erp ticket 26 step 2) - see [ServiceRecord.serverId]'s own doc
+     * comment for why this lives on the row directly rather than a sidecar. Unconditional on
+     * `deleted`, matching [getById]'s own posture: a row soft-deleted between the push starting and
+     * this call landing should still record where it landed, so a later un-delete (if one is ever
+     * built) does not silently lose the mapping and mint a duplicate server row.
+     */
+    @Query("UPDATE service_records SET serverId = :serverId WHERE id = :id")
+    suspend fun setServerId(id: Long, serverId: String)
 }

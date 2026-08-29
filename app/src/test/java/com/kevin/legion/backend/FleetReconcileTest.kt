@@ -164,6 +164,8 @@ class FleetReconcileTest {
             return Result.success(true)
         }
 
+        override suspend fun upsertServiceHistory(history: ServiceHistoryUpload): Result<RemoteServiceHistory> = error("out of scope")
+
         override suspend fun fetchActiveDrives(): Result<List<RemoteDrive>> =
             Result.success(drives.values.filterNot { it.deleted })
 
