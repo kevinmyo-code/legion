@@ -1,6 +1,6 @@
 ---
 type: decision
-status: open
+status: built
 blocked_by: []
 map: backend-erp
 ---

@@ -17,7 +17,6 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/ai-craft/map\|ai-craft]] | [[03-durable-jobs\|03]] | task | Durable jobs: agent work that survives process death |
 | [[.scratch/ai-craft/map\|ai-craft]] | [[04-voice-latency\|04]] | grilling | Why the voice feels slower than it should: duplex, and 104 tools every turn |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[23-fleet-deferred-entities\|23]] | task | Deferred fleet entities onto the engine |
-| [[.scratch/backend-erp/map\|backend-erp]] | [[20-the-reminder-default-made-the-retraction-delete-appointments\|20]] | decision | 20-the-reminder-default-made-the-retraction-delete-appointments |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[21-the-engine-loses-its-reason-to-live\|21]] | decision | 21-the-engine-loses-its-reason-to-live |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[22-deterministic-parsing-comes-back-on-the-pc\|22]] | decision | 22-deterministic-parsing-comes-back-on-the-pc |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[23-the-second-household-account\|23]] | build | 23-the-second-household-account |
@@ -51,6 +50,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[16-fleet-service-history-is-not-a-configured-split\|16]] | decision | 16-fleet-service-history-is-not-a-configured-split |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[17-dates-is-engine-only\|17]] | decision | 17-dates-is-engine-only |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[18-the-generic-ui-still-runs-on-the-engine\|18]] | decision | 18-the-generic-ui-still-runs-on-the-engine |
+| [[.scratch/backend-erp/map\|backend-erp]] | [[20-the-reminder-default-made-the-retraction-delete-appointments\|20]] | decision | 20-the-reminder-default-made-the-retraction-delete-appointments |
 | [[.scratch/command-center/map\|command-center]] | [[02-settings-submenus\|02]] | build | Settings stops being one long wall |
 | [[.scratch/command-center/map\|command-center]] | [[03-body-writes-by-hand\|03]] | build | The Body tab learns to write |
 | [[.scratch/command-center/map\|command-center]] | [[04-media-panel\|04]] | build | Music gets buttons |
