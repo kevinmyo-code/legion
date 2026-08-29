@@ -1,6 +1,6 @@
 ---
 type: decision
-status: open
+status: closed
 blocked_by: []
 map: backend-erp
 ---
@@ -70,3 +70,27 @@ Three shapes, and this is Kevin's call:
 Nothing depends on this. It is the largest remaining simplification available and it should be taken
 when the PC surface exists and the phone's real shape is visible - deleting a home screen before its
 replacement is designed is how an app becomes unusable between two correct states.
+
+## WITHDRAWN 2026-08-28, same day. The premise is gone.
+
+Kevin: *"lets just keep the UI as is for now. classic home screen etc. just the voice called modals
+that bring to foreground we add."*
+
+**The phone is not losing its UI.** The widget pager, the generated screens, the Classic per-aspect
+surfaces and the tab bar all stay. Voice-called modals are additive - a faster route into a shell
+that keeps working exactly as it does now.
+
+This ticket existed entirely because ADR 0040's first draft said the phone was shedding browsing
+surfaces, which would have left `engine/` serving a feature with no user. That is no longer true, so
+**ticket 18's survivor clause holds unchanged and `engine/` stays** for the reason it always had:
+`create_aspect`, the generated list/detail/form screens and the widget pager are a shipped,
+still-wanted feature whose storage layer it is.
+
+**Nothing here needs deciding.** The two checks it listed are still worth doing if the question ever
+returns - whether `create_aspect` has ever actually been used, and what HOME becomes - but there is
+no question pending them today.
+
+**Worth keeping from the false alarm:** replacing a working shell to chase a cleaner architecture is
+how a month gets spent arriving back where it started. That UI was device-verified and corrected
+against real use over weeks. Adding a shortcut to it costs one feature; rebuilding it costs the
+weeks again.

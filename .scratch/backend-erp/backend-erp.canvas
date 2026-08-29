@@ -168,7 +168,7 @@
       "y": 2400,
       "width": 320,
       "height": 110,
-      "color": "1"
+      "color": "4"
     },
     {
       "id": "f29b46d595812e54",
@@ -186,6 +186,16 @@
       "file": ".scratch/backend-erp/issues/23-the-second-household-account.md",
       "x": 0,
       "y": 2700,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "6a33d15d53d1ee21",
+      "type": "file",
+      "file": ".scratch/backend-erp/issues/24-do-the-conversation-logs-reach-the-server.md",
+      "x": 0,
+      "y": 2850,
       "width": 320,
       "height": 110,
       "color": "1"

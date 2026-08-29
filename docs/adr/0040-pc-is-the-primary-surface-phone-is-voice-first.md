@@ -116,6 +116,42 @@ already owns all four, and adopting Django means teaching its ORM not to own a s
 create, plus a second auth story alongside RLS. Rejected in favour of the client talking to Postgres
 directly under RLS.
 
+## AMENDED 2026-08-28 (late): the phone's UI STAYS. Modals are additive.
+
+Kevin: *"lets just keep the UI as is for now. classic home screen etc. just the voice called modals
+that bring to foreground we add."*
+
+**Nothing is being removed from the phone.** The existing screens - the widget-pager dashboard, the
+per-aspect Classic screens, HOME/BIO/LOG/FLEET/CRED, the persistent Tap-to-talk row - all stay
+exactly as they are. Voice-called modals are a NEW capability layered on top, not a replacement for
+a UI being stripped out.
+
+This corrects the two places above where this ADR said the phone was shedding browsing surfaces and
+shrinking to voice plus modals. It is not. It is keeping everything it has and gaining a faster way
+to reach some of it.
+
+**What actually survives from the original decision**, because most of it does:
+
+- The **web app is still the general client** and still the right home for ingest, monitor and bulk
+  edit. That was never about taking screens off the phone; it was about not building them twice.
+- **Android is still the specialized client** for OBD, wake word, background audio and the voice
+  companion. That reason stands on its own.
+- **Capability still lives in the data layer.** Unchanged, and the reason for it is unchanged.
+
+**What is withdrawn:**
+
+- "The phone stops being a place to browse data" - **false, it stays exactly that.**
+- "Minimal UI" as a goal for the Android app - **withdrawn.** The UI is what it is and it works.
+- **Ticket 21's premise is gone.** It asked whether `engine/` loses its reason to live because the
+  phone was losing the generated screens and the widget pager. The phone is not losing them, so
+  ticket 18's survivor clause holds unchanged and the engine stays. See that ticket's own withdrawal.
+
+**Why this is the better call and not just a smaller one:** the UI on that phone was built,
+device-verified, and corrected against real use over weeks - the mission-control language, the
+colour semantics, the alarm tiers, five surfaces of panel inventory. Replacing a working shell to
+chase a cleaner idea is how a project spends a month arriving back where it started. Adding a
+shortcut to a working shell costs one feature.
+
 ## Consequences
 
 **The PC ingests through the SAME gate.** `commit_statement` is the one implementation, already
