@@ -51,11 +51,26 @@ Kevin's own framing agrees: everything runs from the Supabase backend.
 
 | # | Type | What |
 |---|---|---|
-| 01 | decision | One agenda source. Every renderer reads `DatesAgenda`; the four live Android fetches go |
+| 01 | **build** | **Cut Google entirely.** Ruled 2026-08-30; the binding order is verified satisfied |
 | 02 | decision | Ticking an appointment - the `kind` filter conflates alarm ownership with tickability |
 | 03 | build | The day in review: what I crossed off, what is left, what is tomorrow |
 | 04 | task | Delete the residue the audit found - dead ALERTS machinery and friends |
 | 05 | decision | `maintenance_items` has no anchored date axis, so "0 DUE" may mean nothing |
 
 **Order matters.** 01 is load-bearing and everything else is cheap after it. 02 is independent and
-can go first if Kevin wants ticking sooner. 03 needs both. 04 and 05 are free-standing.
+can go first if Kevin wants ticking sooner.
+
+## RULED 2026-08-30, and it made 01 simpler rather than harder
+
+Kevin: *"cut everything that was from google. everything CRUD to supabase."* That executes
+backend-erp ruling 5, which had been standing since 2026-08-25 and was waiting only on its binding
+order - widen the importer, verify, then cut.
+
+**Verified satisfied**: the widened importer ran on 2026-08-27 and the 261 imported rows carry
+`allDay` (261), `notes` (222), `location` (104) and the `LEGION::v1` `structuredMeta` blocks (5) -
+the class metadata that was the entire reason for waiting. The rows are complete and already on
+Supabase.
+
+So 01 stopped being "decide which of three calendar paths wins" and became "delete the two that lose".
+And the import-on-change lag question **dissolved** - it only existed in the demoted design that
+ruling 5 supersedes. There is nothing to import from. 03 needs both. 04 and 05 are free-standing.

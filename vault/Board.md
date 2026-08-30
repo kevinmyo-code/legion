@@ -38,7 +38,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/hardening/map\|hardening]] | [[06-kotlin-bump-and-compose-pin\|06]] | task | Build debt from backend-erp Phase 1: supabase-kt held back, Compose force-pinned |
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | [[11-saf-device-probe\|11]] | task | Run the 15-minute SAF probe on a real device |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[10-airnow-account\|10]] | task | Get the AirNow key, and the three facts behind its login |
-| [[.scratch/one-today/map\|one-today]] | [[01-one-agenda-source\|01]] | decision | 01-one-agenda-source |
+| [[.scratch/one-today/map\|one-today]] | [[01-one-agenda-source\|01]] | build | 01-one-agenda-source |
 | [[.scratch/one-today/map\|one-today]] | [[02-ticking-an-appointment\|02]] | decision | 02-ticking-an-appointment |
 | [[.scratch/one-today/map\|one-today]] | [[03-the-day-in-review\|03]] | build | 03-the-day-in-review |
 | [[.scratch/one-today/map\|one-today]] | [[04-delete-the-residue\|04]] | task | 04-delete-the-residue |
