@@ -1,0 +1,55 @@
+{
+  "nodes": [
+    {
+      "id": "65d6a859481f2b8b",
+      "type": "file",
+      "file": ".scratch/one-today/issues/01-one-agenda-source.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "02e529f71061863f",
+      "type": "file",
+      "file": ".scratch/one-today/issues/02-ticking-an-appointment.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "27ef204aa4505154",
+      "type": "file",
+      "file": ".scratch/one-today/issues/03-the-day-in-review.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "5a8b979325e6ccf9",
+      "type": "file",
+      "file": ".scratch/one-today/issues/04-delete-the-residue.md",
+      "x": 0,
+      "y": 450,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "1816ca1ff66731f6",
+      "type": "file",
+      "file": ".scratch/one-today/issues/05-maintenance-has-no-date-axis.md",
+      "x": 0,
+      "y": 600,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": []
+}
