@@ -7,7 +7,7 @@ status: open
 status-detail: ""
 blockers: ["05", "06", "07"]
 blocked-by: ["[[05-the-github-sync]]", "[[06-the-azure-devops-sync]]", "[[07-the-staleness-contract]]"]
-open-blockers: 2
+open-blockers: 1
 ready: false
 tags: [ticket]
 ---
