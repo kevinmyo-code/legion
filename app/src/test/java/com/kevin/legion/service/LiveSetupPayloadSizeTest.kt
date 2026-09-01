@@ -70,8 +70,24 @@ class LiveSetupPayloadSizeTest {
      * 66, not the 101 the ticket assumed: 101 is every `fn(name = ...)` in [LiveToolbox], which
      * includes the onboarding-only set and the tools the 2026-08-17 dispatcher split hid behind an
      * `ask_*` tool. [LiveToolbox.declarations] is what the setup message carries.
+     *
+     * **Raised to 21,000 on 2026-09-01 (Kevin). Measured that day: 84 declarations, 74,124 chars of
+     * tools JSON plus 7,879 chars of system instruction = 82,003 chars, ~20,500 estimated tokens.**
+     * Eighteen declarations and 17,245 chars of tools JSON more than the 2026-08-22 figure. The four
+     * voice-note tools (`start_voice_note`, `stop_voice_note`, `read_voice_note`,
+     * `list_voice_notes`) crossed the old ceiling. Their descriptions are long because three of
+     * them carry honesty caveats that are load-bearing rather than decorative - `stop_voice_note`
+     * must not let the model claim a note is transcribed when only the audio has been saved, and
+     * `read_voice_note` must not let a figure heard in a recording be repeated as confirmed fact
+     * (CLAUDE.md §7's outcome-verb rule and ADR 0041's "nothing numeric heard in a recording may be
+     * asserted as fact"). Trimming them to fit would have bought ~500 tokens by weakening exactly
+     * the sentences that keep the feature honest, so the ceiling moved instead.
+     *
+     * The headroom is now ~2% rather than ~23%, which is the real cost of this decision: the next
+     * tool addition trips this test. That is the intended behaviour, not a problem to pre-empt -
+     * re-measure and justify again, or trim, at that point.
      */
-    private val ceilingTokens = 20_000
+    private val ceilingTokens = 21_000
 
     @Test
     fun `the setup payload stays under its stated ceiling`() {
