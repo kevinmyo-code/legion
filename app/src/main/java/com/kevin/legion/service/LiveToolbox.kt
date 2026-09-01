@@ -102,8 +102,11 @@ import com.kevin.legion.vehicle.VinDecoder
 import org.json.JSONArray
 import org.json.JSONObject
 import com.kevin.legion.data.local.ProactiveRaiseRow
+import com.kevin.legion.data.local.VoiceNoteKind
 import com.kevin.legion.sitrep.SitrepBuilder
 import com.kevin.legion.sitrep.SitrepModule
+import com.kevin.legion.voice.VoiceNoteController
+import com.kevin.legion.voice.VoiceNoteStartResult
 
 /**
  * The function tools the Live session exposes to Gemini, plus their dispatch.
@@ -672,6 +675,73 @@ object LiveToolbox {
             description = "Show or hide the on-screen list of the user's saved places.",
             params = obj("visible" to schema("boolean", "True to show the list, false to hide it.")),
             required = listOf("visible"),
+        ))
+
+        // Voice notes (`.scratch/voice-notes/`, ADR 0041): a recording the user deliberately
+        // starts and stops. All four tools below call `voice/VoiceNoteController.kt` - the SAME
+        // controller `ui/voicenotes/VoiceNotesScreen.kt` calls (ADR 0035: one controller, not two
+        // implementations).
+        fns.put(fn(
+            name = "start_voice_note",
+            description = "Start recording a voice note - a meeting or a solo thought the user " +
+                "wants kept as audio, a transcript and a summary. Use for 'start recording', " +
+                "'take a voice note', 'record this meeting'. Refuses in words, with nothing " +
+                "started, if a voice note is already recording or the microphone is held by " +
+                "something higher priority (an active conversation). Starting this does NOT " +
+                "interrupt an ongoing conversation with the user and is itself refused if one is " +
+                "in progress - tell the user to finish talking first.",
+            params = obj(
+                "kind" to schema("string",
+                    "\"solo\" for a private thought, \"meeting\" for a conversation with other " +
+                        "people. Defaults to \"solo\" if not said.",
+                    enum = listOf("solo", "meeting")),
+                "title" to schema("string",
+                    "A short title for this recording, if the user gave one. Optional - a title " +
+                        "is generated from the content once it's transcribed if this is left out."),
+            ),
+            required = listOf(),
+        ))
+
+        fns.put(fn(
+            name = "stop_voice_note",
+            description = "Stop the currently-recording voice note. IMPORTANT: this only means " +
+                "the recording is saved and is now being transcribed in the background - " +
+                "transcription has NOT happened yet when this returns, so never say the note is " +
+                "ready, summarized, or that you can read it back yet. Tell the user it's saved and " +
+                "being transcribed; they can ask to hear it back in a bit with read_voice_note. If " +
+                "nothing was recording, say so plainly rather than claiming anything was stopped.",
+            params = obj(),
+            required = listOf(),
+        ))
+
+        fns.put(fn(
+            name = "read_voice_note",
+            description = "Read back a voice note's summary out loud. If the user names it " +
+                "(by title), finds the closest match; otherwise reads the most recent one. The " +
+                "summary is model-generated from the transcript, not a verbatim account - say so " +
+                "if the user asks how sure you are, and never state a number, date, name, or " +
+                "figure it contains as a confirmed fact, only as something that was said in the " +
+                "recording. If the recording was interrupted partway through, or transcription " +
+                "hasn't finished yet (no summary present), say so instead of inventing one.",
+            params = obj(
+                "title" to schema("string",
+                    "Which recording, by title or part of its title. Leave empty for the most " +
+                        "recent one."),
+            ),
+            required = listOf(),
+        ))
+
+        fns.put(fn(
+            name = "list_voice_notes",
+            description = "List recent voice notes - titles, when they were recorded, and whether " +
+                "each is solo or a meeting. Use for 'what recordings do I have', 'list my voice " +
+                "notes'. Read-only; use read_voice_note to hear one's summary.",
+            params = obj(
+                "limit" to schema("integer", "How many to list. Defaults to 10."),
+                "kind" to schema("string", "Only list this kind, if the user asked for one.",
+                    enum = listOf("solo", "meeting")),
+            ),
+            required = listOf(),
         ))
 
         fns.put(fn(
@@ -2386,6 +2456,10 @@ object LiveToolbox {
                 message = PlaceController.tagPlace(context, args.optString("label"))
             )
             "forget_place" -> result(success = true, message = PlaceController.forgetPlace(context, args.optString("label")))
+            "start_voice_note" -> startVoiceNote(context, args)
+            "stop_voice_note" -> stopVoiceNote(context)
+            "read_voice_note" -> readVoiceNote(context, args)
+            "list_voice_notes" -> listVoiceNotes(context, args)
             // set_odometer/log_service/log_past_service/set_maintenance_interval: success is now
             // DERIVED from the underlying write (ticket 05, "the no-op guard is law now"), never
             // hardcoded - VehicleController's *Direct functions return a WriteOutcome precisely so
@@ -2559,6 +2633,9 @@ object LiveToolbox {
         // new_constraint is given, the same reason "remember" is in this set above.
         // accept_goal_plan is a real write - the workout piece of an accepted plan.
         "generate_goal_plan", "accept_goal_plan",
+        // voice-notes ticket 04: start/stop each write a `voice_notes` row (insert, then update on
+        // stop) through VoiceNoteController - see that object's own class doc.
+        "start_voice_note", "stop_voice_note",
     )
 
     /**
@@ -6522,6 +6599,90 @@ object LiveToolbox {
             else
                 result(success = true, message = "Current location: ${readout.coords} (couldn't resolve an address)")
         }
+
+    // --------------------------------------------------------------- voice notes (ticket 04)
+
+    /** Both branches route through [VoiceNoteController.start] - the same call
+     * `ui/voicenotes/VoiceNotesScreen.kt`'s record button makes (ADR 0035). */
+    private suspend fun startVoiceNote(context: Context, args: JSONObject): JSONObject {
+        val kind = args.optString("kind", VoiceNoteKind.SOLO).lowercase().let {
+            if (it == "meeting") VoiceNoteKind.MEETING else VoiceNoteKind.SOLO
+        }
+        val title = args.optString("title", "").ifBlank { null }
+        return when (val started = VoiceNoteController.start(context, kind, title)) {
+            is VoiceNoteStartResult.Started ->
+                result(success = true, message = "Recording started.")
+            is VoiceNoteStartResult.Refused ->
+                result(success = false, message = started.reason)
+        }
+    }
+
+    /**
+     * The outcome-verb rule, load-bearing here (ticket 04's own words): [VoiceNoteController.stop]
+     * returns before transcription has even started, so this NEVER says the note is ready,
+     * summarized, or readable yet - only that it saved and is being transcribed. Same call
+     * `ui/voicenotes/VoiceNotesScreen.kt`'s stop button makes.
+     */
+    private suspend fun stopVoiceNote(context: Context): JSONObject =
+        when (VoiceNoteController.stop(context)) {
+            is VoiceNoteController.StopOutcome.Saved ->
+                result(success = true, message = "Recording saved and being transcribed now - ask " +
+                    "me to read it back in a bit.")
+            VoiceNoteController.StopOutcome.NothingRecording ->
+                result(success = false, message = "There's no voice note recording right now.")
+        }
+
+    /** [VoiceNoteController.findByTitleOrLatest] is the same lookup the hands-path detail screen's
+     * "open by title" search would use, though the screen more often just taps a row. Wording here
+     * always says whether the summary is model-derived, and whether the note is incomplete
+     * (interrupted, or still transcribing) - CLAUDE.md §4 rule 5 / ticket 04's derived-in-words
+     * rule, applied to speech. */
+    private suspend fun readVoiceNote(context: Context, args: JSONObject): JSONObject {
+        val titleQuery = args.optString("title", "").ifBlank { null }
+        val note = VoiceNoteController.findByTitleOrLatest(context, titleQuery)
+            ?: return result(
+                success = false,
+                message = if (titleQuery != null) "I couldn't find a voice note called \"$titleQuery\"."
+                else "There are no voice notes yet.",
+            )
+        val label = note.title ?: "Untitled recording"
+        val summary = note.summary
+        val sb = StringBuilder()
+        sb.append("\"$label\": ")
+        if (summary == null) {
+            sb.append("this one hasn't been transcribed yet - the audio is saved, try again shortly.")
+        } else {
+            sb.append("(AI-generated summary, not a verbatim account) ")
+            sb.append(summary)
+        }
+        if (note.interrupted) {
+            sb.append(" This recording was interrupted before it finished, so it may be incomplete.")
+        }
+        return result(success = true, message = sb.toString())
+    }
+
+    /** Read-only list, same rows [VoiceNoteController.listNotes] hands the hands-path screen. */
+    private suspend fun listVoiceNotes(context: Context, args: JSONObject): JSONObject {
+        val limit = args.optInt("limit", 10).coerceIn(1, 50)
+        val kindFilter = args.optString("kind", "").ifBlank { null }?.lowercase()?.let {
+            if (it == "meeting") VoiceNoteKind.MEETING else VoiceNoteKind.SOLO
+        }
+        val notes = VoiceNoteController.listNotes(context, limit = 200)
+            .let { if (kindFilter != null) it.filter { n -> n.kind == kindFilter } else it }
+            .take(limit)
+        if (notes.isEmpty()) return result(success = true, message = "No voice notes yet.")
+        val lines = notes.map { note ->
+            val label = note.title ?: "Untitled recording"
+            val kindWord = if (note.kind == VoiceNoteKind.MEETING) "meeting" else "solo"
+            val status = when {
+                note.interrupted -> "interrupted"
+                note.summary == null -> "still transcribing"
+                else -> "ready"
+            }
+            "$label ($kindWord, $status)"
+        }
+        return result(success = true, message = lines.joinToString("; "))
+    }
 
     /**
      * The single "do we have an actual live GPS fix, with NO fallback" gate (location-intelligence

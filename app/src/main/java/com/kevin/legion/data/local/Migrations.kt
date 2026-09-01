@@ -2022,3 +2022,43 @@ val MIGRATION_54_55 = object : Migration(54, 55) {
         db.execSQL("ALTER TABLE `build_entries` ADD COLUMN `serverId` TEXT DEFAULT NULL")
     }
 }
+
+/**
+ * v55 -> v56: `voice_notes` (`.scratch/voice-notes/issues/02-the-store.md`, "Notes came off the
+ * aspect engine on 2026-08-27, so this is a typed Room table plus a typed Supabase table - not a
+ * `RecordType` seeder, and not a new `kind` on `events`"). Brand-new table, same shape
+ * [MIGRATION_8_9] used for `sleep_targets`/`sleep_logs` - a plain `CREATE TABLE IF NOT EXISTS`,
+ * nothing else touched. See [VoiceNote]'s own doc comment for what each column means and the
+ * anchor-chain nullability contract (ADR 0041) it encodes.
+ *
+ * **No SQL-level `DEFAULT` on `provenance`/`interrupted`, even though [VoiceNote.provenance] and
+ * [VoiceNote.interrupted] both carry Kotlin default values.** A Kotlin constructor default does
+ * NOT become a SQL `DEFAULT` clause - only an explicit `@androidx.room.ColumnInfo(defaultValue =
+ * ...)` would - and this codebase has no such annotation on either column. Copied verbatim from
+ * `app/schemas/com.kevin.legion.data.local.CarDatabase/56.json`'s own `createSql` (a real kapt run
+ * against this entity, confirmed rather than assumed) precisely so this migration cannot silently
+ * diverge from what a fresh install actually creates - the exact class of bug CLAUDE.md §5 exists
+ * to prevent. Every ordinary write still gets `LLM_DERIVED`/`false` because
+ * [com.kevin.legion.voice.VoiceNoteRecorder] always constructs a full [VoiceNote] object and Room's
+ * generated `INSERT` binds every column explicitly; only a hand-written raw SQL `INSERT` that omits
+ * either column would now fail its `NOT NULL` constraint, which is correct - there is no
+ * "everyone forgot this column" fallback to fall back to.
+ */
+val MIGRATION_55_56 = object : Migration(55, 56) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `voice_notes` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`serverId` TEXT, " +
+                "`startedAt` INTEGER NOT NULL, " +
+                "`endedAt` INTEGER, " +
+                "`title` TEXT, " +
+                "`summary` TEXT, " +
+                "`transcript` TEXT, " +
+                "`audioPath` TEXT, " +
+                "`kind` TEXT NOT NULL, " +
+                "`provenance` TEXT NOT NULL, " +
+                "`interrupted` INTEGER NOT NULL)"
+        )
+    }
+}

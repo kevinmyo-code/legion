@@ -1,0 +1,74 @@
+{
+  "nodes": [
+    {
+      "id": "cc4f963b98bc50af",
+      "type": "file",
+      "file": ".scratch/voice-notes/issues/01-the-recorder-and-the-mic.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "16c2fd52fe8e92f6",
+      "type": "file",
+      "file": ".scratch/voice-notes/issues/02-the-store.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "46c37dcd1cbfb66a",
+      "type": "file",
+      "file": ".scratch/voice-notes/issues/03-transcribe-and-summarize.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "75468af9103db907",
+      "type": "file",
+      "file": ".scratch/voice-notes/issues/04-voice-tools-and-the-hands-path.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "25049aa08cfb8305",
+      "fromNode": "cc4f963b98bc50af",
+      "fromSide": "right",
+      "toNode": "46c37dcd1cbfb66a",
+      "toSide": "left"
+    },
+    {
+      "id": "5ae1833e50fe4103",
+      "fromNode": "cc4f963b98bc50af",
+      "fromSide": "right",
+      "toNode": "75468af9103db907",
+      "toSide": "left"
+    },
+    {
+      "id": "3cab43b61084bee6",
+      "fromNode": "16c2fd52fe8e92f6",
+      "fromSide": "right",
+      "toNode": "75468af9103db907",
+      "toSide": "left"
+    },
+    {
+      "id": "d5852db5914610c7",
+      "fromNode": "46c37dcd1cbfb66a",
+      "fromSide": "right",
+      "toNode": "75468af9103db907",
+      "toSide": "left"
+    }
+  ]
+}

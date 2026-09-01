@@ -38,6 +38,7 @@ import com.kevin.legion.vehicle.VehicleController
 import com.kevin.legion.vehicle.VehicleSpecController
 import com.kevin.legion.sync.SyncEngine
 import com.kevin.legion.util.Temp
+import com.kevin.legion.voice.VoiceNoteController
 import com.kevin.legion.weather.WeatherController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -139,6 +140,15 @@ class AriaForegroundService : Service() {
         // process cache before anything builds a session that needs it.
         GeminiKeyProvider.init(this)
         ProactivePreferences.init(this)
+
+        // voice-notes ticket 04: closes ticket 01's own flagged gap - "nothing calls
+        // [VoiceNoteRecorder.reconcileAfterProcessDeath] yet... wiring a call into app startup is
+        // left to whichever ticket first constructs a VoiceNoteRecorder in production." This is
+        // that call, once, before anything (a voice tool, the hands-path screen) reads a
+        // [com.kevin.legion.data.local.VoiceNote] for display - routed through
+        // [VoiceNoteController] so the sweep runs against the SAME shared recorder instance every
+        // start/stop call uses, rather than a second one with independent in-memory state.
+        serviceScope.launch { VoiceNoteController.reconcileAfterProcessDeath(this@AriaForegroundService) }
 
         // Own the Live session (driven by the Cruise screen's tap-to-talk).
         sessionController = LiveSessionController(this)

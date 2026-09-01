@@ -40,9 +40,20 @@ class AgentTool(
  * plumbing exists so a FUTURE caller that DOES have a real write-shaped signal (a dedicated
  * single-purpose write tool, or a dispatcher schema extended with an explicit intent argument the
  * model itself declares) can flip that gate on without touching [SubAgent] again.
+ *
+ * [Success.truncated] (voice-notes ticket 03) is true when the response's own `finishReason` came
+ * back `MAX_TOKENS` - the model ran out of output budget before it was done, which for
+ * [SubAgent.askTyped]'s structured-output callers means the JSON itself is very likely
+ * unterminated. Defaulted `false` so every existing `AgentResult.Success(text)` call site is
+ * unchanged; only [SubAgent.askTyped] ever sets it true. A caller ignoring this field behaves
+ * exactly as it did before the field existed - it is opt-in signal, not a new obligation.
  */
 sealed class AgentResult {
-    data class Success(val text: String, val mutatingToolsCalled: List<String> = emptyList()) : AgentResult()
+    data class Success(
+        val text: String,
+        val mutatingToolsCalled: List<String> = emptyList(),
+        val truncated: Boolean = false,
+    ) : AgentResult()
     object RateLimited : AgentResult()   // 429
     object KeyInvalid : AgentResult()    // 400+API_KEY_INVALID, 401, 403
     object Overloaded : AgentResult()    // 500, 503

@@ -23,6 +23,12 @@ import org.junit.Test
  *
  * Priority, settled by ticket 05 and not re-openable here:
  * `LIVE_TURN` > `RING_LISTENING` > `WAKE_WORD`.
+ *
+ * **Extended by voice-notes ticket 01** (`.scratch/voice-notes/issues/01-the-recorder-and-the-mic.md`)
+ * to insert `VOICE_NOTE` between `RING_LISTENING` and `WAKE_WORD`, with one named exception to
+ * plain ordinal ranking: `LIVE_TURN` and `VOICE_NOTE` never preempt each other. See
+ * [MicArbiter.outranks]'s own doc comment for why that pair cannot be expressed by reordering the
+ * enum, and this file's own "the one asymmetric pair" section below for the tests that pin it.
  */
 class MicArbiterTest {
 
@@ -55,17 +61,33 @@ class MicArbiterTest {
     // ------------------------------------------------------- every claimant vs every holder
 
     /**
-     * The exhaustive grid. Nine combinations, and the rule is one line: a request wins if it
-     * outranks the holder, or IS the holder.
+     * The exhaustive grid: every claimant against every possible holder. Sixteen combinations
+     * now that [MicArbiter.Claimant.VOICE_NOTE] exists. The expectation table is written out by
+     * hand here rather than derived from `Claimant.ordinal` - the whole point of this grid is to
+     * pin the LIVE_TURN/VOICE_NOTE exception independently of [MicArbiter]'s own `outranks`
+     * function, so a bug in that function cannot also be baked into the test that is supposed to
+     * catch it.
      */
     @Test
     fun `every claimant against every holder follows the settled priority`() {
+        val liveTurn = MicArbiter.Claimant.LIVE_TURN
+        val ringListening = MicArbiter.Claimant.RING_LISTENING
+        val voiceNote = MicArbiter.Claimant.VOICE_NOTE
+        val wakeWord = MicArbiter.Claimant.WAKE_WORD
+
         all.forEach { holder ->
             all.forEach { asker ->
                 releaseAll()
                 assertTrue(MicArbiter.request(holder))
 
-                val expected = asker.ordinal <= holder.ordinal
+                val expected = when {
+                    asker == holder -> true
+                    // The one pair that is not a plain ordinal comparison - ticket 01: "Yields to
+                    // LIVE_TURN? No", and the settled ticket-05 invariant "nothing preempts
+                    // LIVE_TURN" applied in the other direction.
+                    setOf(asker, holder) == setOf(liveTurn, voiceNote) -> false
+                    else -> asker.ordinal <= holder.ordinal
+                }
                 val actual = MicArbiter.request(asker)
 
                 assertEquals(
@@ -76,10 +98,35 @@ class MicArbiterTest {
                 assertEquals(if (expected) asker else holder, MicArbiter.current())
             }
         }
+
+        // Named individually too, so a failure here reads as "the VOICE_NOTE rule broke" rather
+        // than requiring a reader to decode the table above.
+        releaseAll()
+        MicArbiter.request(voiceNote)
+        assertFalse("a recording in progress must refuse an incoming LIVE_TURN request",
+            MicArbiter.request(liveTurn))
+
+        releaseAll()
+        MicArbiter.request(liveTurn)
+        assertFalse("nothing preempts a sitting LIVE_TURN, VOICE_NOTE included",
+            MicArbiter.request(voiceNote))
+
+        releaseAll()
+        MicArbiter.request(wakeWord)
+        assertTrue("VOICE_NOTE preempts WAKE_WORD - ticket 01: \"Preempts WAKE_WORD? Yes\"",
+            MicArbiter.request(voiceNote))
+
+        releaseAll()
+        MicArbiter.request(voiceNote)
+        assertTrue("a call arriving stops the recording - RING_LISTENING preempts VOICE_NOTE",
+            MicArbiter.request(ringListening))
     }
 
     @Test
-    fun `a live turn preempts both of the others`() {
+    fun `a live turn preempts ring listening and the wake word, but not a voice note`() {
+        // Renamed from "...preempts both of the others" now that VOICE_NOTE exists as a third
+        // "other" and is the one deliberate exception - see the exhaustive grid test above for
+        // that case pinned on its own.
         MicArbiter.request(MicArbiter.Claimant.WAKE_WORD)
         assertTrue(MicArbiter.request(MicArbiter.Claimant.LIVE_TURN))
         assertEquals(MicArbiter.Claimant.LIVE_TURN, MicArbiter.current())
@@ -174,11 +221,14 @@ class MicArbiterTest {
 
     @Test
     fun `priority order is the settled one, in declaration order`() {
-        // ordinal doubles as priority, so a reorder silently changes behaviour everywhere.
+        // ordinal doubles as priority for every pair except LIVE_TURN/VOICE_NOTE (see MicArbiter's
+        // own `outranks` doc comment), so a reorder still silently changes behaviour everywhere
+        // else.
         assertEquals(
             listOf(
                 MicArbiter.Claimant.LIVE_TURN,
                 MicArbiter.Claimant.RING_LISTENING,
+                MicArbiter.Claimant.VOICE_NOTE,
                 MicArbiter.Claimant.WAKE_WORD,
             ),
             all,

@@ -311,8 +311,9 @@ import androidx.room.RoomDatabase
         Event::class, EventSkip::class,
         VehicleReplica::class, ServiceHistoryReplica::class,
         VehicleSidecar::class,
+        VoiceNote::class,
     ],
-    version = 55,
+    version = 56,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -415,6 +416,10 @@ abstract class CarDatabase : RoomDatabase() {
      * class doc for what it carries and why it exists alongside [vehicleReplicaDao]. */
     abstract fun vehicleSidecarDao(): VehicleSidecarDao
 
+    /** The voice-notes local store (v56, `.scratch/voice-notes/issues/02-the-store.md`) - see
+     * [VoiceNote]'s own doc comment. */
+    abstract fun voiceNoteDao(): VoiceNoteDao
+
     companion object {
         @Volatile
         private var INSTANCE: CarDatabase? = null
@@ -445,7 +450,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 55
+        const val SCHEMA_VERSION = 56
         // 2026-08-28: bumped 47 -> 49, and this one was NOT a same-edit bump - it was a REPAIR.
         // Versions 48 and 49 (tickets 17 and 18) each moved `@Database(version=)` and left this
         // constant behind, and the doc comment above was wrong about the consequence. It says a
@@ -544,7 +549,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46,
                         MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50,
                         MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53, MIGRATION_53_54,
-                        MIGRATION_54_55,
+                        MIGRATION_54_55, MIGRATION_55_56,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

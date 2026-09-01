@@ -4989,3 +4989,28 @@ request returns HTTP 200 with `Retry-After`**, not an error status; and **WIQL s
 disable PAT creation outright, and the org Usage page shows an admin the IP and URI of every REST
 call even though work-item reads are not audited.
 
+
+## 2026-09-01 - the Gemini key is a paid key, so the training exposure needs no code
+
+Research for voice notes established that on a **free-tier** Gemini key Google *"uses the content you
+submit to the Services and any generated responses to provide, improve, and develop Google products
+and services"*, that *"human reviewers may read, annotate, and process your API input and output"*,
+and that Google's own instruction is *"you will not submit sensitive, confidential, or personal
+information to the Unpaid Services."* A key is Paid only through a Cloud project with active
+billing. **There is no documented API field exposing which tier a key is on**, so the app cannot
+detect it and cannot warn conditionally.
+
+Put to Kevin as a fork - a one-time disclosure screen, a line in the voice guide, or nothing. He
+answered that the premise does not apply: *"its a paid key. it will always be a paid key."* **No
+disclosure screen, no tier detection, no code.**
+
+**The residual, recorded rather than built for:** a stranger who clones LEGION and pastes a free AI
+Studio key would record a room into a training corpus without being told. That sits against
+clone-and-run, it is documented in `.scratch/voice-notes/research/gemini-audio-upload.md`, and it is
+not being solved. Noted here so it is a known position rather than an oversight discovered later.
+
+Other facts fixed by the same pass, now in ticket 03 so nobody re-derives them: `gemini-3.7-flash`,
+Files API resumable upload with the session URL in the `x-goog-upload-url` **response header**,
+`audio/m4a` accepted and `audio/mp4` NOT on Google's list, 48-hour server-side file retention with an
+explicit delete, 32 tokens per second of audio, roughly $0.13 per recorded hour as a floor, and a
+65,536-token output cap that a three-hour recording will exceed.
