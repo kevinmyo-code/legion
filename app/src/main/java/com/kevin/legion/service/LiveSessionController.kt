@@ -906,6 +906,40 @@ class LiveSessionController(context: Context) {
                                 openVoiceModal()
                                 JSONObject().put("success", true)
                             }
+                            // A generated view (`.scratch/one-today/issues/06-*.md`) - the one
+                            // tool in this `when` that actually computes something before it can
+                            // answer, because "runs a real query and never renders a model value"
+                            // has to happen SOMEWHERE, and every other branch here is a pure
+                            // session-scoped side effect with nothing to validate first. Parse ->
+                            // run -> show, in that order; a parse or run failure never calls
+                            // GeneratedViewController.show at all, so the screen only ever paints
+                            // a genuinely-run answer, never a placeholder for one that failed.
+                            "show_generated_view" -> {
+                                when (val parsed = parseGeneratedViewSpec(
+                                    shape = call.args.optString("shape"),
+                                    source = call.args.optString("source"),
+                                    aggregation = call.args.optString("aggregation"),
+                                    window = call.args.optString("window"),
+                                    grouping = call.args.optString("grouping"),
+                                    title = call.args.optString("title"),
+                                )) {
+                                    is GeneratedViewSpecParse.Invalid -> {
+                                        JSONObject().put("success", false).put("message", parsed.reason)
+                                    }
+                                    is GeneratedViewSpecParse.Valid -> {
+                                        when (val run = GeneratedViewQueryRunner.run(appContext, parsed.spec)) {
+                                            is GeneratedViewQueryRunner.RunResult.Refusal -> {
+                                                JSONObject().put("success", false).put("message", run.reason)
+                                            }
+                                            is GeneratedViewQueryRunner.RunResult.Rendered -> {
+                                                GeneratedViewController.show(run.payload)
+                                                openVoiceModal()
+                                                JSONObject().put("success", true)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             // Ticket 21 (google-account-integration): s.readThroughToolTouchedThisTurn()
                             // is what `remember`'s dispatch branch gates on - see that accessor's doc
                             // for why the flag is read here, off the live session, rather than dispatch

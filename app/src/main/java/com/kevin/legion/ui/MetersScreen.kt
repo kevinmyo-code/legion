@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -30,6 +31,14 @@ import com.kevin.legion.meals.MealController
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.plan.TrustTier
+import com.kevin.legion.service.GeneratedViewController
+import com.kevin.legion.service.GeneratedViewQueryRunner
+import com.kevin.legion.service.GeneratedViewQuerySpec
+import com.kevin.legion.service.GeneratedViewShape
+import com.kevin.legion.service.QueryAggregation
+import com.kevin.legion.service.QueryGrouping
+import com.kevin.legion.service.QuerySource
+import com.kevin.legion.service.QueryWindow
 import com.kevin.legion.ui.common.DeckMeter
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRow
@@ -43,6 +52,7 @@ import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.vehicle.FleetEngineStore
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
+import kotlinx.coroutines.launch
 import java.time.YearMonth
 
 /**
@@ -154,6 +164,20 @@ fun MetersContent(
 ) {
     val sem = LocalLegionSemantics.current
     val connectionState by ObdBluetoothManager.connectionState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // ---------------------------------------------------------- ASK (generated views, ADR 0035)
+    // The hands path to `show_generated_view` (`.scratch/one-today/issues/06-*.md`): the SAME
+    // GeneratedViewQueryRunner/GeneratedViewController a voice call uses, never a second
+    // implementation, and picked from the identical closed enums the voice tool validates against
+    // - there is no free-text field here either.
+    var askShape by remember { mutableStateOf(GeneratedViewShape.TOTAL_WITH_ROWS) }
+    var askSource by remember { mutableStateOf(QuerySource.LEDGER) }
+    var askAggregation by remember { mutableStateOf(QueryAggregation.SUM) }
+    var askWindow by remember { mutableStateOf(QueryWindow.THIS_MONTH) }
+    var askGrouping by remember { mutableStateOf(QueryGrouping.NONE) }
+    var askRefusal by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Text(
@@ -340,7 +364,69 @@ fun MetersContent(
                 modifier = Modifier.clickable(onClick = onOpenPantry),
             )
         }
+
+        // ---------------------------------------------------------------- ASK
+        // Every field here is a tap-to-cycle picker over the SAME closed enum
+        // `show_generated_view`'s voice tool validates against - never a free-text query, so this
+        // hand path cannot express anything the voice path could not also be asked to build.
+        DeckPane(header = "Ask", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+            DeckRow(
+                label = "Shape",
+                value = askShape.name,
+                modifier = Modifier.clickable { askShape = cycle(askShape) },
+            )
+            DeckRow(
+                label = "Source",
+                value = askSource.name,
+                modifier = Modifier.clickable { askSource = cycle(askSource) },
+            )
+            DeckRow(
+                label = "Aggregation",
+                value = askAggregation.name,
+                modifier = Modifier.clickable { askAggregation = cycle(askAggregation) },
+            )
+            DeckRow(
+                label = "Window",
+                value = askWindow.name,
+                modifier = Modifier.clickable { askWindow = cycle(askWindow) },
+            )
+            DeckRow(
+                label = "Grouping",
+                value = askGrouping.name,
+                modifier = Modifier.clickable { askGrouping = cycle(askGrouping) },
+            )
+            DeckRow(
+                label = "Run",
+                value = askRefusal ?: "tap to build",
+                modifier = Modifier.clickable {
+                    val spec = GeneratedViewQuerySpec(
+                        shape = askShape,
+                        source = askSource,
+                        aggregation = askAggregation,
+                        window = askWindow,
+                        grouping = askGrouping,
+                        title = "${askSource.name} - ${askShape.name}",
+                    )
+                    scope.launch {
+                        when (val run = GeneratedViewQueryRunner.run(context, spec)) {
+                            is GeneratedViewQueryRunner.RunResult.Refusal -> askRefusal = run.reason
+                            is GeneratedViewQueryRunner.RunResult.Rendered -> {
+                                askRefusal = null
+                                GeneratedViewController.show(run.payload)
+                            }
+                        }
+                    }
+                },
+            )
+        }
     }
+}
+
+/** Cycles [current] to the next member of its own enum, wrapping - the tap-to-cycle picker every
+ * [DeckRow] in the ASK pane above uses, so choosing a value never opens a second surface. */
+private inline fun <reified T : Enum<T>> cycle(current: T): T {
+    val values = enumValues<T>()
+    return values[(current.ordinal + 1) % values.size]
 }
 
 // ------------------------------------------------------------- Needs-you breach detection (new)

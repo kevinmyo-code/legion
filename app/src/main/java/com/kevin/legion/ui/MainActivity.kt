@@ -790,6 +790,11 @@ private fun LegionShell(
         // VoiceModalController's own doc for why one auto-dismiss policy cannot serve both an
         // ambient glance card and an interactive modal.
         VoiceModalHost()
+
+        // Generated views (`.scratch/one-today/issues/06-a-generated-view-for-niche-questions.md`)
+        // - a third SIBLING beside the two above, for the same reason: its own dismiss policy
+        // (explicit only, no timer - see GeneratedViewController's own doc comment).
+        GeneratedViewHost()
     }
 }
 

@@ -73,6 +73,7 @@ COPY = {
     "show_agenda_modal": ("Show me my agenda", "Pops up today's due items - reminders, appointments, anything dated today - without leaving where you are.", "Notes tab, tap a day on the calendar and choose Show in list."),
     "show_list_modal": ("Show me my list", "Pops up your whole list on screen without leaving where you are.", "Notes tab, the main list."),
     "show_groceries_modal": ("Show me the shopping list", "Pops up the current grocery trip on screen without leaving where you are.", "Notes tab, Grocery mode."),
+    "show_generated_view": ("Show me my grocery spend by month", "Builds a one-off chart or total for a niche money question no screen already covers. It only ever picks what to look up - every number on screen comes from your own real data, never from a guess.", "Meters tab, the Ask section - pick source, aggregation, window and grouping by tapping."),
 
     # --- The cars ---
     "get_codes": ("Any trouble codes?", "Reads fault codes stored in the car right now.", "Fleet tab, trouble-code panel."),
@@ -202,7 +203,7 @@ COPY = {
 
 GROUPS = {
     "Getting started": ["get_sitrep", "get_current_time", "get_current_location", "area_info", "get_reported_crime_history", "show_app", "finish_intro", "end_conversation"],
-    "Your day": ["manage_item", "read_list", "set_reminder", "read_calendar", "tag_place", "forget_place", "show_saved_places", "open_navigation", "show_agenda_modal", "show_list_modal", "show_groceries_modal"],
+    "Your day": ["manage_item", "read_list", "set_reminder", "read_calendar", "tag_place", "forget_place", "show_saved_places", "open_navigation", "show_agenda_modal", "show_list_modal", "show_groceries_modal", "show_generated_view"],
     "The cars": ["get_codes", "diagnose_codes", "clear_codes", "get_code_history", "triage_symptom", "check_readiness", "check_cold_start", "get_vehicle_data", "read_vehicle_sensor", "get_health", "get_mpg", "get_trend", "get_specs", "lookup_vin", "check_recalls", "get_next_service", "ask_maintenance", "log_service", "log_past_service", "set_maintenance_interval", "set_odometer", "log_build_entry", "list_build_history", "register_car", "register_vehicle", "manage_vehicle", "list_vehicles", "ask_fleet"],
     "Driving": ["activate_garage", "control_volume"],
     "Money": ["get_balance", "get_spend", "get_monthly_spend", "list_recent_transactions", "categorize_transactions", "set_category", "set_budget", "list_budget_categories", "log_pending_transaction", "list_pending_transactions", "clear_pending_transaction"],

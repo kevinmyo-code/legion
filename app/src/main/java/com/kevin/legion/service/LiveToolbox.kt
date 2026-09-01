@@ -1373,6 +1373,27 @@ object LiveToolbox {
             required = listOf(),
         ))
 
+        // A generated view (`.scratch/one-today/issues/06-*.md`) - a one-off chart for a niche
+        // money question no screen was built for. You choose the SHAPE and the QUERY only; the app
+        // runs it and fills in every number. Never state a figure yourself when this fires.
+        fns.put(fn(
+            name = "show_generated_view",
+            description = "Build a one-off chart/total for a niche spend question no screen " +
+                "already answers, e.g. 'grocery spend by month' or 'ledger total this year'. You " +
+                "pick shape/source/aggregation/window/grouping from the given options only - the " +
+                "app runs the real query and supplies every number, you never state one. If the " +
+                "question doesn't fit these options, say you can't build that rather than guessing.",
+            params = obj(
+                "shape" to schema("string", "How it renders.", enum = listOf("BAR_SERIES", "LINE_SERIES", "TOTAL_WITH_ROWS")),
+                "source" to schema("string", "What it reads.", enum = listOf("LEDGER", "PANTRY")),
+                "aggregation" to schema("string", "SUM for money, COUNT for how many.", enum = listOf("SUM", "COUNT")),
+                "window" to schema("string", "How far back.", enum = listOf("THIS_MONTH", "LAST_3_MONTHS", "LAST_6_MONTHS", "LAST_12_MONTHS", "THIS_YEAR")),
+                "grouping" to schema("string", "NONE for one figure, else BY_MONTH or BY_CATEGORY.", enum = listOf("NONE", "BY_MONTH", "BY_CATEGORY")),
+                "title" to schema("string", "Short label for the view, e.g. 'Grocery spend, last 3 months'."),
+            ),
+            required = listOf("shape", "source", "aggregation", "window", "grouping", "title"),
+        ))
+
         fns.put(fn(
             name = "recall_memory",
             description = "Search your long-term memory of past conversations and trips with the " +
@@ -2587,6 +2608,7 @@ object LiveToolbox {
             "show_agenda_modal" -> null // caller shows the voice-called modal and replies
             "show_list_modal" -> null // caller shows the voice-called modal and replies
             "show_groceries_modal" -> null // caller shows the voice-called modal and replies
+            "show_generated_view" -> null // caller validates the spec, runs it, and replies
             else -> result(success = false, message = "Unknown tool: $name")
         }
     }

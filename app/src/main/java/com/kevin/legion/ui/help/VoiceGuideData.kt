@@ -63,6 +63,7 @@ object VoiceGuideData {
                 Entry(name = "show_agenda_modal", say = "Show me my agenda", does = "Pops up today's due items - reminders, appointments, anything dated today - without leaving where you are.", hands = "Notes tab, tap a day on the calendar and choose Show in list."),
                 Entry(name = "show_list_modal", say = "Show me my list", does = "Pops up your whole list on screen without leaving where you are.", hands = "Notes tab, the main list."),
                 Entry(name = "show_groceries_modal", say = "Show me the shopping list", does = "Pops up the current grocery trip on screen without leaving where you are.", hands = "Notes tab, Grocery mode."),
+                Entry(name = "show_generated_view", say = "Show me my grocery spend by month", does = "Builds a one-off chart or total for a niche money question no screen already covers. It only ever picks what to look up - every number on screen comes from your own real data, never from a guess.", hands = "Meters tab, the Ask section - pick source, aggregation, window and grouping by tapping."),
             ),
         ),
         Group(
@@ -245,6 +246,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 119 as of the last regeneration. */
-    val TOOL_COUNT: Int = 119
+    /** Total entries across every group above - 120 as of the last regeneration. */
+    val TOOL_COUNT: Int = 120
 }
