@@ -24,12 +24,15 @@ import org.junit.Test
  */
 class MetersScreenTest {
 
-    private fun budgetFixture(lines: List<BudgetLine>): BudgetVsActual =
+    private fun budgetFixture(
+        lines: List<BudgetLine>,
+        uncategorized: UncategorizedSpend = UncategorizedSpend(spentCents = 0L, hasProvisionalRows = false),
+    ): BudgetVsActual =
         BudgetVsActual(
             entity = LedgerEntity.US,
             month = YearMonth.of(2026, 8),
             lines = lines,
-            uncategorized = UncategorizedSpend(spentCents = 0L, hasProvisionalRows = false),
+            uncategorized = uncategorized,
             coverage = listOf(AccountCoverage("7823", coversWholeMonth = true, coveredFromMs = 0L, coveredToMs = 1L, coveredThroughMs = 1L)),
             excludedOwnAccountMovements = ExcludedOwnAccountMovements(0, 0L, emptyList()),
         )
@@ -192,5 +195,26 @@ class MetersScreenTest {
         )
         val breaches = buildMeterBreaches(budgetFixture(listOf(groceries, dining)), listOf(dueRow(overdue = true)))
         assertEquals(listOf("Money", "Groceries", "Maintenance"), breaches.map { it.label })
+    }
+
+    // ---------------------------------------------------------------- uncategorised-excluded disclosure (restored)
+
+    @Test
+    fun `a month with uncategorised spend produces the exclusion sentence`() {
+        val budget = budgetFixture(
+            lines = emptyList(),
+            uncategorized = UncategorizedSpend(spentCents = 4_250L, hasProvisionalRows = false),
+        )
+        val sentence = moneyUncategorizedSentence(budget)
+        assertTrue(sentence != null && sentence.contains("not assigned to a category") && sentence.contains("NOT counted in spend"))
+    }
+
+    @Test
+    fun `a month with nothing uncategorised produces no sentence at all, not a zero restatement`() {
+        val budget = budgetFixture(
+            lines = emptyList(),
+            uncategorized = UncategorizedSpend(spentCents = 0L, hasProvisionalRows = false),
+        )
+        assertEquals(null, moneyUncategorizedSentence(budget))
     }
 }

@@ -29,11 +29,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.grocery.GroceryController
+import com.kevin.legion.ledger.AccountBalance
 import com.kevin.legion.ledger.BudgetLine
 import com.kevin.legion.ledger.BudgetVsActual
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ledger.LedgerEntity
+import com.kevin.legion.ledger.LedgerNominatedAccountPreferences
 import com.kevin.legion.ledger.formatMoney
+import com.kevin.legion.ledger.groupAccountBalances
+import com.kevin.legion.ledger.uncategorizedExcludedSentence
 import com.kevin.legion.meals.DailyMealGap
 import com.kevin.legion.meals.MealController
 import com.kevin.legion.meals.dayStartEpoch
@@ -133,6 +137,14 @@ fun MetersScreen(
         // LedgerScreen's own budget section and TodayScreen's CRED tile both read.
         val budget = LedgerController.budgetVsActual(context, LedgerEntity.US, YearMonth.now())
 
+        // The nominated account's own balance (restored here 2026-09-01, ticket: a trust
+        // disclosure dropped in the calendar-home cutover) - same pair of reads TodayScreen's own
+        // CRED tile made before it was deleted (`LedgerController.accountBalances` +
+        // `LedgerNominatedAccountPreferences`'s live StateFlow, read once here to match this
+        // screen's one-shot LaunchedEffect convention).
+        val ledgerBalances = LedgerController.accountBalances(context)
+        val nominatedAccountId = LedgerNominatedAccountPreferences.nominatedAccountId.value
+
         // MAINTENANCE: the active vehicle's schedule, same rows FleetScreen's own DUE block and
         // TodayScreen's FLEET tile build from.
         val vehicle = VehicleController.currentVehicle(context)
@@ -162,6 +174,8 @@ fun MetersScreen(
             mealGap = mealGap,
             hasMealTarget = mealTarget != null,
             budget = budget,
+            ledgerBalances = ledgerBalances,
+            nominatedAccountId = nominatedAccountId,
             maintenanceRows = maintenanceRows,
             maintenanceUnknownCount = maintenanceUnknownCount,
             persistentOpenCount = persistentOpenCount,
@@ -183,6 +197,11 @@ data class MetersUiState(
     val mealGap: DailyMealGap = DailyMealGap.NotLogged,
     val hasMealTarget: Boolean = false,
     val budget: BudgetVsActual? = null,
+    /** Restored 2026-09-01 (TodayScreen's CRED tile made this same pair of reads before it was
+     * deleted) - feeds [buildCredBalanceLine] via [groupAccountBalances], same "grouping is a
+     * render-site concern" discipline that function's own doc comment states. */
+    val ledgerBalances: List<AccountBalance> = emptyList(),
+    val nominatedAccountId: String? = null,
     val maintenanceRows: List<DueRowView> = emptyList(),
     val maintenanceUnknownCount: Int = 0,
     val persistentOpenCount: Int = 0,
@@ -320,6 +339,55 @@ fun MetersContent(
                         fraction = spentCents.toFloat() / targetCents.toFloat(),
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
                     )
+                }
+
+                // The uncategorised-excluded disclosure (CLAUDE.md §4 rule 5, D11 in
+                // ledger/LedgerBudget.kt: "every surface that states a spend figure states this
+                // bucket next to it, in words"), restored 2026-09-01 - it rode on TodayScreen's
+                // CRED tile and was dropped, silently, in the calendar-home cutover to this pane.
+                // See [moneyUncategorizedSentence]'s own doc comment for why the absent-at-zero
+                // gate lives there, in a plain-JUnit-testable function, rather than inline here.
+                moneyUncategorizedSentence(budget)?.let { sentence ->
+                    Text(
+                        sentence,
+                        style = LegionType.stamp,
+                        color = sem.estimated,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                    )
+                }
+
+                // The nominated account's own balance (buildCredBalanceLine, restored 2026-09-01 -
+                // see MetersUiState.ledgerBalances' own doc comment). Rendered only when a nomination
+                // exists at all: with none, TodayScreen's own tile used to nudge "set one in Money",
+                // and on this sparser pane that nudge is dropped at THIS call site (never inside the
+                // builder) rather than repeated - Money's own screen already owns first-time setup.
+                // Once nominated, every branch the builder returns is shown, including its own
+                // advisories (renamed/purged account, no balance ever printed) - those are exactly
+                // the "state a gap in words rather than a blank" case CLAUDE.md §4 rule 7 requires.
+                if (!state.nominatedAccountId.isNullOrBlank()) {
+                    val balanceLine = buildCredBalanceLine(groupAccountBalances(state.ledgerBalances), state.nominatedAccountId)
+                    if (balanceLine.isAdvisory) {
+                        Text(
+                            balanceLine.primary,
+                            style = LegionType.stamp,
+                            color = sem.estimated,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                        )
+                        if (balanceLine.secondary != null) {
+                            Text(
+                                balanceLine.secondary,
+                                style = LegionType.stamp,
+                                color = sem.faint,
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                            )
+                        }
+                    } else {
+                        // Only branch where isAdvisory is false: a real balance, so [secondary] is
+                        // always "in <label> account" here (see buildCredBalanceLine's own final
+                        // return) - primary is the amount, matching every other DeckRow on this
+                        // pane's label/value order (a description, then the figure).
+                        DeckRow(label = balanceLine.secondary ?: "balance", value = balanceLine.primary, modifier = Modifier.clickable(onClick = onOpenMoney))
+                    }
                 }
 
                 // GROCERIES - one category line inside the same BudgetVsActual, seeded in
@@ -570,6 +638,26 @@ fun groceriesHeroValue(line: BudgetLine, currency: LedgerCurrency): String =
 private inline fun <reified T : Enum<T>> cycle(current: T): T {
     val values = enumValues<T>()
     return values[(current.ordinal + 1) % values.size]
+}
+
+/**
+ * The Money pane's uncategorised-exclusion caveat, `null` exactly when there is nothing to
+ * disclose - restored 2026-09-01 (this sentence rode on `TodayScreen`'s CRED tile and was dropped,
+ * silently, in the calendar-home cutover to this pane).
+ *
+ * **Deliberately NOT a passthrough of [uncategorizedExcludedSentence]** - that builder is
+ * empty-safe by its own design (it always returns a sentence, wording the zero case as "Nothing
+ * uncategorised this month..." rather than returning nothing), which is correct for a surface with
+ * room for a permanent caveat line but would be furniture on a pane this sparse: a sentence that
+ * reads the same whether there is something to disclose or not is not a disclosure, CLAUDE.md's
+ * standing "a disclosure is never furniture" rule. So the gate is here, at the call site, extracted
+ * into its own plain-JUnit-testable function rather than left inline in the composable - and it is
+ * a gate, never a second reading of the figure: the non-zero branch still asks
+ * [uncategorizedExcludedSentence] for the words, once.
+ */
+fun moneyUncategorizedSentence(budget: BudgetVsActual): String? {
+    if (budget.uncategorized.spentCents == 0L) return null
+    return uncategorizedExcludedSentence(budget.uncategorized, budget.entity.currency)
 }
 
 // ------------------------------------------------------------- Needs-you breach detection (new)

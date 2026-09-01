@@ -330,12 +330,27 @@ fun compactMoneyHero(cents: Long, currency: LedgerCurrency): String {
  * it. The now-deleted `ui/TodayScreen.kt`'s CRED tile used to render
  * [com.kevin.legion.ledger.uncategorizedExcludedSentence] in the tile's own `extra` slot for this
  * reason; [com.kevin.legion.ui.LedgerScreen]'s full-width SPEND pane still states it under the
- * chart. **[com.kevin.legion.ui.MetersScreen]'s own Money pane, which replaced the half-tile as
- * this app's compact CRED reading (calendar-home cutover, 2026-08-31, before this screen was
- * deleted), does not currently restate the exclusion anywhere** - noted while rehoming
- * `TodayScreen`'s other survivors (one-today ticket 07), not fixed here: this ticket's scope is the
- * six things that lived ONLY on `TodayScreen`, and this exclusion sentence was already absent from
- * its replacement before that ticket started.
+ * chart.
+ *
+ * **CORRECTED 2026-09-01 - the paragraph below was wrong about a gap that had actually already
+ * been closed once, then reopened.** It claimed MetersScreen's Money pane "does not currently
+ * restate the exclusion anywhere". That was true of the code, but incomplete about why: Kevin
+ * removed this exact sentence from the HALF-tile itself on 2026-08-18 ("2 figures, 2 subtitles...
+ * thats it"), on the reasoning that the tile had no room and the full disclosure still lived on
+ * `LedgerScreen`. It never came back before the tile was deleted. **[MetersScreen]'s own Money pane
+ * now states it** (restored 2026-09-01): unlike the half-tile, this pane already carries a target
+ * subtitle and a meter for the Groceries line below it, so the space constraint that justified
+ * Kevin's 2026-08-18 removal does not hold here, and D11's standing rule - every surface that
+ * states a spend figure states this bucket next to it, in words - applies again. The sentence is
+ * absent entirely in a month with nothing uncategorised, never a zero-cents restatement (see
+ * `MetersScreen`'s own call site for why that gate lives there and not inside the builder).
+ *
+ * ~~**[com.kevin.legion.ui.MetersScreen]'s own Money pane, which replaced the half-tile as this
+ * app's compact CRED reading (calendar-home cutover, 2026-08-31, before this screen was deleted),
+ * does not currently restate the exclusion anywhere** - noted while rehoming `TodayScreen`'s other
+ * survivors (one-today ticket 07), not fixed here: this ticket's scope is the six things that lived
+ * ONLY on `TodayScreen`, and this exclusion sentence was already absent from its replacement before
+ * that ticket started.~~
  *
  * **The incomplete-month caption is a DATE, not a warning (2026-08-18, Kevin).** It used to read
  * `COVERAGE GAP` for any `!budget.isComplete` month - true, but not what he was asking. He already
