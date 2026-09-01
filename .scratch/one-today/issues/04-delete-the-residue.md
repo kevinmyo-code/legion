@@ -1,8 +1,15 @@
 ---
+map: one-today
+ticket: "04"
+title: "Delete what the audit found dead in the day-to-day area"
 type: task
 status: open
-blocked_by: []
-map: one-today
+status-detail: "Untouched. Note: five more files carrying stale prose references to ui/TodayScreen.kt were found when that screen was deleted 2026-09-01 (a02e9ab) - CredDigestBuilder, CarAspectSummaries, LiveToolbox, SitrepModule, parts of ui/notes. Fold them into this sweep."
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
 ---
 
 # Delete what the audit found dead in the day-to-day area

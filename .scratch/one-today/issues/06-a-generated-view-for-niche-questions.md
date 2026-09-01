@@ -1,8 +1,15 @@
 ---
-type: build
-status: open
-blocked_by: []
 map: one-today
+ticket: "06"
+title: "A generated view for the questions no screen was built for"
+type: build
+status: resolved
+status-detail: "Built 2026-09-01 (74db850) and exercised on the A25. See the generated-ui map's own reconciliation - this overlaps that map's tickets 01-03, which keep real gaps (no schema_version, no refusal-state screenshot tests)."
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
 ---
 
 # A generated view for the questions no screen was built for

@@ -1,8 +1,15 @@
 ---
-type: build
-status: open
-blocked_by: []
 map: one-today
+ticket: "07"
+title: "TodayScreen is half-emptied. Rehome the survivors, then delete it."
+type: build
+status: built
+status-detail: "Done 2026-09-01 (a02e9ab): all six survivors rehomed, screen and route deleted, TodayGapResolvers kept. NOT yet run on hardware - wireless ADB dropped before it could be seen."
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
 ---
 
 # TodayScreen is half-emptied. Rehome the survivors, then delete it.

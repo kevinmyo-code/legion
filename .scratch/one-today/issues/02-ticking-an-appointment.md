@@ -1,8 +1,15 @@
 ---
-type: decision
-status: open
-blocked_by: []
 map: one-today
+ticket: "02"
+title: "You cannot cross off a calendar item, and the field is not what is missing"
+type: build
+status: open
+status-detail: "Partly done 2026-09-01: appointments and one-off reminders tick through NotesController and persist across navigation, verified on the A25. RECURRING occurrences still render untickable - per-occurrence ticking is this ticket's open half."
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: true
+tags: [ticket]
 ---
 
 # You cannot cross off a calendar item, and the field is not what is missing

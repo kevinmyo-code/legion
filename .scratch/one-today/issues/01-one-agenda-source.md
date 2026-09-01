@@ -1,8 +1,15 @@
 ---
-type: build
-status: open
-blocked_by: []
 map: one-today
+ticket: "01"
+title: "Cut Google entirely. One calendar, and it is ours."
+type: build
+status: resolved
+status-detail: "Done 2026-09-01 (222e31e). Live CalendarContract read gone, 261 imported appointments are ordinary tickable rows, NoCalendarContractTest prevents regrowth. Seen on the A25."
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
 ---
 
 # Cut Google entirely. One calendar, and it is ours.

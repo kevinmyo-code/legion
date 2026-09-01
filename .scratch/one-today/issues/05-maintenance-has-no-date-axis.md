@@ -1,8 +1,15 @@
 ---
-type: build
-status: open
-blocked_by: []
 map: one-today
+ticket: "05"
+title: "MAINTENANCE 0 DUE is computed against nothing"
+type: build
+status: built
+status-detail: "Premise corrected 2026-09-01 (the audit read a deliberately-null column). The two real defects fixed in 69ebf7e: the service-history join now folds case and whitespace, and the Supabase never_done default drops to false to match Room. NOT yet run on hardware."
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
 ---
 
 # MAINTENANCE 0 DUE is computed against nothing

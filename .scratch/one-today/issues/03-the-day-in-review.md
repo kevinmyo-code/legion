@@ -1,8 +1,15 @@
 ---
-type: build
-status: open
-blocked_by: [01-one-agenda-source, 02-ticking-an-appointment]
 map: one-today
+ticket: "03"
+title: "What I crossed off, what is left, what is tomorrow"
+type: build
+status: resolved
+status-detail: "Answered 2026-09-01 by the calendar-home cutover (06c1d3f): the day view splits Yet to do / Done, and any day - including tomorrow - is one tap on the month grid. All three of Kevin's questions now have one surface. Seen on the A25."
+blockers: []
+blocked-by: []
+open-blockers: 0
+ready: false
+tags: [ticket]
 ---
 
 # What I crossed off, what is left, what is tomorrow
