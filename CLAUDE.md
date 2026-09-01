@@ -15,7 +15,7 @@ Created 2026-08-01 from the 2026-07-30/31 pivot off Midnight AI. This file holds
    CLAUDE.md wins and the doc is a bug.
 4. **`README.md`**. Public-facing build status, per-aspect detail, verification history. It is
    the authority on what compiles and what is tested; do not duplicate it here.
-5. **Anything deeper**: dispatch the `librarian` agent (RETRIEVE mode) against `memory/library/`.
+5. **Anything deeper**: dispatch the `scout` agent against `memory/library/`.
    Card catalog: `memory/library/INDEX.md`. Do not bulk-read shelf files into the main context.
    **Most of that library is FROZEN Midnight AI history** (see §11) - it is reference, not rules.
 6. **`TEAM.md`**. Subagent roster and dispatch cadence.
