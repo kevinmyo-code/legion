@@ -4,7 +4,7 @@ ticket: "03"
 title: "The Compose renderer: validation, components, and worded failure"
 type: build
 status: open
-status-detail: ""
+status-detail: "Built 2026-09-01 (GeneratedViewHost.kt), run on the A25. Validation-before-Compose, worded refusal and mission-control components all shipped. NO Roborazzi screenshot tests for components or refusal states - this ticket's own stated gate."
 blockers: ["01", "02"]
 blocked-by: ["[[01-the-response-schema]]", "[[02-the-tool-binding-contract]]"]
 open-blockers: 2

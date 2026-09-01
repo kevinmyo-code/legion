@@ -21,6 +21,52 @@ I ask the AI - how much have I spent? ai flashes a generated UI of my ledger wit
 Destination is DECISIONS locked and the schema plus renderer specified. Building follows, and
 deliberately NOT while the backend arc's data-layer phases are in flight.
 
+## RECONCILED 2026-09-01: the destination narrowed, and part of this map shipped elsewhere
+
+**This map's destination is superseded, and a slice of it was built without anyone consulting it.**
+Both halves are recorded here because the reasoning above is still worth reading; it is the
+premise that moved, not the argument.
+
+**Two Kevin rulings narrowed the destination.** On 2026-08-30: *"not voice generated, voice called.
+pre made modals"* - which is the opposite of "the AI renders the answer" for everyday surfaces. On
+2026-09-01, home became a month calendar with a Meters tab, not push-to-talk. So the phone is NOT
+voice-first with a generated answer as its main interaction. **The generated view survives as the
+long tail only** - one-off questions no pre-made screen covers - which is a much smaller feature
+than this map was chartered for.
+
+**A generated view shipped on 2026-09-01** (`74db850`) under `.scratch/one-today/issues/06-*.md`,
+written without checking whether a map already existed. That was a process failure: ticket 02's
+own title, *"the model picks the view, tools supply the numbers"*, is the exact rule that ticket
+restated as if deriving it. What shipped:
+`service/GeneratedViewController.kt`, `service/GeneratedViewQueryRunner.kt`,
+`ui/GeneratedViewHost.kt`, the `show_generated_view` tool, and an Ask pane on Meters as its hands
+path. Run on the A25 on 2026-09-01.
+
+**It took a different route than this map proposed, and the difference matters.** The map specified
+tool BINDINGS (`{component, source_tool, params}`) resolved against an allowlist of read tools.
+What shipped is a closed-enum QUERY SPEC - aggregation, source, window, grouping - executed by a
+runner against existing controllers. Same safety property, reached differently: the model still
+cannot author a value, and it now cannot name a tool either. Whether the binding shape is still
+wanted for cases the enum cannot express is genuinely open, and ticket 02 is where that is
+settled.
+
+**Ticket-by-ticket, verified by reading the code rather than by memory:**
+
+| Ticket | State after the 09-01 build |
+|---|---|
+| 01 response schema | **Partly answered.** Closed vocabulary (3 shapes) and flat composition shipped, provenance is a first-class field. **No `schema_version` exists** - grep confirms zero occurrences - so point 5 is entirely unaddressed |
+| 02 tool-binding contract | **Answered differently.** Points 1-3 satisfied by the query-spec shape; points 4 (bindable-tool allowlist) and 5 (may a card carry an action) never arose and stay open |
+| 03 the renderer | **Built, minus its own stated gate.** Validation-before-Compose, worded refusal and mission-control components all shipped. **No Roborazzi screenshot tests exist** for any component or refusal state, and this ticket says in writing that the refusal states matter more than the happy path |
+| 04 ADR 0035 amendment | **Open, with new evidence.** The shipped view has a same-device hands path (Meters > Ask), so it did not need the amendment. The narrow phone-local case the ADR worries about is untouched |
+| 05 the phone shell | **Point 1 decided by Kevin on 09-01**: home is the calendar, NOT push-to-talk - the field-test-first recommendation was overtaken by a direct ruling. Points 2 and 3 are answered by what shipped (a modal over the current screen; nothing persists). Points 4 and 5 stay open |
+| 06 PC surface | **Open and untouched**, though ADR 0040 has since made `legion-web` the general client, which is the same split by another name |
+| 07 harvest | Resolved 2026-08-26, unchanged |
+
+**Nothing here is marked resolved on the strength of the 09-01 build.** Three tickets have real
+gaps - no `schema_version`, no refusal-state screenshot tests, no decision on actions in a card -
+and marking them done would be exactly the failure CLAUDE.md §12 warns about, where a
+fully-decided-and-partly-built feature reads as finished work.
+
 ## Notes
 
 **Domain:** LEGION (CLAUDE.md binds where not explicitly superseded here).

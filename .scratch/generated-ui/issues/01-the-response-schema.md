@@ -4,7 +4,7 @@ ticket: "01"
 title: "The response schema: what a generated view is allowed to say"
 type: grilling
 status: open
-status-detail: ""
+status-detail: "Partly answered by the 2026-09-01 generated view (74db850): closed 3-shape vocabulary, flat composition, provenance first-class. NO schema_version exists (point 5 unaddressed). See map reconciliation."
 blockers: []
 blocked-by: []
 open-blockers: 0

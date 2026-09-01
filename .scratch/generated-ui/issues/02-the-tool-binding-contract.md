@@ -4,7 +4,7 @@ ticket: "02"
 title: "The tool-binding contract: the model picks the view, tools supply the numbers"
 type: grilling
 status: open
-status-detail: ""
+status-detail: "Answered differently by the 2026-09-01 build: a closed-enum query spec, not {component, source_tool, params} bindings. Points 1-3 satisfied; point 4 (bindable-tool allowlist) and point 5 (actions in a card) still open."
 blockers: ["01"]
 blocked-by: ["[[01-the-response-schema]]"]
 open-blockers: 1

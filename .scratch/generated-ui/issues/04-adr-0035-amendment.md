@@ -4,7 +4,7 @@ ticket: "04"
 title: "Amend ADR 0035: where a hands path is allowed to live"
 type: decision
 status: open
-status-detail: ""
+status-detail: "Open, with new evidence: the 2026-09-01 generated view was given a same-device hands path (Meters > Ask), so it did not need this amendment. The narrow phone-local case remains the real question."
 blockers: []
 blocked-by: []
 open-blockers: 0

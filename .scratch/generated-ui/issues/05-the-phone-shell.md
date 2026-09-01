@@ -4,7 +4,7 @@ ticket: "05"
 title: "The phone shell: what home is, and what happens when voice fails"
 type: grilling
 status: open
-status-detail: ""
+status-detail: "Point 1 decided by Kevin 2026-09-01: home is the month calendar, not push-to-talk. Points 2-3 answered by the shipped modal (over the current screen; nothing persists). Points 4-5 (wake word may render; the no-key/no-network failure path) still open."
 blockers: ["04"]
 blocked-by: ["[[04-adr-0035-amendment]]"]
 open-blockers: 1
