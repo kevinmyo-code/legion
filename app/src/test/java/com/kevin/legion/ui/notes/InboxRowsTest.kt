@@ -1,6 +1,5 @@
 package com.kevin.legion.ui.notes
 
-import com.kevin.legion.calendar.CalendarProvider.GoogleCalendarEvent
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.ui.AgendaSource
 import java.time.LocalDate
@@ -150,11 +149,10 @@ class InboxRowsTest {
         title: String,
         startMs: Long,
         allDay: Boolean = false,
-        recurring: Boolean = false,
-        calendarAccessLevel: Int = 700,
-    ) = GoogleCalendarEvent(
-        eventId = id, calendarId = 1L, title = title, startMs = startMs, endMs = startMs + 1_000L,
-        allDay = allDay, recurring = recurring, calendarAccessLevel = calendarAccessLevel,
+        done: Boolean = false,
+    ) = AppointmentEvent(
+        eventId = id, title = title, startMs = startMs, endMs = startMs + 1_000L,
+        allDay = allDay, done = done,
     )
 
     @Test
@@ -181,12 +179,13 @@ class InboxRowsTest {
     }
 
     @Test
-    fun `a google row is tagged GOOGLE and is never tickable or recurring`() {
+    fun `a google row is tagged GOOGLE, is tickable, and never recurring`() {
+        // One-today ticket 02, "ticking an appointment" - an appointment row is tickable now.
         val rows = buildInboxRows(emptyList(), now, listOf(googleEvent(10, "Dentist", startMs = epochOf("2026-08-20"))))
 
         val row = rows.single()
         assertEquals(AgendaSource.GOOGLE, row.source)
-        assertFalse(row.tickable)
+        assertTrue(row.tickable)
         assertFalse(row.recurring)
         assertFalse(row.overdue)
         assertNull(row.placeLabel)
@@ -199,17 +198,16 @@ class InboxRowsTest {
     }
 
     @Test
-    fun `google row ids never collide with a real ListItem id`() {
-        // Room autoincrement ids are always positive - the negative id scheme this file uses for a
-        // Google row (`-(eventId + 1)`) can never land on one, however the on-device event id is
-        // numbered, which is what keeps InboxScreen's onToggle/onEdit/onRemove lookups from ever
-        // hitting a real item by accident.
+    fun `a google row carries its own real event id, disjoint from a reminder id by construction`() {
+        // One-today ticket 01 retired the old synthetic-negative-id trick along with the live
+        // CalendarContract read it protected against - an appointment's Event.id is disjoint from
+        // a reminder's BY CONSTRUCTION (Event.APPOINTMENT_ID_BASE), so [id] is now the real id.
         val rows = buildInboxRows(
             listOf(ListItem(id = 1, listId = 1, text = "Oil change", startsAt = epochOf("2026-08-14"))),
             now,
-            listOf(googleEvent(1, "Dentist", startMs = epochOf("2026-08-20"))),
+            listOf(googleEvent(100_000_001L, "Dentist", startMs = epochOf("2026-08-20"))),
         )
-        assertEquals(setOf(1L, -2L), rows.map { it.id }.toSet())
+        assertEquals(setOf(1L, 100_000_001L), rows.map { it.id }.toSet())
     }
 
     @Test
@@ -234,27 +232,35 @@ class InboxRowsTest {
     // -------------------------------------------------------------- ticket 22: edit-carrying fields
 
     @Test
-    fun `a google row carries the real eventId, occurrence times, allDay and calendar access level`() {
+    fun `a google row carries the real eventId, occurrence times and allDay`() {
         val start = epochOf("2026-08-20")
         val rows = buildInboxRows(
             emptyList(), now,
-            listOf(googleEvent(42, "Dentist", startMs = start, allDay = true, calendarAccessLevel = 700)),
+            listOf(googleEvent(42, "Dentist", startMs = start, allDay = true)),
         )
         val row = rows.single()
         assertEquals(42L, row.calendarEventId)
         assertEquals(start, row.calendarOccurrenceStartMs)
         assertEquals(start + 1_000L, row.calendarOccurrenceEndMs)
         assertEquals(true, row.calendarAllDay)
-        assertEquals(700, row.calendarAccessLevel)
     }
 
     @Test
-    fun `a google row's recurring flag reflects the event's own recurrence, not a hardcoded false`() {
+    fun `a google row is never recurring - one-today ticket 01 retired the live RRULE fact`() {
         val rows = buildInboxRows(
             emptyList(), now,
-            listOf(googleEvent(1, "Mara's bday", startMs = epochOf("2026-08-20"), recurring = true)),
+            listOf(googleEvent(1, "Mara's bday", startMs = epochOf("2026-08-20"))),
         )
-        assertTrue(rows.single().recurring)
+        assertFalse(rows.single().recurring)
+    }
+
+    @Test
+    fun `a google row's done state carries through from the stored Event`() {
+        val rows = buildInboxRows(
+            emptyList(), now,
+            listOf(googleEvent(1, "Dentist", startMs = epochOf("2026-08-20"), done = true)),
+        )
+        assertTrue(rows.single().done)
     }
 
     @Test
@@ -265,6 +271,5 @@ class InboxRowsTest {
         assertNull(row.calendarOccurrenceStartMs)
         assertNull(row.calendarOccurrenceEndMs)
         assertNull(row.calendarAllDay)
-        assertNull(row.calendarAccessLevel)
     }
 }

@@ -86,17 +86,20 @@ fun DashedHairline() {
  * this domain's existing "in words or shape, never colour alone" rule (ticket 08/03).
  *
  * A [row] whose [InboxRowView.source] is [AgendaSource.GOOGLE] (ticket 13 follow-up, made editable
- * by ticket 22, Kevin 2026-08-13) still carries the same `CAL` tag `ui/TodayScreen.kt`'s AGENDA pane
- * puts on a Google row - the distinction from a LEGION reminder is always in WORDS, never colour
- * alone. Whether it may be EDITED or DELETED from here is
- * [com.kevin.legion.ui.notes.CalendarEditResolver.rowAction]'s call, never re-derived in this file:
- * a [com.kevin.legion.ui.notes.CalendarEditResolver.RowAction.READ_ONLY] row (ticket 17's read-only
- * "Holidays in United States" case) offers no tap-to-edit and no DELETE, and says why
- * ([com.kevin.legion.ui.notes.CalendarEditResolver.READ_ONLY_REASON]) rather than silently omitting
- * the affordance - "Google owns appointments, LEGION owns reminders, nothing is ever written to
- * both" (ticket 04) still holds, because [onEditGoogle]/[onDeleteGoogle] write Google's own copy in
- * place through `ui/notes/InboxScreen.kt` -> `calendar/CalendarProvider.kt`, never through
- * [onEdit]/[onRemove]/[com.kevin.legion.notes.NotesController], which stay wired to LOCAL rows only.
+ * by ticket 22, Kevin 2026-08-13; **local as of one-today ticket 01/02**) still carries the same
+ * `CAL` tag `ui/TodayScreen.kt`'s AGENDA pane puts on it - the distinction from a plain reminder is
+ * always in WORDS, never colour alone, even though both now live in the same local `events` table
+ * and are both tickable/editable/deletable. **The old read-only-calendar/recurring-scope gate
+ * ([com.kevin.legion.ui.notes.CalendarEditResolver]) is gone with the live Google read it existed
+ * for** - one-today ticket 01: a local appointment row is always writable (Kevin owns it outright,
+ * there is no read-only "someone else's calendar" concept any more) and always a single occurrence
+ * (ticket 01's own class doc on [com.kevin.legion.ui.notes.AppointmentEvent]), so there is nothing
+ * left to gate. Every GOOGLE row now always offers tick/edit/delete, unconditionally.
+ * [onEditGoogle]/[onDeleteGoogle]/[onToggle] all write the SAME local `events` table
+ * [onEdit]/[onRemove]/[com.kevin.legion.notes.NotesController] do for a LOCAL row - they are kept as
+ * separate callbacks only because an appointment's edit dialog needs
+ * [InboxRowView.calendarOccurrenceStartMs]/etc, which a bare id does not carry (see those params'
+ * own doc comments in `ui/notes/InboxScreen.kt`).
  */
 @Composable
 fun InboxRow(
@@ -109,16 +112,6 @@ fun InboxRow(
 ) {
     val sem = LocalLegionSemantics.current
     val isGoogle = row.source == AgendaSource.GOOGLE
-    // Ticket 22: a Google row's own editability depends on its calendar's access level and whether
-    // it recurs - CalendarEditResolver is the single place that decision is made, so this file only
-    // reads its answer rather than re-deriving CAL_ACCESS_CONTRIBUTOR or the recurring check itself.
-    val calendarAction = if (isGoogle) {
-        CalendarEditResolver.rowAction(row.calendarAccessLevel ?: 0, row.recurring)
-    } else {
-        null
-    }
-    val readOnlyCalendar = calendarAction == CalendarEditResolver.RowAction.READ_ONLY
-    val editableGoogle = isGoogle && !readOnlyCalendar
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -126,16 +119,12 @@ fun InboxRow(
         if (row.tickable) {
             Checkbox(checked = row.done, onCheckedChange = { onToggle() })
         } else {
-            // Same width as the checkbox slot so a recurring row (or a Google row) still lines up
-            // with its tickable siblings - an empty Column of that width, not a smaller start padding.
+            // Same width as the checkbox slot so a recurring row still lines up with its tickable
+            // siblings - an empty Column of that width, not a smaller start padding.
             Column(Modifier.padding(start = 12.dp, end = 12.dp)) {}
         }
         Column(
-            when {
-                !isGoogle -> Modifier.weight(1f).clickable(onClick = onEdit)
-                editableGoogle -> Modifier.weight(1f).clickable(onClick = onEditGoogle)
-                else -> Modifier.weight(1f)
-            },
+            if (!isGoogle) Modifier.weight(1f).clickable(onClick = onEdit) else Modifier.weight(1f).clickable(onClick = onEditGoogle),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // `weight(1f, fill = false)` is load-bearing, not tidying (ticket 21). Unweighted,
@@ -167,12 +156,8 @@ fun InboxRow(
             }
             val notes = buildList {
                 if (row.recurring && !isGoogle) add("Recurring - not tickable")
-                if (row.recurring && isGoogle) add("Recurring event")
                 row.placeLabel?.let { add(it) }
                 if (row.exactDowngraded) add("Exact time refused by the system - using an approximate alarm instead")
-                // Ticket 22 point 4: a read-only calendar's row says WHY it offers no edit, rather
-                // than silently omitting the affordance and leaving a driver to guess.
-                if (readOnlyCalendar) add(CalendarEditResolver.READ_ONLY_REASON)
             }
             if (notes.isNotEmpty()) {
                 Text(notes.joinToString("  ·  "), style = LegionType.stamp, color = sem.faint)
@@ -180,7 +165,7 @@ fun InboxRow(
         }
         if (!isGoogle) {
             TextButton(onClick = onRemove) { Text("REMOVE", style = LegionType.stamp, color = sem.faint) }
-        } else if (editableGoogle) {
+        } else {
             TextButton(onClick = onDeleteGoogle) { Text("DELETE", style = LegionType.stamp, color = sem.faint) }
         }
     }

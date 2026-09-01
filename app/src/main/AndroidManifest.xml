@@ -104,22 +104,13 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Google Calendar (ticket 13 read, ticket 14 write -
-         `.scratch/google-account-integration/issues/13-*` and `14-*`). `CalendarContract`, not the
-         Calendar REST API - ticket 02's answer: no OAuth scope, no console, no consent screen,
-         offline for free, and the `Instances` time-range URI already expands recurrence for us.
-         Both requested together at runtime, in context, from the deck's AGENDA pane
-         (`ui/TodayScreen.kt`/`ui/notes/InboxScreen.kt`) - never at startup. They are requested
-         together rather than WRITE_CALENDAR being deferred to Alfred's first voice-created event
-         because that moment has no Activity to raise a permission dialog from (LiveToolbox runs off
-         a foreground service) - asking for both at the one UI surface that already asks for
-         READ_CALENDAR means a voice write later in the same session has a real chance of already
-         being granted, rather than deterministically failing the first time every time. A refused
-         WRITE_CALENDAR still degrades safely - see CalendarProvider.insertEvent and
-         LiveToolbox's calendar-write dispatch, both of which fall back to a local reminder and say
-         so, never a silent failure. -->
-    <uses-permission android:name="android.permission.READ_CALENDAR" />
-    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <!-- Google Calendar permissions REMOVED - one-today ticket 01, "cut Google entirely"
+         (2026-09-01, `.scratch/one-today/issues/01-one-agenda-source.md`). READ_CALENDAR/
+         WRITE_CALENDAR (ticket 13 read, ticket 14 write) backed the retired
+         `calendar/CalendarProvider.kt`'s live `CalendarContract` read/write - LEGION's calendar is
+         its own local `events` table now, which needs no runtime permission at all. The 261 rows
+         that arrived through the old import stay (their `googleEventId` column is provenance, not
+         a live link); there is nothing left here for either permission to gate. -->
 
     <!-- Package visibility (API 30+). Without this the Spotify app is invisible to us:
          SpotifyController.isInstalled always reports false, and App Remote's own bind to

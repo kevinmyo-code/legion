@@ -1,6 +1,6 @@
 package com.kevin.legion.advisor.digest
 
-import com.kevin.legion.calendar.CalendarProvider.GoogleCalendarEvent
+import com.kevin.legion.calendar.OpenerCalendarBriefing
 import com.kevin.legion.data.local.ListItem
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -136,7 +136,7 @@ class LogDigestBuilderTest {
 
     @Test
     fun `calendar events in window are named`() {
-        val events = listOf(GoogleCalendarEvent(eventId = 1, calendarId = 1, title = "Dentist", startMs = now + day, endMs = now + day + 1000, allDay = false))
+        val events = listOf(OpenerCalendarBriefing.BriefingEvent(title = "Dentist", startMs = now + day, endMs = now + day + 1000, allDay = false))
         val text = LogDigestBuilder.buildDigestText(
             allActive = emptyList(), tickableListIds = setOf(listId), missed = emptyList(),
             placeReminderCount = 0, calendarEvents = events, now = now,

@@ -150,24 +150,21 @@ class MidnightApplication : Application() {
             // backend-erp ticket 17, "RULED 2026-08-28"): seed the Dates aspect/record-type rows
             // in the engine if this is the first run this schema has ever seen (idempotent - see
             // DatesAspectSeeder.ensureSeeded's own doc comment) - CORRECTED 2026-08-28: as of
-            // ticket 17's repoint, neither CalendarImportController.importNow nor DatesAgenda reads
-            // this schema any more (both talk to the local `events` table directly); this call now
-            // exists only to keep "Dates" registered as a generic engine aspect for
+            // ticket 17's repoint, DatesAgenda reads the local `events` table directly; this call
+            // now exists only to keep "Dates" registered as a generic engine aspect for
             // EngineToolbox's list_aspects/the xlsx mirror, matching the identical reason
             // NotesAspectSeeder is still seeded every launch (EngineDataMigrationWave1) even though
-            // Notes itself retired off the engine first. Then pull in whatever changed on Google
-            // since the process last ran (ticket 19 point 2's "runs on app foreground" - this
-            // app-start block IS that trigger, same "process start doubles as foreground launch"
-            // reasoning AssistantIgnition.resumeIfEnabled's own comment below already uses), then
-            // arm the Dates aspect's own single next alarm against whatever the import (or a purely
-            // -legion-authored event) left due soonest. Three separate try/catch boundaries, same
-            // L12 reasoning as every block in this section: a calendar-import failure must never
-            // cost the alarm re-arm, or vice versa.
+            // Notes itself retired off the engine first. **One-today ticket 01, "cut Google
+            // entirely" (2026-09-01): the Google Calendar import that used to run here
+            // (`calendar/CalendarImportController.importNow`) is deleted along with the whole
+            // `calendar/CalendarProvider.kt` live-read path - the 261 rows it already wrote to
+            // `events` are kept (`googleEventId` stays as provenance), there is simply nothing left
+            // to re-import.** Then arm the Dates aspect's own single next alarm against whatever is
+            // due soonest. Two separate try/catch boundaries, same L12 reasoning as every block in
+            // this section: a seed failure must never cost the alarm re-arm, or vice versa.
             appScope.launch {
                 runCatching { com.kevin.legion.engine.dates.DatesAspectSeeder.ensureSeeded(this@MidnightApplication) }
                     .onFailure { MidnightEvents.appStartWorkFailed("seed_dates_aspect", it) }
-                runCatching { com.kevin.legion.calendar.CalendarImportController.importNow(this@MidnightApplication) }
-                    .onFailure { MidnightEvents.appStartWorkFailed("import_google_calendar", it) }
                 runCatching { com.kevin.legion.service.DatesAlarmScheduler.armNext(this@MidnightApplication) }
                     .onFailure { MidnightEvents.appStartWorkFailed("arm_dates_reminder", it) }
             }

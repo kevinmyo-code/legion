@@ -1,6 +1,5 @@
 package com.kevin.legion.ui.notes
 
-import com.kevin.legion.calendar.CalendarProvider.GoogleCalendarEvent
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.ui.AgendaSource
 import java.time.Instant
@@ -41,17 +40,20 @@ data class InboxRowView(
     val id: Long,
     val text: String,
     val done: Boolean,
-    /** False only for a recurring item (ticket 04's "a recurring item cannot be ticked"). Also
-     * always false for a [AgendaSource.GOOGLE] row regardless of [recurring] - see [source]'s doc
-     * comment: nothing here ever writes a tick back to Google, so a Google row is never tickable
-     * even when it is a one-off. */
+    /** False only for a recurring [AgendaSource.LOCAL] item (ticket 04's "a recurring item cannot
+     * be ticked"). **A [AgendaSource.GOOGLE] row is tickable too, as of one-today ticket 02** -
+     * "ticking an appointment": it now lives in the same local `events` table as a reminder, and
+     * ticking one writes [com.kevin.legion.data.local.Event.done] directly (never through
+     * [com.kevin.legion.notes.NotesController]'s reminder-only funnel - see
+     * [com.kevin.legion.notes.NotesController.tickAppointment]). */
     val tickable: Boolean,
-    /** For a [AgendaSource.LOCAL] row: whether it repeats (ticket 04's own meaning). For a
-     * [AgendaSource.GOOGLE] row (ticket 22): whether the event's PARENT carries an `RRULE`/`RDATE`
-     * ([com.kevin.legion.calendar.CalendarProvider.GoogleCalendarEvent.recurring]) - this is what
-     * [com.kevin.legion.ui.notes.CalendarEditResolver.rowAction] reads to decide whether an edit or
-     * delete needs the "this one or all of them" prompt. Before ticket 22 this was hardcoded false
-     * for every Google row; it now carries the real fact because editing needs it. */
+    /** For a [AgendaSource.LOCAL] row: whether it repeats (ticket 04's own meaning). Always false
+     * for a [AgendaSource.GOOGLE] row - one-today ticket 01 cut the live Google read that used to
+     * carry a real `RRULE`/`RDATE` fact here; every appointment row now stored locally is already a
+     * single expanded occurrence with no recurrence concept of its own (see
+     * [com.kevin.legion.ui.notes.AppointmentEvent]'s own doc comment), so there is nothing left to
+     * disambiguate on edit or delete - the old "this one or all of them" prompt
+     * ([com.kevin.legion.ui.notes.CalendarEditResolver], now deleted) has nothing to ask. */
     val recurring: Boolean,
     /** "Aug 14" / "Aug 14, 8:00 AM" / "Repeats - next Aug 14", or null for an undated item. */
     val dateLabel: String?,
@@ -65,37 +67,33 @@ data class InboxRowView(
     /** LOCAL (default) is a real [ListItem] row, tickable/editable/deletable through
      * [NotesController] as normal. GOOGLE (ticket 13 follow-up, `.scratch/google-account-
      * integration/issues/13-calendar-read.md`, Kevin 2026-08-13; editable as of ticket 22,
-     * `.scratch/google-account-integration/issues/22-edit-calendar-entries-from-log.md`) is a
-     * Google Calendar occurrence merged into the SAME stream over a 90-day forward window
-     * ([com.kevin.legion.ui.notes.INBOX_CALENDAR_WINDOW_DAYS]) - "Google owns appointments, LEGION
-     * owns reminders, nothing is ever written to both" (ticket 04). `ui/notes/NotesRows.kt`'s
-     * [InboxRow] reads [com.kevin.legion.ui.notes.CalendarEditResolver.rowAction] (built from
-     * [calendarAccessLevel] and [recurring]) to decide whether this row gets an edit/delete
-     * affordance at all, and shows the same `CAL` tag ticket 13 put on `TodayScreen`'s AGENDA pane -
-     * the distinction is always in WORDS, never colour alone. */
+     * `.scratch/google-account-integration/issues/22-edit-calendar-entries-from-log.md`; **local as
+     * of one-today ticket 01, "cut Google entirely"**) is an appointment row (`kind = 'appointment'`)
+     * merged into the SAME stream over a 90-day forward window
+     * ([com.kevin.legion.ui.notes.INBOX_CALENDAR_WINDOW_DAYS]). `ui/notes/NotesRows.kt`'s
+     * [InboxRow] shows the same `CAL` tag ticket 13 put on `TodayScreen`'s AGENDA pane - the
+     * distinction from a plain reminder is always in WORDS, never colour alone - even though, post
+     * one-today, both live in the exact same local table and are both tickable/editable/deletable,
+     * just through separate [NotesController] functions (see [tickable]'s own doc comment). */
     val source: AgendaSource = AgendaSource.LOCAL,
-    /** The real (positive) `Events._ID` behind a [AgendaSource.GOOGLE] row - null for a LOCAL row.
-     * [id] itself is the synthetic negative id (`-(eventId + 1)`) kept for Room-id-space safety
-     * (see that field's own history); this is the real id
-     * [com.kevin.legion.calendar.CalendarProvider]'s update/delete functions need, carried
-     * separately so nothing has to undo the negative-id trick to edit. */
+    /** The real (positive) [com.kevin.legion.data.local.Event.id] behind a [AgendaSource.GOOGLE]
+     * row - null for a LOCAL row. **No longer a synthetic negative id** (one-today ticket 01
+     * retired that Room-id-space trick along with the live `CalendarContract` read it existed for -
+     * an appointment's [Event.id] is disjoint from a reminder's by construction,
+     * [com.kevin.legion.data.local.Event.APPOINTMENT_ID_BASE]'s own doc comment - so [id] itself now
+     * equals this field for a GOOGLE row). Carried as its own field anyway, matching this row's
+     * pre-existing shape, so a caller never has to special-case which id space [id] is in. */
     val calendarEventId: Long? = null,
-    /** The occurrence's own `BEGIN`, exactly as `Instances` returned it - required verbatim as
-     * `ORIGINAL_INSTANCE_TIME` by [com.kevin.legion.calendar.CalendarProvider.updateEventOccurrence]/
-     * `deleteEventOccurrence` to identify which occurrence an exception replaces. Null for a LOCAL row. */
+    /** The appointment's own `startsAt`, for pre-filling an edit dialog and computing its
+     * duration. Null for a LOCAL row. */
     val calendarOccurrenceStartMs: Long? = null,
-    /** The occurrence's own `END`, for pre-filling an edit dialog's time fields. Null for a LOCAL row. */
+    /** The appointment's own `endsAt`, for pre-filling an edit dialog's time fields. Null for a
+     * LOCAL row. */
     val calendarOccurrenceEndMs: Long? = null,
-    /** Whether the Google event is all-day, for pre-filling an edit dialog and for choosing the
-     * `EVENT_TIMEZONE`/`ALL_DAY` values a write sends back. Null for a LOCAL row (that row's own
+    /** Whether the appointment is all-day, for pre-filling an edit dialog and for choosing the
+     * UTC-midnight-vs-device-zone convention a write uses. Null for a LOCAL row (that row's own
      * `allDay` lives on the underlying [ListItem] instead, unrelated to this field). */
     val calendarAllDay: Boolean? = null,
-    /** The owning calendar's `CALENDAR_ACCESS_LEVEL` - what
-     * [com.kevin.legion.ui.notes.CalendarEditResolver.rowAction] floors against
-     * ([com.kevin.legion.ui.notes.CalendarEditResolver.CAL_ACCESS_CONTRIBUTOR]) to decide whether
-     * this row may be edited at all (ticket 22 point 4, ticket 17's read-only "Holidays in United
-     * States" case). Null for a LOCAL row. */
-    val calendarAccessLevel: Int? = null,
     /** Ticket 14: the row's own real instant, LOCAL zone-independent millis - `item.startsAt` for a
      * LOCAL row, [calendarOccurrenceStartMs] for a GOOGLE row (carried separately here rather than
      * read off that field at the render layer, since a LOCAL row has no occurrence field at all).
@@ -121,11 +119,12 @@ const val INBOX_CALENDAR_WINDOW_DAYS = 90L
 
 /**
  * The whole inbox, in reading order: **dated items first, soonest due at the top; undated items
- * after, in the order they were appended.** [googleEvents] (ticket 13 follow-up) interleaves into
+ * after, in the order they were appended.** [appointments] (ticket 13 follow-up) interleaves into
  * the DATED section by real start time via [mergeByTime] - the same chronological merge
- * `ui/TodayScreen.kt`'s AGENDA pane uses via [mergeAgenda], reused rather than forked. Google rows
- * never land in the undated section: every [GoogleCalendarEvent] this file is handed carries a real
- * `startMs`, by construction of `CalendarProvider.eventsInWindow`'s `Instances` query.
+ * `ui/TodayScreen.kt`'s AGENDA pane uses via [mergeAgenda], reused rather than forked. Appointment
+ * rows never land in the undated section: every [AppointmentEvent] this file is handed carries a
+ * real `startMs`, by construction of [com.kevin.legion.data.local.EventDao.activeByKindInWindow]'s
+ * `startsAt IS NOT NULL` guard.
  *
  * A due date is the only ordering the driver asked for, so an item that has one always outranks one
  * that does not - sorting undated items to the top by `sortOrder` would bury exactly the rows the
@@ -133,15 +132,15 @@ const val INBOX_CALENDAR_WINDOW_DAYS = 90L
  * through, so a mis-tap is undone where it happened rather than hunted for.
  *
  * [now] is passed in rather than read from the clock so [InboxRowView.overdue] is a pure function of
- * its inputs and testable without freezing time. [googleEvents] defaults to empty so every existing
+ * its inputs and testable without freezing time. [appointments] defaults to empty so every existing
  * two-argument call site (and test) is unchanged.
  */
-fun buildInboxRows(items: List<ListItem>, now: Long, googleEvents: List<GoogleCalendarEvent> = emptyList()): List<InboxRowView> {
+fun buildInboxRows(items: List<ListItem>, now: Long, appointments: List<AppointmentEvent> = emptyList()): List<InboxRowView> {
     val dated = items.filter { it.startsAt != null }
     val undated = items.filter { it.startsAt == null }
 
     val datedLocalRows: List<Pair<Long, InboxRowView>> = dated.map { item -> item.startsAt!! to toInboxRowView(item, now) }
-    val datedRows = mergeByTime(datedLocalRows, googleEvents) { event -> toInboxRowView(event) }
+    val datedRows = mergeByTime(datedLocalRows, appointments) { event -> toInboxRowView(event) }
 
     return datedRows + undated.map { toInboxRowView(it, now) }
 }
@@ -168,25 +167,22 @@ private fun toInboxRowView(item: ListItem, now: Long): InboxRowView {
 }
 
 /**
- * One [InboxRowView] per Google Calendar occurrence (ticket 13 follow-up; editable as of ticket 22).
- * The negative id (`-(eventId + 1)`) keeps this row out of [ListItem]'s own, always-positive Room
- * autoincrement id space: `InboxScreen`'s onToggle/onEdit/onRemove all look the tapped id up in the
- * loaded [ListItem] list first and no-op when it is not found, and an id space that could collide
- * would be one Google numbering decision away from quietly ticking a LEGION reminder by accident.
- * [tickable] is always false: nothing here ever writes a TICK back to Google (ticket 04) - a Google
- * row's own occurrence has already been expanded away by `Instances` before this file ever sees the
- * event (`calendar/CalendarProvider.kt`'s own doc comment), so there is no local "done" concept to
- * flip. [recurring], unlike before ticket 22, now carries the event's REAL recurring fact
- * ([GoogleCalendarEvent.recurring]) rather than a hardcoded false, because
- * [com.kevin.legion.ui.notes.CalendarEditResolver.rowAction] needs it to decide whether an edit or
- * delete requires the "this one or all of them" prompt.
+ * One [InboxRowView] per appointment row (ticket 13 follow-up; editable as of ticket 22;
+ * **tickable as of one-today ticket 02** - see [InboxRowView.tickable]'s own doc comment). [id] is
+ * the real, positive [com.kevin.legion.data.local.Event.id] now - one-today ticket 01 retired the
+ * old synthetic-negative-id trick along with the live `CalendarContract` read it protected against,
+ * and an appointment's id space is disjoint from a reminder's BY CONSTRUCTION
+ * ([com.kevin.legion.data.local.Event.APPOINTMENT_ID_BASE]'s own doc comment), so there is nothing
+ * left for a collision-avoiding offset to guard against. [recurring] is always false - see
+ * [InboxRowView.recurring]'s own doc comment for why a stored appointment row has no recurrence
+ * concept left to carry post-repoint.
  */
-private fun toInboxRowView(event: GoogleCalendarEvent): InboxRowView =
+private fun toInboxRowView(event: AppointmentEvent): InboxRowView =
     InboxRowView(
-        id = -(event.eventId + 1),
+        id = event.eventId,
         text = event.title,
-        done = false,
-        tickable = false,
+        done = event.done,
+        tickable = true,
         recurring = event.recurring,
         dateLabel = if (event.allDay) formatDateOnly(event.startMs) else formatDateTime(event.startMs),
         overdue = false,
@@ -197,7 +193,6 @@ private fun toInboxRowView(event: GoogleCalendarEvent): InboxRowView =
         calendarOccurrenceStartMs = event.startMs,
         calendarOccurrenceEndMs = event.endMs,
         calendarAllDay = event.allDay,
-        calendarAccessLevel = event.calendarAccessLevel,
         instantMs = event.startMs,
     )
 

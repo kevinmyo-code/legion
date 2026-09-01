@@ -1,6 +1,7 @@
 package com.kevin.legion.ui.notes
 
-import com.kevin.legion.calendar.CalendarProvider.GoogleCalendarEvent
+import com.kevin.legion.backend.EventKind
+import com.kevin.legion.data.local.Event
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.ui.AgendaEntry
 import com.kevin.legion.ui.AgendaSource
@@ -12,31 +13,76 @@ import java.time.format.TextStyle
 import java.util.Locale
 
 /**
- * Pure merge/sort/empty-state logic behind the deck home's AGENDA pane once a Google Calendar
- * source joins the local one (ticket 13, `.scratch/google-account-integration/issues/13-*`). No
- * Android types - [com.kevin.legion.calendar.CalendarProvider] is the Android-bound half that
- * actually queries `CalendarContract`; `ui/TodayScreen.kt`'s `LaunchedEffect` calls that, then
- * hands the plain [GoogleCalendarEvent] list here to combine with the local
- * [AgendaEntry] list it already built. Every branch below is a plain JUnit test
- * (`CalendarAgendaResolverTest`), matching this domain's existing "pure builder, thin Composable
- * wrapper" split ([com.kevin.legion.ui.notes.buildInboxRows]/[com.kevin.legion.ui.notes.buildMissedRows]).
+ * Pure merge/sort/empty-state logic behind the deck home's AGENDA pane once an appointment source
+ * joins the local reminder one (ticket 13, `.scratch/google-account-integration/issues/13-*`;
+ * **REPOINTED off live Google Calendar onto the local `events` table by one-today ticket 01, "cut
+ * Google entirely" - 2026-08-30/09-01**). No Android types - the caller queries
+ * [com.kevin.legion.data.local.EventDao.activeByKindInWindow] directly now (`kind = 'appointment'`,
+ * the SAME table Google's own one-way import used to write and a voice-created appointment writes
+ * to today - see `service/LiveToolbox.kt`'s `addAppointment`), maps each row to [AppointmentEvent],
+ * and hands the plain list here to combine with the local [AgendaEntry] list it already built.
+ * Every branch below is a plain JUnit test (`CalendarAgendaResolverTest`), matching this domain's
+ * existing "pure builder, thin Composable wrapper" split
+ * ([com.kevin.legion.ui.notes.buildInboxRows]/[com.kevin.legion.ui.notes.buildMissedRows]).
  *
- * **No recurrence math lives here, or anywhere else in LEGION, for the Google side.** Ticket 02's
- * answer: `Instances` already expands a series into one row per occurrence in the queried window,
- * so [mergeAgenda] only ever combines and sorts what it is handed - re-deriving an occurrence from
- * an `RRULE` string would be exactly the translation layer ticket 04's answer rules out.
+ * **This file's own merge/sort logic is UNCHANGED by that repoint** - only where its input comes
+ * from moved. **No recurrence math lives here, or anywhere else in LEGION, for an appointment.**
+ * Ticket 02's answer, still true post-repoint: a recurring Google series was already expanded into
+ * one row per occurrence at IMPORT time (the retired `CalendarImportController`'s own composite-key
+ * scheme), so every appointment [Event] row this file is ever handed is already a single occurrence
+ * - [mergeAgenda] only ever combines and sorts what it is given.
  */
 
 /**
- * Local [AgendaEntry] rows plus a Google-sourced entry per [GoogleCalendarEvent], all in one
+ * One appointment (`kind = `[EventKind.APPOINTMENT]) row, shaped for this file's merge/sort logic -
+ * carried over verbatim from the retired `calendar/CalendarProvider.kt`'s `GoogleCalendarEvent`
+ * (one-today ticket 01) so [mergeAgenda]/[mergeByTime] below needed no change beyond their input's
+ * origin. [eventId] is the real, positive [Event.id] now (the old negative-id Room-safety trick in
+ * `ui/notes/NotesResolvers.kt` is gone with it - see that file's own doc comment: an appointment
+ * lives in the SAME id space as a reminder, just disjoint by construction, [Event.APPOINTMENT_ID_BASE]'s
+ * own doc comment). [recurring] is always false: nothing local tracks an `RRULE`, every stored row
+ * is already one occurrence (this object's own class doc). [done] is new since the repoint -
+ * ticket 02, "ticking an appointment" - a live Google row never had one.
+ */
+data class AppointmentEvent(
+    val eventId: Long,
+    val title: String,
+    val startMs: Long,
+    val endMs: Long,
+    val allDay: Boolean,
+    val recurring: Boolean = false,
+    val location: String = "",
+    val done: Boolean = false,
+)
+
+/** [Event] -> [AppointmentEvent] - the one mapper every appointment-reading screen/builder funnels
+ * through, so a future column on either side has exactly one place to add it. [Event.startsAt] is
+ * assumed non-null by every caller of this function (every real appointment row states one - see
+ * [AppointmentEvent]'s own doc comment); a null one maps to `0L` rather than crashing, since a
+ * malformed row is still worth showing rather than silently dropping (CLAUDE.md's "a line the
+ * parser does not recognize is a hard failure, never a skip" - applied here as "render it, oddly,
+ * rather than lose it"). */
+fun Event.toAppointmentEvent(): AppointmentEvent = AppointmentEvent(
+    eventId = id,
+    title = title,
+    startMs = startsAt ?: 0L,
+    endMs = endsAt ?: (startsAt ?: 0L),
+    allDay = allDay,
+    recurring = false,
+    location = location.orEmpty(),
+    done = done,
+)
+
+/**
+ * Local [AgendaEntry] rows plus an appointment-sourced entry per [AppointmentEvent], all in one
  * ascending-by-start list. [local] is assumed already windowed and skip-subtracted by the caller
  * (`ui/TodayScreen.kt`'s existing `timedItemsInWindow`/`allRecurringItems` +
- * `Recurrence.occurrencesInWindow` pair, unchanged by this ticket) - [googleEvents] must be queried
+ * `Recurrence.occurrencesInWindow` pair, unchanged by this ticket) - [appointments] must be queried
  * over the SAME window for the merge to mean anything, but this function does not itself check
  * that; it only combines what it is given.
  */
-fun mergeAgenda(local: List<AgendaEntry>, googleEvents: List<GoogleCalendarEvent>): List<AgendaEntry> =
-    mergeByTime(local.map { it.timeMs to it }, googleEvents) { event ->
+fun mergeAgenda(local: List<AgendaEntry>, appointments: List<AppointmentEvent>): List<AgendaEntry> =
+    mergeByTime(local.map { it.timeMs to it }, appointments) { event ->
         AgendaEntry(label = event.title, timeMs = event.startMs, allDay = event.allDay, source = AgendaSource.GOOGLE)
     }
 
@@ -48,15 +94,15 @@ fun mergeAgenda(local: List<AgendaEntry>, googleEvents: List<GoogleCalendarEvent
  * each already-built row with the real instant it sorts on - [InboxRowView] only keeps a FORMATTED
  * [InboxRowView.dateLabel] string (see that type's own doc comment on why a date needs its own
  * slot), which cannot be sorted correctly, so the raw millis travel alongside the row through this
- * function rather than living on the row type itself. [fromGoogle] builds one caller-shaped row per
- * [GoogleCalendarEvent], the same job [mergeAgenda] does inline for [AgendaEntry].
+ * function rather than living on the row type itself. [fromAppointment] builds one caller-shaped row
+ * per [AppointmentEvent], the same job [mergeAgenda] does inline for [AgendaEntry].
  */
 fun <T> mergeByTime(
     local: List<Pair<Long, T>>,
-    googleEvents: List<GoogleCalendarEvent>,
-    fromGoogle: (GoogleCalendarEvent) -> T,
+    appointments: List<AppointmentEvent>,
+    fromAppointment: (AppointmentEvent) -> T,
 ): List<T> {
-    val converted = googleEvents.map { it.startMs to fromGoogle(it) }
+    val converted = appointments.map { it.startMs to fromAppointment(it) }
     return (local + converted).sortedBy { it.first }.map { it.second }
 }
 

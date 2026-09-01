@@ -30,7 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ai.GeminiKeyProvider
-import com.kevin.legion.calendar.CalendarProvider
+import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Goal
 import com.kevin.legion.data.local.IngestedFile
@@ -65,6 +65,7 @@ import com.kevin.legion.ui.notes.AgendaCalendarNotice
 import com.kevin.legion.ui.notes.CalendarNotLinkedRow
 import com.kevin.legion.ui.notes.buildAgendaCalendarNotice
 import com.kevin.legion.ui.notes.mergeAgenda
+import com.kevin.legion.ui.notes.toAppointmentEvent
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -206,19 +207,11 @@ fun TodayScreen(
 ) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(TodayUiState()) }
-    // Bumped after a permission grant so the effect below re-runs and picks up Google events on
-    // the SAME load path a fresh screen open uses - same shape as InboxScreen's own reloadNonce.
+    // One-today ticket 01 cut the live `CalendarContract` read this reloaded after a permission
+    // grant for - appointments now live in the local `events` table, always readable, so there is
+    // no permission round trip left to re-check after. Kept as a plain reload hook (bumped nowhere
+    // today) rather than deleted outright, matching InboxScreen's own reloadNonce shape.
     var reloadNonce by remember { mutableStateOf(0) }
-    // Requests READ_CALENDAR and WRITE_CALENDAR together (ticket 14) rather than deferring the
-    // write permission to Alfred's first voice-created event - that moment runs off
-    // AriaForegroundService, which has no Activity to raise a permission dialog from. Asking for
-    // both here, at the one screen that already asks for READ_CALENDAR, is "in context, not at
-    // startup" applied to the write half too: a later voice write has a real chance of already
-    // being granted instead of deterministically failing the first time, every time. See
-    // AndroidManifest.xml's permission-block comment.
-    val requestCalendar = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
-        reloadNonce++ // re-check regardless of the callback's own granted flags - a single source of truth
-    }
 
     LaunchedEffect(reloadNonce) {
         val now = System.currentTimeMillis()
@@ -294,16 +287,17 @@ fun TodayScreen(
             }
         }
 
-        // AGENDA, Google half (ticket 13): the SAME [dayStart, dayEnd] window as the local reads
-        // just above, so the merge in mergeAgenda is genuinely "one window, two sources" rather than
-        // two different days pasted together. Empty (not an error) when READ_CALENDAR is refused -
-        // buildAgendaCalendarNotice is what turns that into worded text, not this block.
-        val calendarPermissionGranted = CalendarProvider.hasReadPermission(context)
-        val googleEvents = if (calendarPermissionGranted) {
-            CalendarProvider.eventsInWindow(context, dayStart, dayEnd)
-        } else {
-            emptyList()
-        }
+        // AGENDA, appointment half (ticket 13; **repointed off the live `CalendarContract` read
+        // onto the local `events` table by one-today ticket 01, "cut Google entirely"**): the SAME
+        // [dayStart, dayEnd] window as the local reads just above, so the merge in mergeAgenda is
+        // genuinely "one window, two sources" rather than two different days pasted together. The
+        // local table is always readable - there is no permission to be refused any more - so
+        // `calendarPermissionGranted` is always true post-cut; kept as a field for
+        // [buildAgendaCalendarNotice]'s worded-empty-vs-unreadable split, which still reads
+        // correctly for the one case left that matters (a genuinely empty window).
+        val calendarPermissionGranted = true
+        val appointments = db.eventDao().activeByKindInWindow(EventKind.APPOINTMENT, dayStart, dayEnd)
+            .map { it.toAppointmentEvent() }
 
         // ALERTS (ticket 16, extended by command-center ticket 01): every currently-quarantined
         // ledger document (CLAUDE.md §4), the Gemini key's presence, every overdue active goal, and
@@ -332,7 +326,7 @@ fun TodayScreen(
             maintenanceUnknownCount = items.count { VehicleController.isUnknown(it) },
             openTaskCount = openTaskCount,
             logHasAnyItems = logHasAnyItems,
-            agendaEntries = mergeAgenda(oneOff + recurringToday, googleEvents),
+            agendaEntries = mergeAgenda(oneOff + recurringToday, appointments),
             notesMissedCount = notesMissedCount,
             calendarPermissionGranted = calendarPermissionGranted,
             weather = weather,
@@ -343,9 +337,11 @@ fun TodayScreen(
     TodayContent(
         state, onOpenNotes, onOpenCategory, onOpenBody, onOpenFleet, onOpenKeySettings, onOpenMedia,
         onOpenDashboard = onOpenDashboard,
-        onRequestCalendarPermission = {
-            requestCalendar.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR))
-        },
+        // One-today ticket 01: nothing left to grant - the local `events` table needs no runtime
+        // permission - so this stays the default no-op. [CalendarNotLinkedRow] can no longer render
+        // (calendarPermissionGranted is always true post-cut) but the plumbing is left in place
+        // rather than torn out screen-by-screen; `buildAgendaCalendarNotice`'s own doc comment still
+        // covers the one distinction that still matters (unreadable vs. genuinely empty).
     )
 }
 

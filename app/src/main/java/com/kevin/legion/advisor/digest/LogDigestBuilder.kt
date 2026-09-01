@@ -4,8 +4,8 @@ import android.content.Context
 import com.kevin.legion.advisor.AdvisorAspect
 import com.kevin.legion.advisor.DigestBuilder
 import com.kevin.legion.advisor.DigestText
-import com.kevin.legion.calendar.CalendarProvider
-import com.kevin.legion.calendar.CalendarProvider.GoogleCalendarEvent
+import com.kevin.legion.backend.EventKind
+import com.kevin.legion.calendar.OpenerCalendarBriefing
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ItemList
 import com.kevin.legion.data.local.ListItem
@@ -14,18 +14,20 @@ import com.kevin.legion.util.compactDate
 /**
  * LOG's deterministic digest (ticket 17, same shape/window/tier rules as ticket 16's
  * non-negotiables). Read-only over [com.kevin.legion.data.local.ItemListDao]/
- * [com.kevin.legion.data.local.ListItemDao]/[com.kevin.legion.data.local.PlaceReminderDao] and
- * [CalendarProvider] - never writes, never blocks on network. `TrustTier` is deliberately NOT
- * stamped on any line here: every figure in this digest is a plain count or a stored fact about
- * LEGION's own record (a task exists, a reminder fired late, an event is on the calendar), never a
- * claim reconciled against - or standing in for - an outside document, so there is no proven/
- * reported distinction to carry (unlike FLEET's odometer/DTC figures, which are the driver's own
- * unreconciled word about the car). [DigestText.withTier] is intentionally unused in this file.
+ * [com.kevin.legion.data.local.ListItemDao]/[com.kevin.legion.data.local.PlaceReminderDao] and the
+ * local `events` table's `kind = 'appointment'` rows - never writes, never blocks on network.
+ * `TrustTier` is deliberately NOT stamped on any line here: every figure in this digest is a plain
+ * count or a stored fact about LEGION's own record (a task exists, a reminder fired late, an event
+ * is on the calendar), never a claim reconciled against - or standing in for - an outside document,
+ * so there is no proven/reported distinction to carry (unlike FLEET's odometer/DTC figures, which
+ * are the driver's own unreconciled word about the car). [DigestText.withTier] is intentionally
+ * unused in this file.
  *
- * **Calendar is READ-ONLY** (`.scratch/google-account-integration/`, [CalendarProvider]'s own class
- * doc: "Google owns appointments, LEGION owns reminders"). This builder only ever calls
- * [CalendarProvider.eventsInWindow]/[CalendarProvider.hasReadPermission]; nothing here inserts,
- * updates, or deletes a Google event.
+ * **Calendar is READ-ONLY, historically because "Google owns appointments, LEGION owns reminders"**
+ * (`.scratch/google-account-integration/`) - **one-today ticket 01 cut the live Google read
+ * entirely**, and this builder now reads the local `events` table directly
+ * ([com.kevin.legion.data.local.EventDao.activeByKindInWindow]); it stays read-only regardless,
+ * nothing here inserts, updates, or deletes anything.
  *
  * **Repeated-deferral flags are a REASONED proxy, not a stored fact** - see [deferralLines]'s own
  * doc comment. No column anywhere in [ListItem] counts how many times an item's `startsAt` has been
@@ -61,11 +63,12 @@ object LogDigestBuilder : DigestBuilder {
         val placeReminderCount = db.placeReminderDao().allActive().size
         val placeTriggerItemCount = com.kevin.legion.notes.NotesController.openWithAnyPlaceTrigger(context).size
 
-        val calendarEvents = if (CalendarProvider.hasReadPermission(context)) {
-            CalendarProvider.eventsInWindow(context, now, now + CALENDAR_HORIZON_MS)
-        } else {
-            null // distinct from an empty list - see calendarLine's doc comment
-        }
+        // One-today ticket 01, "cut Google entirely": the local `events` table is always readable,
+        // so there is no more refused-permission outcome to distinguish from an empty window - see
+        // calendarLine's own doc comment for why the `null` branch is kept anyway.
+        val calendarEvents = db.eventDao()
+            .activeByKindInWindow(EventKind.APPOINTMENT, now, now + CALENDAR_HORIZON_MS)
+            .map { OpenerCalendarBriefing.BriefingEvent(title = it.title, startMs = it.startsAt ?: now, endMs = it.endsAt ?: (it.startsAt ?: now), allDay = it.allDay) }
 
         return buildDigestText(
             allActive = allActive,
@@ -84,7 +87,7 @@ object LogDigestBuilder : DigestBuilder {
         tickableListIds: Set<Long>,
         missed: List<ListItem>,
         placeReminderCount: Int,
-        calendarEvents: List<GoogleCalendarEvent>?,
+        calendarEvents: List<OpenerCalendarBriefing.BriefingEvent>?,
         now: Long,
     ): String {
         val openTasks = openTaskItems(allActive, tickableListIds)
@@ -140,12 +143,15 @@ object LogDigestBuilder : DigestBuilder {
         return listOf(DigestText.line("OVERDUE REMINDERS", "${missed.size}: $names"))
     }
 
-    /** The calendar horizon, READ-ONLY. `null` [calendarEvents] means [CalendarProvider
-     * .hasReadPermission] was refused - stated in words, distinct from an honestly empty list
-     * (nothing scheduled), matching [CalendarProvider]'s own class doc: "turning empty/null into a
-     * worded reason is the caller's job". A granted-but-empty read is a real fact ("nothing on the
-     * calendar the next 7 days"), not a missing record, so it does NOT read [DigestText.notLogged]. */
-    private fun calendarLine(calendarEvents: List<GoogleCalendarEvent>?, now: Long): String {
+    /** The calendar horizon, READ-ONLY. `null` [calendarEvents] historically meant the retired
+     * `CalendarProvider.hasReadPermission` was refused - stated in words, distinct from an honestly
+     * empty list (nothing scheduled). **One-today ticket 01 removed the live path that could ever
+     * produce a null here** (the local `events` table is always readable), but the branch itself is
+     * left in place rather than deleted: it is still a real, pure distinction this function can
+     * draw, and [LogDigestBuilderTest] still exercises it directly. A granted-but-empty read is a
+     * real fact ("nothing on the calendar the next 7 days"), not a missing record, so it does NOT
+     * read [DigestText.notLogged]. */
+    private fun calendarLine(calendarEvents: List<OpenerCalendarBriefing.BriefingEvent>?, now: Long): String {
         if (calendarEvents == null) return DigestText.line("CALENDAR next 7d", "calendar permission not granted")
         if (calendarEvents.isEmpty()) return DigestText.line("CALENDAR next 7d", "nothing scheduled")
         val names = calendarEvents.take(MAX_NAMED_EXEMPLARS).joinToString(", ") { "${it.title} (${compactDate(it.startMs)})" }

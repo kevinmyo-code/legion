@@ -820,4 +820,137 @@ object NotesController {
     // ----------------------------------------------------------------------- awareness helper
 
     suspend fun openItemCount(context: Context): Int = allNotesItems(context).count { !it.done }
+
+    // ------------------------------------------------------------------- appointments (one-today ticket 02)
+
+    /**
+     * One-today ticket 02, "ticking an appointment": every function in this section is a
+     * DELIBERATELY separate, narrower funnel from the reminder-only one above - never through
+     * [applyChange], never through [allNotesItems]'s `kind = 'reminder'` filter. **Why separate,
+     * not extended:** ticket 11's `kind` discriminator exists so [AlarmScheduler]'s sweep never
+     * mistakes an appointment for something it owns (the 2026-08-26 incident, 51 rows falsely
+     * marked missed) - ticket 02 separates the QUESTION this file conflated ("whose alarm is this"
+     * vs "can this be ticked") rather than widening the reminder funnel and hoping nothing in it
+     * ever reaches [AlarmScheduler]/[scheduleAlarmFor] by accident. None of the functions below
+     * calls either.
+     *
+     * **Local-only, by design, not merely by omission** (ticket 02 point 3): an appointment has no
+     * live server write funnel of its own even on the "configured" (Supabase) path - the retired
+     * `calendar/CalendarImportController.kt`'s own class doc established this ("unlike
+     * [NotesController], there is no configured-vs-unconfigured branch here at all... a
+     * Google-imported event is already synced cross-device by Google itself"), and a voice-created
+     * appointment ([com.kevin.legion.service.LiveToolbox]'s `addAppointment`) follows the identical
+     * shape. So a tick here writes straight to the local [Event] row, on every install, matching
+     * that precedent rather than inventing a live-sync path ticket 02 never asked for. **The
+     * accepted cost, stated rather than hidden:** an appointment ticked on one phone does not appear
+     * ticked on a second phone until the next full [com.kevin.legion.backend.EventsReconcile] wipes
+     * and refills the reminder half of this table - and that refill, by that object's own class doc,
+     * never touches an appointment row at all. A follow-up, not a silent gap.
+     *
+     * **Recurring appointments needed no new handling** (ticket 02 point 2): an appointment row
+     * never carries [Event.repeatKind] - every stored appointment (Google-imported historically, or
+     * voice-created today) is already a single expanded occurrence, matching
+     * [com.kevin.legion.ui.notes.AppointmentEvent]'s own doc comment - so `events_recurring_not_done`'s
+     * `repeat_kind is null or done = false` constraint can never fire for one. A LEGION recurring
+     * REMINDER is unaffected: [tick] above already refuses it (`item.repeatKind != null`),
+     * unchanged by this section.
+     */
+    suspend fun appointmentById(context: Context, id: Long): ListItem? {
+        val listId = theList(context).id
+        val row = db(context).eventDao().getById(id) ?: return null
+        if (row.deleted || row.kind != EventKind.APPOINTMENT) return null
+        return row.toListItem(listId)
+    }
+
+    /** Every active (undone) appointment, shaped for [matchItem] - `service/LiveToolbox.kt`'s
+     * `manage_item` tick/untick fallback reads this ONLY after [findItem] (reminders) comes back
+     * [ItemMatch.NoMatch], so a title that matches a reminder is never shadowed by an
+     * appointment of the same name. Ticket 02 point 4: "the voice tools need it both ways". */
+    suspend fun openAppointments(context: Context): List<ListItem> {
+        val listId = theList(context).id
+        return db(context).eventDao().getActiveByKind(EventKind.APPOINTMENT)
+            .filter { !it.done }
+            .map { it.toListItem(listId) }
+    }
+
+    /** Fuzzy-matches [query] against open appointments only, same shape as [findItem]. */
+    suspend fun findAppointment(context: Context, query: String): ItemMatch =
+        matchItem(query, openAppointments(context))
+
+    /** Ticks an appointment "done" - ticket 02 point 1: "I attended", not "I completed a task" -
+     * same [Event.done]/[Event.doneAt] columns a reminder tick uses, worded differently at the UI/
+     * voice layer only. Returns false, writing nothing, on a stale id, a row that is not actually an
+     * appointment, or a genuine write failure - same "no false success" contract [tick] holds for a
+     * reminder. Never touches [AlarmScheduler] - see this section's own class doc for why an
+     * appointment never armed one to begin with. */
+    suspend fun tickAppointment(context: Context, item: Event): Boolean {
+        val now = System.currentTimeMillis()
+        val existing = db(context).eventDao().getById(item.id) ?: return false
+        if (existing.deleted || existing.kind != EventKind.APPOINTMENT) return false
+        return try {
+            db(context).eventDao().update(existing.copy(done = true, doneAt = now, updatedAtMs = now))
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "tickAppointment failed for ${item.id}: ${e.message}")
+            false
+        }
+    }
+
+    /** The undo of [tickAppointment] - same failure contract. */
+    suspend fun untickAppointment(context: Context, item: Event): Boolean {
+        val now = System.currentTimeMillis()
+        val existing = db(context).eventDao().getById(item.id) ?: return false
+        if (existing.deleted || existing.kind != EventKind.APPOINTMENT) return false
+        return try {
+            db(context).eventDao().update(existing.copy(done = false, doneAt = null, updatedAtMs = now))
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "untickAppointment failed for ${item.id}: ${e.message}")
+            false
+        }
+    }
+
+    /** `ui/notes/InboxScreen.kt`'s appointment edit dialog save - one-today ticket 01's local
+     * replacement for the retired `CalendarProvider.updateEventSeries`/`updateEventOccurrence` pair.
+     * Title/start/end/all-day only, matching that dialog's own "title and time" surface (ticket 22
+     * point 1) - everything else about the row is preserved via `copy`. Returns false, writing
+     * nothing, on a stale id or a row that is not an appointment. */
+    suspend fun updateAppointment(
+        context: Context,
+        id: Long,
+        title: String,
+        startMs: Long,
+        endMs: Long,
+        allDay: Boolean,
+    ): Boolean {
+        val now = System.currentTimeMillis()
+        val existing = db(context).eventDao().getById(id) ?: return false
+        if (existing.deleted || existing.kind != EventKind.APPOINTMENT) return false
+        return try {
+            db(context).eventDao().update(
+                existing.copy(title = title, startsAt = startMs, endsAt = endMs, allDay = allDay, updatedAtMs = now),
+            )
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "updateAppointment failed for $id: ${e.message}")
+            false
+        }
+    }
+
+    /** `ui/notes/InboxScreen.kt`'s appointment DELETE - one-today ticket 01's local replacement for
+     * the retired `CalendarProvider.deleteEventSeries`/`deleteEventOccurrence` pair. Hard-deletes the
+     * row, matching [removeItem]'s own unconfigured-path convention for this table (no 30-day
+     * restorable trash here - [Event]'s own doc comment). Returns false, deleting nothing, when the
+     * id is already gone or is not an appointment. */
+    suspend fun removeAppointment(context: Context, id: Long): Boolean {
+        val existing = db(context).eventDao().getById(id) ?: return false
+        if (existing.kind != EventKind.APPOINTMENT) return false
+        return try {
+            db(context).eventDao().deleteById(id)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "removeAppointment failed for $id: ${e.message}")
+            false
+        }
+    }
 }

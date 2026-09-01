@@ -34,7 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.kevin.legion.calendar.CalendarProvider
+import com.kevin.legion.backend.EventKind
+import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.notes.Recurrence
 import com.kevin.legion.notes.endFromItem
@@ -63,6 +64,7 @@ import com.kevin.legion.ui.notes.buildWeekAheadDayCounts
 import com.kevin.legion.ui.notes.entriesForDay
 import com.kevin.legion.ui.notes.eventDotCount
 import com.kevin.legion.ui.notes.mergeAgenda
+import com.kevin.legion.ui.notes.toAppointmentEvent
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.clockTime
@@ -142,12 +144,10 @@ fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
     // see [buildListsTile]'s own doc comment for why this is a LOCAL-only count, not the wider
     // Google-merged stream `ui/notes/InboxScreen.kt`'s own ITEMS badge counts.
     var openListCount by remember { mutableStateOf(0) }
-    // Same "request both, in context" shape TodayScreen's own calendar-grant launcher uses -
-    // a grant just bumps the shared reload nonce so the grid re-queries on the same load path a
-    // fresh screen open uses, rather than this screen inventing a second reload mechanism.
-    val requestCalendar = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
-        missedReloadNonce++
-    }
+    // One-today ticket 01 cut the runtime permission this launcher used to request - the local
+    // `events` table needs none. [CalendarNotLinkedRow]'s `onGrantCalendar` slot below is now a
+    // no-op rather than deleted outright: `monthCalendarLinked`/`todayCalendarLinked` are always
+    // true post-cut, so that row can no longer render at all.
 
     LaunchedEffect(missedReloadNonce) {
         val missed = NotesController.missedItems(context)
@@ -180,13 +180,13 @@ fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
                     .map { occMs -> AgendaEntry(item.text, occMs, item.allDay) }
             }
         }
-        todayCalendarLinked = CalendarProvider.hasReadPermission(context)
-        val todayGoogleEvents = if (todayCalendarLinked) {
-            CalendarProvider.eventsInWindow(context, todayStartMs, todayEndMs)
-        } else {
-            emptyList()
-        }
-        todayEntries = mergeAgenda(todayOneOff + todayRecurring, todayGoogleEvents)
+        // One-today ticket 01 cut the live `CalendarContract` read this used to gate on - the local
+        // `events` table is always readable, so `todayCalendarLinked` is always true post-cut.
+        todayCalendarLinked = true
+        val todayAppointments = CarDatabase.getDatabase(context).eventDao()
+            .activeByKindInWindow(EventKind.APPOINTMENT, todayStartMs, todayEndMs)
+            .map { it.toAppointmentEvent() }
+        todayEntries = mergeAgenda(todayOneOff + todayRecurring, todayAppointments)
 
         // Mission-control ticket 16's LISTS tile: open count, restated as a count-only read of the
         // SAME NotesController.allItems `ui/notes/InboxScreen.kt` reads for its own stream - never a
@@ -224,18 +224,14 @@ fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
             }
         }
 
-        val calendarLinked = CalendarProvider.hasReadPermission(context)
-        monthCalendarLinked = calendarLinked
-        // Ticket 14 (unlike the strip it replaces): calendar-not-linked still draws the grid from
-        // LOCAL items - they are real - rather than suppressing it entirely. CalendarNotLinkedRow
-        // says so in words directly beneath the grid, so it is never silently presenting a partial
-        // picture as complete.
-        val merged = if (calendarLinked) {
-            val googleEvents = CalendarProvider.eventsInWindow(context, monthStart, monthEnd)
-            mergeAgenda(oneOff + recurringMonth, googleEvents)
-        } else {
-            oneOff + recurringMonth
-        }
+        // One-today ticket 01 cut the live `CalendarContract` read this used to gate on - the local
+        // `events` table is always readable, so `monthCalendarLinked` is always true post-cut
+        // (kept as a field for [CalendarNotLinkedRow]'s plumbing, which can no longer fire).
+        monthCalendarLinked = true
+        val monthAppointments = CarDatabase.getDatabase(context).eventDao()
+            .activeByKindInWindow(EventKind.APPOINTMENT, monthStart, monthEnd)
+            .map { it.toAppointmentEvent() }
+        val merged = mergeAgenda(oneOff + recurringMonth, monthAppointments)
         val counts = buildWeekAheadDayCounts(merged, dayStarts, zone)
         val countsByDayStart = dayStarts.zip(counts).toMap()
         monthCells = buildMonthCells(displayedMonth, countsByDayStart, zone)
@@ -291,7 +287,7 @@ fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
                         TodayPane(
                             entries = todayEntries,
                             calendarLinked = todayCalendarLinked,
-                            onGrantCalendar = { requestCalendar.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)) },
+                            onGrantCalendar = {},
                         )
                         DashedHairline()
                     }
@@ -401,7 +397,7 @@ fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
                                 // the popup's own SHOW IN LIST button, which is what keeps ticket 14's
                                 // day-filter feature alive underneath this.
                                 onSelectDay = { tapped -> popupDayStart = tapped },
-                                onGrantCalendar = { requestCalendar.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)) },
+                                onGrantCalendar = {},
                             )
                             DashedHairline()
                         }

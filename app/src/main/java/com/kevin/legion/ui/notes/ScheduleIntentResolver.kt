@@ -4,11 +4,15 @@ package com.kevin.legion.ui.notes
  * The appointment-versus-reminder call (ticket 14,
  * `.scratch/google-account-integration/issues/14-calendar-write.md`, carrying forward ticket 04's
  * answer: "an appointment and a reminder stop being the same thing... Google owns appointments.
- * LEGION owns reminders. Nothing is ever written to both stores"). "Dentist Tuesday at 3" belongs
- * on Google Calendar via [com.kevin.legion.calendar.CalendarProvider.insertEvent]; "remind me to
- * change the oil Tuesday" stays a local `ListItem`. Getting this wrong puts the item in a store the
- * driver does not expect, so the decision is made in exactly ONE place - here - rather than being
- * inferred ad hoc at the `manage_item` call site in `service/LiveToolbox.kt`.
+ * LEGION owns reminders. Nothing is ever written to both stores"). **One-today ticket 01, "cut
+ * Google entirely" (2026-09-01): the split itself survives, the STORE on the appointment side does
+ * not** - "Dentist Tuesday at 3" now lands in the SAME local `events` table a reminder does, just
+ * `kind = appointment` rather than `kind = reminder` (see `service/LiveToolbox.kt`'s
+ * `addAppointment`, the retired `calendar/CalendarProvider.kt`'s replacement); "remind me to change
+ * the oil Tuesday" stays `kind = reminder`. Getting this wrong still puts the item in a bucket the
+ * driver does not expect (an appointment must never arm `AlarmScheduler`'s alarm - ticket 11), so
+ * the decision is made in exactly ONE place - here - rather than being inferred ad hoc at the
+ * `manage_item` call site in `service/LiveToolbox.kt`.
  *
  * Pure, no Android types, so the routing branch and the wording it produces are both plain JUnit
  * tests ([ScheduleIntentResolverTest]) - the same "pure resolver, thin dispatch wrapper" split every
@@ -19,8 +23,9 @@ object ScheduleIntentResolver {
 
     /** What a newly-scheduled item is, and therefore which store it belongs in. */
     sealed class Kind {
-        /** Goes to `CalendarContract` via [com.kevin.legion.calendar.CalendarProvider.insertEvent].
-         * Nothing about it is stored locally afterward - ticket 04 point 5. */
+        /** Goes to the local `events` table, `kind = appointment` (`service/LiveToolbox.kt`'s
+         * `addAppointment`) - historically `CalendarContract` via the retired
+         * `calendar/CalendarProvider.kt.insertEvent`, before one-today ticket 01. */
         object Appointment : Kind()
 
         /** Goes to the local `ListItem` table, same as every item before this ticket. */

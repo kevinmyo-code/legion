@@ -28,7 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.kevin.legion.calendar.CalendarProvider
+import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.Event
+import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.ui.common.DeckPane
@@ -106,23 +108,15 @@ fun InboxScreen(
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf(InboxUiState()) }
     var rawItems by remember { mutableStateOf(emptyList<ListItem>()) }
+    var rawAppointments by remember { mutableStateOf(emptyList<Event>()) }
     var reloadNonce by remember { mutableStateOf(0) }
     var editingItem by remember { mutableStateOf<ListItem?>(null) }
-    // Ticket 22: the one piece of Google-row dialog state this screen owns. Never more than one of
-    // these is non-null at a time - see [GoogleRowDialog]'s own doc comment for why a sealed class,
-    // not three separate nullable fields, is what keeps that true by construction.
+    // One-today ticket 01: the appointment dialog this screen owns - never more than one of
+    // [GoogleRowDialog.Edit]/[GoogleRowDialog.SingleDeleteConfirm] is non-null at a time.
     var googleDialog by remember { mutableStateOf<GoogleRowDialog?>(null) }
-    // Bumped after a permission grant so the effect below re-runs and picks up Google events on the
-    // same load path a fresh screen open uses - same shape as `ui/TodayScreen.kt`'s own reloadNonce.
-    // Requests READ_CALENDAR and WRITE_CALENDAR together (ticket 14) - see `ui/TodayScreen.kt`'s
-    // matching launcher and AndroidManifest.xml's permission-block comment for why the write
-    // permission is asked for here rather than deferred to Alfred's first voice-created event.
-    val requestCalendar = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
-        reloadNonce++ // re-check regardless of the callback's own granted flags - a single source of truth
-    }
 
     // Ticket 15 point 2: re-fetch keyed on [dayFilterStartMs] too, not [reloadNonce] alone - a day
-    // selected AFTER the initial load must trigger the widened Google fetch below, not reuse a
+    // selected AFTER the initial load must trigger the widened appointment fetch below, not reuse a
     // forward-only result computed before the filter existed.
     LaunchedEffect(reloadNonce, dayFilterStartMs) {
         // Touch the inbox list on first load so ADD never has to create it mid-tap, and so an
@@ -131,41 +125,42 @@ fun InboxScreen(
         // [NotesController.allItems] reads every ACTIVE local row unconditionally - it is not
         // windowed at all, unlike `ui/NotesScreen.kt`'s own month-calendar count query - so a past
         // day's LOCAL items were never the false-empty bug ticket 15 describes and need no widening
-        // here. Only the Google fetch below is forward-window-only.
+        // here. Only the appointment fetch below is forward-window-only.
         val items = NotesController.allItems(context)
         rawItems = items
 
-        // Google half (ticket 13 follow-up, Kevin 2026-08-13): a 90-day FORWARD window, nothing in
-        // the past - see [INBOX_CALENDAR_WINDOW_DAYS]'s own doc comment for why this differs from
-        // `ui/TodayScreen.kt`'s AGENDA pane, which stays windowed to today alone. Empty (not an
-        // error) when READ_CALENDAR is refused - buildAgendaCalendarNotice is what turns that into
-        // worded text, not this block.
+        // Appointment half (ticket 13 follow-up, Kevin 2026-08-13; **repointed off the live
+        // `CalendarContract` read onto the local `events` table by one-today ticket 01, "cut Google
+        // entirely"**): a 90-day FORWARD window, nothing in the past - see
+        // [INBOX_CALENDAR_WINDOW_DAYS]'s own doc comment for why this differs from
+        // `ui/TodayScreen.kt`'s AGENDA pane, which stays windowed to today alone. The local `events`
+        // table is always readable (there is no permission to be refused any more), so
+        // `calendarPermissionGranted` is always true post-cut - kept as a field so
+        // [buildAgendaCalendarNotice]'s worded-empty-vs-unreadable split still compiles and still
+        // reads correctly for the one case left that matters (a genuinely empty window).
         val now = System.currentTimeMillis()
-        val calendarPermissionGranted = CalendarProvider.hasReadPermission(context)
-        val googleEvents = if (calendarPermissionGranted) {
-            val windowEnd = now + INBOX_CALENDAR_WINDOW_DAYS * 24L * 60L * 60L * 1000L
-            val forward = CalendarProvider.eventsInWindow(context, now, windowEnd)
-            // Ticket 15 point 2: the month calendar counts a whole-month window (past AND future),
-            // but this fetch was forward-only from "now" - a PAST day the grid drew dots for was
-            // never in [forward] at all, so the day filter below read a real "nothing here" that was
-            // actually "nothing FETCHED". Cover the selected day too, IN ADDITION to the forward
-            // window, never instead of it - deduped by (eventId, startMs) since a selected day inside
-            // the forward window would otherwise hand `Instances` the same occurrence twice.
-            if (dayFilterStartMs != null) {
-                val dayWindowEndExclusive = dayFilterStartMs + DAY_FILTER_WINDOW_MS
-                val dayEvents = CalendarProvider.eventsInWindow(context, dayFilterStartMs, dayWindowEndExclusive - 1)
-                (forward + dayEvents).distinctBy { it.eventId to it.startMs }
-            } else {
-                forward
-            }
+        val db = CarDatabase.getDatabase(context)
+        val windowEnd = now + INBOX_CALENDAR_WINDOW_DAYS * 24L * 60L * 60L * 1000L
+        val forward = db.eventDao().activeByKindInWindow(EventKind.APPOINTMENT, now, windowEnd)
+        // Ticket 15 point 2: the month calendar counts a whole-month window (past AND future), but
+        // this fetch was forward-only from "now" - a PAST day the grid drew dots for was never in
+        // [forward] at all, so the day filter below read a real "nothing here" that was actually
+        // "nothing FETCHED". Cover the selected day too, IN ADDITION to the forward window, never
+        // instead of it - deduped by id, since a selected day inside the forward window would
+        // otherwise hand this query the same row twice.
+        val appointments = if (dayFilterStartMs != null) {
+            val dayWindowEndExclusive = dayFilterStartMs + DAY_FILTER_WINDOW_MS
+            val dayEvents = db.eventDao().activeByKindInWindow(EventKind.APPOINTMENT, dayFilterStartMs, dayWindowEndExclusive - 1)
+            (forward + dayEvents).distinctBy { it.id }
         } else {
-            emptyList()
+            forward
         }
+        rawAppointments = appointments
 
         state = InboxUiState(
             loading = false,
-            rows = buildInboxRows(items, now, googleEvents),
-            calendarPermissionGranted = calendarPermissionGranted,
+            rows = buildInboxRows(items, now, appointments.map { it.toAppointmentEvent() }),
+            calendarPermissionGranted = true,
         )
     }
 
@@ -191,13 +186,21 @@ fun InboxScreen(
             }
         },
         onToggle = { id ->
-            // A Google row's negative id (see `NotesResolvers.kt`'s toInboxRowView(GoogleCalendarEvent))
-            // never matches a real ListItem, so this is already a no-op for it - belt and braces for
-            // ticket 13 follow-up's "must never be tickable" on top of InboxRow not wiring the
-            // checkbox to a read-only row at all.
-            val target = rawItems.firstOrNull { it.id == id } ?: return@InboxContent
+            // One-today ticket 02: a reminder ([rawItems]) and an appointment ([rawAppointments])
+            // now share one id space by construction (disjoint, never colliding -
+            // `Event.APPOINTMENT_ID_BASE`'s own doc comment) but two separate tick funnels, since
+            // an appointment must never touch `AlarmScheduler` the way a reminder tick does.
+            val target = rawItems.firstOrNull { it.id == id }
+            if (target != null) {
+                scope.launch {
+                    if (target.done) NotesController.untick(context, target) else NotesController.tick(context, target)
+                    reloadNonce++
+                }
+                return@InboxContent
+            }
+            val appointment = rawAppointments.firstOrNull { it.id == id } ?: return@InboxContent
             scope.launch {
-                if (target.done) NotesController.untick(context, target) else NotesController.tick(context, target)
+                if (appointment.done) NotesController.untickAppointment(context, appointment) else NotesController.tickAppointment(context, appointment)
                 reloadNonce++
             }
         },
@@ -206,38 +209,8 @@ fun InboxScreen(
             val target = rawItems.firstOrNull { it.id == id } ?: return@InboxContent
             scope.launch { NotesController.removeItem(context, target); reloadNonce++ }
         },
-        onRequestCalendarPermission = {
-            requestCalendar.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR))
-        },
-        onEditGoogle = { row ->
-            // Ticket 22 point 4: a row this screen never should have offered an edit affordance for
-            // in the first place (InboxRow already gates on the same resolver call) is defended here
-            // too, rather than trusted blindly - a stale row from a permission change mid-session is
-            // exactly the kind of thing that class of double-check exists for.
-            val action = CalendarEditResolver.rowAction(row.calendarAccessLevel ?: 0, row.recurring)
-            val prompt = CalendarEditResolver.scopePrompt(action, CalendarEditResolver.Operation.EDIT)
-            googleDialog = if (prompt != null) {
-                GoogleRowDialog.ScopeChoice(row, CalendarEditResolver.Operation.EDIT, prompt)
-            } else if (action != CalendarEditResolver.RowAction.READ_ONLY) {
-                // Non-recurring: nothing to disambiguate (ticket 22 point 2) - ALL is the only
-                // meaningful scope for a series of one, and CalendarProvider.updateEventSeries is
-                // exactly the right call for it.
-                GoogleRowDialog.Edit(row, CalendarEditResolver.Scope.ALL)
-            } else {
-                null
-            }
-        },
-        onDeleteGoogle = { row ->
-            val action = CalendarEditResolver.rowAction(row.calendarAccessLevel ?: 0, row.recurring)
-            val prompt = CalendarEditResolver.scopePrompt(action, CalendarEditResolver.Operation.DELETE)
-            googleDialog = if (prompt != null) {
-                GoogleRowDialog.ScopeChoice(row, CalendarEditResolver.Operation.DELETE, prompt)
-            } else if (action != CalendarEditResolver.RowAction.READ_ONLY) {
-                GoogleRowDialog.SingleDeleteConfirm(row)
-            } else {
-                null
-            }
-        },
+        onEditGoogle = { row -> googleDialog = GoogleRowDialog.Edit(row) },
+        onDeleteGoogle = { row -> googleDialog = GoogleRowDialog.SingleDeleteConfirm(row) },
     )
 
     val editing = editingItem
@@ -251,41 +224,17 @@ fun InboxScreen(
         )
     }
 
-    // Ticket 22: every write below goes through calendar/CalendarProvider.kt straight onto Google's
-    // own copy of the event - never through NotesController, never into Room. See
-    // CalendarEditResolver's file doc comment for why this does not reopen ticket 04's "nothing is
-    // ever written to both stores" rule.
+    // One-today ticket 01: every write below goes to the LOCAL `events` table now
+    // ([NotesController.updateAppointment]/[NotesController.removeAppointment]), never to Google -
+    // the old scope-choice ("this one or all of them") dialog is gone with the recurring concept it
+    // existed to disambiguate (see `ui/notes/NotesRows.kt`'s own doc comment).
     when (val dialog = googleDialog) {
-        is GoogleRowDialog.ScopeChoice -> ScopeChoiceDialog(
-            prompt = dialog.prompt,
-            onDismiss = { googleDialog = null },
-            onChoose = { chosenScope ->
-                when (dialog.operation) {
-                    CalendarEditResolver.Operation.EDIT -> googleDialog = GoogleRowDialog.Edit(dialog.row, chosenScope)
-                    CalendarEditResolver.Operation.DELETE -> {
-                        val eventId = dialog.row.calendarEventId
-                        val occurrenceStart = dialog.row.calendarOccurrenceStartMs
-                        if (eventId != null) {
-                            scope.launch {
-                                when (chosenScope) {
-                                    CalendarEditResolver.Scope.THIS_ONE ->
-                                        if (occurrenceStart != null) CalendarProvider.deleteEventOccurrence(context, eventId, occurrenceStart)
-                                    CalendarEditResolver.Scope.ALL -> CalendarProvider.deleteEventSeries(context, eventId)
-                                }
-                                reloadNonce++
-                            }
-                        }
-                        googleDialog = null
-                    }
-                }
-            },
-        )
         is GoogleRowDialog.SingleDeleteConfirm -> SingleDeleteConfirmDialog(
             onDismiss = { googleDialog = null },
             onConfirm = {
                 val eventId = dialog.row.calendarEventId
                 if (eventId != null) {
-                    scope.launch { CalendarProvider.deleteEventSeries(context, eventId); reloadNonce++ }
+                    scope.launch { NotesController.removeAppointment(context, eventId); reloadNonce++ }
                 }
                 googleDialog = null
             },
@@ -295,17 +244,9 @@ fun InboxScreen(
             onDismiss = { googleDialog = null },
             onSave = { title, startMs, endMs, allDay ->
                 val eventId = dialog.row.calendarEventId
-                val occurrenceStart = dialog.row.calendarOccurrenceStartMs
                 if (eventId != null) {
                     scope.launch {
-                        when (dialog.scope) {
-                            CalendarEditResolver.Scope.THIS_ONE ->
-                                if (occurrenceStart != null) {
-                                    CalendarProvider.updateEventOccurrence(context, eventId, occurrenceStart, title, startMs, endMs, allDay)
-                                }
-                            CalendarEditResolver.Scope.ALL ->
-                                CalendarProvider.updateEventSeries(context, eventId, title, startMs, endMs, allDay)
-                        }
+                        NotesController.updateAppointment(context, eventId, title, startMs, endMs, allDay)
                         reloadNonce++
                     }
                 }
@@ -317,69 +258,48 @@ fun InboxScreen(
 }
 
 /**
- * The Google-row dialog this screen may be showing, ticket 22 - a sealed class rather than three
- * separate nullable fields so at most one of [ScopeChoice]/[SingleDeleteConfirm]/[Edit] can ever be
- * shown at once, by construction, rather than by remembering to null the others out by hand every
- * time one is set.
+ * The appointment-row dialog this screen may be showing - one-today ticket 01 collapsed ticket 22's
+ * three-armed [GoogleRowDialog] (`ScopeChoice`/`SingleDeleteConfirm`/`Edit`) down to two: cutting
+ * the live Google read also cut the only fact ([recurring]) the old scope-choice prompt existed to
+ * disambiguate (see `ui/notes/NotesRows.kt`'s own doc comment) - every stored appointment row is
+ * already a single occurrence, so there is nothing left to ask "this one or all of them" about.
+ * Still a sealed class so at most one of [SingleDeleteConfirm]/[Edit] can ever be shown at once, by
+ * construction.
  */
 private sealed class GoogleRowDialog {
-    /** The "this one or all of them" prompt (ticket 22 point 2) - shown before either an EDIT or a
-     * DELETE on a recurring row. Choosing [CalendarEditResolver.Scope.THIS_ONE]/`ALL` for a DELETE
-     * both answers the scope question AND stands in as the confirm (ticket 22 point 3) - there is no
-     * separate "are you sure" after it, because picking a scope here already commits to deleting. */
-    data class ScopeChoice(val row: InboxRowView, val operation: CalendarEditResolver.Operation, val prompt: String) : GoogleRowDialog()
-
-    /** The plain confirm for deleting a NON-recurring event - ticket 22 point 3, worded from
-     * [CalendarEditResolver.SINGLE_DELETE_CONFIRM]. */
+    /** The plain delete confirm - ticket 22 point 3, worded from [SINGLE_DELETE_CONFIRM]. */
     data class SingleDeleteConfirm(val row: InboxRowView) : GoogleRowDialog()
 
-    /** The actual title/date/time editor, opened either directly (non-recurring) or after
-     * [ScopeChoice] resolves [scope] for a recurring row. */
-    data class Edit(val row: InboxRowView, val scope: CalendarEditResolver.Scope) : GoogleRowDialog()
+    /** The title/date/time editor. */
+    data class Edit(val row: InboxRowView) : GoogleRowDialog()
 }
 
-/** The "this one or all of them" dialog itself - [CalendarEditResolver.scopePrompt] supplies the
- * words, this composable only renders two buttons for [CalendarEditResolver.Scope]'s two values. */
-@Composable
-private fun ScopeChoiceDialog(prompt: String, onDismiss: () -> Unit, onChoose: (CalendarEditResolver.Scope) -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Recurring event") },
-        text = { Text(prompt) },
-        confirmButton = {
-            TextButton(onClick = { onChoose(CalendarEditResolver.Scope.ALL) }) { Text("ALL OF THEM") }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = { onChoose(CalendarEditResolver.Scope.THIS_ONE) }) { Text("THIS ONE") }
-                TextButton(onClick = onDismiss) { Text("CANCEL") }
-            }
-        },
-    )
-}
+/** Ticket 22 point 3's delete confirm, unchanged in wording by one-today ticket 01 - a local delete
+ * still is not undoable from here, even though it no longer propagates to Google. */
+private const val SINGLE_DELETE_CONFIRM = "Delete this event? This can't be undone from here."
 
-/** The plain (non-recurring) delete confirm - ticket 22 point 3. */
+/** The plain delete confirm - ticket 22 point 3. */
 @Composable
 private fun SingleDeleteConfirmDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Delete event") },
-        text = { Text(CalendarEditResolver.SINGLE_DELETE_CONFIRM) },
+        text = { Text(SINGLE_DELETE_CONFIRM) },
         confirmButton = { TextButton(onClick = onConfirm) { Text("DELETE") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } },
     )
 }
 
 /**
- * The Google event editor - title and time only (ticket 22 point 1: "title and time"), a smaller
- * surface than [ItemEditDialog] because a Google event carries no place trigger, no LEGION repeat
- * rule and no exact-alarm flag of its own; its recurrence is Google's `RRULE`, read-only to this
- * app (research doc §5) and never edited as a rule, only as a SCOPE choice made before this dialog
- * ever opens (see [GoogleRowDialog.Edit]).
+ * The appointment editor - title and time only (ticket 22 point 1: "title and time"), a smaller
+ * surface than [ItemEditDialog] because an appointment carries no place trigger, no LEGION repeat
+ * rule and no exact-alarm flag of its own, and (one-today ticket 01) no recurrence concept left to
+ * edit at all - see [GoogleRowDialog]'s own doc comment.
  *
- * All-day handling matches [CalendarProvider.insertEvent]'s own doc comment: an all-day
- * [InboxRowView.calendarAllDay] event's [onSave] millis are UTC midnight of the typed date, never
- * device-zone midnight - the platform requires it regardless of the device's real zone.
+ * All-day handling matches the retired `CalendarProvider.insertEvent`'s own convention, preserved
+ * here so an appointment already stored with a UTC-midnight `startsAt` keeps reading and writing
+ * that same way: an all-day [InboxRowView.calendarAllDay] event's [onSave] millis are UTC midnight
+ * of the typed date, never device-zone midnight.
  */
 @Composable
 private fun CalendarEventEditDialog(
@@ -450,8 +370,9 @@ private fun CalendarEventEditDialog(
     )
 }
 
-/** [allDay] reads back through UTC (the platform's own all-day convention, see [CalendarProvider.
- * insertEvent]'s doc comment); a timed event reads back through the device zone, matching
+/** [allDay] reads back through UTC (the platform's own all-day convention the retired
+ * `CalendarProvider.insertEvent` established and every stored appointment row still follows); a
+ * timed event reads back through the device zone, matching
  * `ui/notes/NotesResolvers.kt`'s formatting convention for a real future instant. */
 private fun epochToZonedLocalDate(epochMs: Long, allDay: Boolean): LocalDate =
     Instant.ofEpochMilli(epochMs).atZone(if (allDay) ZoneOffset.UTC else ZoneId.systemDefault()).toLocalDate()

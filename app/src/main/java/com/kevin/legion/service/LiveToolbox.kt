@@ -54,7 +54,11 @@ import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.media.VolumeController
+import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.Event
+import com.kevin.legion.data.local.nextAppointmentId
+import com.kevin.legion.engine.dates.DatesAspectSeeder
 import com.kevin.legion.data.local.MusicPlayHistoryEntry
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.vehicle.ActiveVehicle
@@ -74,8 +78,6 @@ import com.kevin.legion.grocery.buildGroceryRows
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.ui.notes.buildInboxRows
 import com.kevin.legion.ui.notes.ScheduleIntentResolver
-import com.kevin.legion.calendar.CalendarProvider
-import com.kevin.legion.calendar.CalendarReadToolLogic
 import com.kevin.legion.notes.ItemMatch
 import com.kevin.legion.notes.RepeatEnd
 import com.kevin.legion.notes.RepeatRule
@@ -1191,8 +1193,10 @@ object LiveToolbox {
                 "separate short-lived trip list with its own tool, so 'add tums to the grocery " +
                 "list', 'put milk on the shopping list' and anything else naming groceries or " +
                 "shopping goes to manage_grocery - never here. A " +
-                "dated appointment (see 'kind') goes to Google Calendar instead of this list. Pass " +
-                "any date/time the user gives on the SAME 'add' call via date/time - never add " +
+                "dated appointment (see 'kind') goes on the user's calendar instead of this list - " +
+                "still tickable/untickable with 'tick'/'untick' by matching its title, just not " +
+                "removable, schedulable or skippable that way (edit it on the Notes screen instead). " +
+                "Pass any date/time the user gives on the SAME 'add' call via date/time - never add " +
                 "first and schedule in a second call, which stores an appointment with no date at " +
                 "all. Use 'schedule' only to change an existing item's date or set up a repeat. " +
                 "For every action but 'add', 'item' fuzzily matches the existing item's text, " +
@@ -1204,10 +1208,10 @@ object LiveToolbox {
                 "item" to schema("string", "For 'add', the new item's text. For every other action, which existing item to match, in the user's words."),
                 "date" to schema("string", "Calendar date, yyyy-MM-dd. For 'add'/'schedule': the item's due date - always pass it on 'add' if the user said one. For 'skip': which occurrence to skip."),
                 "time" to schema("string", "24-hour HH:mm. For 'add'/'schedule' only if a specific time was given - omit for an all-day item. Requires 'date'."),
-                "kind" to schema("string", "Only for 'add' with a date. 'appointment' goes to Google " +
-                    "Calendar (e.g. 'dentist Tuesday at 3', 'lunch with Sam Friday'); 'reminder' " +
-                    "stays local and private (e.g. 'remind me to change the oil', 'don't forget to " +
-                    "call mom'). Omit if genuinely unclear - defaults to reminder.",
+                "kind" to schema("string", "Only for 'add' with a date. 'appointment' goes on the " +
+                    "user's calendar (e.g. 'dentist Tuesday at 3', 'lunch with Sam Friday'); " +
+                    "'reminder' stays local and private (e.g. 'remind me to change the oil', " +
+                    "'don't forget to call mom'). Omit if genuinely unclear - defaults to reminder.",
                     enum = listOf("appointment", "reminder")),
                 "repeat_kind" to schema("string", "Only for 'schedule'. Omit to leave any existing repeat untouched; 'none' clears one.",
                     enum = listOf("none", "daily", "weekly", "monthly_on_date", "yearly")),
@@ -1543,10 +1547,13 @@ object LiveToolbox {
         ))
         fns.put(fn(
             name = "flight_status",
-            description = "When's my flight? CHECK `read_calendar` FIRST for the trip - airlines " +
-                "already push flights onto Google Calendar, and `read_calendar` answers exactly, " +
-                "with no guessing. Only call this tool when `read_calendar` has nothing for the " +
-                "trip, or Kevin is asking about a hotel/flight that was never added to a calendar. " +
+            description = "When's my flight? CHECK `read_calendar` FIRST for the trip - a flight " +
+                "the user (or Alfred) put on the calendar shows up there exactly, with no " +
+                "guessing. `read_calendar` no longer sees anything pushed onto the user's real " +
+                "Google Calendar by an airline after the calendar was disconnected from Google - " +
+                "it only knows what is stored locally. Only call this tool when `read_calendar` " +
+                "has nothing for the trip, or Kevin is asking about a hotel/flight that was never " +
+                "added to the calendar. " +
                 "Reads Kevin's most recent travel-confirmation email for the airline/hotel, flight " +
                 "or confirmation number, and date/time EXACTLY as that email states them - mail " +
                 "only, so it can be stale or wrong if the trip changed since. The result always " +
@@ -3098,50 +3105,73 @@ object LiveToolbox {
         "That's an estimate from reading the email text, not a live status - the calendar or the " +
             "carrier or airline itself may say something different by now."
 
+    /** `from`/`to` (yyyy-MM-dd) into a `[startMs, endMs]` window in [zone] - midnight of `from`
+     * through the START of the day AFTER `to`. Moved inline here from the retired
+     * `calendar/CalendarReadToolLogic.kt` (one-today ticket 01) - the model's own date shape for
+     * `read_calendar`'s `from`/`to` args, unchanged. Null on a malformed date or `to` before `from`. */
+    private fun parseCalendarWindow(from: String, to: String, zone: java.time.ZoneId): Pair<Long, Long>? {
+        val fromDate = runCatching { java.time.LocalDate.parse(from) }.getOrNull() ?: return null
+        val toDate = runCatching { java.time.LocalDate.parse(to) }.getOrNull() ?: return null
+        if (toDate.isBefore(fromDate)) return null
+        val startMs = fromDate.atStartOfDay(zone).toInstant().toEpochMilli()
+        val endMs = toDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+        return startMs to endMs
+    }
+
+    private const val CALENDAR_INVALID_WINDOW_MESSAGE =
+        "I need a valid date range to read your calendar - from and to as yyyy-MM-dd, with to on " +
+            "or after from."
+
     /**
-     * `read_calendar` (ticket 19). Never queries `CalendarContract` itself - reuses
-     * [CalendarProvider.eventsInWindow], the same read [com.kevin.legion.ui.TodayScreen] and
-     * [com.kevin.legion.ui.notes.InboxScreen] already call, over every `com.google` calendar on
-     * the device (ticket 17's split: this is a READ, so no `CAL_ACCESS_CONTRIBUTOR` floor).
+     * `read_calendar` (ticket 19). **One-today ticket 01, "cut Google entirely" (2026-09-01):**
+     * repointed off the retired `calendar/CalendarProvider.kt`'s live `CalendarContract` read onto
+     * [com.kevin.legion.data.local.EventDao.activeByKindInWindow] directly - the same local `events`
+     * table `ui/TodayScreen.kt`/`ui/notes/InboxScreen.kt` now read. No permission check any more:
+     * the local table has none to refuse. `done` is new (one-today ticket 02, "ticking an
+     * appointment") - a live Google row never had one.
      *
-     * The permission check happens HERE, before [CalendarReadToolLogic.parseWindow] even runs, so
-     * a refused/never-granted `READ_CALENDAR` always returns
-     * [CalendarReadToolLogic.PERMISSION_MISSING_MESSAGE] and nothing else - never an `events`
-     * array, empty or otherwise. A service has no Activity to raise the system permission dialog
-     * from, so this sentence, naming the screen that can, is the entire recovery path.
+     * The `LEGION::v1` structured-metadata block (ticket 19's whole reason for existing -
+     * `service_records.syncId`-style course/deadline fields a class syllabus states) is no longer
+     * parsed from a live `DESCRIPTION` string at read time - it is parsed once, at import, into
+     * [Event.structuredMeta] (a JSON object string). This function just decodes that column
+     * straight into the `meta` field below - same shape the model always saw, sourced differently.
      */
-    private fun readCalendar(context: Context, args: JSONObject): JSONObject {
-        if (!CalendarProvider.hasReadPermission(context)) {
-            return result(false, CalendarReadToolLogic.PERMISSION_MISSING_MESSAGE)
-        }
-        val window = CalendarReadToolLogic.parseWindow(
+    private suspend fun readCalendar(context: Context, args: JSONObject): JSONObject {
+        val window = parseCalendarWindow(
             args.optString("from"), args.optString("to"), java.time.ZoneId.systemDefault(),
-        ) ?: return result(false, CalendarReadToolLogic.INVALID_WINDOW_MESSAGE)
+        ) ?: return result(false, CALENDAR_INVALID_WINDOW_MESSAGE)
         val (startMs, endMs) = window
 
-        val events = CalendarProvider.eventsInWindow(context, startMs, endMs)
+        val events = CarDatabase.getDatabase(context).eventDao()
+            .activeByKindInWindow(EventKind.APPOINTMENT, startMs, endMs)
         val arr = JSONArray()
         for (event in events) {
+            val eventStart = event.startsAt ?: continue
+            val eventEnd = event.endsAt ?: eventStart
             arr.put(
                 JSONObject()
                     .put("title", event.title)
                     .put(
                         "start",
-                        if (event.allDay) com.kevin.legion.util.documentDate(event.startMs)
-                        else "${com.kevin.legion.util.shortDate(event.startMs)} ${com.kevin.legion.util.clockTime(event.startMs)}",
+                        if (event.allDay) com.kevin.legion.util.documentDate(eventStart)
+                        else "${com.kevin.legion.util.shortDate(eventStart)} ${com.kevin.legion.util.clockTime(eventStart)}",
                     )
                     .put(
                         "end",
-                        if (event.allDay) com.kevin.legion.util.documentDate(event.endMs)
-                        else "${com.kevin.legion.util.shortDate(event.endMs)} ${com.kevin.legion.util.clockTime(event.endMs)}",
+                        if (event.allDay) com.kevin.legion.util.documentDate(eventEnd)
+                        else "${com.kevin.legion.util.shortDate(eventEnd)} ${com.kevin.legion.util.clockTime(eventEnd)}",
                     )
                     .put("all_day", event.allDay)
+                    .put("done", event.done)
                     .also { o ->
-                        val meta = CalendarReadToolLogic.structuredBlock(event.description)
-                        // JSONObject(meta), not the raw Map: Android's org.json serializes an
-                        // unknown Object via toString(), which would ship "{course=X}" not JSON.
-                        if (meta != null) o.put("meta", JSONObject(meta))
-                        if (event.location.isNotBlank()) o.put("location", event.location)
+                        // event.structuredMeta is already a JSON object string (parsed once, at
+                        // import, from the source description's `LEGION::v1` block) - decode it
+                        // straight through rather than re-parsing any raw text here.
+                        val meta = event.structuredMeta
+                        if (!meta.isNullOrBlank()) {
+                            runCatching { JSONObject(meta) }.getOrNull()?.let { o.put("meta", it) }
+                        }
+                        if (!event.location.isNullOrBlank()) o.put("location", event.location)
                     },
             )
         }
@@ -4839,7 +4869,14 @@ object LiveToolbox {
 
         if (itemArg.isBlank()) return result(false, "Which item?")
         return when (val match = NotesController.findItem(context, list.id, itemArg)) {
-            is ItemMatch.NoMatch -> result(false, "I don't see \"$itemArg\" on your list - add it?")
+            is ItemMatch.NoMatch -> {
+                // One-today ticket 02, "ticking an appointment": tick/untick only, and only after a
+                // reminder match genuinely came back empty - a title that matches a reminder is
+                // never shadowed by an appointment of the same name. remove/schedule/skip stay
+                // reminder-only (no CRUD surface for an appointment beyond done/not-done today).
+                if (action == "tick" || action == "untick") tickOrUntickAppointment(context, itemArg, action)
+                else result(false, "I don't see \"$itemArg\" on your list - add it?")
+            }
             is ItemMatch.Ambiguous -> result(
                 false, "Which one? " + match.candidates.joinToString(", ") { it.text },
             )
@@ -4847,13 +4884,45 @@ object LiveToolbox {
         }
     }
 
+    /** `manage_item`'s tick/untick fallback once a reminder match came back empty - one-today
+     * ticket 02. Matches against [NotesController.openAppointments] and writes through
+     * [NotesController.tickAppointment]/[untickAppointment] directly, never through
+     * [dispatchItemAction] (that function's repeat/place-trigger/skip branches are reminder-only
+     * concepts an appointment does not have). */
+    private suspend fun tickOrUntickAppointment(context: Context, itemArg: String, action: String): JSONObject =
+        when (val match = NotesController.findAppointment(context, itemArg)) {
+            is ItemMatch.NoMatch -> result(false, "I don't see \"$itemArg\" on your list or calendar - add it?")
+            is ItemMatch.Ambiguous -> result(false, "Which one? " + match.candidates.joinToString(", ") { it.text })
+            is ItemMatch.Resolved -> {
+                val row = CarDatabase.getDatabase(context).eventDao().getById(match.item.id)
+                if (row == null) {
+                    result(false, "I couldn't find that appointment any more.")
+                } else {
+                    val ok = if (action == "tick") {
+                        NotesController.tickAppointment(context, row)
+                    } else {
+                        NotesController.untickAppointment(context, row)
+                    }
+                    if (ok) {
+                        result(true, if (action == "tick") "Marked \"${row.title}\" attended." else "Marked \"${row.title}\" not attended.")
+                    } else {
+                        result(false, "I couldn't update \"${row.title}\" - try again?")
+                    }
+                }
+            }
+        }
+
     /**
      * `manage_item`'s `add` action once [ScheduleIntentResolver] has decided the item is an
-     * [ScheduleIntentResolver.Kind.Appointment] (ticket 14). Writes straight to
-     * [CalendarProvider.insertEvent] - **never** to [NotesController], except as the explicit,
-     * spoken-about fallback below. Nothing about a successful write is stored locally afterward
-     * (ticket 04 point 5): the agenda re-reads the provider at render time, so there is no id to
-     * keep, no row to reconcile, nothing to lose.
+     * [ScheduleIntentResolver.Kind.Appointment] (ticket 14). **One-today ticket 01, "cut Google
+     * entirely" (2026-09-01): writes straight to the local `events` table now** - the retired
+     * `calendar/CalendarProvider.kt`'s live Google Calendar insert is gone, and there is no fallback
+     * branch left to word, because a local Room write has nothing external to fail on the way
+     * `WRITE_CALENDAR` being refused or no Google account being synced once did. [Event.id] is
+     * explicitly allocated from [Event.APPOINTMENT_ID_BASE]'s disjoint range via
+     * [com.kevin.legion.data.local.nextAppointmentId] - the SAME allocator the retired Google import
+     * used, so a voice-created appointment's id can never collide with a reminder's (see that
+     * function's own doc comment).
      *
      * [date]/[time] are already-parsed local values; [timeArg] is the raw `HH:mm` string purely so
      * the confirmation sentence echoes back exactly what the driver said rather than a reformatted
@@ -4870,66 +4939,46 @@ object LiveToolbox {
         val allDay = time == null
         val whenPhrase = if (allDay) date.format(NOTE_DISPLAY_DATE_FORMAT) else "${date.format(NOTE_DISPLAY_DATE_FORMAT)} at $timeArg"
 
-        // Device-zone instant, matching every other reminder date this file composes - used ONLY
-        // for the fallback-to-reminder path below, never for the calendar write itself (which needs
-        // the platform's own all-day convention - see the branch beneath this one).
-        val fallbackStartsAt = java.time.LocalDateTime.of(date, time ?: java.time.LocalTime.MIDNIGHT)
-            .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-
-        // Prefer Kevin's own (primary) calendar; fall back to whatever other writable com.google
-        // calendar exists rather than refusing outright - research doc §1.3's IS_PRIMARY
-        // preference, loosened because "no primary, but a secondary writable calendar exists" is a
-        // real device state this should still serve.
-        val calendars = CalendarProvider.writableGoogleCalendars(context)
-        val calendar = calendars.firstOrNull { it.isPrimary } ?: calendars.firstOrNull()
-        if (calendar == null) {
-            // No writable com.google calendar reachable - WRITE_CALENDAR refused, no Google
-            // account synced, or Calendar sync toggled off (research doc §1.5). Falling back to a
-            // local reminder SILENTLY would bury the fact that this was asked to be an appointment
-            // - "Alfred always says which he did" (ticket 14) applies to this failure path too, not
-            // only the success one.
-            val added = NotesController.addItemDue(context, list.id, itemArg, fallbackStartsAt, allDay = allDay)
-            return result(
-                true,
-                "I can't reach your Google calendar right now, so I've set \"${added.text}\" as a " +
-                    "reminder instead, for $whenPhrase. Grant Calendar access in the app to let me " +
-                    "put appointments on it directly.",
-            )
-        }
-
-        // Android's own all-day convention (Calendar Provider guide, research doc §5): UTC midnight
-        // of the calendar date, EVENT_TIMEZONE "UTC", DTEND one day later - NOT the device-zone
-        // instant [fallbackStartsAt] uses for a local reminder's `startsAt`. See
-        // CalendarProvider.insertEvent's own doc comment for why these two zones must never be
-        // confused with each other.
+        // Android's own all-day convention (Calendar Provider guide, research doc §5), preserved
+        // here even though the write is local now: UTC midnight of the calendar date, DTEND one day
+        // later - matching the exact encoding every already-imported appointment row uses, so
+        // `ui/notes/CalendarAgendaResolver.kt`'s `agendaDayStart` UTC-branch keeps working for a
+        // voice-created row exactly as it does for a Google-imported one.
         val (startMs, endMs) = if (allDay) {
-            val startMs = date.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
-            startMs to startMs + java.time.Duration.ofDays(1).toMillis()
+            val start = date.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+            start to start + java.time.Duration.ofDays(1).toMillis()
         } else {
-            val startMs = java.time.LocalDateTime.of(date, time)
+            val start = java.time.LocalDateTime.of(date, time)
                 .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-            startMs to startMs + CALENDAR_EVENT_DEFAULT_DURATION_MS
+            start to start + CALENDAR_EVENT_DEFAULT_DURATION_MS
         }
 
-        // Never CALLER_IS_SYNCADAPTER - see CalendarProvider.insertEvent's doc comment for why that
-        // is the one way this would silently never reach Google's servers.
-        val eventId = CalendarProvider.insertEvent(context, calendar.id, itemArg, startMs, endMs, allDay)
-        if (eventId == null) {
-            // Permission or provider failure between the check above and the actual insert (a
-            // narrow window, but not a zero one) - same honest fallback as the no-calendar case.
-            val added = NotesController.addItemDue(context, list.id, itemArg, fallbackStartsAt, allDay = allDay)
-            return result(
-                true,
-                "I couldn't write to your Google calendar, so I've set \"${added.text}\" as a " +
-                    "reminder instead, for $whenPhrase. Grant Calendar access in the app to let me " +
-                    "put appointments on it directly.",
-            )
-        }
-
-        return result(
-            true,
-            ScheduleIntentResolver.confirmationPhrase(ScheduleIntentResolver.Kind.Appointment, itemArg, whenPhrase),
+        val db = CarDatabase.getDatabase(context)
+        val now = System.currentTimeMillis()
+        val row = Event(
+            id = db.eventDao().nextAppointmentId(),
+            serverId = java.util.UUID.randomUUID().toString(),
+            guid = java.util.UUID.randomUUID().toString(),
+            title = itemArg,
+            startsAt = startMs,
+            endsAt = endMs,
+            allDay = allDay,
+            source = DatesAspectSeeder.SOURCE_LEGION,
+            kind = EventKind.APPOINTMENT,
+            updatedAtMs = now,
+            createdAt = now,
         )
+        return try {
+            db.eventDao().insert(row)
+            result(
+                true,
+                ScheduleIntentResolver.confirmationPhrase(ScheduleIntentResolver.Kind.Appointment, itemArg, whenPhrase),
+            )
+        } catch (e: Exception) {
+            // A genuine Room failure (disk full, etc) - worded, never a silent "added" - same "no
+            // false success" contract every write in this file holds (CLAUDE.md §7).
+            result(false, "I couldn't save that appointment - try again?")
+        }
     }
 
     private suspend fun dispatchItemAction(

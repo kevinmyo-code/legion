@@ -30,7 +30,6 @@ import com.kevin.legion.location.PlaceController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.ai.OnboardingState
-import com.kevin.legion.calendar.CalendarProvider
 import com.kevin.legion.calendar.OpenerCalendarBriefing
 import com.kevin.legion.engine.dates.DatesAgenda
 import com.kevin.legion.vehicle.ObdBluetoothManager
@@ -501,7 +500,9 @@ class AriaForegroundService : Service() {
         // whole builder runs on the service's Main-dispatcher scope and a Room read is disk work.
         val zone = ZoneId.systemDefault()
         val nowMs = System.currentTimeMillis()
-        val hasCalendar = CalendarProvider.hasReadPermission(this)
+        // One-today ticket 01, "cut Google entirely": the central date store this reads two lines
+        // down is always readable now - no permission to be refused - so this is always true.
+        val hasCalendar = true
         val events = withContext(Dispatchers.IO) {
             DatesAgenda.windowed(
                 this@AriaForegroundService,

@@ -10,7 +10,8 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.kevin.legion.calendar.CalendarProvider
+import com.kevin.legion.backend.EventKind
+import com.kevin.legion.data.local.CarDatabase
 
 /**
  * Whether an unprompted line is SPOKEN or merely POSTED, and the channel it is posted on -
@@ -31,8 +32,9 @@ import com.kevin.legion.calendar.CalendarProvider
  * It cannot know it is in a meeting, so two cheap checks stand in ([maySpeakAloud]):
  *
  *  1. **The screen is on** - he is demonstrably with the phone. No permission, no guessing.
- *  2. **No calendar event is running right now** - reusing the read
- *     `calendar/OpenerCalendarBriefing.kt` already does.
+ *  2. **No appointment is running right now** - a direct read of the local `events` table
+ *     (`kind = 'appointment'`), repointed off the retired `calendar/CalendarProvider.kt`'s live
+ *     `CalendarContract` read by one-today ticket 01, "cut Google entirely".
  *
  * **Both limits are accepted rather than hidden.** An unbooked conversation, a call that is not on
  * the calendar, a meeting that ran long - none of those are visible, and the 3-a-day cap plus quiet
@@ -91,7 +93,7 @@ object ProactiveDelivery {
      * or a thrown query all resolve to "not now, post it", because the failure that matters is
      * speaking into a room, not posting one notification too many.
      */
-    fun maySpeakAloud(context: Context): Boolean = screenIsOn(context) && !inAMeeting(context)
+    suspend fun maySpeakAloud(context: Context): Boolean = screenIsOn(context) && !inAMeeting(context)
 
     private fun screenIsOn(context: Context): Boolean =
         runCatching {
@@ -99,17 +101,20 @@ object ProactiveDelivery {
         }.getOrDefault(false)
 
     /**
-     * True when the calendar says an event is running right now - or when it **cannot be read at
-     * all**, which is the unreadable-versus-empty split promoted to a rule of the raise contract
-     * (settled decision 20). Without permission the honest answer is "I do not know where he is",
-     * and the honest handling of not knowing is to post rather than speak.
+     * True when an appointment is running right now - or when the read fails outright, which is
+     * the unreadable-versus-empty split promoted to a rule of the raise contract (settled decision
+     * 20). **One-today ticket 01, "cut Google entirely":** the local `events` table has no
+     * permission to be refused any more, so the only failure mode left is a genuine Room exception;
+     * kept fail-safe (`true`, i.e. "assume a meeting") for the identical reason the old
+     * permission-refused branch did - the honest handling of not knowing is to post rather than
+     * speak.
      */
-    private fun inAMeeting(context: Context): Boolean {
-        if (!CalendarProvider.hasReadPermission(context)) return true
+    private suspend fun inAMeeting(context: Context): Boolean {
         val now = System.currentTimeMillis()
         return runCatching {
-            CalendarProvider.eventsInWindow(context, now, now + 1)
-                .any { !it.allDay && it.startMs <= now && it.endMs > now }
+            CarDatabase.getDatabase(context).eventDao()
+                .activeTimedByKindRunningAt(EventKind.APPOINTMENT, now)
+                .isNotEmpty()
         }.getOrDefault(true)
     }
 

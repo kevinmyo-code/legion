@@ -5,7 +5,8 @@ import com.kevin.legion.advisor.DigestText
 import com.kevin.legion.advisor.digest.FleetDigestBuilder
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.SubAgent
-import com.kevin.legion.calendar.CalendarProvider
+import com.kevin.legion.calendar.OpenerCalendarBriefing
+import com.kevin.legion.engine.dates.DatesAgenda
 import com.kevin.legion.gmail.GmailAuth
 import com.kevin.legion.gmail.GmailClient
 import com.kevin.legion.gmail.GmailToolLogic
@@ -95,11 +96,19 @@ object SitrepBuilder {
         val zone = ZoneId.systemDefault()
 
         if (SitrepModule.CALENDAR in requested) {
-            val hasPermission = CalendarProvider.hasReadPermission(context)
-            val events = if (hasPermission) {
-                CalendarProvider.eventsInWindow(context, now, now + CALENDAR_WINDOW_MS)
-            } else {
-                emptyList()
+            // One-today ticket 01, "cut Google entirely": repointed off the live `CalendarContract`
+            // read onto [DatesAgenda.windowed], the SAME central date-store query
+            // `service/AriaForegroundService.kt`'s opener greeting and
+            // `calendar/OpenerCalendarBriefing.kt` already use for the identical purpose. The local
+            // store is always readable - there is no permission to be refused any more - so
+            // `hasPermission` is always true post-cut; kept as a parameter because
+            // [calendarSection]'s own "unreadable vs. genuinely empty" split is still real logic,
+            // even though only one of its two branches can fire today.
+            val hasPermission = true
+            val events = DatesAgenda.windowed(context, now, now + CALENDAR_WINDOW_MS).map {
+                OpenerCalendarBriefing.BriefingEvent(
+                    title = it.title, startMs = it.dueAt, endMs = it.endAt ?: it.dueAt, dueIsInferred = it.dueIsInferred,
+                )
             }
             sections[SitrepModule.CALENDAR] = calendarSection(hasPermission, events, now, zone)
         }
@@ -148,13 +157,15 @@ object SitrepBuilder {
     /**
      * CALENDAR section. Three real, distinct outcomes, same split
      * [com.kevin.legion.calendar.OpenerCalendarBriefing.forOpener] already makes for the same
-     * underlying ambiguity: [CalendarProvider.eventsInWindow] returns an empty list BOTH for a
-     * refused permission and for a genuinely clear window, and those must never collapse into one
-     * sentence. `internal` for direct unit testing.
+     * underlying ambiguity - historically, the retired `CalendarProvider.eventsInWindow` returned an
+     * empty list BOTH for a refused permission and for a genuinely clear window, and those must
+     * never collapse into one sentence; one-today ticket 01 removed the permission half of that
+     * ambiguity but left the function's shape alone, since a genuinely empty window is still a real,
+     * distinct outcome worth its own sentence. `internal` for direct unit testing.
      */
     internal fun calendarSection(
         hasPermission: Boolean,
-        events: List<CalendarProvider.GoogleCalendarEvent>,
+        events: List<OpenerCalendarBriefing.BriefingEvent>,
         nowMs: Long,
         zone: ZoneId,
     ): String {

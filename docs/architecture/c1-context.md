@@ -64,7 +64,7 @@ graph TB
 | **Open-Meteo** (`weather/WeatherController.kt`) | None | Serves the last cached reading rather than failing |
 | **NHTSA** (`vehicle/VinDecoder.kt`) | None | Feature simply unavailable |
 | **OBD dongle** (`vehicle/ObdTransport.kt`, `vehicle/BleTransport.kt`) | Bluetooth pairing | Local radio. No dongle means the telemetry tools refuse rather than guess |
-| **Calendar** (`calendar/CalendarProvider.kt`) | `READ_CALENDAR` / `WRITE_CALENDAR` | Fully offline. It is a ContentProvider, not a REST call |
+| **Calendar** (`data/local/Event.kt`, `engine/dates/DatesAgenda.kt`) | None | Local `events` table only - one-today ticket 01 (2026-09-01) cut the live `CalendarContract` read/write entirely ("cut Google entirely"). Fully offline by construction, not merely in practice |
 
 ## Three things that are easy to get wrong
 

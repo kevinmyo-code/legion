@@ -114,33 +114,11 @@ fun GoogleAccessScreen(onBack: () -> Unit, onOpenDriveSync: () -> Unit) {
     // NEEDS_REAUTHORISING action), which is exactly the moment the probe needs to be fresh.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { probeDrive() }
 
-    // Calendar (ticket 18). This line is NOT a Google grant and must never read like one: ticket 02
-    // chose CalendarContract, the on-device provider, so calendar costs an Android runtime
-    // permission and NO OAuth scope at all. There is no token, no consent round trip and nothing to
-    // "re-authorise" - so this reads the permission directly rather than probing Play Services, and
-    // its wording says "on this device" to keep the distinction visible.
-    //
-    // It shipped hardcoded to "Not set up yet" (ticket 12 built all three lines as placeholders,
-    // ticket 15 made Gmail live and never came back to this one), which by 2026-08-13 was flatly
-    // contradicting the app's own behaviour: permission granted, Google events rendering in Notes,
-    // and this screen still claiming calendar was not set up.
-    fun calendarGrantedNow(): Boolean =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) ==
-            PackageManager.PERMISSION_GRANTED
-
-    var calendarGranted by remember { mutableStateOf(calendarGrantedNow()) }
-
-    // Both permissions together, matching TodayScreen/InboxScreen: a voice write runs off
-    // AriaForegroundService, which has no Activity to raise a dialog from, so WRITE_CALENDAR has to
-    // be asked for at a screen or it can never be asked for at all (ticket 14).
-    val requestCalendar = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) { calendarGranted = calendarGrantedNow() }
-
-    // Refresh on resume, not only at first composition - the permission can be revoked in Android
-    // settings while this screen sits in the back stack, which is exactly the case ticket 18's
-    // verification section asks for.
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { calendarGranted = calendarGrantedNow() }
+    // Calendar row REMOVED - one-today ticket 01, "cut Google entirely" (2026-09-01). LEGION's
+    // calendar is its own local `events` table now, not a Google Calendar `READ_CALENDAR`/
+    // `WRITE_CALENDAR` runtime permission, so there is no grant left for this screen to report on -
+    // see `.scratch/one-today/issues/01-one-agenda-source.md` for the full account of what replaced
+    // the retired `calendar/CalendarProvider.kt`.
 
     // Gmail (ticket 15): same live-probe shape as Drive above, but there is no sub-screen to
     // open - Gmail is voice-only (ticket 08 point 4), so this row IS the whole surface. Tapping
@@ -321,30 +299,8 @@ fun GoogleAccessScreen(onBack: () -> Unit, onOpenDriveSync: () -> Unit) {
                     onClick = onOpenDriveSync,
                 )
 
-                Spacer(Modifier.height(8.dp))
-                GoogleGrantLine(
-                    label = "Calendar",
-                    meaning = "Read and add events in your Google Calendar. This one uses a phone " +
-                        "permission, not a Google sign-in.",
-                    status = if (calendarGranted) {
-                        "Allowed on this device"
-                    } else {
-                        "Not allowed - tap to allow"
-                    },
-                    attention = !calendarGranted,
-                    onClick = if (calendarGranted) {
-                        null
-                    } else {
-                        {
-                            requestCalendar.launch(
-                                arrayOf(
-                                    Manifest.permission.READ_CALENDAR,
-                                    Manifest.permission.WRITE_CALENDAR,
-                                ),
-                            )
-                        }
-                    },
-                )
+                // Calendar row removed - one-today ticket 01, see the comment above where it used
+                // to be set up.
 
                 Spacer(Modifier.height(8.dp))
                 GoogleGrantLine(

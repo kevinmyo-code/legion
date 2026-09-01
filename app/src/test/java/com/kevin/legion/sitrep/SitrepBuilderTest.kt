@@ -1,6 +1,6 @@
 package com.kevin.legion.sitrep
 
-import com.kevin.legion.calendar.CalendarProvider
+import com.kevin.legion.calendar.OpenerCalendarBriefing
 import com.kevin.legion.weather.WeatherController
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
@@ -87,11 +87,11 @@ class SitrepBuilderTest {
     fun `calendarSection names a timed event and an all-day event distinctly`() {
         val now = 1_700_000_000_000L
         val events = listOf(
-            CalendarProvider.GoogleCalendarEvent(
-                eventId = 1, calendarId = 1, title = "Dentist", startMs = now + 3_600_000, endMs = now + 5_400_000, allDay = false,
+            OpenerCalendarBriefing.BriefingEvent(
+                title = "Dentist", startMs = now + 3_600_000, endMs = now + 5_400_000, allDay = false,
             ),
-            CalendarProvider.GoogleCalendarEvent(
-                eventId = 2, calendarId = 1, title = "Kevin's birthday", startMs = now, endMs = now + 86_400_000, allDay = true,
+            OpenerCalendarBriefing.BriefingEvent(
+                title = "Kevin's birthday", startMs = now, endMs = now + 86_400_000, allDay = true,
             ),
         )
         val line = SitrepBuilder.calendarSection(hasPermission = true, events = events, nowMs = now, zone = zone)
@@ -103,8 +103,8 @@ class SitrepBuilderTest {
     @Test
     fun `calendarSection drops an event that already ended`() {
         val now = 1_700_000_000_000L
-        val ended = CalendarProvider.GoogleCalendarEvent(
-            eventId = 1, calendarId = 1, title = "Yesterday's standup", startMs = now - 7_200_000, endMs = now - 3_600_000, allDay = false,
+        val ended = OpenerCalendarBriefing.BriefingEvent(
+            title = "Yesterday's standup", startMs = now - 7_200_000, endMs = now - 3_600_000, allDay = false,
         )
         val line = SitrepBuilder.calendarSection(hasPermission = true, events = listOf(ended), nowMs = now, zone = zone)
         assertTrue(line.contains("clear"))

@@ -1,6 +1,5 @@
 package com.kevin.legion.ui.notes
 
-import com.kevin.legion.calendar.CalendarProvider.GoogleCalendarEvent
 import com.kevin.legion.ui.AgendaEntry
 import com.kevin.legion.ui.AgendaSource
 import com.kevin.legion.ui.common.dailyBuckets
@@ -19,7 +18,7 @@ import java.time.ZoneId
 class CalendarAgendaResolverTest {
 
     private fun googleEvent(id: Long, title: String, startMs: Long, allDay: Boolean = false) =
-        GoogleCalendarEvent(eventId = id, calendarId = 1L, title = title, startMs = startMs, endMs = startMs + 1_000L, allDay = allDay)
+        AppointmentEvent(eventId = id, title = title, startMs = startMs, endMs = startMs + 1_000L, allDay = allDay)
 
     // ------------------------------------------------------------------------------------- mergeAgenda
 

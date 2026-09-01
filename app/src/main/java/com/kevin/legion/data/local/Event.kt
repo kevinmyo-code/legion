@@ -114,8 +114,10 @@ data class Event(
      *   [com.kevin.legion.backend.EventsReconcile]'s own class doc for why that source stays
      *   authoritative. This column never chooses that value; it only ever RECEIVES it.
      * - **Appointments (`kind = appointment`) are pinned to [APPOINTMENT_ID_BASE] and above,
-     *   always**, by [com.kevin.legion.calendar.CalendarImportController]'s own allocator
-     *   (`nextAppointmentId`) - the ONLY writer of new appointment rows. See [APPOINTMENT_ID_BASE]'s
+     *   always**, by [EventDao.nextAppointmentId]'s own allocator - one-today ticket 01 moved this
+     *   off the retired `calendar/CalendarImportController.kt` onto this DAO extension directly;
+     *   `service/LiveToolbox.kt`'s `addAppointment` is the only LIVE caller now (a historical
+     *   Google-imported row already carries an id this allocator minted at import time). See [APPOINTMENT_ID_BASE]'s
      *   own doc comment for the property this establishes and why a constant offset (not a runtime
      *   guard) is what makes the two ranges disjoint BY CONSTRUCTION - there is nothing for either
      *   side to check against the other, because there is nothing left to collide over.
@@ -224,9 +226,12 @@ data class Event(
      * `service_records.syncId` already established for the identical problem, ticket 16's own
      * precedent (`FleetReconcile`'s class doc: "a SOURCE change, not an identity change").
      *
-     * **Minted at row creation by [com.kevin.legion.calendar.CalendarImportController.buildEventRow]**
-     * for every `kind = `[com.kevin.legion.backend.EventKind.APPOINTMENT] row (the only writer of
-     * that kind today) and preserved on every later update via `copy` - never regenerated for a row
+     * **Minted at row creation** - historically by the retired `calendar/CalendarImportController.
+     * buildEventRow` (one-today ticket 01 deleted that file; the 261 rows it created keep their
+     * already-minted [guid] unchanged, per this column's own "never regenerated" rule below), now by
+     * `service/LiveToolbox.kt`'s `addAppointment` for a freshly voice-created one - for every
+     * `kind = `[com.kevin.legion.backend.EventKind.APPOINTMENT] row and preserved on every later
+     * update via `copy` - never regenerated for a row
      * that already has one. A `kind = `[com.kevin.legion.backend.EventKind.REMINDER] row (Notes)
      * never has this read - [com.kevin.legion.backend.EventsReconcile]'s Notes branch stays
      * engine-sourced (see that object's own class doc for why the two branches are not symmetric),
@@ -273,11 +278,12 @@ data class Event(
          * ceiling would have traded one collision class for another.
          *
          * **What allocates from here, and what does not.**
-         * [com.kevin.legion.calendar.CalendarImportController.nextAppointmentId] is the ONLY
-         * allocator - every NEW appointment row is explicitly inserted at a value this function
-         * returns, never left to the table's own natural autoincrement (which would draw from
-         * whatever the table's shared, cross-kind high-water mark happens to be, defeating the
-         * whole point). [com.kevin.legion.engine.migration.EngineNotesRetirementCopy] seats
+         * [EventDao.nextAppointmentId] is the ONLY allocator (moved from the retired
+         * `calendar/CalendarImportController.kt` by one-today ticket 01) - every NEW appointment row
+         * is explicitly inserted at a value that function returns, never left to the table's own
+         * natural autoincrement (which would draw from whatever the table's shared, cross-kind
+         * high-water mark happens to be, defeating the whole point).
+         * [com.kevin.legion.engine.migration.EngineNotesRetirementCopy] seats
          * HISTORICAL Dates appointments at their own `records.id` instead - see [Event.id]'s own
          * doc comment for why that is a documented, provably-safe exception rather than a gap.
          *
@@ -359,13 +365,39 @@ interface EventDao {
     suspend fun getById(id: Long): Event?
 
     /** The highest [Event.id] at or above [floor], or null when nothing occupies that range yet -
-     * the raw read behind [com.kevin.legion.calendar.CalendarImportController.nextAppointmentId],
-     * which uses it (with [floor] = [Event.APPOINTMENT_ID_BASE]) to allocate the next appointment
-     * id from the disjoint high range. See [Event.APPOINTMENT_ID_BASE]'s own doc comment for the
+     * the raw read behind [EventDao.nextAppointmentId], which uses it (with [floor] =
+     * [Event.APPOINTMENT_ID_BASE]) to allocate the next appointment id from the disjoint high
+     * range. See [Event.APPOINTMENT_ID_BASE]'s own doc comment for the
      * property this exists to serve - nothing else in this codebase should call this with a
      * different [floor]. */
     @Query("SELECT MAX(id) FROM events WHERE id >= :floor")
     suspend fun maxIdAtOrAbove(floor: Long): Long?
+
+    /** Active [Event]s of one [kind] whose own [Event.startsAt] falls in `[fromMs, toMs]` -
+     * one-today ticket 01's replacement for the old live `CalendarContract.Instances` window
+     * query: every screen/tool that used to call [com.kevin.legion.calendar.CalendarProvider.eventsInWindow]
+     * now reads this table directly instead, since every Google-imported appointment already lives
+     * here (`kind = 'appointment'`) and a voice-created one is written straight here too (see
+     * `service/LiveToolbox.kt`'s `addAppointment`). An undated row never matches - every appointment
+     * this app has ever created or imported carries a real [Event.startsAt] - so `startsAt IS NOT
+     * NULL` is a defensive floor, not a filter that excludes real rows. */
+    @Query(
+        "SELECT * FROM events WHERE deleted = 0 AND kind = :kind " +
+            "AND startsAt IS NOT NULL AND startsAt >= :fromMs AND startsAt <= :toMs ORDER BY startsAt ASC",
+    )
+    suspend fun activeByKindInWindow(kind: String, fromMs: Long, toMs: Long): List<Event>
+
+    /** Active, TIMED (never all-day) [Event]s of one [kind] whose `[startsAt, endsAt)` span covers
+     * [nowMs] - `service/ProactiveDelivery.kt`'s "is an appointment running right now" check,
+     * repointed off `CalendarProvider.eventsInWindow(now, now+1)` onto this table by one-today
+     * ticket 01. An all-day row is deliberately excluded, matching the exact filter the old live
+     * check applied (`!it.allDay && it.startMs <= now && it.endMs > now`) - an all-day event is
+     * never "in progress" in the sense that should block an unprompted spoken raise. */
+    @Query(
+        "SELECT * FROM events WHERE deleted = 0 AND kind = :kind AND allDay = 0 " +
+            "AND startsAt IS NOT NULL AND startsAt <= :nowMs AND endsAt IS NOT NULL AND endsAt > :nowMs",
+    )
+    suspend fun activeTimedByKindRunningAt(kind: String, nowMs: Long): List<Event>
 
     @Insert
     suspend fun insert(row: Event): Long
@@ -454,6 +486,21 @@ suspend fun EventDao.upsert(row: Event): Long {
         return insert(row)
     }
     return insert(row.copy(id = 0))
+}
+
+/**
+ * The next id a genuinely NEW appointment row must be explicitly inserted at -
+ * [Event.APPOINTMENT_ID_BASE]'s own doc comment for the disjoint-range property this serves.
+ * **Moved here from the now-deleted `calendar/CalendarImportController.kt`** (one-today ticket 01,
+ * "cut Google entirely") - `service/LiveToolbox.kt`'s `addAppointment` is now the only LIVE
+ * allocator of a new appointment row (the historical import is retired; its own rows already carry
+ * an id from this same allocator, minted when they were imported). Reads the table's current
+ * appointment high-water mark fresh rather than caching one - correct regardless of how many
+ * appointments a caller creates in a row, simple over clever at this app's personal scale.
+ */
+suspend fun EventDao.nextAppointmentId(): Long {
+    val current = maxIdAtOrAbove(Event.APPOINTMENT_ID_BASE)
+    return (current ?: (Event.APPOINTMENT_ID_BASE - 1)) + 1
 }
 
 @Dao
