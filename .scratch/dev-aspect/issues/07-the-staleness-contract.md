@@ -7,8 +7,8 @@ status: open
 status-detail: ""
 blockers: ["05"]
 blocked-by: ["[[05-the-github-sync]]"]
-open-blockers: 1
-ready: false
+open-blockers: 0
+ready: true
 tags: [ticket]
 ---
 # The staleness contract, and the three states of not-knowing

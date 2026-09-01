@@ -3,12 +3,12 @@ map: dev-aspect
 ticket: "05"
 title: "The LEGION board feed"
 type: build
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-09-01. board.json emitted by pending_wiki.py, buckets asserted, hook staging fixed, live on Pages. Nothing owed on hardware."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The LEGION board feed
@@ -62,3 +62,32 @@ lose the detail the hands path needs.
 - The commit hook regenerates it. Verified by planting a change and watching a real commit stage it.
 - `docs/board.json` is reachable at the Pages URL after a push. **A correct file in an unpushed
   commit is a stale public feed** - CLAUDE.md section 13 learned this the hard way.
+
+## Resolution (2026-09-01) - built and verified
+
+`tools/pending_wiki.py` now writes `docs/board.json` from the same `collect()` that renders the
+page. Every verification step above accounted for:
+
+| Step | Outcome |
+|---|---|
+| Both files written, totals equal | **done.** Compared programmatically - the six stat tiles parsed out of the rendered HTML against the JSON totals, all six agree. Not by eye |
+| Four buckets sum to the live open count | **done.** Two `assert`s in the script, so it fails at generation rather than on the phone |
+| Resolving a ticket removes it | **done.** Resolved 05, re-ran, dev-aspect went 5 open to 4 with 05 gone; reverted and it came back |
+| The commit hook regenerates it | **done, and it found a real bug** - see below |
+| Reachable at the Pages URL | **done.** HTTP 200 at `https://kevinmyo-code.github.io/legion/board.json`, 106 open across 18 maps, second poll after the push |
+
+Size is ~23 KB, small enough to fetch on mobile data.
+
+### What the sentinel test found
+
+The hook re-ran `pending_wiki.py` but **its `git add` list never named `docs/board.json`.** A commit
+that edited a ticket would have published a regenerated `index.html` beside a stale feed - the wiki
+and the phone disagreeing, which is precisely what generating both from one `collect()` exists to
+make impossible. Fixed in `.claude/settings.json`, then re-verified: sentinel planted, bare
+`git commit`, sentinel present in the regenerated and staged `board.json`.
+
+**A second finding, recorded because it weakens the backstop generally.** The hook matches
+`Bash(git commit*)` as a prefix, so a commit written as `git add X && git commit ...` never trips
+it. Not a bug in the hook, but the backstop is absent whenever a commit is chained behind anything,
+which is the common shape. Worth a follow-up if the wiki ever looks stale again.
+
