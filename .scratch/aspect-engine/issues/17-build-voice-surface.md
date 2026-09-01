@@ -3,7 +3,7 @@ map: aspect-engine
 ticket: "17"
 title: "Build the voice surface"
 type: task
-status: built
+status: resolved
 status-detail: "Built 2026-08-23, senior-approved, merged to dev. Nine meta-tools + clerk + schema generator live in LiveToolbox; 104-tool inventory written. Owes: a real voice round-trip on the A25."
 blockers: ["07", "16"]
 blocked-by: ["[[07-aspect-clerk-prototype]]", "[[16-build-engine-core]]"]

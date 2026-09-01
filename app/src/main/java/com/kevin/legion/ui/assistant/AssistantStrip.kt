@@ -83,10 +83,15 @@ import kotlinx.coroutines.delay
  * permission check; [AssistantStripContent] is the plain, previewable half
  * that only ever sees an [AssistantStripResolver.State].
  *
- * **Unexercised.** Nothing downstream of the tap - [LiveSessionController],
- * [com.kevin.legion.service.GeminiLiveSession], the Live socket itself - has
- * ever run in this app. This file is what makes that first run possible; it
- * is not evidence that voice works.
+ * **Exercised as of 2026-09-01** (Kevin, in daily use: *"ive been using the phone and voice paths
+ * all work"*). The chain below this tap - [LiveSessionController],
+ * [com.kevin.legion.service.GeminiLiveSession], the Live socket - runs.
+ *
+ * The superseded claim is kept because it dated a real gap rather than describing one that never
+ * existed: from this file's creation until 2026-09-01 nothing downstream of the tap had ever run,
+ * and every plan made in that window was made without that evidence. It read:
+ * *"**Unexercised.** Nothing downstream of the tap has ever run in this app. This file is what
+ * makes that first run possible; it is not evidence that voice works."*
  */
 @Composable
 fun AssistantStrip(onOpenSettings: () -> Unit) {

@@ -44,6 +44,7 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/voice-notes/map\|voice-notes]] | [[01-the-recorder-and-the-mic\|01]] | build | The recorder, and the fourth claim on the microphone |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[02-the-store\|02]] | build | Where a voice note lives, on the phone and on the server |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
+| [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery |
 | [[.scratch/wake-word/map\|wake-word]] | [[13-weak-pickup-on-a-drive\|13]] | bug | The wake word sometimes does not hear him on a drive |
 
 ## Built, owing a run on hardware
@@ -52,7 +53,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 
 | Map | Ticket | Type | What |
 |---|---|---|---|
-| [[.scratch/aspect-engine/map\|aspect-engine]] | [[17-build-voice-surface\|17]] | task | Build the voice surface |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[18-build-widget-pager\|18]] | task | Build the widget pager and generated screens |
 | [[.scratch/aspect-engine/map\|aspect-engine]] | [[19-build-dates-aspect\|19]] | task | Build the Dates aspect |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[08-receipts-whose-anchors-were-never-stored\|08]] | build | 08-receipts-whose-anchors-were-never-stored |
@@ -94,9 +94,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[12-retire-ambient-listening\|12]] | bug | Retire ambient cabin listening |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | [[13-silent-after-focus-loss\|13]] | bug | It speaks and you hear nothing, once Spotify takes audio focus |
 | [[.scratch/quant-viz/map\|quant-viz]] | [[17-silent-regressions\|17]] | grilling | Two shipped visualisations vanished in a later rebuild, and nothing noticed |
-| [[.scratch/wake-word/map\|wake-word]] | [[05-mic-ownership\|05]] | grilling | Who owns the microphone, and what yields to what? |
 | [[.scratch/wake-word/map\|wake-word]] | [[12-deaf-in-the-jeep\|12]] | task | Deaf in the Jeep, fine outside it |
-| [[.scratch/wake-word/map\|wake-word]] | [[14-service-refused-to-start\|14]] | bug | The assistant silently stops running, and every surface still says On |
 | [[.scratch/wake-word/map\|wake-word]] | [[15-see-a-deaf-mic\|15]] | build | Make a deaf microphone visible |
 
 ## Blocked
@@ -122,7 +120,6 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/voice-notes/map\|voice-notes]] | [[03-transcribe-and-summarize\|03]] | build | One upload, a transcript and a summary out  waiting on [[01-the-recorder-and-the-mic\|01]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[04-voice-tools-and-the-hands-path\|04]] | build | Two voice tools, and the screen that does the same thing  waiting on [[01-the-recorder-and-the-mic\|01]], [[02-the-store\|02]], [[03-transcribe-and-summarize\|03]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[04-what-drain-is-acceptable\|04]] | grilling | What drain is acceptable, and what happens when it is not met?  waiting on [[03-measure-the-battery-cost\|03]] |
-| [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery  waiting on [[05-mic-ownership\|05]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[07-false-triggers\|07]] | grilling | How many false triggers is too many, and how would Kevin ever know?  waiting on [[06-prove-it-on-the-phone\|06]] |
 
 ## KIV
@@ -144,7 +141,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ambient-listening/map\|ambient-listening]] | 7 | 0 | [[.scratch/ambient-listening/ambient-listening.canvas\|open]] |
 | [[.scratch/android-auto/map\|android-auto]] | 16 | 0 | [[.scratch/android-auto/android-auto.canvas\|open]] |
 | [[.scratch/aspect-advisors/map\|aspect-advisors]] | 21 | 0 | [[.scratch/aspect-advisors/aspect-advisors.canvas\|open]] |
-| [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 4 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
+| [[.scratch/aspect-engine/map\|aspect-engine]] | 23 | 3 | [[.scratch/aspect-engine/aspect-engine.canvas\|open]] |
 | [[.scratch/backend-erp/map\|backend-erp]] | 30 | 18 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
@@ -171,4 +168,4 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 1 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
 | [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |
-| [[.scratch/wake-word/map\|wake-word]] | 15 | 9 | [[.scratch/wake-word/wake-word.canvas\|open]] |
+| [[.scratch/wake-word/map\|wake-word]] | 15 | 7 | [[.scratch/wake-word/wake-word.canvas\|open]] |

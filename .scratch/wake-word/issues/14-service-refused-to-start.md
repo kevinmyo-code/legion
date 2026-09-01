@@ -3,7 +3,7 @@ map: wake-word
 ticket: 14
 title: "The assistant silently stops running, and every surface still says On"
 type: bug
-status: built
+status: resolved
 status-detail: "2026-08-21 - made visible rather than defeated; owes a run on the phone"
 blockers: []
 blocked-by: []

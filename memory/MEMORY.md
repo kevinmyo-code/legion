@@ -39,7 +39,7 @@ believed.
 
 - **The OBD re-run.** 12,807 of 26,059 samples uploaded 08-29 then halted on a placeholder vehicle;
   the fix landed, so a re-run should carry ~7,989 more.
-- **The voice modals have never been tried by voice** - built and installed 08-28.
+- ~~The voice modals have never been tried by voice.~~ **Closed 09-01**: Kevin, in daily use, *"ive been using the phone and voice paths all work"*. The Live socket, `LiveSessionController` and the modals all run.
 - **A second household account**, dashboard-only by design (backend-erp 23). The real test is
   proving RLS shows her the same rows; an empty result looks identical to a working sign-in.
 - **Two placeholder vehicles** (`default`, an OBD-MAC row) carry year 0, and 5,263 OBD samples plus
