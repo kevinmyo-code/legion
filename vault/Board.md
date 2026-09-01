@@ -28,9 +28,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[29-audit-rows-age-out-before-they-are-uploaded\|29]] | decision | 29-audit-rows-age-out-before-they-are-uploaded |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[30-the-obd-cursor-cannot-get-past-a-dead-vehicle\|30]] | decision | 30-the-obd-cursor-cannot-get-past-a-dead-vehicle |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
-| [[.scratch/dev-aspect/map\|dev-aspect]] | [[01-seventh-aspect-on-the-engine\|01]] | grilling | The seventh aspect, and whether it rides the engine |
-| [[.scratch/dev-aspect/map\|dev-aspect]] | [[02-azure-devops-employer-boundary\|02]] | grilling | Azure DevOps and the employer-data boundary |
-| [[.scratch/dev-aspect/map\|dev-aspect]] | [[03-azure-devops-api-research\|03]] | research | The Azure DevOps REST API: auth, WIQL, scopes, limits |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | [[05-the-github-sync\|05]] | build | The LEGION board feed |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps read-through client |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
@@ -46,6 +45,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/one-today/map\|one-today]] | [[03-the-day-in-review\|03]] | build | 03-the-day-in-review |
 | [[.scratch/one-today/map\|one-today]] | [[04-delete-the-residue\|04]] | task | 04-delete-the-residue |
 | [[.scratch/one-today/map\|one-today]] | [[05-maintenance-has-no-date-axis\|05]] | decision | 05-maintenance-has-no-date-axis |
+| [[.scratch/voice-notes/map\|voice-notes]] | [[01-the-recorder-and-the-mic\|01]] | build | The recorder, and the fourth claim on the microphone |
+| [[.scratch/voice-notes/map\|voice-notes]] | [[02-the-store\|02]] | build | Where a voice note lives, on the phone and on the server |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
 | [[.scratch/wake-word/map\|wake-word]] | [[13-weak-pickup-on-a-drive\|13]] | bug | The wake word sometimes does not hear him on a drive |
 
@@ -106,11 +107,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 |---|---|---|---|---|
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
-| [[.scratch/dev-aspect/map\|dev-aspect]] | [[04-does-the-summary-earn-its-place\|04]] | grilling | Does the prose summary earn its place  waiting on [[01-seventh-aspect-on-the-engine\|01]] |
-| [[.scratch/dev-aspect/map\|dev-aspect]] | [[05-the-github-sync\|05]] | build | The GitHub sync  waiting on [[01-seventh-aspect-on-the-engine\|01]] |
-| [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps sync  waiting on [[01-seventh-aspect-on-the-engine\|01]], [[02-azure-devops-employer-boundary\|02]], [[03-azure-devops-api-research\|03]], [[05-the-github-sync\|05]] |
-| [[.scratch/dev-aspect/map\|dev-aspect]] | [[07-the-staleness-contract\|07]] | build | The staleness contract  waiting on [[05-the-github-sync\|05]] |
-| [[.scratch/dev-aspect/map\|dev-aspect]] | [[08-voice-surface-and-hands-path\|08]] | build | The voice surface and its hands path  waiting on [[01-seventh-aspect-on-the-engine\|01]], [[04-does-the-summary-earn-its-place\|04]], [[05-the-github-sync\|05]], [[07-the-staleness-contract\|07]] |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | [[07-the-staleness-contract\|07]] | build | The staleness contract, and the three states of not-knowing  waiting on [[05-the-github-sync\|05]] |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | [[08-voice-surface-and-hands-path\|08]] | build | The projects tool surface, and its hands path  waiting on [[05-the-github-sync\|05]], [[06-the-azure-devops-sync\|06]], [[07-the-staleness-contract\|07]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[02-the-tool-binding-contract\|02]] | grilling | The tool-binding contract: the model picks the view, tools supply the numbers  waiting on [[01-the-response-schema\|01]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[03-the-renderer\|03]] | build | The Compose renderer: validation, components, and worded failure  waiting on [[01-the-response-schema\|01]], [[02-the-tool-binding-contract\|02]] |
@@ -124,6 +122,8 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[05-geofences\|05]] | build | Geofences that actually fire  waiting on [[01-background-location\|01]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[06-departure-advisor\|06]] | build | The departure advisor  waiting on [[02-area-info-tool\|02]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | [[08-garage-on-approach\|08]] | build | Garage on approach, as an offer  waiting on [[05-geofences\|05]] |
+| [[.scratch/voice-notes/map\|voice-notes]] | [[03-transcribe-and-summarize\|03]] | build | One upload, a transcript and a summary out  waiting on [[01-the-recorder-and-the-mic\|01]] |
+| [[.scratch/voice-notes/map\|voice-notes]] | [[04-voice-tools-and-the-hands-path\|04]] | build | Two voice tools, and the screen that does the same thing  waiting on [[01-the-recorder-and-the-mic\|01]], [[02-the-store\|02]], [[03-transcribe-and-summarize\|03]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[04-what-drain-is-acceptable\|04]] | grilling | What drain is acceptable, and what happens when it is not met?  waiting on [[03-measure-the-battery-cost\|03]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[06-prove-it-on-the-phone\|06]] | task | Prove hey-name fires on the A25, screen off, on battery  waiting on [[05-mic-ownership\|05]] |
 | [[.scratch/wake-word/map\|wake-word]] | [[07-false-triggers\|07]] | grilling | How many false triggers is too many, and how would Kevin ever know?  waiting on [[06-prove-it-on-the-phone\|06]] |
@@ -151,7 +151,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/backend-erp/map\|backend-erp]] | 30 | 18 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
-| [[.scratch/dev-aspect/map\|dev-aspect]] | 8 | 8 | [[.scratch/dev-aspect/dev-aspect.canvas\|open]] |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | 8 | 4 | [[.scratch/dev-aspect/dev-aspect.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
@@ -173,4 +173,5 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 1 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |
+| [[.scratch/voice-notes/map\|voice-notes]] | 4 | 4 | [[.scratch/voice-notes/voice-notes.canvas\|open]] |
 | [[.scratch/wake-word/map\|wake-word]] | 15 | 9 | [[.scratch/wake-word/wake-word.canvas\|open]] |

@@ -1,66 +1,91 @@
 ---
 map: dev-aspect
-title: "Map: The dev aspect - projects, repos and what is pending, by voice"
+title: "Map: The projects tool surface - what is pending, by voice"
 charted: 2026-09-01
 charted-by: "Kevin + Opus"
 effort: "`.scratch/dev-aspect/`"
 tickets: 8
-open: 8
+open: 4
 status: open
 tags: [map]
 ---
-# Map: The dev aspect - projects, repos and what is pending, by voice
+# Map: The projects tool surface - what is pending, by voice
 
 ## Destination
 
 Kevin asks LEGION what projects he has and what is pending on each, and gets an answer built from
-sources he could verify himself: open GitHub issues and PRs, LEGION's own ticket frontmatter, and
-his employer's Azure DevOps work items. Not from a prose summary somebody wrote weeks ago.
+sources he could verify himself. Not from a prose summary somebody wrote weeks ago.
 
 Kevin, 2026-09-01: *"i wanna be able to query my current projects in my repos etc ... i want to ask
 the voice ai what projects i have, whats pending on which project."*
 
 ## Notes
 
-**Domain:** LEGION, Android phone app, `com.kevin.legion`. Backend is Supabase (Postgres),
-`supabase/migrations/`. Read `CLAUDE.md` for rules, `memory/MEMORY.md` for state.
+**Domain:** LEGION, Android phone app, `com.kevin.legion`. Read `CLAUDE.md` for rules,
+`memory/MEMORY.md` for state.
 
-**Skills:** `/grilling` for the decision tickets, `/research` for the Azure DevOps API facts,
-`/domain-modeling` if the record-type vocabulary gets contested.
+CLAUDE.md sections 1 (the six aspects; unreadable vs empty), 4 rule 5 (anything the source does not
+state is an estimate), 7 (third-party content is read-through only; no Kevin-hosted anything; every
+voice capability has a hands path) bind everything here.
 
-CLAUDE.md sections 1 (the six aspects and what a seventh costs), 4 rule 5 (anything the source does
-not state is an estimate), 7 (third-party content is read-through only; every voice capability has
-a hands path) bind everything here.
+## The shape, after the 2026-09-01 grill
 
-### Locked at charting (Kevin, 2026-09-01)
+Charting assumed a seventh aspect backed by Supabase tables and two cron syncs. The grill and
+Kevin's scope answers collapsed it into something much smaller, and **both charting assumptions
+were reversed**:
 
-1. **Supabase Postgres, not NoSQL.** "It is all text" is not a reason to leave Postgres. Text
-   columns, `jsonb` and full-text search cover it; RLS and the existing household model do not
-   survive a move.
-2. **Scope is all of Kevin's GitHub repos, plus employer work items in Azure DevOps.**
-3. **Live sync, not a one-time export.** A one-time summary is stale the following day and the
-   assistant then reports finished work as pending. Azure DevOps has a REST API and a PAT; the
-   belief that it could not be live-connected was wrong.
-4. **What is pending comes from falsifiable sources.** Open issues, open PRs, ticket frontmatter,
-   work items. An LLM-written project summary is CLAUDE.md section 4 rule 5's estimate and may never
-   be the answer to "what is pending" (ticket 04 decides whether it exists at all).
+| Charted as | Ruled |
+|---|---|
+| Aspect seven, on the engine, with a widget | **Not an aspect.** A read-only tool surface named `projects`. Aspect list stays at six (ticket 01) |
+| GitHub sync into Supabase, every repo, on a cron | **A static feed.** `docs/board.json` on GitHub Pages, generated from ticket frontmatter (ticket 05) |
+| Azure DevOps sync into Supabase | **Read-through at voice time.** Nothing persisted, ever (ticket 02) |
+| A per-project prose summary | **Killed.** No such field (ticket 04) |
 
-### The open question that gates the Azure half
+**Net: no new table anywhere, no Edge Function, no cron, no Room migration, no backend.** What is
+left is one static JSON file this repo already had the data for, and one on-device HTTP client.
 
-Azure DevOps here is the EMPLOYER's. Syncing colleagues' work-item prose into a personal cloud
-Postgres is exactly the shape section 7 calls read-through only, and is separately an employer
-data-policy question nobody in this repo can answer. Ticket 02 owns it. The Azure build (06) does
-not start until it is ruled.
+### What drove each reversal
+
+1. **Not an aspect.** An aspect is a thing you author and CRUD; every row here is a read-only
+   mirror. Kevin wanted no widget and only cares about LEGION on the GitHub side, and stripping the
+   widget and the authoring leaves nothing aspect-shaped. Fleet survives the same test only because
+   vehicles and service records are genuinely authored beside its read-only OBD stream.
+2. **A static feed.** LEGION has no GitHub issues - its pending work is ticket frontmatter that
+   `tools/pending_wiki.py` already parses, the commit hook already regenerates, and Pages already
+   publishes. Emitting `board.json` beside `index.html` costs one function and removes the entire
+   sync: no API, no PAT, no rate limits, and no delete-discipline problem, because the file is
+   rebuilt whole every time so a resolved ticket cannot linger.
+3. **Read-through.** Kevin: *"its company's azure, but its all my own projects, solo dev work."*
+   That weakens section 7's third-party concern - it is his own writing - but not the company's
+   ownership of the tenant. Querying live and discarding satisfies section 7 natively instead of
+   carving an exception out of it, and costs a second of latency on a question asked occasionally.
+
+### Locked (Kevin, 2026-09-01)
+
+1. The surface is named **projects**. It reaches voice copy and is frozen.
+2. **No widget, no pager page.**
+3. GitHub scope is **LEGION only** for now.
+4. **What is pending comes only from falsifiable sources** - ticket frontmatter and work items.
+5. **Nothing from Azure DevOps is ever written down.**
+
+### The one thing Kevin still owns
+
+Company policy on connecting a personal device to their Azure DevOps with a PAT. Read-through
+removes the data-at-rest question; it does not remove the access question. Ticket 03's research
+also found that an Entra-backed org **can disable PAT creation outright**, which would make ticket
+06 unbuildable - worth checking before building it. And the org Usage page shows an admin the IP,
+User-Agent and URI of every REST call, so this is visible even though work-item reads are not
+audited.
 
 ## Tickets
 
-| # | Type | Title |
-|---|---|---|
-| 01 | grilling | The seventh aspect, and whether it rides the engine |
-| 02 | grilling | Azure DevOps and the employer-data boundary |
-| 03 | research | The Azure DevOps REST API: auth, WIQL, scopes, limits |
-| 04 | grilling | Does the prose summary earn its place |
-| 05 | build | The GitHub sync |
-| 06 | build | The Azure DevOps sync |
-| 07 | build | The staleness contract |
-| 08 | build | The voice surface and its hands path |
+| # | Type | Status | Title |
+|---|---|---|---|
+| 01 | grilling | resolved | The seventh aspect - ruled NOT an aspect |
+| 02 | grilling | resolved | Azure boundary - ruled read-through, never persisted |
+| 03 | research | resolved | The Azure DevOps REST API - `fields` allowlist confirmed |
+| 04 | grilling | resolved | The prose summary - ruled it does not exist |
+| 05 | build | open | The LEGION board feed (`docs/board.json`) |
+| 06 | build | open | The Azure DevOps read-through client |
+| 07 | build | open | The staleness contract, and the three states of not-knowing |
+| 08 | build | open | The projects tool surface, and its hands path |

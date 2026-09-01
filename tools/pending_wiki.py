@@ -323,3 +323,42 @@ doc = (
 
 open(os.path.join('docs', 'index.html'), 'w', encoding='utf-8').write(doc)
 print('docs/index.html:', len(panels), 'maps,', tot, 'open tickets,', ready, 'ready')
+
+
+# --- docs/board.json -------------------------------------------------------
+# The same collect() the page above renders, emitted machine-readably so the phone's projects
+# tool surface can answer "what is pending on LEGION" without a backend. GitHub Pages already
+# serves docs/ from dev, so there is no table, no Edge Function and no cron: the file is
+# regenerated whole from the tickets, which is why a resolved ticket cannot linger in it.
+# .scratch/dev-aspect/issues/05-the-github-sync.md owns the reasoning.
+#
+# generated_at is load-bearing, not decoration. The assistant states the feed's age out loud past
+# 24 hours, and "never fetched" must never read as "nothing pending" - see ticket 07.
+board = {
+    'generated_at': __import__('datetime').datetime.now(
+        __import__('datetime').timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'totals': {'open': tot, 'ready': ready, 'built': test_n, 'blocked': blocked_n,
+               'decisions': dec, 'kiv': kiv_n, 'maps': len(d)},
+    'maps': [{
+        'slug': m['slug'], 'title': m['title'],
+        'open': m['open'], 'ready': m['ready'], 'built': m['test'], 'kiv': m['kiv'],
+        'tickets': [{
+            'num': t['num'], 'title': t['title'], 'type': t['type'], 'status': t['status'],
+            'detail': t['detail'], 'ready': t['ready'], 'blocked_by': t['blockedBy'],
+        } for t in m['tickets']],
+    } for m in d],
+}
+
+# The four buckets are disjoint by construction and must sum to the live open count (CLAUDE.md
+# section 12). They did not once, and three built tickets were counted twice. A feed the phone
+# speaks aloud is the worst place to rediscover that, so it fails here instead.
+_live = tot - kiv_n
+assert ready + test_n + blocked_n == _live, (
+    'board.json buckets do not sum: ready %d + built %d + blocked %d != live %d'
+    % (ready, test_n, blocked_n, _live))
+assert sum(len(m['tickets']) for m in board['maps']) == tot, 'board.json ticket count != open total'
+
+open(os.path.join('docs', 'board.json'), 'w', encoding='utf-8').write(
+    json.dumps(board, separators=(',', ':'), ensure_ascii=False))
+print('docs/board.json:', len(board['maps']), 'maps,', tot, 'open tickets,',
+      os.path.getsize(os.path.join('docs', 'board.json')), 'bytes')

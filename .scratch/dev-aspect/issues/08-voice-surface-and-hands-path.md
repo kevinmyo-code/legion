@@ -1,52 +1,73 @@
 ---
 map: dev-aspect
 ticket: "08"
-title: "The voice surface and its hands path"
+title: "The projects tool surface, and its hands path"
 type: build
 status: open
 status-detail: ""
-blockers: ["01", "04", "05", "07"]
-blocked-by: ["[[01-seventh-aspect-on-the-engine]]", "[[04-does-the-summary-earn-its-place]]", "[[05-the-github-sync]]", "[[07-the-staleness-contract]]"]
-open-blockers: 4
+blockers: ["05", "06", "07"]
+blocked-by: ["[[05-the-github-sync]]", "[[06-the-azure-devops-sync]]", "[[07-the-staleness-contract]]"]
+open-blockers: 3
 ready: false
 tags: [ticket]
 ---
-# The voice surface and its hands path
+# The projects tool surface, and its hands path
 
 ## Build
 
-The thing Kevin actually asked for: *"i want to ask the voice ai what projects i have, whats pending
-on which project."*
+The thing Kevin asked for: *"i want to ask the voice ai what projects i have, whats pending on
+which project."* Ticket 01 ruled this a **read-only tool surface named projects**, not an aspect -
+so no CRUD tools, no engine record type, no widget.
 
-**If ticket 01 put the aspect on the engine, most of this is already built** - the engine's generic
-meta-tools (aspect-engine ticket 06) and generated screens (10) cover CRUD and listing, and this
-ticket shrinks to the queries the generic tools do not express well. Establish that first rather
-than writing a parallel toolset; two implementations of one capability drift into disagreeing, which
-is the reasoning behind ADR 0035.
+**Two sources, one surface.** `docs/board.json` over HTTPS for LEGION (ticket 05), the on-device
+read-through client for Azure (ticket 06). The model sees one set of tools and does not care which
+answered.
 
-**Queries that likely need naming explicitly:**
+**Questions it supports:**
 
-- what projects do I have (excluding archived)
+- what projects do I have
 - what is pending on {project}
-- what is pending across everything, ordered by staleness or by count
-- what have I not touched in a while - derived from `pushed_at`, a fact, not a judgement
+- what is pending across everything
 
-**ADR 0035 binds: every voice capability has a hands path**, calling the same controller, not a
-second implementation. Voice is the fastest way in and it is the one that fails - a loud room, a
-wake word that does not fire, a closed socket. A dev aspect reachable only by voice is not finished.
+**Questions it does NOT support**, stated in the tool description so the model does not improvise:
+what a project IS (ticket 04 killed the summary field), who is assigned to something (the assignee
+field is off the allowlist), and anything needing a work item's body or comments.
 
-The hands path also carries what voice cannot: sync status and failures (ticket 07), the item URLs,
-and a manual re-sync trigger.
+## The noise problem, which is most of this ticket
 
-**Copy rules.** No assistant name hardcoded anywhere. If ticket 04 kept `summary_text`, its
-estimate label appears in the tool description and in the user-facing string, and does not collapse
-behind a HelpRow.
+LEGION has ~106 open tickets across ~31 maps and no GitHub issues. A faithful answer to "what is
+pending on LEGION" is 106 items, which is useless spoken aloud. Grill question 3, still open.
+
+**The rollup lives here, at the speaking end, not in the feed** - baking one summarisation into
+`board.json` would lose the detail the hands path needs.
+
+Decide during build, and write the choice into the tool description rather than leaving it to the
+model:
+
+1. Default to **ready** tickets only, not all open? Ready means "no decision left, go build", which
+   is the closest thing to what a person means by "pending".
+2. Roll up by map with counts, then offer to go deeper? *"Eleven maps have ready work. The biggest
+   is aspect-engine with six."*
+3. A hard cap on how many items are ever enumerated aloud, with the remainder given as a count.
+
+## ADR 0035: every voice capability has a hands path
+
+Binding, and it calls the **same controller** - not a second implementation, because two
+implementations of one capability drift into disagreeing.
+
+The hands path also carries what voice structurally cannot:
+
+- the item URLs, tappable
+- the full list where voice gives a rollup
+- **sync and reachability status** (ticket 07's three states, visible rather than only spoken)
+- the PAT entry field, and a manual retry
 
 ## Verification
 
-- Every voice query has a hands equivalent reaching the same controller. Listed one by one, not
+- Every voice query has a hands equivalent, listed one by one, reaching the same controller. Not
   asserted in general.
-- The estimate labelling test from ticket 04 passes.
-- Run on the real phone: ask the three main queries, confirm the staleness wording appears, confirm
-  a project with no open items does not read as unsynced. Stated plainly as owed until done - a
-  built ticket owing a phone run is `built`, not `resolved`.
+- Ticket 07's three-states tests pass through this surface, not just in isolation.
+- No assistant name hardcoded in any copy (CLAUDE.md section 1).
+- **Run on the real phone**: ask all three questions, confirm the rollup is usable aloud, confirm a
+  missing PAT says "I cannot see it" rather than "nothing pending". Until that run happens this
+  ticket is `built`, not `resolved`, and the ledger says so plainly.

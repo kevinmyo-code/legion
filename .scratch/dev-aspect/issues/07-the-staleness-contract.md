@@ -1,7 +1,7 @@
 ---
 map: dev-aspect
 ticket: "07"
-title: "The staleness contract"
+title: "The staleness contract, and the three states of not-knowing"
 type: build
 status: open
 status-detail: ""
@@ -11,40 +11,49 @@ open-blockers: 1
 ready: false
 tags: [ticket]
 ---
-# The staleness contract
+# The staleness contract, and the three states of not-knowing
+
+## What changed from charting
+
+Half of this ticket dissolved. Azure is read-through now (ticket 02), so **a live answer has no
+age** and nothing about Azure needs a staleness clause. What is left is the LEGION board feed
+(ticket 05), which is a file on GitHub Pages with a `generated_at`, plus a failure the research
+surfaced on the Azure side that is not staleness at all.
 
 ## Build
 
-Every answer this aspect gives is only as true as its last sync, and the assistant must never speak
-as though it is live.
+**For the board feed.** An answer built from `docs/board.json` states the age in words when it is
+older than the threshold: *"as of Tuesday morning, twelve ready tickets."* Words, in the spoken
+answer - not a colour, not a small timestamp on a screen the listener cannot see. Voice has no
+other channel.
 
-**The rule:** an answer built from rows older than the threshold states the age in words. *"As of
-Tuesday morning, four open items on Project X."* Not a colour, not a small grey timestamp on a
-screen the listener cannot see - words, in the spoken answer, because voice has no other channel.
+Threshold: **24 hours.** The commit hook regenerates on every commit, so a feed older than a day
+means Kevin has not committed for a day, which is itself worth saying. Written down here rather
+than left to the model.
 
-This is CLAUDE.md section 7's outcome-verb rule pointed at freshness. The assistant may not assert
-a present-tense fact about the world that it read from a cache without saying when the cache was
-filled.
+**For Azure.** No age clause. But the research found the failure that matters more: a dead PAT
+returns 401, and a throttled request returns **HTTP 200** with a `Retry-After` header. Both must
+reach the user as "I cannot see Azure DevOps right now", and a 200 that is really a throttle must
+never be read as an empty result set.
 
-**A never-synced project and a project with no open work are different sentences.** The first says
-it has not looked; the second says there is nothing. Rendering the first as the second tells Kevin
-he is clear when the sync is broken - the same failure shape as the calendar permission case in
-CLAUDE.md section 1. `last_synced_at` NULL and zero rows are not the same state and must not
-produce the same speech.
+## The three states, which must never collapse into each other
 
-**A failed sync is visible.** Two consecutive failures surface somewhere Kevin will see without
-asking. Not a raise - a raise about a broken sync would need to satisfy the section 7 compulsion
-test, and this is a status, not a nudge. The hands path (ticket 08) shows it.
+CLAUDE.md section 1's unreadable-versus-empty rule, which cost an invented lunch appointment when
+it was got wrong. It has three states here rather than two:
 
-## Decide during build
+| State | What the assistant says |
+|---|---|
+| Never fetched / no PAT / 401 / throttled-200 | "I cannot see it" - names the source and the reason |
+| Fetched, zero open items | "Nothing open" |
+| Fetched, but stale past the threshold | The count, **and its age**, in the same sentence |
 
-- The threshold at which the age is spoken. A daily cron makes anything over about a day worth
-  saying; pick a number and write it down rather than leaving it to the model.
+Telling Kevin he is clear when the app cannot see is the failure. It is the same sentence as
+telling him a receipt reconciled when the parser found nothing.
 
 ## Verification
 
-- Rows with `last_synced_at` NULL produce "I have not synced that yet," never "nothing pending."
-- A stale answer contains the age. Tested at the prompt-surface level the way
-  `AriaBrainHonestyClauseTest` tests presence; obedience is not testable and that limit is stated,
-  not glossed.
-- Two failed runs are visible on the hands path.
+- Three separate tests, one per row of that table, asserting the three produce different strings.
+- A `generated_at` older than 24 hours puts an age into the spoken text.
+- A synthetic 200-with-`Retry-After` produces the cannot-see sentence, not "nothing open".
+- Prompt-surface presence is testable; obedience is not. That limit is stated, not glossed - the
+  same honesty `AriaBrainHonestyClauseTest` carries.

@@ -4942,3 +4942,50 @@ It read that off `.scratch/ambient-listening/map.md` rather than the tree. The f
 ambient listening was retired 2026-08-21. The map's own table said "traced 2026-08-20, not
 remembered", and it was true when written; it is an observation that rotted, exactly the shape
 CLAUDE.md's opening section warns about, and it was believed by an agent a week later.
+
+---
+
+## 2026-09-01 - The projects tool surface, and two charting decisions reversed
+
+Kevin asked to query his projects by voice: *"i want to ask the voice ai what projects i have,
+whats pending on which project."* Charted as `.scratch/dev-aspect/` with a seventh aspect and two
+Supabase syncs. A grill on the two decision tickets reversed both.
+
+**Ruled: there is no seventh aspect. The list stays at six.** `projects` is a read-only tool
+surface, in the same class as location and weather. An aspect is a thing you author and CRUD; every
+project row is a read-only mirror. Kevin ruled out the widget and narrowed GitHub scope to LEGION
+alone, and stripping the widget and the authoring leaves nothing aspect-shaped. Fleet passes the
+same test only because vehicles and service records are authored beside its read-only OBD stream.
+Consequence: no engine record type, no Room table, no migration, no CLAUDE.md §1 edit.
+
+**Ruled: Azure DevOps is read-through, never persisted.** Kevin: *"its company's azure, but its all
+my own projects, solo dev work."* That weakens §7's third-party concern - the work items are his
+own writing, not a colleague's - but leaves the company's ownership of the tenant untouched.
+Querying live and discarding satisfies §7 natively rather than carving an exception out of it, and
+costs a second of latency on an occasional question. Four binding conditions: nothing persists
+anywhere, the PAT lives on-device only, a hardcoded field **allowlist**, and a failure says "I
+cannot see it" rather than "nothing pending". Answers by construction the two questions the grill
+could not otherwise close - who deletes it when he leaves the job, and whether household RLS lets
+his partner read employer data.
+
+**Ruled: no per-project prose summary field.** With one GitHub project and Kevin's own solo Azure
+work, there is no reader who needs projects described. It is also the same artefact CLAUDE.md was
+cut from 778 lines to remove on this same day, and speech carries no timestamp to hedge it.
+
+**The simplification that fell out.** LEGION has no GitHub issues; its pending work is ticket
+frontmatter that `tools/pending_wiki.py` already parses and Pages already publishes. So `board.json`
+is emitted beside `index.html` and the phone fetches it. No API, no PAT, no cron, no rate limits,
+and the delete-discipline problem the sync ticket was written to guard against does not exist -
+the file is rebuilt whole every run, so a resolved ticket cannot linger. Net across the whole map:
+**no new table anywhere and no backend.**
+
+**Five research findings that changed the design** (`.scratch/dev-aspect/research/azure-devops-api.md`,
+traced to learn.microsoft.com): `System.History` IS the comment thread and is an ordinary field
+name, so the field restriction must be an allowlist and never a denylist; `$expand=all` overrides
+the restriction and must never be sent; `System.AssignedTo` carries a work email; a **throttled
+request returns HTTP 200 with `Retry-After`**, not an error status; and **WIQL silently truncates at
+20,000 rows**, so an unbounded spoken count can be wrong with no error. Also: `_apis/projects` needs
+`vso.project`, Entra OAuth is unavailable to a phone app so a PAT is the only option, an org can
+disable PAT creation outright, and the org Usage page shows an admin the IP and URI of every REST
+call even though work-item reads are not audited.
+

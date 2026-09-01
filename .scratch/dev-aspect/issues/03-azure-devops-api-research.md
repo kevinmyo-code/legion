@@ -3,12 +3,12 @@ map: dev-aspect
 ticket: "03"
 title: "The Azure DevOps REST API: auth, WIQL, scopes, limits"
 type: research
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-09-01. Findings in research/azure-devops-api.md. fields allowlist confirmed; 11/11 claims confirmed, 8 items unconfirmed. Five findings changed the design."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The Azure DevOps REST API: auth, WIQL, scopes, limits
@@ -48,3 +48,34 @@ Claimed at charting, all needing confirmation:
 Findings land in `.scratch/dev-aspect/research/azure-devops-api.md`, every claim carrying a link to
 the Microsoft page it came from. Anything that could not be confirmed from primary docs is tagged
 `reasoned` and named as unconfirmed, not quietly dropped.
+
+## Resolution (2026-09-01)
+
+Findings: `.scratch/dev-aspect/research/azure-devops-api.md`. 11 of 11 ticket claims confirmed
+(one with a correction), 6 of 6 also-find-outs answered, 8 items unconfirmed or contradicted and
+named as such.
+
+**The headline answer is yes.** `POST _apis/wit/workitemsbatch` takes a `fields` array and returns
+only those fields; Microsoft's own paired samples show `System.Description` present without it and
+absent with it. Ticket 02's titles-only option exists.
+
+**Five findings changed the design**, all folded into tickets 02, 06 and 07:
+
+1. `System.History` IS the comment thread, and is an ordinary field name. The restriction must be a
+   hardcoded **allowlist**; a denylist cannot be written safely against up to 1024 custom fields.
+2. `$expand=all` overrides the restriction and its interaction with `fields` is undocumented.
+   Never send it.
+3. `System.AssignedTo` returns an IdentityRef carrying a work email.
+4. **A throttled request returns HTTP 200 with a `Retry-After` header**, not an error status.
+   Branching on the status code alone hammers through the throttle and gets Kevin emailed.
+5. **WIQL silently truncates at 20,000 rows.** Any spoken count from an unbounded query can be
+   wrong with no error - which is exactly the shape of failure this map exists to prevent.
+
+Also: the scope list in the brief was wrong (`GET _apis/projects` needs `vso.project` on top of
+`vso.work` and `vso.code`), a PAT dies on a 30-90 day Entra sign-in-recency clock and surfaces as a
+401, comments live on a separate endpoint that the work-item routes never touch, and WIQL itself
+returns only ids regardless of what the SELECT names.
+
+**One unresolved contradiction**, tagged `unverified` and carried into ticket 06: two Microsoft
+pages disagree on whether `@Me` works in WIQL over REST. Use the literal identity string until a
+real call settles it.

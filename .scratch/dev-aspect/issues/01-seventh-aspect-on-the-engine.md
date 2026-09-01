@@ -3,45 +3,53 @@ map: dev-aspect
 ticket: "01"
 title: "The seventh aspect, and whether it rides the engine"
 type: grilling
-status: open
-status-detail: ""
+status: resolved
+status-detail: "Resolved 2026-09-01 with Kevin. NOT an aspect - a read-only tool surface called projects. No engine record type, no widget page, no Room tables."
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 # The seventh aspect, and whether it rides the engine
 
-## Question
+## Resolution (Kevin, 2026-09-01)
 
-CLAUDE.md section 1 fixes six aspects - fleet, ledger, pantry, notes, dates, places - and says
-plainly that a seventh is a ruling, not a refactor. Kevin said yes on 2026-09-01. This ticket
-writes the ruling down and settles the shape.
+**There is no seventh aspect. The aspect list stays at six.** This is a read-only **tool surface**
+called **projects**, in the same class as location and weather - things the assistant can look up
+and can never author.
 
-The shape question: `.scratch/aspect-engine/` exists so a new aspect is rows in the master-data
-tables rather than a new migration. Riding the engine gets the dev aspect generic CRUD voice tools
-(aspect-engine ticket 06), generated list and detail screens (10), and a widget (08) for free.
-Hand-rolling `projects` and `project_items` as bespoke tables duplicates all three surfaces and
-then drifts from them.
+### Why the charting decision was reversed
 
-Against riding it: the engine's migration waves (aspect-engine 21, 22) are not finished, so a new
-aspect authored on the engine today may be the first thing to hit a gap the existing aspects have
-not reached yet.
+The map was charted on the assumption that projects would be aspect seven, and Kevin agreed to that
+before the grill. The grill's question A killed it:
 
-## Decide
+> An aspect on the engine is a thing you author and CRUD. Every project row here is a read-only
+> mirror. You never create a project by voice, you never edit one, and if you did the next sync
+> would blow the edit away.
 
-1. Ruling recorded: the dev aspect exists, aspects are now seven. Name it (dev? projects? work?) -
-   the name reaches voice copy and cannot be quietly changed later.
-2. Engine record type, or bespoke tables? If bespoke, what is the written trigger for migrating it
-   onto the engine later, so it does not become a permanent exception.
-3. Does it get a widget page on the pager, or is it voice-and-detail-screen only?
-4. Field vocabulary: what is a `project` versus a `project_item`? A repo with no open work - is it
-   still a project? An archived repo?
+Kevin's answers closed it: **no widget page**, and **only LEGION matters on the GitHub side for
+now**. Strip the widget and strip the authoring and nothing aspect-shaped is left. Fleet survives
+the same test only because vehicles, service records and builds are genuinely authored beside the
+read-only OBD stream; projects has no equivalent.
+
+### What this rules out, on purpose
+
+- No engine record type, no `aspects`/`record_types`/`field_defs` rows.
+- No Room tables, no migration, no `CarDatabase` version bump.
+- No widget, no pager page.
+- No CRUD voice tools. Nothing here is created, edited or deleted by the user.
+- CLAUDE.md section 1's aspect list is **unchanged** - still six. No edit needed, and that is the
+  point of the ruling.
+
+### The name
+
+**projects.** Kevin, 2026-09-01: *"projects."* It reaches voice copy - "what projects do I have",
+"what is pending on projects" - and is frozen by this ruling. Not "dev", not "work", not "repos".
 
 ## Verification
 
-- The ruling lands in `memory/library/decisions.md` with the date.
-- CLAUDE.md section 1's aspect list names seven.
-- If it rides the engine, the record-type definition is expressed in the engine's own field-type
-  vocabulary (aspect-engine ticket 03) and nothing new is added to that vocabulary here.
+- Entry in `memory/library/decisions.md` dated 2026-09-01, recording the reversal and its reason.
+- CLAUDE.md section 1 is NOT edited. A ruling that changes nothing in the rules file is still a
+  ruling; it is recorded in `decisions.md`, which is where "what happened, and when" lives.
+- No migration lands under `supabase/migrations/` or `data/local/Migrations.kt` for this map.
