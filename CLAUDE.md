@@ -26,6 +26,36 @@ Created 2026-08-01 from the 2026-07-30/31 pivot off Midnight AI. This file holds
 
 If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins for rules.**
 
+## What belongs in this file
+
+**Rulings, not observations.** A ruling is a decision someone made and it does not rot. An
+observation describes the code, and the code moves without anyone editing the sentence that
+described it.
+
+The test, applied 2026-09-01 when this file was cut from 778 lines to its present size: **does this
+state a rule, or does it describe what exists?** A version number, a count, a package map, an
+inventory of what is built - those are observations. They belong where they are computed, and every
+one of them was wrong at least once here.
+
+What that cut removed, and where it went:
+
+| Was | Now |
+|---|---|
+| Tech-stack table | Read `build.gradle.kts`. The dropped-dependency list stayed - that one is a ruling |
+| Room version changelog | `sed -n '/version = /p' …/CarDatabase.kt`. The migration rules stayed |
+| Codebase map | `Glob`, and `docs/architecture/` |
+| "Not built yet" list | The board, `docs/index.html` |
+| The narrative each carried | `library/claude-md-observations-2026-09-01.md`, verbatim |
+
+**Sixteen lines of this file were struck-through self-corrections** before that cut - `CORRECTED`,
+`STALE`, a rule reversed and left visible beside its replacement. That is what an observation looks
+like after it rots, and it is the tell to watch for. When correcting a rule, state the live one and
+put the history in `library/decisions.md`; the strikethrough belongs there, not here.
+
+The same test now governs `.claude/agents/` (see `TEAM.md`), where the cost was concrete: a stale
+device model in a prompt had three separate agents reporting work on a phone that does not exist.
+**A stale instruction is not ignored. It is obeyed.**
+
 ---
 
 ## 1. Identity
@@ -40,28 +70,18 @@ If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins 
   primary client is a voice agent bound by honesty rules, and the trust model is two adults with
   BYO everything - so no roles, no tenancy, no approval workflows, ever.
 - **Register: Alfred/JARVIS is a BAND, not a name.** A tool with a personality. Not a mascot, not
-  the car. Competent, dry, useful. **CORRECTED 2026-08-16: the voice HAS been written and the
-  identity is not global.** `ai/AssistantIdentity.kt` is a resolver (its own doc comment says "No
-  longer placeholder"); the register copy lives in **`ai/Personas.kt`** - `ALFRED` and `DOROTHY`,
-  each a full clause plus delivery, a compressed sub-agent clause, and greetings. **LEGION is the
-  app; the thing Kevin talks to is a named companion he picks per profile** (`companion_profiles`,
-  `ui/CompanionsScreen.kt`), and `AssistantIdentity.withName` swaps the persona's default name for
-  the driver's, so a profile can be Alfred's register wearing another name. Never hardcode an
-  assistant name into copy.
-- **The assistant is a CONCIERGE, not a car companion (2026-08-20, Kevin).** The prompt layer used
-  to call the user "the driver" in 45 string literals **(CORRECTED 2026-08-21: 45 was the count in
-  the three files that commit looked at. The real total was 281 - `service/LiveToolbox.kt` alone
-  held 183, ~149 of them in non-fleet tool descriptions, which the model reads on EVERY turn. All
-  renamed; `ai/PromptRoleNamingTest.kt` now fails the build on the next one, with a per-file
-  allowlist for the places "driver" is genuinely right - OBD signal names and the stored
-  `"driver"` memory-category value)**, and the model answered accordingly - a
-  greeting about the weather came out as a greeting about the weather *for a drive*. It now says
-  "the user", and `ai/AriaBrain.kt`'s `ASSISTANT_FRAME` states the frame outright at the head of
-  `SHARED_INSTRUCTIONS`: the person may be at a desk, in a kitchen, in bed, or occasionally in a
-  car, and the assistant must never assume which. **The fleet aspect is unchanged** - car tools,
-  car context, all of it - but car context is injected only when the OBD dongle is connected, which
-  is the one signal that says he is IN a car rather than merely owns three. Anything spoken
-  verbatim gets the same treatment: `REMEMBER_ACKS` were car jokes and are now plain.
+  the car. Competent, dry, useful. The register copy lives in `ai/Personas.kt`; `AssistantIdentity`
+  resolves it. **LEGION is the app; the thing Kevin talks to is a named companion he picks per
+  profile**, and the persona's name is swappable. **Never hardcode an assistant name into copy.**
+- **The assistant is a CONCIERGE, not a car companion (2026-08-20, Kevin).** The prompt layer
+  called the user "the driver" throughout, and the model answered accordingly - a greeting about the
+  weather came out as a greeting about the weather *for a drive*. It says "the user" now, and
+  `ai/AriaBrain.kt`'s `ASSISTANT_FRAME` states the frame at the head of the shared instructions: the
+  person may be at a desk, in a kitchen, in bed, or occasionally in a car, and the assistant must
+  never assume which. `ai/PromptRoleNamingTest.kt` fails the build on the next one, with an
+  allowlist for where "driver" is genuinely right. **The fleet aspect is unchanged** - car context
+  is injected only when the OBD dongle is connected, the one signal that says he is IN a car rather
+  than merely owns three. Anything spoken verbatim gets the same treatment.
 - **A proactive prompt states its facts or forbids its subject.** Asking the model to mention
   what is "coming up" while handing it no schedule is not a neutral prompt - it is a request for
   content with no source, and it produced an invented lunch appointment with a person who does not
@@ -75,12 +95,10 @@ If MEMORY.md and CLAUDE.md disagree: **MEMORY.md wins for state, CLAUDE.md wins 
   contain a city, and asserting it made the assistant talk about Chicago to a man in Houston. The
   clock is a UTC offset, the place comes from `LocationController`, and with no fix it says the
   location is unknown rather than guessing one.
-- **Aspects:**
-  | Aspect | What it is | State |
-  |---|---|---|
-  | fleet | OBD, car, maintenance, drives | Ported from Midnight AI, compiles. **CORRECTED 2026-08-28: no longer engine-native** - backend-erp ticket 16 repointed `ServiceHistory`/`MaintenanceSchedule` onto the legacy `service_records`/`maintenance_items` tables (fleet has no configured write path, ticket 14: it is a projection); Vehicle identity alone still dual-writes engine + legacy mirror, kept deliberately so `FleetReconcile` has a Vehicle source (`.scratch/backend-erp/issues/18-*.md`) |
-  | ledger | Bank-statement ingestion | Ported from Project Andromeda, done. **CORRECTED 2026-08-28: no longer engine-native** - ticket 15 repointed `IngestPipeline.commit` off `RecordStore` onto `ledger_transactions` directly |
-  | pantry | Grocery receipt photo ingestion + macro estimates | New design work, done. **CORRECTED 2026-08-28: no longer engine-native** - ticket 15 repointed the receipt/line-item write off `RecordStore` onto `pantry_receipts`/`pantry_line_items` directly |
+- **Aspects:** fleet (OBD, car, maintenance, drives), ledger (money), pantry (groceries and
+  macros), notes, dates, places. Six domains, and the list is a decision - a seventh is a ruling,
+  not a refactor. **Where each one stores its data is not recorded here**; it has moved twice and
+  this table was wrong both times. Read the controller.
 - **Repo:** `C:\Users\Kwin\StudioProjects\legion` (second machine: `C:\Users\kevin\AndroidStudioProjects\legion`), public, `github.com/kevinmyo-code/legion`.
   Package `com.kevin.legion`. Clean history, seeded 2026-07-31 by copying surviving Midnight AI
   source.
@@ -138,28 +156,13 @@ repeat. Commit map and ticket changes like any other file.
 
 ## 3. Tech Stack
 
-| Layer | Choice | Notes |
-|---|---|---|
-| Platform | Android phone, Kotlin, Compose | Min/target per `build.gradle.kts` |
-| Voice AI | Gemini Live WebSocket STS | `service/GeminiLiveSession.kt`, server VAD, half-duplex |
-| Sub-agents | Gemini Flash REST | `ai/SubAgent.kt`, one-shot + bounded investigate loop; now also takes an optional inline image part (`imageBytes`/`imageMimeType`) for pantry vision |
-| BYO key | Paste + 1-token validation ping | Ping is `ai/GeminiKeyValidator.kt` (`VALID`/`INVALID_KEY`/`NETWORK_ERROR`); storage is `ai/KeyVault.kt` (Keystore AES/GCM) via `CompanionProfile.saveGeminiKey`; resolution is `ai/GeminiKeyProvider.kt`. Direct to Google, no proxy |
-| Local DB | Room **v55** (`data/local/CarDatabase.kt`) | Fresh v1 for this app (no migration chain from Midnight AI's v12, no installed base). Chain complete through `MIGRATION_40_41` (`events_replica.createdAt`, closing the gap that let a migrated Notes/Dates row's server-side `created_at` default to the migration's own run time instead of the note's real age, 2026-08-26); all real verbatim generated-SQL migrations with `exportSchema` |
-| OBD | ELM327 Bluetooth RFCOMM + BLE | Unchanged from Midnight AI |
-| Music | Spotify App Remote as the SPINE (`media/SpotifyController`, connection held in the FGS - ADR 0032) + Web API name resolution (`media/SpotifyWebApi`, own library first) + generic MediaSession transport fallback (`media/MusicController`) | BYO Spotify client ID (ADR 0033). `MusicRouter`/`MusicSource`/mixtapes all retired |
-| Location | Android `Geocoder` | The Mapbox-backed `NavGeocoder`, embedded nav, and the phone-to-head-unit GPS beacon are all gone |
-| Sync | Google Drive `appDataFolder`, `drive.appdata` | `sync/`, `play-services-auth` |
-| Crash/observability | `Log.d` via `MidnightEvents` | Firebase is NOT wired up. `google-services.json` is intentionally excluded and gitignored |
+Kotlin + Compose, single `app` module, Room, Gemini Live over a WebSocket, Supabase as the system of
+record. **Read `build.gradle.kts` and `gradle/libs.versions.toml` for what is actually in the
+build** - a list here would be wrong within a month, and has been.
 
-**PdfBox-Android REMOVED, 2026-08-29 (backend-erp ticket 25, "statement ingestion leaves the phone
-entirely").** It used to parse bank-statement PDFs on-device (ledger only); Kevin ruled the phone
-never ingests a statement at all now - a statement PDF is already on the laptop, so the web app
-ingests it there, against `public.commit_statement`. It was the single largest dependency this app
-carried, and the Robolectric requirement its bundled fonts/glyphlists forced on ledger's unit tests
-went with it (Robolectric itself stays, for Roborazzi screenshot tests and several unrelated
-Robolectric suites).
-
-Dropped dependencies, deliberately: Mapbox, Firebase, Play Billing, Media3, ZXing, PdfBox-Android.
+**Dropped deliberately. Do not reintroduce without a ruling:** Mapbox, Firebase, Play Billing,
+Media3, ZXing, PdfBox-Android. Each went for a reason recorded in `library/decisions.md`; adding one
+back is a decision, not a dependency bump.
 
 ---
 
@@ -268,139 +271,48 @@ anchored to external, falsifiable reality.
 
 ---
 
-## 5. Data Layer (Room v41)
+## 5. Data Layer
 
-Additive migrations only, verbatim generated SQL, `exportSchema = true`, schema JSON committed
-under `app/schemas/`, no destructive fallback on upgrade.
+**Additive migrations only.** Verbatim generated SQL, `exportSchema = true`, schema JSON committed
+under `app/schemas/`, no destructive fallback on upgrade, a migration test. `data/local/Migrations.kt`
+is the authority and `docs/architecture/c3-data.md` has the entity roster.
 
-- **v1** - fresh baseline for LEGION. Fleet tables carried over from Midnight AI's v12 shape minus
-  everything retired (mixtape tables, music-taste ledger, `BuildEntry.photoPath`).
-- **v2** - `LedgerTransaction` + DAO.
-- **v3** - `PantryReceipt` + `PantryLineItem` + DAOs. No `ingestMethod` column on `PantryReceipt`:
-  every row is LLM-extracted by construction, so it would always read the same value.
-- **v4** - `ingested_files` + DAO (the per-file ingestion ledger, ticket 03).
-- **v5** - `companion_profiles` + DAO.
-- **v6 through v34** - not listed here (v34 is the aspect-engine core: `aspects`, `record_types`, `field_defs`, `records`, `widget_instances`, 2026-08-23; the engine's only writer is `engine/RecordStore.kt`).
-- **v35** - `widget_instances` gains `gridRow`/`gridCol`/`rowSpan`/`colSpan` (the pager's grid
-  mechanics, aspect-engine ticket 09).
-- **v36** - `muted_reminders` (aspect-engine ticket 19, the Dates aspect build; a reminder mute is
-  its own tiny table rather than a column on `records` - see `MutedReminder`'s own doc comment).
-- **v37** - `records.guid`, a `TEXT NOT NULL DEFAULT ''` column plus a real per-row backfill plus a
-  unique index, the cross-device identity column senior review of the mirror/sync ticket flagged
-  as a MUST-FIX (a per-database `AUTOINCREMENT` id was being matched across two independent
-  phones). 2026-08-24.
-- **v38 through v40** - not itemized here (backend-erp Phase 4, aspect 4 of 5, Notes+Dates merged:
-  `events_replica`/`event_skips_replica` land at v38, `events_replica.startsAt` widens to nullable
-  at v40 - see [MIGRATION_39_40]'s own doc comment for that one's create/copy/drop/rename shape).
-- **v41** - `events_replica` gains `createdAt` (`INTEGER NOT NULL DEFAULT 0`), a plain additive
-  `ALTER TABLE ADD COLUMN` - `.scratch/backend-erp/issues/11-notes-write-path-rewire.md`'s own
-  follow-up. Closes a real defect, not a cosmetic gap: `SupabaseEventsBackend.uploadMigratedEvent`
-  used to insert with no `created_at` at all, silently taking Postgres's own `default now()`, so
-  every migrated Notes/Dates row's creation time became the moment the one-time migration ran
-  rather than the note's real age - `GoalChecklistSync`'s "already materialized today" gate and
-  `LogDigestBuilder`'s FRESH/AGING/STALE age buckets both key entirely off this field. 2026-08-26.
+**Never quote a schema version from a document, including this one.** This section named the wrong
+version three times running - v21 while the code was at v25, v34 at v37, v37 at v41 - which is
+exactly why it no longer names one:
 
-`data/local/Migrations.kt` is the authority, and the entity roster grouped by aspect is in
-`docs/architecture/c3-data.md`. **CORRECTED 2026-08-18, and again 2026-08-24, and again
-2026-08-26:** this section said v21 for weeks while the code was at v25, then said v34 while the
-code was at v37, then said v37 while the code was at v41, and `CarDatabase.kt`'s own KDoc still
-says 15 in one place. Read the code before quoting a version -
-`sed -n '/version = /p' data/local/CarDatabase.kt` is the one-line way to check.
+```
+sed -n '/version = /p' app/src/main/java/com/kevin/legion/data/local/CarDatabase.kt
+```
 
-**Widening an enum stored as TEXT is not a migration.** `LedgerTransaction.ingestMethod` and
-friends are `TEXT NOT NULL` with no CHECK constraint, so adding a constant changes no SQL, leaves
-the identity hash alone, and needs no version bump - `IngestMethod.UNRECONCILED` was added at v5
-with zero schema change. Confirm it the same way rather than assuming: read the column's
-`createSql` in `app/schemas/`, and check the schema JSON is byte-unchanged after a kapt run.
+**`CarDatabase.SCHEMA_VERSION` must be bumped in lockstep with `@Database(version = ...)`.** It is a
+second, hand-maintained copy that `DriveSyncScreen` uses to decide whether a backup may be restored,
+so a forgotten bump disables restore on every backup the running app produces.
+`CarDatabaseSchemaVersionTest` fails the build on drift.
+
+**Widening an enum stored as TEXT is not a migration.** A `TEXT NOT NULL` column with no CHECK takes
+a new constant with no SQL change, no identity-hash change and no version bump. Confirm rather than
+assume: read the column's `createSql` in `app/schemas/` and check the JSON is byte-unchanged after a
+kapt run.
 
 ---
 
 ## 6. Codebase Map
 
-**CORRECTED 2026-08-24.** This map went stale in two ways at once: it never got an `engine/`
-entry after the 2026-08-23 aspect-engine build, and its `ui/` line ("CLEAN SLATE... all
-placeholders") had been long false even before that - see §10, corrected 2026-08-18, for the
-same drift. `ui/` is 121 Kotlin files. Read the code before trusting a package list, this one
-included.
+**There isn't one here, deliberately.** The map in this section was corrected three times in three
+weeks and was wrong again within days each time. `Glob` and `Grep` are current; a list is not.
 
-```
-app/src/main/java/com/kevin/legion/
-├── ai/            AriaBrain, SubAgent (+ inline image part), AssistantIdentity (resolver) +
-│                  Personas (the ACTUAL register copy: ALFRED, DOROTHY), KeyVault, CrisisDetector,
-│                  OnboardingFlow, PersonaTraits (ORPHANED - see §10), Voices, ReflectionEngine
-├── engine/        **CORRECTED 2026-08-28: NOT the spine any more - scoped to user-created aspects
-│                  only** (backend-erp ticket 18, "the engine SURVIVES, scoped to user-created
-│                  aspects"). All six built-in aspects (places, pantry, fleet, notes, dates,
-│                  ledger) are off it. What remains: RecordStore backing `create_aspect` and the
-│                  generated list/detail/form/widget-pager UI, ReconciliationGate, ComputedEvaluator,
-│                  FieldConfig, PayloadCodec, WidgetInstanceStore, DefaultArrangementSeeder, DeviceId;
-│                  dates/ (DatesAgenda still reads the engine's dueAt scan for OTHER aspects only,
-│                  Dates' own data lives in `events`), fleet/, ledger/, notes/, pantry/, places/
-│                  (per-aspect engine adapters - copiers and cutover glue, not live storage),
-│                  migration/ (the wave1-4 one-time copiers, still present, writer-less now),
-│                  mirror/ (xlsx export per aspect into the user's Drive folder - the audit
-│                  surface and the two-phone sync channel). `engine/EngineBoundaryTest` enforces
-│                  this boundary in the test suite
-├── service/       AriaForegroundService, GeminiLiveSession, LiveSessionController, LiveToolbox,
-│                  EngineToolbox (the nine engine meta-tools + clerk + schema generator, folded
-│                  into LiveToolbox's declarations/dispatch), WakeWordEngine (live, Vosk-based -
-│                  AmbientListener was retired 2026-08-21 and no longer exists), ProactiveBus,
-│                  GlanceCardController, Phase
-├── ledger/        LedgerController. **CORRECTED 2026-08-28: repointed off `engine/RecordStore`
-│                  onto `ledger_transactions` directly (ticket 15)**, LedgerStatementAgent,
-│                  LedgerIngestResult, parsers/
-├── pantry/        PantryController. **CORRECTED 2026-08-28: repointed off `engine/RecordStore`
-│                  onto `pantry_receipts`/`pantry_line_items` directly (ticket 15)**, PantryReceiptAgent,
-│                  PantryIngestResult
-├── vehicle/       fleet aspect: OBD stack, agents, maintenance, recaps, garage (Shelly).
-│                  **CORRECTED 2026-08-28: `ServiceHistory`/`MaintenanceSchedule` repointed onto
-│                  legacy `service_records`/`maintenance_items` (ticket 16)** - only Vehicle
-│                  identity still dual-writes engine + legacy mirror, kept for `FleetReconcile`
-├── media/         MusicController, NowPlayingController, SpotifyController, SpotifyWebApi, VolumeController
-├── location/      LocationController, PlaceController, ReminderController
-├── sync/          DriveAuth, DriveClient, SyncEngine, SyncMerge, SyncCodec, DatabaseSnapshot(Guard),
-│                  DriveConflict, SyncCapability - the LEGACY appDataFolder JSON sync. Separate
-│                  from engine/mirror/'s xlsx channel, which is the sync path going forward
-├── data/          EnginePhotoStore, PantryPhotoStore, MidnightImport, local/ (Room, v37)
-├── weather/       WeatherController (Open-Meteo, keyless)
-├── ui/            NOT a clean slate - mission-control design language shipped and verified
-│                  on-device (see §10). MainActivity is the ONLY Activity; its NavHost start
-│                  destination is DASHBOARD (the widget pager), with "Classic" one tap away to
-│                  the per-aspect screens. widgets/ (the pager itself), generated/ (list/detail/
-│                  form screens driven by field defs), grid/ (preset sizes, launcher semantics),
-│                  plus theme/, common/, and one folder per aspect
-└── util/          AppSigning, Dates, Units
-```
+For structure, read the tree. For how it fits together and what is binding, read `docs/architecture/`
+(C4 levels 1-3) and `docs/adr/`.
 
-**Build:**
-- `./gradlew compileDebugKotlin -Pnokey` - compile without a baked-in key (the honest first-run path)
-- `./gradlew testDebugUnitTest` - unit tests (2,530 across the whole suite, green both with and
-  without a baked Gemini key, verified 2026-08-24. The old "19 across ledger + pantry" figure was
-  from 2026-07-31, before fleet, engine, and everything since)
-- `./gradlew assembleDebug` - build
+**Build:** `./gradlew compileDebugKotlin -Pnokey` (the honest no-baked-key path),
+`./gradlew testDebugUnitTest`, `./gradlew assembleDebug`. Read test totals from the JUnit XML under
+`app/build/test-results/`, never the console summary.
 
-**Setup:** `local.properties` needs `sdk.dir` and optionally `GEMINI_API_KEY` for a convenience dev
-build. Four `RELEASE_STORE_*` values for a release build. Set `JAVA_HOME` in your own environment;
-**do not put `org.gradle.java.home` in the committed `gradle.properties`** - Midnight AI's did, and
-it broke on any machine without Android Studio at that exact path, violating clone-and-run.
-
-**There is more than one of Kevin's machines and their paths differ. Neither has a usable JDK on
-`PATH`**, so `./gradlew` fails from a fresh shell on both. Export per shell, never commit it.
-
-| Machine | Repo | Android Studio JBR |
-|---|---|---|
-| First (2026-08-01) | `C:\Users\Kwin\StudioProjects\legion` | `/c/Users/Kwin/Apps/AndroidStudio/jbr` |
-| Second (2026-08-19) | `C:\Users\kevin\AndroidStudioProjects\legion` | `/c/Program Files/Android/Android Studio/jbr` |
-
-```
-export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"   # second machine
-export PATH="$JAVA_HOME/bin:$PATH"
-```
-
-On the second machine an Oracle JRE 24 IS on `PATH` (`Common Files/Oracle/Java/javapath`) - it is
-the wrong JDK and Gradle picks it up if `JAVA_HOME` is unset. `adb` lives at
-`~/AppData/Local/Android/Sdk/platform-tools/` and is not on `PATH`. Git identity was unset there
-(set repo-locally, 2026-08-19). **The A25 has never been attached to it.**
+**Setup:** `local.properties` needs `sdk.dir`. Export `JAVA_HOME` per shell and **never commit
+`org.gradle.java.home`** - Midnight AI's did, and it broke on any machine without Android Studio at
+that exact path, violating clone-and-run. Machine-specific paths live in `memory/MEMORY.md`, not
+here.
 
 ---
 
@@ -581,10 +493,8 @@ read next run (`.claude/agents/*.md`, this file). Ledger: `memory/library/lesson
 
 - Feature work branches off `dev`: `feat/<thing>`, `fix/<thing>`. Small commits, merge often,
   delete the branch after.
-- ~~**Claude never pushes `main`, never opens or merges that PR.**~~ **REVERSED by Kevin,
-  2026-08-19: "ignore the rule. new rule now. you can merge dev to main."** Claude merges `dev`
-  into `main` directly - no PR needed. Merge only `dev`, never a feature branch, and only when
-  `dev` is green.
+- **Claude merges `dev` into `main` and pushes it** (Kevin, 2026-08-19). No PR. Merge only `dev`,
+  never a feature branch, and only when `dev` is green.
 - The anti-pile rule survives: on 2026-07-16 Midnight AI had 45 commits of real work sitting
   unpushed across five local branches. Push often; do not rebuild that pile.
 
@@ -600,44 +510,13 @@ read next run (`.claude/agents/*.md`, this file). Ledger: `memory/library/lesson
 
 ---
 
-## 10. Not built yet
+## 10. What is not built
 
-Stated so nobody treats these as gaps to panic about or as silently-missing work:
+**The board is the answer:** `docs/index.html`, generated from ticket frontmatter. This section used
+to list unbuilt work by hand and spent most of its life half struck-through, because a list of
+absences goes stale the moment one is filled.
 
-- ~~**Almost all of `ui/`.**~~ **STALE, corrected 2026-08-18, count refreshed 2026-08-24.** `ui/`
-  holds 121 Kotlin files and the design language IS chosen: mission control, built and verified on
-  the phone, now hosting a widget-pager dashboard as the app's home screen. See
-  `docs/adr/0023-design-language-mission-control.md` and
-  `docs/adr/0037-the-aspect-engine-is-the-spine.md`.
-- **Onboarding UI.** `ai/OnboardingFlow.kt` ported, but its identity clause is placeholder and the
-  conversational onboarding screen that hosts it does not exist.
-- ~~**The assistant's actual voice.**~~ **DONE, corrected 2026-08-16** - see §1. `Personas.kt`
-  ships Alfred and Dorothy, the picker ships, and the persona genuinely changes the system prompt.
-- **Freeform personality authoring. BACK BURNER (Kevin, 2026-08-16), Alfred and Dorothy are
-  enough for now.** Midnight AI let users build a personality by staged questions or free text.
-  `PersonaTraits.kt` still holds all five stages and `assemblePersona()`, but its only caller
-  `CompanionProfile.savePersona()` **has no production caller** - the roster UI writes a persona
-  KEY instead. Ported, complete, orphaned. **Do not simply re-wire it:** `CompanionProfile.persona()`
-  is dual-typed (key in the live path, prose in the legacy one) and `personaFor()` silently falls
-  back to `ALFRED` on any unrecognised string (`Personas.kt:159`), so freeform prose written to
-  that field is discarded without an error. Full account in
-  `.scratch/hands-and-senses/issues/12-assistant-identity.md`.
-- **Ledger categorization / FX / insights.** Nothing to port; new design work.
-- **Pantry consumption-rate tracking and spend/nutrition aggregation.** Deliberately deferred at
-  scoping time, same shape as ledger's insight layers.
-- ~~**`LedgerController` dedup and `PantryController` DB-write paths are untested.**~~ **STALE,
-  corrected 2026-08-24.** Both cutovers (2 and 3) closed this: `PantryControllerTest` and
-  `LedgerIngestPipelineEngineCommitTest`/`IngestPipelineEngineCommitTest` are real Robolectric
-  suites over the engine write path (CRUD reads, the gate's Success/Quarantine boundary, anchor
-  persistence, rule-7 supersession, a genuine post-gate write failure rolling back rather than
-  reporting false success) - the `ShadowContentResolver` gap that blocked this was worked around
-  by testing `PantryController.writeReceipt`/`IngestPipeline.commit` directly rather than through
-  the content-resolver-backed import entry points.
-- **Firebase.** Not wired up. `MidnightEvents` logs via `Log.d`.
-
-Two contested calls left open by the port, flagged not decided: whether `media/MusicController` is
-still wanted alongside Spotify App Remote, and that `vehicle/BuildSheetController` build entries are
-now text-only (`photoPath` dropped) as a schema change, not just a doc update.
+`README.md` remains the authority on what compiles and what is tested.
 
 ---
 
