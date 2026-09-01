@@ -4,7 +4,7 @@ ticket: "08"
 title: "The projects tool surface, and its hands path"
 type: build
 status: open
-status-detail: ""
+status-detail: "SENTINEL-HOOK-TEST"
 blockers: ["05", "06", "07"]
 blocked-by: ["[[05-the-github-sync]]", "[[06-the-azure-devops-sync]]", "[[07-the-staleness-contract]]"]
 open-blockers: 3
