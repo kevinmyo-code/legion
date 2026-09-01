@@ -44,7 +44,8 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/one-today/map\|one-today]] | [[02-ticking-an-appointment\|02]] | decision | 02-ticking-an-appointment |
 | [[.scratch/one-today/map\|one-today]] | [[03-the-day-in-review\|03]] | build | 03-the-day-in-review |
 | [[.scratch/one-today/map\|one-today]] | [[04-delete-the-residue\|04]] | task | 04-delete-the-residue |
-| [[.scratch/one-today/map\|one-today]] | [[05-maintenance-has-no-date-axis\|05]] | decision | 05-maintenance-has-no-date-axis |
+| [[.scratch/one-today/map\|one-today]] | [[05-maintenance-has-no-date-axis\|05]] | build | 05-maintenance-has-no-date-axis |
+| [[.scratch/one-today/map\|one-today]] | [[06-a-generated-view-for-niche-questions\|06]] | build | 06-a-generated-view-for-niche-questions |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[01-the-recorder-and-the-mic\|01]] | build | The recorder, and the fourth claim on the microphone |
 | [[.scratch/voice-notes/map\|voice-notes]] | [[02-the-store\|02]] | build | Where a voice note lives, on the phone and on the server |
 | [[.scratch/wake-word/map\|wake-word]] | [[03-measure-the-battery-cost\|03]] | task | What always-on Vosk actually costs the A25 in a day |
@@ -168,7 +169,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/location-intelligence/map\|location-intelligence]] | 10 | 8 | [[.scratch/location-intelligence/location-intelligence.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
-| [[.scratch/one-today/map\|one-today]] | 5 | 5 | [[.scratch/one-today/one-today.canvas\|open]] |
+| [[.scratch/one-today/map\|one-today]] | 6 | 6 | [[.scratch/one-today/one-today.canvas\|open]] |
 | [[.scratch/proactive-mode/map\|proactive-mode]] | 13 | 3 | [[.scratch/proactive-mode/proactive-mode.canvas\|open]] |
 | [[.scratch/quant-viz/map\|quant-viz]] | 17 | 1 | [[.scratch/quant-viz/quant-viz.canvas\|open]] |
 | [[.scratch/spotify-voice/map\|spotify-voice]] | 13 | 1 | [[.scratch/spotify-voice/spotify-voice.canvas\|open]] |

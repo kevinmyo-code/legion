@@ -47,7 +47,7 @@ private const val MEMORY_SETTINGS_SCAN = 200
  * words a user reads, not the engineering prose that governs it.
  */
 @Composable
-fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
+fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit, onOpenVoiceNotes: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -109,6 +109,20 @@ fun DataPrivacyScreen(onBack: () -> Unit, onOpenMemory: () -> Unit) {
                         "Nothing remembered yet"
                     },
                     onClick = onOpenMemory,
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                // The hands path for the four voice-note tools (ADR 0035), wired 2026-09-01 - the
+                // screen existed but nothing opened it. It sits on Data & privacy rather than
+                // Assistant deliberately: ADR 0041 made a recording Kevin starts first-party
+                // content that IS persisted and synced, other people's speech included, so the
+                // screen that lists and deletes those recordings belongs beside Memory - the other
+                // place retained personal content is reviewed and removed.
+                SettingsNavRow(
+                    label = "Recordings",
+                    status = "Voice notes, their transcripts and summaries",
+                    onClick = onOpenVoiceNotes,
                 )
 
                 // Mission-control ticket 16: re-homed from CRED's own root (ticket 12's ruling - "a

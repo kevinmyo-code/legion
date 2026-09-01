@@ -201,6 +201,16 @@ object VoiceGuideData {
             ),
         ),
         Group(
+            title = "Recordings",
+            blurb = "Voice notes and meetings. Audio, a transcript and a summary are all kept until you delete them, and the summary is the assistant's reading of the transcript, not a verbatim record.",
+            entries = listOf(
+                Entry(name = "start_voice_note", say = "Record this meeting", does = "Starts recording a voice note - a meeting or a thought you want kept. Refuses out loud, with nothing started, if something is already recording or the microphone is busy.", hands = "Setup > Data & privacy > Recordings."),
+                Entry(name = "stop_voice_note", say = "Stop recording", does = "Stops and saves the recording. It is only saved at that point, not yet transcribed - it will not claim the note is ready to read back until transcription has actually finished.", hands = "Setup > Data & privacy > Recordings."),
+                Entry(name = "read_voice_note", say = "What did that meeting say?", does = "Reads back a note's summary. The summary is written from the transcript by a model, not a verbatim account, and anything in it - a number, a date, a name - is reported as something that was said, never as confirmed fact.", hands = "Setup > Data & privacy > Recordings."),
+                Entry(name = "list_voice_notes", say = "What recordings do I have?", does = "Lists recent voice notes: titles, when they were recorded, and whether each was solo or a meeting.", hands = "Setup > Data & privacy > Recordings."),
+            ),
+        ),
+        Group(
             title = "Memory",
             blurb = "What it remembers about you, and why it said something.",
             entries = listOf(
@@ -235,6 +245,6 @@ object VoiceGuideData {
         ),
     )
 
-    /** Total entries across every group above - 115 as of the last regeneration. */
-    val TOOL_COUNT: Int = 115
+    /** Total entries across every group above - 119 as of the last regeneration. */
+    val TOOL_COUNT: Int = 119
 }

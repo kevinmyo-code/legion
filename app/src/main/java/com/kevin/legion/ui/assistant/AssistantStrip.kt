@@ -67,10 +67,15 @@ import kotlinx.coroutines.delay
  * when the mic grant has gone stale, routes to Settings where the existing
  * permission chain (`ui/SettingsScreen.kt`) already lives.
  *
- * **Occupies zero space when the assistant is off** - not hidden behind an
- * `alpha`, not `Spacer(Modifier.height(0.dp))`; the composable returns before
- * emitting anything, so a driver who has never flipped the Settings toggle
- * sees exactly today's layout, unchanged.
+ * **No longer occupies zero space when the assistant is off (2026-09-01 calendar-home cutover,
+ * Kevin: "AssistantStrip must always render... a bottom bar that vanishes is not acceptable").**
+ * Before this cutover the composable returned before emitting anything when the Settings toggle
+ * was off, so a driver who had never flipped it saw exactly the pre-existing layout with no bottom
+ * bar at all - now that push-to-talk is the WHOLE bottom bar (`ui/MainActivity.kt`'s
+ * `LegionHardKeyRow` was deleted the same cutover, see its own comment), a bar that can silently
+ * disappear is a primary surface disappearing, not a neutral default. The off state now renders
+ * [AssistantOffRow] - a quiet, tappable row that opens Settings - instead of nothing. The ENABLED
+ * behaviour below this point is byte-for-byte unchanged.
  *
  * State-holder/UI split (`.claude/skills/compose-state-holder-ui-split`):
  * this function is the state holder - it owns [AssistantIgnition]'s live
@@ -87,10 +92,14 @@ import kotlinx.coroutines.delay
 fun AssistantStrip(onOpenSettings: () -> Unit) {
     val context = LocalContext.current
 
-    // Off by default and the ONLY thing that governs whether this composable
-    // draws anything at all - see the "zero space when off" doc above.
+    // Off by default. Used to be the sole gate on whether this composable drew anything at all
+    // (see this file's own class doc for why that changed 2026-09-01) - now it only chooses which
+    // of the two rows below renders.
     val assistantEnabled by AssistantIgnition.enabledState(context).collectAsStateWithLifecycle()
-    if (!assistantEnabled) return
+    if (!assistantEnabled) {
+        AssistantOffRow(onTap = onOpenSettings)
+        return
+    }
 
     val phase by CompanionPhase.phase.collectAsStateWithLifecycle()
     val caption by CompanionPhase.caption.collectAsStateWithLifecycle()
@@ -151,6 +160,36 @@ fun AssistantStrip(onOpenSettings: () -> Unit) {
             }
         },
     )
+}
+
+/**
+ * The assistant-off state of [AssistantStrip] (2026-09-01 calendar-home cutover) - a quiet,
+ * tappable row reading "ASSISTANT OFF - tap to turn on in Settings" that opens Settings on tap,
+ * replacing the old zero-space return. Deliberately faint/muted, matching [AssistantStripContent]'s
+ * own IDLE-phase tone rather than an ADVISORY/estimated colour - the assistant being off is a
+ * setting, not a fault, so it does not borrow [LocalLegionSemantics.estimated] the way a mic-blocked
+ * ENABLED state does just below.
+ */
+@Composable
+private fun AssistantOffRow(onTap: () -> Unit) {
+    val sem = LocalLegionSemantics.current
+    val interactionSource = remember { MutableInteractionSource() }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .legionPressScale(interactionSource)
+            .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onTap),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Assistant off - tap to turn on in Settings", style = LegionType.stamp, color = sem.faint)
+        }
+    }
 }
 
 private fun hasRecordAudio(context: android.content.Context): Boolean =
@@ -260,6 +299,12 @@ private fun PhaseDot(active: Boolean, blocked: Boolean) {
 }
 
 // --- previews ---------------------------------------------------------
+
+@Preview(name = "Assistant strip: off (2026-09-01 - was zero-space)", widthDp = 360)
+@Composable
+private fun PreviewAssistantOffRow() = LegionTheme {
+    AssistantOffRow(onTap = {})
+}
 
 @Preview(name = "Assistant strip: idle", widthDp = 360)
 @Composable

@@ -40,6 +40,9 @@ GROUP_BLURBS = {
     "Music": "Spotify, mostly. Needs it connected in Setup.",
     "Mail and calendar": "Needs a Google account connected.",
     "Phone calls": "Needs phone permissions granted in Setup.",
+    "Recordings": "Voice notes and meetings. Audio, a transcript and a summary are all kept until "
+        "you delete them, and the summary is the assistant's reading of the transcript, not a "
+        "verbatim record.",
     "Memory": "What it remembers about you, and why it said something.",
     "Settings and control": "Changing how it behaves, by voice.",
     "Your own trackers": "Anything you have LEGION track that is not a car, a bank statement, or "
@@ -171,6 +174,11 @@ COPY = {
     "place_call": ("Call Mom", "Places an outbound call - by contact name or a number you say. Always reads the target back first (the name, or the digits) and waits for a yes before dialling, so a misheard digit never dials a stranger. Asks rather than guesses if a name matches nobody or several people. Refuses emergency numbers outright and tells you to dial them yourself. Cannot send texts - that was ruled out on purpose.", "Settings > Phone dial screen."),
 
     # --- Memory ---
+    # --- Recordings ---
+    "start_voice_note": ("Record this meeting", "Starts recording a voice note - a meeting or a thought you want kept. Refuses out loud, with nothing started, if something is already recording or the microphone is busy.", "Setup > Data & privacy > Recordings."),
+    "stop_voice_note": ("Stop recording", "Stops and saves the recording. It is only saved at that point, not yet transcribed - it will not claim the note is ready to read back until transcription has actually finished.", "Setup > Data & privacy > Recordings."),
+    "read_voice_note": ("What did that meeting say?", "Reads back a note's summary. The summary is written from the transcript by a model, not a verbatim account, and anything in it - a number, a date, a name - is reported as something that was said, never as confirmed fact.", "Setup > Data & privacy > Recordings."),
+    "list_voice_notes": ("What recordings do I have?", "Lists recent voice notes: titles, when they were recorded, and whether each was solo or a meeting.", "Setup > Data & privacy > Recordings."),
     "remember": ("Remember that the XJ takes 5W-30", "Stores something for later.", "Settings > Memory screen, add dialog."),
     "recall_memory": ("What do you remember about the Jeep?", "Looks up what it has stored.", "Settings > Memory screen, browse stored facts."),
     "why_did_you_say_that": ("Why did you say that?", "Explains what triggered the last thing it said on its own - the rule and the fact behind it.", "Voice only - no audit-trail screen."),
@@ -204,6 +212,7 @@ GROUPS = {
     "Music": ["play_music", "control_music", "get_music_queue", "browse_my_music"],
     "Mail and calendar": ["search_mail", "read_mail", "ask_mail", "track_package", "flight_status"],
     "Phone calls": ["answer_call", "decline_call", "place_call"],
+    "Recordings": ["start_voice_note", "stop_voice_note", "read_voice_note", "list_voice_notes"],
     "Memory": ["remember", "recall_memory", "why_did_you_say_that"],
     "Settings and control": ["set_companion_name", "set_personality", "set_driver"],
     "Your own trackers": ["list_aspects", "describe_aspect", "query_records", "create_record", "update_record", "delete_record", "aspect_clerk", "create_aspect", "update_aspect"],

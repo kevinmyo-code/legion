@@ -57,6 +57,7 @@ import com.kevin.legion.ui.companions.MemoryScreen
 import com.kevin.legion.ui.companions.PlaybookScreen
 import com.kevin.legion.ui.media.MediaScreen
 import com.kevin.legion.ui.sync.GoogleAccessScreen
+import com.kevin.legion.ui.voicenotes.VoiceNotesScreen
 import com.kevin.legion.ui.widgets.WidgetPagerRoot
 import com.kevin.legion.ui.theme.LegionMotion
 import com.kevin.legion.ui.theme.LegionTheme
@@ -346,12 +347,13 @@ private fun LegionShell(
     }
 
     // Ticket 20: DRIVING is "a destination outside the shell chrome" (build
-    // brief item 2) - no StatusLine, no hard-key row, no AssistantStrip. Read
+    // brief item 2) - no StatusLine, no tab row, no AssistantStrip. Read
     // here, once, above the Scaffold, rather than inside DrivingModeScreen
     // itself: the chrome this route hides belongs to LegionShell, not to any
     // one destination, and DrivingModeScreen has no way to reach into
     // Scaffold's own bottomBar/content slots from inside the NavHost. Mirrors
-    // [LegionHardKeyRow]'s own `currentBackStackEntryAsState` read below,
+    // [LegionTabRow]'s own `currentBackStackEntryAsState` read below (was
+    // [LegionHardKeyRow]'s, deleted 2026-09-01 calendar-home cutover),
     // which still runs (for its own highlight logic) on every OTHER route.
     val shellBackStackEntry by navController.currentBackStackEntryAsState()
     val isDrivingMode = shellBackStackEntry?.destination?.route == LegionRoute.DRIVING
@@ -409,28 +411,23 @@ private fun LegionShell(
             // EXACTLY the constraints DeckBezel's padding already computed, so its bottomBar is
             // placed relative to that padded box, not the unpadded one.
             modifier = Modifier.fillMaxSize(),
-            // AssistantStrip sits ABOVE the hard-key row inside this one
-            // slot, rather than in the Scaffold's main `content` lambda - the
-            // strip occupies zero space when the assistant is off (see its
-            // own doc), and a Scaffold's `content` padding is sized for a
-            // bottomBar whose height doesn't change; anchoring the strip to
-            // the bottomBar slot instead keeps that padding correct in both
-            // states. Assistant is still NOT a tab (ticket 07 resolution §5)
-            // - nothing here adds a NavHost destination or changes the back
-            // stack.
+            // Push-to-talk lives ALONE in the bottom bar as of the 2026-09-01 calendar-home cutover
+            // - [LegionHardKeyRow] (five tab keys underneath it) is DELETED, not just moved: Kevin's
+            // ruling put the new three-way tab switch at the TOP of the shell, directly under
+            // [StatusLine] (see that switch's own call site below), specifically so the bottom stays
+            // AssistantStrip's alone. [AssistantStrip] itself no longer occupies zero space when the
+            // assistant is off - see its own doc comment for the quiet "assistant off" row that
+            // replaces the old early return, so a bottom bar that could previously vanish entirely
+            // never does; a primary surface (push-to-talk) disappearing was never a want, it was
+            // just what an unconfigured toggle used to do by default.
             //
-            // Renders nothing at all on DRIVING (ticket 20) - same "occupies
-            // zero space" shape AssistantStrip already uses for its own off
-            // state, applied to the whole bottomBar slot rather than one row
-            // inside it.
+            // Renders nothing at all on DRIVING (ticket 20) - same "occupies zero space" shape this
+            // slot already had.
             bottomBar = {
                 if (!isDrivingMode) {
-                    Column {
-                        AssistantStrip(onOpenSettings = {
-                            navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
-                        })
-                        LegionHardKeyRow(navController)
-                    }
+                    AssistantStrip(onOpenSettings = {
+                        navController.navigate(LegionRoute.SETTINGS) { launchSingleTop = true }
+                    })
                 }
             },
         ) { innerPadding ->
@@ -476,16 +473,24 @@ private fun LegionShell(
                         // app, not just on the surface currently in view.
                         cursorSolid = fleetSweepActive || shellStatus.alarmCount > 0,
                     )
+                    // The three-way tab switch (calendar-home cutover, 2026-09-01) - directly
+                    // under [StatusLine], NOT at the bottom: Kevin asked for the bottom headers
+                    // retired, and the bottom bar stays AssistantStrip's alone (see the
+                    // `bottomBar` slot's own comment above). Absent on DRIVING along with
+                    // StatusLine - same reasoning, nothing about driving mode should invite a tab
+                    // switch either.
+                    LegionTabRow(navController)
                 }
                 NavHost(
                     navController = navController,
-                    // TODAY is the start destination (2026-08-07 brief, itself a supersession of
-                    // FLEET under ticket 07's original four-tab shape). Cutover 5
+                    // CALENDAR is the start destination as of the 2026-09-01 calendar-home cutover
+                    // (Kevin, verbatim, [LegionRoute.CALENDAR]'s own doc comment: "month grid
+                    // primary"). Was TODAY from the 2026-08-07 brief (itself a supersession of
+                    // FLEET under ticket 07's original four-tab shape); cutover 5
                     // (`docs/architecture/cutover5-2026-08-24.md`) briefly made the widget pager
-                    // (DASHBOARD) the start destination instead; REVERTED 2026-08-25 after Kevin
-                    // lived with it overnight and ruled "revert everything to classic" - see that
-                    // doc's postscript. See LegionRoute's doc comment for the full route map.
-                    startDestination = LegionRoute.TODAY,
+                    // (DASHBOARD) the start destination instead, REVERTED 2026-08-25 - see that
+                    // doc's postscript. See LegionRoute's doc comment for the full route map/history.
+                    startDestination = LegionRoute.CALENDAR,
                     modifier = Modifier.weight(1f),
                     // Command-center ticket 14: one fade-through, defined once here, no per-route
                     // override anywhere below. `LegionMotion.ROUTE_FADE_MS`/`STANDARD_EASING` are
@@ -509,6 +514,27 @@ private fun LegionShell(
             // manifest's own comment at the point its <activity> entry used to be.
             composable(LegionRoute.DASHBOARD) {
                 WidgetPagerRoot(onOpenRoute = { route -> navController.navigate(route) { launchSingleTop = true } })
+            }
+            // The new start destination (2026-09-01 calendar-home cutover) - month grid + day view,
+            // no arguments, no callbacks: [CalendarScreen] owns its own month/day state internally
+            // (LegionRoute's own "nothing here takes a navigation argument" convention) and reads/
+            // writes through [com.kevin.legion.notes.NotesController] directly rather than through
+            // anything this shell needs to wire.
+            composable(LegionRoute.CALENDAR) {
+                CalendarScreen()
+            }
+            // The third tab ("C" - Kevin, verbatim, [LegionRoute.METERS]'s own doc comment). A
+            // SKELETON (this ticket) - every callback below taps through to an already-registered
+            // destination, exactly the "every home pane taps through to its module" rule [TODAY]'s
+            // own composable block already follows.
+            composable(LegionRoute.METERS) {
+                MetersScreen(
+                    onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
+                    onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
+                    onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
+                    onOpenNotes = { navController.navigate(LegionRoute.NOTES) { launchSingleTop = true } },
+                    onOpenPantry = { navController.navigate(LegionRoute.MONEY_PANTRY) { launchSingleTop = true } },
+                )
             }
             composable(LegionRoute.TODAY) {
                 TodayScreen(
@@ -669,6 +695,7 @@ private fun LegionShell(
                 com.kevin.legion.ui.settings.DataPrivacyScreen(
                     onBack = { navController.popBackStack() },
                     onOpenMemory = { navController.navigate(LegionRoute.SETTINGS_MEMORY) },
+                    onOpenVoiceNotes = { navController.navigate(LegionRoute.SETTINGS_VOICE_NOTES) },
                 )
             }
             composable(LegionRoute.SETTINGS_PERMISSIONS_DIAGNOSTICS) {
@@ -716,6 +743,14 @@ private fun LegionShell(
             }
             composable(LegionRoute.SETTINGS_MEMORY) {
                 MemoryScreen(onBack = { navController.popBackStack() })
+            }
+            // ui/voicenotes/VoiceNotesScreen.kt shipped with the voice-notes work but was never
+            // given a route, so the four voice-note tools were voice-only in practice - the exact
+            // shape ADR 0035 forbids ("a capability reachable only by voice is not finished").
+            // Registered here 2026-09-01, same posture as SETTINGS_MEMORY above: a leaf screen with
+            // no sub-routes, reached from Settings rather than owning a tab.
+            composable(LegionRoute.SETTINGS_VOICE_NOTES) {
+                VoiceNotesScreen(onBack = { navController.popBackStack() })
             }
             // authOk/authNonce carry the browser round trip's outcome down from the exchange
             // effect above - see its own comment for why the exchange cannot live in this screen.
@@ -824,78 +859,49 @@ private const val STATUS_POLL_MS = 4_000L
 /** [LegionShell]'s clock poll interval - once a minute, per this ticket's build brief, not once a second. */
 private const val CLOCK_POLL_MS = 60_000L
 
-/**
- * The five deck hard-keys (cyberdeck-ui ticket 05's Answer: "Bottom bar
- * reskinned as five physical hard-keys: HOME / BIO / LOG / FLEET / CRED").
- * [LegionRoute]'s constants and [LegionRoute.label] are UNCHANGED - this is
- * presentation-only relabeling of five of the six routes in
- * [LegionRoute.TOP_LEVEL] (all but SETTINGS), so nothing about navigation,
- * deep links, or the back stack moves. SETTINGS deliberately has no key here:
- * ticket 05's Answer -
- * "Utility screens stay reachable through the existing settings route, no
- * bespoke key" - it stays reachable from [AssistantStrip]'s settings hop and
- * anywhere else that already navigates there.
- *
- * Order is the hard-key sequence from the Answer, not [LegionRoute.TOP_LEVEL]'s
- * bottom-nav order (which keeps Settings in its list for [LegionRoute.topLevelOf]'s
- * prefix matching elsewhere).
- *
- * **Cutover 5 briefly pointed HOME at [LegionRoute.DASHBOARD] (the widget pager); reverted
- * 2026-08-25** - HOME's target is [LegionRoute.TODAY] again, exactly as before that cutover. The
- * pager stays reachable, just not from a hard key - see [LegionRoute.DASHBOARD]'s own doc comment.
- */
-private val HARD_KEYS = listOf(
-    LegionRoute.TODAY to "HOME",
-    LegionRoute.BODY to "BIO",
-    LegionRoute.NOTES to "LOG",
-    LegionRoute.FLEET to "FLEET",
-    LegionRoute.MONEY to "CRED",
-)
+// [HARD_KEYS]/[LegionHardKeyRow] DELETED (2026-09-01 calendar-home cutover, Kevin verbatim:
+// "retire the bottom headers like cred fleet etc") - the five-key bottom row (cyberdeck-ui ticket
+// 05's Answer) reskinned five of the old six [LegionRoute.TOP_LEVEL] routes as physical hard-keys;
+// none of TODAY/BODY/NOTES/FLEET/MONEY is a tab any more (see each route's own doc comment for
+// where it is still reached from), so there is nothing left for a five-key row to select between.
+// [LegionTabRow] below is its replacement, over the NEW three-route [LegionRoute.TOP_LEVEL], moved
+// to the TOP of the shell rather than the bottom.
 
 /**
- * The deck hard-key row (cyberdeck-ui ticket 05's Answer), replacing the M3
- * `NavigationBar`/`NavigationBarItem` presentation this function (formerly
- * `LegionBottomBar`) used to be. Full-width equal flex, five keys, stencil
- * caps (Type.kt's `labelLarge`), 1px [LegionSemantics.ruleFaint] separators
- * between keys, a 2px [LegionSemantics.rule] edge rule across the top of the
- * whole row, and the active key INVERTED - amber fill, ground-colour text
- * (ticket 05: "active key inverts to amber"). Inactive keys read in
- * [LegionSemantics.faint].
- *
- * All navigation wiring is UNCHANGED from the old `NavigationBarItem` version:
- * same tap-to-navigate-with-popUpTo-to-start-destination behaviour, same
- * [LegionRoute.topLevelOf] selection derivation (so a sub-route like
- * `fleet/places` still lights the FLEET key), same back-stack shape. Only the
- * presentation changed.
+ * The three-way tab switch (2026-09-01 calendar-home cutover, Kevin verbatim: "retire the bottom
+ * headers like cred fleet etc"). Same visual grammar [LegionHardKeyRow] used to (full-width equal
+ * flex, stencil caps, 1px [LegionSemantics.ruleFaint] separators between tabs, a 2px
+ * [LegionSemantics.rule] edge rule, the active tab INVERTED to amber fill/ground-colour text) -
+ * only the row's PLACEMENT (top, under [StatusLine], not bottom) and the routes it switches between
+ * ([LegionRoute.TOP_LEVEL], now three routes instead of six) changed. Same
+ * tap-to-navigate-with-popUpTo-to-start-destination wiring and the same [LegionRoute.topLevelOf]
+ * selection derivation (a sub-route like `settings/key` keeps SETTINGS lit) as the row this
+ * replaces.
  */
 @Composable
-private fun LegionHardKeyRow(navController: NavHostController) {
+private fun LegionTabRow(navController: NavHostController) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    // The TAB the current route sits under, not the route itself - a
-    // sub-route like `settings/key` keeps Settings lit. See
-    // LegionRoute.topLevelOf. (Settings has no hard key of its own, but
-    // topLevelOf is still used here for FLEET's own sub-routes - fleet/places,
-    // fleet/cars, fleet/telemetry - to keep the FLEET key lit under them.)
     val selectedTab = LegionRoute.topLevelOf(currentRoute)
     val sem = LocalLegionSemantics.current
     val density = LocalDensity.current
     val edgeStroke = with(density) { 2.dp.toPx() }
     val sepStroke = with(density) { 1.dp.toPx() }
+    val tabs = LegionRoute.TOP_LEVEL
 
     Row(
         Modifier
             .fillMaxWidth()
-            .height(HARD_KEY_ROW_HEIGHT)
+            .height(TAB_ROW_HEIGHT)
             .background(MaterialTheme.colorScheme.surface)
-            // The 2px edge rule across the TOP of the whole row (ticket 05) -
-            // drawn on the Row itself, not per-key, so it reads as one panel
-            // seam rather than five separate top borders.
+            // The 2px edge rule, drawn on the Row itself so it reads as one panel seam rather than
+            // per-tab borders - same reasoning [LegionHardKeyRow] used, at the row's BOTTOM edge
+            // now (this row sits above the content it separates from, not below it).
             .drawBehind {
-                drawLine(sem.rule, Offset(0f, 0f), Offset(size.width, 0f), edgeStroke)
+                drawLine(sem.rule, Offset(0f, size.height), Offset(size.width, size.height), edgeStroke)
             },
     ) {
-        HARD_KEYS.forEachIndexed { index, (route, keyLabel) ->
+        tabs.forEachIndexed { index, route ->
             val active = selectedTab == route
             val bg = if (active) MaterialTheme.colorScheme.primary else Color.Transparent
             val fg = if (active) MaterialTheme.colorScheme.onPrimary else sem.faint
@@ -904,11 +910,8 @@ private fun LegionHardKeyRow(navController: NavHostController) {
                     .weight(1f)
                     .fillMaxHeight()
                     .background(bg)
-                    // 1px separators BETWEEN keys only - no separator after
-                    // the last key, which would just double the row's own
-                    // edge/border and isn't what "between keys" asked for.
                     .let { base ->
-                        if (index < HARD_KEYS.lastIndex) {
+                        if (index < tabs.lastIndex) {
                             base.drawBehind {
                                 drawLine(sem.ruleFaint, Offset(size.width, 0f), Offset(size.width, size.height), sepStroke)
                             }
@@ -926,17 +929,11 @@ private fun LegionHardKeyRow(navController: NavHostController) {
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                // Stencil caps per Type.kt's label style (labelLarge is the
-                // tracked, bold-medium caps role every other header in the
-                // deck already reads through) - .uppercase() explicit per the
-                // repo's "callers format case, styles don't" convention (see
-                // DeckPanels.kt), even though every HARD_KEYS label is
-                // already upper.
-                Text(keyLabel.uppercase(), style = MaterialTheme.typography.labelLarge, color = fg)
+                Text(LegionRoute.label(route).uppercase(), style = MaterialTheme.typography.labelLarge, color = fg)
             }
         }
     }
 }
 
-/** The hard-key row's fixed height - matches M3 `NavigationBar`'s default so this ticket's swap doesn't change the Scaffold's measured bottomBar footprint. */
-private val HARD_KEY_ROW_HEIGHT = 56.dp
+/** The tab row's fixed height - same value [LegionHardKeyRow]'s own `HARD_KEY_ROW_HEIGHT` used, matching M3 `NavigationBar`'s default. */
+private val TAB_ROW_HEIGHT = 56.dp

@@ -1,8 +1,25 @@
 package com.kevin.legion.ui
 
 /**
- * Every route in the single-activity shell. **Five top-level tabs as of the 2026-08-07 Today-panel
- * brief** (was four - ticket 07's original resolution §5 shape is superseded below, not amended in
+ * Every route in the single-activity shell.
+ *
+ * **Three top-level tabs as of the 2026-09-01 calendar-home cutover (Kevin, verbatim): "month grid
+ * primary. tapping a day on the month opens up view B. C as another tab. retire the bottom headers
+ * like cred fleet etc. those we tap through from view C the meters."** This SUPERSEDES the five-tab
+ * shape below (itself a supersession of the original four - see that entry's own history, kept for
+ * the same reason this one is): [CALENDAR] is now the start destination (a month grid, with the
+ * selected-day agenda as internal Compose state - "view B" - rather than a nav argument, same
+ * convention this file's own doc comment already establishes below), [METERS] is the new "C" tab -
+ * a dashboard of at-a-glance meters that tap THROUGH to [BODY]/[MONEY]/[FLEET]/[NOTES]/etc, which
+ * is what "those we tap through from view C" means - and [SETTINGS] is unchanged. [TODAY], [MONEY],
+ * [BODY], [FLEET], [NOTES] and every sub-route under them are **NOT deleted** - they stay registered
+ * [NavHost] destinations, reachable as drill-downs from [METERS] and by every existing deep link
+ * ([EXTRA_ROUTE], [ReminderAlarmReceiver], `onOpenAlarm`); they simply stop being tabs a driver
+ * lands on directly. [TodayScreen] itself stays registered pending a further call on whether it has
+ * any role left once [CalendarScreen] and [MetersScreen] both exist.
+ *
+ * **Five top-level tabs, 2026-08-07 to 2026-09-01 (superseded above, kept for its own history)**
+ * (was four - ticket 07's original resolution §5 shape is superseded below, not amended in
  * place, so the history stays readable): Today is now the START DESTINATION, Money absorbed the
  * old `ledger/` route wholesale plus pantry's import flow (a grocery receipt is a purchase), and
  * pantry's own read screen moved under Money as a reachable sub-route rather than a tab of its
@@ -10,15 +27,18 @@ package com.kevin.legion.ui
  *
  * **Cutover 5 (`docs/architecture/cutover5-2026-08-24.md`) briefly made `dashboard/` the start
  * destination and HOME hard key's target; REVERTED 2026-08-25** (see that doc's postscript) -
- * Kevin field-tested the pager overnight and ruled "revert everything to classic". `today/` is the
- * start destination and HOME hard key's target again, exactly as before cutover 5. `dashboard/`
- * (the widget pager) STAYS IN THE CODEBASE, reachable as an opt-in surface via a "DASHBOARD" button
- * on [TODAY] (mirroring how the pager's own now-removed "CLASSIC" button pointed the other way) -
- * it is not deleted, only demoted, so the pager/widgets/engine screens stay a hands path (ADR 0035)
- * and the seven on-device grid-feel rounds are not orphaned.
+ * Kevin field-tested the pager overnight and ruled "revert everything to classic". `today/` was the
+ * start destination again, exactly as before cutover 5, until the 2026-09-01 calendar-home cutover
+ * above made [CALENDAR] the start destination instead. `dashboard/` (the widget pager) STAYS IN THE
+ * CODEBASE, reachable as an opt-in surface via a "DASHBOARD" button on [TODAY] (mirroring how the
+ * pager's own now-removed "CLASSIC" button pointed the other way) - it is not deleted, only
+ * demoted, so the pager/widgets/engine screens stay a hands path (ADR 0035) and the seven on-device
+ * grid-feel rounds are not orphaned.
  *
  * ```
- * today/       <- start destination, HOME hard key's target (reverted 2026-08-25)
+ * calendar/    <- start destination (2026-09-01); month grid + day view, no sub-routes
+ * meters/      <- the third tab; taps through to today/money/body/fleet/notes/pantry
+ * today/       <- kept registered, no longer a tab or a hard-key target
  * dashboard/   <- the widget pager; opt-in, reached from today/'s "DASHBOARD" button
  * money/       + money/import        <- was ledger/import
  *              + money/pantry        <- was the `pantry` tab (PantryScreen), now a sub-route
@@ -42,6 +62,26 @@ package com.kevin.legion.ui
  */
 object LegionRoute {
     /**
+     * The start destination as of the 2026-09-01 calendar-home cutover (Kevin, verbatim: "month
+     * grid primary. tapping a day on the month opens up view B") - see [com.kevin.legion.ui.CalendarScreen].
+     * No sub-routes: the selected day's agenda ("view B") is internal Compose state inside that
+     * screen, same convention this file's own class doc establishes for [NOTES]'s LISTS | CALENDAR
+     * toggle. Replaces [TODAY] as `startDestination` and as the shell's HOME target; [TODAY] itself
+     * is not deleted (see its own doc comment).
+     */
+    const val CALENDAR = "calendar"
+
+    /**
+     * The third tab ("C", Kevin verbatim: "C as another tab... those we tap through from view C the
+     * meters"), 2026-09-01 - see [com.kevin.legion.ui.MetersScreen]. A dashboard of at-a-glance
+     * meters that tap through to [BODY]/[MONEY]/[FLEET]/[NOTES]/[MONEY_PANTRY]/[TODAY], the same
+     * "every pane taps through to its module" rule [TODAY]'s own doc comment already applies. Built
+     * as a skeleton in the calendar-home ticket; a follow-up fills the meter bodies from
+     * `buildIntakeTile`/`buildCredTile`/`buildFleetTile` etc.
+     */
+    const val METERS = "meters"
+
+    /**
      * The widget pager, `com.kevin.legion.ui.widgets.WidgetPagerRoot`, hosted as an ordinary
      * [composable] destination here rather than a second Activity. Cutover 5
      * (`docs/architecture/cutover5-2026-08-24.md`) briefly made this the [NavHost]'s
@@ -54,11 +94,14 @@ object LegionRoute {
     const val DASHBOARD = "dashboard"
 
     /**
-     * The start destination and the HOME hard key's target (reverted 2026-08-25 to this pre-
-     * cutover-5 shape). Deep links (`EXTRA_ROUTE`), [onOpenCategory]'s Money drilldown, the
-     * key-settings advisory row, and the media mini-bar tap-through all work as always; its own
-     * "DASHBOARD" button opens [DASHBOARD] as an opt-in surface, mirroring how the pager's now-
-     * removed "CLASSIC" button used to point the other way during cutover 5.
+     * Was the start destination and the HOME hard key's target from 2026-08-25 (cutover 5's revert)
+     * until the 2026-09-01 calendar-home cutover made [CALENDAR] both instead - see [CALENDAR]'s own
+     * doc comment. **Kept registered, not deleted**: every deep link that already targets it
+     * (`EXTRA_ROUTE`, `onOpenAlarm`) still resolves, [onOpenCategory]'s Money drilldown and the
+     * key-settings advisory row still fire from wherever [TodayScreen] itself is still reached, and
+     * its own "DASHBOARD" button still opens [DASHBOARD] as an opt-in surface. Whether this screen
+     * keeps a role once [CalendarScreen] and [MetersScreen] both exist is an open question the
+     * calendar-home ticket did not resolve - left as-is rather than guessed at.
      */
     const val TODAY = "today"
 
@@ -73,6 +116,12 @@ object LegionRoute {
      * comment says nothing here has needed yet.
      */
     const val NOTES = "notes"
+
+    // VOICE_NOTES: not added here. A concurrent session (same day, ticket 04) registered
+    // SETTINGS_VOICE_NOTES -> ui/voicenotes/VoiceNotesScreen.kt below instead - see that
+    // constant's own doc comment. A second top-level route to the same screen was drafted here
+    // briefly and reverted rather than shipping two live paths to one screen with no ruling on
+    // which is canonical.
 
     const val FLEET = "fleet"
     const val FLEET_PLACES = "fleet/places"
@@ -161,6 +210,15 @@ object LegionRoute {
     const val SETTINGS_MEMORY = "settings/memory"
 
     /**
+     * The hands path for the four voice-note tools (`start_voice_note`, `stop_voice_note`,
+     * `read_voice_note`, `list_voice_notes`) - see [com.kevin.legion.ui.voicenotes.VoiceNotesScreen],
+     * which shipped with that feature but was left unrouted, making those tools voice-only in
+     * practice. ADR 0035 does not allow that, so it is registered here (2026-09-01). Same shape as
+     * [SETTINGS_MEMORY]: a leaf, no sub-routes.
+     */
+    const val SETTINGS_VOICE_NOTES = "settings/voice-notes"
+
+    /**
      * The dial screen (command-center ticket 05, ADR 0035's hands path for `place_call`) - see
      * [com.kevin.legion.ui.phone.PhoneDialScreen]. Same shape as [SETTINGS_MEMORY]: no sub-routes,
      * every state below the top level (resolving, confirm read-back, called, failed, refused) is
@@ -209,11 +267,13 @@ object LegionRoute {
      */
     const val SETTINGS_HELP = "settings/help"
 
-    /** The six bottom-nav destinations, in display order. **Reverted 2026-08-25**: [TODAY] is
-     * HOME again, not [DASHBOARD] - see [DASHBOARD]'s own doc comment for cutover 5's brief flip
-     * and why it was rolled back. Assistant is NOT one of them - it's a mode, not a place (original
-     * resolution §5, still true). */
-    val TOP_LEVEL = listOf(TODAY, MONEY, BODY, FLEET, NOTES, SETTINGS)
+    /** The three top-level destinations, in display order, as of the 2026-09-01 calendar-home
+     * cutover (Kevin, verbatim, [CALENDAR]'s own doc comment) - was six ([TODAY], [MONEY], [BODY],
+     * [FLEET], [NOTES], [SETTINGS]; before that, the four-tab shape [CALENDAR]'s class doc still
+     * records). [MONEY]/[BODY]/[FLEET]/[NOTES]/[TODAY] are not gone, only demoted off this list -
+     * see each one's own doc comment. Assistant is still NOT one of them - it's a mode, not a
+     * place (original resolution §5, still true). */
+    val TOP_LEVEL = listOf(CALENDAR, METERS, SETTINGS)
 
     /**
      * The top-level tab [route] belongs to, or null if it belongs to none.
@@ -231,18 +291,21 @@ object LegionRoute {
     fun topLevelOf(route: String?): String? =
         TOP_LEVEL.firstOrNull { route == it || route?.startsWith("$it/") == true }
 
-    /** Short label for a top-level route's bottom-nav item. */
+    /**
+     * Short label for a top-level route's tab. **DASHBOARD/TODAY/MONEY/BODY/FLEET/NOTES branches
+     * removed 2026-09-01** (calendar-home cutover) rather than kept dead: [LegionHardKeyRow], the
+     * only caller besides this file's own tests, was deleted in the same cutover
+     * ([com.kevin.legion.ui.MainActivity]'s three-way CALENDAR/METERS/SETTINGS switch reads none of
+     * this function at all - see that switch's own comment), and nothing else in the tree ever
+     * called [label] with one of those six constants. Grep-confirmed before deletion.
+     */
     fun label(route: String): String = when (route) {
-        DASHBOARD -> "Dashboard"
-        TODAY -> "Today"
-        MONEY -> "Money"
-        BODY -> "Body"
-        FLEET -> "Fleet"
-        NOTES -> "Notes"
+        CALENDAR -> "Calendar"
+        METERS -> "Meters"
         // "Setup", not "Settings": with five tabs, the longer word wrapped to
         // "Setting / s" in the bottom bar on a 720px-wide device (observed
-        // 2026-08-07). Every other label is four or five characters, so this is
-        // the one that had to give.
+        // 2026-08-07). Kept even though the tab row is three-wide now (2026-09-01) - the same
+        // 720px measurement did not get re-taken, and "Setup" is not wrong at three tabs either.
         SETTINGS -> "Setup"
         else -> route
     }
