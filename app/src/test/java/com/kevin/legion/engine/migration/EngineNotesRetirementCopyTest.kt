@@ -183,7 +183,7 @@ class EngineNotesRetirementCopyTest {
         val rows = CarDatabase.getDatabase(context).eventDao().getAll()
         assertEquals(2, rows.size)
         assertEquals(EventKind.REMINDER, rows.single { it.title == "todo" }.kind)
-        assertEquals(EventKind.APPOINTMENT, rows.single { it.title == "Dentist" }.kind)
+        assertEquals(EventKind.EVENT, rows.single { it.title == "Dentist" }.kind)
     }
 
     // ------------------------------------------------------------------------------ deletes nothing

@@ -63,7 +63,7 @@ class DatesAgendaTest {
         RoomTestReset.drainArchDiskIoPool()
     }
 
-    /** Creates a [Event] row directly in the local `events` table, `kind = `[EventKind.APPOINTMENT] -
+    /** Creates a [Event] row directly in the local `events` table, `kind = `[EventKind.EVENT] -
      * the fixture shape [DatesAgenda] now actually reads for Dates, replacing the pre-repoint
      * `store.create(schema.recordTypeId, ...)` fixtures this file used to build. Returns the row's
      * own [Event.id], the value [DatesAgenda.AgendaItem.recordId] carries for it. */
@@ -78,7 +78,7 @@ class DatesAgendaTest {
             title = title,
             startsAt = startsAt,
             source = source,
-            kind = EventKind.APPOINTMENT,
+            kind = EventKind.EVENT,
             updatedAtMs = now,
             createdAt = now,
         ),

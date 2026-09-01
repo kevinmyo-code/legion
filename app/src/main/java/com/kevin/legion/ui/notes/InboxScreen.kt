@@ -141,7 +141,7 @@ fun InboxScreen(
         val now = System.currentTimeMillis()
         val db = CarDatabase.getDatabase(context)
         val windowEnd = now + INBOX_CALENDAR_WINDOW_DAYS * 24L * 60L * 60L * 1000L
-        val forward = db.eventDao().activeByKindInWindow(EventKind.APPOINTMENT, now, windowEnd)
+        val forward = db.eventDao().activeByKindInWindow(EventKind.EVENT, now, windowEnd)
         // Ticket 15 point 2: the month calendar counts a whole-month window (past AND future), but
         // this fetch was forward-only from "now" - a PAST day the grid drew dots for was never in
         // [forward] at all, so the day filter below read a real "nothing here" that was actually
@@ -150,7 +150,7 @@ fun InboxScreen(
         // otherwise hand this query the same row twice.
         val appointments = if (dayFilterStartMs != null) {
             val dayWindowEndExclusive = dayFilterStartMs + DAY_FILTER_WINDOW_MS
-            val dayEvents = db.eventDao().activeByKindInWindow(EventKind.APPOINTMENT, dayFilterStartMs, dayWindowEndExclusive - 1)
+            val dayEvents = db.eventDao().activeByKindInWindow(EventKind.EVENT, dayFilterStartMs, dayWindowEndExclusive - 1)
             (forward + dayEvents).distinctBy { it.id }
         } else {
             forward

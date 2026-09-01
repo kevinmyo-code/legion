@@ -85,16 +85,16 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 </style>
 <div class="wrap">
 <p class="stamp">LEGION &middot; pending work &middot; 20 Aug 2026</p>
-<h1>100 tickets open</h1>
+<h1>101 tickets open</h1>
 <p class="guidelink"><a href="voice.html">What LEGION can do by voice &rarr;</a> &middot; <a href="devlog.html">Dev log: what actually shipped &rarr;</a></p>
 <p class="lede">Across 18 maps. <b>10 of them are decisions</b>, not code &mdash; they need an answer from you before anyone can build. 22 are waiting on another ticket first. <b>51 are already built</b> and owe nothing but a run on the phone. 4 are parked (KIV) and sit at the bottom.</p>
 <div class="tot">
-<div class="stat"><span class="n">100</span><span class="stamp l">open</span></div>
-<div class="stat"><span class="n mint">23</span><span class="stamp l">ready now</span></div>
+<div class="stat"><span class="n">101</span><span class="stamp l">open</span></div>
+<div class="stat"><span class="n mint">24</span><span class="stamp l">ready now</span></div>
 <div class="stat"><span class="n mint">51</span><span class="stamp l">built</span></div>
 <div class="stat"><span class="n amber">22</span><span class="stamp l">blocked</span></div>
 <div class="stat"><span class="n amber">10</span><span class="stamp l">your call</span></div>
-<div class="stat"><span class="n mint">35</span><span class="stamp l">still to build</span></div>
+<div class="stat"><span class="n mint">36</span><span class="stamp l">still to build</span></div>
 <div class="stat"><span class="n ghost">4</span><span class="stamp l">KIV</span></div>
 </div>
 <div class="filters" role="group" aria-label="Filter tickets">
@@ -250,6 +250,21 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <section class="map">
 <header class="mh">
 <span class="kind">effort</span>
+<h2>one-today</h2>
+<span class="counts"><span class="k">5</span> open<span class="sep">&middot;</span><span class="k mint">3</span> ready<span class="sep">&middot;</span><span class="k mint">2</span> built<span class="sep">&middot;</span><span class="dim">of 8 tickets</span></span>
+<span class="bar"><i style="flex:5"></i><b style="flex:0"></b></span>
+</header>
+<ul class="tl">
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">02</span><span class="body"><span class="tt">You cannot cross off a calendar item, and the field is not what is missing</span><span class="det">Partly done 2026-09-01: appointments and one-off reminders tick through NotesController and persist across navigation, verified on the A25. RECURRING occurrences still render untickable - per-occurrence ticking is this ticket&#x27;s open half.</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">04</span><span class="body"><span class="tt">Delete what the audit found dead in the day-to-day area</span><span class="det">Untouched. Note: five more files carrying stale prose references to ui/TodayScreen.kt were found when that screen was deleted 2026-09-01 (a02e9ab) - CredDigestBuilder, CarAspectSummaries, LiveToolbox, SitrepModule, parts of ui/notes. Fold them into this sweep.</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
+<li class="t is-build" data-type="build" data-state="ready"><span class="num">08</span><span class="body"><span class="tt">An event passes. A task gets done. They are not the same row.</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">05</span><span class="body"><span class="tt">MAINTENANCE 0 DUE is computed against nothing</span><span class="det">Premise corrected 2026-09-01 (the audit read a deliberately-null column). The two real defects fixed in 69ebf7e: the service-history join now folds case and whitespace, and the Supabase never_done default drops to false to match Room. NOT yet run on hardware.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+<li class="t is-built" data-type="built" data-state="built"><span class="num">07</span><span class="body"><span class="tt">TodayScreen is half-emptied. Rehome the survivors, then delete it.</span><span class="det">Done 2026-09-01 (a02e9ab): all six survivors rehomed, screen and route deleted, TodayGapResolvers kept. NOT yet run on hardware - wireless ADB dropped before it could be seen.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
+</ul>
+</section>
+<section class="map">
+<header class="mh">
+<span class="kind">effort</span>
 <h2>hardening</h2>
 <span class="counts"><span class="k">4</span> open<span class="sep">&middot;</span><span class="k mint">3</span> ready<span class="sep">&middot;</span><span class="k mint">1</span> built<span class="sep">&middot;</span><span class="dim">of 8 tickets</span></span>
 <span class="bar"><i style="flex:4"></i><b style="flex:0"></b></span>
@@ -259,20 +274,6 @@ h1{font-family:var(--mono);font-weight:600;font-size:26px;letter-spacing:-.01em;
 <li class="t is-build" data-type="build" data-state="ready"><span class="num">05</span><span class="body"><span class="tt">Three ledger gate defects found while grounding backend-erp ticket 03</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
 <li class="t is-build" data-type="build" data-state="ready"><span class="num">06</span><span class="body"><span class="tt">Build debt from backend-erp Phase 1: supabase-kt held back, Compose force-pinned</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
 <li class="t is-built" data-type="built" data-state="built"><span class="num"></span><span class="body"><span class="tt"></span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-</ul>
-</section>
-<section class="map">
-<header class="mh">
-<span class="kind">effort</span>
-<h2>one-today</h2>
-<span class="counts"><span class="k">4</span> open<span class="sep">&middot;</span><span class="k mint">2</span> ready<span class="sep">&middot;</span><span class="k mint">2</span> built<span class="sep">&middot;</span><span class="dim">of 7 tickets</span></span>
-<span class="bar"><i style="flex:4"></i><b style="flex:0"></b></span>
-</header>
-<ul class="tl">
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">02</span><span class="body"><span class="tt">You cannot cross off a calendar item, and the field is not what is missing</span><span class="det">Partly done 2026-09-01: appointments and one-off reminders tick through NotesController and persist across navigation, verified on the A25. RECURRING occurrences still render untickable - per-occurrence ticking is this ticket&#x27;s open half.</span></span><span class="chip c-build">build</span><span class="state">ready</span></li>
-<li class="t is-build" data-type="build" data-state="ready"><span class="num">04</span><span class="body"><span class="tt">Delete what the audit found dead in the day-to-day area</span><span class="det">Untouched. Note: five more files carrying stale prose references to ui/TodayScreen.kt were found when that screen was deleted 2026-09-01 (a02e9ab) - CredDigestBuilder, CarAspectSummaries, LiveToolbox, SitrepModule, parts of ui/notes. Fold them into this sweep.</span></span><span class="chip c-task">build</span><span class="state">ready</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">05</span><span class="body"><span class="tt">MAINTENANCE 0 DUE is computed against nothing</span><span class="det">Premise corrected 2026-09-01 (the audit read a deliberately-null column). The two real defects fixed in 69ebf7e: the service-history join now folds case and whitespace, and the Supabase never_done default drops to false to match Room. NOT yet run on hardware.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
-<li class="t is-built" data-type="built" data-state="built"><span class="num">07</span><span class="body"><span class="tt">TodayScreen is half-emptied. Rehome the survivors, then delete it.</span><span class="det">Done 2026-09-01 (a02e9ab): all six survivors rehomed, screen and route deleted, TodayGapResolvers kept. NOT yet run on hardware - wireless ADB dropped before it could be seen.</span></span><span class="chip c-built">built</span><span class="state">needs a run on the phone</span></li>
 </ul>
 </section>
 <section class="map">

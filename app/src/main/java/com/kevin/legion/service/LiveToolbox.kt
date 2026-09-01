@@ -1263,9 +1263,11 @@ object LiveToolbox {
                 "separate short-lived trip list with its own tool, so 'add tums to the grocery " +
                 "list', 'put milk on the shopping list' and anything else naming groceries or " +
                 "shopping goes to manage_grocery - never here. A " +
-                "dated appointment (see 'kind') goes on the user's calendar instead of this list - " +
-                "still tickable/untickable with 'tick'/'untick' by matching its title, just not " +
-                "removable, schedulable or skippable that way (edit it on the Notes screen instead). " +
+                "dated appointment (see 'kind') goes on the user's calendar instead of this list, " +
+                "and it just passes at its time - it is NEVER tickable or untickable (say so " +
+                "plainly if asked to mark one done or not done, the same way you would for a " +
+                "class on a school schedule), and it is not removable, schedulable or skippable " +
+                "that way either (edit it on the Notes screen instead). " +
                 "Pass any date/time the user gives on the SAME 'add' call via date/time - never add " +
                 "first and schedule in a second call, which stores an appointment with no date at " +
                 "all. Use 'schedule' only to change an existing item's date or set up a repeat. " +
@@ -3226,8 +3228,16 @@ object LiveToolbox {
      * repointed off the retired `calendar/CalendarProvider.kt`'s live `CalendarContract` read onto
      * [com.kevin.legion.data.local.EventDao.activeByKindInWindow] directly - the same local `events`
      * table `ui/TodayScreen.kt`/`ui/notes/InboxScreen.kt` now read. No permission check any more:
-     * the local table has none to refuse. `done` is new (one-today ticket 02, "ticking an
-     * appointment") - a live Google row never had one.
+     * the local table has none to refuse.
+     *
+     * **No `done` field in the result (one-today ticket 08, "events are not todos", 2026-09-01).**
+     * Ticket 02 ("ticking an appointment") had put one here, briefly true while every calendar-table
+     * row was tickable; ticket 08 reversed that, and this tool only ever reads
+     * [com.kevin.legion.backend.EventKind.EVENT] rows, which are never completable (Kevin: "i dont
+     * mark an event done, it just passes"). Reporting `done: false` on every single row would not be
+     * false, but it invites the model to read completability into a row that has none - the tool's
+     * own description already promises only "title, start, end, and whether it is all-day", so the
+     * field was undocumented as well as now-meaningless. Dropped rather than hardcoded to `false`.
      *
      * The `LEGION::v1` structured-metadata block (ticket 19's whole reason for existing -
      * `service_records.syncId`-style course/deadline fields a class syllabus states) is no longer
@@ -3242,7 +3252,7 @@ object LiveToolbox {
         val (startMs, endMs) = window
 
         val events = CarDatabase.getDatabase(context).eventDao()
-            .activeByKindInWindow(EventKind.APPOINTMENT, startMs, endMs)
+            .activeByKindInWindow(EventKind.EVENT, startMs, endMs)
         val arr = JSONArray()
         for (event in events) {
             val eventStart = event.startsAt ?: continue
@@ -3261,7 +3271,6 @@ object LiveToolbox {
                         else "${com.kevin.legion.util.shortDate(eventEnd)} ${com.kevin.legion.util.clockTime(eventEnd)}",
                     )
                     .put("all_day", event.allDay)
-                    .put("done", event.done)
                     .also { o ->
                         // event.structuredMeta is already a JSON object string (parsed once, at
                         // import, from the source description's `LEGION::v1` block) - decode it
@@ -4971,8 +4980,12 @@ object LiveToolbox {
             is ItemMatch.NoMatch -> {
                 // One-today ticket 02, "ticking an appointment": tick/untick only, and only after a
                 // reminder match genuinely came back empty - a title that matches a reminder is
-                // never shadowed by an appointment of the same name. remove/schedule/skip stay
-                // reminder-only (no CRUD surface for an appointment beyond done/not-done today).
+                // never shadowed by a calendar-table row of the same name. remove/schedule/skip stay
+                // reminder-only (no CRUD surface for a calendar-table row beyond done/not-done
+                // today). One-today ticket 08 narrowed [tickOrUntickAppointment] itself to match
+                // only a task, never an event - see [NotesController.openAppointments]'s own doc
+                // comment - so this branch now genuinely finds nothing for a class/event title,
+                // which is correct.
                 if (action == "tick" || action == "untick") tickOrUntickAppointment(context, itemArg, action)
                 else result(false, "I don't see \"$itemArg\" on your list - add it?")
             }
@@ -4984,10 +4997,14 @@ object LiveToolbox {
     }
 
     /** `manage_item`'s tick/untick fallback once a reminder match came back empty - one-today
-     * ticket 02. Matches against [NotesController.openAppointments] and writes through
+     * ticket 02, narrowed by ticket 08 ("events are not todos") to a [EventKind.TASK] match only.
+     * Matches against [NotesController.openAppointments] (already [EventKind.TASK]-filtered - see
+     * that function's own doc comment) and writes through
      * [NotesController.tickAppointment]/[untickAppointment] directly, never through
      * [dispatchItemAction] (that function's repeat/place-trigger/skip branches are reminder-only
-     * concepts an appointment does not have). */
+     * concepts a calendar-table row does not have). Since nothing writes a task yet, this branch
+     * currently always falls to [ItemMatch.NoMatch] below, which is correct - there is nothing on
+     * the calendar to tick until Canvas populates one. */
     private suspend fun tickOrUntickAppointment(context: Context, itemArg: String, action: String): JSONObject =
         when (val match = NotesController.findAppointment(context, itemArg)) {
             is ItemMatch.NoMatch -> result(false, "I don't see \"$itemArg\" on your list or calendar - add it?")
@@ -5063,7 +5080,7 @@ object LiveToolbox {
             endsAt = endMs,
             allDay = allDay,
             source = DatesAspectSeeder.SOURCE_LEGION,
-            kind = EventKind.APPOINTMENT,
+            kind = EventKind.EVENT,
             updatedAtMs = now,
             createdAt = now,
         )

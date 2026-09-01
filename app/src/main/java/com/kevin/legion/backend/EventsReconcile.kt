@@ -258,7 +258,7 @@ object EventsReconcile {
         // regardless of startsAt (nullable now, matching the Notes branch's own "an undated item
         // is an ordinary row" posture, ticket 07's ruling) - the old engine-schema-era "no start,
         // skip it" filter does not apply to a table where startsAt is legitimately nullable.
-        val dateRows = db.eventDao().getActiveByKind(EventKind.APPOINTMENT)
+        val dateRows = db.eventDao().getActiveByKind(EventKind.EVENT)
         val dateEvents = dateRows.map { row ->
             EngineEvent(
                 guid = row.guid,
@@ -282,7 +282,7 @@ object EventsReconcile {
                     // #1. Explicit here even though it is the ONLY value this branch ever produces,
                     // so a reader never has to chase the private EventFields(...) helper below to
                     // learn what every row from this branch is tagged.
-                    kind = EventKind.APPOINTMENT,
+                    kind = EventKind.EVENT,
                 ),
             )
         }
@@ -447,7 +447,7 @@ object EventsReconcile {
         val noteLocalIdByGuid = noteEvents.associate { it.guid to it.localId }
         val dateLocalIdByGuid = dateEvents.associate { it.guid to it.localId }
         // CORRECTED (found while building the now-reverted car-task fold, backend-erp ticket 10):
-        // this used to be a two-way `activeServerEvents.partition { it.kind == EventKind.APPOINTMENT }`,
+        // this used to be a two-way `activeServerEvents.partition { it.kind == EventKind.EVENT }`,
         // which meant ANY kind other than appointment fell into the "reminder" bucket by default -
         // a latent bug independent of car tasks, since a future unrecognised kind would have been
         // refilled straight into the phone's Notes store, replaying the 2026-08-26 incident.
@@ -455,7 +455,7 @@ object EventsReconcile {
         // filter and is silently excluded from both buckets - excluded by construction, not by a
         // default someone has to remember to add. Kept even though the fold that found it did not
         // survive.
-        val serverAppointments = activeServerEvents.filter { it.kind == EventKind.APPOINTMENT }
+        val serverAppointments = activeServerEvents.filter { it.kind == EventKind.EVENT }
         val serverReminders = activeServerEvents.filter { it.kind == EventKind.REMINDER }
 
         // Reminders: UNCHANGED shape from before this fix - wipe just the reminder rows, refill

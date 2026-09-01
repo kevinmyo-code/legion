@@ -821,35 +821,47 @@ object NotesController {
 
     suspend fun openItemCount(context: Context): Int = allNotesItems(context).count { !it.done }
 
-    // ------------------------------------------------------------------- appointments (one-today ticket 02)
+    // ------------------------------------------------------------------- appointments (one-today ticket 02/08)
 
     /**
      * One-today ticket 02, "ticking an appointment": every function in this section is a
      * DELIBERATELY separate, narrower funnel from the reminder-only one above - never through
      * [applyChange], never through [allNotesItems]'s `kind = 'reminder'` filter. **Why separate,
      * not extended:** ticket 11's `kind` discriminator exists so [AlarmScheduler]'s sweep never
-     * mistakes an appointment for something it owns (the 2026-08-26 incident, 51 rows falsely
+     * mistakes a calendar-table row for something it owns (the 2026-08-26 incident, 51 rows falsely
      * marked missed) - ticket 02 separates the QUESTION this file conflated ("whose alarm is this"
      * vs "can this be ticked") rather than widening the reminder funnel and hoping nothing in it
      * ever reaches [AlarmScheduler]/[scheduleAlarmFor] by accident. None of the functions below
      * calls either.
      *
-     * **Local-only, by design, not merely by omission** (ticket 02 point 3): an appointment has no
-     * live server write funnel of its own even on the "configured" (Supabase) path - the retired
-     * `calendar/CalendarImportController.kt`'s own class doc established this ("unlike
+     * **NARROWED 2026-09-01 (one-today ticket 08, "events are not todos"): [tickAppointment]/
+     * [untickAppointment] now refuse [EventKind.EVENT] outright, not just [EventKind.REMINDER].**
+     * Ticket 02's own premise - "you cannot cross off a calendar item, and the field is not what is
+     * missing" - was right that the field was not missing and wrong about the fix: half the rows it
+     * made tickable were never appointments at all, and Kevin's own ruling is that an event "just
+     * passes whether or not I do it, like classes". [tickAppointment]/[untickAppointment] now only
+     * ever succeed for [EventKind.TASK] (nothing writes one yet - Canvas is its own ticket); every
+     * OTHER function in this section ([appointmentById]/[openAppointments]/[findAppointment]/
+     * [updateAppointment]/[removeAppointment]) still covers both [EventKind.EVENT] and
+     * [EventKind.TASK] - renaming a calendar entry or deleting it outright is still a legitimate
+     * edit even though ticking one off is not.
+     *
+     * **Local-only, by design, not merely by omission** (ticket 02 point 3): a calendar-table row
+     * has no live server write funnel of its own even on the "configured" (Supabase) path - the
+     * retired `calendar/CalendarImportController.kt`'s own class doc established this ("unlike
      * [NotesController], there is no configured-vs-unconfigured branch here at all... a
      * Google-imported event is already synced cross-device by Google itself"), and a voice-created
-     * appointment ([com.kevin.legion.service.LiveToolbox]'s `addAppointment`) follows the identical
-     * shape. So a tick here writes straight to the local [Event] row, on every install, matching
-     * that precedent rather than inventing a live-sync path ticket 02 never asked for. **The
-     * accepted cost, stated rather than hidden:** an appointment ticked on one phone does not appear
-     * ticked on a second phone until the next full [com.kevin.legion.backend.EventsReconcile] wipes
-     * and refills the reminder half of this table - and that refill, by that object's own class doc,
-     * never touches an appointment row at all. A follow-up, not a silent gap.
+     * one ([com.kevin.legion.service.LiveToolbox]'s `addAppointment`) follows the identical shape.
+     * So a tick here writes straight to the local [Event] row, on every install, matching that
+     * precedent rather than inventing a live-sync path ticket 02 never asked for. **The accepted
+     * cost, stated rather than hidden:** a task ticked on one phone does not appear ticked on a
+     * second phone until the next full [com.kevin.legion.backend.EventsReconcile] wipes and refills
+     * the reminder half of this table - and that refill, by that object's own class doc, never
+     * touches a calendar-table row at all. A follow-up, not a silent gap.
      *
-     * **Recurring appointments needed no new handling** (ticket 02 point 2): an appointment row
-     * never carries [Event.repeatKind] - every stored appointment (Google-imported historically, or
-     * voice-created today) is already a single expanded occurrence, matching
+     * **Recurring calendar-table rows needed no new handling** (ticket 02 point 2): a row here never
+     * carries [Event.repeatKind] - every stored one (Google-imported historically, or voice-created
+     * today) is already a single expanded occurrence, matching
      * [com.kevin.legion.ui.notes.AppointmentEvent]'s own doc comment - so `events_recurring_not_done`'s
      * `repeat_kind is null or done = false` constraint can never fire for one. A LEGION recurring
      * REMINDER is unaffected: [tick] above already refuses it (`item.repeatKind != null`),
@@ -858,35 +870,42 @@ object NotesController {
     suspend fun appointmentById(context: Context, id: Long): ListItem? {
         val listId = theList(context).id
         val row = db(context).eventDao().getById(id) ?: return null
-        if (row.deleted || row.kind != EventKind.APPOINTMENT) return null
+        if (row.deleted || !isCalendarTableKind(row.kind)) return null
         return row.toListItem(listId)
     }
 
-    /** Every active (undone) appointment, shaped for [matchItem] - `service/LiveToolbox.kt`'s
-     * `manage_item` tick/untick fallback reads this ONLY after [findItem] (reminders) comes back
-     * [ItemMatch.NoMatch], so a title that matches a reminder is never shadowed by an
-     * appointment of the same name. Ticket 02 point 4: "the voice tools need it both ways". */
+    /** Every active (undone) [EventKind.TASK] row, shaped for [matchItem] -
+     * `service/LiveToolbox.kt`'s `manage_item` tick/untick fallback reads this ONLY after
+     * [findItem] (reminders) comes back [ItemMatch.NoMatch], so a title that matches a reminder is
+     * never shadowed by a calendar-table row of the same name. Ticket 02 point 4: "the voice tools
+     * need it both ways". **Deliberately [EventKind.TASK] only, not every calendar-table row**
+     * (narrowed by one-today ticket 08): an [EventKind.EVENT] must never surface here at all - if it
+     * did, the voice tick/untick fallback below would find a title match for a class and try to mark
+     * it done, exactly the bug this ticket exists to close. */
     suspend fun openAppointments(context: Context): List<ListItem> {
         val listId = theList(context).id
-        return db(context).eventDao().getActiveByKind(EventKind.APPOINTMENT)
+        return db(context).eventDao().getActiveByKind(EventKind.TASK)
             .filter { !it.done }
             .map { it.toListItem(listId) }
     }
 
-    /** Fuzzy-matches [query] against open appointments only, same shape as [findItem]. */
+    /** Fuzzy-matches [query] against open tasks only (see [openAppointments]'s own doc comment for
+     * why an event is excluded), same shape as [findItem]. */
     suspend fun findAppointment(context: Context, query: String): ItemMatch =
         matchItem(query, openAppointments(context))
 
-    /** Ticks an appointment "done" - ticket 02 point 1: "I attended", not "I completed a task" -
-     * same [Event.done]/[Event.doneAt] columns a reminder tick uses, worded differently at the UI/
-     * voice layer only. Returns false, writing nothing, on a stale id, a row that is not actually an
-     * appointment, or a genuine write failure - same "no false success" contract [tick] holds for a
-     * reminder. Never touches [AlarmScheduler] - see this section's own class doc for why an
-     * appointment never armed one to begin with. */
+    /** Ticks a task "done" - ticket 02 point 1's original framing was "I attended", not "I
+     * completed a task"; one-today ticket 08 narrowed this to [EventKind.TASK] specifically, since
+     * an [EventKind.EVENT] genuinely has no "I attended" to record (Kevin: "i dont mark an event
+     * done, it just passes"). Same [Event.done]/[Event.doneAt] columns a reminder tick uses, worded
+     * differently at the UI/voice layer only. Returns false, writing nothing, on a stale id, a row
+     * that is not a task, or a genuine write failure - same "no false success" contract [tick]
+     * holds for a reminder. Never touches [AlarmScheduler] - see this section's own class doc for
+     * why a row here never armed one to begin with. */
     suspend fun tickAppointment(context: Context, item: Event): Boolean {
         val now = System.currentTimeMillis()
         val existing = db(context).eventDao().getById(item.id) ?: return false
-        if (existing.deleted || existing.kind != EventKind.APPOINTMENT) return false
+        if (existing.deleted || existing.kind != EventKind.TASK) return false
         return try {
             db(context).eventDao().update(existing.copy(done = true, doneAt = now, updatedAtMs = now))
             true
@@ -896,11 +915,11 @@ object NotesController {
         }
     }
 
-    /** The undo of [tickAppointment] - same failure contract. */
+    /** The undo of [tickAppointment] - same failure contract, same [EventKind.TASK]-only guard. */
     suspend fun untickAppointment(context: Context, item: Event): Boolean {
         val now = System.currentTimeMillis()
         val existing = db(context).eventDao().getById(item.id) ?: return false
-        if (existing.deleted || existing.kind != EventKind.APPOINTMENT) return false
+        if (existing.deleted || existing.kind != EventKind.TASK) return false
         return try {
             db(context).eventDao().update(existing.copy(done = false, doneAt = null, updatedAtMs = now))
             true
@@ -910,11 +929,13 @@ object NotesController {
         }
     }
 
-    /** `ui/notes/InboxScreen.kt`'s appointment edit dialog save - one-today ticket 01's local
+    /** `ui/notes/InboxScreen.kt`'s calendar-row edit dialog save - one-today ticket 01's local
      * replacement for the retired `CalendarProvider.updateEventSeries`/`updateEventOccurrence` pair.
      * Title/start/end/all-day only, matching that dialog's own "title and time" surface (ticket 22
      * point 1) - everything else about the row is preserved via `copy`. Returns false, writing
-     * nothing, on a stale id or a row that is not an appointment. */
+     * nothing, on a stale id or a row that is a reminder (renaming/rescheduling stays legitimate for
+     * both [EventKind.EVENT] and [EventKind.TASK] even though ticking one off is not - see this
+     * section's own class doc). */
     suspend fun updateAppointment(
         context: Context,
         id: Long,
@@ -925,7 +946,7 @@ object NotesController {
     ): Boolean {
         val now = System.currentTimeMillis()
         val existing = db(context).eventDao().getById(id) ?: return false
-        if (existing.deleted || existing.kind != EventKind.APPOINTMENT) return false
+        if (existing.deleted || !isCalendarTableKind(existing.kind)) return false
         return try {
             db(context).eventDao().update(
                 existing.copy(title = title, startsAt = startMs, endsAt = endMs, allDay = allDay, updatedAtMs = now),
@@ -937,6 +958,13 @@ object NotesController {
         }
     }
 
+    /** Whether [kind] is a calendar-table row (event or task) rather than a reminder - the guard
+     * shape shared by [appointmentById]/[updateAppointment]/[removeAppointment], which edit or
+     * delete a row regardless of whether it happens to be completable ([openAppointments]/
+     * [tickAppointment]/[untickAppointment] are narrower on purpose - see this section's own class
+     * doc). */
+    private fun isCalendarTableKind(kind: String): Boolean = kind == EventKind.EVENT || kind == EventKind.TASK
+
     /** `ui/notes/InboxScreen.kt`'s appointment DELETE - one-today ticket 01's local replacement for
      * the retired `CalendarProvider.deleteEventSeries`/`deleteEventOccurrence` pair. Hard-deletes the
      * row, matching [removeItem]'s own unconfigured-path convention for this table (no 30-day
@@ -944,7 +972,7 @@ object NotesController {
      * id is already gone or is not an appointment. */
     suspend fun removeAppointment(context: Context, id: Long): Boolean {
         val existing = db(context).eventDao().getById(id) ?: return false
-        if (existing.kind != EventKind.APPOINTMENT) return false
+        if (!isCalendarTableKind(existing.kind)) return false
         return try {
             db(context).eventDao().deleteById(id)
             true

@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.notes
 
+import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.ui.AgendaSource
 import java.time.Instant
@@ -40,11 +41,17 @@ data class InboxRowView(
     val id: Long,
     val text: String,
     val done: Boolean,
-    /** False only for a recurring [AgendaSource.LOCAL] item (ticket 04's "a recurring item cannot
-     * be ticked"). **A [AgendaSource.GOOGLE] row is tickable too, as of one-today ticket 02** -
-     * "ticking an appointment": it now lives in the same local `events` table as a reminder, and
-     * ticking one writes [com.kevin.legion.data.local.Event.done] directly (never through
-     * [com.kevin.legion.notes.NotesController]'s reminder-only funnel - see
+    /** False for a recurring [AgendaSource.LOCAL] item (ticket 04's "a recurring item cannot be
+     * ticked") and, as of one-today ticket 08 ("events are not todos"), false for ANY
+     * [AgendaSource.GOOGLE] row whose [com.kevin.legion.data.local.Event.kind] is
+     * [com.kevin.legion.backend.EventKind.EVENT] - Kevin, verbatim: "i dont mark an event done, it
+     * just passes whether or not i do it, like classes". **This reverses one-today ticket 02**
+     * ("ticking an appointment"), which made every calendar-table row tickable; ticket 08's own
+     * text calls that "wrong about the fix" - half those rows were never appointments, they were
+     * assignments a heuristic could not tell apart from a class. A [AgendaSource.GOOGLE] row with
+     * [com.kevin.legion.backend.EventKind.TASK] IS still tickable (nothing produces one yet -
+     * Canvas is its own ticket), and writes [com.kevin.legion.data.local.Event.done] directly
+     * (never through [com.kevin.legion.notes.NotesController]'s reminder-only funnel - see
      * [com.kevin.legion.notes.NotesController.tickAppointment]). */
     val tickable: Boolean,
     /** For a [AgendaSource.LOCAL] row: whether it repeats (ticket 04's own meaning). Always false
@@ -68,13 +75,15 @@ data class InboxRowView(
      * [NotesController] as normal. GOOGLE (ticket 13 follow-up, `.scratch/google-account-
      * integration/issues/13-calendar-read.md`, Kevin 2026-08-13; editable as of ticket 22,
      * `.scratch/google-account-integration/issues/22-edit-calendar-entries-from-log.md`; **local as
-     * of one-today ticket 01, "cut Google entirely"**) is an appointment row (`kind = 'appointment'`)
-     * merged into the SAME stream over a 90-day forward window
-     * ([com.kevin.legion.ui.notes.INBOX_CALENDAR_WINDOW_DAYS]). `ui/notes/NotesRows.kt`'s
+     * of one-today ticket 01, "cut Google entirely"**) is a calendar-table row - `kind = 'event'`
+     * (renamed from `'appointment'`, never tickable - one-today ticket 08) or `kind = 'task'`
+     * (tickable, nothing produces one yet) - merged into the SAME stream over a 90-day forward
+     * window ([com.kevin.legion.ui.notes.INBOX_CALENDAR_WINDOW_DAYS]). `ui/notes/NotesRows.kt`'s
      * [InboxRow] shows the same `CAL` tag ticket 13 put on `TodayScreen`'s AGENDA pane - the
      * distinction from a plain reminder is always in WORDS, never colour alone - even though, post
-     * one-today, both live in the exact same local table and are both tickable/editable/deletable,
-     * just through separate [NotesController] functions (see [tickable]'s own doc comment). */
+     * one-today, both live in the exact same local table, editable/deletable alike, just through
+     * separate [NotesController] functions (see [tickable]'s own doc comment for why they are no
+     * longer alike on tickability). */
     val source: AgendaSource = AgendaSource.LOCAL,
     /** The real (positive) [com.kevin.legion.data.local.Event.id] behind a [AgendaSource.GOOGLE]
      * row - null for a LOCAL row. **No longer a synthetic negative id** (one-today ticket 01
@@ -167,14 +176,16 @@ private fun toInboxRowView(item: ListItem, now: Long): InboxRowView {
 }
 
 /**
- * One [InboxRowView] per appointment row (ticket 13 follow-up; editable as of ticket 22;
- * **tickable as of one-today ticket 02** - see [InboxRowView.tickable]'s own doc comment). [id] is
- * the real, positive [com.kevin.legion.data.local.Event.id] now - one-today ticket 01 retired the
- * old synthetic-negative-id trick along with the live `CalendarContract` read it protected against,
- * and an appointment's id space is disjoint from a reminder's BY CONSTRUCTION
+ * One [InboxRowView] per calendar-table row (ticket 13 follow-up; editable as of ticket 22;
+ * **[tickable] no longer unconditionally true - one-today ticket 08 ("events are not todos")
+ * reversed ticket 02's "every calendar-table row is tickable"** - see [InboxRowView.tickable]'s own
+ * doc comment for why only a [com.kevin.legion.backend.EventKind.TASK] row still is). [id] is the
+ * real, positive [com.kevin.legion.data.local.Event.id] now - one-today ticket 01 retired the old
+ * synthetic-negative-id trick along with the live `CalendarContract` read it protected against, and
+ * this row's id space is disjoint from a reminder's BY CONSTRUCTION
  * ([com.kevin.legion.data.local.Event.APPOINTMENT_ID_BASE]'s own doc comment), so there is nothing
  * left for a collision-avoiding offset to guard against. [recurring] is always false - see
- * [InboxRowView.recurring]'s own doc comment for why a stored appointment row has no recurrence
+ * [InboxRowView.recurring]'s own doc comment for why a stored row of this shape has no recurrence
  * concept left to carry post-repoint.
  */
 private fun toInboxRowView(event: AppointmentEvent): InboxRowView =
@@ -182,7 +193,7 @@ private fun toInboxRowView(event: AppointmentEvent): InboxRowView =
         id = event.eventId,
         text = event.title,
         done = event.done,
-        tickable = true,
+        tickable = event.kind != EventKind.EVENT,
         recurring = event.recurring,
         dateLabel = if (event.allDay) formatDateOnly(event.startMs) else formatDateTime(event.startMs),
         overdue = false,

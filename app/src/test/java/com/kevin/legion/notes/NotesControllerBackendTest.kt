@@ -219,7 +219,7 @@ class NotesControllerBackendTest {
                 title = "Dentist",
                 startsAt = 90_000L,
                 source = "legion",
-                kind = EventKind.APPOINTMENT,
+                kind = EventKind.EVENT,
                 updatedAtMs = 1L,
                 createdAt = 1L,
             ),

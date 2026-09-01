@@ -174,7 +174,7 @@ class EventsReconcileTest {
                 location = location,
                 structuredMeta = structuredMeta,
                 source = DatesAspectSeeder.SOURCE_LEGION,
-                kind = EventKind.APPOINTMENT,
+                kind = EventKind.EVENT,
                 updatedAtMs = now,
                 createdAt = now,
             ),
@@ -201,7 +201,7 @@ class EventsReconcileTest {
                     title = "burn",
                     startsAt = null,
                     source = DatesAspectSeeder.SOURCE_LEGION,
-                    kind = EventKind.APPOINTMENT,
+                    kind = EventKind.EVENT,
                     updatedAtMs = 0L,
                     createdAt = 0L,
                 ),
@@ -332,11 +332,11 @@ class EventsReconcileTest {
 
         val dentist = backend.rows.values.single { it.title == "Dentist" }
         val milk = backend.rows.values.single { it.title == "Buy milk" }
-        assertEquals(EventKind.APPOINTMENT, dentist.kind)
+        assertEquals(EventKind.EVENT, dentist.kind)
         assertEquals(EventKind.REMINDER, milk.kind)
 
         val replica = CarDatabase.getDatabase(context).eventDao().getAllActive()
-        assertEquals(EventKind.APPOINTMENT, replica.single { it.title == "Dentist" }.kind)
+        assertEquals(EventKind.EVENT, replica.single { it.title == "Dentist" }.kind)
         assertEquals(EventKind.REMINDER, replica.single { it.title == "Buy milk" }.kind)
     }
 
@@ -821,7 +821,7 @@ class EventsReconcileTest {
                     title = "Team offsite",
                     startsAtMs = 70_000L,
                     googleEventId = "google-1",
-                    kind = EventKind.APPOINTMENT,
+                    kind = EventKind.EVENT,
                 ),
             ),
         ).getOrThrow()
@@ -838,7 +838,7 @@ class EventsReconcileTest {
                 startsAt = 70_000L,
                 allDay = false,
                 source = DatesAspectSeeder.SOURCE_LEGION,
-                kind = EventKind.APPOINTMENT,
+                kind = EventKind.EVENT,
                 googleEventId = "google-1",
                 updatedAtMs = System.currentTimeMillis(),
                 createdAt = System.currentTimeMillis(),

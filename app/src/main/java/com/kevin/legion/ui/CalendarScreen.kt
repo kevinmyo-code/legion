@@ -61,21 +61,32 @@ import kotlinx.coroutines.launch
  *
  * **No new write path.** Ticking a row calls the SAME [NotesController.tick]/[NotesController.untick]
  * (one-off reminders) and [NotesController.tickAppointment]/[NotesController.untickAppointment]
- * (appointments) funnels `ui/notes/InboxScreen.kt`'s own day-filtered mode already calls, over the
+ * (tasks) funnels `ui/notes/InboxScreen.kt`'s own day-filtered mode already calls, over the
  * SAME [com.kevin.legion.ui.notes.buildInboxRows] pure merge - restated here (not imported as a
  * screen) only because that file's own add-item bar/edit-dialog/CAL-tag furniture is more than this
  * sparse view wants, per Kevin's "sparse UI + voice modals" instruction. A recurring reminder's
  * occurrence stays `tickable = false` for the same reason it already is on that screen -
  * `.scratch/one-today/issues/02-ticking-an-appointment.md` point 2 leaves "tick one occurrence of a
- * recurring series" an open design question, not something this ticket may invent an answer to. No
- * agenda source in this screen's day view is left with a checkbox and no write path: every row here
- * is a real [ListItem] or a real [Event], and both already have one.
+ * recurring series" an open design question, not something this ticket may invent an answer to.
  *
- * **View B also carries the day's plan checklist when, and only when, the selected day is TODAY**
- * (rehomed from the deleted `ui/TodayScreen.kt`'s HERO pane, one-today ticket 07, 2026-09-01) -
- * [com.kevin.legion.ui.goals.GoalChecklistPanel], `compact = true`, unchanged from its own build.
- * A checklist of "today's items" sitting under a day view for a date in March would be nonsense, so
- * the pane is omitted entirely on any other day rather than rendered empty.
+ * **View B's day agenda splits into THREE sections (one-today ticket 08, "events are not todos",
+ * 2026-09-01 - Kevin verbatim: "i dont mark an event done, it just passes whether or not i do it,
+ * like classes").** This reverses ticket 02's "every calendar-table row gets a checkbox": half of
+ * what that made tickable were never appointments, they were assignments a title-based heuristic
+ * could not tell apart from a class. So:
+ * - **SCHEDULE** - [scheduleRows], [EventKind.EVENT] rows only, time-ordered, **no checkbox at all -
+ *   not a disabled one.** An event greys by time alone; it is never in [dayRows] and [toggle] is
+ *   never wired to one.
+ * - **YET TO DO** / **DONE** - [dayRows] split by [InboxRowView.done], covering reminders
+ *   ([ListItem]) and [EventKind.TASK] rows (nothing writes a task yet - Canvas is its own ticket).
+ *   Every row here keeps its checkbox, same write funnel as before.
+ *
+ * **The completion ratio counts tasks (and reminders) only, never events** - `ui/goals/
+ * GoalChecklistPanel.kt`'s own "N TODAY" accent below is scoped to the BIO checklist, a wholly
+ * separate table this screen's own agenda has no ratio of its own to get wrong; see
+ * `.scratch/one-today/issues/08-events-are-not-todos.md` point 4 for the density-dot audit this
+ * screen's own [MonthCell.eventCount]/[eventDotCount] were checked against (they count workload,
+ * not completion, and were left as an honest "how busy" figure rather than folded into this rule).
  */
 @Composable
 fun CalendarScreen() {
@@ -98,8 +109,17 @@ fun CalendarScreen() {
     // day-filtered mode, kept here rather than imported because this screen owns a different
     // [reloadNonce] cadence (this screen has no add-item bar to also trigger a reload).
     var rawItems by remember { mutableStateOf(emptyList<ListItem>()) }
+    // ONE-TODAY TICKET 08: [rawAppointments] now holds only [EventKind.TASK] rows - the only
+    // calendar-table kind [toggle] may ever write through [NotesController.tickAppointment]/
+    // [untickAppointment] (that pair itself refuses anything else - see its own doc comment). An
+    // [EventKind.EVENT] row never lands here at all; it lives in [scheduleRows] instead, which
+    // [toggle] never reads.
     var rawAppointments by remember { mutableStateOf(emptyList<Event>()) }
     var dayRows by remember { mutableStateOf(emptyList<InboxRowView>()) }
+    // SCHEDULE section (ticket 08): [EventKind.EVENT] rows, time-ordered, never merged into
+    // [dayRows] - an event has no [InboxRowView.done]/[InboxRowView.tickable] question to answer,
+    // so it does not belong in the same list a checkbox-driven filter later splits.
+    var scheduleRows by remember { mutableStateOf(emptyList<InboxRowView>()) }
     var reloadNonce by remember { mutableStateOf(0) }
 
     LaunchedEffect(displayedMonth, reloadNonce) {
@@ -117,25 +137,50 @@ fun CalendarScreen() {
 
     // Re-fetched on [selectedDayStart] AND [reloadNonce] (a tick just written) - same two keys
     // `ui/notes/InboxScreen.kt`'s own effect re-fetches on. [NotesController.allItems] is
-    // unwindowed (see that screen's own comment on why), so only the appointment half needs a
+    // unwindowed (see that screen's own comment on why), so only the calendar-table half needs a
     // day-scoped query.
     LaunchedEffect(selectedDayStart, reloadNonce) {
         val day = selectedDayStart
         if (day == null) {
             dayRows = emptyList()
+            scheduleRows = emptyList()
             return@LaunchedEffect
         }
         val items = NotesController.allItems(context)
         rawItems = items
         val dayEndExclusive = day + DAY_FILTER_WINDOW_MS
         val db = CarDatabase.getDatabase(context)
-        val appointments = db.eventDao().activeByKindInWindow(EventKind.APPOINTMENT, day, dayEndExclusive - 1)
-        rawAppointments = appointments
+        // Queried separately, never merged into one list: an event's own section has no checkbox
+        // and no completion question, a task's does - ticket 08's whole point.
+        val events = db.eventDao().activeByKindInWindow(EventKind.EVENT, day, dayEndExclusive - 1)
+        val tasks = db.eventDao().activeByKindInWindow(EventKind.TASK, day, dayEndExclusive - 1)
+        rawAppointments = tasks
         val now = System.currentTimeMillis()
-        val rows = buildInboxRows(items, now, appointments.map { it.toAppointmentEvent() })
+        // Tasks merge into the SAME chronological/done-split stream as reminders - both are
+        // completable, so [buildInboxRows]' existing merge (which already sets
+        // [InboxRowView.tickable] correctly per-kind, see that function's own doc comment) is reused
+        // rather than forked. Events never pass through here.
+        val rows = buildInboxRows(items, now, tasks.map { it.toAppointmentEvent() })
         dayRows = rows.filter { row -> row.instantMs != null && row.instantMs >= day && row.instantMs < dayEndExclusive }
+        scheduleRows = events.sortedBy { it.startsAt ?: 0L }.map { event ->
+            InboxRowView(
+                id = event.id,
+                text = event.title,
+                done = false,
+                tickable = false,
+                recurring = false,
+                dateLabel = event.startsAt?.let { at -> if (event.allDay) formatDateOnly(at) else formatDateTime(at) },
+                overdue = false,
+                placeLabel = null,
+                exactDowngraded = false,
+                source = com.kevin.legion.ui.AgendaSource.GOOGLE,
+                instantMs = event.startsAt,
+            )
+        }
     }
 
+    // Only ever called from [dayRows] (reminders + tasks) - [scheduleRows] rows carry no checkbox
+    // (see [CalendarDayRow]'s own `row.tickable` gate) and this function is never wired to one.
     fun toggle(id: Long) {
         val target = rawItems.firstOrNull { it.id == id }
         if (target != null) {
@@ -222,13 +267,14 @@ fun CalendarScreen() {
                 }
             }
         } else {
-            // View B: the tapped day's agenda, split "yet to do" / "done" (this ticket's own
-            // instruction). Rendered with [CalendarDayRow], a sparse local row (checkbox + label +
-            // date only) rather than `ui/notes/InboxScreen.kt`'s own [InboxRow] - that row also
-            // carries an edit tap-through and a REMOVE/DELETE button neither this screen's brief nor
-            // Kevin's "sparse UI + voice modals" instruction asked for, and a button that visibly
-            // exists but does nothing on tap is worse than one that is simply absent. The WRITE
-            // funnel is unchanged either way - [toggle] below calls the identical
+            // View B: the tapped day's agenda, split into SCHEDULE / YET TO DO / DONE (one-today
+            // ticket 08, "events are not todos" - this screen's own file doc comment has the full
+            // account). Rendered with [CalendarDayRow], a sparse local row (checkbox + label + date
+            // only) rather than `ui/notes/InboxScreen.kt`'s own [InboxRow] - that row also carries an
+            // edit tap-through and a REMOVE/DELETE button neither this screen's brief nor Kevin's
+            // "sparse UI + voice modals" instruction asked for, and a button that visibly exists but
+            // does nothing on tap is worse than one that is simply absent. The WRITE funnel is
+            // unchanged either way - [toggle] below calls the identical
             // [NotesController.tick]/[tickAppointment] pair [InboxRow]'s own `onToggle` would have.
             TextButton(onClick = { selectedDayStart = null }) {
                 Text("BACK TO MONTH", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
@@ -247,6 +293,18 @@ fun CalendarScreen() {
             val notDone = dayRows.filter { !it.done }
             val done = dayRows.filter { it.done }
             Column(Modifier.padding(horizontal = 12.dp)) {
+                // SCHEDULE - events, time-ordered, no checkbox (ticket 08). [scheduleRows] is
+                // already sorted by [Event.startsAt]; every row's own [InboxRowView.tickable] is
+                // false, so [CalendarDayRow] renders it with no checkbox at all - never a disabled
+                // one - and greys it by time alone via its own `done` styling if the caller ever
+                // marked it past (it never does here; [InboxRowView.done] is hardcoded false for
+                // this section since an event has no completion state to be false ABOUT).
+                DeckSectionRule("Schedule")
+                if (scheduleRows.isEmpty()) {
+                    Text("Nothing on the calendar this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
+                } else {
+                    scheduleRows.forEach { row -> CalendarDayRow(row = row, onToggle = {}) }
+                }
                 DeckSectionRule("Yet to do")
                 if (notDone.isEmpty()) {
                     Text("Nothing left on this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
@@ -276,8 +334,11 @@ private const val NEXT_PANE_LIMIT = 12
 
 /**
  * One day-view row: a checkbox (absent, not merely disabled, when [InboxRowView.tickable] is
- * false - a recurring occurrence with no per-occurrence write path, `.scratch/one-today/issues/
- * 02-ticking-an-appointment.md` point 2) plus the label and date. Deliberately narrower than
+ * false) plus the label and date. Two different reasons a row lands here with no checkbox, both
+ * intentional: a recurring occurrence with no per-occurrence write path (`.scratch/one-today/
+ * issues/02-ticking-an-appointment.md` point 2), and - as of one-today ticket 08, "events are not
+ * todos" - EVERY [scheduleRows] row, because an event has no completion state to check off at all
+ * (Kevin: "i dont mark an event done, it just passes"). Deliberately narrower than
  * `ui/notes/InboxScreen.kt`'s [com.kevin.legion.ui.notes.InboxRow] - see [CalendarScreen]'s own
  * call-site comment for why.
  */

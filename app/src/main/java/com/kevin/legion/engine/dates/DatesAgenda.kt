@@ -26,7 +26,7 @@ import org.json.JSONObject
  * repoints onto the SAME `events` table Notes already uses).** This file now merges TWO sources
  * rather than reading the engine alone:
  *
- * 1. **The local `events` table, `kind = `[EventKind.APPOINTMENT]** -
+ * 1. **The local `events` table, `kind = `[EventKind.EVENT]** -
  *    [com.kevin.legion.calendar.CalendarImportController] writes here directly now, no engine
  *    involved, so this is the live, current Dates data.
  * 2. **The engine's `dueAt` scan, EXCLUDING the Dates and Notes aspects** - the cross-aspect merge
@@ -109,11 +109,11 @@ object DatesAgenda {
         EngineNotesRetirementCopy.copyIfNeeded(context)
     }
 
-    /** Every active [Event] with `kind = `[EventKind.APPOINTMENT] - the one place both [windowed]
+    /** Every active [Event] with `kind = `[EventKind.EVENT] - the one place both [windowed]
      * and [nextUnmuted] read the local table from, so a future third caller never has to re-derive
      * the kind filter itself. */
     private suspend fun activeAppointments(db: CarDatabase): List<Event> =
-        db.eventDao().getActiveByKind(EventKind.APPOINTMENT)
+        db.eventDao().getActiveByKind(EventKind.EVENT)
 
     /** Every active record with a promoted [EngineRecord.dueAt] inside `[fromMs, toMs]`, PLUS
      * every undated todo (ticket 01 ruling 2), whose inferred "tomorrow" is computed fresh
@@ -157,7 +157,7 @@ object DatesAgenda {
 
         val event = db.eventDao().getById(recordId)
         if (event != null) {
-            if (event.deleted || event.kind != EventKind.APPOINTMENT || event.startsAt == null) return null
+            if (event.deleted || event.kind != EventKind.EVENT || event.startsAt == null) return null
             val mutedIds = db.mutedReminderDao().mutedRecordIds(listOf(event.id)).toSet()
             return toAgendaItemFromEvent(event, System.currentTimeMillis(), mutedIds)
         }
@@ -187,7 +187,7 @@ object DatesAgenda {
         val db = CarDatabase.getDatabase(context)
         ensureLegacyReconciled(context)
 
-        val eventCandidates = db.eventDao().activeByKindFrom(EventKind.APPOINTMENT, afterMs, NEXT_DUE_BATCH_SIZE)
+        val eventCandidates = db.eventDao().activeByKindFrom(EventKind.EVENT, afterMs, NEXT_DUE_BATCH_SIZE)
         val eventMutedIds = db.mutedReminderDao().mutedRecordIds(eventCandidates.map { it.id }).toSet()
         val eventItems = eventCandidates.mapNotNull { toAgendaItemFromEvent(it, afterMs, eventMutedIds) }
 

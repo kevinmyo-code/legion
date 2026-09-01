@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.notes
 
+import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.ui.AgendaSource
 import java.time.LocalDate
@@ -150,9 +151,10 @@ class InboxRowsTest {
         startMs: Long,
         allDay: Boolean = false,
         done: Boolean = false,
+        kind: String = EventKind.EVENT,
     ) = AppointmentEvent(
         eventId = id, title = title, startMs = startMs, endMs = startMs + 1_000L,
-        allDay = allDay, done = done,
+        allDay = allDay, done = done, kind = kind,
     )
 
     @Test
@@ -179,16 +181,37 @@ class InboxRowsTest {
     }
 
     @Test
-    fun `a google row is tagged GOOGLE, is tickable, and never recurring`() {
-        // One-today ticket 02, "ticking an appointment" - an appointment row is tickable now.
+    fun `a google row is tagged GOOGLE, is NOT tickable when it is an event, and never recurring`() {
+        // One-today ticket 08, "events are not todos" - REVERSES ticket 02's "an appointment row is
+        // tickable now". Kevin: "i dont mark an event done, it just passes whether or not i do it,
+        // like classes." A kind = EVENT row (the default here, and every row that used to read
+        // `appointment`) must render with no checkbox at all.
         val rows = buildInboxRows(emptyList(), now, listOf(googleEvent(10, "Dentist", startMs = epochOf("2026-08-20"))))
 
         val row = rows.single()
         assertEquals(AgendaSource.GOOGLE, row.source)
-        assertTrue(row.tickable)
+        assertFalse(row.tickable)
         assertFalse(row.recurring)
         assertFalse(row.overdue)
         assertNull(row.placeLabel)
+    }
+
+    @Test
+    fun `a google row IS tickable when its kind is TASK, not EVENT`() {
+        // Ticket 08's other half: the axis is completable-or-not, not "every calendar-table row
+        // alike". Nothing writes a TASK row yet (Canvas is its own ticket), but the resolver itself
+        // must already treat one as tickable the moment one exists.
+        val rows = buildInboxRows(
+            emptyList(), now,
+            listOf(googleEvent(10, "Submit essay", startMs = epochOf("2026-08-20"), kind = EventKind.TASK)),
+        )
+        assertTrue(rows.single().tickable)
+    }
+
+    @Test
+    fun `a reminder row is still tickable - ticket 08 narrows only the calendar-table rows`() {
+        val rows = buildInboxRows(listOf(ListItem(id = 1, listId = 1, text = "Call the bank")), now)
+        assertTrue(rows.single().tickable)
     }
 
     @Test

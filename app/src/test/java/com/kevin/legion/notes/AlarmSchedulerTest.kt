@@ -130,7 +130,7 @@ class AlarmSchedulerTest {
                 title = "Dentist",
                 startsAt = 2_000L,
                 source = "legion",
-                kind = EventKind.APPOINTMENT,
+                kind = EventKind.EVENT,
                 updatedAtMs = 1L,
                 createdAt = 1L,
             ),

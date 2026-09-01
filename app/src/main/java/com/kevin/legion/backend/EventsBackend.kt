@@ -1,15 +1,33 @@
 package com.kevin.legion.backend
 
 /**
- * The two values `public.events.kind` may hold (`supabase/migrations/20260827000200_events_kind.sql`) -
- * what tells [com.kevin.legion.notes.NotesController] and [EventsReconcile] which rows they own. A
- * Notes `Item` is always [REMINDER]; a Dates `Event` (legion-authored or a Google import) is always
- * [APPOINTMENT]. Set once at upload, from the record type read - never derived from a row's shape
- * (`sortOrder`, `source`, anything else that happens to correlate today). See the migration's own
- * comment for why the server default is [REMINDER], not a guess: an origin the app cannot identify
- * is treated as something it owns, the direction that fails visibly rather than silently.
+ * **RENAMED/WIDENED 2026-09-01 (one-today ticket 08, "events are not todos", Kevin verbatim: "i
+ * dont mark an event done, it just passes whether or not i do it, like classes").** This doc
+ * comment used to say `public.events.kind` held exactly two values - [REMINDER] and a since-removed
+ * `APPOINTMENT` - and that a Dates `Event` was always the latter. That framing conflated two
+ * different questions ("who owns this row, Notes or Dates" and "does this row have a completion
+ * state at all") into one column, and real device rows exposed the seam: 261 Google-imported rows
+ * all carried `kind = appointment`, but some of them (a Discussion post, a WebAssign homework due
+ * date) were genuinely completed assignments, not classes that "just pass whether or not you engage
+ * with it". The axis this column now encodes is **completable-or-not**, not **Notes-or-Dates**:
  *
- * A third kind, `car_task`, briefly existed here for a `car_tasks` fold into `events`
+ * - [REMINDER] - unchanged. User-set, alarm-bearing, completable. A Notes `Item` is always this.
+ * - [EVENT] - passes, **never completable, no checkbox anywhere in the UI**. Every row that used to
+ *   read `kind = appointment` was reclassified to this by [com.kevin.legion.data.local.MIGRATION_56_57]
+ *   (with `done`/`doneAt` CLEARED, not merely hidden - a row that cannot be done must not carry a
+ *   stale `true`). A Dates `Event` (legion-authored or a historical Google import) is always this now.
+ * - [TASK] - completable, may carry a due date with no alarm. Nothing produces one yet; Canvas is
+ *   its own ticket (`.scratch/one-today/issues/08-events-are-not-todos.md`'s own "Canvas is its own
+ *   ticket" section) and will populate this from real submission state.
+ *
+ * Set once at write time, from the record type/write path - never derived from a row's shape
+ * (`sortOrder`, `source`, a title containing "quiz" or "due", anything else that happens to
+ * correlate today - ticket 08's own explicit rejection of a heuristic classifier: `"COSC 3334 Exam
+ * review session"` is a class that matches `exam`). See the migration's own comment for why the
+ * server default is [REMINDER], not a guess: an origin the app cannot identify is treated as
+ * something it owns, the direction that fails visibly rather than silently.
+ *
+ * A `car_task` kind briefly existed here for a `car_tasks` fold into `events`
  * (backend-erp ticket 06's original ruling, ticket 10's wave) and was reverted the same day: the
  * fold turned out to be a duplicate of one Notes had already performed years earlier (`car_tasks`
  * rows were copied into `list_items` by `MIGRATION_9_10`, and that guid already reaches `events`
@@ -18,7 +36,11 @@ package com.kevin.legion.backend
  */
 object EventKind {
     const val REMINDER = "reminder"
-    const val APPOINTMENT = "appointment"
+    /** RENAMED from `APPOINTMENT` (ticket 08) - see this object's own class doc for why the
+     * rename is a reclassification, not a synonym swap. */
+    const val EVENT = "event"
+    /** New (ticket 08). Nothing writes this yet - see this object's own class doc. */
+    const val TASK = "task"
 }
 
 /**
@@ -88,7 +110,7 @@ data class RemoteEvent(
     val loggedAtMs: Long?,
     val updatedAtMs: Long,
     val deleted: Boolean,
-    /** [EventKind.REMINDER] or [EventKind.APPOINTMENT] - see that object's own doc comment.
+    /** [EventKind.REMINDER], [EventKind.EVENT], or [EventKind.TASK] (renamed from `APPOINTMENT`, ticket 08) - see that object's own doc comment.
      * Defaults to [EventKind.REMINDER] only as a decode-time placeholder matching the column's own
      * server-side default; every real row states one explicitly. */
     val kind: String = EventKind.REMINDER,
@@ -134,7 +156,7 @@ data class EventFields(
      * of them. */
     val structuredMeta: String? = null,
     val source: String = "legion",
-    /** [EventKind.REMINDER] or [EventKind.APPOINTMENT] - see that object's own doc comment.
+    /** [EventKind.REMINDER], [EventKind.EVENT], or [EventKind.TASK] (renamed from `APPOINTMENT`, ticket 08) - see that object's own doc comment.
      * Defaults to [EventKind.REMINDER] because every caller except [EventsReconcile]'s Dates
      * branch IS a Notes `Item` (a live [com.kevin.legion.notes.NotesController] write never
      * produces an appointment); the Dates branch overrides it explicitly. */

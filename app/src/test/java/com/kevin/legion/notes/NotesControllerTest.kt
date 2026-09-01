@@ -258,7 +258,7 @@ class NotesControllerTest {
                 title = "Dentist",
                 startsAt = 2_000L,
                 source = "legion",
-                kind = com.kevin.legion.backend.EventKind.APPOINTMENT,
+                kind = com.kevin.legion.backend.EventKind.EVENT,
                 updatedAtMs = 1L,
                 createdAt = 1L,
             ),

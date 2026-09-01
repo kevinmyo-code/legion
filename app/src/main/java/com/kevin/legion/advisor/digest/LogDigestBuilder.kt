@@ -67,7 +67,7 @@ object LogDigestBuilder : DigestBuilder {
         // so there is no more refused-permission outcome to distinguish from an empty window - see
         // calendarLine's own doc comment for why the `null` branch is kept anyway.
         val calendarEvents = db.eventDao()
-            .activeByKindInWindow(EventKind.APPOINTMENT, now, now + CALENDAR_HORIZON_MS)
+            .activeByKindInWindow(EventKind.EVENT, now, now + CALENDAR_HORIZON_MS)
             .map { OpenerCalendarBriefing.BriefingEvent(title = it.title, startMs = it.startsAt ?: now, endMs = it.endsAt ?: (it.startsAt ?: now), allDay = it.allDay) }
 
         return buildDigestText(

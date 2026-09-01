@@ -47,7 +47,7 @@ import org.json.JSONObject
  * impossible under ordinary operation rather than a realistic race to protect against.
  *
  * **`kind` is set from the record type being read, never inferred from shape** - a Notes `Item` is
- * always [EventKind.REMINDER], a Dates `Event` is always [EventKind.APPOINTMENT], the identical
+ * always [EventKind.REMINDER], a Dates `Event` is always [EventKind.EVENT], the identical
  * ruling [com.kevin.legion.backend.EventsReconcile] already applies on the configured-upload path
  * (ticket 11's 2026-08-27 ruling #1).
  *
@@ -180,7 +180,7 @@ object EngineNotesRetirementCopy {
                     structuredMeta = s(DatesAspectSeeder.FIELD_STRUCTURED_META),
                     source = s(DatesAspectSeeder.FIELD_SOURCE) ?: DatesAspectSeeder.SOURCE_LEGION,
                     googleEventId = s(DatesAspectSeeder.FIELD_GOOGLE_EVENT_ID),
-                    kind = EventKind.APPOINTMENT,
+                    kind = EventKind.EVENT,
                     updatedAtMs = record.updatedAt,
                     createdAt = record.createdAt,
                     deleted = false,

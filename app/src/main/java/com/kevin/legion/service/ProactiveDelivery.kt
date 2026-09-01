@@ -113,7 +113,7 @@ object ProactiveDelivery {
         val now = System.currentTimeMillis()
         return runCatching {
             CarDatabase.getDatabase(context).eventDao()
-                .activeTimedByKindRunningAt(EventKind.APPOINTMENT, now)
+                .activeTimedByKindRunningAt(EventKind.EVENT, now)
                 .isNotEmpty()
         }.getOrDefault(true)
     }

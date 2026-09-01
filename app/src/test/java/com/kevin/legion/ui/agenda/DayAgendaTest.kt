@@ -57,7 +57,7 @@ class DayAgendaTest {
             endsAt = startsAt + 3_600_000,
             allDay = false,
             source = "legion",
-            kind = EventKind.APPOINTMENT,
+            kind = EventKind.EVENT,
             done = false,
             updatedAtMs = startsAt,
             createdAt = startsAt,

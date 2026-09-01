@@ -45,7 +45,7 @@ suspend fun buildAgendaInWindow(context: Context, fromMs: Long, toMs: Long, zone
         }
     }
     val appointments = CarDatabase.getDatabase(context).eventDao()
-        .activeByKindInWindow(EventKind.APPOINTMENT, fromMs, toMs)
+        .activeByKindInWindow(EventKind.EVENT, fromMs, toMs)
         .map { it.toAppointmentEvent() }
     return mergeAgenda(oneOff + recurring, appointments)
 }

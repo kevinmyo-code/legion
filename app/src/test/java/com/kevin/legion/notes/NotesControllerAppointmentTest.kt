@@ -19,13 +19,19 @@ import org.robolectric.RuntimeEnvironment
 import java.util.UUID
 
 /**
- * One-today ticket 02, "ticking an appointment" - the pairing the ticket's own "done means"
- * demands: **an appointment can be ticked, and [notes.AlarmScheduler] still owns exactly what it
- * owned before.** [NotesControllerTest] covers the REMINDER-only funnel this file deliberately
- * never touches; this file covers the separate, narrower appointment funnel added alongside it
- * ([NotesController.tickAppointment]/[NotesController.untickAppointment]/
- * [NotesController.appointmentById]/[NotesController.findAppointment]/
- * [NotesController.updateAppointment]/[NotesController.removeAppointment]).
+ * One-today ticket 02, "ticking an appointment", **NARROWED by ticket 08, "events are not todos"
+ * (2026-09-01, `.scratch/one-today/issues/08-events-are-not-todos.md`).** Kevin, verbatim: "i dont
+ * mark an event done, it just passes whether or not i do it, like classes". This file used to be
+ * titled "an appointment can be ticked" - that premise is now half wrong: [EventKind.EVENT] (every
+ * row that used to read `kind = appointment`) can never be ticked at all, and only [EventKind.TASK]
+ * (nothing writes one yet - Canvas is its own ticket) still goes through
+ * [NotesController.tickAppointment]/[NotesController.untickAppointment]. The other four functions
+ * in this section - [NotesController.appointmentById]/[NotesController.updateAppointment]/
+ * [NotesController.removeAppointment] - still cover BOTH [EventKind.EVENT] and [EventKind.TASK]
+ * (renaming or deleting a calendar entry stays legitimate even though ticking one off is not); only
+ * [NotesController.findAppointment]/[NotesController.openAppointments] narrowed to
+ * [EventKind.TASK] alone (see those functions' own doc comments for why an event must never
+ * surface as a voice tick-fallback candidate).
  */
 @RunWith(RobolectricTestRunner::class)
 class NotesControllerAppointmentTest {
@@ -42,11 +48,13 @@ class NotesControllerAppointmentTest {
         RoomTestReset.drainArchDiskIoPool()
     }
 
-    /** Inserts a bare appointment row directly - the shape the retired Google import and
+    /** Inserts a bare calendar-table row directly - the shape the retired Google import and
      * `service/LiveToolbox.kt`'s `addAppointment` both produce, allocated from the SAME disjoint
      * range ([com.kevin.legion.data.local.nextAppointmentId]) so a test id can never collide with a
-     * reminder id created in the same test. */
-    private suspend fun insertAppointment(title: String, done: Boolean = false): Event {
+     * reminder id created in the same test. [kind] defaults to [EventKind.EVENT] - the shape every
+     * real row on the device is (a historical Google import or a voice-created calendar entry) -
+     * with [EventKind.TASK] passed explicitly by the tests that need a completable one. */
+    private suspend fun insertAppointment(title: String, done: Boolean = false, kind: String = EventKind.EVENT): Event {
         val db = CarDatabase.getDatabase(context)
         val now = System.currentTimeMillis()
         val row = Event(
@@ -58,7 +66,7 @@ class NotesControllerAppointmentTest {
             endsAt = now + 7_200_000,
             allDay = false,
             source = "legion",
-            kind = EventKind.APPOINTMENT,
+            kind = kind,
             done = done,
             updatedAtMs = now,
             createdAt = now,
@@ -68,40 +76,58 @@ class NotesControllerAppointmentTest {
     }
 
     @Test
-    fun `an appointment can be ticked and unticked`() = runBlocking {
-        val appointment = insertAppointment("Dentist")
-        assertFalse(appointment.done)
+    fun `a task can be ticked and unticked`() = runBlocking {
+        val task = insertAppointment("Submit essay", kind = EventKind.TASK)
+        assertFalse(task.done)
 
-        assertTrue(NotesController.tickAppointment(context, appointment))
-        val ticked = NotesController.appointmentById(context, appointment.id)!!
+        assertTrue(NotesController.tickAppointment(context, task))
+        val ticked = NotesController.appointmentById(context, task.id)!!
         assertTrue(ticked.done)
         assertTrue(ticked.doneAt != null)
 
-        assertTrue(NotesController.untickAppointment(context, appointment))
-        val unticked = NotesController.appointmentById(context, appointment.id)!!
+        assertTrue(NotesController.untickAppointment(context, task))
+        val unticked = NotesController.appointmentById(context, task.id)!!
         assertFalse(unticked.done)
         assertNull(unticked.doneAt)
     }
 
     @Test
-    fun `AlarmScheduler owns exactly what it owned before - ticking an appointment never arms or cancels an alarm`() = runBlocking {
+    fun `an event can never be ticked - it just passes, like Kevin's classes`() = runBlocking {
+        // The core reversal ticket 08 makes: half of what ticket 02 made tickable were never
+        // appointments, they were assignments a title heuristic could not tell apart from a class.
+        val event = insertAppointment("COSC 3334 Intro to Cybersecurity")
+
+        assertFalse("an EventKind.EVENT row must never be tickable", NotesController.tickAppointment(context, event))
+        val reread = NotesController.appointmentById(context, event.id)!!
+        assertFalse(reread.done)
+        assertNull(reread.doneAt)
+
+        // Nor can a stale `done = true` (the real on-device COSC 3334 row, ticked during testing on
+        // 2026-09-01) be cleared through untickAppointment - it must simply refuse the row outright,
+        // matching MIGRATION_56_57's own clearing of that exact case at the data layer instead.
+        val staleDoneEvent = insertAppointment("Stale event", done = true, kind = EventKind.EVENT)
+        assertFalse(NotesController.untickAppointment(context, staleDoneEvent))
+    }
+
+    @Test
+    fun `AlarmScheduler owns exactly what it owned before - ticking a task never arms or cancels an alarm`() = runBlocking {
         // The regression this ticket exists to prevent (2026-08-26): AlarmScheduler's sweep must
-        // never treat an appointment as something it owns. tickAppointment/untickAppointment call
-        // neither AlarmScheduler.schedule nor AlarmScheduler.cancel at all (traced: neither function
-        // references AlarmScheduler in its body) - proven here by asserting a REMINDER's own
-        // scheduling state (allWithTimeTrigger, the exact scan AlarmScheduler.rescheduleAll walks)
-        // is completely unaffected by ticking an unrelated appointment.
+        // never treat a calendar-table row as something it owns. tickAppointment/untickAppointment
+        // call neither AlarmScheduler.schedule nor AlarmScheduler.cancel at all (traced: neither
+        // function references AlarmScheduler in its body) - proven here by asserting a REMINDER's
+        // own scheduling state (allWithTimeTrigger, the exact scan AlarmScheduler.rescheduleAll
+        // walks) is completely unaffected by ticking an unrelated task.
         val list = NotesController.theList(context)
         val reminder = NotesController.addItemDue(context, list.id, "oil change", System.currentTimeMillis() + 3_600_000, allDay = false)
         val beforeTriggers = NotesController.allWithTimeTrigger(context).map { it.id to it.startsAt }
 
-        val appointment = insertAppointment("Dentist")
-        assertTrue(NotesController.tickAppointment(context, appointment))
-        assertTrue(NotesController.untickAppointment(context, appointment))
+        val task = insertAppointment("Submit essay", kind = EventKind.TASK)
+        assertTrue(NotesController.tickAppointment(context, task))
+        assertTrue(NotesController.untickAppointment(context, task))
 
         val afterTriggers = NotesController.allWithTimeTrigger(context).map { it.id to it.startsAt }
         assertEquals(
-            "ticking/unticking an appointment must not perturb any reminder's own alarm-trigger state",
+            "ticking/unticking a task must not perturb any reminder's own alarm-trigger state",
             beforeTriggers,
             afterTriggers,
         )
@@ -123,19 +149,22 @@ class NotesControllerAppointmentTest {
     }
 
     @Test
-    fun `appointmentById never resolves a reminder, and itemById never resolves an appointment`() = runBlocking {
+    fun `appointmentById resolves both an event and a task, never a reminder - itemById never resolves either`() = runBlocking {
         val list = NotesController.theList(context)
         val reminder = NotesController.addItem(context, list.id, "a reminder")
-        val appointment = insertAppointment("Dentist")
+        val event = insertAppointment("Dentist")
+        val task = insertAppointment("Submit essay", kind = EventKind.TASK)
 
         assertNull(NotesController.appointmentById(context, reminder.id))
-        assertNull(NotesController.itemById(context, appointment.id))
-        assertEquals("Dentist", NotesController.appointmentById(context, appointment.id)?.text)
+        assertNull(NotesController.itemById(context, event.id))
+        assertNull(NotesController.itemById(context, task.id))
+        assertEquals("Dentist", NotesController.appointmentById(context, event.id)?.text)
+        assertEquals("Submit essay", NotesController.appointmentById(context, task.id)?.text)
         assertEquals("a reminder", NotesController.itemById(context, reminder.id)?.text)
     }
 
     @Test
-    fun `an appointment never appears in the reminder-only stream allItems reads`() = runBlocking {
+    fun `an event never appears in the reminder-only stream allItems reads`() = runBlocking {
         val list = NotesController.theList(context)
         NotesController.addItem(context, list.id, "a reminder")
         insertAppointment("Dentist")
@@ -146,31 +175,45 @@ class NotesControllerAppointmentTest {
     }
 
     @Test
-    fun `findAppointment matches an open appointment by fuzzy title, same shape as findItem`() = runBlocking {
-        insertAppointment("Dentist appointment")
+    fun `findAppointment matches an open TASK by fuzzy title, same shape as findItem`() = runBlocking {
+        insertAppointment("Submit essay", kind = EventKind.TASK)
 
-        val match = NotesController.findAppointment(context, "dentist")
+        val match = NotesController.findAppointment(context, "essay")
         assertTrue(match is ItemMatch.Resolved)
-        assertEquals("Dentist appointment", (match as ItemMatch.Resolved).item.text)
+        assertEquals("Submit essay", (match as ItemMatch.Resolved).item.text)
 
         assertTrue(NotesController.findAppointment(context, "nothing like this") is ItemMatch.NoMatch)
     }
 
     @Test
-    fun `updateAppointment edits title and time, removeAppointment hard-deletes`() = runBlocking {
-        val appointment = insertAppointment("Dentist")
-        val newStart = appointment.startsAt!! + 86_400_000
+    fun `findAppointment never matches an EVENT, even by an exact title - a class can't be a tick target`() = runBlocking {
+        // The bug ticket 08 exists to close: before this narrowing, a voice "mark COSC 3334 done"
+        // would have matched the class by title and ticked it. Now there is nothing to match.
+        insertAppointment("COSC 3334 Intro to Cybersecurity")
+
+        assertTrue(NotesController.findAppointment(context, "COSC 3334") is ItemMatch.NoMatch)
+    }
+
+    @Test
+    fun `updateAppointment edits title and time on either an event or a task, removeAppointment hard-deletes either`() = runBlocking {
+        val event = insertAppointment("Dentist")
+        val newStart = event.startsAt!! + 86_400_000
         val newEnd = newStart + 3_600_000
 
-        assertTrue(NotesController.updateAppointment(context, appointment.id, "Dentist (rescheduled)", newStart, newEnd, false))
-        val updated = NotesController.appointmentById(context, appointment.id)!!
+        assertTrue(NotesController.updateAppointment(context, event.id, "Dentist (rescheduled)", newStart, newEnd, false))
+        val updated = NotesController.appointmentById(context, event.id)!!
         assertEquals("Dentist (rescheduled)", updated.text)
         assertEquals(newStart, updated.startsAt)
 
-        assertTrue(NotesController.removeAppointment(context, appointment.id))
-        assertNull(NotesController.appointmentById(context, appointment.id))
+        assertTrue(NotesController.removeAppointment(context, event.id))
+        assertNull(NotesController.appointmentById(context, event.id))
         // Not a soft delete - the row is genuinely gone, matching removeItem's own unconfigured
         // hard-delete convention for this table (Event's own doc comment).
-        assertNull(CarDatabase.getDatabase(context).eventDao().getById(appointment.id))
+        assertNull(CarDatabase.getDatabase(context).eventDao().getById(event.id))
+
+        val task = insertAppointment("Submit essay", kind = EventKind.TASK)
+        assertTrue(NotesController.updateAppointment(context, task.id, "Submit essay (final)", task.startsAt!!, task.endsAt!!, false))
+        assertTrue(NotesController.removeAppointment(context, task.id))
+        assertNull(NotesController.appointmentById(context, task.id))
     }
 }

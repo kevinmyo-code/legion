@@ -179,21 +179,38 @@ data class Event(
      */
     @ColumnInfo(defaultValue = "0") val createdAt: Long = 0,
     /**
-     * `reminder` or `appointment` ([com.kevin.legion.backend.EventKind]) - v42 -> v43, ticket 11's
-     * 2026-08-27 ruling #1. **This is why the column exists at all**, traced before adding it (a
-     * new Room migration is not free): [com.kevin.legion.notes.NotesController]'s read path used
-     * to read this ENTIRE table unfiltered, so a Notes reminder and a Dates appointment were
-     * indistinguishable the moment they landed in the same table - the 2026-08-26 incident traced
-     * 51 false "missed" marks to exactly that (50 already-deleted todos plus every genuine calendar
-     * appointment, all read back as reminders `AlarmScheduler`'s sweep owned). `getById`/
-     * `getAllActive` stay unfiltered (still used by [com.kevin.legion.backend.EventsReconcile]'s
-     * own diff, which legitimately needs both kinds, and by
-     * [com.kevin.legion.engine.migration.EngineNotesRetirementCopy]'s own occupancy check);
-     * [getActiveByKind] is the query `NotesController` actually reads through. `DEFAULT 'reminder'`
-     * on the additive column mirrors the server's own default (`kind text not null default
-     * 'reminder'`, `supabase/migrations/20260827000200_events_kind.sql`) - the conservative
+     * **WIDENED 2026-09-01 (one-today ticket 08, "events are not todos") from a two-value column
+     * this doc comment used to describe as `reminder` or `appointment`.** That framing answered
+     * "who owns this row, Notes or Dates" and quietly stood in for a different question the app
+     * actually needed answered - "does this row have a completion state at all" - and the two
+     * questions came apart on real data: some Google-imported `appointment` rows were assignments
+     * genuinely completed (a submitted homework), not classes that pass whether or not you engage
+     * with them. Three values now ([com.kevin.legion.backend.EventKind] - see that object's own
+     * class doc for the full account):
+     * - `reminder` - unchanged, user-set, alarm-bearing, completable.
+     * - `event` - passes, never completable, no checkbox anywhere in the UI. Every row that used to
+     *   read `appointment` was reclassified here by [MIGRATION_56_57], with `done`/`doneAt` CLEARED
+     *   (not merely hidden) on every one of them.
+     * - `task` - completable, may carry a due date with no alarm. Nothing writes one yet; Canvas is
+     *   its own ticket.
+     *
+     * v42 -> v43, ticket 11's 2026-08-27 ruling #1, is when the column itself was added. **This is
+     * why the column exists at all**, traced before adding it (a new Room migration is not free):
+     * [com.kevin.legion.notes.NotesController]'s read path used to read this ENTIRE table
+     * unfiltered, so a Notes reminder and a Dates appointment were indistinguishable the moment
+     * they landed in the same table - the 2026-08-26 incident traced 51 false "missed" marks to
+     * exactly that (50 already-deleted todos plus every genuine calendar appointment, all read back
+     * as reminders `AlarmScheduler`'s sweep owned). `getById`/`getAllActive` stay unfiltered (still
+     * used by [com.kevin.legion.backend.EventsReconcile]'s own diff, which legitimately needs every
+     * kind, and by [com.kevin.legion.engine.migration.EngineNotesRetirementCopy]'s own occupancy
+     * check); [getActiveByKind] is the query `NotesController` actually reads through. `DEFAULT
+     * 'reminder'` on the additive column mirrors the server's own default (`kind text not null
+     * default 'reminder'`, `supabase/migrations/20260827000200_events_kind.sql`) - the conservative
      * direction, since an unrecognized row is safer treated as something the app owns than
-     * silently dropped.
+     * silently dropped. **No CHECK constraint exists here** (confirmed against this table's own
+     * `createSql` in `app/schemas/`), which is what let the vocabulary widen with no schema change
+     * beyond the data-only [MIGRATION_56_57] - CLAUDE.md §5's "widening a TEXT-stored enum is not a
+     * migration" rule, applied.
      */
     @ColumnInfo(defaultValue = "'reminder'") val kind: String = "reminder",
     /**
@@ -230,7 +247,7 @@ data class Event(
      * buildEventRow` (one-today ticket 01 deleted that file; the 261 rows it created keep their
      * already-minted [guid] unchanged, per this column's own "never regenerated" rule below), now by
      * `service/LiveToolbox.kt`'s `addAppointment` for a freshly voice-created one - for every
-     * `kind = `[com.kevin.legion.backend.EventKind.APPOINTMENT] row and preserved on every later
+     * `kind = `[com.kevin.legion.backend.EventKind.EVENT] row and preserved on every later
      * update via `copy` - never regenerated for a row
      * that already has one. A `kind = `[com.kevin.legion.backend.EventKind.REMINDER] row (Notes)
      * never has this read - [com.kevin.legion.backend.EventsReconcile]'s Notes branch stays

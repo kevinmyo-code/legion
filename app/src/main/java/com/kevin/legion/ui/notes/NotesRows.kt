@@ -94,7 +94,12 @@ fun DashedHairline() {
  * for** - one-today ticket 01: a local appointment row is always writable (Kevin owns it outright,
  * there is no read-only "someone else's calendar" concept any more) and always a single occurrence
  * (ticket 01's own class doc on [com.kevin.legion.ui.notes.AppointmentEvent]), so there is nothing
- * left to gate. Every GOOGLE row now always offers tick/edit/delete, unconditionally.
+ * left to gate. **Every GOOGLE row still always offers edit/delete, unconditionally - `tick` is the
+ * one exception (one-today ticket 08, "events are not todos", reversing this doc comment's own
+ * former claim that ticking was unconditional too).** A `kind = event` row (renamed from
+ * `appointment`, every row that used to read that value) renders with no checkbox at all -
+ * [InboxRowView.tickable]'s own doc comment has the full account of why - and this composable's
+ * `row.tickable` gate below is what actually enforces it; only a `kind = task` row still ticks.
  * [onEditGoogle]/[onDeleteGoogle]/[onToggle] all write the SAME local `events` table
  * [onEdit]/[onRemove]/[com.kevin.legion.notes.NotesController] do for a LOCAL row - they are kept as
  * separate callbacks only because an appointment's edit dialog needs

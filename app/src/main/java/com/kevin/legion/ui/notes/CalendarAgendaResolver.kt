@@ -34,15 +34,21 @@ import java.util.Locale
  */
 
 /**
- * One appointment (`kind = `[EventKind.APPOINTMENT]) row, shaped for this file's merge/sort logic -
- * carried over verbatim from the retired `calendar/CalendarProvider.kt`'s `GoogleCalendarEvent`
- * (one-today ticket 01) so [mergeAgenda]/[mergeByTime] below needed no change beyond their input's
- * origin. [eventId] is the real, positive [Event.id] now (the old negative-id Room-safety trick in
- * `ui/notes/NotesResolvers.kt` is gone with it - see that file's own doc comment: an appointment
- * lives in the SAME id space as a reminder, just disjoint by construction, [Event.APPOINTMENT_ID_BASE]'s
- * own doc comment). [recurring] is always false: nothing local tracks an `RRULE`, every stored row
- * is already one occurrence (this object's own class doc). [done] is new since the repoint -
- * ticket 02, "ticking an appointment" - a live Google row never had one.
+ * One calendar-table row (`kind = `[EventKind.EVENT] or [EventKind.TASK]), shaped for this file's
+ * merge/sort logic - carried over verbatim from the retired `calendar/CalendarProvider.kt`'s
+ * `GoogleCalendarEvent` (one-today ticket 01) so [mergeAgenda]/[mergeByTime] below needed no change
+ * beyond their input's origin. [eventId] is the real, positive [Event.id] now (the old negative-id
+ * Room-safety trick in `ui/notes/NotesResolvers.kt` is gone with it - see that file's own doc
+ * comment: this row lives in the SAME id space as a reminder, just disjoint by construction,
+ * [Event.APPOINTMENT_ID_BASE]'s own doc comment). [recurring] is always false: nothing local tracks
+ * an `RRULE`, every stored row is already one occurrence (this object's own class doc).
+ *
+ * **[kind] carries [Event.kind] through (ticket 08, "events are not todos")** - the whole reason
+ * this type is not just "an appointment" any more. [done] used to be described as meaning "I
+ * attended" for every row this type could hold; that was only ever true for a kind that has since
+ * been renamed [EventKind.EVENT] and made permanently `false` (an event is never completable - see
+ * [EventKind]'s own class doc). [ui.notes.NotesResolvers.InboxRowView.tickable] is what actually
+ * reads [kind] to decide whether a checkbox may exist at all; [done] itself is not the gate.
  */
 data class AppointmentEvent(
     val eventId: Long,
@@ -53,15 +59,16 @@ data class AppointmentEvent(
     val recurring: Boolean = false,
     val location: String = "",
     val done: Boolean = false,
+    val kind: String = EventKind.EVENT,
 )
 
-/** [Event] -> [AppointmentEvent] - the one mapper every appointment-reading screen/builder funnels
- * through, so a future column on either side has exactly one place to add it. [Event.startsAt] is
- * assumed non-null by every caller of this function (every real appointment row states one - see
- * [AppointmentEvent]'s own doc comment); a null one maps to `0L` rather than crashing, since a
- * malformed row is still worth showing rather than silently dropping (CLAUDE.md's "a line the
- * parser does not recognize is a hard failure, never a skip" - applied here as "render it, oddly,
- * rather than lose it"). */
+/** [Event] -> [AppointmentEvent] - the one mapper every calendar-table-reading screen/builder
+ * funnels through, so a future column on either side has exactly one place to add it.
+ * [Event.startsAt] is assumed non-null by every caller of this function (every real row of this
+ * shape states one - see [AppointmentEvent]'s own doc comment); a null one maps to `0L` rather than
+ * crashing, since a malformed row is still worth showing rather than silently dropping (CLAUDE.md's
+ * "a line the parser does not recognize is a hard failure, never a skip" - applied here as "render
+ * it, oddly, rather than lose it"). */
 fun Event.toAppointmentEvent(): AppointmentEvent = AppointmentEvent(
     eventId = id,
     title = title,
@@ -71,6 +78,7 @@ fun Event.toAppointmentEvent(): AppointmentEvent = AppointmentEvent(
     recurring = false,
     location = location.orEmpty(),
     done = done,
+    kind = kind,
 )
 
 /**
