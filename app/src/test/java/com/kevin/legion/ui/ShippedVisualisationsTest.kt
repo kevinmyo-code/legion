@@ -65,18 +65,15 @@ class ShippedVisualisationsTest {
                 "FleetUiState.milesSparkline and no composable reads it.",
             knownMissing = true,
         ),
+        // The third ticket-17 entry ("ui/TodayScreen.kt", "DeckMeter" - the INTAKE hero's
+        // calorie-pace meter, already dropped by command-center ticket 01 before this registry
+        // existed) was REMOVED, not left knownMissing, when `ui/TodayScreen.kt` itself was deleted
+        // 2026-09-01 (one-today ticket 07): the "registry names real files" test below checks EVERY
+        // entry's file exists regardless of knownMissing, so a deleted screen has to leave the
+        // registry, not just stay flagged. The meter itself was already, and remains, unharmed -
+        // BudgetSection.kt still renders one for the ledger pace tick, and DeckMeter's own
+        // composable is untouched.
         // --- visualisations that ARE rendered, and must stay that way ---
-        Viz(
-            "ui/TodayScreen.kt", "DeckMeter",
-            "the INTAKE hero's calorie-pace meter - deliberately dropped by command-center ticket " +
-                "01 (`.scratch/command-center/issues/01-home-command-center.md`), which demotes " +
-                "INTAKE from Today's hero pane to a plain hero/caption HALF tile (buildIntakeTile), " +
-                "the same shape BodyScreen's own demoted INTAKE/SLEEP tiles already use with no " +
-                "meter of their own. The meter itself is unharmed - BudgetSection.kt still renders " +
-                "one for the ledger pace tick, and DeckMeter's own composable is untouched - only " +
-                "Today stopped being one of its call sites.",
-            knownMissing = true,
-        ),
     )
 
     private fun sourceRoot(): File {

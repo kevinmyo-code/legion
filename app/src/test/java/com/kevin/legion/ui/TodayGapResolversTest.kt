@@ -364,8 +364,9 @@ class TodayGapResolversTest {
     @Test
     fun `CRED tile - uncategorised spend is not counted in the hero figure`() {
         // Kevin 2026-08-15: spend is categorised lines only. A month holding ONLY uncategorised
-        // rows reads a real $0 - not "NOT LOGGED", which would claim nothing was ever imported -
-        // and TodayScreen states the excluded figure beside the tile in words.
+        // rows reads a real $0 - not "NOT LOGGED", which would claim nothing was ever imported.
+        // The now-deleted `ui/TodayScreen.kt` used to state the excluded figure beside the tile in
+        // words (buildCredTile's own doc comment has the current, post-deletion accounting).
         val tile = buildCredTile(budgetFixture(emptyList(), uncategorizedCents = 5_000L), "AUG")
         assertEquals("$0", tile.hero)
         assertEquals("spent so far", tile.caption)

@@ -43,6 +43,12 @@ fun SettingsScreen(
     onOpenConnections: () -> Unit,
     onOpenDataPrivacy: () -> Unit,
     onOpenPermissionsDiagnostics: () -> Unit,
+    // The widget pager's own hands path (one-today ticket 07, 2026-09-01) - was a "DASHBOARD"
+    // button on the now-deleted `ui/TodayScreen.kt` (2026-08-25 revert of cutover 5's home flip);
+    // rehomed here rather than dropped, so the pager/widgets/generic engine screens stay reachable
+    // (ADR 0035) and the seven on-device grid-feel rounds behind them are not orphaned. Defaults to
+    // a no-op, matching this screen's other `onOpen*` callbacks.
+    onOpenDashboard: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
 
@@ -103,6 +109,16 @@ fun SettingsScreen(
                 label = "Permissions and diagnostics",
                 status = "Calls, location, and diagnostic probes.",
                 onClick = onOpenPermissionsDiagnostics,
+            )
+
+            Spacer(Modifier.height(8.dp))
+            // The widget pager - opt-in, field-tested and reverted as HOME on 2026-08-25 (see
+            // LegionRoute.DASHBOARD's own doc comment). A settings row is the honest weight for an
+            // alternate surface Kevin chose not to make the app's home.
+            SettingsNavRow(
+                label = "Dashboard",
+                status = "The widget pager - an alternate, opt-in view of your aspects.",
+                onClick = onOpenDashboard,
             )
 
             Spacer(Modifier.height(24.dp))

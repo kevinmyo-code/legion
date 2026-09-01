@@ -11,12 +11,14 @@ package com.kevin.legion.ui
  * selected-day agenda as internal Compose state - "view B" - rather than a nav argument, same
  * convention this file's own doc comment already establishes below), [METERS] is the new "C" tab -
  * a dashboard of at-a-glance meters that tap THROUGH to [BODY]/[MONEY]/[FLEET]/[NOTES]/etc, which
- * is what "those we tap through from view C" means - and [SETTINGS] is unchanged. [TODAY], [MONEY],
+ * is what "those we tap through from view C" means - and [SETTINGS] is unchanged. [MONEY],
  * [BODY], [FLEET], [NOTES] and every sub-route under them are **NOT deleted** - they stay registered
  * [NavHost] destinations, reachable as drill-downs from [METERS] and by every existing deep link
  * ([EXTRA_ROUTE], [ReminderAlarmReceiver], `onOpenAlarm`); they simply stop being tabs a driver
- * lands on directly. [TodayScreen] itself stays registered pending a further call on whether it has
- * any role left once [CalendarScreen] and [MetersScreen] both exist.
+ * lands on directly. `TODAY` itself, and the `ui/TodayScreen.kt` it named, were deleted 2026-09-01
+ * (one-today ticket 07) once every survivor it carried had a rehomed caller - [CalendarScreen]'s day
+ * view (the plan checklist), [MetersScreen] (weather/area/newsletters/media), a Settings row
+ * (the DASHBOARD button), and [CALENDAR] itself (`onOpenAlarm`'s target).
  *
  * **Five top-level tabs, 2026-08-07 to 2026-09-01 (superseded above, kept for its own history)**
  * (was four - ticket 07's original resolution §5 shape is superseded below, not amended in
@@ -29,17 +31,17 @@ package com.kevin.legion.ui
  * destination and HOME hard key's target; REVERTED 2026-08-25** (see that doc's postscript) -
  * Kevin field-tested the pager overnight and ruled "revert everything to classic". `today/` was the
  * start destination again, exactly as before cutover 5, until the 2026-09-01 calendar-home cutover
- * above made [CALENDAR] the start destination instead. `dashboard/` (the widget pager) STAYS IN THE
- * CODEBASE, reachable as an opt-in surface via a "DASHBOARD" button on [TODAY] (mirroring how the
- * pager's own now-removed "CLASSIC" button pointed the other way) - it is not deleted, only
+ * above made [CALENDAR] the start destination instead, and one-today ticket 07 deleted `today/`
+ * outright once its survivors were all rehomed (see above). `dashboard/` (the widget pager) STAYS IN
+ * THE CODEBASE, reachable as an opt-in surface via a "Dashboard" row in [SETTINGS] (moved off
+ * `today/`'s own now-deleted "DASHBOARD" button by that same ticket) - it is not deleted, only
  * demoted, so the pager/widgets/engine screens stay a hands path (ADR 0035) and the seven on-device
  * grid-feel rounds are not orphaned.
  *
  * ```
  * calendar/    <- start destination (2026-09-01); month grid + day view, no sub-routes
- * meters/      <- the third tab; taps through to today/money/body/fleet/notes/pantry
- * today/       <- kept registered, no longer a tab or a hard-key target
- * dashboard/   <- the widget pager; opt-in, reached from today/'s "DASHBOARD" button
+ * meters/      <- the third tab; taps through to money/body/fleet/notes/pantry
+ * dashboard/   <- the widget pager; opt-in, reached from a Settings row
  * money/       + money/import        <- was ledger/import
  *              + money/pantry        <- was the `pantry` tab (PantryScreen), now a sub-route
  *              + money/pantry/import <- was pantry/import
@@ -66,18 +68,19 @@ object LegionRoute {
      * grid primary. tapping a day on the month opens up view B") - see [com.kevin.legion.ui.CalendarScreen].
      * No sub-routes: the selected day's agenda ("view B") is internal Compose state inside that
      * screen, same convention this file's own class doc establishes for [NOTES]'s LISTS | CALENDAR
-     * toggle. Replaces [TODAY] as `startDestination` and as the shell's HOME target; [TODAY] itself
-     * is not deleted (see its own doc comment).
+     * toggle. Replaced `TODAY` as `startDestination` and as the shell's HOME target; `TODAY` and the
+     * screen it named were deleted outright 2026-09-01 (one-today ticket 07), once its survivors
+     * were all rehomed - see this file's class doc.
      */
     const val CALENDAR = "calendar"
 
     /**
      * The third tab ("C", Kevin verbatim: "C as another tab... those we tap through from view C the
      * meters"), 2026-09-01 - see [com.kevin.legion.ui.MetersScreen]. A dashboard of at-a-glance
-     * meters that tap through to [BODY]/[MONEY]/[FLEET]/[NOTES]/[MONEY_PANTRY]/[TODAY], the same
-     * "every pane taps through to its module" rule [TODAY]'s own doc comment already applies. Built
-     * as a skeleton in the calendar-home ticket; a follow-up fills the meter bodies from
-     * `buildIntakeTile`/`buildCredTile`/`buildFleetTile` etc.
+     * meters that tap through to [BODY]/[MONEY]/[FLEET]/[NOTES]/[MONEY_PANTRY], the same
+     * "every pane taps through to its module" rule the deleted `ui/TodayScreen.kt` already applied.
+     * Built as a skeleton in the calendar-home ticket; one-today ticket 07 added weather/area/
+     * newsletters/the media mini-bar, rehomed off that same deleted screen.
      */
     const val METERS = "meters"
 
@@ -86,24 +89,14 @@ object LegionRoute {
      * [composable] destination here rather than a second Activity. Cutover 5
      * (`docs/architecture/cutover5-2026-08-24.md`) briefly made this the [NavHost]'s
      * `startDestination` and the HOME hard key's target; **reverted 2026-08-25** after Kevin lived
-     * with it overnight and ruled "revert everything to classic" - [TODAY] is the start destination
-     * and HOME hard key's target again. This route is NOT deleted: it stays reachable as an opt-in
-     * surface from [TODAY]'s own "DASHBOARD" button, so the pager/widgets/generic engine screens
-     * remain a hands path (ADR 0035) rather than orphaned code.
+     * with it overnight and ruled "revert everything to classic" - `today/` was the start destination
+     * and HOME hard key's target again, until the 2026-09-01 calendar-home cutover made [CALENDAR]
+     * both instead. This route is NOT deleted: it stays reachable as an opt-in surface from a
+     * "Dashboard" row in [SETTINGS] (moved off `today/`'s own now-deleted "DASHBOARD" button by
+     * one-today ticket 07, 2026-09-01, when that screen was deleted), so the pager/widgets/generic
+     * engine screens remain a hands path (ADR 0035) rather than orphaned code.
      */
     const val DASHBOARD = "dashboard"
-
-    /**
-     * Was the start destination and the HOME hard key's target from 2026-08-25 (cutover 5's revert)
-     * until the 2026-09-01 calendar-home cutover made [CALENDAR] both instead - see [CALENDAR]'s own
-     * doc comment. **Kept registered, not deleted**: every deep link that already targets it
-     * (`EXTRA_ROUTE`, `onOpenAlarm`) still resolves, [onOpenCategory]'s Money drilldown and the
-     * key-settings advisory row still fire from wherever [TodayScreen] itself is still reached, and
-     * its own "DASHBOARD" button still opens [DASHBOARD] as an opt-in surface. Whether this screen
-     * keeps a role once [CalendarScreen] and [MetersScreen] both exist is an open question the
-     * calendar-home ticket did not resolve - left as-is rather than guessed at.
-     */
-    const val TODAY = "today"
 
     const val BODY = "body"
 
@@ -268,11 +261,13 @@ object LegionRoute {
     const val SETTINGS_HELP = "settings/help"
 
     /** The three top-level destinations, in display order, as of the 2026-09-01 calendar-home
-     * cutover (Kevin, verbatim, [CALENDAR]'s own doc comment) - was six ([TODAY], [MONEY], [BODY],
+     * cutover (Kevin, verbatim, [CALENDAR]'s own doc comment) - was six (`TODAY`, [MONEY], [BODY],
      * [FLEET], [NOTES], [SETTINGS]; before that, the four-tab shape [CALENDAR]'s class doc still
-     * records). [MONEY]/[BODY]/[FLEET]/[NOTES]/[TODAY] are not gone, only demoted off this list -
-     * see each one's own doc comment. Assistant is still NOT one of them - it's a mode, not a
-     * place (original resolution §5, still true). */
+     * records). [MONEY]/[BODY]/[FLEET]/[NOTES] are not gone, only demoted off this list - see each
+     * one's own doc comment. `TODAY` is gone outright: one-today ticket 07 (2026-09-01) deleted the
+     * screen and the constant once every survivor on it was rehomed - see this file's class doc.
+     * Assistant is still NOT one of them - it's a mode, not a place (original resolution §5, still
+     * true). */
     val TOP_LEVEL = listOf(CALENDAR, METERS, SETTINGS)
 
     /**

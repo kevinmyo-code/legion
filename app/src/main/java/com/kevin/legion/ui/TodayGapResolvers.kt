@@ -327,9 +327,15 @@ fun compactMoneyHero(cents: Long, currency: LedgerCurrency): String {
  *
  * **The exclusion's own words are NOT in [caption]** - a HALF tile's caption is one ellipsised
  * line, so a sentence appended there would be silently truncated, which is worse than not stating
- * it. [com.kevin.legion.ui.TodayScreen]'s CRED tile renders
- * [com.kevin.legion.ledger.uncategorizedExcludedSentence] in the tile's own `extra` slot instead,
- * and [com.kevin.legion.ui.LedgerScreen]'s full-width SPEND pane states it under the chart.
+ * it. The now-deleted `ui/TodayScreen.kt`'s CRED tile used to render
+ * [com.kevin.legion.ledger.uncategorizedExcludedSentence] in the tile's own `extra` slot for this
+ * reason; [com.kevin.legion.ui.LedgerScreen]'s full-width SPEND pane still states it under the
+ * chart. **[com.kevin.legion.ui.MetersScreen]'s own Money pane, which replaced the half-tile as
+ * this app's compact CRED reading (calendar-home cutover, 2026-08-31, before this screen was
+ * deleted), does not currently restate the exclusion anywhere** - noted while rehoming
+ * `TodayScreen`'s other survivors (one-today ticket 07), not fixed here: this ticket's scope is the
+ * six things that lived ONLY on `TodayScreen`, and this exclusion sentence was already absent from
+ * its replacement before that ticket started.
  *
  * **The incomplete-month caption is a DATE, not a warning (2026-08-18, Kevin).** It used to read
  * `COVERAGE GAP` for any `!budget.isComplete` month - true, but not what he was asking. He already

@@ -17,21 +17,23 @@ import org.junit.Test
  * three top-level tabs now, [LegionRoute.CALENDAR]/[LegionRoute.METERS]/[LegionRoute.SETTINGS],
  * superseding the five-tab shape these pins used to check (itself a supersession of a four-tab
  * shape, and before that the reverted cutover-5 pager-as-HOME flip - see [LegionRoute]'s class doc
- * for the full history). [LegionRoute.TODAY]/[LegionRoute.MONEY]/[LegionRoute.BODY]/
- * [LegionRoute.FLEET]/[LegionRoute.NOTES] are demoted off [LegionRoute.TOP_LEVEL], not deleted -
- * every seeded aspect's "OPEN FULL SCREEN" button must still resolve to a route this file actually
- * declares, which is what the aspect-legacy-route tests below still check regardless of which
- * routes are tabs.
+ * for the full history). [LegionRoute.MONEY]/[LegionRoute.BODY]/[LegionRoute.FLEET]/
+ * [LegionRoute.NOTES] are demoted off [LegionRoute.TOP_LEVEL], not deleted - every seeded aspect's
+ * "OPEN FULL SCREEN" button must still resolve to a route this file actually declares, which is
+ * what the aspect-legacy-route tests below still check regardless of which routes are tabs.
+ * **`LegionRoute.TODAY` itself is gone, not merely demoted** - one-today ticket 07 (2026-09-01)
+ * deleted `ui/TodayScreen.kt` and the `TODAY` constant once every survivor it carried was rehomed
+ * (see [LegionRoute]'s class doc), so this suite no longer asserts anything about it.
  */
 class LegionRouteTest {
 
     @Test
-    fun `CALENDAR and METERS are the top-level tabs, the five demoted routes are not`() {
+    fun `CALENDAR and METERS are the top-level tabs, the four demoted routes are not`() {
         assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.CALENDAR))
         assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.METERS))
         assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.SETTINGS))
         assertEquals(3, LegionRoute.TOP_LEVEL.size)
-        for (demoted in listOf(LegionRoute.TODAY, LegionRoute.MONEY, LegionRoute.BODY, LegionRoute.FLEET, LegionRoute.NOTES)) {
+        for (demoted in listOf(LegionRoute.MONEY, LegionRoute.BODY, LegionRoute.FLEET, LegionRoute.NOTES)) {
             assertTrue("$demoted must stay a real route, just not a tab", !LegionRoute.TOP_LEVEL.contains(demoted))
         }
     }
@@ -40,10 +42,10 @@ class LegionRouteTest {
     fun `topLevelOf resolves CALENDAR and METERS, not a demoted route`() {
         assertEquals(LegionRoute.CALENDAR, LegionRoute.topLevelOf(LegionRoute.CALENDAR))
         assertEquals(LegionRoute.METERS, LegionRoute.topLevelOf(LegionRoute.METERS))
-        // TODAY is a real, standalone route, not a CALENDAR/METERS sub-route (no "calendar/" or
+        // MONEY is a real, standalone route, not a CALENDAR/METERS sub-route (no "calendar/" or
         // "meters/" prefix) - it correctly lights no tab at all now, the same shape DASHBOARD and
-        // DRIVING already lit nothing under the five-tab shape.
-        assertNull(LegionRoute.topLevelOf(LegionRoute.TODAY))
+        // DRIVING already lit nothing under the five-tab shape (and TODAY did too, before one-today
+        // ticket 07 deleted it outright).
         assertNull(LegionRoute.topLevelOf(LegionRoute.MONEY))
     }
 

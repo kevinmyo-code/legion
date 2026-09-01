@@ -846,10 +846,14 @@ fun DeckSectionRule(label: String, modifier: Modifier = Modifier) {
  *    [com.kevin.legion.ledger.LedgerController.quarantinedCount] into the same `STATUS_POLL_MS`
  *    poll that already refreshed `shellStatusLine`, splits that function's old single string into
  *    `left` / `keySegment` via the pure `formatShellStatusLine`, and passes both plus the live
- *    count through to this composable, with `onOpenAlarm` navigating to `LegionRoute.TODAY`
- *    (ticket 04 answer §6: "tapping the segment navigates to TODAY", where the ALERTS pane lists
- *    every alarm - not to Money, since several ALARM rows can be live at once and ALERTS is the
- *    surface that owns the list, not any one aspect). An active vehicle fault (DTC) is ticket 04's
+ *    count through to this composable, with `onOpenAlarm` originally navigating to `LegionRoute.TODAY`
+ *    (ticket 04 answer §6: "tapping the segment navigates to TODAY", where the ALERTS pane listed
+ *    every alarm - not to Money, since several ALARM rows can be live at once and ALERTS was the
+ *    surface that owned the list, not any one aspect). That ALERTS pane was retired by Kevin on
+ *    2026-08-22 ("alerts tab in home is useless. retire it. delete") and `ui/TodayScreen.kt` itself
+ *    was deleted 2026-09-01 (one-today ticket 07) - `onOpenAlarm` now navigates to
+ *    `LegionRoute.CALENDAR`, landing a tapped alarm on the day its reminder actually belongs to.
+ *    An active vehicle fault (DTC) is ticket 04's
  *    OTHER named ALARM example and is deliberately NOT a second source feeding [alarmCount] here -
  *    see `IngestedFileDao.countQuarantined`'s own doc for why (a DTC read is a live OBD scan, not
  *    persisted state this poll can cheaply add).

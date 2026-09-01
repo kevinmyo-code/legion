@@ -474,10 +474,14 @@ private fun LegionShell(
                         // alarm pill instead of folding into [left].
                         keySegment = shellStatus.parts.keySegment,
                         alarmCount = shellStatus.alarmCount,
-                        // Ticket 04 answer §6: "tapping the segment navigates to TODAY" - the
-                        // ALERTS pane there lists every alarm, not just this one; see
+                        // Ticket 04 answer §6 originally sent this to TODAY ("tapping the segment
+                        // navigates to TODAY" - the ALERTS pane there listed every alarm). That pane
+                        // was retired by Kevin on 2026-08-22 ("alerts tab in home is useless. retire
+                        // it. delete") and TodayScreen itself was deleted 2026-09-01 (one-today
+                        // ticket 07) - retargeted to CALENDAR, which lands a tapped alarm on the day
+                        // its reminder actually belongs to (that screen's own day view); see
                         // [ShellStatus]'s own doc for why Money is not the target.
-                        onOpenAlarm = { navController.navigate(LegionRoute.TODAY) { launchSingleTop = true } },
+                        onOpenAlarm = { navController.navigate(LegionRoute.CALENDAR) { launchSingleTop = true } },
                         // Ticket 07 answer §1, "the cursor yields": solid, not blinking, for
                         // exactly as long as FLEET's own uplink sweep is genuinely running -
                         // see [fleetSweepActive]'s own doc above for how that boolean gets here -
@@ -547,47 +551,24 @@ private fun LegionShell(
                     onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
                     onOpenNotes = { navController.navigate(LegionRoute.NOTES) { launchSingleTop = true } },
                     onOpenPantry = { navController.navigate(LegionRoute.MONEY_PANTRY) { launchSingleTop = true } },
-                )
-            }
-            composable(LegionRoute.TODAY) {
-                TodayScreen(
-                    onOpenNotes = {
-                        navController.navigate(LegionRoute.NOTES) { launchSingleTop = true }
-                    },
-                    // The pager's own hands path (2026-08-25 revert) - opt-in now, not the app's
-                    // home; see LegionRoute.DASHBOARD's own doc comment for why the widget pager
-                    // stays reachable rather than being deleted with the rest of cutover 5's flip.
-                    onOpenDashboard = {
-                        navController.navigate(LegionRoute.DASHBOARD) { launchSingleTop = true }
-                    },
-                    onOpenCategory = { category ->
-                        pendingMoneyCategory = category
-                        pendingMoneyCategoryNonce++
-                        navController.navigate(LegionRoute.MONEY) { launchSingleTop = true }
-                    },
-                    // Ticket 06 answer #4: every home pane taps through to its module.
-                    // Wired at the ticket-15 merge; the build agent stopped at the
-                    // screen boundary and named this gap rather than editing here.
-                    onOpenBody = {
-                        navController.navigate(LegionRoute.BODY) { launchSingleTop = true }
-                    },
-                    onOpenFleet = {
-                        navController.navigate(LegionRoute.FLEET) { launchSingleTop = true }
-                    },
-                    // Ticket 16: ALERTS' "no Gemini key" advisory row - the same
-                    // settings/key screen KeyScreen already renders, reached everywhere
-                    // else in the app only through Settings' SETUP stamp.
-                    onOpenKeySettings = {
-                        navController.navigate(LegionRoute.SETTINGS_KEY) { launchSingleTop = true }
-                    },
-                    // Command-center ticket 01: the media mini-bar's own tap-through - the media
-                    // control panel command-center ticket 04 built, nested under Spotify's own
-                    // settings route (see LegionRoute.SETTINGS_SPOTIFY_MEDIA's own doc comment).
+                    // The media mini-bar's own tap-through (rehomed from the deleted
+                    // `ui/TodayScreen.kt`, one-today ticket 07) - the media control panel
+                    // command-center ticket 04 built, nested under Spotify's own settings route
+                    // (see LegionRoute.SETTINGS_SPOTIFY_MEDIA's own doc comment).
                     onOpenMedia = {
                         navController.navigate(LegionRoute.SETTINGS_SPOTIFY_MEDIA) { launchSingleTop = true }
                     },
                 )
             }
+            // `ui/TodayScreen.kt`, its composable(LegionRoute.TODAY) registration, and the TODAY
+            // route constant were all deleted 2026-09-01 (one-today ticket 07) - every survivor on
+            // that screen had a live caller and a real reason to exist, so each was rehomed rather
+            // than dropped: the agenda hero and INTAKE/BIO/LOG/CRED/FLEET half-tiles had already
+            // moved to CalendarScreen/MetersScreen in the calendar-home cutover; this ticket rehomed
+            // the remaining six (GoalChecklistPanel -> CalendarScreen's day view,
+            // weather/AreaCard/newsletters/MediaMiniBar -> MetersScreen, the DASHBOARD button ->
+            // a Settings row, onOpenAlarm's target -> CALENDAR, just below). See [LegionRoute]'s own
+            // class doc for the full route lineage.
 
             composable(LegionRoute.BODY) {
                 BodyScreen()
@@ -666,6 +647,9 @@ private fun LegionShell(
                     onOpenDataPrivacy = { navController.navigate(LegionRoute.SETTINGS_DATA_PRIVACY) },
                     onOpenPermissionsDiagnostics = { navController.navigate(LegionRoute.SETTINGS_PERMISSIONS_DIAGNOSTICS) },
                     onOpenVoiceGuide = { navController.navigate(LegionRoute.SETTINGS_HELP) },
+                    // The widget pager's own hands path (rehomed from the deleted
+                    // `ui/TodayScreen.kt`'s "DASHBOARD" button, one-today ticket 07).
+                    onOpenDashboard = { navController.navigate(LegionRoute.DASHBOARD) { launchSingleTop = true } },
                 )
             }
             // The five subscreens (command-center ticket 02) - each takes only the granular

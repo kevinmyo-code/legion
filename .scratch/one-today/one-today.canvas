@@ -59,6 +59,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "9e212cadd6ba3789",
+      "type": "file",
+      "file": ".scratch/one-today/issues/07-what-becomes-of-todayscreen.md",
+      "x": 0,
+      "y": 900,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": []

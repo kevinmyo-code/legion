@@ -67,21 +67,24 @@ import kotlinx.coroutines.launch
  *
  * [onOpenRoute] is how this composable reaches destinations OUTSIDE itself without owning a
  * [androidx.navigation.NavHostController] of its own - the same shape every other top-level screen
- * in this app's `NavHost` already uses (see `TodayScreen`'s `onOpenBody`/`onOpenFleet` etc.). One
- * caller today: each aspect page's "OPEN FULL SCREEN" button for an aspect that still has a richer
- * legacy screen ([legacyRouteForAspect]) - ingestion UIs (ledger/pantry import), OBD live views,
- * and other capabilities the generic engine widgets do not yet carry.
+ * in this app's `NavHost` already uses (see [com.kevin.legion.ui.MetersScreen]'s `onOpenBody`/
+ * `onOpenFleet` etc.). One caller today: each aspect page's "OPEN FULL SCREEN" button for an aspect
+ * that still has a richer legacy screen ([legacyRouteForAspect]) - ingestion UIs (ledger/pantry
+ * import), OBD live views, and other capabilities the generic engine widgets do not yet carry.
  *
  * **Demoted from HOME to an opt-in surface 2026-08-25** - Kevin field-tested this pager as the
  * app's home overnight and ruled "kill it, revert everything to classic"
  * (`docs/architecture/cutover5-2026-08-24.md`'s postscript). This composable and every capability
  * behind it (the pager itself, the eight widget kinds, the DeckGrid edit mode, per-aspect pages)
  * stays in the codebase unchanged - only its reachability changed, from HOME/start-destination down
- * to a single "DASHBOARD" button on [com.kevin.legion.ui.TodayScreen] - so the seven on-device
- * grid-feel rounds this pager went through are not orphaned and the pager remains a real hands
- * path to the aspect engine (ADR 0035). The HOME page's own "CLASSIC" button (the mirror-image
- * hands path back to Today) is REMOVED - pointless now that TODAY is home again, one tap away by
- * the back button on anyone who reaches this page at all.
+ * to a single "DASHBOARD" button on `ui/TodayScreen.kt` - and then, when that screen was deleted
+ * 2026-09-01 (one-today ticket 07), down again to a "Dashboard" row in
+ * [com.kevin.legion.ui.SettingsScreen] - so the seven on-device grid-feel rounds this pager went
+ * through are not orphaned and the pager remains a real hands path to the aspect engine (ADR 0035).
+ * The HOME page's own "CLASSIC" button (the mirror-image hands path back to Today) was REMOVED at
+ * cutover 5's revert - pointless once TODAY was home again, one tap away by the back button on
+ * anyone who reached this page at all; TODAY itself is gone now too (one-today ticket 07), so this
+ * pager's own back button lands on whatever the caller's own back stack holds instead.
  */
 @Composable
 fun WidgetPagerRoot(onOpenRoute: (String) -> Unit = {}) {

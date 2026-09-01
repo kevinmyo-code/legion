@@ -41,6 +41,7 @@ import com.kevin.legion.ui.notes.formatDateTime
 import com.kevin.legion.ui.notes.toAppointmentEvent
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlinx.coroutines.launch
@@ -69,6 +70,12 @@ import kotlinx.coroutines.launch
  * recurring series" an open design question, not something this ticket may invent an answer to. No
  * agenda source in this screen's day view is left with a checkbox and no write path: every row here
  * is a real [ListItem] or a real [Event], and both already have one.
+ *
+ * **View B also carries the day's plan checklist when, and only when, the selected day is TODAY**
+ * (rehomed from the deleted `ui/TodayScreen.kt`'s HERO pane, one-today ticket 07, 2026-09-01) -
+ * [com.kevin.legion.ui.goals.GoalChecklistPanel], `compact = true`, unchanged from its own build.
+ * A checklist of "today's items" sitting under a day view for a date in March would be nonsense, so
+ * the pane is omitted entirely on any other day rather than rendered empty.
  */
 @Composable
 fun CalendarScreen() {
@@ -225,6 +232,17 @@ fun CalendarScreen() {
             // [NotesController.tick]/[tickAppointment] pair [InboxRow]'s own `onToggle` would have.
             TextButton(onClick = { selectedDayStart = null }) {
                 Text("BACK TO MONTH", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+            }
+            // The day's plan checklist (rehomed from the deleted `ui/TodayScreen.kt`'s HERO pane,
+            // one-today ticket 07) - ONLY on today's own day view: a checklist of "today's items" is
+            // nonsense sitting under a day in March, so a day view that is not today omits this pane
+            // entirely rather than showing it empty (this ticket's own instruction).
+            val todayStart = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
+            if (day == todayStart) {
+                com.kevin.legion.ui.goals.GoalChecklistPanel(
+                    compact = true,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                )
             }
             val notDone = dayRows.filter { !it.done }
             val done = dayRows.filter { it.done }

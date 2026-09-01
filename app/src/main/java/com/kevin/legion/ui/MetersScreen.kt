@@ -1,13 +1,19 @@
 package com.kevin.legion.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -40,6 +47,8 @@ import com.kevin.legion.service.QueryAggregation
 import com.kevin.legion.service.QueryGrouping
 import com.kevin.legion.service.QuerySource
 import com.kevin.legion.service.QueryWindow
+import com.kevin.legion.sitrep.SitrepBuilder
+import com.kevin.legion.sitrep.SitrepModule
 import com.kevin.legion.ui.common.DeckMeter
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRow
@@ -48,11 +57,15 @@ import com.kevin.legion.ui.common.DeckTagStyle
 import com.kevin.legion.ui.common.GapSign
 import com.kevin.legion.ui.fleet.DueRowView
 import com.kevin.legion.ui.fleet.buildDueRows
+import com.kevin.legion.ui.media.MediaMiniBar
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
+import com.kevin.legion.ui.world.AreaCard
+import com.kevin.legion.util.clockTime
 import com.kevin.legion.vehicle.FleetEngineStore
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
+import com.kevin.legion.weather.WeatherController
 import kotlinx.coroutines.launch
 import java.time.YearMonth
 
@@ -63,7 +76,8 @@ import java.time.YearMonth
  * are gone; CALENDAR/METERS/SETTINGS is what is left). Every meter here is both a READING (the same
  * pure builders `ui/TodayGapResolvers.kt` already computes and unit-tests for HOME/BIO/FLEET) and a
  * DOOR - tapping it opens the full screen that owns the underlying data, exactly the "every home
- * pane taps through to its module" convention [TodayScreen] already established.
+ * pane taps through to its module" convention the now-deleted `ui/TodayScreen.kt` already
+ * established.
  *
  * **No new computation lands here beyond breach detection.** [buildMeterBreaches] is the one new
  * pure function this file adds - see its own doc comment for why "over budget" / "overdue" have to
@@ -75,6 +89,15 @@ import java.time.YearMonth
  * "introduce no new visual language" read literally): no [com.kevin.legion.ui.common.GapRow], which
  * is the OLDER pre-cyberdeck row vocabulary mission-control ticket 16 already superseded on every
  * HOME/BIO/FLEET tile this screen otherwise mirrors.
+ *
+ * **Weather/[AreaCard], the newsletters digest and [MediaMiniBar] rehomed here (one-today ticket
+ * 07, 2026-09-01) from the deleted `ui/TodayScreen.kt`**, below the meters this screen already had -
+ * this screen was already the busiest in the app, so all three land BELOW the existing panes rather
+ * than displacing "Needs you" from the top. The weather line is the one addition that needed real
+ * work: [AreaCard]/the newsletters card/[MediaMiniBar] are each self-contained (own `remember`ed
+ * state, own load), a call-site move like the meters above; the plain weather sentence
+ * ([weatherLine]) has no composable of its own and needs [MetersUiState] to carry
+ * [WeatherController.WeatherInfo] the same way `TodayUiState.weather` used to.
  */
 @Composable
 fun MetersScreen(
@@ -83,6 +106,10 @@ fun MetersScreen(
     onOpenFleet: () -> Unit,
     onOpenNotes: () -> Unit,
     onOpenPantry: () -> Unit,
+    // The media mini-bar's own tap-through (rehomed from `ui/TodayScreen.kt`'s identical
+    // parameter) - the media control panel nested under `settings/spotify/media`. Defaults to a
+    // no-op, matching every other `onOpen*` default this screen and the deleted screen both used.
+    onOpenMedia: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(MetersUiState()) }
@@ -121,6 +148,15 @@ fun MetersScreen(
         val persistentOpenCount = NotesController.openItemCount(context)
         val groceriesOpenCount = GroceryController.items(context).count { !it.done }
 
+        // Weather (rehomed from `ui/TodayScreen.kt`, one-today ticket 07): the same
+        // WeatherController the foreground service and the sitrep already read - `refresh()` is a
+        // no-op past its own 30-minute TTL and returns the cached value with no GPS fix, so this
+        // never blocks this screen's load on a fresh network round trip; see TodayScreen's own
+        // (deleted) comment on why `refresh()`, not `current()` alone, is what makes a fresh
+        // install's first view of this screen actually show weather instead of waiting on the
+        // service.
+        val weather = WeatherController.refresh()
+
         state = MetersUiState(
             loading = false,
             mealGap = mealGap,
@@ -130,11 +166,12 @@ fun MetersScreen(
             maintenanceUnknownCount = maintenanceUnknownCount,
             persistentOpenCount = persistentOpenCount,
             groceriesTripOpenCount = groceriesOpenCount,
+            weather = weather,
             nowMs = now,
         )
     }
 
-    MetersContent(state, onOpenBody, onOpenMoney, onOpenFleet, onOpenNotes, onOpenPantry)
+    MetersContent(state, onOpenBody, onOpenMoney, onOpenFleet, onOpenNotes, onOpenPantry, onOpenMedia)
 }
 
 /** One-shot suspend reads only - see [MetersScreen]'s own `LaunchedEffect`. [connectionState] is
@@ -150,6 +187,10 @@ data class MetersUiState(
     val maintenanceUnknownCount: Int = 0,
     val persistentOpenCount: Int = 0,
     val groceriesTripOpenCount: Int = 0,
+    /** Rehomed from `TodayUiState.weather` (one-today ticket 07) - `null` until the first
+     * successful Open-Meteo fetch, rendered by [weatherLine] as its own honest sentence rather
+     * than a blank line. */
+    val weather: WeatherController.WeatherInfo? = null,
     val nowMs: Long = System.currentTimeMillis(),
 )
 
@@ -162,6 +203,7 @@ fun MetersContent(
     onOpenFleet: () -> Unit,
     onOpenNotes: () -> Unit,
     onOpenPantry: () -> Unit,
+    onOpenMedia: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     val connectionState by ObdBluetoothManager.connectionState.collectAsStateWithLifecycle()
@@ -480,6 +522,33 @@ fun MetersContent(
                 },
             )
         }
+
+        // ---------------------------------------------------------------- WEATHER / AREA
+        // Rehomed from `ui/TodayScreen.kt`'s CONTEXT STRIP (one-today ticket 07) - "where am I, and
+        // what's it like". Below the meters/ASK above, per this ticket's "keep MetersScreen sparse
+        // at the TOP" instruction (the Needs You pane stays first) - a standing external reading is
+        // the correct weight for the bottom of an already-busy screen, not the top of it. The
+        // weather line is a plain Text, not a DeckPane of its own - genuinely a STRIP, one sentence,
+        // sitting directly above the fuller [AreaCard] rather than duplicating that card's own frame
+        // for a single line of text (unchanged from TodayScreen's own reasoning).
+        Text(
+            weatherLine(state.weather),
+            style = LegionType.stamp,
+            color = sem.faint,
+            modifier = Modifier.padding(top = 9.dp, start = 12.dp, end = 12.dp, bottom = 2.dp),
+        )
+        AreaCard(modifier = Modifier.padding(horizontal = 12.dp))
+
+        // ---------------------------------------------------------------- NEWSLETTERS
+        // Rehomed from `ui/TodayScreen.kt`'s TILES row (one-today ticket 07) - a "there is
+        // something waiting for you" row, which is what the Needs You pane above already is.
+        NewsDigestCard(modifier = Modifier.padding(start = 12.dp, top = 9.dp, end = 12.dp))
+
+        // ---------------------------------------------------------------- MEDIA
+        // Rehomed from `ui/TodayScreen.kt`'s TILES row, PINNED LAST (this ticket's own placement) -
+        // renders nothing when nothing is playing (MediaMiniBar's own early return), so a silent
+        // player earns no space at the bottom of an already-busy screen.
+        MediaMiniBar(onOpenMedia = onOpenMedia)
     }
 }
 
@@ -573,4 +642,91 @@ fun buildMeterBreaches(budget: BudgetVsActual?, maintenanceRows: List<DueRowView
     }
 
     return breaches
+}
+
+// ------------------------------------------------------------- Newsletters (rehomed from TodayScreen)
+
+/**
+ * Newsletters digest tile. **Rehomed verbatim from the deleted `ui/TodayScreen.kt`** (one-today
+ * ticket 07, 2026-09-01) - command-center ticket 01's own build, no logic changed by the move.
+ * Wraps [SitrepBuilder.build] scoped to [SitrepModule.NEWS] alone - the exact machinery the
+ * scheduled sitrep already uses for its own NEWS section (`SitrepBuilder`'s own class doc:
+ * read-through, background Gmail fetch permitted only inside a sitrep the user scheduled or
+ * explicitly asked for), never a second summarization path.
+ *
+ * **Deliberately the one tile on this screen with NO auto-fetch.** Every other reading on this
+ * screen (including [AreaCard] above) fetches once on first compose, which the original ticket
+ * still counted as "on demand" (opening the screen is the demand). Newsletters is different by
+ * that ticket's own explicit instruction ("On-demand only (a tap)") - a newsletter check folds
+ * several message bodies into one prompt and pays for a real LLM call, where the others are one
+ * metadata search; the tap is what keeps that cost tied to an actual ask rather than every visit
+ * to this screen.
+ *
+ * In-memory only (`remember`, no Room row, no cache file) - navigating away and back starts blank
+ * again - refresh is a user act, never a background poll.
+ *
+ * **No setup required (command-center ticket 12, Kevin: "take from my gmail > summarize").**
+ * [SitrepBuilder.build] falls back to a no-config Gmail search when
+ * [com.kevin.legion.sitrep.SitrepSettings.newsletterSenders] is empty
+ * (`SitrepBuilder.NO_CONFIG_NEWSLETTER_QUERY`), so this card needs no setup of its own.
+ */
+@Composable
+private fun NewsDigestCard(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val sem = LocalLegionSemantics.current
+    var state by remember { mutableStateOf<NewsDigestState>(NewsDigestState.Idle) }
+
+    fun check() {
+        state = NewsDigestState.Loading
+        scope.launch {
+            // SitrepBuilder.build already returns every real outcome as its own worded sentence
+            // (NewsOutcome's four failure/empty branches plus the happy path) - this card never
+            // has to re-derive success/failure, only display what came back.
+            val text = SitrepBuilder.build(context, setOf(SitrepModule.NEWS))
+            state = NewsDigestState.Ready(text, System.currentTimeMillis())
+        }
+    }
+
+    DeckPane(header = "Newsletters", modifier = modifier) {
+        when (val s = state) {
+            is NewsDigestState.Idle -> {
+                Text(
+                    "Not checked this session - a check reads newsletter-shaped mail from your Gmail and summarizes it.",
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+                TextButton(onClick = { check() }) { Text("CHECK NEWSLETTERS") }
+            }
+            is NewsDigestState.Loading -> Row(
+                Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                Text("Checking your newsletters...", style = LegionType.stamp, color = sem.faint)
+            }
+            is NewsDigestState.Ready -> {
+                Text(s.text, style = MaterialTheme.typography.bodySmall, color = sem.data)
+                Text(
+                    "fetched ${clockTime(s.fetchedAtMs)}",
+                    style = LegionType.stamp,
+                    color = sem.faint,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                TextButton(onClick = { check() }) { Text("CHECK AGAIN") }
+            }
+        }
+    }
+}
+
+/** [NewsDigestCard]'s own three states - a sealed type for the same reason every other on-demand
+ * card on this screen uses one ([AreaCard]'s own `AreaCardState`): "not yet asked", "asked,
+ * waiting", and "asked, got an answer" are three different facts a nullable string cannot keep
+ * apart. */
+private sealed class NewsDigestState {
+    object Idle : NewsDigestState()
+    object Loading : NewsDigestState()
+    data class Ready(val text: String, val fetchedAtMs: Long) : NewsDigestState()
 }
