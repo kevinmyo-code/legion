@@ -30,7 +30,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ai.GeminiKeyProvider
-import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Goal
 import com.kevin.legion.data.local.IngestedFile
@@ -44,9 +43,6 @@ import com.kevin.legion.meals.DailyMealGap
 import com.kevin.legion.meals.MealController
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.notes.NotesController
-import com.kevin.legion.notes.Recurrence
-import com.kevin.legion.notes.endFromItem
-import com.kevin.legion.notes.ruleFromItem
 import com.kevin.legion.sitrep.SitrepBuilder
 import com.kevin.legion.sitrep.SitrepModule
 import com.kevin.legion.ui.common.DeckButton
@@ -64,8 +60,6 @@ import com.kevin.legion.ui.media.MediaMiniBar
 import com.kevin.legion.ui.notes.AgendaCalendarNotice
 import com.kevin.legion.ui.notes.CalendarNotLinkedRow
 import com.kevin.legion.ui.notes.buildAgendaCalendarNotice
-import com.kevin.legion.ui.notes.mergeAgenda
-import com.kevin.legion.ui.notes.toAppointmentEvent
 import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -162,7 +156,9 @@ data class TodayUiState(
     val openTaskCount: Int = 0,
     val logHasAnyItems: Boolean = false,
     /** Today's timed items, one-off and recurring, PLUS today's Google Calendar events (ticket 13)
-     * merged in by [mergeAgenda], sorted ascending - see [AgendaEntry]'s doc comment. Command-center
+     * merged in by [com.kevin.legion.ui.notes.mergeAgenda] (now reached via
+     * [com.kevin.legion.ui.agenda.buildDayAgenda]), sorted ascending - see [AgendaEntry]'s doc
+     * comment. Command-center
      * ticket 01: HOME reads only the FIRST still-current entry off this list now
      * ([nextAgendaEntry]) rather than rendering every one of them - the full list is still built
      * here (Notes' own load reads it independently), the HERO pane just stopped listing it in full. */
@@ -268,36 +264,20 @@ fun TodayScreen(
         // pane only ever shows the first still-current entry off this list ([nextAgendaEntry]),
         // but the list itself is still built in full here - the full day is one query, "next" is
         // a render-time filter over it, never a second, narrower query.
+        // **Extracted into `ui/agenda/DayAgenda.kt`'s [buildDayAgenda]** (this file, NotesScreen's
+        // "today" build, and NotesScreen's "month" build restated the same
+        // NotesController.timedItemsInWindow/allRecurringItems + Recurrence.occurrencesInWindow +
+        // db.eventDao().activeByKindInWindow(EventKind.APPOINTMENT, ...) triple verbatim in three
+        // places - the SAME reasons Kotlin top-level `private` biting `AgendaRow`/this pane
+        // elsewhere in this file already document. All three now call the one shared builder.
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
-        val dayStart = today.atStartOfDay(zone).toInstant().toEpochMilli()
-        val dayEnd = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
-        val oneOff = NotesController.timedItemsInWindow(context, dayStart, dayEnd)
-            .filter { !it.done }
-            .mapNotNull { item -> item.startsAt?.let { AgendaEntry(item.text, it, item.allDay) } }
-        val recurringToday = NotesController.allRecurringItems(context).flatMap { item ->
-            val startsAt = item.startsAt
-            val rule = startsAt?.let { ruleFromItem(item) }
-            if (startsAt == null || rule == null) {
-                emptyList()
-            } else {
-                val skips = NotesController.skippedDates(context, item)
-                Recurrence.occurrencesInWindow(startsAt, rule, endFromItem(item), skips, dayStart, dayEnd)
-                    .map { occMs -> AgendaEntry(item.text, occMs, item.allDay) }
-            }
-        }
-
-        // AGENDA, appointment half (ticket 13; **repointed off the live `CalendarContract` read
-        // onto the local `events` table by one-today ticket 01, "cut Google entirely"**): the SAME
-        // [dayStart, dayEnd] window as the local reads just above, so the merge in mergeAgenda is
-        // genuinely "one window, two sources" rather than two different days pasted together. The
-        // local table is always readable - there is no permission to be refused any more - so
+        // The local table is always readable - there is no permission to be refused any more - so
         // `calendarPermissionGranted` is always true post-cut; kept as a field for
         // [buildAgendaCalendarNotice]'s worded-empty-vs-unreadable split, which still reads
         // correctly for the one case left that matters (a genuinely empty window).
         val calendarPermissionGranted = true
-        val appointments = db.eventDao().activeByKindInWindow(EventKind.APPOINTMENT, dayStart, dayEnd)
-            .map { it.toAppointmentEvent() }
+        val agendaEntries = com.kevin.legion.ui.agenda.buildDayAgenda(context, today, zone)
 
         // ALERTS (ticket 16, extended by command-center ticket 01): every currently-quarantined
         // ledger document (CLAUDE.md §4), the Gemini key's presence, every overdue active goal, and
@@ -326,7 +306,7 @@ fun TodayScreen(
             maintenanceUnknownCount = items.count { VehicleController.isUnknown(it) },
             openTaskCount = openTaskCount,
             logHasAnyItems = logHasAnyItems,
-            agendaEntries = mergeAgenda(oneOff + recurringToday, appointments),
+            agendaEntries = agendaEntries,
             notesMissedCount = notesMissedCount,
             calendarPermissionGranted = calendarPermissionGranted,
             weather = weather,

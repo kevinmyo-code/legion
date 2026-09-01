@@ -3,22 +3,15 @@ package com.kevin.legion.ui
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,17 +22,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.kevin.legion.backend.EventKind
-import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.notes.NotesController
-import com.kevin.legion.notes.Recurrence
-import com.kevin.legion.notes.endFromItem
-import com.kevin.legion.notes.ruleFromItem
+import com.kevin.legion.ui.agenda.MonthCalendar
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.common.DeckTag
@@ -62,19 +49,12 @@ import com.kevin.legion.ui.notes.buildMissedTile
 import com.kevin.legion.ui.notes.buildMonthCells
 import com.kevin.legion.ui.notes.buildWeekAheadDayCounts
 import com.kevin.legion.ui.notes.entriesForDay
-import com.kevin.legion.ui.notes.eventDotCount
-import com.kevin.legion.ui.notes.mergeAgenda
-import com.kevin.legion.ui.notes.toAppointmentEvent
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.clockTime
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
-import java.time.temporal.WeekFields
-import java.util.Locale
 import androidx.compose.material3.MaterialTheme as M3
 import kotlinx.coroutines.launch
 
@@ -159,34 +139,15 @@ fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
         // merged with today's Google events - the SAME NotesController.timedItemsInWindow /
         // allRecurringItems + Recurrence.occurrencesInWindow pair, and the SAME mergeAgenda,
         // `ui/TodayScreen.kt`'s own AGENDA pane uses for its identical [dayStart, dayEnd) window.
-        // Restated here (that effect is private to TodayScreen) rather than shared - the same "same
-        // calls, different window" move this file's own month effect below already makes for the
-        // grid, just windowed a day instead of a month.
+        // **Extracted into `ui/agenda/DayAgenda.kt`'s [buildDayAgenda]** - this was restated here
+        // verbatim (Kotlin top-level `private` is file-scoped, so that effect was unreachable from
+        // this file) alongside a third, near-identical copy for the month grid below; all three are
+        // now the one shared builder, called with a different window.
         val zone = ZoneId.systemDefault()
-        val today = LocalDate.now(zone)
-        val todayStartMs = today.atStartOfDay(zone).toInstant().toEpochMilli()
-        val todayEndMs = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
-        val todayOneOff = NotesController.timedItemsInWindow(context, todayStartMs, todayEndMs)
-            .filter { !it.done }
-            .mapNotNull { item -> item.startsAt?.let { AgendaEntry(item.text, it, item.allDay) } }
-        val todayRecurring = NotesController.allRecurringItems(context).flatMap { item ->
-            val startsAt = item.startsAt
-            val rule = startsAt?.let { ruleFromItem(item) }
-            if (startsAt == null || rule == null) {
-                emptyList()
-            } else {
-                val skips = NotesController.skippedDates(context, item)
-                Recurrence.occurrencesInWindow(startsAt, rule, endFromItem(item), skips, todayStartMs, todayEndMs)
-                    .map { occMs -> AgendaEntry(item.text, occMs, item.allDay) }
-            }
-        }
         // One-today ticket 01 cut the live `CalendarContract` read this used to gate on - the local
         // `events` table is always readable, so `todayCalendarLinked` is always true post-cut.
         todayCalendarLinked = true
-        val todayAppointments = CarDatabase.getDatabase(context).eventDao()
-            .activeByKindInWindow(EventKind.APPOINTMENT, todayStartMs, todayEndMs)
-            .map { it.toAppointmentEvent() }
-        todayEntries = mergeAgenda(todayOneOff + todayRecurring, todayAppointments)
+        todayEntries = com.kevin.legion.ui.agenda.buildDayAgenda(context, LocalDate.now(zone), zone)
 
         // Mission-control ticket 16's LISTS tile: open count, restated as a count-only read of the
         // SAME NotesController.allItems `ui/notes/InboxScreen.kt` reads for its own stream - never a
@@ -199,39 +160,22 @@ fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
     // effect, keyed separately from the MISSED block above, so browsing months never re-touches
     // the missed-reminders read this screen already does on its own cadence.
     LaunchedEffect(missedReloadNonce, displayedMonth) {
-        // The displayed month, the SAME [NotesController] pair (`timedItemsInWindow` for one-offs,
-        // `allRecurringItems` + `skippedDates` + [Recurrence.occurrencesInWindow] for recurrences)
-        // `ui/TodayScreen.kt`'s own AGENDA pane reads for its single-day window, and the SAME
-        // [mergeAgenda] it folds Google events in with - just windowed over a month instead of a
-        // day, never a second query shape.
+        // The displayed month, the SAME shared builder [buildDayAgenda]/[buildMonthAgenda]'s own
+        // `ui/agenda/DayAgenda.kt` doc comment describes - windowed over a month instead of a day,
+        // never a second query shape. This was the third verbatim restatement of the same
+        // NotesController + Recurrence + mergeAgenda triple (see the TODAY-hero effect above for
+        // the other one); all three now call [com.kevin.legion.ui.agenda.buildAgendaInWindow]'s
+        // month-windowed wrapper.
         val zone = ZoneId.systemDefault()
         val monthStart = displayedMonth.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
         val monthEnd = displayedMonth.atEndOfMonth().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
         val dayStarts = dailyBuckets(monthStart, monthEnd, zone)
 
-        val oneOff = NotesController.timedItemsInWindow(context, monthStart, monthEnd)
-            .filter { !it.done }
-            .mapNotNull { item -> item.startsAt?.let { AgendaEntry(item.text, it, item.allDay) } }
-        val recurringMonth = NotesController.allRecurringItems(context).flatMap { item ->
-            val startsAt = item.startsAt
-            val rule = startsAt?.let { ruleFromItem(item) }
-            if (startsAt == null || rule == null) {
-                emptyList()
-            } else {
-                val skips = NotesController.skippedDates(context, item)
-                Recurrence.occurrencesInWindow(startsAt, rule, endFromItem(item), skips, monthStart, monthEnd)
-                    .map { occMs -> AgendaEntry(item.text, occMs, item.allDay) }
-            }
-        }
-
         // One-today ticket 01 cut the live `CalendarContract` read this used to gate on - the local
         // `events` table is always readable, so `monthCalendarLinked` is always true post-cut
         // (kept as a field for [CalendarNotLinkedRow]'s plumbing, which can no longer fire).
         monthCalendarLinked = true
-        val monthAppointments = CarDatabase.getDatabase(context).eventDao()
-            .activeByKindInWindow(EventKind.APPOINTMENT, monthStart, monthEnd)
-            .map { it.toAppointmentEvent() }
-        val merged = mergeAgenda(oneOff + recurringMonth, monthAppointments)
+        val merged = com.kevin.legion.ui.agenda.buildMonthAgenda(context, displayedMonth, zone)
         val counts = buildWeekAheadDayCounts(merged, dayStarts, zone)
         val countsByDayStart = dayStarts.zip(counts).toMap()
         monthCells = buildMonthCells(displayedMonth, countsByDayStart, zone)
@@ -522,146 +466,8 @@ private fun TodayPane(entries: List<AgendaEntry>, calendarLinked: Boolean, onGra
     }
 }
 
-/**
- * Quant-viz ticket 14's Notes-tab month calendar, replacing the WEEK AHEAD strip - Kevin,
- * 2026-08-14: "i cant scroll down anymore. the visual obscures the scroll interface. lets make it
- * a calendar with events on it." [cells] is [buildMonthCells]'s own output, already padded to
- * whole weeks; this composable only lays them out and colours today/[selectedDayStart].
- *
- * **Calendar-not-linked keeps drawing the grid from LOCAL items** (unlike the strip it replaces,
- * which suppressed itself entirely) - [CalendarNotLinkedRow] renders directly beneath the grid so
- * the picture is never silently presented as complete when Google events are unread.
- *
- * [collapsed] hides everything below the month header row - Kevin's direct complaint answered:
- * the graphic can always be got out of the way without leaving the tab or losing the month/day
- * state underneath it.
- */
-@Composable
-private fun MonthCalendar(
-    calendarLinked: Boolean,
-    month: YearMonth,
-    cells: List<MonthCell>,
-    collapsed: Boolean,
-    selectedDayStart: Long?,
-    onToggleCollapsed: () -> Unit,
-    onPrevMonth: () -> Unit,
-    onNextMonth: () -> Unit,
-    onSelectDay: (Long) -> Unit,
-    onGrantCalendar: () -> Unit,
-) {
-    val sem = LocalLegionSemantics.current
-    val zone = ZoneId.systemDefault()
-    val todayStart = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
-
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        // Prev/next month, same pattern as `ui/ledger/BudgetSection.kt`'s `< MONTH >` navigator -
-        // this calendar has no natural min/max bound (there is no coverage concept the way ledger
-        // has statements), so both arrows stay enabled always rather than growing an artificial one.
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = onPrevMonth) {
-                Text("<", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-            }
-            Text(monthGridLabel(month), style = LegionType.reading, color = MaterialTheme.colorScheme.onSurface)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onToggleCollapsed) {
-                    Text(if (collapsed) "MONTH" else "HIDE", style = LegionType.stamp, color = sem.faint)
-                }
-                TextButton(onClick = onNextMonth) {
-                    Text(">", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-        }
-
-        if (!collapsed) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                weekdayLetters().forEach { letter ->
-                    Text(
-                        letter,
-                        style = LegionType.stamp,
-                        color = sem.faint,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-            // Cell height 34dp (ticket 14) - six week-rows plus the two header rows above stay
-            // well under ~260dp total, giving height back to the inbox list below.
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                cells.chunked(7).forEach { week ->
-                    Row(Modifier.fillMaxWidth()) {
-                        week.forEach { cell ->
-                            MonthCellView(
-                                cell = cell,
-                                isToday = cell.dayStart != null && cell.dayStart == todayStart,
-                                isSelected = cell.dayStart != null && cell.dayStart == selectedDayStart,
-                                onClick = { cell.dayStart?.let(onSelectDay) },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
-                }
-            }
-            if (!calendarLinked) {
-                CalendarNotLinkedRow(
-                    "Calendar not linked - grant access to see Google events on the calendar too.",
-                    onGrant = onGrantCalendar,
-                )
-            }
-        }
-    }
-}
-
-/**
- * One 34dp cell: the day number, and up to three [eventDotCount] dots beneath it (density only -
- * never source or importance, per that function's own doc comment). Today fills with
- * [MaterialTheme.colorScheme.primary]/`onPrimary`, the SAME inverted-amber treatment
- * `ui/common/DeckCharts.kt`'s `DeckRangeSelector` already uses for its own selected stencil chip -
- * a selected (but not today's) day instead gets a 1dp primary border, so the two states can never
- * be confused for each other. A blank slot ([MonthCell.dayOfMonth] null) renders nothing and is
- * not clickable - it belongs to the neighbouring month, not this one.
- */
-@Composable
-private fun MonthCellView(cell: MonthCell, isToday: Boolean, isSelected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
-        modifier
-            .height(34.dp)
-            .let { if (isToday) it.background(MaterialTheme.colorScheme.primary) else it }
-            .let { if (isSelected) it.border(1.dp, MaterialTheme.colorScheme.primary) else it }
-            .let { if (cell.dayStart != null) it.clickable(onClick = onClick) else it },
-        contentAlignment = Alignment.Center,
-    ) {
-        if (cell.dayOfMonth != null) {
-            val dotColor = if (isToday) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    cell.dayOfMonth.toString(),
-                    style = LegionType.stamp,
-                    color = if (isToday) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                )
-                val dots = eventDotCount(cell.eventCount)
-                if (dots > 0) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        repeat(dots) {
-                            Box(Modifier.size(3.dp).background(dotColor, CircleShape))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private val MONTH_GRID_LABEL: DateTimeFormatter = DateTimeFormatter.ofPattern("MMMM yyyy")
-
-private fun monthGridLabel(month: YearMonth): String = month.format(MONTH_GRID_LABEL).uppercase()
-
-/** The grid's weekday header letters, locale-ordered starting at [WeekFields.firstDayOfWeek] -
- * [buildMonthCells] lays its columns out in the SAME order, so the two must never diverge. */
-private fun weekdayLetters(): List<String> {
-    val firstDayOfWeek = WeekFields.of(Locale.getDefault()).firstDayOfWeek
-    return (0 until 7).map { i -> firstDayOfWeek.plus(i.toLong()).getDisplayName(TextStyle.NARROW, Locale.ENGLISH) }
-}
+// MonthCalendar/MonthCellView (and their weekdayLetters/monthGridLabel helpers) moved to
+// `ui/agenda/MonthCalendar.kt` and made public - this file's own `private fun` copies were
+// invisible outside this file (Kotlin top-level `private` is file-scoped, not package-scoped),
+// which is exactly the gap `TodayPane`'s doc comment above complains about for `AgendaRow`.
+// Imported from `com.kevin.legion.ui.agenda` now.
