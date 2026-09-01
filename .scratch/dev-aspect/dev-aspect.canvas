@@ -1,0 +1,163 @@
+{
+  "nodes": [
+    {
+      "id": "4e3f9d97da0d4b42",
+      "type": "file",
+      "file": ".scratch/dev-aspect/issues/01-seventh-aspect-on-the-engine.md",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "5b8c4730e716044d",
+      "type": "file",
+      "file": ".scratch/dev-aspect/issues/02-azure-devops-employer-boundary.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "6fa9996e3fc82a69",
+      "type": "file",
+      "file": ".scratch/dev-aspect/issues/03-azure-devops-api-research.md",
+      "x": 0,
+      "y": 300,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "c82ab5a9a5d40b3d",
+      "type": "file",
+      "file": ".scratch/dev-aspect/issues/04-does-the-summary-earn-its-place.md",
+      "x": 520,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "5"
+    },
+    {
+      "id": "215466a4719ad08b",
+      "type": "file",
+      "file": ".scratch/dev-aspect/issues/05-the-github-sync.md",
+      "x": 520,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "69c89307ca711240",
+      "type": "file",
+      "file": ".scratch/dev-aspect/issues/06-the-azure-devops-sync.md",
+      "x": 1040,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "9d53fa129161577a",
+      "type": "file",
+      "file": ".scratch/dev-aspect/issues/07-the-staleness-contract.md",
+      "x": 1040,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    },
+    {
+      "id": "3e86dd71d70aae23",
+      "type": "file",
+      "file": ".scratch/dev-aspect/issues/08-voice-surface-and-hands-path.md",
+      "x": 1560,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
+    }
+  ],
+  "edges": [
+    {
+      "id": "0900b000de024b3d",
+      "fromNode": "4e3f9d97da0d4b42",
+      "fromSide": "right",
+      "toNode": "c82ab5a9a5d40b3d",
+      "toSide": "left"
+    },
+    {
+      "id": "c9ee6ec8f55e57ab",
+      "fromNode": "4e3f9d97da0d4b42",
+      "fromSide": "right",
+      "toNode": "215466a4719ad08b",
+      "toSide": "left"
+    },
+    {
+      "id": "f4d12444d84ec099",
+      "fromNode": "4e3f9d97da0d4b42",
+      "fromSide": "right",
+      "toNode": "69c89307ca711240",
+      "toSide": "left"
+    },
+    {
+      "id": "e3e1673df6c0b753",
+      "fromNode": "5b8c4730e716044d",
+      "fromSide": "right",
+      "toNode": "69c89307ca711240",
+      "toSide": "left"
+    },
+    {
+      "id": "31f5dae834cea439",
+      "fromNode": "6fa9996e3fc82a69",
+      "fromSide": "right",
+      "toNode": "69c89307ca711240",
+      "toSide": "left"
+    },
+    {
+      "id": "e451de2c1663d25c",
+      "fromNode": "215466a4719ad08b",
+      "fromSide": "right",
+      "toNode": "69c89307ca711240",
+      "toSide": "left"
+    },
+    {
+      "id": "dce58c510d9df612",
+      "fromNode": "215466a4719ad08b",
+      "fromSide": "right",
+      "toNode": "9d53fa129161577a",
+      "toSide": "left"
+    },
+    {
+      "id": "c6d05dd61079dc76",
+      "fromNode": "4e3f9d97da0d4b42",
+      "fromSide": "right",
+      "toNode": "3e86dd71d70aae23",
+      "toSide": "left"
+    },
+    {
+      "id": "eca0dba53987610f",
+      "fromNode": "c82ab5a9a5d40b3d",
+      "fromSide": "right",
+      "toNode": "3e86dd71d70aae23",
+      "toSide": "left"
+    },
+    {
+      "id": "40c40e0fac163995",
+      "fromNode": "215466a4719ad08b",
+      "fromSide": "right",
+      "toNode": "3e86dd71d70aae23",
+      "toSide": "left"
+    },
+    {
+      "id": "8ddd08d6d0bd5804",
+      "fromNode": "9d53fa129161577a",
+      "fromSide": "right",
+      "toNode": "3e86dd71d70aae23",
+      "toSide": "left"
+    }
+  ]
+}

@@ -28,6 +28,9 @@ Open tickets whose blockers are all resolved.
 | [[.scratch/backend-erp/map\|backend-erp]] | [[29-audit-rows-age-out-before-they-are-uploaded\|29]] | decision | 29-audit-rows-age-out-before-they-are-uploaded |
 | [[.scratch/backend-erp/map\|backend-erp]] | [[30-the-obd-cursor-cannot-get-past-a-dead-vehicle\|30]] | decision | 30-the-obd-cursor-cannot-get-past-a-dead-vehicle |
 | [[.scratch/command-center/map\|command-center]] | [[13-information-leads-plumbing-sinks\|13]] | build | The information leads, the plumbing sinks |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | [[01-seventh-aspect-on-the-engine\|01]] | grilling | The seventh aspect, and whether it rides the engine |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | [[02-azure-devops-employer-boundary\|02]] | grilling | Azure DevOps and the employer-data boundary |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | [[03-azure-devops-api-research\|03]] | research | The Azure DevOps REST API: auth, WIQL, scopes, limits |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[02-measure-the-bus\|02]] | task | Measure the real round trip on Kevin's car |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[12-what-the-drive-screen-is-for\|12]] | grilling | What the driving screen is FOR, now that gauges are out |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[01-the-response-schema\|01]] | grilling | The response schema: what a generated view is allowed to say |
@@ -103,6 +106,11 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 |---|---|---|---|---|
 | [[.scratch/command-center/map\|command-center]] | [[01-home-command-center\|01]] | build | Home is a command center, not a calorie poster  waiting on [[03-body-writes-by-hand\|03]], [[04-media-panel\|04]], [[06-places-by-hand\|06]], [[07-build-sheet-screen\|07]], [[08-outside-world-cards\|08]] |
 | [[.scratch/command-center/map\|command-center]] | [[09-discovery-and-wiki\|09]] | build | The app can say what it can do  waiting on [[01-home-command-center\|01]] |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | [[04-does-the-summary-earn-its-place\|04]] | grilling | Does the prose summary earn its place  waiting on [[01-seventh-aspect-on-the-engine\|01]] |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | [[05-the-github-sync\|05]] | build | The GitHub sync  waiting on [[01-seventh-aspect-on-the-engine\|01]] |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | [[06-the-azure-devops-sync\|06]] | build | The Azure DevOps sync  waiting on [[01-seventh-aspect-on-the-engine\|01]], [[02-azure-devops-employer-boundary\|02]], [[03-azure-devops-api-research\|03]], [[05-the-github-sync\|05]] |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | [[07-the-staleness-contract\|07]] | build | The staleness contract  waiting on [[05-the-github-sync\|05]] |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | [[08-voice-surface-and-hands-path\|08]] | build | The voice surface and its hands path  waiting on [[01-seventh-aspect-on-the-engine\|01]], [[04-does-the-summary-earn-its-place\|04]], [[05-the-github-sync\|05]], [[07-the-staleness-contract\|07]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | [[03-live-cadence\|03]] | grilling | Live cadence: how fast, and who owns the poll?  waiting on [[02-measure-the-bus\|02]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[02-the-tool-binding-contract\|02]] | grilling | The tool-binding contract: the model picks the view, tools supply the numbers  waiting on [[01-the-response-schema\|01]] |
 | [[.scratch/generated-ui/map\|generated-ui]] | [[03-the-renderer\|03]] | build | The Compose renderer: validation, components, and worded failure  waiting on [[01-the-response-schema\|01]], [[02-the-tool-binding-contract\|02]] |
@@ -143,6 +151,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/backend-erp/map\|backend-erp]] | 30 | 18 | [[.scratch/backend-erp/backend-erp.canvas\|open]] |
 | [[.scratch/command-center/map\|command-center]] | 14 | 13 | [[.scratch/command-center/command-center.canvas\|open]] |
 | [[.scratch/cyberdeck-ui/map\|cyberdeck-ui]] | 21 | 0 | [[.scratch/cyberdeck-ui/cyberdeck-ui.canvas\|open]] |
+| [[.scratch/dev-aspect/map\|dev-aspect]] | 8 | 8 | [[.scratch/dev-aspect/dev-aspect.canvas\|open]] |
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
