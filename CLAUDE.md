@@ -343,6 +343,20 @@ here.
   exclusion lives in `LiveToolbox.EPISODIC_EXCLUDED_TOOLS` and is applied at the write sites rather
   than being a habit each new feature has to remember. Proposed in
   `.scratch/google-account-integration/issues/07-*.md` point 6 and accepted verbatim.
+
+  **CARVE-OUT 2026-09-01 (Kevin): a recording Kevin deliberately starts does not fall under this
+  rule.** Asked directly whether it binds a recorded meeting: *"drop 7 entirely. we can keep all
+  transcripts."* A voice note's audio, verbatim transcript and summary are persisted, synced and
+  retained like any other record, other people's speech included. **The line is provenance, not
+  subject:** mail arrives unasked, a recording exists because he pressed a button. The mail path is
+  untouched - `EPISODIC_EXCLUDED_TOOLS` still binds every tool in it, and mail still never reaches
+  Room. Consent in the room is Kevin's to handle and he handles it out of band (*"they will know,
+  i'll tell tem"*): no in-app indicator, no spoken announcement, recorded as a decision made with
+  open eyes rather than left unasked. `docs/adr/0041-a-recording-kevin-starts-is-first-party.md`.
+  **A transcript states no total, so §4's numeric gate has no purchase - what stands in for it is §4
+  rule 8: keep the evidence.** Summary anchored by the transcript beside it, transcript anchored by
+  the audio beside it, all three deleted together. Nothing numeric heard in a recording may be
+  asserted as fact or become a ledger row without going through that aspect's own ingestion path.
 - **Every voice capability has a non-voice path (2026-08-22, Kevin).** *"all voice capabilities
   also must have a non voice UI capability."* Anything LEGION can do by voice must also be doable
   by hand. Voice is the fastest way in and it is the way that FAILS - a loud car, a sleeping

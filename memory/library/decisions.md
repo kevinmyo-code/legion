@@ -4898,3 +4898,47 @@ that button. `CarDatabaseSchemaVersionTest` now fails the build on the next drif
 **The phase-0 restore drill is DONE**: full round trip on the A25, all 65 tables back to their
 pre-drill counts. Phase-6 mirror deletion is unblocked. And the "device work needs the Kwin laptop"
 constraint was false - both machines carry the same debug key.
+
+---
+
+## 2026-09-01 - a recording Kevin starts is first-party, and its transcript is kept
+
+Kevin asked for voice note taking: turn it on in a meeting or for a solo thought, transcribe,
+summarize, save as a note. Three forks were put to him and all three were answered in one pass.
+
+**1. What transcribes it: record to a file, batch upload.** Not the Gemini Live socket (half-duplex,
+turn-shaped, and an hour of meeting is an hour of streamed audio), and not a rebuilt local Vosk
+listener (the small model's accuracy across a room is materially worse and it cannot separate
+speakers). `MediaRecorder` to a cache file, then one upload for transcript and summary together.
+**This is the first audio-to-disk path in the codebase** - grep confirmed no `MediaRecorder()` is
+constructed anywhere today, both existing hits are constant-only imports for
+`AudioSource.VOICE_COMMUNICATION`.
+
+**2. §7's third-party read-through rule does not bind a recording.** Verbatim: *"drop 7 entirely. we
+can keep all transcripts."* Read narrowly and confirmed as such in `docs/adr/0041-*`: the carve-out
+is for content Kevin deliberately records, not a repeal of the mail path, which still never touches
+Room. The distinction that carries it is **provenance, not subject**: mail arrives unasked, a
+recording exists because he pressed a button.
+
+**3. Consent is handled outside the app.** *"they will know, i'll tell tem."* No in-app indicator, no
+spoken announcement, no passenger surface. The retired ambient-listening map asked for exactly this
+to be recorded as a decision rather than left unasked, and it now is.
+
+**What §4 asks for here, since the gate has no numeric purchase.** A transcript states no total. What
+replaces the gate is rule 8's real claim - keep the evidence: the summary is anchored by the
+transcript stored beside it, the transcript by the audio stored beside it. Nothing numeric heard in
+a recording may be asserted as fact or become a ledger row without going through that aspect's own
+ingestion path. Delete removes all three together.
+
+**Recon that shaped it, traced 2026-09-01:** `AriaForegroundService` already declares
+`foregroundServiceType="...|microphone"` so a long capture needs no new service; `MicArbiter` has
+three fixed claimant ranks and no queueing, so recording needs a fourth; `SubAgent.ask` is the
+one-shot BYO-key helper but has an image path only, no audio parameter; and Notes came off the
+engine on 2026-08-27, so a note now means a typed Room table plus a typed Supabase table, not a
+`RecordType` seeder.
+
+**A correction worth keeping.** A scout reported `service/AmbientListener.kt` as live at 279 lines.
+It read that off `.scratch/ambient-listening/map.md` rather than the tree. The file does not exist -
+ambient listening was retired 2026-08-21. The map's own table said "traced 2026-08-20, not
+remembered", and it was true when written; it is an observation that rotted, exactly the shape
+CLAUDE.md's opening section warns about, and it was believed by an agent a week later.

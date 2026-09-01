@@ -52,6 +52,7 @@ Format and the test for whether something deserves an ADR:
 | 0038 | [[0038-byo-supabase-is-the-system-of-record\|A BYO Supabase project is the system of record]] | accepted | 2026-08-25 | - |
 | 0039 | [[0039-per-aspect-typed-tables\|Per-aspect typed tables; the generic engine retires]] | accepted | 2026-08-25 | - |
 | 0040 | [[0040-pc-is-the-primary-surface-phone-is-voice-first\|The PC is the primary surface; the phone is voice-first and minimal]] | accepted | 2026-08-28 | - |
+| 0041 | [[0041-a-recording-kevin-starts-is-first-party\|A recording Kevin starts is first-party, and its transcript is kept]] | accepted | 2026-09-01 | - |
 
 ## Superseded
 
