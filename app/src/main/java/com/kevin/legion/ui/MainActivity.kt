@@ -33,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -47,6 +46,7 @@ import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
+import com.kevin.legion.service.GeneratedViewController
 import com.kevin.legion.service.ReminderAlarmReceiver
 import com.kevin.legion.sync.SyncCapability
 import com.kevin.legion.sync.SyncEngine
@@ -357,6 +357,19 @@ private fun LegionShell(
     // which still runs (for its own highlight logic) on every OTHER route.
     val shellBackStackEntry by navController.currentBackStackEntryAsState()
     val isDrivingMode = shellBackStackEntry?.destination?.route == LegionRoute.DRIVING
+
+    // Fixed on-device 2026-09-01: a generated view built for a question asked on METERS was
+    // surviving navigation to CALENDAR, painting over the month grid and eating the tap meant to
+    // dismiss it (see `GeneratedViewHost.kt`'s own doc for the full defect). [GeneratedViewHost]
+    // has no way to know the CALLER navigated away - it only reads [GeneratedViewController]'s
+    // payload - so the clear lives here, keyed on the route itself, the same "above the NavHost"
+    // placement [shellBackStackEntry] already uses for its own cross-destination reads. Keyed on
+    // the route STRING, not on `shellBackStackEntry` itself, so a `launchSingleTop` re-entry into
+    // the same route (which produces a new backstack entry object) does not spuriously dismiss a
+    // view someone just opened.
+    LaunchedEffect(shellBackStackEntry?.destination?.route) {
+        GeneratedViewController.dismiss()
+    }
 
     // Mission-control ticket 07's uplink sweep ("the cursor yields"): [FleetScreen]'s own
     // `UplinkPane` reports whether ITS sweep is genuinely animating right now - see that pane's
@@ -892,7 +905,14 @@ private fun LegionTabRow(navController: NavHostController) {
     val density = LocalDensity.current
     val edgeStroke = with(density) { 2.dp.toPx() }
     val sepStroke = with(density) { 1.dp.toPx() }
+    // Fixed on-device 2026-09-01: a full-fill amber slab behind the selected third was the loudest
+    // thing on every screen and swamped the content beneath it (`AssistantStrip`/`StatusLine`
+    // included). [activeStroke] gives the SAME amber a hairline treatment instead - [DeckAmber]'s
+    // own doc in `Color.kt` already names "active nav key" as one of its designated uses, so this
+    // is that documented role read literally rather than a new colour or a new visual idiom.
+    val activeStroke = with(density) { 2.dp.toPx() }
     val tabs = LegionRoute.TOP_LEVEL
+    val activeColor = MaterialTheme.colorScheme.primary
 
     Row(
         Modifier
@@ -908,17 +928,29 @@ private fun LegionTabRow(navController: NavHostController) {
     ) {
         tabs.forEachIndexed { index, route ->
             val active = selectedTab == route
-            val bg = if (active) MaterialTheme.colorScheme.primary else Color.Transparent
-            val fg = if (active) MaterialTheme.colorScheme.onPrimary else sem.faint
+            // Text-colour change plus a bottom hairline, never a fill: selection reads as "this
+            // one is lit", the content underneath stays the loudest thing on screen.
+            val fg = if (active) activeColor else sem.faint
             Box(
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .background(bg)
                     .let { base ->
                         if (index < tabs.lastIndex) {
                             base.drawBehind {
                                 drawLine(sem.ruleFaint, Offset(size.width, 0f), Offset(size.width, size.height), sepStroke)
+                            }
+                        } else base
+                    }
+                    .let { base ->
+                        if (active) {
+                            base.drawBehind {
+                                drawLine(
+                                    activeColor,
+                                    Offset(0f, size.height - activeStroke / 2f),
+                                    Offset(size.width, size.height - activeStroke / 2f),
+                                    activeStroke,
+                                )
                             }
                         } else base
                     }

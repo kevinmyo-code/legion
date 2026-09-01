@@ -37,6 +37,34 @@ class MetersScreenTest {
     private fun dueRow(overdue: Boolean): DueRowView =
         DueRowView(label = "Oil change", value = "1,200 mi", sub = "every 5,000 mi", overdue = overdue)
 
+    // ---------------------------------------------------------------- groceries hero (defect 1)
+
+    @Test
+    fun `groceries hero is the actual spend, not the budget target, when nothing has been spent yet`() {
+        // The exact on-device shape: a $400 target with $0 actually spent this month rendered a
+        // confident "USD 400.00" hero above a caption reading "USD 0.00 of USD 400.00" - the hero
+        // was the budget, not the spend. `line.gap.gap` here is 400_00 (target minus actual, per
+        // PlanGap's own doc), which is what the old `row.gapValue` wiring rendered by mistake.
+        val line = BudgetLine(
+            category = "Groceries",
+            gap = PlanGap(target = 400_00L, actual = 0L, gap = 400_00L, tier = TrustTier.PROVEN),
+            hasProvisionalRows = false,
+            hasPendingCategoryGuesses = false,
+        )
+        assertEquals("USD 0.00", groceriesHeroValue(line, LedgerCurrency.USD))
+    }
+
+    @Test
+    fun `groceries hero is the actual spend even when it exceeds the target`() {
+        val line = BudgetLine(
+            category = "Groceries",
+            gap = PlanGap(target = 60_000L, actual = 70_000L, gap = -10_000L, tier = TrustTier.PROVEN),
+            hasProvisionalRows = false,
+            hasPendingCategoryGuesses = false,
+        )
+        assertEquals("USD 700.00", groceriesHeroValue(line, LedgerCurrency.USD))
+    }
+
     // ---------------------------------------------------------------- no breach
 
     @Test

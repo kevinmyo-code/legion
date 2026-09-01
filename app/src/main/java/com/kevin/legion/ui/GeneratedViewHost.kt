@@ -1,25 +1,12 @@
 package com.kevin.legion.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -30,15 +17,14 @@ import com.kevin.legion.service.GeneratedViewShape
 import com.kevin.legion.ui.common.DeckBar
 import com.kevin.legion.ui.common.DeckBarChart
 import com.kevin.legion.ui.common.DeckBarLabelRow
+import com.kevin.legion.ui.common.DeckDialog
 import com.kevin.legion.ui.common.DeckLineChart
-import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckPoint
 import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.common.Hairline
 import com.kevin.legion.ui.common.centsLabel
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
-import com.kevin.legion.ui.theme.deckMotionEnabled
 
 /**
  * The collector for [GeneratedViewController]
@@ -55,40 +41,35 @@ import com.kevin.legion.ui.theme.deckMotionEnabled
  * is always printed, never behind an expander (`legion-trust-disclosures-are-not-furniture`), and a
  * payload with nothing to show ([GeneratedViewPayload.isEmpty]) renders an explicit empty line
  * rather than a chart with nothing drawn on it or a total that reads as a real zero.
+ *
+ * **Modal, via [DeckDialog], not a plain overlay `Box` (fixed 2026-09-01, on-device: the previous
+ * `Box(fillMaxSize)` + `AnimatedVisibility` painted the panel over whatever destination was behind
+ * it while consuming none of that destination's touches outside the panel's own clickable rows -
+ * the worst of both postures, since a tap meant to dismiss could land on empty space and fall
+ * through to a calendar day cell underneath).** [DeckDialog] wraps the platform `Dialog` primitive
+ * ([com.kevin.legion.ui.common.DeckDialog]'s own doc), which gives a real scrim, outside-tap
+ * dismiss and back-press dismiss for free - the same "pick modal" instruction [VoiceModalHost]
+ * already answers with `ModalBottomSheet`, answered here with the dialog primitive that pattern
+ * itself wraps, since a centered pane (not a bottom sheet) is this view's own established shape.
+ * **[GeneratedViewController] is also cleared on route change, in `MainActivity.kt`'s
+ * `LegionShell`** - a view built to answer a question asked on one screen must not still be
+ * mounted after navigating to another; dismissing it here on every recomposition would not help,
+ * since this composable does not know when the CALLER navigated away.
  */
 @Composable
 fun GeneratedViewHost() {
     val payload by GeneratedViewController.current.collectAsStateWithLifecycle()
-    val motion = deckMotionEnabled()
-
-    var lastShown by remember { mutableStateOf<GeneratedViewPayload?>(null) }
-    LaunchedEffect(payload) { if (payload != null) lastShown = payload }
-
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        AnimatedVisibility(
-            visible = payload != null,
-            enter = if (motion) {
-                slideInVertically(tween(220)) { it } + fadeIn(tween(220))
-            } else {
-                fadeIn(tween(0))
-            },
-            exit = if (motion) {
-                slideOutVertically(tween(180)) { it } + fadeOut(tween(180))
-            } else {
-                fadeOut(tween(0))
-            },
-        ) {
-            lastShown?.let { GeneratedView(it, onDismiss = { GeneratedViewController.dismiss() }) }
-        }
-    }
+    val current = payload ?: return
+    GeneratedView(current, onDismiss = { GeneratedViewController.dismiss() })
 }
 
 /** The view itself: plain payload in, no controller reference, so it previews. */
 @Composable
 fun GeneratedView(payload: GeneratedViewPayload, onDismiss: () -> Unit) {
     val sem = LocalLegionSemantics.current
-    DeckPane(
-        header = payload.title,
+    DeckDialog(
+        title = payload.title,
+        onDismissRequest = onDismiss,
         modifier = Modifier.fillMaxWidth().padding(12.dp),
     ) {
         // Never a saved screen - stated in words every time, so nobody mistakes this for a

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -21,7 +20,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.grocery.GroceryController
+import com.kevin.legion.ledger.BudgetLine
 import com.kevin.legion.ledger.BudgetVsActual
 import com.kevin.legion.ledger.LedgerController
 import com.kevin.legion.ledger.LedgerEntity
@@ -179,14 +180,9 @@ fun MetersContent(
     var askGrouping by remember { mutableStateOf(QueryGrouping.NONE) }
     var askRefusal by remember { mutableStateOf<String?>(null) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        Text(
-            "METERS",
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-        )
-
+    // Fixed on-device 2026-09-01: dropped the redundant "METERS" H1 - see `CalendarScreen.kt`'s
+    // identical fix and comment; the tab immediately above already reads METERS.
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 10.dp)) {
         if (state.loading) {
             Text(
                 "Loading...",
@@ -217,9 +213,14 @@ fun MetersContent(
         // ---------------------------------------------------------------- BODY
         DeckPane(header = "Body", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
             val intakeTile = buildIntakeTile(state.mealGap, state.hasMealTarget)
+            // Absence-vs-data (fixed on-device 2026-09-01): "NOT LOGGED"/"NO TARGET" is not a
+            // reading, so it renders muted rather than the same mint every real calorie count
+            // gets - see this file's own doc/[DeckRow]'s `valueColor` doc for the full rule.
+            val intakeIsAbsence = state.mealGap == DailyMealGap.NotLogged
             DeckRow(
                 label = "Calories today",
                 value = intakeTile.hero,
+                valueColor = if (intakeIsAbsence) sem.ghost else null,
                 modifier = Modifier.clickable(onClick = onOpenBody),
             )
             Text(intakeTile.caption, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp))
@@ -283,7 +284,14 @@ fun MetersContent(
                 // CategorySeed.kt - there is no separate grocery budget to read.
                 val groceriesLine = budget.lines.firstOrNull { it.category == "Groceries" }
                 if (groceriesLine == null) {
-                    DeckRow(label = "Groceries", value = "NO BUDGET", modifier = Modifier.clickable(onClick = onOpenPantry))
+                    // Absence, not a reading - no budget line exists to measure against, so this
+                    // renders muted rather than the mint every other value row on this pane gets.
+                    DeckRow(
+                        label = "Groceries",
+                        value = "NO BUDGET",
+                        valueColor = sem.ghost,
+                        modifier = Modifier.clickable(onClick = onOpenPantry),
+                    )
                     Text(
                         "no groceries budget set this month",
                         style = LegionType.stamp,
@@ -294,8 +302,15 @@ fun MetersContent(
                     val row = buildBudgetLineGapRowData(groceriesLine, budget.entity.currency)
                     val over = row.sign == GapSign.BAD
                     DeckRow(
+                        // Fixed on-device 2026-09-01: this used to be `row.gapValue`, which
+                        // [buildBudgetLineGapRowData] deliberately computes as REMAINING/OVER
+                        // (target minus actual - see that function's own doc, `gapCaption` names
+                        // it), correct for [GapRow]'s own three-line layout but wrong as THIS
+                        // row's hero, whose caption directly beneath states the actual spend. The
+                        // Money row two above already gets this right (`formatMoney(spentCents,
+                        // ...)`); Groceries now matches it - the hero is the actual spend on both.
                         label = "Groceries",
-                        value = row.gapValue,
+                        value = groceriesHeroValue(groceriesLine, budget.entity.currency),
                         tag = if (over) { { DeckTag("OVER", DeckTagStyle.INVERTED_AMBER) } } else null,
                         modifier = Modifier.clickable(onClick = onOpenPantry),
                     )
@@ -321,15 +336,46 @@ fun MetersContent(
 
         // ---------------------------------------------------------------- FLEET
         DeckPane(header = "Fleet", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+            // [buildFleetTile]'s own computation is unchanged - this ticket's defect is
+            // presentational, not logical (brief item 4: "the defect is presentational; do not
+            // change its logic"). But [buildFleetTile] returns a confident "0 DUE" whenever
+            // `rows` is empty, whether that means "nothing to check" (0 items, 0 unknown) or
+            // "every item is unknown - I could not check ANY of them" (0 items ANCHORED, N
+            // unknown) - `ui/fleet/FleetRows.kt`'s `buildDueRows` filters unknown items out of
+            // `rows` entirely before it ever reaches this tile, so `rows.isEmpty()` cannot
+            // distinguish the two on its own. `everyItemUnknown` closes that gap here, using the
+            // SAME two fields the tile already returned, never a new read.
             val fleetTile = buildFleetTile(state.maintenanceRows, state.maintenanceUnknownCount)
             val overdueCount = state.maintenanceRows.count { it.overdue }
+            val everyItemUnknown = state.maintenanceRows.isEmpty() && state.maintenanceUnknownCount > 0
+            // A hero reading "0 DUE" when nothing could actually be checked is the exact "big
+            // confident number that is not the number the label promises" shape this whole ticket
+            // is about - swapped for a word that admits the uncertainty instead.
+            val maintenanceHero = if (everyItemUnknown) "UNKNOWN" else fleetTile.hero
+            val maintenanceHeroColor = when {
+                overdueCount > 0 -> sem.chromeText // breach: genuinely overdue, worded AND coloured
+                everyItemUnknown || fleetTile.hero == "NO LINK" -> sem.ghost // absence: nothing verified
+                else -> null // a real reading ("OK", or a genuine "$N DUE") - stays mint
+            }
             DeckRow(
                 label = "Maintenance",
-                value = fleetTile.hero,
+                value = maintenanceHero,
+                valueColor = maintenanceHeroColor,
                 tag = if (overdueCount > 0) { { DeckTag("OVERDUE", DeckTagStyle.INVERTED_AMBER) } } else null,
                 modifier = Modifier.clickable(onClick = onOpenFleet),
             )
-            Text(fleetTile.caption, style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(horizontal = 12.dp))
+            // The unknown count is a trust disclosure (CLAUDE.md's "a disclosure is never
+            // furniture", `legion-trust-disclosures-are-not-furniture`) - when it is non-zero it
+            // is doing the real work of qualifying the hero above, so it now carries the hero's
+            // own weight (`LegionType.amount`, not the tiny `stamp` every other caption on this
+            // screen uses) and the same amber `estimated` tone the groceries tier-note above
+            // already uses for "this figure needs a second look".
+            Text(
+                fleetTile.caption,
+                style = if (state.maintenanceUnknownCount > 0) LegionType.amount else LegionType.stamp,
+                color = if (state.maintenanceUnknownCount > 0) sem.estimated else sem.faint,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
 
             val obdValue = when (connectionState) {
                 ObdBluetoothManager.ConnectionState.CONNECTED -> "CONNECTED"
@@ -348,7 +394,22 @@ fun MetersContent(
                 ObdBluetoothManager.ConnectionState.ERROR -> { { DeckTag("LINK ERROR", DeckTagStyle.INVERTED_AMBER) } }
                 ObdBluetoothManager.ConnectionState.DISCONNECTED -> null
             }
-            DeckRow(label = "OBD link", value = obdValue, tag = obdTag, modifier = Modifier.clickable(onClick = onOpenFleet))
+            // Absence-vs-data (defect 3): DISCONNECTED is the ordinary resting state for a phone
+            // not currently in the car (this pane's own comment above), so it renders muted, never
+            // the same mint a real reading gets and never the alarm tone a genuine LINK ERROR gets.
+            val obdValueColor = when (connectionState) {
+                ObdBluetoothManager.ConnectionState.DISCONNECTED -> sem.ghost
+                ObdBluetoothManager.ConnectionState.ERROR -> sem.chromeText
+                ObdBluetoothManager.ConnectionState.CONNECTING -> sem.estimated
+                ObdBluetoothManager.ConnectionState.CONNECTED -> null
+            }
+            DeckRow(
+                label = "OBD link",
+                value = obdValue,
+                valueColor = obdValueColor,
+                tag = obdTag,
+                modifier = Modifier.clickable(onClick = onOpenFleet),
+            )
         }
 
         // ---------------------------------------------------------------- LISTS
@@ -421,6 +482,19 @@ fun MetersContent(
         }
     }
 }
+
+/**
+ * The Groceries meter's hero: the actual spend, never the budget target. A pure wrapper around
+ * [formatMoney] rather than an inline expression at the call site so this exact regression - a
+ * confident hero number that is not the number its own caption promises - has a unit test pinned
+ * to it (see `MetersScreenTest`'s own case). [BudgetLine.gap]'s own `actual` field is the money
+ * that was really spent this month on this category; `target` is the budget line's ceiling and
+ * `gap` is the REMAINING/OVER distance between the two ([buildBudgetLineGapRowData]'s own doc) -
+ * three different numbers, and only `actual` belongs in a row whose label reads "Groceries" and
+ * whose caption directly beneath states "USD X of USD Y".
+ */
+fun groceriesHeroValue(line: BudgetLine, currency: LedgerCurrency): String =
+    formatMoney(line.gap.actual, currency)
 
 /** Cycles [current] to the next member of its own enum, wrapping - the tap-to-cycle picker every
  * [DeckRow] in the ASK pane above uses, so choosing a value never opens a second surface. */

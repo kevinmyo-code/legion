@@ -151,14 +151,10 @@ fun CalendarScreen() {
 
     val sem = LocalLegionSemantics.current
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 12.dp)) {
-        Text(
-            "CALENDAR",
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-        )
-
+    // Fixed on-device 2026-09-01: dropped the redundant "CALENDAR" H1 - the tab immediately above
+    // this screen already reads CALENDAR (`LegionTabRow`), and repeating it as a heading was pure
+    // duplication, not orientation. Same fix applied to `MetersScreen.kt`'s own "METERS" H1.
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 10.dp, bottom = 12.dp)) {
         if (!monthLoading) {
             MonthCalendar(
                 // One-today ticket 01 cut the live Google read this flag used to gate on - the
@@ -251,8 +247,14 @@ fun CalendarScreen() {
 }
 
 /** How many upcoming entries the no-day-selected "NEXT" pane shows - short, per this ticket's
- * "short 'Next' pane" instruction, not the whole rest of the month. */
-private const val NEXT_PANE_LIMIT = 5
+ * "short 'Next' pane" instruction, not the whole rest of the month.
+ *
+ * Raised from 5 to 12 (fixed on-device 2026-09-01): with the month grid collapsed and only 5 NEXT
+ * rows, roughly a quarter of the screen below sat empty black - "short" was never meant to mean
+ * "leaves the lower third of the screen unused". 12 is still a short list, not the whole rest of
+ * the month; it is sized to fill the room a collapsed grid leaves rather than to hit an exact
+ * pixel count, since this pane already scrolls if a genuinely busy month runs past it. */
+private const val NEXT_PANE_LIMIT = 12
 
 /**
  * One day-view row: a checkbox (absent, not merely disabled, when [InboxRowView.tickable] is

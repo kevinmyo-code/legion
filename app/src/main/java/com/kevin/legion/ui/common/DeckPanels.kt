@@ -437,9 +437,26 @@ fun DeckMeter(fraction: Float, paceFraction: Float? = null, modifier: Modifier =
  * [value]'s colour moves from [MaterialTheme.colorScheme.primary] (amber) to
  * [LegionSemantics.data] (mint) under ticket 03 - amber is a highlight now, not the default value
  * colour; an ordinary row reading is mint like every other value in the app.
+ *
+ * **[valueColor] defaults to [LegionSemantics.data] (mint) - unchanged for every pre-existing
+ * caller** (added 2026-09-01, `ui/MetersScreen.kt`'s absence-vs-data defect: every hero on that
+ * screen rendered mint regardless of whether it was a real reading, an absence like "not logged"
+ * or "disconnected", or a breach, so nothing on the screen drew the eye and an unreadable state
+ * looked identical to a healthy one). Mint stays reserved for an actual measured value; a caller
+ * with an absence to report passes [LegionSemantics.ghost] (muted, not alarmed - "no data" is not
+ * a fault), and a caller reporting a breach or a down state passes [LegionSemantics.chromeText]
+ * (the warning tier already used for OVER/OVERDUE tags elsewhere on this same screen). The WORDS
+ * ("NOT LOGGED", "DISCONNECTED", "0 DUE") still carry the meaning either way - CLAUDE.md §7's
+ * "colour is never the only signal" - this parameter only stops colour from actively misleading.
  */
 @Composable
-fun DeckRow(label: String, value: String, tag: (@Composable RowScope.() -> Unit)? = null, modifier: Modifier = Modifier) {
+fun DeckRow(
+    label: String,
+    value: String,
+    tag: (@Composable RowScope.() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    valueColor: Color? = null,
+) {
     val sem = LocalLegionSemantics.current
     val dashStroke = with(LocalDensity.current) { 1.dp.toPx() }
     Row(
@@ -471,7 +488,7 @@ fun DeckRow(label: String, value: String, tag: (@Composable RowScope.() -> Unit)
         Text(
             value,
             style = LegionType.amount,
-            color = sem.data,
+            color = valueColor ?: sem.data,
             maxLines = 1,
             overflow = TextOverflow.Visible,
         )
