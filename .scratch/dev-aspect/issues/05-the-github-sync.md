@@ -91,3 +91,22 @@ make impossible. Fixed in `.claude/settings.json`, then re-verified: sentinel pl
 it. Not a bug in the hook, but the backstop is absent whenever a commit is chained behind anything,
 which is the common shape. Worth a follow-up if the wiki ever looks stale again.
 
+**A third finding, fixed 2026-09-01: the hook's `git add` was sweeping up other agents' work.** Its
+ticket pathspec was a plain `git add -- '.scratch/*/map.md' '.scratch/*/issues/*.md'`, which adds
+UNTRACKED files as well as modified ones. With two agents working in this tree, one session's
+commit therefore adopted four `voice-notes` tickets another session had not finished writing, and
+pushed them.
+
+The pathspec is now split by intent:
+
+- **Generated outputs** (`docs/index.html`, `docs/board.json`, `docs/devlog.html`, `docs/voice.html`,
+  `README.md`, `docs/adr/adr-index.md`, `vault/Board.md`) keep a plain `git add`. They are this
+  repo's derived layer and a newly generated one should be picked up.
+- **Ticket frontmatter** moves to `git add -u`, which stages modifications to **tracked** files only.
+  That is precisely the hook's job here - restaging the frontmatter `obsidian_sync.py` rewrote - and
+  it cannot adopt a ticket another session is still drafting.
+
+Verified by planting an untracked `hooktest` map beside a modified tracked ticket: the tracked one
+staged, the untracked map and ticket stayed untracked. This is a shared-tree hazard rather than a
+wiki one, and the durable fix is a worktree per agent.
+
