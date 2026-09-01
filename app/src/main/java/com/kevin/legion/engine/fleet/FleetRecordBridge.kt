@@ -247,4 +247,17 @@ object FleetRecordBridge {
         val mostRecent = historyForThisService.maxByOrNull { it.updatedAt } ?: return null to null
         return mostRecent.mileage to mostRecent.date
     }
+
+    /**
+     * The one normalization the `(vehicleId, serviceName)` join in
+     * [com.kevin.legion.vehicle.FleetEngineStore.toItemsLegacy] uses on BOTH sides - the schedule's
+     * stored `serviceName` and every `service_records` row's `serviceName` - so `"Oil Change"` and
+     * `"Oil change"` (or the same string with stray leading/trailing whitespace) land in the same
+     * bucket. **Matching only.** The stored strings themselves are never rewritten by this function;
+     * a schedule row's display casing and a service-record row's display casing both stay exactly
+     * as logged. One-today ticket 05, defect A: a single casing difference between the two tables was
+     * silently reading an anchored item as permanently unknown, and the failure had no signal anywhere
+     * a user or a test would see it - the item just never anchored.
+     */
+    fun serviceNameMatchKey(serviceName: String): String = serviceName.trim().lowercase()
 }

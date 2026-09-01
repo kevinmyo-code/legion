@@ -228,4 +228,34 @@ class MaintenanceItemDaoTargetedWritesTest {
         val written = dao.restore("V1", "Nonexistent", miles = 5_000, months = null, source = "CONFIRMED", now = 1L)
         assertEquals(0, written)
     }
+
+    // ============================================================================================
+    // One-today ticket 05, defect B: Room's MaintenanceItem.neverDone defaults false; the
+    // Supabase never_done column defaulted true before that column's own migration
+    // (supabase/migrations/20260901000200_maintenance_schedules_never_done_default.sql) fixed it.
+    // VehicleController.isDue's first line is `if (item.neverDone) return true`, so this default is
+    // the difference between an un-anchored item reading UNKNOWN and reading ALWAYS DUE. There is
+    // no live client<->server round trip for MaintenanceItem to exercise yet (no FleetBackend
+    // method uploads or fetches maintenance_schedules), so this pins the one round trip that DOES
+    // exist today: a row written with neverDone = false and read back through the SAME table's own
+    // DEFAULT clause (by omitting the column entirely, the shape a future sync writer that forgot
+    // to set it explicitly would take) still comes back false, matching Kotlin's own default and
+    // never silently flipping to Supabase's old `true`.
+    // ============================================================================================
+
+    @Test
+    fun `a row inserted with neverDone omitted reads back false, matching the entity's own default - not Supabase's old true`() = runBlocking {
+        val db = CarDatabase.getDatabase(context)
+        // Deliberately omits neverDone from the column list, so SQLite applies the column's own
+        // DEFAULT clause - the exact mechanism that disagreed with Supabase before that table's
+        // default was corrected to match Room.
+        db.openHelper.writableDatabase.execSQL(
+            "INSERT INTO maintenance_items (vehicleId, serviceName, intervalMiles, intervalMonths, " +
+                "lastDoneMileage, lastDoneDate, updatedAt, intervalSource, deleted) VALUES " +
+                "('V1', 'Cabin Air Filter', 12000, 12, NULL, NULL, 0, 'SEEDED', 0)",
+        )
+
+        val row = dao.get("V1", "Cabin Air Filter")!!
+        assertEquals("the column's own default must be false, agreeing with MaintenanceItem.neverDone's Kotlin default", false, row.neverDone)
+    }
 }

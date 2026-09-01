@@ -861,11 +861,21 @@ object FleetEngineStore {
     // =============================================================================================
 
     /** Composes the derived anchor onto every [schedules] row - the legacy-table equivalent of
-     * [FleetRecordBridge.toMaintenanceItem]/[FleetRecordBridge.projectAnchor] against the engine. */
+     * [FleetRecordBridge.toMaintenanceItem]/[FleetRecordBridge.projectAnchor] against the engine.
+     *
+     * **Grouped and looked up by [FleetRecordBridge.serviceNameMatchKey], not the raw string
+     * (one-today ticket 05, defect A).** `service_records.serviceName` and
+     * `maintenance_items.serviceName` are independently free-typed, so `"Oil Change"` on one side
+     * and `"Oil change"` on the other used to be two different map keys - the schedule row's history
+     * lookup silently missed, `projectAnchorLegacy` was called with an empty list, and the item read
+     * as permanently unknown with no error anywhere. [schedule]'s own display string is untouched;
+     * only the bucketing key is folded. */
     private suspend fun toItemsLegacy(db: CarDatabase, mac: String, schedules: List<MaintenanceItem>): List<MaintenanceItem> {
-        val byService = allHistoryForVehicle(db, mac).groupBy { it.serviceName }
+        val byService = allHistoryForVehicle(db, mac).groupBy { FleetRecordBridge.serviceNameMatchKey(it.serviceName) }
         return schedules.map { schedule ->
-            val (mileage, date) = FleetRecordBridge.projectAnchorLegacy(byService[schedule.serviceName].orEmpty())
+            val (mileage, date) = FleetRecordBridge.projectAnchorLegacy(
+                byService[FleetRecordBridge.serviceNameMatchKey(schedule.serviceName)].orEmpty()
+            )
             schedule.copy(lastDoneMileage = mileage, lastDoneDate = date)
         }
     }

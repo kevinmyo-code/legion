@@ -90,6 +90,42 @@ class FleetEngineStoreTest {
     }
 
     // ============================================================================================
+    // toItemsLegacy's (vehicleId, serviceName) join - normalized for matching only (one-today
+    // ticket 05, defect A). A casing or whitespace difference between the two independently
+    // free-typed `serviceName` columns used to silently miss this join, leaving an item that
+    // genuinely has history read as permanently unknown with no error anywhere.
+    // ============================================================================================
+
+    @Test
+    fun `the service-history join matches across a casing difference between the schedule and the logged record`() = runBlocking {
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000))
+        // Logged with different casing than the schedule row's own stored name.
+        FleetEngineStore.insertObserved(context, "V1", "oil change", mileage = 231_500, date = 1_700_000_000_000L, costCents = null)
+
+        val oilChange = FleetEngineStore.get(context, "V1", "Oil Change")!!
+        assertEquals("a casing difference must not defeat the join", 231_500, oilChange.lastDoneMileage)
+        assertEquals("Oil Change", oilChange.serviceName) // the schedule row's OWN display casing survives untouched
+    }
+
+    @Test
+    fun `the service-history join matches across leading and trailing whitespace on the logged record's name`() = runBlocking {
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000))
+        FleetEngineStore.insertObserved(context, "V1", "  Oil Change  ", mileage = 231_500, date = 1_700_000_000_000L, costCents = null)
+
+        val oilChange = FleetEngineStore.get(context, "V1", "Oil Change")!!
+        assertEquals("stray whitespace must not defeat the join", 231_500, oilChange.lastDoneMileage)
+    }
+
+    @Test
+    fun `two genuinely different service names still do NOT match - normalization is not fuzzy matching`() = runBlocking {
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000))
+        FleetEngineStore.insertObserved(context, "V1", "Brake Pads", mileage = 231_500, date = 1_700_000_000_000L, costCents = null)
+
+        val oilChange = FleetEngineStore.get(context, "V1", "Oil Change")!!
+        assertNull("a different service's history must never anchor an unrelated schedule row", oilChange.lastDoneMileage)
+    }
+
+    // ============================================================================================
     // ASSERTED-supersession, corrected both-axes rule (wave4-carve's own senior-review fix, reused
     // live for cutover instruction 3 - "when logServiceDirect records an OBSERVED service that
     // matches an existing ASSERTED row (same corrected both-axes rule as the migration dedup), the
