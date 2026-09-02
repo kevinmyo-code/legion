@@ -2343,3 +2343,55 @@ val MIGRATION_59_60 = object : Migration(59, 60) {
         }
     }
 }
+
+/**
+ * v60 -> v61 (memory-supabase ticket, "give LEGION's memory aspect a Supabase home, end to end" -
+ * the second aspect built off [MIGRATION_59_60]'s own template): sync columns added to all three
+ * memory tables (`memories`, `companion_memories`, `memory_audit`).
+ *
+ * **`memories`/`companion_memories` reuse their existing `syncId` column as the upsert key rather
+ * than adding a new `guid`** - see [com.kevin.legion.data.local.MemoryEntry.syncId]'s own v61 doc
+ * comment for why. `memory_audit` has no such column to reuse, so it gets a fresh `guid`, backfilled
+ * the same way [MIGRATION_59_60] backfills `guid` on the body tables.
+ */
+val MIGRATION_60_61 = object : Migration(60, 61) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Same non-RFC-4122 shape MIGRATION_59_60 uses - only needs to be effectively unique
+        // within one of these three tables.
+        val uuidExpr = "(" +
+            "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || " +
+            "substr(lower(hex(randomblob(2))), 2) || '-' || " +
+            "substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || " +
+            "lower(hex(randomblob(6)))" +
+            ")"
+
+        // `memories`: syncId already exists (possibly blank on a pre-syncId legacy row) - backfill
+        // any blank value before the unique index is created, exactly as MIGRATION_59_60 does for
+        // `guid`. updatedAtMs backfills from `timestamp`, the closest existing "when did this last
+        // change" this table has.
+        db.execSQL("ALTER TABLE `memories` ADD COLUMN `serverId` TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE `memories` ADD COLUMN `updatedAtMs` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `memories` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE `memories` SET syncId = $uuidExpr WHERE syncId = ''")
+        db.execSQL("UPDATE `memories` SET updatedAtMs = timestamp WHERE updatedAtMs = 0")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_memories_syncId` ON `memories` (`syncId`)")
+
+        // `companion_memories`: same shape, updatedAtMs backfills from `createdAt`.
+        db.execSQL("ALTER TABLE `companion_memories` ADD COLUMN `serverId` TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE `companion_memories` ADD COLUMN `updatedAtMs` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `companion_memories` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE `companion_memories` SET syncId = $uuidExpr WHERE syncId = ''")
+        db.execSQL("UPDATE `companion_memories` SET updatedAtMs = createdAt WHERE updatedAtMs = 0")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_companion_memories_syncId` ON `companion_memories` (`syncId`)")
+
+        // `memory_audit`: no existing identity column - guid is minted fresh for every row,
+        // updatedAtMs backfills from `at`.
+        db.execSQL("ALTER TABLE `memory_audit` ADD COLUMN `guid` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `memory_audit` ADD COLUMN `serverId` TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE `memory_audit` ADD COLUMN `updatedAtMs` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `memory_audit` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE `memory_audit` SET guid = $uuidExpr WHERE guid = ''")
+        db.execSQL("UPDATE `memory_audit` SET updatedAtMs = at WHERE updatedAtMs = 0")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_memory_audit_guid` ON `memory_audit` (`guid`)")
+    }
+}

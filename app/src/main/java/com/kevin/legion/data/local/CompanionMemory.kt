@@ -48,14 +48,35 @@ data class CompanionMemory(
      * feasibility research (ticket 04), stored and query vectors must share
      * one model + dimensionality, so a bare vector with no model tag is
      * useless (and dangerous to compare against a future different model).
+     *
+     * **memory-supabase ticket: deliberately does NOT travel to Supabase.** CLAUDE.md's regenerate
+     * test (`.scratch/live-sync/map.md`, "can this be recreated from something that survives?") says
+     * yes here - an embedding is a pure function of [text], which DOES travel, so a phone that pulls
+     * [text] back can always re-embed it locally once semantic recall is wired. Uploading it too
+     * would ship a large, model-pinned blob for something the [text] column alone can reproduce, the
+     * same reasoning the map gives for `daily_drive_logs` (a derived narrative, source survives).
+     * [com.kevin.legion.backend.CompanionMemoryFields] carries no embedding field at all.
      */
     val embeddingVector: String? = null,
-    /** Which model/dimensionality produced [embeddingVector], e.g. "gemini-embedding-001:768". */
+    /** Which model/dimensionality produced [embeddingVector] - see that field's own doc comment for
+     * why this does not travel to Supabase either. */
     val embeddingModel: String? = null,
     // Portable cross-device identity (same shape as MemoryEntry.syncId) - cheap
     // to add now vs a migration later, even though cross-device sync of this
     // table is still fog (see the map's "Not yet specified").
+    //
+    // memory-supabase ticket (v60 -> v61): "still fog" resolved - this IS the natural key
+    // [com.kevin.legion.backend.MemoryBackend] upserts by (`origin_guid`), same reuse-not-duplicate
+    // reasoning as [MemoryEntry.syncId]'s own v61 doc comment.
     @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
+    /** This row's server uuid once round-tripped - see [MemoryEntry.serverId]'s own doc comment. */
+    val serverId: String? = null,
+    /** LWW clock for [com.kevin.legion.backend.MemorySync.pull] - see [MemoryEntry.updatedAtMs]'s
+     * own doc comment for why this is a separate column from [createdAt]/[lastAccessedAt] rather
+     * than reusing either. */
+    @ColumnInfo(defaultValue = "0") val updatedAtMs: Long = 0,
+    /** Soft-delete tombstone - see [MemoryEntry.deleted]'s own doc comment. */
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 ) {
     /** The CLAUDE.md sec 9.1 axis every memory here is tagged with. */
     object Category {

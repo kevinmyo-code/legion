@@ -50,7 +50,6 @@ object MemoryConsolidator {
         if (ConversationState.isBusy) return
         val db = CarDatabase.getDatabase(context)
         val turnDao = db.episodicTurnDao()
-        val memoryDao = db.companionMemoryDao()
         val auditDao = db.memoryAuditDao()
 
         for (sessionId in turnDao.pendingSessionIds()) {
@@ -70,15 +69,20 @@ object MemoryConsolidator {
             val vehicleId = turns.first().vehicleId
             val now = System.currentTimeMillis()
             for (m in distilled) {
-                val id = memoryDao.insert(CompanionMemory(
-                    vehicleId = vehicleId,
-                    text = m.text,
-                    category = m.category,
-                    source = CompanionMemory.Source.CONSOLIDATED,
-                    importance = m.importance,
-                    createdAt = now,
-                    lastAccessedAt = now,
-                ))
+                val written = com.kevin.legion.backend.MemoryWriteThrough.addCompanionMemory(
+                    context,
+                    CompanionMemory(
+                        vehicleId = vehicleId,
+                        text = m.text,
+                        category = m.category,
+                        source = CompanionMemory.Source.CONSOLIDATED,
+                        importance = m.importance,
+                        createdAt = now,
+                        lastAccessedAt = now,
+                        updatedAtMs = now,
+                    ),
+                )
+                val id = written.id
                 // Audit trail (2026-08-20): this pass runs unattended and writes durable memories
                 // from a transcript it then DELETES, so without a line here a wrong memory has no
                 // recoverable provenance at all.

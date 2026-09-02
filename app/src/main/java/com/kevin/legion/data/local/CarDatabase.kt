@@ -290,6 +290,12 @@ import androidx.room.RoomDatabase
  * (`bodyweight_logs`, `meal_logs`, `meal_targets`, `sleep_logs`, `sleep_targets`, `workout_plans`,
  * `workout_plan_items`, `workout_set_logs`), plus `updatedAtMs` on the four LOG tables only - see
  * [MIGRATION_59_60] for the full account of which four get which columns and why.
+ *
+ * v61 (memory-supabase ticket, the second aspect built off v60's template): `serverId`/
+ * `updatedAtMs`/`deleted` added to all three memory tables (`memories`, `companion_memories`,
+ * `memory_audit`). `memories`/`companion_memories` reuse their existing `syncId` column as the
+ * sync identity rather than adding a new `guid`; `memory_audit` gets a fresh `guid`, minted for
+ * every pre-existing row. See [MIGRATION_60_61] for the full account.
  */
 @Database(
     entities = [
@@ -328,7 +334,7 @@ import androidx.room.RoomDatabase
         VoiceNote::class,
         OutboxEntry::class,
     ],
-    version = 60,
+    version = 61,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -471,7 +477,10 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 60
+        const val SCHEMA_VERSION = 61
+        // 2026-09-02: bumped to 61 alongside `@Database(version=)` in the same edit again
+        // (the memory-supabase ticket - serverId/updatedAtMs/deleted added to all three memory
+        // tables, see [MIGRATION_60_61] for the full account).
         // 2026-09-02: bumped to 60 alongside `@Database(version=)` in the same edit again
         // (the body-supabase ticket - guid/serverId/updatedAtMs-or-updatedAt/deleted added to all
         // eight body tables, see [MIGRATION_59_60] for the full account).
@@ -574,7 +583,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50,
                         MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53, MIGRATION_53_54,
                         MIGRATION_54_55, MIGRATION_55_56, MIGRATION_56_57, MIGRATION_57_58,
-                        MIGRATION_58_59, MIGRATION_59_60,
+                        MIGRATION_58_59, MIGRATION_59_60, MIGRATION_60_61,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

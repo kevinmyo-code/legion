@@ -256,6 +256,17 @@ class MainActivity : ComponentActivity() {
             com.kevin.legion.backend.BodyBackfill.maybeAutoRun(applicationContext)
             com.kevin.legion.backend.BodySync.maybeAutoPull(applicationContext)
         }
+        // Memory-supabase ticket, same drain-then-backfill-then-pull ordering as the body block
+        // above and for the identical reason - a separate lifecycleScope block since memory's own
+        // drain/backfill/pull have no ordering dependency on body's or events'.
+        lifecycleScope.launch {
+            com.kevin.legion.backend.MemoryOutboxDrain.maybeDrain(applicationContext)
+            // memory_audit has no write-through path at all - this backfill sweep is its ONLY
+            // route to the server, not just a catch-up for pre-existing rows. See
+            // MemoryBackfill's own class doc.
+            com.kevin.legion.backend.MemoryBackfill.maybeAutoRun(applicationContext)
+            com.kevin.legion.backend.MemorySync.maybeAutoPull(applicationContext)
+        }
         // The two Supabase tables that had a schema and RLS but never a single row uploaded
         // (measured against the real phone and the real project, one-today ticket): ledger's
         // UNRECONCILED-only reconcile and fleet's maintenance-schedule upload, neither of which

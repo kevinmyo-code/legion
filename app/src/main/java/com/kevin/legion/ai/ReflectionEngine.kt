@@ -68,15 +68,20 @@ object ReflectionEngine {
         val now = System.currentTimeMillis()
         val auditDao = CarDatabase.getDatabase(context).memoryAuditDao()
         for (insight in insights) {
-            val id = dao.insert(CompanionMemory(
-                vehicleId = vehicleId,
-                text = insight.text,
-                category = insight.category,
-                source = CompanionMemory.Source.REFLECTION,
-                importance = insight.importance,
-                createdAt = now,
-                lastAccessedAt = now,
-            ))
+            val written = com.kevin.legion.backend.MemoryWriteThrough.addCompanionMemory(
+                context,
+                CompanionMemory(
+                    vehicleId = vehicleId,
+                    text = insight.text,
+                    category = insight.category,
+                    source = CompanionMemory.Source.REFLECTION,
+                    importance = insight.importance,
+                    createdAt = now,
+                    lastAccessedAt = now,
+                    updatedAtMs = now,
+                ),
+            )
+            val id = written.id
             // Audit trail (2026-08-20). Reflection is the pass most worth auditing: it writes a
             // memory synthesized from OTHER memories rather than from anything the driver said, so
             // it is the one place a plausible-sounding claim can enter the record with no external

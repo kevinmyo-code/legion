@@ -155,7 +155,11 @@ class AriaBrain private constructor(context: Context) {
         if (existing != null) {
             memoryDao.touch(existing.id, System.currentTimeMillis())
         } else {
-            memoryDao.insert(MemoryEntry(text = trimmed, timestamp = System.currentTimeMillis()))
+            val now = System.currentTimeMillis()
+            com.kevin.legion.backend.MemoryWriteThrough.addMemoryEntry(
+                appContext,
+                MemoryEntry(text = trimmed, timestamp = now, updatedAtMs = now),
+            )
             audit(MemoryAudit.Event.WRITTEN, MemoryAudit.Store.FLAT, trimmed)
         }
         // The memory list just changed; force the next base instruction to rebuild.

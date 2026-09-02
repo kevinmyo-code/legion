@@ -88,8 +88,9 @@ class AriaBrainRememberHandPathTest {
         val realFields = com.kevin.legion.data.local.MemoryEntry::class.java.declaredFields
             .map { it.name }.filterNot { it.startsWith("$") }.toSet()
         assertTrue(
-            "MemoryEntry must carry only text/timestamp/syncId - no category field to select",
-            realFields == setOf("id", "text", "timestamp", "syncId"),
+            "MemoryEntry must carry only text/timestamp/syncId plus the memory-supabase ticket's " +
+                "sync columns (serverId/updatedAtMs/deleted) - no category field to select",
+            realFields == setOf("id", "text", "timestamp", "syncId", "serverId", "updatedAtMs", "deleted"),
         )
     }
 

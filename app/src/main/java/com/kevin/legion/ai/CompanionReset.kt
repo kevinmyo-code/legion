@@ -15,13 +15,19 @@ object CompanionReset {
     /** Clears only the long-term memories; keeps the persona, voice, and all other data. */
     suspend fun resetMemories(context: Context) {
         val db = CarDatabase.getDatabase(context)
-        db.memoryDao().deleteAll()
+        // memory-supabase ticket: routes through MemoryWriteThrough rather than a bare
+        // dao.deleteAll() - on a configured install, a local-only wipe would simply be pulled
+        // straight back down by the next MemorySync.pull (the server never heard about the
+        // deletion), the exact resurrection shape `.scratch/live-sync/map.md` documents
+        // EventsReconcile's own wipe-and-refill producing. See MemoryWriteThrough.deleteAllMemoryEntries's
+        // own doc comment. Falls back to the original bare deleteAll() on an unconfigured install.
+        com.kevin.legion.backend.MemoryWriteThrough.deleteAllMemoryEntries(context)
         // Companion-memory ticket 01 (2026-07-22): the consolidated/reflected
         // table and the raw unconsolidated buffer are both "what it remembers"
         // from the driver's point of view, even though neither is the legacy
         // MemoryEntry table this reset originally targeted - "forget
         // everything" must clear all three or it's a lie.
-        db.companionMemoryDao().deleteAll()
+        com.kevin.legion.backend.MemoryWriteThrough.deleteAllCompanionMemories(context)
         db.episodicTurnDao().deleteAll()
     }
 

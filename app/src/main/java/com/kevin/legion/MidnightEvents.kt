@@ -272,6 +272,75 @@ object MidnightEvents {
         Log.w(TAG, "body_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** A foreground [com.kevin.legion.backend.MemorySync.maybeAutoPull] pass completed across all
+     * three memory tables - same role as [bodyAutoPullSucceeded] plays for body. Memory-supabase
+     * ticket. */
+    fun memoryAutoPullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int, skippedTombstoneNoLocalMatch: Int) = safe {
+        Log.d(
+            TAG,
+            "memory_auto_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
+                "tombstoned=$tombstoned skippedTombstoneNoLocalMatch=$skippedTombstoneNoLocalMatch",
+        )
+    }
+
+    /** [com.kevin.legion.backend.MemorySync.maybeAutoPull] failed - degraded to this log line, same
+     * posture as [bodyAutoPullFailed]. */
+    fun memoryAutoPullFailed(e: Throwable) = safe {
+        Log.w(TAG, "memory_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.MemoryOutboxDrain.maybeDrain] pass completed - same
+     * role as [bodyOutboxDrainSucceeded] plays for body. Memory-supabase ticket. */
+    fun memoryOutboxDrainSucceeded(succeeded: Int, stillPending: Int, poisoned: Int) = safe {
+        Log.d(TAG, "memory_outbox_drain succeeded=$succeeded stillPending=$stillPending poisoned=$poisoned")
+    }
+
+    /** [com.kevin.legion.backend.MemoryOutboxDrain.maybeDrain] failed - degraded to this log line,
+     * same posture as [bodyOutboxDrainFailed]. */
+    fun memoryOutboxDrainFailed(e: Throwable) = safe {
+        Log.w(TAG, "memory_outbox_drain_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** [com.kevin.legion.backend.MemoryRealtime] could not open or maintain its `postgres_changes`
+     * subscription - degraded to this log line, same posture as [bodyRealtimeSubscribeFailed]. */
+    fun memoryRealtimeSubscribeFailed(e: Throwable) = safe {
+        Log.w(TAG, "memory_realtime_subscribe_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A [com.kevin.legion.backend.MemoryRealtime]-triggered [com.kevin.legion.backend.MemorySync.pull]
+     * completed - same role as [bodyRealtimePullSucceeded]. */
+    fun memoryRealtimePullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int) = safe {
+        Log.d(
+            TAG,
+            "memory_realtime_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
+                "tombstoned=$tombstoned",
+        )
+    }
+
+    /** A realtime-triggered memory pull failed - degraded to this log line, same posture as
+     * [bodyRealtimePullFailed]. */
+    fun memoryRealtimePullFailed(e: Throwable) = safe {
+        Log.w(TAG, "memory_realtime_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.MemoryBackfill.maybeAutoRun] pass completed across
+     * all three memory tables - same role as [bodyBackfillSucceeded] plays for body, and (for
+     * `memory_audit`) the ONLY path that table has to the server - see [com.kevin.legion.backend.MemoryBackfill]'s
+     * own class doc. */
+    fun memoryBackfillSucceeded(pushed: Int, alreadyPresent: Int, skippedLocalOnlyDeleted: Int, failedTables: List<String>) = safe {
+        Log.d(
+            TAG,
+            "memory_backfill pushed=$pushed alreadyPresent=$alreadyPresent " +
+                "skippedLocalOnlyDeleted=$skippedLocalOnlyDeleted failed=${failedTables.joinToString("; ")}",
+        )
+    }
+
+    /** [com.kevin.legion.backend.MemoryBackfill.maybeAutoRun] threw outright - degraded to this log
+     * line, same posture as [bodyBackfillFailed]. */
+    fun memoryBackfillFailed(e: Throwable) = safe {
+        Log.w(TAG, "memory_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A voice tool was dispatched. Useful for tracing what tool ran before a crash. */
     fun toolDispatched(toolName: String) = safe { Log.d(TAG, "tool_dispatched: $toolName") }
 

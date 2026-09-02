@@ -4246,15 +4246,19 @@ object LiveToolbox {
 
         val vehicleId = ActiveVehicle.current(context)
         val db = CarDatabase.getDatabase(context)
-        val id = db.companionMemoryDao().insert(
+        val now = System.currentTimeMillis()
+        val written = com.kevin.legion.backend.MemoryWriteThrough.addCompanionMemory(
+            context,
             CompanionMemory(
                 vehicleId = vehicleId,
                 text = GoalPlanAgent.CONSTRAINT_PREFIX + trimmed,
                 category = CompanionMemory.Category.DRIVER,
                 source = CompanionMemory.Source.STATED,
-                createdAt = System.currentTimeMillis(),
+                createdAt = now,
+                updatedAtMs = now,
             ),
         )
+        val id = written.id
         db.memoryAuditDao().record(
             MemoryAudit.Event.WRITTEN,
             MemoryAudit.Store.COMPANION,

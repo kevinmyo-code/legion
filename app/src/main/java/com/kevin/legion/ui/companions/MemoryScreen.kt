@@ -142,7 +142,11 @@ fun MemoryScreen(onBack: () -> Unit) {
                                     onDelete = {
                                         scope.launch {
                                             val db = CarDatabase.getDatabase(context)
-                                            db.memoryDao().deleteById(entry.id)
+                                            // Soft-deletes and pushes a tombstone when configured,
+                                            // rather than a bare local delete - memory-supabase
+                                            // ticket, same reasoning MemoryWriteThrough.deleteMemoryEntry's
+                                            // own doc comment gives.
+                                            com.kevin.legion.backend.MemoryWriteThrough.deleteMemoryEntry(context, entry)
                                             // Audit trail (2026-08-20): a rejected memory is the
                                             // most interesting row in the trail. The memory itself
                                             // is gone, so without this there is no record that the
@@ -173,7 +177,9 @@ fun MemoryScreen(onBack: () -> Unit) {
                                     onDelete = {
                                         scope.launch {
                                             val db = CarDatabase.getDatabase(context)
-                                            db.companionMemoryDao().deleteById(memory.id)
+                                            // Soft-deletes and pushes a tombstone when configured -
+                                            // see MemoryWriteThrough.deleteCompanionMemory's own doc.
+                                            com.kevin.legion.backend.MemoryWriteThrough.deleteCompanionMemory(context, memory)
                                             db.memoryAuditDao().record(
                                                 MemoryAudit.Event.DELETED,
                                                 MemoryAudit.Store.COMPANION,

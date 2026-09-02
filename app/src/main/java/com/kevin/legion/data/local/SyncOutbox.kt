@@ -72,6 +72,12 @@ object OutboxTarget {
     const val BODY_WORKOUT_PLANS = "workout_plans"
     const val BODY_WORKOUT_PLAN_ITEMS = "workout_plan_items"
     const val BODY_WORKOUT_SET_LOGS = "workout_set_logs"
+
+    /** Memory-supabase ticket - one constant per write-through-covered memory table. No entry for
+     * `memory_audit`: that table is pushed by `backend/MemoryBackfill.kt` alone (backfill-only
+     * sync, no per-row outbox) - see that file's own class doc for why. */
+    const val MEMORY_MEMORIES = "memories"
+    const val MEMORY_COMPANION_MEMORIES = "companion_memories"
 }
 
 /** [OutboxEntry.operation] values. **The comment this replaces said only [UPSERT] was produced as
