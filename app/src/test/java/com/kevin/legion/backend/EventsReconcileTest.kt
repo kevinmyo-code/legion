@@ -55,6 +55,9 @@ class EventsReconcileTest {
         override suspend fun fetchActive(): Result<List<RemoteEvent>> =
             Result.success(rows.values.filterNot { it.deleted })
 
+        override suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteEvent>> =
+            Result.success(rows.values.filter { it.updatedAtMs >= sinceMs })
+
         override suspend fun upsert(serverId: String?, fields: EventFields): Result<RemoteEvent> {
             val id = serverId ?: "server-${nextId++}"
             val row = fields.toRemote(id, originGuid = rows[id]?.originGuid)

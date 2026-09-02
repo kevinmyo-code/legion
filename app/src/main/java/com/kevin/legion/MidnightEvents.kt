@@ -135,6 +135,31 @@ object MidnightEvents {
         Log.w(TAG, "events_outbox_drain_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** [com.kevin.legion.backend.EventsRealtime] could not open or maintain its
+     * `postgres_changes` subscription - degraded to this log line, per that object's own class
+     * doc: the foreground pull stays as the fallback, so a socket failure must never surface as a
+     * dialog or a crash, only as reduced immediacy. */
+    fun eventsRealtimeSubscribeFailed(e: Throwable) = safe {
+        Log.w(TAG, "events_realtime_subscribe_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A [com.kevin.legion.backend.EventsRealtime]-triggered [com.kevin.legion.backend.EventsSync.pull]
+     * completed - same "only evidence this ran" role as [eventsAutoPullSucceeded], for the pull a
+     * realtime `postgres_changes` event triggered instead of a foreground resume. */
+    fun eventsRealtimePullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int, unrecognizedKinds: List<String>) = safe {
+        Log.d(
+            TAG,
+            "events_realtime_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
+                "tombstoned=$tombstoned unrecognizedKinds=$unrecognizedKinds",
+        )
+    }
+
+    /** A realtime-triggered pull failed - degraded to this log line, same posture as
+     * [eventsAutoPullFailed]. */
+    fun eventsRealtimePullFailed(e: Throwable) = safe {
+        Log.w(TAG, "events_realtime_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A voice tool was dispatched. Useful for tracing what tool ran before a crash. */
     fun toolDispatched(toolName: String) = safe { Log.d(TAG, "tool_dispatched: $toolName") }
 

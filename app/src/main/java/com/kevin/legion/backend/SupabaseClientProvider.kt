@@ -5,6 +5,7 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
+import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.storage.Storage
 import io.ktor.client.engine.okhttp.OkHttp
 
@@ -71,6 +72,10 @@ object SupabaseClientProvider {
             // Storage (ticket 09): the receipt-photo durability half of ticket 01 ruling 10 as
             // amended. Same client, same OkHttp engine - no separate install target needed.
             install(Storage)
+            // Realtime (events sync final slice): one client, same posture as Postgrest/Storage
+            // above - [EventsRealtime] is the only caller, subscribing/unsubscribing a channel on
+            // this shared client rather than opening a socket of its own.
+            install(Realtime)
         }
         cachedKey = key
         cachedClient = client

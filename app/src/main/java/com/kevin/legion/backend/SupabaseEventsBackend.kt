@@ -269,6 +269,18 @@ class SupabaseEventsBackend(private val client: SupabaseClient) : EventsBackend 
             .map { it.toRemoteEvent() }
     }
 
+    override suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteEvent>> =
+        translating("load changed dates and notes") {
+            client.postgrest.from(EVENTS_TABLE)
+                .select {
+                    // No deleted_at filter here - see this interface method's own doc comment for
+                    // why a tombstoned row must be let through rather than excluded like fetchActive.
+                    filter { gte("updated_at", Instant.ofEpochMilli(sinceMs).toString()) }
+                }
+                .decodeList<EventRowDto>()
+                .map { it.toRemoteEvent() }
+        }
+
     override suspend fun upsert(serverId: String?, fields: EventFields): Result<RemoteEvent> =
         translating(if (serverId == null) "save that" else "update that") {
             val dto = EventUpsertDto.from(fields)

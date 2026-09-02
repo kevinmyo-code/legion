@@ -58,6 +58,9 @@ class NotesControllerBackendTest {
             return Result.success(rows.values.filterNot { it.deleted })
         }
 
+        override suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteEvent>> =
+            Result.success(rows.values.filter { it.updatedAtMs >= sinceMs })
+
         override suspend fun upsert(serverId: String?, fields: EventFields): Result<RemoteEvent> {
             if (upsertFails) return Result.failure(EventsBackendException("simulated network failure"))
             upsertCalls++

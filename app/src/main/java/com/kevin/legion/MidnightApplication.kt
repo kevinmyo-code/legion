@@ -306,6 +306,14 @@ class MidnightApplication : Application() {
             runCatching { MirrorLifecycleBinder.bind(this@MidnightApplication, appScope) }
                 .onFailure { MidnightEvents.appStartWorkFailed("bind_mirror_lifecycle", it) }
 
+            // Events Realtime (events sync final slice) - same ProcessLifecycleOwner-driven
+            // foreground/background shape as MirrorLifecycleBinder just above, and the same
+            // "synchronous and idempotent, no appScope.launch needed here" reasoning: bind() only
+            // registers a lifecycle observer, no Room/network I/O happens until onStart actually
+            // fires later. See EventsRealtime's own class doc for the full lifecycle contract.
+            runCatching { com.kevin.legion.backend.EventsRealtime.bind(this@MidnightApplication) }
+                .onFailure { MidnightEvents.appStartWorkFailed("bind_events_realtime", it) }
+
             // Reconcile the assistant's on/off flag to reality (measured defect, 2026-08-17):
             // AssistantIgnition's persisted flag can read true - and every UI surface built on it
             // agree - while AriaForegroundService is not actually running, because the ONLY

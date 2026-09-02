@@ -216,6 +216,19 @@ interface EventsBackend {
     suspend fun fetchActive(): Result<List<RemoteEvent>>
 
     /**
+     * Every row - active OR tombstoned - whose `updated_at` is at or after [sinceMs]. Unlike
+     * [fetchActive], this deliberately does NOT filter `deleted_at IS NULL` server-side: a
+     * soft-deleted row's whole purpose here is to reach [EventsSync.pull]'s tombstone branch, and
+     * [fetchActive]'s own `deleted_at IS NULL` filter is exactly what made that branch
+     * unreachable end to end (traced 2026-09-02, this ticket's own brief). `sinceMs` is inclusive
+     * (`updated_at >= sinceMs`, not `>`) - a row updated in the exact same millisecond as the
+     * stored watermark must still be seen on the next pull rather than falling on the wrong side
+     * of a strict inequality, and re-fetching a row already merged is a correctness no-op (see
+     * [EventsSync.pull]'s own idempotency doc comment) so inclusivity costs nothing.
+     */
+    suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteEvent>>
+
+    /**
      * Creates a new event ([serverId] null) or updates an existing one ([serverId] the row's own
      * uuid). Unlike [PlacesBackend.upsert], there is no natural key to upsert ON - `public.events`
      * has no unique column besides the server-generated [RemoteEvent.serverId] itself (and a

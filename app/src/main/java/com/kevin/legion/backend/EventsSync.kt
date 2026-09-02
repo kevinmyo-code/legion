@@ -11,6 +11,39 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
+ * Install-scoped high-water mark for [EventsSync.pull] - the server `updated_at` (epoch ms) this
+ * device has already pulled up to. Same shape and reasoning as [ObdSampleUploadCursor] (plain
+ * [android.content.SharedPreferences], install-scoped, never synced), applied to a PULL watermark
+ * instead of an upload one: [EventsBackend.fetchChangedSince] takes this value so a routine pull
+ * (the expected steady state) asks the server for only what changed since last time, rather than
+ * re-fetching and re-diffing the whole `events` table on every foreground return or realtime tick.
+ *
+ * **A missing watermark means "fetch everything", never "fetch nothing".** [lastPulledAtMs]
+ * defaults to 0 (1970-01-01), and every real row's `updated_at` is >= that - so a fresh install
+ * with no prior pull asks [EventsBackend.fetchChangedSince] for the entire table, exactly the
+ * CLAUDE.md-flagged failure shape this brief calls out by name ("a watermark bug that silently
+ * syncs zero rows"). There is no separate "never pulled" sentinel to get wrong.
+ */
+internal object EventsPullCursor {
+    private const val PREFS = "events_pull_cursor"
+    private const val KEY_LAST_PULLED_AT_MS = "last_pulled_updated_at_ms"
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** The server `updated_at` (epoch ms) this device has already pulled up to, or 0 if this
+     *  device has never run a successful pull - see this object's own doc for why 0, not a null
+     *  sentinel, is what makes "never pulled" behave as "fetch everything". */
+    fun lastPulledAtMs(context: Context): Long = prefs(context).getLong(KEY_LAST_PULLED_AT_MS, 0L)
+
+    /** Persisted only after [EventsSync.pull] has fully processed a batch - see that function's
+     *  own call site comment for why advancing on a partial run would be wrong. */
+    fun advance(context: Context, atMs: Long) {
+        prefs(context).edit().putLong(KEY_LAST_PULLED_AT_MS, atMs).apply()
+    }
+}
+
+/**
  * The first slice of live sync for `public.events` - a real, automatic PULL that MERGES server
  * state into the phone's local `events` table, replacing nothing.
  *
@@ -93,19 +126,32 @@ object EventsSync {
     private val KNOWN_KINDS = setOf(EventKind.REMINDER, EventKind.EVENT, EventKind.TASK)
 
     /**
-     * Pulls every active server event and merges it into the local `events` table. See this
-     * object's own class doc for the full account of the matching order, the tombstone rule, and
-     * why an unmatched local row is never touched.
+     * Pulls every server event changed since [EventsPullCursor]'s own watermark - active or
+     * tombstoned - and merges it into the local `events` table. See this object's own class doc
+     * for the full account of the matching order, the tombstone rule, and why an unmatched local
+     * row is never touched.
      *
-     * **No `Result` wrapper, per the brief's own signature.** A [backend.fetchActive] failure
-     * throws straight out of this function - [maybeAutoPull] (this object's own foreground
-     * trigger, below) is the layer responsible for catching it and degrading to a logged result;
-     * a caller that wants a different failure posture is free to wrap this call in its own
-     * try/catch, same as any other plain suspend function.
+     * **`fetchChangedSince`, not `fetchActive` - the fix for the tombstone-propagation gap traced
+     * 2026-09-02.** `fetchActive`'s own server-side `deleted_at IS NULL` filter meant a row
+     * soft-deleted on another device (or the web app) was never in what THIS device's pull saw at
+     * all - the [merged]/tombstone branch below was correct but unreachable end to end. Reading
+     * with a watermark closes that gap and is also what makes a routine pull CHEAP (only what
+     * changed, not the whole table) rather than the two being unrelated changes bolted together.
+     *
+     * **The watermark is advanced ONLY after every row in this batch has actually been merged**,
+     * to the max `updatedAtMs` seen in [serverEvents] - never before the loop, and never to
+     * `System.currentTimeMillis()` (this device's clock, not the server's, and a row could still
+     * be mid-write server-side at a timestamp between "call started" and "call returned"). A
+     * [backend.fetchChangedSince] failure throws straight out of this function BEFORE the
+     * watermark is read into a local variable that could get written back stale - see
+     * [maybeAutoPull] and [EventsRealtime], the two callers responsible for catching it and
+     * degrading to a logged result; a caller that wants a different failure posture is free to
+     * wrap this call in its own try/catch, same as any other plain suspend function.
      */
     suspend fun pull(context: Context, backend: EventsBackend): PullReport {
         val db = CarDatabase.getDatabase(context)
-        val serverEvents = backend.fetchActive().getOrThrow()
+        val sinceMs = EventsPullCursor.lastPulledAtMs(context)
+        val serverEvents = backend.fetchChangedSince(sinceMs).getOrThrow()
 
         // getAll(), not getAllActive() - a server row must also be matched against a local row
         // that this device has ALREADY soft-deleted (deleted = 1), or a tombstoned local row would
@@ -181,6 +227,15 @@ object EventsSync {
         // iterates localRows looking for a row to delete or flag. localByGuid/localByServerId are
         // read only to find a MATCH for a server row that showed up in serverEvents; a local row
         // the server does not have is never visited at all, let alone touched.
+
+        // Advance the watermark to the newest updated_at this batch actually saw - see this
+        // function's own doc comment for why this happens here (after every row is merged) and
+        // not before the loop or off the local clock. An empty batch leaves the cursor untouched,
+        // which is already correct: nothing changed server-side since last time, so there is
+        // nothing to advance past.
+        serverEvents.maxOfOrNull { it.updatedAtMs }?.let { newestSeen ->
+            EventsPullCursor.advance(context, newestSeen)
+        }
 
         return PullReport(
             inserted = inserted,

@@ -28,6 +28,7 @@ class EventsOutboxDrainTest {
         var uploadCallCount = 0
 
         override suspend fun fetchActive(): Result<List<RemoteEvent>> = Result.success(emptyList())
+        override suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteEvent>> = Result.success(emptyList())
         override suspend fun upsert(serverId: String?, fields: EventFields): Result<RemoteEvent> =
             Result.failure(EventsBackendException("not used by this test"))
         override suspend fun softDelete(serverId: String): Result<Boolean> =

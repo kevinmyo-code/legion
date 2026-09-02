@@ -312,6 +312,10 @@ dependencies {
     implementation(libs.supabase.postgrest)
     // storage-kt (ticket 09, receipt-photo durability): same BOM-managed version as auth/postgrest.
     implementation(libs.supabase.storage)
+    // realtime-kt (events sync final slice): postgres_changes subscription on public.events, so
+    // the pull runs instantly on a server-side change instead of waiting for the next foreground.
+    // Same BOM-managed version as auth/postgrest/storage above.
+    implementation(libs.supabase.realtime)
     implementation(libs.kotlinx.serialization.json)
     // Ktor needs an explicit engine on Android rather than relying on ServiceLoader
     // auto-detection (undocumented/unreliable under R8 - the debug build here never runs R8, but
@@ -341,6 +345,9 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation("org.json:json:20231013")
+    // MockEngine for SupabaseEventsBackend's real fetchChangedSince path (events sync final
+    // slice) - see gradle/libs.versions.toml's own comment on this artifact.
+    testImplementation(libs.ktor.client.mock)
     // Robolectric: originally needed so ledger PDF-parsing unit tests could shadow AssetManager
     // and reach PdfBox-Android's bundled fonts/glyphlists - those tests are gone (backend-erp
     // ticket 25), but Roborazzi's screenshot tests and several other Robolectric suites

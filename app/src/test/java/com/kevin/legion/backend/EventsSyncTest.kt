@@ -34,18 +34,24 @@ class EventsSyncTest {
 
         // Deliberately NOT filterNot { it.deleted }, unlike EventsReconcileTest's own fake and
         // unlike SupabaseEventsBackend.fetchActive() itself (`filter("deleted_at", IS, "null")`,
-        // server-side). TRACED, and worth stating plainly rather than papering over: the REAL
-        // backend's fetchActive() only ever returns rows where deleted_at IS NULL, so a genuine
-        // tombstone written by another device is never present in what fetchActive() returns at
-        // all - EventsSync.pull's `remote.deleted` branch is correct, defensive code against the
-        // EventsBackend interface's own documented shape (RemoteEvent.deleted exists and is
-        // meaningful), but it is UNREACHABLE end-to-end against the real backend today. This fake
-        // returns tombstoned rows anyway so this suite can still prove pull()'s OWN merge logic is
-        // correct for that branch - what it cannot prove, and what no test against the real
-        // backend could either without a new backend method, is that a tombstone written on
-        // another device ever reaches this phone at all. See EventsSync's own final report/ledger
-        // for this gap stated as a blocking open question, not a resolved one.
+        // server-side) - fetchActive is not what pull() calls (see fetchChangedSince below), so
+        // this fake never has to reproduce that filter to stay honest. This fake returns
+        // tombstoned rows so this suite can prove pull()'s OWN merge logic is correct for that
+        // branch, unconcerned with sinceMs filtering (out of scope for this suite - see
+        // fetchChangedSince below).
         override suspend fun fetchActive(): Result<List<RemoteEvent>> =
+            Result.success(rows.values.toList())
+
+        // fetchChangedSince, not fetchActive, is what EventsSync.pull actually calls - see that
+        // interface method's own doc comment. This fake ignores sinceMs entirely (every test in
+        // this suite seeds a small, fixed snapshot and asserts on pull()'s MERGE behaviour, never
+        // on watermark filtering itself) and, like fetchActive above, never excludes a tombstoned
+        // row. **This is deliberately NOT where the tombstone-propagation fix is proven** - a fake
+        // that never filtered tombstones in the first place cannot demonstrate that the REAL
+        // backend now doesn't either. That proof lives in EventsRealtimeFetchTest, against the
+        // real SupabaseEventsBackend behind a MockEngine, per this ticket's own brief: "not only a
+        // fake that skips the filter."
+        override suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteEvent>> =
             Result.success(rows.values.toList())
 
         override suspend fun upsert(serverId: String?, fields: EventFields): Result<RemoteEvent> =
