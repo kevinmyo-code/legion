@@ -1,6 +1,7 @@
 package com.kevin.legion.workouts
 
 import android.content.Context
+import com.kevin.legion.backend.BodyWriteThrough
 import com.kevin.legion.data.local.BodyweightLog
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.WorkoutPlan
@@ -10,6 +11,7 @@ import com.kevin.legion.data.local.WorkoutSetLogDao
 import com.kevin.legion.plan.PlanGap
 import com.kevin.legion.plan.TrustTier
 import com.kevin.legion.util.shortDate
+import java.util.UUID
 
 /**
  * Orchestrates the workouts aspect - mirrors [com.kevin.legion.pantry.PantryController]'s shape
@@ -43,23 +45,29 @@ object WorkoutController {
         val now = System.currentTimeMillis()
         val weekStart = weekStartEpoch(now)
         val db = CarDatabase.getDatabase(context)
-        db.workoutPlanDao().upsert(
-            WorkoutPlan(sessionsPerWeek = draft.sessionsPerWeek, effectiveFromWeekEpoch = weekStart, updatedAt = now)
+        // Reuse each row's existing guid on a same-week re-plan - see
+        // WorkoutPlanDao.getByEffectiveWeek's own doc comment for why a fresh one here would
+        // orphan a server row (body-supabase ticket).
+        val planGuid = db.workoutPlanDao().getByEffectiveWeek(weekStart)?.guid ?: UUID.randomUUID().toString()
+        BodyWriteThrough.setWorkoutPlan(
+            context,
+            WorkoutPlan(sessionsPerWeek = draft.sessionsPerWeek, effectiveFromWeekEpoch = weekStart, updatedAt = now, guid = planGuid),
         )
-        db.workoutPlanItemDao().upsertAll(
-            draft.exercises.map { (exercise, targetSets) ->
-                WorkoutPlanItem(
-                    exercise = exercise,
-                    targetSetsPerWeek = targetSets,
-                    effectiveFromWeekEpoch = weekStart,
-                    updatedAt = now,
-                    // Ticket 08: only the exercises the model actually gave a rep count for carry
-                    // one - draft.repsPerSet has no entry at all for the rest, and this stays null
-                    // rather than inventing one (see WorkoutPlanItem.repsPerSet's own doc).
-                    repsPerSet = draft.repsPerSet[exercise],
-                )
-            }
-        )
+        val itemRows = draft.exercises.map { (exercise, targetSets) ->
+            val itemGuid = db.workoutPlanItemDao().getByExerciseAndWeek(exercise, weekStart)?.guid ?: UUID.randomUUID().toString()
+            WorkoutPlanItem(
+                exercise = exercise,
+                targetSetsPerWeek = targetSets,
+                effectiveFromWeekEpoch = weekStart,
+                updatedAt = now,
+                // Ticket 08: only the exercises the model actually gave a rep count for carry
+                // one - draft.repsPerSet has no entry at all for the rest, and this stays null
+                // rather than inventing one (see WorkoutPlanItem.repsPerSet's own doc).
+                repsPerSet = draft.repsPerSet[exercise],
+                guid = itemGuid,
+            )
+        }
+        BodyWriteThrough.setWorkoutPlanItems(context, itemRows)
         val exerciseList = draft.exercises.entries.joinToString(", ") { "${it.key} (${it.value} sets/week)" }
         return "Plan set: ${draft.sessionsPerWeek} sessions a week - $exerciseList."
     }
@@ -105,7 +113,8 @@ object WorkoutController {
         if (sets <= 0)
             return WriteOutcome(false, "That's not a set count I can log - how many sets?")
 
-        val rowId = CarDatabase.getDatabase(context).workoutSetLogDao().insert(
+        val row = BodyWriteThrough.addWorkoutSetLog(
+            context,
             WorkoutSetLog(
                 exercise = exercise,
                 sets = sets,
@@ -115,23 +124,30 @@ object WorkoutController {
                 loggedAt = loggedAt,
                 trustTier = TrustTier.REPORTED,
                 sourceListItemId = sourceListItemId,
-            )
+                guid = UUID.randomUUID().toString(),
+                updatedAtMs = loggedAt,
+            ),
         )
-        // D34: the tool response states what was written, no separate confirm turn.
+        // D34: the tool response states what was written, no separate confirm turn. success is
+        // now derived from BodyWriteThrough's own local write having run without throwing - Room's
+        // insert() (called inside it) throws rather than returning a failed row id, so reaching
+        // this line at all means the local write landed; a push failure is queued, never lost, and
+        // never reported as a failure to the driver (CLAUDE.md's outcome-verb rule cuts the other
+        // way here: LOCAL success is what "logged" asserts, matching every other body write).
         val weightPhrase = if (weightValue != null) " at $weightValue${weightUnit ?: ""}" else ""
         val repsPhrase = if (reps != null) " of $reps" else ""
-        return if (rowId > 0) {
-            WriteOutcome(true, "$sets sets$repsPhrase of $exercise$weightPhrase, logged.")
-        } else {
-            WriteOutcome(false, "That didn't save - try logging it again.")
-        }
+        return WriteOutcome(true, "${row.sets} sets$repsPhrase of ${row.exercise}$weightPhrase, logged.")
     }
 
     /** D23: bodyweight is its own reported measurement, not a field on [WorkoutSetLog]. */
     suspend fun logBodyweight(context: Context, weightValue: Double, weightUnit: String): String {
         val now = System.currentTimeMillis()
-        CarDatabase.getDatabase(context).bodyweightLogDao().insert(
-            BodyweightLog(weightValue = weightValue, weightUnit = weightUnit, loggedAt = now, trustTier = TrustTier.REPORTED)
+        BodyWriteThrough.addBodyweightLog(
+            context,
+            BodyweightLog(
+                weightValue = weightValue, weightUnit = weightUnit, loggedAt = now, trustTier = TrustTier.REPORTED,
+                guid = UUID.randomUUID().toString(), updatedAtMs = now,
+            ),
         )
         return "Bodyweight logged: $weightValue $weightUnit."
     }
@@ -188,12 +204,12 @@ object WorkoutController {
         CarDatabase.getDatabase(context).bodyweightLogDao().mostRecent()
 
     suspend fun deleteSetLog(context: Context, log: WorkoutSetLog): String {
-        CarDatabase.getDatabase(context).workoutSetLogDao().deleteById(log.id)
+        BodyWriteThrough.deleteWorkoutSetLog(context, log)
         return "Undone: ${log.sets} sets of ${log.exercise} logged ${shortDate(log.loggedAt)}."
     }
 
     suspend fun deleteBodyweightLog(context: Context, log: BodyweightLog): String {
-        CarDatabase.getDatabase(context).bodyweightLogDao().deleteById(log.id)
+        BodyWriteThrough.deleteBodyweightLog(context, log)
         return "Undone: bodyweight ${log.weightValue} ${log.weightUnit} logged ${shortDate(log.loggedAt)}."
     }
 }

@@ -1,6 +1,8 @@
 package com.kevin.legion.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.kevin.legion.plan.TrustTier
 
@@ -17,8 +19,19 @@ import com.kevin.legion.plan.TrustTier
  *
  * No target table exists for bodyweight yet ("its own target later" - D23's own words defer it);
  * this entity is deliberately just the measurement.
+ *
+ * **[guid]/[serverId]/[updatedAtMs]/[deleted] joined v59 -> v60 (body-supabase ticket), mirroring
+ * [Event]'s own four sync columns field for field** - see that entity's own doc comment for the
+ * full reasoning. [guid] is minted once at row creation and carried forward unchanged; it is what
+ * [com.kevin.legion.backend.SupabaseBodyBackend] upserts ON (`origin_guid` server-side), so unlike
+ * [Event] there is no create/update fork on this table at all - every write is a genuine upsert
+ * keyed on an identity this row has had since the moment it was written, never a client-minted
+ * placeholder that later needs replacing. [serverId] is filled in for real by the next
+ * [com.kevin.legion.backend.BodySync.pull] after a push, same as [Event.serverId]'s own v59 doc
+ * comment describes, but nothing on the write path ever needs to read it back to address a future
+ * write - [guid] already does that job.
  */
-@Entity(tableName = "bodyweight_logs")
+@Entity(tableName = "bodyweight_logs", indices = [Index(value = ["guid"], unique = true)])
 data class BodyweightLog(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val weightValue: Double,
@@ -26,4 +39,8 @@ data class BodyweightLog(
     val weightUnit: String,
     val loggedAt: Long,
     val trustTier: TrustTier,
+    @ColumnInfo(defaultValue = "''") val guid: String = "",
+    val serverId: String? = null,
+    @ColumnInfo(defaultValue = "0") val updatedAtMs: Long = 0,
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

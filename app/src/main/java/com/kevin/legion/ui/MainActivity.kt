@@ -240,6 +240,14 @@ class MainActivity : ComponentActivity() {
             // EventsSync.maybeAutoPull's own doc comment.
             com.kevin.legion.backend.EventsSync.maybeAutoPull(applicationContext)
         }
+        // Body-supabase ticket, same drain-then-pull ordering as the events pair above and for
+        // the identical reason (BodyOutboxDrain's own class doc) - a separate lifecycleScope block
+        // rather than sharing the events one above, since the two aspects' drains/pulls have no
+        // ordering dependency on EACH OTHER, only internally within their own pair.
+        lifecycleScope.launch {
+            com.kevin.legion.backend.BodyOutboxDrain.maybeDrain(applicationContext)
+            com.kevin.legion.backend.BodySync.maybeAutoPull(applicationContext)
+        }
         // The two Supabase tables that had a schema and RLS but never a single row uploaded
         // (measured against the real phone and the real project, one-today ticket): ledger's
         // UNRECONCILED-only reconcile and fleet's maintenance-schedule upload, neither of which

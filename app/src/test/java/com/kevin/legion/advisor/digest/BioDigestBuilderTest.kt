@@ -82,13 +82,16 @@ class BioDigestBuilderTest {
     @Test
     fun `bodyweight reports a weekly average, never one line per reading`() = runBlocking {
         val dao = CarDatabase.getDatabase(context).bodyweightLogDao()
-        dao.insert(BodyweightLog(weightValue = 180.0, weightUnit = "lbs", loggedAt = now, trustTier = TrustTier.REPORTED))
+        // guid is explicit and DISTINCT on both rows (body-supabase ticket, v60's unique index on
+        // bodyweight_logs.guid) - two rows both left at the Kotlin default ("") would collide under
+        // that index, unlike before this column existed.
+        dao.insert(BodyweightLog(weightValue = 180.0, weightUnit = "lbs", loggedAt = now, trustTier = TrustTier.REPORTED, guid = "test-bw-1"))
         // Anchored to the START of `now`'s own week rather than "now - 2 days": a fixed day-count
         // offset crosses the Monday boundary whenever this suite runs on a Monday or Tuesday (it
         // did, on 2026-08-18, and landed the second reading in the PREVIOUS week, silently
         // excluding it from the average and producing 180.0 instead of the asserted 181.0).
         // weekStartEpoch(now) is by definition inside `now`'s own week, so this can never cross.
-        dao.insert(BodyweightLog(weightValue = 182.0, weightUnit = "lbs", loggedAt = weekStartEpoch(now), trustTier = TrustTier.REPORTED))
+        dao.insert(BodyweightLog(weightValue = 182.0, weightUnit = "lbs", loggedAt = weekStartEpoch(now), trustTier = TrustTier.REPORTED, guid = "test-bw-2"))
 
         val digest = builder.build(context)
         val weightLine = digest.lines().first { it.startsWith("WEIGHT") }
@@ -145,9 +148,11 @@ class BioDigestBuilderTest {
     fun `a plateaued lift is named as the stalled exemplar`() = runBlocking {
         val db = CarDatabase.getDatabase(context)
         val dayMs = 24 * 60 * 60 * 1000L
-        db.workoutSetLogDao().insert(WorkoutSetLog(exercise = "bench", sets = 3, weightValue = 185.0, weightUnit = "lbs", loggedAt = now - 4 * dayMs, trustTier = TrustTier.REPORTED))
-        db.workoutSetLogDao().insert(WorkoutSetLog(exercise = "bench", sets = 3, weightValue = 180.0, weightUnit = "lbs", loggedAt = now - 2 * dayMs, trustTier = TrustTier.REPORTED))
-        db.workoutSetLogDao().insert(WorkoutSetLog(exercise = "bench", sets = 3, weightValue = 182.5, weightUnit = "lbs", loggedAt = now, trustTier = TrustTier.REPORTED))
+        // guid is explicit and DISTINCT on all three rows - see the bodyweight test above's own
+        // comment for why (body-supabase ticket, v60's unique index on workout_set_logs.guid).
+        db.workoutSetLogDao().insert(WorkoutSetLog(exercise = "bench", sets = 3, weightValue = 185.0, weightUnit = "lbs", loggedAt = now - 4 * dayMs, trustTier = TrustTier.REPORTED, guid = "test-bench-1"))
+        db.workoutSetLogDao().insert(WorkoutSetLog(exercise = "bench", sets = 3, weightValue = 180.0, weightUnit = "lbs", loggedAt = now - 2 * dayMs, trustTier = TrustTier.REPORTED, guid = "test-bench-2"))
+        db.workoutSetLogDao().insert(WorkoutSetLog(exercise = "bench", sets = 3, weightValue = 182.5, weightUnit = "lbs", loggedAt = now, trustTier = TrustTier.REPORTED, guid = "test-bench-3"))
 
         val digest = builder.build(context)
 

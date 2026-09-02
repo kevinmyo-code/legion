@@ -26,10 +26,21 @@ import androidx.room.PrimaryKey
  * entirely - it is an intention, not a claim about the world - so this row carries no
  * [com.kevin.legion.plan.TrustTier] column at all, matching [BudgetTarget]'s and
  * [MealTarget]'s precedent of leaving targets untagged.
+ *
+ * **[guid]/[serverId]/[deleted] joined v59 -> v60 (body-supabase ticket), no separate
+ * `updatedAtMs`** - see [MealTarget]'s own doc comment for why [updatedAt] doubles as the sync
+ * clock here rather than a second column carrying the identical value. [guid] is this row's own
+ * sync identity, distinct from the composite `(exercise, effectiveFromWeekEpoch)` natural key
+ * above - the composite key identifies WHICH plan line this is, [guid] is what
+ * [com.kevin.legion.backend.SupabaseBodyBackend] upserts on server-side and is minted once per
+ * row exactly like every other body table's, never derived from the composite key.
  */
 @Entity(
     tableName = "workout_plan_items",
-    indices = [Index(value = ["exercise", "effectiveFromWeekEpoch"], unique = true)],
+    indices = [
+        Index(value = ["exercise", "effectiveFromWeekEpoch"], unique = true),
+        Index(value = ["guid"], unique = true),
+    ],
 )
 data class WorkoutPlanItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -41,4 +52,7 @@ data class WorkoutPlanItem(
     /** Reps per set, when the plan states one - see the class doc. Null for every row written
      * before v32 and for any future plan whose source (model or hand-entry) simply didn't say. */
     @ColumnInfo(defaultValue = "NULL") val repsPerSet: Int? = null,
+    @ColumnInfo(defaultValue = "''") val guid: String = "",
+    val serverId: String? = null,
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

@@ -1,6 +1,8 @@
 package com.kevin.legion.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.kevin.legion.plan.TrustTier
 
@@ -26,8 +28,17 @@ import com.kevin.legion.plan.TrustTier
  * [quality] is an optional 1-5 self-rating, nullable because the driver may simply not say one.
  * [syncId] follows [LedgerTransaction.syncId]'s convention (a random UUID stamped at write time),
  * ahead of this row ever needing Drive sync - see that field's own doc comment.
+ *
+ * **[syncId]'s foretold sync never arrived on Drive - it arrived on Supabase instead, v59 -> v60
+ * (body-supabase ticket), as [guid].** Kept as a SEPARATE column rather than repointing [syncId]
+ * itself: this table's sync identity now has to match the other seven body tables' shape exactly
+ * (see [BodyweightLog]'s own doc comment for why, and for [serverId]/[updatedAtMs]/[deleted]'s
+ * identical role here), and [syncId] is read by nothing today - leaving it exactly as it always
+ * was costs nothing, and repointing it would mean asserting Drive-sync intent for a mechanism that
+ * was never built. [syncId] is now simply vestigial, same as this doc comment's own history
+ * records rather than erases.
  */
-@Entity(tableName = "sleep_logs")
+@Entity(tableName = "sleep_logs", indices = [Index(value = ["guid"], unique = true)])
 data class SleepLog(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val sleepDate: Long,
@@ -37,4 +48,8 @@ data class SleepLog(
     val loggedAt: Long,
     val trustTier: TrustTier,
     val syncId: String = java.util.UUID.randomUUID().toString(),
+    @ColumnInfo(defaultValue = "''") val guid: String = "",
+    val serverId: String? = null,
+    @ColumnInfo(defaultValue = "0") val updatedAtMs: Long = 0,
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

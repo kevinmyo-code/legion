@@ -60,6 +60,18 @@ data class OutboxEntry(
  * migration later. */
 object OutboxTarget {
     const val EVENTS = "events"
+
+    /** Body-supabase ticket - one constant per body table, so [OutboxEntry.targetTable] tells a
+     * drain exactly which of the eight [com.kevin.legion.backend.BodyBackend] upsert/softDelete
+     * calls a queued payload decodes into, same role [EVENTS] plays for `events`. */
+    const val BODY_BODYWEIGHT_LOGS = "bodyweight_logs"
+    const val BODY_MEAL_LOGS = "meal_logs"
+    const val BODY_MEAL_TARGETS = "meal_targets"
+    const val BODY_SLEEP_LOGS = "sleep_logs"
+    const val BODY_SLEEP_TARGETS = "sleep_targets"
+    const val BODY_WORKOUT_PLANS = "workout_plans"
+    const val BODY_WORKOUT_PLAN_ITEMS = "workout_plan_items"
+    const val BODY_WORKOUT_SET_LOGS = "workout_set_logs"
 }
 
 /** [OutboxEntry.operation] values. **The comment this replaces said only [UPSERT] was produced as

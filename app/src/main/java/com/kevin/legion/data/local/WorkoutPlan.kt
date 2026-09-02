@@ -1,5 +1,6 @@
 package com.kevin.legion.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -21,10 +22,17 @@ import androidx.room.PrimaryKey
  * This field is that number - a single whole-plan target for how many distinct days a week the
  * driver intends to train, independent of which exercises happen on which day. **Flagged in the
  * build report as a decision needing Kevin's confirmation, not a fact read out of the ticket.**
+ *
+ * **[guid]/[serverId]/[deleted] joined v59 -> v60 (body-supabase ticket), no separate
+ * `updatedAtMs`** - see [MealTarget]'s own doc comment for why [updatedAt] doubles as the sync
+ * clock here rather than a second column carrying the identical value.
  */
 @Entity(
     tableName = "workout_plans",
-    indices = [Index(value = ["effectiveFromWeekEpoch"], unique = true)],
+    indices = [
+        Index(value = ["effectiveFromWeekEpoch"], unique = true),
+        Index(value = ["guid"], unique = true),
+    ],
 )
 data class WorkoutPlan(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -32,4 +40,7 @@ data class WorkoutPlan(
     /** UTC week-start (Monday) epoch millis - the first week this plan applies to. */
     val effectiveFromWeekEpoch: Long,
     val updatedAt: Long,
+    @ColumnInfo(defaultValue = "''") val guid: String = "",
+    val serverId: String? = null,
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

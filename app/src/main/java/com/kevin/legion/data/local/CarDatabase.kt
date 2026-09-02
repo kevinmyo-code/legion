@@ -284,6 +284,12 @@ import androidx.room.RoomDatabase
  * real one). See [MIGRATION_58_59] for the schema itself - a table rebuild for `events` (SQLite has
  * no `ALTER COLUMN`, same `_new`/copy/drop/rename shape [MIGRATION_50_51] already established for
  * `vehicle_sidecar`) plus a plain additive `CREATE TABLE` for `sync_outbox`.
+ *
+ * v60 (body-supabase ticket, "give LEGION's body aspect a Supabase home, end to end" - the template
+ * for six more aspects): `guid`/`serverId`/`deleted` added to all eight body tables
+ * (`bodyweight_logs`, `meal_logs`, `meal_targets`, `sleep_logs`, `sleep_targets`, `workout_plans`,
+ * `workout_plan_items`, `workout_set_logs`), plus `updatedAtMs` on the four LOG tables only - see
+ * [MIGRATION_59_60] for the full account of which four get which columns and why.
  */
 @Database(
     entities = [
@@ -322,7 +328,7 @@ import androidx.room.RoomDatabase
         VoiceNote::class,
         OutboxEntry::class,
     ],
-    version = 59,
+    version = 60,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -465,7 +471,10 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 59
+        const val SCHEMA_VERSION = 60
+        // 2026-09-02: bumped to 60 alongside `@Database(version=)` in the same edit again
+        // (the body-supabase ticket - guid/serverId/updatedAtMs-or-updatedAt/deleted added to all
+        // eight body tables, see [MIGRATION_59_60] for the full account).
         // 2026-08-28: bumped 47 -> 49, and this one was NOT a same-edit bump - it was a REPAIR.
         // Versions 48 and 49 (tickets 17 and 18) each moved `@Database(version=)` and left this
         // constant behind, and the doc comment above was wrong about the consequence. It says a
@@ -565,7 +574,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50,
                         MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53, MIGRATION_53_54,
                         MIGRATION_54_55, MIGRATION_55_56, MIGRATION_56_57, MIGRATION_57_58,
-                        MIGRATION_58_59,
+                        MIGRATION_58_59, MIGRATION_59_60,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

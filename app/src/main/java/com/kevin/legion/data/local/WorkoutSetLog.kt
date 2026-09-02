@@ -2,6 +2,7 @@ package com.kevin.legion.data.local
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.kevin.legion.plan.TrustTier
 
@@ -43,7 +44,7 @@ import com.kevin.legion.plan.TrustTier
  * a foreign key here would only add ON DELETE ceremony this schema's no-CHECK-constraints,
  * no-unnecessary-FK posture (ticket 01) does not otherwise use.
  */
-@Entity(tableName = "workout_set_logs")
+@Entity(tableName = "workout_set_logs", indices = [Index(value = ["guid"], unique = true)])
 data class WorkoutSetLog(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val exercise: String,
@@ -57,4 +58,10 @@ data class WorkoutSetLog(
     /** See the class doc comment - null for every hand/voice log, the originating [ListItem.id]
      * for a swept one. */
     @ColumnInfo(defaultValue = "NULL") val sourceListItemId: Long? = null,
+    /** [guid]/[serverId]/[updatedAtMs]/[deleted] joined v59 -> v60 (body-supabase ticket) - see
+     * [BodyweightLog]'s own doc comment for the shared reasoning across all eight body tables. */
+    @ColumnInfo(defaultValue = "''") val guid: String = "",
+    val serverId: String? = null,
+    @ColumnInfo(defaultValue = "0") val updatedAtMs: Long = 0,
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

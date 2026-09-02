@@ -1,6 +1,7 @@
 package com.kevin.legion.sleep
 
 import android.content.Context
+import com.kevin.legion.backend.BodyWriteThrough
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.SleepLog
 import com.kevin.legion.data.local.SleepTarget
@@ -8,6 +9,7 @@ import com.kevin.legion.meals.dayEndEpoch
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.plan.TrustTier
 import com.kevin.legion.util.shortDate
+import java.util.UUID
 
 /**
  * Orchestrates the sleep aspect (Kevin, 2026-08-07: "i want to be able to log sleep too") - mirrors
@@ -35,7 +37,10 @@ object SleepController {
         val minutes = parseSleepDurationMinutes(durationHours)
             ?: return "That doesn't sound like a real duration - give me a number of hours between 0 and 24."
         val sleepDate = sleepDateOverride ?: dayStartEpoch(now)
-        CarDatabase.getDatabase(context).sleepLogDao().insert(
+        // BodyWriteThrough.addSleepLog, not a direct DAO insert - see MealController.logMeal's
+        // own comment for the write-through shape this follows (body-supabase ticket).
+        BodyWriteThrough.addSleepLog(
+            context,
             SleepLog(
                 sleepDate = sleepDate,
                 durationMinutes = minutes,
@@ -43,7 +48,9 @@ object SleepController {
                 notes = notes,
                 loggedAt = now,
                 trustTier = TrustTier.REPORTED,
-            )
+                guid = UUID.randomUUID().toString(),
+                updatedAtMs = now,
+            ),
         )
         val hoursText = formatMinutesAsHours(minutes)
         val qualityText = quality?.let { ", quality $it/5" } ?: ""
@@ -55,8 +62,11 @@ object SleepController {
         val minutes = parseSleepDurationMinutes(targetHours)
             ?: return "That doesn't sound like a real target - give me a number of hours between 0 and 24."
         val dayStart = dayStartEpoch(now)
-        CarDatabase.getDatabase(context).sleepTargetDao().upsert(
-            SleepTarget(targetMinutes = minutes, effectiveFromDateEpoch = dayStart, updatedAt = now)
+        val db = CarDatabase.getDatabase(context)
+        val guid = db.sleepTargetDao().getByEffectiveDate(dayStart)?.guid ?: UUID.randomUUID().toString()
+        BodyWriteThrough.setSleepTarget(
+            context,
+            SleepTarget(targetMinutes = minutes, effectiveFromDateEpoch = dayStart, updatedAt = now, guid = guid),
         )
         return "Sleep target set: ${formatMinutesAsHours(minutes)} a night."
     }
@@ -88,7 +98,7 @@ object SleepController {
         CarDatabase.getDatabase(context).sleepLogDao().mostRecent()
 
     suspend fun deleteSleepLog(context: Context, log: SleepLog): String {
-        CarDatabase.getDatabase(context).sleepLogDao().deleteById(log.id)
+        BodyWriteThrough.deleteSleepLog(context, log)
         return "Undone: ${formatMinutesAsHours(log.durationMinutes)} of sleep logged ${shortDate(log.loggedAt)}."
     }
 }

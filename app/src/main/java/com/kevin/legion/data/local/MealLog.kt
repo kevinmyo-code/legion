@@ -1,6 +1,8 @@
 package com.kevin.legion.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.kevin.legion.plan.TrustTier
 
@@ -23,8 +25,14 @@ import com.kevin.legion.plan.TrustTier
  *
  * [sourceImagePath] is null for a voice-only log; set when a photo produced this row (once the
  * photo-capture UI exists to call [com.kevin.legion.meals.MealAgent.estimateFromPhoto]).
+ *
+ * **[guid]/[serverId]/[updatedAtMs]/[deleted] joined v59 -> v60 (body-supabase ticket)** - see
+ * [BodyweightLog]'s own doc comment for the shared reasoning across all eight body tables. The
+ * macro estimates above travel to `public.meal_logs` unchanged by this trip - CLAUDE.md §4 rule 5
+ * forbids laundering a model guess into fact by moving it, so [SupabaseBodyBackend][com.kevin.legion.backend.SupabaseBodyBackend]
+ * writes them into columns the schema itself documents as estimates, never gate-checked.
  */
-@Entity(tableName = "meal_logs")
+@Entity(tableName = "meal_logs", indices = [Index(value = ["guid"], unique = true)])
 data class MealLog(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val description: String,
@@ -35,4 +43,8 @@ data class MealLog(
     val loggedAt: Long,
     val sourceImagePath: String? = null,
     val trustTier: TrustTier,
+    @ColumnInfo(defaultValue = "''") val guid: String = "",
+    val serverId: String? = null,
+    @ColumnInfo(defaultValue = "0") val updatedAtMs: Long = 0,
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

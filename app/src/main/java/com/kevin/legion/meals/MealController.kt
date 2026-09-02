@@ -1,11 +1,13 @@
 package com.kevin.legion.meals
 
 import android.content.Context
+import com.kevin.legion.backend.BodyWriteThrough
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MealLog
 import com.kevin.legion.data.local.MealTarget
 import com.kevin.legion.plan.TrustTier
 import com.kevin.legion.util.shortDate
+import java.util.UUID
 
 /**
  * Orchestrates the meals aspect - mirrors [com.kevin.legion.pantry.PantryController]'s and
@@ -23,9 +25,12 @@ object MealController {
     suspend fun logMeal(context: Context, spokenDescription: String): String {
         val estimate = MealAgent.estimateFromDescription(spokenDescription)
         val now = System.currentTimeMillis()
-        val db = CarDatabase.getDatabase(context)
         val description = estimate?.description ?: spokenDescription
-        db.mealLogDao().insert(
+        // BodyWriteThrough.addMealLog, not a direct DAO insert (body-supabase ticket) - writes
+        // locally first, unconditionally, then pushes to Supabase if configured, enqueueing on
+        // failure. guid/updatedAtMs are minted here, at the one place a MealLog is ever created.
+        BodyWriteThrough.addMealLog(
+            context,
             MealLog(
                 description = description,
                 caloriesKcal = estimate?.caloriesKcal,
@@ -35,7 +40,9 @@ object MealController {
                 loggedAt = now,
                 sourceImagePath = null,
                 trustTier = TrustTier.REPORTED,
-            )
+                guid = UUID.randomUUID().toString(),
+                updatedAtMs = now,
+            ),
         )
         // D34: no separate confirm turn - state what was written, in words the driver can catch
         // a mishearing from. Estimate fields are always spoken as estimates (CLAUDE.md §4 rule 5).
@@ -50,11 +57,18 @@ object MealController {
     suspend fun setTarget(context: Context, caloriesKcal: Int, proteinG: Double, carbsG: Double, fatG: Double): String {
         val now = System.currentTimeMillis()
         val dayStart = dayStartEpoch(now)
-        CarDatabase.getDatabase(context).mealTargetDao().upsert(
+        val db = CarDatabase.getDatabase(context)
+        // Reuse the existing row's guid on a same-day re-set - see MealTargetDao.getByEffectiveDate's
+        // own doc comment for why a fresh guid here would orphan a server row.
+        val guid = db.mealTargetDao().getByEffectiveDate(dayStart)?.guid ?: UUID.randomUUID().toString()
+        // BodyWriteThrough.setMealTarget, not a direct DAO upsert - see logMeal's own comment.
+        BodyWriteThrough.setMealTarget(
+            context,
             MealTarget(
                 caloriesKcal = caloriesKcal, proteinG = proteinG, carbsG = carbsG, fatG = fatG,
                 effectiveFromDateEpoch = dayStart, updatedAt = now,
-            )
+                guid = guid,
+            ),
         )
         return "Daily target set: $caloriesKcal kcal, ${proteinG}g protein, ${carbsG}g carbs, ${fatG}g fat."
     }
@@ -87,7 +101,9 @@ object MealController {
         CarDatabase.getDatabase(context).mealLogDao().mostRecent()
 
     suspend fun deleteMealLog(context: Context, log: MealLog): String {
-        CarDatabase.getDatabase(context).mealLogDao().deleteById(log.id)
+        // BodyWriteThrough.deleteMealLog - soft-deletes and pushes the tombstone on a configured
+        // install, hard-deletes on an unconfigured one. See that function's own doc comment.
+        BodyWriteThrough.deleteMealLog(context, log)
         return "Undone: ${log.description} logged ${shortDate(log.loggedAt)}."
     }
 }

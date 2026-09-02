@@ -1,5 +1,6 @@
 package com.kevin.legion.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -18,10 +19,24 @@ import androidx.room.PrimaryKey
  * No [com.kevin.legion.plan.TrustTier] column, matching [BudgetTarget]/[WorkoutPlanItem]'s
  * precedent: ticket 05 D3 places a target OUTSIDE both trust tiers entirely - it is an intention,
  * not a claim about the world.
+ *
+ * **[guid]/[serverId]/[deleted] joined v59 -> v60 (body-supabase ticket)** - see [BodyweightLog]'s
+ * own doc comment for the shared shape. **Deliberately NO separate `updatedAtMs`, unlike the four
+ * body LOG tables.** [updatedAt] already exists, is stamped with `System.currentTimeMillis()` at
+ * the exact moment every write happens ([com.kevin.legion.meals.MealController.setTarget]), and is
+ * read by nothing else in this codebase - it already IS the mutation clock a sync merge needs, and
+ * a second column carrying the identical value would be a fact with two owners that a future write
+ * site could update one of and not the other (the same duplicate-source-of-truth shape
+ * CLAUDE.md §4's `receipts.unaccounted_cents` note warns against for a different pair of columns).
+ * [com.kevin.legion.backend.BodySync]'s merge logic reads [updatedAt] directly for this table
+ * rather than a same-named [updatedAtMs] the other four tables carry.
  */
 @Entity(
     tableName = "meal_targets",
-    indices = [Index(value = ["effectiveFromDateEpoch"], unique = true)],
+    indices = [
+        Index(value = ["effectiveFromDateEpoch"], unique = true),
+        Index(value = ["guid"], unique = true),
+    ],
 )
 data class MealTarget(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -32,4 +47,7 @@ data class MealTarget(
     /** UTC day-start epoch millis - the first day this target applies to. */
     val effectiveFromDateEpoch: Long,
     val updatedAt: Long,
+    @ColumnInfo(defaultValue = "''") val guid: String = "",
+    val serverId: String? = null,
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

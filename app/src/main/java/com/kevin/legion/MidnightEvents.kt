@@ -199,6 +199,58 @@ object MidnightEvents {
         Log.w(TAG, "maintenance_schedule_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** A foreground [com.kevin.legion.backend.BodySync.maybeAutoPull] pass completed across all
+     * eight body tables - same "only evidence this ran" role as [eventsAutoPullSucceeded] plays
+     * for events. Body-supabase ticket. */
+    fun bodyAutoPullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int, skippedTombstoneNoLocalMatch: Int) = safe {
+        Log.d(
+            TAG,
+            "body_auto_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
+                "tombstoned=$tombstoned skippedTombstoneNoLocalMatch=$skippedTombstoneNoLocalMatch",
+        )
+    }
+
+    /** [com.kevin.legion.backend.BodySync.maybeAutoPull] failed - degraded to this log line, same
+     * posture as [eventsAutoPullFailed]. */
+    fun bodyAutoPullFailed(e: Throwable) = safe {
+        Log.w(TAG, "body_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.BodyOutboxDrain.maybeDrain] pass completed - same
+     * role as [eventsOutboxDrainSucceeded] plays for events. Body-supabase ticket. */
+    fun bodyOutboxDrainSucceeded(succeeded: Int, stillPending: Int, poisoned: Int) = safe {
+        Log.d(TAG, "body_outbox_drain succeeded=$succeeded stillPending=$stillPending poisoned=$poisoned")
+    }
+
+    /** [com.kevin.legion.backend.BodyOutboxDrain.maybeDrain] failed - degraded to this log line,
+     * same posture as [eventsOutboxDrainFailed]. */
+    fun bodyOutboxDrainFailed(e: Throwable) = safe {
+        Log.w(TAG, "body_outbox_drain_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** [com.kevin.legion.backend.BodyRealtime] could not open or maintain its `postgres_changes`
+     * subscription - degraded to this log line, same posture as [eventsRealtimeSubscribeFailed]:
+     * the foreground pull stays as the fallback. */
+    fun bodyRealtimeSubscribeFailed(e: Throwable) = safe {
+        Log.w(TAG, "body_realtime_subscribe_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A [com.kevin.legion.backend.BodyRealtime]-triggered [com.kevin.legion.backend.BodySync.pull]
+     * completed - same role as [eventsRealtimePullSucceeded]. */
+    fun bodyRealtimePullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int) = safe {
+        Log.d(
+            TAG,
+            "body_realtime_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
+                "tombstoned=$tombstoned",
+        )
+    }
+
+    /** A realtime-triggered body pull failed - degraded to this log line, same posture as
+     * [eventsRealtimePullFailed]. */
+    fun bodyRealtimePullFailed(e: Throwable) = safe {
+        Log.w(TAG, "body_realtime_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A voice tool was dispatched. Useful for tracing what tool ran before a crash. */
     fun toolDispatched(toolName: String) = safe { Log.d(TAG, "tool_dispatched: $toolName") }
 

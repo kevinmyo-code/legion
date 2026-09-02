@@ -2254,3 +2254,92 @@ val MIGRATION_58_59 = object : Migration(58, 59) {
         )
     }
 }
+
+/**
+ * v59 -> v60: the body-supabase ticket ("give LEGION's body aspect a Supabase home, end to end" -
+ * this is the TEMPLATE for six more aspects). The prior brief on this same ticket was told "no
+ * Room migration should be needed" after tracing that all eight body tables carry no sync-shaped
+ * columns at all - no `guid`, no `serverId`, no `updatedAt`, no `deleted` - and correctly STOPPED
+ * rather than improvising. That instruction was withdrawn: push-only was rejected because Kevin
+ * intends to wipe the phone and rebuild it from Supabase, so a row that uploads but cannot come
+ * back down is useless. This migration adds the same four sync columns [Event] already carries,
+ * to the eight tables that lack them:
+ *
+ *   bodyweight_logs, meal_logs, sleep_logs, workout_set_logs (the four LOG tables) get all four:
+ *   `guid`, `serverId`, `updatedAtMs`, `deleted`.
+ *
+ *   meal_targets, sleep_targets, workout_plans, workout_plan_items (the four TARGET tables) get
+ *   three: `guid`, `serverId`, `deleted`. **Deliberately NO `updatedAtMs` on these four** - each
+ *   already carries `updatedAt`, stamped with `System.currentTimeMillis()` at the exact moment
+ *   every write happens and read by nothing else, so it already IS the mutation clock a sync merge
+ *   needs. A second column holding the identical value would be a fact with two owners - see
+ *   [MealTarget]'s own v60 doc comment for the fuller reasoning, which is the same shape CLAUDE.md
+ *   §4's `receipts.unaccounted_cents` note warns against for a different pair of columns.
+ *
+ * All eight `ADD COLUMN`s are plain and additive - no `NOT NULL` column is ever widened, so unlike
+ * [MIGRATION_58_59]'s `events` this needs no create-new/copy/drop/rename table rebuild.
+ *
+ * **Backfill, in the same two-step shape [MIGRATION_36_37] established for `records.guid`:**
+ * `guid` cannot take a per-row-distinct value as an `ALTER TABLE ... DEFAULT` (SQLite requires a
+ * constant default), so every table gets `DEFAULT ''` first and then a correlated `UPDATE`
+ * mints a real, distinct value for every existing row - "no row is ever guid-left-blank", the
+ * same guarantee that migration's own doc comment states, applied here so the 42 rows already on
+ * the phone can be uploaded and matched by [com.kevin.legion.backend.BodySync.pull] on the very
+ * first run. `updatedAtMs` is backfilled from each log table's own [BodyweightLog.loggedAt]/
+ * [MealLog.loggedAt]/[SleepLog.loggedAt]/[WorkoutSetLog.loggedAt] rather than left at the
+ * placeholder `0` - a real historical instant, not "the beginning of Unix time", is what a
+ * post-migration LWW comparison and the first upload's own `updated_at` should read.
+ *
+ * **`guid` gets a UNIQUE index on all eight tables, unlike [Event.guid]'s own deliberately
+ * non-unique one.** [Event]'s own doc comment explains why a unique index is wrong THERE: a
+ * `kind = reminder` row leaves `guid` at its Kotlin default (blank `""`) by design, so more than
+ * one such row sharing `""` is normal and a unique index would reject the second one ever created
+ * on an unconfigured install. No body table has an equivalent "leaves it blank by design" case -
+ * every body row gets a real, distinct guid the moment it is written (or, for a pre-existing row,
+ * the moment this migration backfills one) - so a unique index here is the correct, natural-key
+ * shape, matching `places.label_unique`'s own precedent for a genuine natural key rather than
+ * `records.guid`'s bare non-unique index.
+ *
+ * Index names (`index_<table>_guid`) match Room's own generated naming exactly - confirmed against
+ * `app/schemas/com.kevin.legion.data.local.CarDatabase/59.json`'s existing
+ * `index_meal_targets_effectiveFromDateEpoch` entry for the pattern, and against the v60 schema
+ * JSON this migration was written alongside (committed under `app/schemas/` per CLAUDE.md §5).
+ */
+val MIGRATION_59_60 = object : Migration(59, 60) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Not certified RFC 4122 (no version/variant bit registry lookup) - same shape
+        // MIGRATION_36_37 uses for `records.guid`, and the same "only needs to be
+        // effectively-unique within this table" reasoning applies here.
+        val uuidExpr = "(" +
+            "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || " +
+            "substr(lower(hex(randomblob(2))), 2) || '-' || " +
+            "substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || " +
+            "lower(hex(randomblob(6)))" +
+            ")"
+
+        // The four LOG tables: guid, serverId, updatedAtMs (backfilled from loggedAt), deleted.
+        for (table in listOf("bodyweight_logs", "meal_logs", "sleep_logs", "workout_set_logs")) {
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `guid` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `serverId` TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `updatedAtMs` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE `$table` SET guid = $uuidExpr WHERE guid = ''")
+            db.execSQL("UPDATE `$table` SET updatedAtMs = loggedAt WHERE updatedAtMs = 0")
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_${table}_guid` ON `$table` (`guid`)"
+            )
+        }
+
+        // The four TARGET tables: guid, serverId, deleted only - `updatedAt` (existing) is the
+        // sync clock, see this migration's own class doc for why no `updatedAtMs` joins these.
+        for (table in listOf("meal_targets", "sleep_targets", "workout_plans", "workout_plan_items")) {
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `guid` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `serverId` TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE `$table` SET guid = $uuidExpr WHERE guid = ''")
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_${table}_guid` ON `$table` (`guid`)"
+            )
+        }
+    }
+}
