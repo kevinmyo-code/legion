@@ -46,7 +46,7 @@ class DayAgendaTest {
         RoomTestReset.drainArchDiskIoPool()
     }
 
-    private suspend fun insertAppointment(title: String, startsAt: Long): Event {
+    private suspend fun insertAppointment(title: String, startsAt: Long, allDay: Boolean = false): Event {
         val db = CarDatabase.getDatabase(context)
         val row = Event(
             id = db.eventDao().nextAppointmentId(),
@@ -54,8 +54,8 @@ class DayAgendaTest {
             guid = UUID.randomUUID().toString(),
             title = title,
             startsAt = startsAt,
-            endsAt = startsAt + 3_600_000,
-            allDay = false,
+            endsAt = startsAt + if (allDay) java.time.Duration.ofDays(1).toMillis() else 3_600_000,
+            allDay = allDay,
             source = "legion",
             kind = EventKind.EVENT,
             done = false,
@@ -124,5 +124,43 @@ class DayAgendaTest {
         assertEquals(1, agenda.size)
         assertEquals("Vet visit", agenda.single().label)
         assertEquals(com.kevin.legion.ui.AgendaSource.GOOGLE, agenda.single().source)
+    }
+
+    /**
+     * Found on-device 2026-09-01, Kevin: "the due dates seem to be advanced by 1 day some how" -
+     * an all-day appointment's [Event.startsAt] is UTC midnight of its calendar date
+     * (`LiveToolbox.addAppointment`'s own comment), so [buildDayAgenda]'s window query must be
+     * widened and re-anchored through UTC (see [com.kevin.legion.data.local.activeByKindInLocalWindow]'s
+     * own doc comment) or the row renders on the PREVIOUS local day at UTC-5 - exactly this test's
+     * real figure, `MATH 3391 WebAssign homework` due Sep 6
+     * (`.scratch/canvas-integration/research/planner-2026-09-01.json`).
+     */
+    @Test
+    fun `an all-day appointment stored at UTC midnight lands on its own local day, not the day before`() = runBlocking {
+        val zone = ZoneId.of("America/Chicago") // UTC-5, Kevin's own device
+        val sep6Utc = LocalDate.of(2026, 9, 6).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+        insertAppointment("MATH 3391 WebAssign homework", sep6Utc, allDay = true)
+
+        val sep6Agenda = buildDayAgenda(context, LocalDate.of(2026, 9, 6), zone)
+        val sep5Agenda = buildDayAgenda(context, LocalDate.of(2026, 9, 5), zone)
+
+        assertEquals(listOf("MATH 3391 WebAssign homework"), sep6Agenda.map { it.label })
+        assertTrue("must not render one day early", sep5Agenda.isEmpty())
+    }
+
+    /** Same fixture, a zone EAST of UTC (Asia/Tokyo, UTC+9) - the naive bug pushes an all-day row
+     * to the day AFTER in this direction, not before, so a fix verified only at UTC-5 is only half
+     * verified. */
+    @Test
+    fun `an all-day appointment stored at UTC midnight lands on its own local day east of UTC too`() = runBlocking {
+        val zone = ZoneId.of("Asia/Tokyo") // UTC+9
+        val sep6Utc = LocalDate.of(2026, 9, 6).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+        insertAppointment("MATH 3391 WebAssign homework", sep6Utc, allDay = true)
+
+        val sep6Agenda = buildDayAgenda(context, LocalDate.of(2026, 9, 6), zone)
+        val sep7Agenda = buildDayAgenda(context, LocalDate.of(2026, 9, 7), zone)
+
+        assertEquals(listOf("MATH 3391 WebAssign homework"), sep6Agenda.map { it.label })
+        assertTrue("must not render one day late", sep7Agenda.isEmpty())
     }
 }

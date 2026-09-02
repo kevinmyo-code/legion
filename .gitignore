@@ -87,3 +87,7 @@ __pycache__/
 # tools/evals/ per-run transcripts and reports - one JSON file per case per run, every run
 # on demand against a real key. Reproducible from the suites + a fingerprint, not source.
 tools/evals/runs/
+
+# Supabase personal access token - never commit
+.supabase-token
+.supabase-conn

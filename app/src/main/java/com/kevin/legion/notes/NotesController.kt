@@ -421,8 +421,37 @@ object NotesController {
      * pre-cutover "one list" reality the wave 1 carve already documented). */
     suspend fun itemsForList(context: Context, listId: Long): List<ListItem> = allNotesItems(context)
 
-    /** Every non-deleted item - the inbox stream's source. */
-    suspend fun allItems(context: Context): List<ListItem> = allNotesItems(context)
+    /**
+     * Every non-deleted item, EXCLUDING [com.kevin.legion.advisor.GoalChecklistSync]'s own
+     * `"Plan: "`-prefixed materialized lines - the inbox stream's source (found 2026-09-01, Kevin:
+     * "theres a bunch of events that probably came from google calendar... i cant remove them
+     * either from the app... the list is kinda useless as is"). Those lines have a dedicated home
+     * now, `ui/goals/GoalChecklistPanel.kt`'s "Today's plan"/"Checklist" panel, which reads them
+     * through [allItemsIncludingChecklistLines] instead - Kevin's ruling was that a SECOND copy
+     * sitting in this general stream (Inbox, `ui/NotesScreen.kt`'s open count, the Calendar day
+     * view's Yet-to-do/Done, and `read_list`'s spoken echo of the same stream) IS the duplication
+     * he wants gone, not a second bug to chase. **The underlying [ListItem] rows are UNCHANGED
+     * by this filter** - ticking, untick, and the completion-history record all still work exactly
+     * as before, entirely through [com.kevin.legion.advisor.GoalChecklistSync.toggle]; this only
+     * removes them from the stream every OTHER surface reads, mirroring [AlarmScheduler]'s own
+     * "never treat a row this file does not own as one of its own" posture (see [allNotesItems]'s
+     * doc comment for the 2026-08-26 incident that established it) - a checklist line is not a
+     * reminder to sweep, mark missed, or show twice, even though it is stored in the same table. */
+    suspend fun allItems(context: Context): List<ListItem> =
+        allNotesItems(context).filterNot {
+            it.text.startsWith(com.kevin.legion.advisor.GoalChecklistSync.ITEM_PREFIX)
+        }
+
+    /**
+     * [allNotesItems], unfiltered - [com.kevin.legion.advisor.GoalChecklistSync]'s own read path
+     * (`materializeToday`/`sweepPastDayAutoLog`/`trimExpiredPlanItems`/`currentItems`), and the
+     * ONLY caller that may ever use it. It must see its own already-materialized `"Plan: "` lines
+     * to stay idempotent - reading through the now-filtered [allItems] instead would make it think
+     * none exist and re-add every one on every single call, which is a WORSE bug than the one this
+     * exists to fix (repeated duplicate inserts, not merely a duplicate render). Every other caller
+     * wants [allItems].
+     */
+    suspend fun allItemsIncludingChecklistLines(context: Context): List<ListItem> = allNotesItems(context)
 
     suspend fun addItemDue(
         context: Context,

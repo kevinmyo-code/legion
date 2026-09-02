@@ -1,0 +1,64 @@
+-- LEGION backend-erp: mirror of local Room MIGRATION_57_58 (v57 -> v58), "purge the persistent
+-- list, and stop what refills it" (2026-09-01, Kevin: "theres a bunch of events that probably came
+-- from google calendar. things that are already done etc. i cant remove them either from the app.
+-- get rid of all of it" - and, separately, "the list is kinda useless as is. they are events with a
+-- tick box").
+--
+-- =============================================================================================
+-- WHAT THIS FILE CAN AND CANNOT MIRROR - stated rather than silently attempted
+-- =============================================================================================
+-- The local migration deletes two groups. Only the SECOND is reproducible here:
+--
+--   1. 12 specific Google Calendar duplicate rows, identified by their LOCAL Room surrogate id
+--      (`com.kevin.legion.data.local.Event.id`, a `Long`, e.g. 100000154). **`public.events.id` is
+--      a `uuid`** (20260825000400_aspect_dates_notes_merged.sql's own `create table`) - the two id
+--      spaces have no correspondence at all (the local id is a client-minted surrogate; the only
+--      column that maps a replica row back to its server row is `Event.serverId`, which this
+--      migration's own brief did not supply for these 12 rows). There is therefore NO reliable
+--      WHERE clause this file could write for that group - matching by title text would risk
+--      catching an unrelated row that happens to share one, exactly the "self-consistent
+--      hallucination" shape CLAUDE.md's reconciliation gate warns against in a different domain.
+--      **If these 12 rows also exist server-side, a future session with real Supabase access must
+--      identify their actual `id` (uuid) values first** (e.g. `select id, title, starts_at from
+--      public.events where kind = 'reminder' and source = 'google' order by starts_at` and cross-
+--      reference against the on-device titles/dates the ticket recorded), then delete by uuid.
+--      Left undone here rather than guessed.
+--
+--   2. Every `kind = 'reminder'` row whose title starts with `com.kevin.legion.advisor.
+--      GoalChecklistSync.ITEM_PREFIX` (`"Plan: "`) - the daily BIO-checklist materialization
+--      (`Plan: Hit 2300 kcal / 180g protein`, `Plan: Sleep 8h`, etc). This group needs no id
+--      lookup at all - `kind` and `title` are ordinary columns any environment can match on - so
+--      it is fully reproducible here.
+--
+-- =============================================================================================
+-- SOFT DELETE, NOT A HARD ONE - the server's own convention, not the local replica's
+-- =============================================================================================
+-- The local Room migration (`MIGRATION_57_58`) uses a hard `DELETE`, matching that TABLE's own
+-- established LOCAL convention (`NotesController.removeItem`'s unconfigured branch,
+-- `NotesController.removeAppointment` - both call `EventDao.deleteById` directly rather than
+-- flipping a local flag). The SERVER side is different: `deleted_at` IS the server's own
+-- soft-delete convention (`com.kevin.legion.data.local.Event.deleted`'s own doc comment: "mirrors
+-- the server's own `deleted_at IS NOT NULL`"), exactly what `EventsBackend.softDelete` writes for
+-- an ordinary in-app removal - so this file matches THAT convention instead of hard-deleting.
+--
+-- =============================================================================================
+-- WHY THIS MATTERS EVEN THOUGH THE LOCAL MIGRATION ALREADY RAN
+-- =============================================================================================
+-- On a CONFIGURED install, `EventsReconcile` wipes and refills `kind = 'reminder'` rows from the
+-- server on every reconcile (its own class doc: "wipes only `kind = reminder` here and refills
+-- those through the existing carry/derive dance"). A local-only hard DELETE of these rows is not
+-- durable against that refill if the server still has them - the very next reconcile can bring
+-- them straight back. This migration is what makes the deletion actually STICK for a configured
+-- install; until Kevin (or a future session with real credentials) applies it, treat the local
+-- fix as provisional on a configured device.
+--
+-- UNAPPLIED as of this commit - this agent has no Supabase CLI access and no project credentials
+-- from this environment, same posture every migration in this directory since phase 2 documents.
+-- Kevin (or a future session with credentials) must run this against the live project, and should
+-- first resolve group 1 above (the 12 duplicate ids) by uuid before or alongside applying this file.
+
+update public.events
+   set deleted_at = now()
+ where kind = 'reminder'
+   and deleted_at is null
+   and title like 'Plan: %';

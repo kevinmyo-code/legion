@@ -88,10 +88,16 @@ class GoalChecklistSyncTest {
         return (result as RecordStore.WriteResult.Success).recordId
     }
 
-    /** Every non-deleted [ListItem] this object has ever written, on the one list. */
+    /** Every non-deleted [ListItem] this object has ever written, on the one list.
+     * [NotesController.allItemsIncludingChecklistLines], not [NotesController.allItems] - found
+     * 2026-09-01 fixing the Kevin-reported duplication bug: [allItems] now excludes every
+     * [GoalChecklistSync.ITEM_PREFIX] line on purpose (that function's own doc comment), so this
+     * helper must read the same unfiltered path [GoalChecklistSync] itself reads through, or every
+     * assertion below would see an empty list regardless of what was actually materialized. */
     private suspend fun planItems(): List<ListItem> {
         val list = NotesController.theList(context)
-        return NotesController.allItems(context).filter { it.listId == list.id && it.text.startsWith(GoalChecklistSync.ITEM_PREFIX) }
+        return NotesController.allItemsIncludingChecklistLines(context)
+            .filter { it.listId == list.id && it.text.startsWith(GoalChecklistSync.ITEM_PREFIX) }
     }
 
     @After

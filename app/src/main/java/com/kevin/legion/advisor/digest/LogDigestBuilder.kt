@@ -7,6 +7,7 @@ import com.kevin.legion.advisor.DigestText
 import com.kevin.legion.backend.EventKind
 import com.kevin.legion.calendar.OpenerCalendarBriefing
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.data.local.ItemList
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.util.compactDate
@@ -66,8 +67,10 @@ object LogDigestBuilder : DigestBuilder {
         // One-today ticket 01, "cut Google entirely": the local `events` table is always readable,
         // so there is no more refused-permission outcome to distinguish from an empty window - see
         // calendarLine's own doc comment for why the `null` branch is kept anyway.
+        // [activeByKindInLocalWindow], not the raw DAO query - an all-day row's `startsAt` is UTC
+        // midnight of its date, not a device-zone instant (see that function's own doc comment).
         val calendarEvents = db.eventDao()
-            .activeByKindInWindow(EventKind.EVENT, now, now + CALENDAR_HORIZON_MS)
+            .activeByKindInLocalWindow(EventKind.EVENT, now, now + CALENDAR_HORIZON_MS, java.time.ZoneId.systemDefault())
             .map { OpenerCalendarBriefing.BriefingEvent(title = it.title, startMs = it.startsAt ?: now, endMs = it.endsAt ?: (it.startsAt ?: now), allDay = it.allDay) }
 
         return buildDigestText(

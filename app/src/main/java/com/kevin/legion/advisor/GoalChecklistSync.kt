@@ -34,6 +34,18 @@ import com.kevin.legion.workouts.weekStartEpoch
  * ticket 04's original doc comment: a second write path for [ListItem] is exactly as risky as a
  * second per-occurrence completion column would have been, for the same reason - two places
  * deciding what a checklist line is are two places that can quietly disagree.
+ *
+ * **Reads through [NotesController.allItemsIncludingChecklistLines], never [NotesController.allItems]
+ * (2026-09-01, Kevin: "theres a bunch of events... i cant remove them either from the app... the
+ * list is kinda useless as is").** [NotesController.allItems] now excludes this object's own
+ * [ITEM_PREFIX] lines - see that function's own doc comment - because Kevin's ruling was that this
+ * panel (`ui/goals/GoalChecklistPanel.kt`'s "Today's plan") is the ONE home for a plan line, and a
+ * second copy sitting in the general Inbox/Notes/Calendar stream was the actual duplication he
+ * wanted gone, not the materialization itself. This object still needs to SEE its own
+ * already-materialized rows to stay idempotent (an excluded-Plan-lines read would make
+ * [materializeToday] think none exist and re-add every one on every call), so every read in this
+ * file goes through the unfiltered accessor instead - the write funnel and the tick mechanism
+ * ([NotesController.tick]/`untick` via [toggle]) are entirely unchanged by this.
  */
 object GoalChecklistSync {
     /**
@@ -105,7 +117,7 @@ object GoalChecklistSync {
 
         val list = NotesController.theList(context)
         val todayStart = localDayStart(now, 0L)
-        val todaysPlanItems = NotesController.allItems(context)
+        val todaysPlanItems = NotesController.allItemsIncludingChecklistLines(context)
             .filter { it.listId == list.id && it.text.startsWith(ITEM_PREFIX) && it.createdAt >= todayStart }
         val existingTexts = todaysPlanItems.map { it.text }.toSet()
 
@@ -170,7 +182,7 @@ object GoalChecklistSync {
      * reads it back.
      */
     private suspend fun sweepPastDayAutoLog(context: Context, listId: Long, todayStart: Long, now: Long) {
-        val candidates = NotesController.allItems(context).filter {
+        val candidates = NotesController.allItemsIncludingChecklistLines(context).filter {
             it.listId == listId && it.text.startsWith(ITEM_PREFIX) &&
                 it.createdAt < todayStart && it.done && it.loggedAt == null
         }
@@ -230,7 +242,7 @@ object GoalChecklistSync {
      */
     private suspend fun trimExpiredPlanItems(context: Context, listId: Long, now: Long) {
         val cutoff = now - RETENTION_DAYS * 24 * 60 * 60 * 1000
-        NotesController.allItems(context)
+        NotesController.allItemsIncludingChecklistLines(context)
             .filter { it.listId == listId && it.text.startsWith(ITEM_PREFIX) && it.createdAt < cutoff }
             .forEach { NotesController.removeItem(context, it) }
     }
@@ -297,7 +309,7 @@ object GoalChecklistSync {
      */
     suspend fun currentItems(context: Context, now: Long = System.currentTimeMillis()): List<GoalChecklistItemView> {
         val list = NotesController.theList(context)
-        val allPlanItems = NotesController.allItems(context)
+        val allPlanItems = NotesController.allItemsIncludingChecklistLines(context)
             .filter { it.listId == list.id && it.text.startsWith(ITEM_PREFIX) }
 
         val todayStart = localDayStart(now, 0L)

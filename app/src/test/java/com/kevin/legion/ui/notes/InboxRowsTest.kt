@@ -26,6 +26,16 @@ class InboxRowsTest {
     private fun epochOf(date: String, time: LocalTime = LocalTime.MIDNIGHT): Long =
         LocalDate.parse(date).atTime(time).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
+    /** An all-day CALENDAR-TABLE row's real encoding - UTC midnight of the date
+     * (`LiveToolbox.addAppointment`'s own comment), never device-zone midnight. [epochOf] above is
+     * correct for a REMINDER's allDay [ListItem.startsAt] (device-zone, `NotesController`'s own
+     * convention) but would be the wrong fixture for a [googleEvent]'s allDay `startMs` - exactly
+     * the mismatch `CalendarAgendaResolverTest`'s own `googleAllDay` helper doc comment already
+     * flags ("their fixture and the code under test shared one zone convention by construction, so
+     * the two conventions never met"). Found 2026-09-01 fixing the identical bug one layer up. */
+    private fun epochOfUtc(date: String): Long =
+        LocalDate.parse(date).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+
     private val now = epochOf("2026-08-11", LocalTime.NOON)
 
     @Test
@@ -235,10 +245,14 @@ class InboxRowsTest {
 
     @Test
     fun `an all-day google event renders date-only, a timed one renders the time too`() {
+        // Found 2026-09-01, Kevin: "the due dates seem to be advanced by 1 day some how" - an
+        // all-day calendar row is UTC midnight ([epochOfUtc]), read back through
+        // [documentDateCompact] (UTC), never [formatDateOnly] (device zone); a TIMED row is an
+        // ordinary device-zone instant ([epochOf]) and is unaffected.
         val rows = buildInboxRows(
             emptyList(), now,
             listOf(
-                googleEvent(1, "Kevin's birthday", startMs = epochOf("2026-08-20"), allDay = true),
+                googleEvent(1, "Kevin's birthday", startMs = epochOfUtc("2026-08-20"), allDay = true),
                 googleEvent(2, "Dentist", startMs = epochOf("2026-08-21", LocalTime.of(9, 30)), allDay = false),
             ),
         )

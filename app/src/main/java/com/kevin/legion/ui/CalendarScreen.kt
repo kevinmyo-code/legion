@@ -24,6 +24,7 @@ import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.ListItem
+import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.ui.agenda.MonthCalendar
 import com.kevin.legion.ui.common.DeckSectionRule
@@ -34,8 +35,8 @@ import com.kevin.legion.ui.notes.MonthCell
 import com.kevin.legion.ui.notes.buildInboxRows
 import com.kevin.legion.ui.notes.buildMonthCells
 import com.kevin.legion.ui.notes.buildWeekAheadDayCounts
-import com.kevin.legion.ui.notes.formatDateOnly
 import com.kevin.legion.ui.notes.formatDateTime
+import com.kevin.legion.util.documentDateCompact
 import com.kevin.legion.ui.notes.toAppointmentEvent
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -159,8 +160,11 @@ fun CalendarScreen() {
         val db = CarDatabase.getDatabase(context)
         // Queried separately, never merged into one list: an event's own section has no checkbox
         // and no completion question, a task's does - ticket 08's whole point.
-        val events = db.eventDao().activeByKindInWindow(EventKind.EVENT, day, dayEndExclusive - 1)
-        val tasks = db.eventDao().activeByKindInWindow(EventKind.TASK, day, dayEndExclusive - 1)
+        // [activeByKindInLocalWindow], not the raw DAO query - an all-day row's `startsAt` is UTC
+        // midnight of its date, not a device-zone instant (see that function's own doc comment);
+        // this is the SCHEDULE section Kevin found a Canvas due date one day early on, 2026-09-01.
+        val events = db.eventDao().activeByKindInLocalWindow(EventKind.EVENT, day, dayEndExclusive - 1, zone)
+        val tasks = db.eventDao().activeByKindInLocalWindow(EventKind.TASK, day, dayEndExclusive - 1, zone)
         rawAppointments = tasks
         val now = System.currentTimeMillis()
         // Tasks merge into the SAME chronological/done-split stream as reminders - both are
@@ -176,7 +180,13 @@ fun CalendarScreen() {
                 done = false,
                 tickable = false,
                 recurring = false,
-                dateLabel = event.startsAt?.let { at -> if (event.allDay) formatDateOnly(at) else formatDateTime(at) },
+                // [event] is a calendar-table row (`kind = event`) - its allDay convention is UTC
+                // midnight of the date (see [activeByKindInLocalWindow]'s own doc comment), so the
+                // label reads it through [documentDateCompact] (UTC), never [formatDateOnly]
+                // (device zone), the same split `ui/notes/NotesResolvers.kt`'s two `toInboxRowView`
+                // overloads now draw between a reminder's LOCAL-midnight allDay and an appointment's
+                // UTC-midnight one.
+                dateLabel = event.startsAt?.let { at -> if (event.allDay) documentDateCompact(at) else formatDateTime(at) },
                 overdue = false,
                 placeLabel = null,
                 exactDowngraded = false,

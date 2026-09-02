@@ -2115,3 +2115,62 @@ val MIGRATION_56_57 = object : Migration(56, 57) {
         )
     }
 }
+
+/**
+ * v57 -> v58: one-today ticket-adjacent, "purge the persistent list, and stop what refills it"
+ * (2026-09-01, Kevin: "theres a bunch of events that probably came from google calendar. things
+ * that are already done etc. i cant remove them either from the app. get rid of all of it" - and,
+ * separately, "the list is kinda useless as is. they are events with a tick box"). **No schema
+ * change at all** - this is a data-only DELETE against `kind='reminder'` rows already on file,
+ * matching [MIGRATION_56_57]'s and [MIGRATION_11_12]'s identical "the version bump is still
+ * required even though the schema is untouched" shape (see [MIGRATION_56_57]'s own doc comment for
+ * why Room only runs a registered [Migration] when the on-disk version actually differs).
+ *
+ * **Two disjoint groups, both approved by Kevin on-device before this migration was written -
+ * neither is a heuristic guess:**
+ *
+ * 1. **12 specific ids, Google Calendar duplicates already surfaced elsewhere as real
+ *    [com.kevin.legion.backend.EventKind.EVENT] rows.** `AND kind = 'reminder'` is a safety net,
+ *    not a loosening - it means this clause can only ever delete the exact rows Kevin reviewed and
+ *    approved; if a future install ever reused one of these ids for a genuine calendar-table row
+ *    (a different kind), this migration leaves it untouched rather than deleting-by-id blind.
+ * 2. **Every reminder whose [com.kevin.legion.advisor.GoalChecklistSync.ITEM_PREFIX] ("Plan: ")
+ *    still marks it a daily-checklist materialization** - `Plan: Hit 2300 kcal / 180g protein` and
+ *    `Plan: Sleep 8h` four times over among them. Kevin's ruling, recorded in
+ *    [com.kevin.legion.notes.NotesController.allItems]'s own doc comment: the checklist already
+ *    renders on the Calendar day view as "Today's plan" (`ui/goals/GoalChecklistPanel.kt`), so a
+ *    second copy sitting in the general Inbox/Notes list IS the duplication, not a second thing to
+ *    fix. **This migration only clears the BACKLOG that already accumulated** - it does not, by
+ *    itself, stop [com.kevin.legion.advisor.GoalChecklistSync.materializeToday] from writing a
+ *    fresh one tomorrow (it still does, every day, by design - see that object's own class doc);
+ *    what actually stops the duplication from ever being VISIBLE again is
+ *    [com.kevin.legion.notes.NotesController.allItems] excluding [ITEM_PREFIX] lines from every
+ *    general-list read, landed in the same commit as this migration.
+ *
+ * **6 named rows explicitly KEPT, verified by Kevin against the real device before this migration
+ * was written** (not restated here as SQL - there is no clause that could accidentally catch them,
+ * since neither the id list nor the `LIKE 'Plan: %'` pattern above matches any of them): a fuel
+ * pump relay fault reminder, a financial-aid-scholarship follow-up, two annual-health-checkup
+ * reminders (Kevin's own and his wife's), a toilet-seat-screw reminder, and "school work".
+ *
+ * **Hard `DELETE`, not `deleted = 1`** - matches this table's own established LOCAL convention:
+ * [com.kevin.legion.notes.NotesController.removeItem]'s unconfigured branch and
+ * [com.kevin.legion.notes.NotesController.removeAppointment] both call [EventDao.deleteById]
+ * directly rather than flipping [Event.deleted] locally (that column mirrors the SERVER's own
+ * `deleted_at IS NOT NULL`, per [Event]'s own doc comment - it is not this app's own local
+ * soft-delete convention). The mirrored, NOT-applied `supabase/migrations/` file for this same
+ * change performs the server-side equivalent of [com.kevin.legion.backend.EventsBackend.softDelete]
+ * instead, for exactly that reason.
+ */
+val MIGRATION_57_58 = object : Migration(57, 58) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "DELETE FROM `events` WHERE `kind` = 'reminder' AND `id` IN " +
+                "(100000154, 100000155, 100000156, 100000157, 100000158, 100000159, 100000160, " +
+                "100000161, 100000162, 100000163, 100000165, 100000166)"
+        )
+        db.execSQL(
+            "DELETE FROM `events` WHERE `kind` = 'reminder' AND `title` LIKE 'Plan: %'"
+        )
+    }
+}

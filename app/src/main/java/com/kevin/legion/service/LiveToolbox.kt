@@ -58,6 +58,7 @@ import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.nextAppointmentId
+import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.engine.dates.DatesAspectSeeder
 import com.kevin.legion.data.local.MusicPlayHistoryEntry
 import com.kevin.legion.data.local.Vehicle
@@ -3246,13 +3247,18 @@ object LiveToolbox {
      * straight into the `meta` field below - same shape the model always saw, sourced differently.
      */
     private suspend fun readCalendar(context: Context, args: JSONObject): JSONObject {
+        val zone = java.time.ZoneId.systemDefault()
         val window = parseCalendarWindow(
-            args.optString("from"), args.optString("to"), java.time.ZoneId.systemDefault(),
+            args.optString("from"), args.optString("to"), zone,
         ) ?: return result(false, CALENDAR_INVALID_WINDOW_MESSAGE)
         val (startMs, endMs) = window
 
+        // [activeByKindInLocalWindow], not the raw DAO query - an all-day row's `startsAt` is UTC
+        // midnight of its date, not a device-zone instant, so a plain window compare can speak the
+        // wrong day aloud (found 2026-09-01, "the due dates seem to be advanced by 1 day"; see that
+        // function's own doc comment).
         val events = CarDatabase.getDatabase(context).eventDao()
-            .activeByKindInWindow(EventKind.EVENT, startMs, endMs)
+            .activeByKindInLocalWindow(EventKind.EVENT, startMs, endMs, zone)
         val arr = JSONArray()
         for (event in events) {
             val eventStart = event.startsAt ?: continue

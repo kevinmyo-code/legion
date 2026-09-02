@@ -520,6 +520,50 @@ suspend fun EventDao.nextAppointmentId(): Long {
     return (current ?: (Event.APPOINTMENT_ID_BASE - 1)) + 1
 }
 
+/**
+ * [activeByKindInWindow], corrected for the two incompatible ways this table encodes a row's date
+ * (found on-device 2026-09-01, Kevin: "the due dates seem to be advanced by 1 day some how" -
+ * every one of 98 rows sitting at exactly UTC midnight rendered on the previous local day). An
+ * [Event.allDay] row's [Event.startsAt] is **UTC midnight of its calendar date**
+ * (`service/LiveToolbox.kt`'s `addAppointment` comment: "Android's own all-day convention...
+ * preserved here even though the write is local now"), the same convention every already-imported
+ * Google appointment row uses; a TIMED row's [Event.startsAt] is an ordinary device-zone instant.
+ * A plain `startsAt BETWEEN fromMs AND toMs` compares both conventions as if they were the same
+ * one, which is only correct for the timed half - an all-day row can sit up to a day outside
+ * `[fromMs, toMs]` purely because of the device's own UTC offset, silently moving it to the
+ * adjacent day (or, at a month/window boundary, dropping it from the result entirely: UTC midnight
+ * of the 1st is `Aug 31, 19:00` local at UTC-5, before any window that starts at local midnight on
+ * the 1st).
+ *
+ * **[com.kevin.legion.ui.notes.agendaDayStart] already solved exactly this problem for the ONE
+ * caller that merges into an [com.kevin.legion.ui.AgendaEntry]** (fixed 2026-08-18, back when the
+ * two conventions were Google-vs-local rather than allDay-vs-timed) - see that function's own doc
+ * comment for the identical UTC-recovery idiom. This is the same rule, generalized to every OTHER
+ * caller that queries [Event] rows directly by window rather than through that merge (`ui/CalendarScreen.kt`'s
+ * day SCHEDULE section, `ui/notes/InboxScreen.kt`'s forward/day-filtered fetches,
+ * `service/LiveToolbox.kt`'s `read_calendar`, `advisor/digest/LogDigestBuilder.kt`'s calendar
+ * line) - each of those re-implemented the same naive window query and inherited the same bug.
+ *
+ * The raw SQL window is widened by a full day on each side (covers every real UTC offset, +-14h,
+ * inside one extra day of slack) so no genuinely in-range all-day row can fall outside the widened
+ * query, then every returned row is re-checked against the CALLER's real `[fromMs, toMs]` using its
+ * own correct anchor: the UTC-interpreted calendar date, re-anchored to [zone]'s local day-start,
+ * for an all-day row; the raw [Event.startsAt] instant, unchanged, for a timed one.
+ */
+suspend fun EventDao.activeByKindInLocalWindow(kind: String, fromMs: Long, toMs: Long, zone: java.time.ZoneId): List<Event> {
+    val widenMs = java.time.Duration.ofDays(1).toMillis()
+    return activeByKindInWindow(kind, fromMs - widenMs, toMs + widenMs).filter { row ->
+        val at = row.startsAt ?: return@filter false
+        val anchor = if (row.allDay) {
+            java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+                .atStartOfDay(zone).toInstant().toEpochMilli()
+        } else {
+            at
+        }
+        anchor in fromMs..toMs
+    }
+}
+
 @Dao
 interface EventSkipDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)

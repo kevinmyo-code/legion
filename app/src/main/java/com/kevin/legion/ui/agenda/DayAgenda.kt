@@ -3,6 +3,7 @@ package com.kevin.legion.ui.agenda
 import android.content.Context
 import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.notes.Recurrence
 import com.kevin.legion.notes.endFromItem
@@ -44,8 +45,11 @@ suspend fun buildAgendaInWindow(context: Context, fromMs: Long, toMs: Long, zone
                 .map { occMs -> AgendaEntry(item.text, occMs, item.allDay) }
         }
     }
+    // [activeByKindInLocalWindow], not the raw DAO query directly - an all-day row's `startsAt`
+    // is UTC midnight of its date, not a device-zone instant, so a plain [fromMs, toMs] compare
+    // can silently drop or misplace it (found 2026-09-01, see that function's own doc comment).
     val appointments = CarDatabase.getDatabase(context).eventDao()
-        .activeByKindInWindow(EventKind.EVENT, fromMs, toMs)
+        .activeByKindInLocalWindow(EventKind.EVENT, fromMs, toMs, zone)
         .map { it.toAppointmentEvent() }
     return mergeAgenda(oneOff + recurring, appointments)
 }

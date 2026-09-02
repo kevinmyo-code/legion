@@ -3,6 +3,7 @@ package com.kevin.legion.ui.notes
 import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.ui.AgendaSource
+import com.kevin.legion.util.documentDateCompact
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -195,7 +196,13 @@ private fun toInboxRowView(event: AppointmentEvent): InboxRowView =
         done = event.done,
         tickable = event.kind != EventKind.EVENT,
         recurring = event.recurring,
-        dateLabel = if (event.allDay) formatDateOnly(event.startMs) else formatDateTime(event.startMs),
+        // [event] is a calendar-table row (`kind = event`/`task`) - its allDay convention is UTC
+        // midnight of the date (`LiveToolbox.addAppointment`'s own comment), unlike a reminder
+        // [ListItem]'s LOCAL-midnight allDay just above in [toInboxRowView] - found 2026-09-01,
+        // Kevin: "the due dates seem to be advanced by 1 day some how". [documentDateCompact]
+        // reads it back through UTC; [formatDateOnly] (device zone) would put it a day early west
+        // of UTC, which is exactly the bug this fixes.
+        dateLabel = if (event.allDay) documentDateCompact(event.startMs) else formatDateTime(event.startMs),
         overdue = false,
         placeLabel = null,
         exactDowngraded = false,
