@@ -246,6 +246,14 @@ class MainActivity : ComponentActivity() {
         // ordering dependency on EACH OTHER, only internally within their own pair.
         lifecycleScope.launch {
             com.kevin.legion.backend.BodyOutboxDrain.maybeDrain(applicationContext)
+            // The missing half of body sync (live-sync ticket 05's first slice): a one-time
+            // (then perpetually cheap no-op) upload of rows that existed BEFORE write-through was
+            // added, since write-through only ever pushes NEW writes going forward - measured on
+            // the real phone as all eight server tables at zero rows while the phone held 42. Runs
+            // BEFORE BodySync.maybeAutoPull for the same reason the drain above does: an unsent
+            // local row must reach the server before the pull weighs last-write-wins against a
+            // server copy that does not know about it yet. See BodyBackfill's own class doc.
+            com.kevin.legion.backend.BodyBackfill.maybeAutoRun(applicationContext)
             com.kevin.legion.backend.BodySync.maybeAutoPull(applicationContext)
         }
         // The two Supabase tables that had a schema and RLS but never a single row uploaded

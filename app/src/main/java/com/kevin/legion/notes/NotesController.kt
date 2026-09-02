@@ -2,6 +2,7 @@ package com.kevin.legion.notes
 
 import android.content.Context
 import android.util.Log
+import com.kevin.legion.backend.BodyWriteThrough
 import com.kevin.legion.backend.EventFields
 import com.kevin.legion.backend.EventKind
 import com.kevin.legion.backend.EventsAppointmentWriter
@@ -575,9 +576,17 @@ object NotesController {
         val result = applyChange(context, item, mutated, now)
         if (result == null) return false
         // Ticket 09 ("a ticked workout is one act, not two rows"): a correction propagates to the
-        // training history - see the pre-cutover version of this comment, unchanged reasoning,
-        // still a DAO call rather than a WorkoutController import (notes/ stays a foundation layer).
-        db(context).workoutSetLogDao().deleteBySourceListItemId(item.id)
+        // training history - a DAO read rather than a WorkoutController import (notes/ stays a
+        // foundation layer), same reasoning as the pre-cutover version of this comment.
+        // CHANGED (live-sync ticket, 2026-09-02): a plain DAO hard-delete never reached the
+        // server, so a swept set that had already synced would come back on the next pull - the
+        // untick would look like it worked and then silently un-happen. Route each matching row
+        // through BodyWriteThrough.deleteWorkoutSetLog instead, which soft-deletes locally and
+        // pushes the tombstone (queuing it in the outbox on failure, same as every other body
+        // delete) - see WorkoutSetLogDao.deleteBySourceListItemId's own doc for the full story.
+        for (row in db(context).workoutSetLogDao().getActiveBySourceListItemId(item.id)) {
+            BodyWriteThrough.deleteWorkoutSetLog(context, row)
+        }
         return true
     }
 

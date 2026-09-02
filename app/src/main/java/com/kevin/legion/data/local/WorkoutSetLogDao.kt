@@ -70,13 +70,35 @@ interface WorkoutSetLogDao {
      * swept tick produced carries the [WorkoutSetLog.sourceListItemId] of the [ListItem] that
      * produced it, so undoing that tick can find and delete it by id rather than never being able
      * to reach it - `mostRecent()`-based `undo_last_log` cannot, once anything else has been
-     * logged since (see the ticket). Called from [com.kevin.legion.notes.NotesController.untick],
-     * the one shared write path every tick surface - voice, the checklist checkbox, and the
-     * generic inbox screen - already funnels through. A no-op (zero rows affected) for the
-     * overwhelmingly common case of unticking an item that was never swept.
+     * logged since (see the ticket).
+     *
+     * **SUPERSEDED as [com.kevin.legion.notes.NotesController.untick]'s call site (live-sync
+     * ticket, 2026-09-02): a hard delete here never reaches the server, so a row that had already
+     * synced would simply come back on the next pull** - the same class of bug this whole ticket
+     * exists to close, just for a delete instead of a create. `untick` now reads the matching rows
+     * via [getActiveBySourceListItemId] and routes each one through
+     * [com.kevin.legion.backend.BodyWriteThrough.deleteWorkoutSetLog] instead, which soft-deletes
+     * locally and pushes the tombstone (queuing it in the outbox on failure) - see that function's
+     * own doc. This method is kept, unused in production, as the plain DAO primitive
+     * [getActiveBySourceListItemId] + [deleteById] compose from; nothing currently calls it
+     * directly, and a future caller with no server-sync obligation (an unconfigured install has no
+     * server to desync from) MAY still reach for it, but should prefer the write-through route if
+     * one exists, per the pattern this comment records.
      */
     @Query("DELETE FROM workout_set_logs WHERE sourceListItemId = :listItemId")
     suspend fun deleteBySourceListItemId(listItemId: Long)
+
+    /**
+     * Every ACTIVE (`deleted = 0`) row carrying [WorkoutSetLog.sourceListItemId] equal to
+     * [listItemId] - the read half of the untick cascade
+     * ([com.kevin.legion.notes.NotesController.untick]), added alongside the fix noted on
+     * [deleteBySourceListItemId]'s own doc so that cascade can route each matching row through
+     * [com.kevin.legion.backend.BodyWriteThrough.deleteWorkoutSetLog] (which needs the whole row,
+     * not just its id) instead of a blind SQL `DELETE`. Almost always zero or one row - see
+     * [deleteBySourceListItemId]'s own doc for why this can, in principle, be more than one.
+     */
+    @Query("SELECT * FROM workout_set_logs WHERE sourceListItemId = :listItemId AND deleted = 0")
+    suspend fun getActiveBySourceListItemId(listItemId: Long): List<WorkoutSetLog>
 
     /**
      * Ticket 09 defect 2 ("logging by hand AND ticking double-counts"): the sweep's "one act, one

@@ -251,6 +251,27 @@ object MidnightEvents {
         Log.w(TAG, "body_realtime_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** A foreground [com.kevin.legion.backend.BodyBackfill.maybeAutoRun] pass completed across all
+     * eight body tables - the one-time (then perpetually-cheap-no-op) upload of rows that predate
+     * write-through, distinct from [bodyAutoPullSucceeded] which only ever pulls. [failedTables]
+     * names which of the eight halted on a push failure this run, empty on the healthy/steady-state
+     * case - see [com.kevin.legion.backend.BodyBackfill]'s own class doc for why a per-table halt
+     * beats an all-or-nothing abort. */
+    fun bodyBackfillSucceeded(pushed: Int, alreadyPresent: Int, skippedLocalOnlyDeleted: Int, failedTables: List<String>) = safe {
+        Log.d(
+            TAG,
+            "body_backfill pushed=$pushed alreadyPresent=$alreadyPresent " +
+                "skippedLocalOnlyDeleted=$skippedLocalOnlyDeleted failed=${failedTables.joinToString("; ")}",
+        )
+    }
+
+    /** [com.kevin.legion.backend.BodyBackfill.maybeAutoRun] threw outright (not the per-table halt
+     * [bodyBackfillSucceeded] already reports in words) - degraded to this log line, same posture
+     * as [bodyAutoPullFailed]. */
+    fun bodyBackfillFailed(e: Throwable) = safe {
+        Log.w(TAG, "body_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A voice tool was dispatched. Useful for tracing what tool ran before a crash. */
     fun toolDispatched(toolName: String) = safe { Log.d(TAG, "tool_dispatched: $toolName") }
 
