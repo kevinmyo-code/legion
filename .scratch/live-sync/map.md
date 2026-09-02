@@ -65,14 +65,15 @@ bug, and absence is the one thing a passing test does not report.
 | 01 A pull that merges, and runs unasked | **resolved** 2026-09-02, `2daeae4`. Verified on the phone: reminders 6 -> 149, all 7 internship reports present, `Report 1/7` at Fri Sep 4 23:59 matching Canvas exactly |
 | 02 Write-through for `kind=EVENT`, and a durable outbox | **built** `9fc7141`, suite green. Room v59. NOT yet run on hardware |
 | 03 Realtime, and tombstones that propagate | in flight |
-| 04 Retire `EventsReconcile` | open - blocked on 02 and 03 proving out on the phone |
+| 04 Retire `EventsReconcile` | **resolved** 2026-09-02. Deleted along with its test, its Settings row, and the two wipe-only DAO methods it alone called. Also reversed appointment rename/delete off local-only (see `memory/library/decisions.md`'s 2026-09-02 entry) - both now route through a write-through-plus-outbox path, delete produces a tombstone. `compileDebugKotlin`/`testDebugUnitTest` green, 2870 tests / 0 failures |
 | 05 The same treatment for the other six aspects | open |
 
 ## Known, and deliberately not fixed here
 
-- **Renaming or deleting an appointment is still local-only**, even on a configured install. That is
-  a standing ruling from `one-today` ticket 02 point 3, made when nothing synced at all. It is a
-  hole now that creation does sync, and reversing it is Kevin's call rather than a builder's.
+- ~~Renaming or deleting an appointment is still local-only, even on a configured install.~~
+  **REVERSED 2026-09-02 (ticket 04's own follow-up, Kevin authorised) - see
+  `memory/library/decisions.md`'s 2026-09-02 entry.** Both now route through
+  `EventsAppointmentWriter.updateEvent`/`.deleteEvent`.
 - **`EngineNotesRetirementCopy` still mints fake `serverId`s.** It is a one-time batch copier, not a
   live path, so it was named rather than rewritten.
 - **The other six reconciles are untouched.** Places, pantry, ledger, fleet, OBD samples and

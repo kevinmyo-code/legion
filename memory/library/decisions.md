@@ -5014,3 +5014,71 @@ Files API resumable upload with the session URL in the `x-goog-upload-url` **res
 `audio/m4a` accepted and `audio/mp4` NOT on Google's list, 48-hour server-side file retention with an
 explicit delete, 32 tokens per second of audio, roughly $0.13 per recorded hour as a floor, and a
 65,536-token output cap that a three-hour recording will exceed.
+
+
+## 2026-09-02 - `EventsReconcile` retired; appointment rename/delete reversed off local-only
+
+Live sync (`.scratch/live-sync/map.md`) proved out end to end on the A25 - merge-based pull, a
+write-through-plus-outbox for creation, tombstone propagation, and Realtime. That made
+`EventsReconcile` (the old one-button Settings migration for Notes+Dates) both redundant and, on
+its own record, dangerous: it wiped every local `kind = reminder` row unconditionally and refilled
+from the server, **withholding** any row it could not attribute to a still-live local engine
+record - a withheld row vanishes rather than reading as unconfirmed, which is what hid 120 real
+coursework rows (`COSC 3334`/`COSC 3318`/`COSC 4305`) on Kevin's phone for weeks. Separately, its
+retraction guard treated a second Settings tap **in the same process** as consent and soft-deleted
+the candidate set on re-tap - roughly 130 rows, including real coursework, on a routine re-check
+that was meant only to confirm a warning, not act on it a second time. It compared no timestamps at
+all, so it was never actually a sync.
+
+**Retired:** `backend/EventsReconcile.kt`, its test, the "Notes + Dates" row and
+`renderEventsReport` on `ui/settings/BackendMigrationScreen.kt`, and the two now-orphaned wholesale
+wipe DAO methods it alone called (`EventDao.deleteAllForReplicaRefresh`/`deleteByKindForReplicaRefresh`,
+`EventSkipDao.deleteAllForReplicaRefresh`). `EventDao.getAll()`/`EventDao.upsert()`/
+`EventsBackend.uploadMigratedEvent`/`.softDelete` all survive - each has a live caller
+(`EventsSync`, `NotesController`, `EventsOutbox`) independent of the retired object.
+
+**The hard-won reasoning preserved, since the code that carried it is gone:**
+- **Identity-shape asymmetry.** A Dates `Event` and a Notes `Item` merge into one `public.events`
+  row, but they could never be diffed the same way: `origin_guid` alone under-counted what the
+  server already had once `google_event_id` became a second live identity for a Google-imported
+  appointment whose local origin_guid had rotated (the 213-row incident's root shape, `ticket 20`).
+  Any future reconcile-shaped code for a merged table must check both keys, not one.
+- **The retraction guard's actual mechanism.** A retraction below `RETRACTION_SMALL_FLOOR` (5)
+  candidates always proceeded (asking about a handful trains the answer "yes" into a reflex); at or
+  above it, a retraction was also bounded to `RETRACTION_RATIO_BOUND` (0.25) of the server's own
+  prior total, and a run that exceeded both **computed and reported** the candidate count without
+  acting, requiring an **identical** candidate set on a **later** run as the only form of consent
+  ("run this again to confirm"). The bug the live incident exposed: "later run" was read by the
+  code as "a second call within the same process", so a user re-tapping the same button to verify
+  the first tap worked **was** the second run, and consent that was supposed to require deliberate,
+  spaced-apart confirmation was granted by the exact action a worried user takes.
+- **Two independent id spaces.** Reminders carry the engine's own `records.id`; appointments are
+  pinned to `Event.APPOINTMENT_ID_BASE` and above by `EventDao.nextAppointmentId`. A wholesale
+  replica refill that did not split by kind before refilling could mint the same carried id for a
+  reminder and an appointment that happened to coincide, silently orphaning whichever lost the tie
+  (an `AlarmManager` request code or a soft foreign key pointed at the reassigned one). Any future
+  writer minting a local id across two aspects sharing one table must keep the ranges disjoint by
+  construction, not by a runtime guard.
+
+**Reversed the same day: appointment/task rename and delete are no longer local-only on a
+configured install.** `one-today` ticket 02 point 3 read "local-only, decided rather than defaulted"
+as license for `NotesController.updateAppointment`/`removeAppointment` to skip the server
+unconditionally - correct when it was made (nothing synced live at all), a real hole once
+`EventsAppointmentWriter.addEvent` started syncing creation (two devices silently diverge on
+exactly the edit a user makes next). Both now route through new `EventsAppointmentWriter.updateEvent`/
+`.deleteEvent`: local write always happens first (matching `addEvent`'s own shape, not a
+server-first/local-on-ack ordering - an appointment's failure posture is already "enqueue, never
+drop", unlike a reminder's), pushes via `EventsBackend.upsert`/`.softDelete` when the row has a real
+`serverId`, and enqueues a new `OutboxOperation.UPDATE`/the previously-unused `SOFT_DELETE` entry on
+failure - both newly wired into `EventsOutboxDrain.drain()`'s dispatch. **Delete soft-deletes, never
+hard-deletes, on a configured install** - the old hard-delete was safe only because nothing existed
+to reconcile against; a pull that now propagates tombstones (ticket 03) would simply resurrect a
+hard-deleted row on the next sync. A row whose create is still pending in the outbox (`serverId`
+still null) has its pending create payload re-pointed at the latest values on rename, or cancelled
+outright on delete, since there is nothing server-side yet to target. Ticking stays local-only,
+untouched - Google has no "done" concept and this reversal was about rename/delete only.
+
+Verified: `compileDebugKotlin -Pnokey` and `testDebugUnitTest` green, 2870 tests / 0 failures (down
+33 from the pre-existing 2897 baseline for the deleted `EventsReconcileTest`/`BackendMigrationResolverTest`
+events-report tests, up 6 for the new rename/delete/enqueue/unconfigured coverage in
+`EventsAppointmentWriterTest`).

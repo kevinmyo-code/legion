@@ -27,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.kevin.legion.backend.ConversationAuditReconcile
-import com.kevin.legion.backend.EventsReconcile
 import com.kevin.legion.backend.FleetReconcile
 import com.kevin.legion.backend.MembershipResult
 import com.kevin.legion.backend.ObdSampleReconcile
@@ -37,7 +36,6 @@ import com.kevin.legion.backend.SupabaseAuth
 import com.kevin.legion.backend.SupabaseClientProvider
 import com.kevin.legion.backend.SupabaseConfig
 import com.kevin.legion.backend.SupabaseConversationAuditBackend
-import com.kevin.legion.backend.SupabaseEventsBackend
 import com.kevin.legion.backend.SupabaseFleetBackend
 import com.kevin.legion.backend.SupabasePantryBackend
 import com.kevin.legion.backend.SupabasePlacesBackend
@@ -49,9 +47,10 @@ import com.kevin.legion.ui.theme.LegionTheme
 import kotlinx.coroutines.launch
 
 /**
- * `settings/backend-migration` - the hands path for backend-erp Phase 4's three reconciles
- * ([PlacesReconcile]/[PantryReconcile]/[EventsReconcile]), which as of Phase 4's own ticket had
- * zero production callers: fully built, tested, and unreachable. Reachable from
+ * `settings/backend-migration` - the hands path for backend-erp Phase 4's reconciles
+ * ([PlacesReconcile]/[PantryReconcile], and originally a since-retired `EventsReconcile` - see this
+ * file's own "Notes + Dates" removal note below), which as of Phase 4's own ticket had zero
+ * production callers: fully built, tested, and unreachable. Reachable from
  * [ConnectionsScreen] the same way `settings/drive-sync` is reachable from `settings/google` -
  * one row, one destination, this screen owns the actual action.
  *
@@ -79,7 +78,6 @@ fun BackendMigrationScreen(onBack: () -> Unit) {
 
     var places by remember { mutableStateOf(ReconcileRowUiState()) }
     var pantry by remember { mutableStateOf(ReconcileRowUiState()) }
-    var events by remember { mutableStateOf(ReconcileRowUiState()) }
     var fleet by remember { mutableStateOf(ReconcileRowUiState()) }
     var obdSamples by remember { mutableStateOf(ReconcileRowUiState()) }
     var conversationAudit by remember { mutableStateOf(ReconcileRowUiState()) }
@@ -126,21 +124,12 @@ fun BackendMigrationScreen(onBack: () -> Unit) {
         }
     }
 
-    fun runEvents() {
-        events = events.copy(running = true, resultLines = null, failure = null)
-        scope.launch {
-            val client = SupabaseClientProvider.get(context)
-            if (client == null) {
-                events = events.copy(running = false, failure = BackendMigrationResolver.renderFailure("Supabase is not configured"))
-                return@launch
-            }
-            val result = EventsReconcile.run(context, SupabaseEventsBackend(client))
-            events = result.fold(
-                onSuccess = { report -> ReconcileRowUiState(resultLines = BackendMigrationResolver.renderEventsReport(report)) },
-                onFailure = { t -> ReconcileRowUiState(failure = BackendMigrationResolver.renderFailure(failureReason(t))) },
-            )
-        }
-    }
+    // runEvents()/the "Notes + Dates" row REMOVED 2026-09-02 (live-sync ticket 04) along with
+    // EventsReconcile itself - EventsSync/EventsRealtime/EventsOutbox now sync that aspect live,
+    // automatically, on every foreground and on a Realtime push, so there is nothing left for a
+    // manual Settings button to do. See `memory/library/decisions.md`'s 2026-09-02 entry for why
+    // the old button was retired as dangerous (it hid 120 real coursework rows and its retraction
+    // guard soft-deleted ~130 rows on a routine re-check) rather than merely made redundant.
 
     // **CORRECTED 2026-08-29. This copy described the world for one day and then outlived it.**
     // It used to say fleet was a PROJECTION rather than a cutover, that the phone kept reading its
@@ -218,14 +207,12 @@ fun BackendMigrationScreen(onBack: () -> Unit) {
             disabledReason = disabledReason,
             places = places,
             pantry = pantry,
-            events = events,
             fleet = fleet,
             obdSamples = obdSamples,
             conversationAudit = conversationAudit,
         ),
         onRunPlaces = ::runPlaces,
         onRunPantry = ::runPantry,
-        onRunEvents = ::runEvents,
         onRunFleet = ::runFleet,
         onRunObdSamples = ::runObdSamples,
         onRunConversationAudit = ::runConversationAudit,
@@ -249,7 +236,6 @@ data class BackendMigrationUiState(
     val disabledReason: String?,
     val places: ReconcileRowUiState,
     val pantry: ReconcileRowUiState,
-    val events: ReconcileRowUiState,
     val fleet: ReconcileRowUiState,
     val obdSamples: ReconcileRowUiState,
     val conversationAudit: ReconcileRowUiState,
@@ -261,7 +247,6 @@ fun BackendMigrationContent(
     state: BackendMigrationUiState,
     onRunPlaces: () -> Unit,
     onRunPantry: () -> Unit,
-    onRunEvents: () -> Unit,
     onRunFleet: () -> Unit,
     onRunObdSamples: () -> Unit,
     onRunConversationAudit: () -> Unit,
@@ -323,17 +308,8 @@ fun BackendMigrationContent(
                     onRun = onRunPantry,
                 )
 
-                Spacer(Modifier.height(16.dp))
-                BackendMigrationRow(
-                    label = "Notes + Dates",
-                    description = "Uploads every dated event and dated note item into one merged " +
-                        "server table and fills the on-device replica from it. Undated note " +
-                        "items are never uploaded - they stay on the engine.",
-                    enabled = ready,
-                    disabledReason = if (ready) null else state.disabledReason,
-                    row = state.events,
-                    onRun = onRunEvents,
-                )
+                // "Notes + Dates" row REMOVED 2026-09-02 (live-sync ticket 04) - see the class doc
+                // and runFleet's own preceding comment block for the account of why.
 
                 Spacer(Modifier.height(16.dp))
                 BackendMigrationRow(
@@ -434,14 +410,12 @@ private fun BackendMigrationContentNotConfiguredPreview() {
                 disabledReason = BackendMigrationResolver.disabledReason(BackendMigrationResolver.Readiness.NOT_CONFIGURED, null),
                 places = ReconcileRowUiState(),
                 pantry = ReconcileRowUiState(),
-                events = ReconcileRowUiState(),
                 fleet = ReconcileRowUiState(),
                 obdSamples = ReconcileRowUiState(),
                 conversationAudit = ReconcileRowUiState(),
             ),
             onRunPlaces = {},
             onRunPantry = {},
-            onRunEvents = {},
             onRunFleet = {},
             onRunObdSamples = {},
             onRunConversationAudit = {},
@@ -466,16 +440,12 @@ private fun BackendMigrationContentReadyPreview() {
                     ),
                 ),
                 pantry = ReconcileRowUiState(running = true),
-                events = ReconcileRowUiState(
-                    failure = BackendMigrationResolver.renderFailure("couldn't reach the server"),
-                ),
                 fleet = ReconcileRowUiState(),
                 obdSamples = ReconcileRowUiState(),
                 conversationAudit = ReconcileRowUiState(),
             ),
             onRunPlaces = {},
             onRunPantry = {},
-            onRunEvents = {},
             onRunFleet = {},
             onRunObdSamples = {},
             onRunConversationAudit = {},
@@ -501,7 +471,6 @@ private fun BackendMigrationContentOneSidedPreview() {
                     ),
                 ),
                 pantry = ReconcileRowUiState(),
-                events = ReconcileRowUiState(),
                 fleet = ReconcileRowUiState(
                     resultLines = listOf(
                         "This is a one-way export to your own Supabase project, for the laptop " +
@@ -535,7 +504,6 @@ private fun BackendMigrationContentOneSidedPreview() {
             ),
             onRunPlaces = {},
             onRunPantry = {},
-            onRunEvents = {},
             onRunFleet = {},
             onRunObdSamples = {},
             onRunConversationAudit = {},

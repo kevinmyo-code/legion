@@ -82,6 +82,123 @@ private data class EventUpsertOutboxPayload(
 }
 
 /**
+ * The wire shape queued for [OutboxOperation.UPDATE] - a rename/reschedule of an event that has
+ * ALREADY round-tripped (a real, non-placeholder [Event.serverId] known). **Whole-row, not just
+ * the fields a rename touches** - [SupabaseEventsBackend.upsert]'s own `EventUpsertDto` sends
+ * every writable column on every write (that DTO's own doc comment: "reproduces whole-row-replace
+ * semantics"), so a payload carrying only title/start/end would silently blank out `done`/
+ * `repeatKind`/every other column the row already had. [from] snapshots the row's own current
+ * values for everything else, exactly as [com.kevin.legion.notes.NotesController]'s own
+ * `ListItem.toEventFields()` does for a reminder's identical whole-row echo.
+ */
+@Serializable
+private data class EventUpdateOutboxPayload(
+    val serverId: String,
+    val title: String,
+    val startsAtMs: Long?,
+    val endsAtMs: Long?,
+    val allDay: Boolean,
+    val location: String?,
+    val notes: String?,
+    val structuredMeta: String?,
+    val source: String,
+    val kind: String,
+    val googleEventId: String?,
+    val done: Boolean,
+    val doneAtMs: Long?,
+    val sortOrder: Int?,
+    val triggerPlaceLabel: String?,
+    val repeatKind: String?,
+    val repeatEvery: Int?,
+    val repeatDaysOfWeek: String?,
+    val repeatDay: Int?,
+    val repeatMonth: Int?,
+    val repeatEndKind: String?,
+    val repeatEndDateMs: Long?,
+    val repeatEndCount: Int?,
+    val exact: Boolean,
+    val exactDowngraded: Boolean,
+    val missedAtMs: Long?,
+    val missedDismissedAtMs: Long?,
+    val loggedAtMs: Long?,
+    val createdAtMs: Long?,
+) {
+    fun toFields() = EventFields(
+        title = title,
+        startsAtMs = startsAtMs,
+        createdAtMs = createdAtMs,
+        endsAtMs = endsAtMs,
+        allDay = allDay,
+        location = location,
+        notes = notes,
+        structuredMeta = structuredMeta,
+        source = source,
+        kind = kind,
+        googleEventId = googleEventId,
+        done = done,
+        doneAtMs = doneAtMs,
+        sortOrder = sortOrder,
+        triggerPlaceLabel = triggerPlaceLabel,
+        repeatKind = repeatKind,
+        repeatEvery = repeatEvery,
+        repeatDaysOfWeek = repeatDaysOfWeek,
+        repeatDay = repeatDay,
+        repeatMonth = repeatMonth,
+        repeatEndKind = repeatEndKind,
+        repeatEndDateMs = repeatEndDateMs,
+        repeatEndCount = repeatEndCount,
+        exact = exact,
+        exactDowngraded = exactDowngraded,
+        missedAtMs = missedAtMs,
+        missedDismissedAtMs = missedDismissedAtMs,
+        loggedAtMs = loggedAtMs,
+    )
+
+    companion object {
+        fun from(row: Event): EventUpdateOutboxPayload {
+            val serverId = requireNotNull(row.serverId) {
+                "EventUpdateOutboxPayload.from requires an already-round-tripped row"
+            }
+            return EventUpdateOutboxPayload(
+                serverId = serverId,
+                title = row.title,
+                startsAtMs = row.startsAt,
+                endsAtMs = row.endsAt,
+                allDay = row.allDay,
+                location = row.location,
+                notes = row.notes,
+                structuredMeta = row.structuredMeta,
+                source = row.source,
+                kind = row.kind,
+                googleEventId = row.googleEventId,
+                done = row.done,
+                doneAtMs = row.doneAt,
+                sortOrder = row.sortOrder,
+                triggerPlaceLabel = row.triggerPlaceLabel,
+                repeatKind = row.repeatKind,
+                repeatEvery = row.repeatEvery,
+                repeatDaysOfWeek = row.repeatDaysOfWeek,
+                repeatDay = row.repeatDay,
+                repeatMonth = row.repeatMonth,
+                repeatEndKind = row.repeatEndKind,
+                repeatEndDateMs = row.repeatEndDate,
+                repeatEndCount = row.repeatEndCount,
+                exact = row.exact,
+                exactDowngraded = row.exactDowngraded,
+                missedAtMs = row.missedAt,
+                missedDismissedAtMs = row.missedDismissedAt,
+                loggedAtMs = row.loggedAt,
+                createdAtMs = row.createdAt,
+            )
+        }
+    }
+}
+
+/** The wire shape queued for [OutboxOperation.SOFT_DELETE] - just the server row to tombstone. */
+@Serializable
+private data class EventDeleteOutboxPayload(val serverId: String)
+
+/**
  * A local write-then-push funnel for a brand-new `kind = event` row, the write-through
  * [com.kevin.legion.notes.NotesController.applyChange]'s own class doc names as the model to copy
  * the SHAPE of - resolve a backend, write local, act on the backend's result - but not its
@@ -91,6 +208,23 @@ private data class EventUpsertOutboxPayload(
  * [OutboxEntry] instead of losing the mutation - see this file's own class doc for why this
  * departure from the reminder model is this ticket's whole point (a phone that is offline when an
  * appointment gets voice-created must not need the driver to remember to retry later).
+ *
+ * **WIDENED 2026-09-02 (live-sync ticket 04 follow-up, Kevin) to [updateEvent]/[deleteEvent] -
+ * renaming or deleting an appointment used to be local-only on every install, a standing ruling
+ * from one-today ticket 02 point 3 made when nothing synced at all.** It became a real hole the
+ * moment [addEvent] started syncing creation: the two devices would silently diverge on exactly
+ * the edit a user is most likely to make. Both new functions copy [addEvent]'s own shape - write
+ * local first, unconditionally, so the screen is honest immediately; push if configured; enqueue
+ * on failure rather than dropping - **not** the server-first/local-write-on-ack ordering
+ * [com.kevin.legion.notes.NotesController.applyChange] uses for a reminder, because that ordering
+ * exists there specifically so a REJECTED write is never applied locally at all (CLAUDE.md's
+ * outcome-verb rule, applied by dropping); an appointment's failure posture is already the
+ * opposite of a reminder's by [addEvent]'s own precedent (enqueue, never drop), so matching THAT
+ * precedent rather than reminder's ordering is the one that keeps this file internally consistent.
+ * [deleteEvent] soft-deletes, never hard-deletes, on a configured install - the whole reason the
+ * old local-only ruling was safe (nothing to reconcile) is exactly what stopped being true once a
+ * pull that propagates tombstones exists (ticket 03): a hard local delete would simply resurrect
+ * the row on the next pull.
  */
 object EventsAppointmentWriter {
     /** Test seam, same mechanism and same purpose as
@@ -169,7 +303,193 @@ object EventsAppointmentWriter {
             ),
         )
     }
+
+    /**
+     * Renames/reschedules a calendar-table row (`kind = event` or `kind = task` -
+     * [com.kevin.legion.notes.NotesController]'s own `isCalendarTableKind`) already read by the
+     * caller. Local write always happens - see this object's own class doc for why that ordering,
+     * not server-first. On a configured install with a real [Event.serverId] (a row that has
+     * genuinely round-tripped), pushes via [EventsBackend.upsert] and enqueues an
+     * [OutboxOperation.UPDATE] entry on failure. **A [Event.serverId] of null means the row's own
+     * [addEvent] create is still pending in the outbox** (v59 minted null, never a placeholder, for
+     * exactly this state - see [Event.serverId]'s own doc comment) - there is nothing server-side
+     * yet to target an update AT, so instead the still-queued CREATE entry itself is re-pointed at
+     * this row's latest values ([repointPendingCreate]), so the eventual create carries the final
+     * title rather than the one typed a moment before the rename.
+     */
+    suspend fun updateEvent(
+        context: Context,
+        existing: Event,
+        title: String,
+        startsAtMs: Long?,
+        endsAtMs: Long?,
+        allDay: Boolean,
+    ): Boolean {
+        val db = CarDatabase.getDatabase(context)
+        val now = System.currentTimeMillis()
+        val updated = existing.copy(
+            title = title,
+            startsAt = startsAtMs,
+            endsAt = endsAtMs,
+            allDay = allDay,
+            updatedAtMs = now,
+        )
+        db.eventDao().update(updated)
+
+        val backend = backend(context) ?: return true
+
+        val serverId = existing.serverId
+        if (serverId == null) {
+            repointPendingCreate(db, updated)
+            return true
+        }
+
+        val result = backend.upsert(serverId, updated.toEventFields())
+        if (result.isFailure) {
+            enqueueUpdate(db, updated, result.exceptionOrNull()?.message)
+        }
+        return true
+    }
+
+    /**
+     * Soft-deletes a calendar-table row already read by the caller. Local write always happens -
+     * marks [Event.deleted] rather than a hard delete, so a resurrecting pull (this row's own
+     * tombstone reaching the server late) never finds anything locally left to conflict with. On a
+     * configured install with a real [Event.serverId], pushes via [EventsBackend.softDelete] and
+     * enqueues an [OutboxOperation.SOFT_DELETE] entry on failure.
+     *
+     * **A [Event.serverId] of null is the one case this hard-deletes, not soft-deletes** - the
+     * row's own [addEvent] create never reached the server (see [updateEvent]'s own doc comment for
+     * why null means exactly that), so there is nothing server-side to tombstone; the still-queued
+     * create is cancelled outright ([cancelPendingCreate]) and the local row goes with it. **Known,
+     * narrow gap, stated rather than hidden:** [EventsOutboxDrain]/[EventsSync.maybeAutoPull] run
+     * fire-and-forget on foreground, so there is a real (if short) window where a create has
+     * already drained successfully but the following pull has not yet run to fill in a real
+     * [Event.serverId] - a delete landing in exactly that window hard-deletes locally with no
+     * tombstone sent, and the row could in principle survive server-side. Not solved here; flagged
+     * for the same follow-up this ticket's own map entry names for the other five aspects.
+     */
+    suspend fun deleteEvent(context: Context, existing: Event): Boolean {
+        val db = CarDatabase.getDatabase(context)
+        val backend = backend(context)
+        if (backend == null) {
+            db.eventDao().deleteById(existing.id)
+            return true
+        }
+
+        val serverId = existing.serverId
+        if (serverId == null) {
+            cancelPendingCreate(db, existing.id)
+            db.eventDao().deleteById(existing.id)
+            return true
+        }
+
+        val now = System.currentTimeMillis()
+        db.eventDao().update(existing.copy(deleted = true, updatedAtMs = now))
+        val result = backend.softDelete(serverId)
+        if (result.isFailure) {
+            enqueueDelete(db, existing.id, serverId, result.exceptionOrNull()?.message)
+        }
+        return true
+    }
+
+    private suspend fun enqueueUpdate(db: CarDatabase, row: Event, error: String?) {
+        db.outboxDao().insert(
+            OutboxEntry(
+                targetTable = OutboxTarget.EVENTS,
+                operation = OutboxOperation.UPDATE,
+                localId = row.id,
+                payload = Json.encodeToString(EventUpdateOutboxPayload.serializer(), EventUpdateOutboxPayload.from(row)),
+                createdAt = System.currentTimeMillis(),
+                attempts = 0,
+                lastError = error,
+            ),
+        )
+    }
+
+    private suspend fun enqueueDelete(db: CarDatabase, localId: Long, serverId: String, error: String?) {
+        db.outboxDao().insert(
+            OutboxEntry(
+                targetTable = OutboxTarget.EVENTS,
+                operation = OutboxOperation.SOFT_DELETE,
+                localId = localId,
+                payload = Json.encodeToString(EventDeleteOutboxPayload.serializer(), EventDeleteOutboxPayload(serverId)),
+                createdAt = System.currentTimeMillis(),
+                attempts = 0,
+                lastError = error,
+            ),
+        )
+    }
+
+    /** Re-points an already-queued [OutboxOperation.UPSERT] create entry for [row] at its latest
+     * field values, by delete-then-reinsert rather than an in-place payload update - no DAO method
+     * exists to patch a queued payload in place, and adding one would touch the outbox's own
+     * generic `sync_outbox` schema for a single caller's convenience. A fresh `createdAt`/reset
+     * `attempts` is an accepted side effect: the entry is functionally the same pending create, now
+     * carrying the values the row actually has. A no-op (never called with nothing pending) is
+     * indistinguishable from this function simply doing nothing - there is no pending create left
+     * to re-point once [addEvent]'s own push already succeeded, which is the ordinary case. */
+    private suspend fun repointPendingCreate(db: CarDatabase, row: Event) {
+        val dao = db.outboxDao()
+        val pending = dao.pendingForTable(OutboxTarget.EVENTS, Int.MAX_VALUE)
+            .filter { it.operation == OutboxOperation.UPSERT && it.localId == row.id }
+        for (entry in pending) {
+            dao.delete(entry.id)
+        }
+        if (pending.isNotEmpty()) enqueue(db, row, pending.last().lastError)
+    }
+
+    /** Cancels every still-queued [OutboxOperation.UPSERT] create entry for [localId] - see
+     * [deleteEvent]'s own doc comment for why a null [Event.serverId] means there is nothing
+     * server-side yet for this cancellation to need to reach. */
+    private suspend fun cancelPendingCreate(db: CarDatabase, localId: Long) {
+        val dao = db.outboxDao()
+        val pending = dao.pendingForTable(OutboxTarget.EVENTS, Int.MAX_VALUE)
+            .filter { it.operation == OutboxOperation.UPSERT && it.localId == localId }
+        for (entry in pending) {
+            dao.delete(entry.id)
+        }
+    }
 }
+
+/** [Event] -> [EventFields], field for field - the whole-row-replace shape
+ * [EventsBackend.upsert] and [EventsAppointmentWriter.updateEvent] need for a rename/reschedule
+ * push, matching [com.kevin.legion.notes.NotesController]'s own `ListItem.toEventFields()` for the
+ * identical reason (see that function's own doc comment). Private to this file's own writer;
+ * duplicated rather than exported because [com.kevin.legion.backend.EventsReconcile]'s private
+ * `EventFields(...)` helper and [com.kevin.legion.notes.NotesController]'s `toEventFields()` each
+ * already have a shape suited to their own caller, and a shared version would need to become the
+ * least-common-denominator of three different mapping needs for no real benefit. */
+private fun Event.toEventFields(): EventFields = EventFields(
+    title = title,
+    startsAtMs = startsAt,
+    createdAtMs = createdAt,
+    endsAtMs = endsAt,
+    allDay = allDay,
+    location = location,
+    notes = notes,
+    structuredMeta = structuredMeta,
+    source = source,
+    kind = kind,
+    googleEventId = googleEventId,
+    done = done,
+    doneAtMs = doneAt,
+    sortOrder = sortOrder,
+    triggerPlaceLabel = triggerPlaceLabel,
+    repeatKind = repeatKind,
+    repeatEvery = repeatEvery,
+    repeatDaysOfWeek = repeatDaysOfWeek,
+    repeatDay = repeatDay,
+    repeatMonth = repeatMonth,
+    repeatEndKind = repeatEndKind,
+    repeatEndDateMs = repeatEndDate,
+    repeatEndCount = repeatEndCount,
+    exact = exact,
+    exactDowngraded = exactDowngraded,
+    missedAtMs = missedAt,
+    missedDismissedAtMs = missedDismissedAt,
+    loggedAtMs = loggedAt,
+)
 
 /**
  * Retries every still-pending `events` outbox entry - `ui/MainActivity.kt`'s `onResume` hook,
@@ -213,6 +533,13 @@ object EventsOutboxDrain {
      * the same still-pending entry twice in a row - the ordinary shape of "app foregrounded twice
      * before the first drain's own success response came back" - can create at most one server
      * row for it, never two.
+     *
+     * **WIDENED 2026-09-02 (live-sync ticket 04 follow-up) to also drain [OutboxOperation.UPDATE]/
+     * [OutboxOperation.SOFT_DELETE].** Before this, the dispatch below silently `continue`d past
+     * either kind of entry forever - harmless only because nothing had ever produced one yet (see
+     * [OutboxOperation]'s own class doc for that history). The bounded-attempts/poison mechanics
+     * this doc comment describes above are UNCHANGED; only which payload shape gets decoded and
+     * which [EventsBackend] call gets made varies by [OutboxEntry.operation] now.
      */
     suspend fun drain(context: Context, backend: EventsBackend): DrainReport {
         val db = CarDatabase.getDatabase(context)
@@ -224,9 +551,21 @@ object EventsOutboxDrain {
         var poisoned = 0
 
         for (entry in pending) {
-            if (entry.operation != OutboxOperation.UPSERT) continue
-            val payload = Json.decodeFromString(EventUpsertOutboxPayload.serializer(), entry.payload)
-            val result = backend.uploadMigratedEvent(payload.toMigratedEvent())
+            val result: Result<*> = when (entry.operation) {
+                OutboxOperation.UPSERT -> {
+                    val payload = Json.decodeFromString(EventUpsertOutboxPayload.serializer(), entry.payload)
+                    backend.uploadMigratedEvent(payload.toMigratedEvent())
+                }
+                OutboxOperation.UPDATE -> {
+                    val payload = Json.decodeFromString(EventUpdateOutboxPayload.serializer(), entry.payload)
+                    backend.upsert(payload.serverId, payload.toFields())
+                }
+                OutboxOperation.SOFT_DELETE -> {
+                    val payload = Json.decodeFromString(EventDeleteOutboxPayload.serializer(), entry.payload)
+                    backend.softDelete(payload.serverId)
+                }
+                else -> continue
+            }
             if (result.isSuccess) {
                 dao.delete(entry.id)
                 succeeded++

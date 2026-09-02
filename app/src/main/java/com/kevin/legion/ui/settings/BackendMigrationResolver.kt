@@ -1,7 +1,6 @@
 package com.kevin.legion.ui.settings
 
 import com.kevin.legion.backend.ConversationAuditReconcile
-import com.kevin.legion.backend.EventsReconcile
 import com.kevin.legion.backend.FleetReconcile
 import com.kevin.legion.backend.MembershipResult
 import com.kevin.legion.backend.ObdSampleReconcile
@@ -10,8 +9,14 @@ import com.kevin.legion.backend.PlacesReconcile
 
 /**
  * Pure UI-state derivation for `ui/settings/BackendMigrationScreen.kt` - backend-erp Phase 4's
- * "hands path" for [PlacesReconcile]/[PantryReconcile]/[EventsReconcile]
- * (`.scratch/backend-erp/issues/05-migration-path.md`). Kept Android-free and Compose-free on
+ * "hands path" for [PlacesReconcile]/[PantryReconcile]/`EventsReconcile`
+ * (`.scratch/backend-erp/issues/05-migration-path.md`). **`EventsReconcile` (Notes + Dates) was
+ * retired 2026-09-02 (live-sync ticket 04) along with [renderEventsReport] and the screen's own
+ * "Notes + Dates" row** - `EventsSync`/`EventsRealtime`/`EventsOutbox` now sync that aspect live,
+ * automatically, and the old one-button wholesale wipe-and-refill was traced as actively dangerous
+ * (it hid 120 real coursework rows and, separately, its retraction guard soft-deleted ~130 rows on
+ * a routine re-check) rather than merely redundant - see `memory/library/decisions.md`'s
+ * 2026-09-02 entry. The two remaining reconciles below are unaffected. Kept Android-free and Compose-free on
  * purpose, same posture as [com.kevin.legion.ui.spotify.SpotifyConnectResolver]/
  * [com.kevin.legion.ui.sync.DriveBackupResolver]: the screen owns [SupabaseClientProvider]/
  * [SupabaseAuth]/coroutine plumbing and the real network calls; this object only turns
@@ -136,60 +141,12 @@ object BackendMigrationResolver {
         add(if (report.isClean) "Clean - every reconciling receipt matches on both sides." else "Not clean yet - see the lines above.")
     }
 
-    /** [EventsReconcile.Report] in plain words.
-     *
-     * **AMENDED 2026-08-26 (ticket 07): an undated Notes `Item` is an ordinary uploaded row now**,
-     * not a skipped exception - `starts_at` was widened to nullable server-side and
-     * [EventsReconcile.Report.uploadedUndated] is a plain count, informational only, rendered
-     * without affecting the clean verdict. Same posture [renderPantryReport] already applies to
-     * [PantryReconcile.Report.uploadedUnreconciled]: a row that genuinely uploaded is worded
-     * differently from one that did not.
-     *
-     * **AMENDED 2026-08-28 (ticket 20, Q2's ruling - the 213-row incident).** The retraction line
-     * below now ALWAYS names [EventsReconcile.Report.retractionCandidateCount] in words, retracted
-     * or not - the incident that prompted this ticket was found only because a routine sync
-     * reported a 213-row deletion as one line inside an otherwise unremarkable success message.
-     * When [EventsReconcile.Report.retractionWithheld] is true, this states the count, WHY the
-     * rows looked orphaned, and that running the migration screen again is what confirms it - no
-     * dialog, per `BackendMigrationScreen`'s own doc comment, the second tap IS the consent. */
-    fun renderEventsReport(report: EventsReconcile.Report): List<String> = buildList {
-        add(
-            "Engine had ${report.datesEngineCount} dated ${plural(report.datesEngineCount, "event")} and " +
-                "${report.notesEngineCount} note ${plural(report.notesEngineCount, "item")}; " +
-                "${report.uploaded} newly uploaded this run.",
-        )
-        add(
-            "Server now has ${report.serverCountAfter} ${plural(report.serverCountAfter, "row")}; " +
-                "the on-device replica now has ${report.replicaCountAfter}.",
-        )
-        if (report.uploadedUndated > 0) {
-            add(
-                "Of those, ${report.uploadedUndated} ${plural(report.uploadedUndated, "item")} " +
-                    "with no date - uploaded anyway, with no start time, never a guessed one.",
-            )
-        }
-        add(
-            when {
-                report.retractionWithheld ->
-                    "Held back, on purpose: ${report.retractionCandidateCount} " +
-                        "${plural(report.retractionCandidateCount, "row")} on the server look orphaned - " +
-                        "their device original was deleted or is gone - but that is enough of the " +
-                        "server's own total that nothing was removed this run. Nothing on the server " +
-                        "was changed. Run this again to confirm and remove them."
-                report.retractionCandidateCount > 0 ->
-                    "Removed ${report.deletedOnServer} ${plural(report.deletedOnServer, "row")} on the " +
-                        "server whose device original was deleted or is gone - a retraction, not an upload."
-                else -> "No rows looked orphaned this run - nothing to retract."
-            },
-        )
-        if (report.onlyOnEngine.isNotEmpty()) {
-            add("Only on this device, not on the server: ${report.onlyOnEngine.joinToString(", ")}.")
-        }
-        if (report.onlyOnServer.isNotEmpty()) {
-            add("Only on the server, not on this device: ${report.onlyOnServer.joinToString(", ")}.")
-        }
-        add(if (report.isClean) "Clean - everything matches on both sides." else "Not clean yet - see the lines above.")
-    }
+    // renderEventsReport(EventsReconcile.Report) REMOVED 2026-09-02 (live-sync ticket 04) along
+    // with EventsReconcile itself - see this object's own class doc for why (120 hidden coursework
+    // rows, a retraction guard that treated a second Settings tap as consent). The worked account
+    // of the undated-item wording (ticket 07) and the retraction-guard wording (ticket 20's 213-row
+    // incident) that used to live in this function's own doc comment is preserved in
+    // `.scratch/live-sync/map.md` and `memory/library/decisions.md`'s 2026-09-02 entry.
 
     /**
      * [FleetReconcile.Report] in plain words - ten tables, so this earns different structure from

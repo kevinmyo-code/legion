@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.kevin.legion.backend.EventFields
 import com.kevin.legion.backend.EventKind
+import com.kevin.legion.backend.EventsAppointmentWriter
 import com.kevin.legion.backend.EventsBackend
 import com.kevin.legion.backend.RemoteEvent
 import com.kevin.legion.backend.SupabaseClientProvider
@@ -882,18 +883,28 @@ object NotesController {
      * [EventKind.TASK] - renaming a calendar entry or deleting it outright is still a legitimate
      * edit even though ticking one off is not.
      *
-     * **Local-only, by design, not merely by omission** (ticket 02 point 3): a calendar-table row
-     * has no live server write funnel of its own even on the "configured" (Supabase) path - the
-     * retired `calendar/CalendarImportController.kt`'s own class doc established this ("unlike
-     * [NotesController], there is no configured-vs-unconfigured branch here at all... a
-     * Google-imported event is already synced cross-device by Google itself"), and a voice-created
-     * one ([com.kevin.legion.service.LiveToolbox]'s `addAppointment`) follows the identical shape.
-     * So a tick here writes straight to the local [Event] row, on every install, matching that
-     * precedent rather than inventing a live-sync path ticket 02 never asked for. **The accepted
-     * cost, stated rather than hidden:** a task ticked on one phone does not appear ticked on a
-     * second phone until the next full [com.kevin.legion.backend.EventsReconcile] wipes and refills
-     * the reminder half of this table - and that refill, by that object's own class doc, never
-     * touches a calendar-table row at all. A follow-up, not a silent gap.
+     * **Local-only, by design, not merely by omission** (ticket 02 point 3) - **for [tickAppointment]/
+     * [untickAppointment] only.** A calendar-table row has no live server write funnel of its own
+     * even on the "configured" (Supabase) path - the retired `calendar/CalendarImportController.kt`'s
+     * own class doc established this ("unlike [NotesController], there is no configured-vs-
+     * unconfigured branch here at all... a Google-imported event is already synced cross-device by
+     * Google itself"), and a voice-created one ([com.kevin.legion.service.LiveToolbox]'s
+     * `addAppointment`) follows the identical shape. So a tick here writes straight to the local
+     * [Event] row, on every install, matching that precedent rather than inventing a live-sync path
+     * ticket 02 never asked for. **The accepted cost, stated rather than hidden:** a task ticked on
+     * one phone does not appear ticked on a second phone until the next pull - nothing pushes a tick
+     * today, a follow-up rather than a silent gap.
+     *
+     * **REVERSED 2026-09-02 (live-sync ticket 04 follow-up, Kevin) for [updateAppointment]/
+     * [removeAppointment] only - the paragraph above no longer describes them.** It was written when
+     * nothing synced at all, so a local-only edit lost nothing; it became a real hole the moment
+     * [com.kevin.legion.backend.EventsAppointmentWriter.addEvent] started syncing CREATION, because
+     * the two devices then silently diverge on exactly the edit a user is most likely to make next.
+     * Both now route through [com.kevin.legion.backend.EventsAppointmentWriter.updateEvent]/
+     * [com.kevin.legion.backend.EventsAppointmentWriter.deleteEvent] - write-through plus the same
+     * durable outbox [addEvent] already uses, soft-deleting rather than hard-deleting so a pull that
+     * propagates tombstones (live-sync ticket 03) never resurrects a locally-hard-deleted row. See
+     * `memory/library/decisions.md`'s 2026-09-02 entry for the full reversal record.
      *
      * **Recurring calendar-table rows needed no new handling** (ticket 02 point 2): a row here never
      * carries [Event.repeatKind] - every stored one (Google-imported historically, or voice-created
@@ -971,7 +982,10 @@ object NotesController {
      * point 1) - everything else about the row is preserved via `copy`. Returns false, writing
      * nothing, on a stale id or a row that is a reminder (renaming/rescheduling stays legitimate for
      * both [EventKind.EVENT] and [EventKind.TASK] even though ticking one off is not - see this
-     * section's own class doc). */
+     * section's own class doc). **Routed through
+     * [com.kevin.legion.backend.EventsAppointmentWriter.updateEvent] since the 2026-09-02 reversal**
+     * (this section's own class doc) - local write always happens; a configured install also pushes
+     * the rename, enqueuing on failure rather than losing it. */
     suspend fun updateAppointment(
         context: Context,
         id: Long,
@@ -980,14 +994,17 @@ object NotesController {
         endMs: Long,
         allDay: Boolean,
     ): Boolean {
-        val now = System.currentTimeMillis()
         val existing = db(context).eventDao().getById(id) ?: return false
         if (existing.deleted || !isCalendarTableKind(existing.kind)) return false
         return try {
-            db(context).eventDao().update(
-                existing.copy(title = title, startsAt = startMs, endsAt = endMs, allDay = allDay, updatedAtMs = now),
+            EventsAppointmentWriter.updateEvent(
+                context = context,
+                existing = existing,
+                title = title,
+                startsAtMs = startMs,
+                endsAtMs = endMs,
+                allDay = allDay,
             )
-            true
         } catch (e: Exception) {
             Log.w(TAG, "updateAppointment failed for $id: ${e.message}")
             false
@@ -1002,16 +1019,21 @@ object NotesController {
     private fun isCalendarTableKind(kind: String): Boolean = kind == EventKind.EVENT || kind == EventKind.TASK
 
     /** `ui/notes/InboxScreen.kt`'s appointment DELETE - one-today ticket 01's local replacement for
-     * the retired `CalendarProvider.deleteEventSeries`/`deleteEventOccurrence` pair. Hard-deletes the
-     * row, matching [removeItem]'s own unconfigured-path convention for this table (no 30-day
-     * restorable trash here - [Event]'s own doc comment). Returns false, deleting nothing, when the
-     * id is already gone or is not an appointment. */
+     * the retired `CalendarProvider.deleteEventSeries`/`deleteEventOccurrence` pair.
+     * **CORRECTED 2026-09-02 (the reversal this section's own class doc records): no longer
+     * hard-deletes on a configured install.** [removeItem]'s "no 30-day restorable trash" convention
+     * this comment used to cite was about the UNCONFIGURED path having nothing to reconcile against
+     * - true when this ruling was made, no longer true once a pull propagates tombstones (ticket
+     * 03): a hard local delete there would simply resurrect the row on the next pull. Routed through
+     * [com.kevin.legion.backend.EventsAppointmentWriter.deleteEvent], which still hard-deletes on an
+     * unconfigured install (nothing ever to reconcile there) and soft-deletes-plus-pushes on a
+     * configured one. Returns false, deleting nothing, when the id is already gone or is not an
+     * appointment. */
     suspend fun removeAppointment(context: Context, id: Long): Boolean {
         val existing = db(context).eventDao().getById(id) ?: return false
         if (!isCalendarTableKind(existing.kind)) return false
         return try {
-            db(context).eventDao().deleteById(id)
-            true
+            EventsAppointmentWriter.deleteEvent(context, existing)
         } catch (e: Exception) {
             Log.w(TAG, "removeAppointment failed for $id: ${e.message}")
             false

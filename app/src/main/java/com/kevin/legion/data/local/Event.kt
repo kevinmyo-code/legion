@@ -389,8 +389,14 @@ interface EventDao {
     )
     suspend fun activeByKindFrom(kind: String, afterMs: Long, limit: Int): List<Event>
 
-    /** Every row including tombstones - used only by [com.kevin.legion.backend.EventsReconcile] to
-     * diff against the engine's own guid set, same shape as [PantryReceiptDao.getAll]. */
+    /** Every row including tombstones, same shape as [PantryReceiptDao.getAll]. **CORRECTED
+     * 2026-09-02: this used to say "used only by [com.kevin.legion.backend.EventsReconcile], to
+     * diff against the engine's own guid set" - that object is retired (live-sync ticket 04; see
+     * `memory/library/decisions.md`'s 2026-09-02 entry for why the wholesale-wipe-and-refill it
+     * performed was retired as dangerous rather than merely redundant).** [com.kevin.legion.backend.EventsSync.pull]
+     * is the current caller, and for a different reason: it needs a server row matched against a
+     * local row this device has ALREADY soft-deleted, which [getAllActive]'s `deleted = 0` filter
+     * would hide (see that function's own class doc). */
     @Query("SELECT * FROM events")
     suspend fun getAll(): List<Event>
 
@@ -453,29 +459,20 @@ interface EventDao {
     @Query("DELETE FROM events WHERE id = :id")
     suspend fun deleteById(id: Long)
 
-    /** Wipes the table clean before [com.kevin.legion.backend.EventsReconcile] refills it - same
-     * role as [PantryReceiptDao.deleteAllForReplicaRefresh]. Never called from the regular
-     * read/write path. **Unused by [com.kevin.legion.backend.EventsReconcile] since the 2026-08-28
-     * coordinator follow-up** - that refill now wipes only [deleteByKindForReplicaRefresh]'s
-     * `kind = reminder` rows, never appointments (see that function's own doc comment). Left in
-     * place rather than deleted: still the correct shape for a caller that genuinely wants the
-     * whole table gone (none exists today), and CLAUDE.md's "nothing deleted" discipline for a
-     * shared write door extends to not deleting a still-correct, still-compiling DAO method with
-     * no live caller either. */
-    @Query("DELETE FROM events")
-    suspend fun deleteAllForReplicaRefresh()
-
-    /** Wipes only one [kind]'s rows before [com.kevin.legion.backend.EventsReconcile]'s refill -
-     * added 2026-08-28 (coordinator follow-up on backend-erp ticket 17) because the wholesale
-     * [deleteAllForReplicaRefresh] forces every refilled row through a single shared "carry or
-     * derive an id" scheme, and Dates appointments and Notes reminders now draw their carried ids
-     * from two INDEPENDENT autoincrement spaces (`Event.id` itself for appointments, the engine's
-     * `records.id` for reminders) that can coincidentally collide. [com.kevin.legion.backend.EventsReconcile]
-     * wipes only `kind = reminder` here and refills those through the existing carry/derive dance;
-     * appointment rows are never deleted at all - they already live at a known, stable local id and
-     * are updated in place instead (see that file's own `run` for the split). */
-    @Query("DELETE FROM events WHERE kind = :kind")
-    suspend fun deleteByKindForReplicaRefresh(kind: String)
+    // deleteAllForReplicaRefresh()/deleteByKindForReplicaRefresh() REMOVED 2026-09-02 (live-sync
+    // ticket 04) along with their one caller, com.kevin.legion.backend.EventsReconcile. That
+    // caller's own wholesale wipe-and-refill was traced as the direct cause of 120 real coursework
+    // rows going invisible on Kevin's phone for weeks (it withheld any server row it could not
+    // attribute to a still-live local record, and withheld rows vanish rather than reading as
+    // unconfirmed) and of a retraction guard that treated a second Settings tap as consent,
+    // soft-deleting roughly 130 rows including real coursework on a routine re-check. Both methods
+    // existed only to serve that wipe; a "delete nothing calls, never delete anything else"
+    // discipline is not owed to a delete-the-whole-table method whose one caller is gone. The
+    // full incident account, the id-collision reasoning these two methods' own doc comments used
+    // to carry (two independent autoincrement spaces - Event.id for appointments, the engine's
+    // records.id for reminders - that could coincidentally collide), and the retraction-guard
+    // design are preserved in `.scratch/live-sync/map.md` and `memory/library/decisions.md`'s
+    // 2026-09-02 entry rather than lost with the deletion.
 }
 
 /**
@@ -483,10 +480,17 @@ interface EventDao {
  * naive `OnConflictStrategy.REPLACE` on the unique [Event.serverId] index is wrong here (it would
  * mint a new local [Event.id] on every refresh). This does the read-then-write by hand instead,
  * and is a plain suspend function precisely because Room does not let a `@Dao` interface member
- * run two sequential queries. **Used only by the CONFIGURED path** ([com.kevin.legion.backend.EventsReconcile],
- * [com.kevin.legion.notes.NotesController]'s own `backend != null` branches) - the unconfigured
+ * run two sequential queries. **Used only by the CONFIGURED path**
+ * ([com.kevin.legion.notes.NotesController]'s own `backend != null` branches) - the unconfigured
  * path writes [EventDao.insert]/[EventDao.update]/[EventDao.deleteById] directly, since there is no
- * `serverId` to key an upsert on in the first place (see [Event]'s own doc comment).
+ * `serverId` to key an upsert on in the first place (see [Event]'s own doc comment). **CORRECTED
+ * 2026-09-02: [com.kevin.legion.backend.EventsReconcile] used to be a second caller** (the
+ * wholesale replica refill this doc comment's branch 2/3 reasoning below was written for) - that
+ * object is retired, live-sync ticket 04; see `memory/library/decisions.md`'s 2026-09-02 entry.
+ * The three branches below stay correct and load-bearing for the surviving caller regardless -
+ * NotesController's own live writes can equally hand this a carried id of 0 (a genuinely new row)
+ * or a stale/foreign one, and the collision guard in branch 3 protects against the identical hazard
+ * either way.
  *
  * Not wrapped in `withTransaction` - matches [PlaceController.tagPlace]'s own single-row-at-a-time
  * posture (only [com.kevin.legion.backend.PantryReconcile]'s multi-table receipt+lines refill
@@ -597,8 +601,8 @@ interface EventSkipDao {
     @Query("SELECT skipDateEpochMs FROM event_skips WHERE eventServerId = :eventServerId")
     suspend fun forEvent(eventServerId: String): List<Long>
 
-    /** Wipes the table clean before [com.kevin.legion.backend.EventsReconcile] refills it - same
-     * role as [EventDao.deleteAllForReplicaRefresh]. */
-    @Query("DELETE FROM event_skips")
-    suspend fun deleteAllForReplicaRefresh()
+    // deleteAllForReplicaRefresh() REMOVED 2026-09-02 (live-sync ticket 04), same wipe-before-
+    // refill role EventDao's own two removed methods played, for the same one caller
+    // (com.kevin.legion.backend.EventsReconcile, retired) - see EventDao's own comment at the same
+    // spot for the full account.
 }

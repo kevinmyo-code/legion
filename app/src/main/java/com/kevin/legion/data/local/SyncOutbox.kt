@@ -62,13 +62,24 @@ object OutboxTarget {
     const val EVENTS = "events"
 }
 
-/** [OutboxEntry.operation] values. Only [UPSERT] is produced by any writer as of v59 - events'
- * write-through never enqueues a delete (`removeAppointment`/`updateAppointment` stay local-only,
- * a standing ruling from one-today ticket 02 point 3, unchanged by this ticket) - but the column
- * is not narrowed to one value so a future soft-delete writer for this or another aspect has
- * somewhere to say what it means without a schema change. */
+/** [OutboxEntry.operation] values. **The comment this replaces said only [UPSERT] was produced as
+ * of v59, and that `removeAppointment`/`updateAppointment` stayed local-only - a standing ruling
+ * from one-today ticket 02 point 3.** Kevin reversed that ruling on 2026-09-02 (live-sync ticket
+ * 04 follow-up): the two devices silently diverge on exactly the edit a user is most likely to
+ * make once creation syncs but rename/delete do not, so both now route through this same outbox.
+ * [UPDATE] and [SOFT_DELETE] are that reversal's two new producers - [SOFT_DELETE] was already
+ * named here, unused, precisely so this moment would not need a schema change; [UPDATE] is new
+ * for the identical reason a rename cannot go through [EventsBackend.uploadMigratedEvent] (that
+ * function only ever inserts-if-absent, by design - see [EventsBackend.uploadMigratedEvent]'s own
+ * doc comment - so it silently no-ops on an existing row instead of renaming it). See
+ * `memory/library/decisions.md`'s 2026-09-02 entry for the full reversal record. */
 object OutboxOperation {
     const val UPSERT = "upsert"
+    /** A whole-row-replace update against an already-round-tripped event (`serverId` known) -
+     * [com.kevin.legion.backend.EventsBackend.upsert] with a non-null id, never
+     * [com.kevin.legion.backend.EventsBackend.uploadMigratedEvent] (see this object's own class
+     * doc for why that function cannot express a rename). */
+    const val UPDATE = "update"
     const val SOFT_DELETE = "soft_delete"
 }
 

@@ -60,6 +60,19 @@ Open sub-questions, all real:
    deletions. Google has no "done" concept, so this is almost certainly local-only - but it must be
    decided rather than defaulted, because a tick that silently does not travel is exactly the class
    of thing this project keeps finding.
+
+   **This point was read as a broader ruling than it stated, and that broader reading was REVERSED
+   2026-09-02 (live-sync ticket 04, Kevin).** `notes/NotesController.kt`'s `updateAppointment`/
+   `removeAppointment` (rename/delete of an appointment or task, not the tick this point is actually
+   about) cited this point as authority for staying local-only on EVERY install, configured or not -
+   a defensible reading at the time it was made, since nothing synced live at all yet. It became a
+   real hole the moment `EventsAppointmentWriter.addEvent` started syncing CREATION (live-sync
+   ticket 02): the two devices would silently diverge on exactly the edit a user is most likely to
+   make next. Both now route through `EventsAppointmentWriter.updateEvent`/`.deleteEvent` - the same
+   write-through-plus-outbox shape `addEvent` already uses, soft-deleting rather than hard-deleting
+   so a pull that propagates tombstones (live-sync ticket 03) never resurrects a locally-hard-deleted
+   row. **Ticking still stays local-only, unaffected** - Google genuinely has no "done" concept, and
+   this reversal is about rename/delete only. See `memory/library/decisions.md`'s 2026-09-02 entry.
 4. **The voice tools need it both ways** - report done state, and set it. Whatever `manage_item` does
    for reminders should extend, not be duplicated.
 
