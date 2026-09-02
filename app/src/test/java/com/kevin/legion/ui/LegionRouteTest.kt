@@ -13,14 +13,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * **2026-09-01 calendar-home cutover** (Kevin, verbatim, [LegionRoute.CALENDAR]'s own doc comment):
- * three top-level tabs now, [LegionRoute.CALENDAR]/[LegionRoute.METERS]/[LegionRoute.SETTINGS],
- * superseding the five-tab shape these pins used to check (itself a supersession of a four-tab
- * shape, and before that the reverted cutover-5 pager-as-HOME flip - see [LegionRoute]'s class doc
- * for the full history). [LegionRoute.MONEY]/[LegionRoute.BODY]/[LegionRoute.FLEET]/
- * [LegionRoute.NOTES] are demoted off [LegionRoute.TOP_LEVEL], not deleted - every seeded aspect's
- * "OPEN FULL SCREEN" button must still resolve to a route this file actually declares, which is
- * what the aspect-legacy-route tests below still check regardless of which routes are tabs.
+ * **CORRECTED 2026-09-01: two top-level tabs, not three.** The calendar-home cutover landed
+ * [LegionRoute.CALENDAR]/[LegionRoute.METERS]/[LegionRoute.SETTINGS] as three tabs the same day
+ * this suite's own doc comment used to describe; [SETTINGS] came off [LegionRoute.TOP_LEVEL] again
+ * hours later (Kevin, on seeing it running: "setup is being duplicated. keep the top right corner
+ * one and drop the one beside meters") - [LegionRoute.TOP_LEVEL]'s own doc comment has the full
+ * account, and [StatusLine]'s SETUP stamp is now the only way into `settings/`.
+ * [LegionRoute.MONEY]/[LegionRoute.BODY]/[LegionRoute.FLEET]/[LegionRoute.NOTES] are demoted off
+ * [LegionRoute.TOP_LEVEL], not deleted - every seeded aspect's "OPEN FULL SCREEN" button must
+ * still resolve to a route this file actually declares, which is what the aspect-legacy-route
+ * tests below still check regardless of which routes are tabs.
  * **`LegionRoute.TODAY` itself is gone, not merely demoted** - one-today ticket 07 (2026-09-01)
  * deleted `ui/TodayScreen.kt` and the `TODAY` constant once every survivor it carried was rehomed
  * (see [LegionRoute]'s class doc), so this suite no longer asserts anything about it.
@@ -28,12 +30,11 @@ import org.junit.Test
 class LegionRouteTest {
 
     @Test
-    fun `CALENDAR and METERS are the top-level tabs, the four demoted routes are not`() {
+    fun `CALENDAR and METERS are the only top-level tabs, SETTINGS and the four demoted routes are not`() {
         assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.CALENDAR))
         assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.METERS))
-        assertTrue(LegionRoute.TOP_LEVEL.contains(LegionRoute.SETTINGS))
-        assertEquals(3, LegionRoute.TOP_LEVEL.size)
-        for (demoted in listOf(LegionRoute.MONEY, LegionRoute.BODY, LegionRoute.FLEET, LegionRoute.NOTES)) {
+        assertEquals(2, LegionRoute.TOP_LEVEL.size)
+        for (demoted in listOf(LegionRoute.SETTINGS, LegionRoute.MONEY, LegionRoute.BODY, LegionRoute.FLEET, LegionRoute.NOTES)) {
             assertTrue("$demoted must stay a real route, just not a tab", !LegionRoute.TOP_LEVEL.contains(demoted))
         }
     }
@@ -50,10 +51,24 @@ class LegionRouteTest {
     }
 
     @Test
-    fun `label reads Calendar and Meters for the two new tabs`() {
+    fun `topLevelOf(settings-key) is null, and that is intended, not a defect`() {
+        // CORRECTED 2026-09-01: SETTINGS came off TOP_LEVEL (see this suite's own class doc), so a
+        // settings sub-route lighting NO tab is now the correct answer, not the 2026-08-02 defect
+        // `topLevelOf`'s own doc comment records (a real tab's own sub-route going dark). SETTINGS
+        // is simply not one of the tabs any more; [StatusLine]'s SETUP stamp is the only way in and
+        // does not depend on a tab being lit.
+        assertNull(LegionRoute.topLevelOf(LegionRoute.SETTINGS_KEY))
+    }
+
+    @Test
+    fun `label reads Calendar and Meters for the two tabs, and falls through for SETTINGS`() {
         assertEquals("Calendar", LegionRoute.label(LegionRoute.CALENDAR))
         assertEquals("Meters", LegionRoute.label(LegionRoute.METERS))
-        assertEquals("Setup", LegionRoute.label(LegionRoute.SETTINGS))
+        // CORRECTED 2026-09-01: label() no longer special-cases SETTINGS ("Setup") - the branch was
+        // unreachable from its only production caller ([LegionTabRow], which iterates TOP_LEVEL
+        // alone) once SETTINGS came off that list, so it was dropped rather than kept dead. This
+        // pins the `else -> route` fallback it now shares with every other unlisted route.
+        assertEquals(LegionRoute.SETTINGS, LegionRoute.label(LegionRoute.SETTINGS))
     }
 
     @Test

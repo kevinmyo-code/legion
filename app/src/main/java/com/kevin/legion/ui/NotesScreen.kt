@@ -26,34 +26,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.notes.NotesController
-import com.kevin.legion.ui.agenda.MonthCalendar
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckRow
 import com.kevin.legion.ui.common.DeckTag
 import com.kevin.legion.ui.common.DeckTagStyle
 import com.kevin.legion.ui.common.EqualHeightRow
 import com.kevin.legion.ui.common.HalfTile
-import com.kevin.legion.ui.common.dailyBuckets
 import com.kevin.legion.ui.notes.CalendarNotLinkedRow
 import com.kevin.legion.ui.notes.DashedHairline
-import com.kevin.legion.ui.notes.DayEventsDialog
 import com.kevin.legion.ui.notes.GroceryScreen
 import com.kevin.legion.ui.notes.InboxScreen
 import com.kevin.legion.ui.notes.MissedRow
 import com.kevin.legion.ui.notes.MissedRowView
-import com.kevin.legion.ui.notes.MonthCell
 import com.kevin.legion.ui.notes.NotificationsBlockedBanner
 import com.kevin.legion.ui.notes.buildListsTile
 import com.kevin.legion.ui.notes.buildMissedRows
 import com.kevin.legion.ui.notes.buildMissedTile
-import com.kevin.legion.ui.notes.buildMonthCells
-import com.kevin.legion.ui.notes.buildWeekAheadDayCounts
-import com.kevin.legion.ui.notes.entriesForDay
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.clockTime
 import java.time.LocalDate
-import java.time.YearMonth
 import java.time.ZoneId
 import androidx.compose.material3.MaterialTheme as M3
 import kotlinx.coroutines.launch
@@ -78,9 +70,22 @@ import kotlinx.coroutines.launch
  *
  * The MISSED banner (ticket 12) and the app-wide notifications-blocked warning still render ABOVE
  * the stream - a missed reminder or a blocked channel is true regardless of what you are looking at.
+ *
+ * [startMode]/[startModeNonce] (fixed on-device 2026-09-01, Kevin: "meters > lists are hard to
+ * use... groceries trip tapping it brings me to not a grocery list. tapping persistant list also
+ * brings me to the old calendar and goals view") let [MetersScreen]'s two Lists rows land on the
+ * mode they name - the "Groceries trip" row opens [LogMode.GROCERY], "Persistent list" opens
+ * [LogMode.ITEMS] - same nonce-keyed shape [openItemId]/[openItemNonce] already use for the
+ * notification deep link, since a repeat tap on the SAME row while already on this screen still
+ * has to re-apply (an unchanged nullable value alone would be skipped as a no-op state write).
  */
 @Composable
-fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
+fun NotesScreen(
+    openItemId: Long? = null,
+    openItemNonce: Int = 0,
+    startMode: LogMode? = null,
+    startModeNonce: Int = 0,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var missedRows by remember { mutableStateOf(emptyList<MissedRowView>()) }
@@ -90,34 +95,29 @@ fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
     // notification tap uses, so there is one way in rather than two.
     var missedOpenId by remember { mutableStateOf<Long?>(null) }
     var missedOpenNonce by remember { mutableStateOf(0) }
-    var mode by remember { mutableStateOf(LogMode.ITEMS) }
+    // Keyed on [startModeNonce] (not [startMode] itself) so a caller's repeat request for the SAME
+    // mode still applies - see this function's own doc comment. A user's own [LogModeToggle] tap
+    // still wins until the next nonce bump, matching [pendingMoneyCategory]'s identical shape on
+    // `ui/MainActivity.kt`'s `LegionShell`.
+    var mode by remember(startModeNonce) { mutableStateOf(startMode ?: LogMode.ITEMS) }
 
-    // Quant-viz ticket 14: the LOG tab's month calendar, replacing the WEEK AHEAD strip (Kevin,
-    // 2026-08-14: "lets make it a calendar with events on it"). [displayedMonth] is its own state
-    // (not tied to "today") so PREV/NEXT can browse away from the current month; [selectedDayStart]
-    // is the tapped-day filter `InboxScreen` reads, cleared whenever the month changes (a selection
-    // surviving a month change would filter the list against a day no longer on screen, reading as
-    // an empty list for no visible reason - the ticket's own stated failure mode).
-    var displayedMonth by remember { mutableStateOf(YearMonth.now()) }
-    var calendarCollapsed by remember { mutableStateOf(false) }
-    var selectedDayStart by remember { mutableStateOf<Long?>(null) }
-    var monthLoading by remember { mutableStateOf(true) }
-    var monthCells by remember { mutableStateOf(emptyList<MonthCell>()) }
-    // Quant-viz ticket 16: the SAME `merged` list the month load already builds to derive the grid's
-    // dot counts, kept in state so the day-tap popup below renders from it too - not a second fetch,
-    // not a second stream, so the dots and the popup can never disagree (the ticket's own stated
-    // failure mode).
-    var monthEntries by remember { mutableStateOf(emptyList<AgendaEntry>()) }
-    // Ticket 16: which in-month day cell was tapped, or null when no popup is open. Leading/trailing
-    // blank cells have no [MonthCell.dayStart] to set this with, so they stay untappable by
-    // construction (see [MonthCellView]'s own `onClick` gate).
-    var popupDayStart by remember { mutableStateOf<Long?>(null) }
-    var monthCalendarLinked by remember { mutableStateOf(true) }
-    // Mission-control ticket 16's LOG build: the TODAY hero pane's own today-only window - a
-    // SEPARATE fetch from [monthEntries] above (which is the browsable MONTH window and goes stale
-    // for "today" the instant PREV/NEXT moves [displayedMonth] away from the current month). Reloads
-    // on [missedReloadNonce], the same cadence MISSED already uses, never [displayedMonth] - TODAY
-    // must stay today regardless of what month the calendar is browsing.
+    // CORRECTED 2026-09-01: quant-viz ticket 14 put a month calendar here (Kevin, 2026-08-14:
+    // "lets make it a calendar with events on it"), then ticket 16 added a day-tap popup and a
+    // day-filtered list over it. Both are GONE (Kevin, 2026-09-01: tapping a day on the Meters
+    // "Persistent list" row "brings me to the old calendar" - the calendar home built in the
+    // meantime, `ui/CalendarScreen.kt`, owns this now and this was the duplicate). Deleted with it:
+    // [displayedMonth]/[calendarCollapsed]/[selectedDayStart]/[monthLoading]/[monthCells]/
+    // [monthEntries]/[popupDayStart]/[monthCalendarLinked], their own `LaunchedEffect`, the
+    // [DayEventsDialog] popup, and the `dayFilterStartMs`/`onClearDayFilter` wiring into
+    // [InboxScreen] below (both keep their own default-`null`/no-op parameters on that screen for
+    // any future caller; this was simply the only one). [MonthCalendar] the composable is untouched
+    // - `ui/CalendarScreen.kt` still uses it.
+    // Mission-control ticket 16's LOG build: the TODAY hero pane's own today-only window - its own
+    // fetch, reloading on [missedReloadNonce] (the same cadence MISSED already uses). CORRECTED
+    // 2026-09-01: this used to also be kept separate from a now-deleted browsable month window (see
+    // this state block's own doc comment above) - that reason is gone with the month calendar, but
+    // the pane still owns its read rather than joining [InboxScreen]'s stream below, unrelated to
+    // the calendar removal.
     var todayEntries by remember { mutableStateOf(emptyList<AgendaEntry>()) }
     var todayCalendarLinked by remember { mutableStateOf(true) }
     // Mission-control ticket 16's LISTS tile: open (not-done) count across the single merged list -
@@ -126,8 +126,8 @@ fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
     var openListCount by remember { mutableStateOf(0) }
     // One-today ticket 01 cut the runtime permission this launcher used to request - the local
     // `events` table needs none. [CalendarNotLinkedRow]'s `onGrantCalendar` slot below is now a
-    // no-op rather than deleted outright: `monthCalendarLinked`/`todayCalendarLinked` are always
-    // true post-cut, so that row can no longer render at all.
+    // no-op rather than deleted outright: `todayCalendarLinked` is always true post-cut, so that
+    // row can no longer render at all.
 
     LaunchedEffect(missedReloadNonce) {
         val missed = NotesController.missedItems(context)
@@ -156,62 +156,28 @@ fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
         openListCount = NotesController.allItems(context).count { !it.done }
     }
 
-    // Reloads on a MISSED refresh (a grant lands here too) OR a month change - kept as its own
-    // effect, keyed separately from the MISSED block above, so browsing months never re-touches
-    // the missed-reminders read this screen already does on its own cadence.
-    LaunchedEffect(missedReloadNonce, displayedMonth) {
-        // The displayed month, the SAME shared builder [buildDayAgenda]/[buildMonthAgenda]'s own
-        // `ui/agenda/DayAgenda.kt` doc comment describes - windowed over a month instead of a day,
-        // never a second query shape. This was the third verbatim restatement of the same
-        // NotesController + Recurrence + mergeAgenda triple (see the TODAY-hero effect above for
-        // the other one); all three now call [com.kevin.legion.ui.agenda.buildAgendaInWindow]'s
-        // month-windowed wrapper.
-        val zone = ZoneId.systemDefault()
-        val monthStart = displayedMonth.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
-        val monthEnd = displayedMonth.atEndOfMonth().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
-        val dayStarts = dailyBuckets(monthStart, monthEnd, zone)
-
-        // One-today ticket 01 cut the live `CalendarContract` read this used to gate on - the local
-        // `events` table is always readable, so `monthCalendarLinked` is always true post-cut
-        // (kept as a field for [CalendarNotLinkedRow]'s plumbing, which can no longer fire).
-        monthCalendarLinked = true
-        val merged = com.kevin.legion.ui.agenda.buildMonthAgenda(context, displayedMonth, zone)
-        val counts = buildWeekAheadDayCounts(merged, dayStarts, zone)
-        val countsByDayStart = dayStarts.zip(counts).toMap()
-        monthCells = buildMonthCells(displayedMonth, countsByDayStart, zone)
-        // Ticket 16: the exact list [counts]/[monthCells]'s dots were bucketed from, kept for the
-        // day-tap popup - see that state's own doc comment for why this is a store, not a re-fetch.
-        monthEntries = merged
-        monthLoading = false
-    }
-
+    // CORRECTED 2026-09-01: the month-load `LaunchedEffect` and the day-tap [DayEventsDialog]
+    // popup that used to sit here are gone with the month calendar - see the state block's own
+    // doc comment above for what left and why.
     val sem = LocalLegionSemantics.current
-
-    // Quant-viz ticket 16: the day-tap popup, rendered from [monthEntries] via [entriesForDay] -
-    // NOT a second fetch, the SAME list [buildWeekAheadDayCounts] bucketed to draw the dots on the
-    // cell that was just tapped, so the two can never disagree.
-    popupDayStart?.let { day ->
-        DayEventsDialog(
-            dayStart = day,
-            entries = entriesForDay(monthEntries, day),
-            onShowInList = { selectedDayStart = day; popupDayStart = null },
-            onDismiss = { popupDayStart = null },
-        )
-    }
 
     when (mode) {
         // Quant-viz ticket 15: ITEMS mode's furniture (title, calendar, MISSED, GoalsPanel,
-        // LogModeToggle) is no longer a stack of fixed `Column` children ABOVE `InboxScreen`'s own
-        // list - every one of ticket 14's fixed headers is what buried the list below the fold with
-        // the calendar expanded (see the ticket's own measurement table). It is instead emitted
-        // straight into [InboxScreen]'s `header` slot, so [InboxScreen]'s `LazyColumn` becomes the
-        // WHOLE screen's only scroll surface: scrolling the list scrolls the calendar away too,
-        // which is exactly "the visual obscures the scroll interface" answered rather than deferred.
+        // LogModeToggle - the calendar itself is gone as of 2026-09-01, see this function's own
+        // state-block doc comment; the rest of the shape stands) is no longer a stack of fixed
+        // `Column` children ABOVE `InboxScreen`'s own list - every one of ticket 14's fixed headers
+        // is what buried the list below the fold with the calendar expanded (see the ticket's own
+        // measurement table). It is instead emitted straight into [InboxScreen]'s `header` slot, so
+        // [InboxScreen]'s `LazyColumn` becomes the WHOLE screen's only scroll surface: scrolling the
+        // list scrolls the rest of the furniture away too, which is exactly "the visual obscures the
+        // scroll interface" answered rather than deferred.
+        // dayFilterStartMs/onClearDayFilter no longer passed (CORRECTED 2026-09-01) - both stay
+        // default-null/no-op on [InboxScreen] itself; this was their only real caller, and it went
+        // with the month calendar that used to set [selectedDayStart] (see this function's own
+        // state-block doc comment).
         LogMode.ITEMS -> InboxScreen(
             highlightItemId = missedOpenId ?: openItemId,
             highlightNonce = missedOpenNonce + openItemNonce,
-            dayFilterStartMs = selectedDayStart,
-            onClearDayFilter = { selectedDayStart = null },
             header = {
                 item(key = "notes-title") {
                     Text(
@@ -225,7 +191,7 @@ fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
                 // Mission-control ticket 16's LOG build, ticket 12's inventory: TODAY (FULL, hero) -
                 // today's items, first thing under the title, the same weight `ui/TodayScreen.kt`'s
                 // own INTAKE/AGENDA panes carry at the top of HOME. See [todayEntries]'s own state
-                // doc comment for why this is a SEPARATE fetch from the browsable month grid below.
+                // doc comment for why this is a SEPARATE fetch from the rest of this mode's reads.
                 item(key = "notes-today") {
                     Column {
                         TodayPane(
@@ -313,40 +279,16 @@ fun NotesScreen(openItemId: Long? = null, openItemNonce: Int = 0) {
                     }
                 }
 
-                // Mission-control ticket 16's LOG build, ticket 12's inventory: CALENDAR / INBOX
-                // (FULL) - the month grid here, then [LogModeToggle] plus this composable's own
-                // stream/[GroceryScreen] content below (the INBOX half of the same named row), one
-                // continuous FULL section at the tail of the header slot. Quant-viz ticket 14: the
-                // month calendar - Notes' only real series is schedule density, so this is the one
-                // glanceable graphic the tab gets (the WEEK AHEAD strip's own map taste call 1,
-                // carried over). Suppressed entirely while still loading, same "nothing drawn before
-                // the real read lands" posture the rest of this screen's sections use.
-                if (!monthLoading) {
-                    item(key = "notes-calendar") {
-                        Column {
-                            MonthCalendar(
-                                calendarLinked = monthCalendarLinked,
-                                month = displayedMonth,
-                                cells = monthCells,
-                                collapsed = calendarCollapsed,
-                                selectedDayStart = selectedDayStart,
-                                onToggleCollapsed = { calendarCollapsed = !calendarCollapsed },
-                                // Ticket 16: changing month closes the popup too - same reasoning
-                                // ticket 14 used for clearing the day filter, a popup left open for a
-                                // day no longer on screen would read as stuck for no visible reason.
-                                onPrevMonth = { selectedDayStart = null; popupDayStart = null; displayedMonth = displayedMonth.minusMonths(1) },
-                                onNextMonth = { selectedDayStart = null; popupDayStart = null; displayedMonth = displayedMonth.plusMonths(1) },
-                                // Ticket 16: tapping a day cell now opens the events popup rather than
-                                // filtering the list directly - the filter is still one tap away, via
-                                // the popup's own SHOW IN LIST button, which is what keeps ticket 14's
-                                // day-filter feature alive underneath this.
-                                onSelectDay = { tapped -> popupDayStart = tapped },
-                                onGrantCalendar = {},
-                            )
-                            DashedHairline()
-                        }
-                    }
-                }
+                // CORRECTED 2026-09-01: mission-control ticket 16's CALENDAR/INBOX (FULL) section
+                // used to put quant-viz ticket 14's month calendar here, above [LogModeToggle] and
+                // this composable's own stream/[GroceryScreen] content. Kevin, 2026-09-01: tapping
+                // a day on the Meters "Persistent list" row "brings me to the old calendar and goals
+                // view" - `ui/CalendarScreen.kt`'s own month grid + day view is the one calendar home
+                // now, so the duplicate here is gone (its `item(key = "notes-calendar")` block, and
+                // the [monthLoading]/[monthCalendarLinked]/[displayedMonth]/[monthCells]/
+                // [calendarCollapsed]/[selectedDayStart]/[popupDayStart] state feeding it, went with
+                // it - see this function's own state-block doc comment). [LogModeToggle] below is
+                // unaffected; it switches ITEMS/GROCERY, nothing to do with the calendar.
 
                 // Ticket 19's GOALS panel - LOG aspect (com.kevin.legion.advisor.playbooks
                 // .LogPlaybook's own doc comment). Same self-contained shape as
@@ -403,7 +345,13 @@ private const val MISSED_INLINE_LIMIT = 4
  * hour. See [com.kevin.legion.data.local.GroceryItem]'s doc comment for why that difference earns a
  * separate table rather than a flag on `list_items`.
  */
-private enum class LogMode { ITEMS, GROCERY }
+// Made non-private (fixed on-device 2026-09-01) so `ui/MainActivity.kt`'s LegionShell and
+// `ui/MetersScreen.kt` can reference it too, threading a start mode down from the Meters Lists
+// rows - see [NotesScreen]'s own `startMode` doc comment. Kotlin top-level `private` is FILE-scoped,
+// not package-scoped (the same gap this file's own [TodayPane] doc comment already notes for a
+// different symbol), so a plain visibility drop is all that was needed; both callers already sit
+// in the same `com.kevin.legion.ui` package.
+enum class LogMode { ITEMS, GROCERY }
 
 @Composable
 private fun LogModeToggle(selected: LogMode, onSelect: (LogMode) -> Unit) {
@@ -433,8 +381,8 @@ private fun LogModeToggle(selected: LogMode, onSelect: (LogMode) -> Unit) {
  * cross-file visibility gap.
  *
  * Empty state reads `NOTHING DUE` through [DeckRow]'s own mint `value` slot - a real, checked
- * absence, not a loading placeholder (see [todayEntries]'s own state doc comment for why this pane's
- * load never straddles the browsable month grid below it).
+ * absence, not a loading placeholder (see [todayEntries]'s own state doc comment for why this pane
+ * owns its own fetch rather than joining another section's read).
  */
 @Composable
 private fun TodayPane(entries: List<AgendaEntry>, calendarLinked: Boolean, onGrantCalendar: () -> Unit) {
@@ -454,9 +402,11 @@ private fun TodayPane(entries: List<AgendaEntry>, calendarLinked: Boolean, onGra
                 )
             }
         }
-        // Same "not linked" posture as [MonthCalendar] below: today's LOCAL items still render even
-        // when Google is unread, and the gap is said in words rather than silently narrowing the
-        // pane's own claim.
+        // CORRECTED 2026-09-01: this used to match [MonthCalendar]'s identical "not linked" posture
+        // rendered further down this same screen - that instance is gone (see the state block's own
+        // doc comment on [NotesScreen]), but the posture itself still holds here regardless: today's
+        // LOCAL items still render even when Google is unread, and the gap is said in words rather
+        // than silently narrowing the pane's own claim.
         if (!calendarLinked) {
             CalendarNotLinkedRow(
                 "Calendar not linked - grant access to see today's Google events here too.",

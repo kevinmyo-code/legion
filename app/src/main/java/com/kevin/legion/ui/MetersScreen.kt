@@ -110,6 +110,12 @@ fun MetersScreen(
     onOpenFleet: () -> Unit,
     onOpenNotes: () -> Unit,
     onOpenPantry: () -> Unit,
+    // Fixed on-device 2026-09-01 (Kevin: "groceries trip tapping it brings me to not a grocery
+    // list") - the Lists section's "Groceries trip" row used to reuse [onOpenPantry], which lands
+    // on pantry INVENTORY, not the grocery trip list `ui/NotesScreen.kt`'s LogMode.GROCERY mode
+    // actually renders. [onOpenPantry] stays wired to the two budget/breach "Groceries" rows below
+    // (spend, not the list) - those really do mean pantry.
+    onOpenGroceriesList: () -> Unit,
     // The media mini-bar's own tap-through (rehomed from `ui/TodayScreen.kt`'s identical
     // parameter) - the media control panel nested under `settings/spotify/media`. Defaults to a
     // no-op, matching every other `onOpen*` default this screen and the deleted screen both used.
@@ -185,7 +191,7 @@ fun MetersScreen(
         )
     }
 
-    MetersContent(state, onOpenBody, onOpenMoney, onOpenFleet, onOpenNotes, onOpenPantry, onOpenMedia)
+    MetersContent(state, onOpenBody, onOpenMoney, onOpenFleet, onOpenNotes, onOpenPantry, onOpenGroceriesList, onOpenMedia)
 }
 
 /** One-shot suspend reads only - see [MetersScreen]'s own `LaunchedEffect`. [connectionState] is
@@ -222,6 +228,7 @@ fun MetersContent(
     onOpenFleet: () -> Unit,
     onOpenNotes: () -> Unit,
     onOpenPantry: () -> Unit,
+    onOpenGroceriesList: () -> Unit,
     onOpenMedia: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
@@ -532,7 +539,9 @@ fun MetersContent(
             DeckRow(
                 label = "Groceries trip",
                 value = "${state.groceriesTripOpenCount} open",
-                modifier = Modifier.clickable(onClick = onOpenPantry),
+                // Fixed on-device 2026-09-01 - was [onOpenPantry] (pantry inventory), now the
+                // grocery trip list itself (see [onOpenGroceriesList]'s own doc comment above).
+                modifier = Modifier.clickable(onClick = onOpenGroceriesList),
             )
         }
 

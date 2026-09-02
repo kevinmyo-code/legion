@@ -3,6 +3,12 @@ package com.kevin.legion.ui
 /**
  * Every route in the single-activity shell.
  *
+ * **CORRECTED 2026-09-01, later the same day: down to TWO top-level tabs.** The "three top-level
+ * tabs" paragraph immediately below is kept for its history, but [SETTINGS] came off [TOP_LEVEL]
+ * again within hours of landing on it - Kevin, on seeing it running: *"setup is being duplicated.
+ * keep the top right corner one and drop the one beside meters."* [TOP_LEVEL]'s own doc comment
+ * has the full account.
+ *
  * **Three top-level tabs as of the 2026-09-01 calendar-home cutover (Kevin, verbatim): "month grid
  * primary. tapping a day on the month opens up view B. C as another tab. retire the bottom headers
  * like cred fleet etc. those we tap through from view C the meters."** This SUPERSEDES the five-tab
@@ -260,15 +266,29 @@ object LegionRoute {
      */
     const val SETTINGS_HELP = "settings/help"
 
-    /** The three top-level destinations, in display order, as of the 2026-09-01 calendar-home
-     * cutover (Kevin, verbatim, [CALENDAR]'s own doc comment) - was six (`TODAY`, [MONEY], [BODY],
-     * [FLEET], [NOTES], [SETTINGS]; before that, the four-tab shape [CALENDAR]'s class doc still
-     * records). [MONEY]/[BODY]/[FLEET]/[NOTES] are not gone, only demoted off this list - see each
-     * one's own doc comment. `TODAY` is gone outright: one-today ticket 07 (2026-09-01) deleted the
-     * screen and the constant once every survivor on it was rehomed - see this file's class doc.
+    /** The TWO top-level destinations, in display order.
+     *
+     * **[SETTINGS] dropped off this list 2026-09-01** (Kevin, on seeing it running: *"setup is being
+     * duplicated. keep the top right corner one and drop the one beside meters"*). It was reachable
+     * two ways at once - a tab here AND [com.kevin.legion.ui.common.StatusLine]'s SETUP stamp, whose
+     * own doc comment already called itself "the only way into" settings. The stamp wins: it costs
+     * no width in a row whose whole point is sparseness, and it was there first. [SETTINGS] is very
+     * much still a registered destination - it is simply not a tab.
+     *
+     * Was six earlier the same day (`TODAY`, [MONEY], [BODY], [FLEET], [NOTES], [SETTINGS]; before
+     * that, the four-tab shape [CALENDAR]'s class doc still records), then three at the
+     * calendar-home cutover. [MONEY]/[BODY]/[FLEET]/[NOTES] are not gone, only demoted - see each
+     * one's own doc comment. `TODAY` is gone outright: one-today ticket 07 deleted the screen and
+     * the constant once every survivor on it was rehomed.
+     *
+     * **A route not on this list lights no tab, and that is now correct rather than a bug.**
+     * [topLevelOf] returns null inside `settings/`, so the row shows neither tab selected while you
+     * are in Setup - which is true, because Setup is not one of them. The 2026-08-02 defect that
+     * comment below records was the opposite case: a SUB-route of a real tab going dark.
+     *
      * Assistant is still NOT one of them - it's a mode, not a place (original resolution §5, still
      * true). */
-    val TOP_LEVEL = listOf(CALENDAR, METERS, SETTINGS)
+    val TOP_LEVEL = listOf(CALENDAR, METERS)
 
     /**
      * The top-level tab [route] belongs to, or null if it belongs to none.
@@ -293,15 +313,22 @@ object LegionRoute {
      * ([com.kevin.legion.ui.MainActivity]'s three-way CALENDAR/METERS/SETTINGS switch reads none of
      * this function at all - see that switch's own comment), and nothing else in the tree ever
      * called [label] with one of those six constants. Grep-confirmed before deletion.
+     *
+     * **[SETTINGS] branch dropped too, same session (2026-09-01), for the same reason it dropped
+     * off [TOP_LEVEL] above.** [LegionTabRow] is the only production caller of this function and it
+     * iterates [TOP_LEVEL] alone, which no longer includes [SETTINGS] - so `label(SETTINGS)` was
+     * grep-confirmed reachable only from this file's own test. `else -> route` covers it exactly
+     * as it would any other unlisted route, which is the same fallback [SETTINGS_ASSISTANT] and
+     * every other settings sub-route already got before this branch existed. The branch used to
+     * return "Setup" rather than "Settings" - the longer word wrapped to "Setting / s" in the bottom
+     * bar on a 720px-wide device (observed 2026-08-07, back when [LegionHardKeyRow] had five tabs)
+     * - preserved here since that measurement lives nowhere else now that the branch is gone; the
+     * SETUP stamp [com.kevin.legion.ui.common.StatusLine] renders is its own separate literal string,
+     * unaffected by this deletion either way.
      */
     fun label(route: String): String = when (route) {
         CALENDAR -> "Calendar"
         METERS -> "Meters"
-        // "Setup", not "Settings": with five tabs, the longer word wrapped to
-        // "Setting / s" in the bottom bar on a 720px-wide device (observed
-        // 2026-08-07). Kept even though the tab row is three-wide now (2026-09-01) - the same
-        // 720px measurement did not get re-taken, and "Setup" is not wrong at three tabs either.
-        SETTINGS -> "Setup"
         else -> route
     }
 }

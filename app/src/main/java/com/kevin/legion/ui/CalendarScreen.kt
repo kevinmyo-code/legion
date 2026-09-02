@@ -10,7 +10,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,7 +26,6 @@ import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.ui.agenda.MonthCalendar
-import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckSectionRule
 import com.kevin.legion.ui.common.dailyBuckets
 import com.kevin.legion.ui.notes.DAY_FILTER_WINDOW_MS
@@ -54,10 +52,13 @@ import kotlinx.coroutines.launch
  * registered [LegionRoute] destinations, reachable as drill-downs (from [MetersScreen], "view C")
  * and by deep link; they just stop being tabs a driver lands on directly.
  *
- * **View A/View B, both in this one screen, as internal Compose state** ([selectedDayStart]) rather
- * than a nav-graph argument - [LegionRoute]'s own doc comment establishes that convention ("nothing
- * here takes a navigation argument") and [NotesScreen]'s day-filter drill-down already follows it
- * for the exact same month-grid/day shape this screen reuses.
+ * **CORRECTED 2026-09-01: this used to be View A (no day selected, month grid + a NEXT pane) and
+ * View B (a day selected, grid hidden, "BACK TO MONTH" to return) as two mutually-exclusive states
+ * of [selectedDayStart].** That was itself internal Compose state rather than a nav-graph argument -
+ * [LegionRoute]'s own doc comment still establishes that convention ("nothing here takes a
+ * navigation argument") and [NotesScreen]'s day-filter drill-down still follows it - but hiding the
+ * grid on selection read as a navigation to Kevin even though it was not one, so View A is gone: see
+ * the paragraph below for the live shape (grid always visible, a day always selected).
  *
  * **No new write path.** Ticking a row calls the SAME [NotesController.tick]/[NotesController.untick]
  * (one-off reminders) and [NotesController.tickAppointment]/[NotesController.untickAppointment]
@@ -69,7 +70,19 @@ import kotlinx.coroutines.launch
  * `.scratch/one-today/issues/02-ticking-an-appointment.md` point 2 leaves "tick one occurrence of a
  * recurring series" an open design question, not something this ticket may invent an answer to.
  *
- * **View B's day agenda splits into THREE sections (one-today ticket 08, "events are not todos",
+ * **The month grid never hides itself on a day tap (fixed on-device 2026-09-01, Kevin verbatim:
+ * "calendar > next view i want it dropped. instead it should show the due items on the tapped
+ * date. right now it takes me to a new screen (every calendar date tap)").** [selectedDayStart] is
+ * never null - it defaults to today on open - and the grid stays on screen with the tapped day
+ * bordered ([MonthCellView]'s `isSelected` treatment); only the manual HIDE/MONTH toggle
+ * ([calendarCollapsed]) may collapse it now, never the act of selecting a day. The old View A/View
+ * B split (a "NEXT" pane shown only with no day selected, reached by tapping "BACK TO MONTH") is
+ * gone with it - Kevin's complaint was that tapping a day read as a navigation even though it was
+ * only internal state, and with a day always selected there is no unselected state left for a NEXT
+ * pane to answer or a BACK link to return from.
+ *
+ * **The day agenda (formerly "View B", now the only view) splits into THREE sections (one-today
+ * ticket 08, "events are not todos",
  * 2026-09-01 - Kevin verbatim: "i dont mark an event done, it just passes whether or not i do it,
  * like classes").** This reverses ticket 02's "every calendar-table row gets a checkbox": half of
  * what that made tickable were never appointments, they were assignments a title-based heuristic
@@ -94,15 +107,15 @@ fun CalendarScreen() {
     val scope = rememberCoroutineScope()
     val zone = remember { ZoneId.systemDefault() }
 
+    // A day is always selected (fixed on-device 2026-09-01, Kevin: "it should show the due items
+    // on the tapped date" - no unselected state, no navigation). Today's start on open, matching
+    // [MonthCellView]'s own `isToday` computation below.
+    val todayStartOnOpen = remember { LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli() }
     var displayedMonth by remember { mutableStateOf(YearMonth.now()) }
-    var selectedDayStart by remember { mutableStateOf<Long?>(null) }
+    var selectedDayStart by remember { mutableStateOf(todayStartOnOpen) }
     var calendarCollapsed by remember { mutableStateOf(false) }
     var monthLoading by remember { mutableStateOf(true) }
     var monthCells by remember { mutableStateOf(emptyList<MonthCell>()) }
-    // The same list [buildWeekAheadDayCounts] bucketed to draw the grid's dots, kept for the NEXT
-    // pane below - not a second fetch, so the dots and the pane can never disagree (the same
-    // reasoning `ui/NotesScreen.kt`'s own [entriesForDay] popup already relies on).
-    var monthEntries by remember { mutableStateOf(emptyList<AgendaEntry>()) }
 
     // The day view's own row state - a real [ListItem]/[Event] behind every tickable row, same
     // shape `ui/notes/InboxScreen.kt`'s [rawItems]/[rawAppointments] pair already holds for its own
@@ -131,7 +144,6 @@ fun CalendarScreen() {
         val counts = buildWeekAheadDayCounts(merged, dayStarts, zone)
         val countsByDayStart = dayStarts.zip(counts).toMap()
         monthCells = buildMonthCells(displayedMonth, countsByDayStart, zone)
-        monthEntries = merged
         monthLoading = false
     }
 
@@ -141,11 +153,6 @@ fun CalendarScreen() {
     // day-scoped query.
     LaunchedEffect(selectedDayStart, reloadNonce) {
         val day = selectedDayStart
-        if (day == null) {
-            dayRows = emptyList()
-            scheduleRows = emptyList()
-            return@LaunchedEffect
-        }
         val items = NotesController.allItems(context)
         rawItems = items
         val dayEndExclusive = day + DAY_FILTER_WINDOW_MS
@@ -215,122 +222,76 @@ fun CalendarScreen() {
                 calendarLinked = true,
                 month = displayedMonth,
                 cells = monthCells,
-                // Forced collapsed the instant a day is selected (Kevin: "tapping a day on the
-                // month opens up view B", and view B's own agenda list needs the room the grid
-                // would otherwise take) - [calendarCollapsed] still lets the HIDE/MONTH toggle
-                // collapse the grid manually while browsing with no day selected.
-                collapsed = selectedDayStart != null || calendarCollapsed,
+                // Only the manual HIDE/MONTH toggle collapses the grid now (fixed on-device
+                // 2026-09-01) - selecting a day used to force this true and hide the grid
+                // entirely, which is exactly the "takes me to a new screen" complaint. The grid
+                // stays up; [MonthCellView]'s own `isSelected` border marks the tapped day on it.
+                collapsed = calendarCollapsed,
                 selectedDayStart = selectedDayStart,
                 onToggleCollapsed = { calendarCollapsed = !calendarCollapsed },
-                onPrevMonth = { selectedDayStart = null; displayedMonth = displayedMonth.minusMonths(1) },
-                onNextMonth = { selectedDayStart = null; displayedMonth = displayedMonth.plusMonths(1) },
-                // Kevin's ruling: "tapping a day on the month opens up view B" - directly, no
-                // intermediate popup (unlike `ui/NotesScreen.kt`'s own ticket-16 day-tap dialog,
-                // which this screen's own "view B is the day view itself" shape has no need of).
+                onPrevMonth = { displayedMonth = displayedMonth.minusMonths(1) },
+                onNextMonth = { displayedMonth = displayedMonth.plusMonths(1) },
+                // Kevin, fixed on-device 2026-09-01: "it should show the due items on the tapped
+                // date" - changes what renders below, in place, never a navigation.
                 onSelectDay = { day -> selectedDayStart = day },
                 onGrantCalendar = {},
             )
         }
 
-        val day = selectedDayStart
-        if (day == null) {
-            // View A: no day selected - the month grid above, plus a short NEXT pane. Only the
-            // current month has a meaningful "next" - a browsed-away month has no relationship to
-            // "now" worth showing here (`.scratch` has no ruling either way; this keeps the pane
-            // honest rather than showing stale "next" entries for a month that is not this one).
-            if (displayedMonth == YearMonth.now()) {
-                val now = System.currentTimeMillis()
-                val next = monthEntries.filter { it.allDay || it.timeMs >= now }.take(NEXT_PANE_LIMIT)
-                DeckPane(header = "NEXT", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                    if (next.isEmpty()) {
-                        Text(
-                            "Nothing still ahead this month.",
-                            style = LegionType.stamp,
-                            color = sem.faint,
-                            modifier = Modifier.padding(vertical = 6.dp),
-                        )
-                    } else {
-                        next.forEach { entry ->
-                            Text(
-                                entry.label,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            Text(
-                                if (entry.allDay) formatDateOnly(entry.timeMs) else formatDateTime(entry.timeMs),
-                                style = LegionType.stamp,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(bottom = 6.dp),
-                            )
-                        }
-                    }
-                }
+        // The tapped day's agenda, split into SCHEDULE / YET TO DO / DONE (one-today ticket
+        // 08, "events are not todos" - this screen's own file doc comment has the full
+        // account). Rendered with [CalendarDayRow], a sparse local row (checkbox + label + date
+        // only) rather than `ui/notes/InboxScreen.kt`'s own [InboxRow] - that row also carries an
+        // edit tap-through and a REMOVE/DELETE button neither this screen's brief nor Kevin's
+        // "sparse UI + voice modals" instruction asked for, and a button that visibly exists but
+        // does nothing on tap is worse than one that is simply absent. The WRITE funnel is
+        // unchanged either way - [toggle] below calls the identical
+        // [NotesController.tick]/[tickAppointment] pair [InboxRow]'s own `onToggle` would have.
+        //
+        // The old "BACK TO MONTH" link is gone (fixed on-device 2026-09-01) - there is no
+        // longer a month-only state to return to; the grid above is always visible already, and
+        // [selectedDayStart] is never null, so this section always has a day to render.
+        // The day's plan checklist (rehomed from the deleted `ui/TodayScreen.kt`'s HERO pane,
+        // one-today ticket 07) - ONLY on today's own day view: a checklist of "today's items" is
+        // nonsense sitting under a day in March, so a day view that is not today omits this pane
+        // entirely rather than showing it empty (this ticket's own instruction).
+        val todayStart = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
+        if (selectedDayStart == todayStart) {
+            com.kevin.legion.ui.goals.GoalChecklistPanel(
+                compact = true,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
+        val notDone = dayRows.filter { !it.done }
+        val done = dayRows.filter { it.done }
+        Column(Modifier.padding(horizontal = 12.dp)) {
+            // SCHEDULE - events, time-ordered, no checkbox (ticket 08). [scheduleRows] is
+            // already sorted by [Event.startsAt]; every row's own [InboxRowView.tickable] is
+            // false, so [CalendarDayRow] renders it with no checkbox at all - never a disabled
+            // one - and greys it by time alone via its own `done` styling if the caller ever
+            // marked it past (it never does here; [InboxRowView.done] is hardcoded false for
+            // this section since an event has no completion state to be false ABOUT).
+            DeckSectionRule("Schedule")
+            if (scheduleRows.isEmpty()) {
+                Text("Nothing on the calendar this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
+            } else {
+                scheduleRows.forEach { row -> CalendarDayRow(row = row, onToggle = {}) }
             }
-        } else {
-            // View B: the tapped day's agenda, split into SCHEDULE / YET TO DO / DONE (one-today
-            // ticket 08, "events are not todos" - this screen's own file doc comment has the full
-            // account). Rendered with [CalendarDayRow], a sparse local row (checkbox + label + date
-            // only) rather than `ui/notes/InboxScreen.kt`'s own [InboxRow] - that row also carries an
-            // edit tap-through and a REMOVE/DELETE button neither this screen's brief nor Kevin's
-            // "sparse UI + voice modals" instruction asked for, and a button that visibly exists but
-            // does nothing on tap is worse than one that is simply absent. The WRITE funnel is
-            // unchanged either way - [toggle] below calls the identical
-            // [NotesController.tick]/[tickAppointment] pair [InboxRow]'s own `onToggle` would have.
-            TextButton(onClick = { selectedDayStart = null }) {
-                Text("BACK TO MONTH", style = LegionType.stamp, color = MaterialTheme.colorScheme.primary)
+            DeckSectionRule("Yet to do")
+            if (notDone.isEmpty()) {
+                Text("Nothing left on this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
+            } else {
+                notDone.forEach { row -> CalendarDayRow(row = row, onToggle = { toggle(row.id) }) }
             }
-            // The day's plan checklist (rehomed from the deleted `ui/TodayScreen.kt`'s HERO pane,
-            // one-today ticket 07) - ONLY on today's own day view: a checklist of "today's items" is
-            // nonsense sitting under a day in March, so a day view that is not today omits this pane
-            // entirely rather than showing it empty (this ticket's own instruction).
-            val todayStart = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
-            if (day == todayStart) {
-                com.kevin.legion.ui.goals.GoalChecklistPanel(
-                    compact = true,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                )
-            }
-            val notDone = dayRows.filter { !it.done }
-            val done = dayRows.filter { it.done }
-            Column(Modifier.padding(horizontal = 12.dp)) {
-                // SCHEDULE - events, time-ordered, no checkbox (ticket 08). [scheduleRows] is
-                // already sorted by [Event.startsAt]; every row's own [InboxRowView.tickable] is
-                // false, so [CalendarDayRow] renders it with no checkbox at all - never a disabled
-                // one - and greys it by time alone via its own `done` styling if the caller ever
-                // marked it past (it never does here; [InboxRowView.done] is hardcoded false for
-                // this section since an event has no completion state to be false ABOUT).
-                DeckSectionRule("Schedule")
-                if (scheduleRows.isEmpty()) {
-                    Text("Nothing on the calendar this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
-                } else {
-                    scheduleRows.forEach { row -> CalendarDayRow(row = row, onToggle = {}) }
-                }
-                DeckSectionRule("Yet to do")
-                if (notDone.isEmpty()) {
-                    Text("Nothing left on this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
-                } else {
-                    notDone.forEach { row -> CalendarDayRow(row = row, onToggle = { toggle(row.id) }) }
-                }
-                DeckSectionRule("Done")
-                if (done.isEmpty()) {
-                    Text("Nothing done on this day yet.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
-                } else {
-                    done.forEach { row -> CalendarDayRow(row = row, onToggle = { toggle(row.id) }) }
-                }
+            DeckSectionRule("Done")
+            if (done.isEmpty()) {
+                Text("Nothing done on this day yet.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
+            } else {
+                done.forEach { row -> CalendarDayRow(row = row, onToggle = { toggle(row.id) }) }
             }
         }
     }
 }
-
-/** How many upcoming entries the no-day-selected "NEXT" pane shows - short, per this ticket's
- * "short 'Next' pane" instruction, not the whole rest of the month.
- *
- * Raised from 5 to 12 (fixed on-device 2026-09-01): with the month grid collapsed and only 5 NEXT
- * rows, roughly a quarter of the screen below sat empty black - "short" was never meant to mean
- * "leaves the lower third of the screen unused". 12 is still a short list, not the whole rest of
- * the month; it is sized to fill the room a collapsed grid leaves rather than to hit an exact
- * pixel count, since this pane already scrolls if a genuinely busy month runs past it. */
-private const val NEXT_PANE_LIMIT = 12
 
 /**
  * One day-view row: a checkbox (absent, not merely disabled, when [InboxRowView.tickable] is

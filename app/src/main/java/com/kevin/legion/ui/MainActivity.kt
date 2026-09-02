@@ -284,6 +284,16 @@ private fun LegionShell(
     var pendingMoneyCategory by remember { mutableStateOf<String?>(null) }
     var pendingMoneyCategoryNonce by remember { mutableStateOf(0) }
 
+    // Fixed on-device 2026-09-01 (Kevin: "meters > lists are hard to use... tapping persistant
+    // list also brings me to the old calendar and goals view" / "groceries trip tapping it brings
+    // me to not a grocery list") - the Lists section's two rows on [MetersScreen] both used to tap
+    // through to the wrong destination. Same shape as [pendingMoneyCategory] above: the instruction
+    // has to be held above the NavHost so it survives the navigation itself, nonce-keyed so a
+    // repeat tap on the SAME row while already on `notes` still re-navigates (same reasoning
+    // [openItemId]/[openItemNonce] state, above).
+    var notesStartMode by remember { mutableStateOf<LogMode?>(null) }
+    var notesStartModeNonce by remember { mutableStateOf(0) }
+
     // Keyed on the nonce, not the route string, so a repeat deep link to the
     // same sub-route (onNewIntent while already on top) still re-navigates -
     // see MainActivity.deepLinkNonce's doc comment. Does nothing for the
@@ -549,8 +559,19 @@ private fun LegionShell(
                     onOpenBody = { navController.navigate(LegionRoute.BODY) { launchSingleTop = true } },
                     onOpenMoney = { navController.navigate(LegionRoute.MONEY) { launchSingleTop = true } },
                     onOpenFleet = { navController.navigate(LegionRoute.FLEET) { launchSingleTop = true } },
-                    onOpenNotes = { navController.navigate(LegionRoute.NOTES) { launchSingleTop = true } },
+                    // Fixed on-device 2026-09-01: sets the start mode Notes opens in - see
+                    // [notesStartMode]'s own doc comment above.
+                    onOpenNotes = {
+                        notesStartMode = LogMode.ITEMS
+                        notesStartModeNonce++
+                        navController.navigate(LegionRoute.NOTES) { launchSingleTop = true }
+                    },
                     onOpenPantry = { navController.navigate(LegionRoute.MONEY_PANTRY) { launchSingleTop = true } },
+                    onOpenGroceriesList = {
+                        notesStartMode = LogMode.GROCERY
+                        notesStartModeNonce++
+                        navController.navigate(LegionRoute.NOTES) { launchSingleTop = true }
+                    },
                     // The media mini-bar's own tap-through (rehomed from the deleted
                     // `ui/TodayScreen.kt`, one-today ticket 07) - the media control panel
                     // command-center ticket 04 built, nested under Spotify's own settings route
@@ -575,7 +596,10 @@ private fun LegionShell(
             }
 
             composable(LegionRoute.NOTES) {
-                NotesScreen(openItemId = openItemId, openItemNonce = openItemNonce)
+                NotesScreen(
+                    openItemId = openItemId, openItemNonce = openItemNonce,
+                    startMode = notesStartMode, startModeNonce = notesStartModeNonce,
+                )
             }
 
             composable(LegionRoute.FLEET) {
@@ -870,15 +894,22 @@ private const val CLOCK_POLL_MS = 60_000L
 // to the TOP of the shell rather than the bottom.
 
 /**
- * The three-way tab switch (2026-09-01 calendar-home cutover, Kevin verbatim: "retire the bottom
+ * The tab switch (2026-09-01 calendar-home cutover, Kevin verbatim: "retire the bottom
  * headers like cred fleet etc"). Same visual grammar [LegionHardKeyRow] used to (full-width equal
  * flex, stencil caps, 1px [LegionSemantics.ruleFaint] separators between tabs, a 2px
  * [LegionSemantics.rule] edge rule, the active tab INVERTED to amber fill/ground-colour text) -
  * only the row's PLACEMENT (top, under [StatusLine], not bottom) and the routes it switches between
- * ([LegionRoute.TOP_LEVEL], now three routes instead of six) changed. Same
- * tap-to-navigate-with-popUpTo-to-start-destination wiring and the same [LegionRoute.topLevelOf]
- * selection derivation (a sub-route like `settings/key` keeps SETTINGS lit) as the row this
- * replaces.
+ * ([LegionRoute.TOP_LEVEL]) changed. Same tap-to-navigate-with-popUpTo-to-start-destination wiring
+ * and the same [LegionRoute.topLevelOf] selection derivation (a sub-route like `calendar/agenda`
+ * would keep CALENDAR lit) as the row this replaces.
+ *
+ * **CORRECTED 2026-09-01, same day: three tabs down to two.** This started the cutover as
+ * CALENDAR/METERS/SETTINGS (the "three-way" this doc comment used to call it); Kevin, on seeing it
+ * running: *"setup is being duplicated. keep the top right corner one and drop the one beside
+ * meters"* - [LegionRoute.TOP_LEVEL]'s own doc comment has the full account. [SETTINGS] lights no
+ * tab here any more (`settings/key` and every other settings sub-route now falls through
+ * [LegionRoute.topLevelOf] to null, which is correct, not a regression - see that function's own
+ * doc comment); [StatusLine]'s SETUP stamp is the only way in.
  */
 @Composable
 private fun LegionTabRow(navController: NavHostController) {
