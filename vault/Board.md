@@ -161,6 +161,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/ledger-drive-ingestion/map\|ledger-drive-ingestion]] | 13 | 1 | [[.scratch/ledger-drive-ingestion/ledger-drive-ingestion.canvas\|open]] |
 | ledger-pnl (no map) | 1 | 0 | [[.scratch/ledger-pnl/ledger-pnl.canvas\|open]] |
 | [[.scratch/legion-shape/map\|legion-shape]] | 12 | 0 | [[.scratch/legion-shape/legion-shape.canvas\|open]] |
+| [[.scratch/live-sync/map\|live-sync]] | 0 | 0 | [[.scratch/live-sync/live-sync.canvas\|open]] |
 | [[.scratch/location-intelligence/map\|location-intelligence]] | 10 | 8 | [[.scratch/location-intelligence/location-intelligence.canvas\|open]] |
 | [[.scratch/mission-control/map\|mission-control]] | 16 | 0 | [[.scratch/mission-control/mission-control.canvas\|open]] |
 | [[.scratch/notes-lists-calendar/map\|notes-lists-calendar]] | 12 | 0 | [[.scratch/notes-lists-calendar/notes-lists-calendar.canvas\|open]] |
