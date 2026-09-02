@@ -2356,8 +2356,7 @@ val MIGRATION_59_60 = object : Migration(59, 60) {
  */
 val MIGRATION_60_61 = object : Migration(60, 61) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        // Same non-RFC-4122 shape MIGRATION_59_60 uses - only needs to be effectively unique
-        // within one of these three tables.
+        // Same non-RFC-4122 shape MIGRATION_59_60 uses - only needs to be effectively unique.
         val uuidExpr = "(" +
             "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || " +
             "substr(lower(hex(randomblob(2))), 2) || '-' || " +
@@ -2365,33 +2364,27 @@ val MIGRATION_60_61 = object : Migration(60, 61) {
             "lower(hex(randomblob(6)))" +
             ")"
 
-        // `memories`: syncId already exists (possibly blank on a pre-syncId legacy row) - backfill
-        // any blank value before the unique index is created, exactly as MIGRATION_59_60 does for
-        // `guid`. updatedAtMs backfills from `timestamp`, the closest existing "when did this last
-        // change" this table has.
-        db.execSQL("ALTER TABLE `memories` ADD COLUMN `serverId` TEXT DEFAULT NULL")
-        db.execSQL("ALTER TABLE `memories` ADD COLUMN `updatedAtMs` INTEGER NOT NULL DEFAULT 0")
-        db.execSQL("ALTER TABLE `memories` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+        // REWRITTEN 2026-09-02 after the ALTER-based form crashed on the real phone: Room reported
+        // `memories` missing `updatedAtMs` even though the ALTER for it sat between two that had
+        // plainly applied. Rather than keep guessing at why, this rebuilds each table from the
+        // VERBATIM generated createSql in schemas/61.json - which is what CLAUDE.md section 5 asks
+        // for, and is deterministic where a hand-written ALTER sequence was not.
+
+        db.execSQL("CREATE TABLE IF NOT EXISTS `memories_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `text` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `syncId` TEXT NOT NULL DEFAULT '', `serverId` TEXT, `updatedAtMs` INTEGER NOT NULL DEFAULT 0, `deleted` INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("INSERT INTO `memories_new` (`id`, `text`, `timestamp`, `syncId`, `serverId`, `updatedAtMs`, `deleted`) SELECT `id`, `text`, `timestamp`, `syncId`, NULL, `timestamp`, 0 FROM `memories`")
+        db.execSQL("DROP TABLE `memories`")
+        db.execSQL("ALTER TABLE `memories_new` RENAME TO `memories`")
         db.execSQL("UPDATE `memories` SET syncId = $uuidExpr WHERE syncId = ''")
-        db.execSQL("UPDATE `memories` SET updatedAtMs = timestamp WHERE updatedAtMs = 0")
-        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_memories_syncId` ON `memories` (`syncId`)")
 
-        // `companion_memories`: same shape, updatedAtMs backfills from `createdAt`.
-        db.execSQL("ALTER TABLE `companion_memories` ADD COLUMN `serverId` TEXT DEFAULT NULL")
-        db.execSQL("ALTER TABLE `companion_memories` ADD COLUMN `updatedAtMs` INTEGER NOT NULL DEFAULT 0")
-        db.execSQL("ALTER TABLE `companion_memories` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `companion_memories_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `vehicleId` TEXT NOT NULL, `text` TEXT NOT NULL, `category` TEXT NOT NULL, `source` TEXT NOT NULL, `importance` INTEGER NOT NULL DEFAULT 5, `createdAt` INTEGER NOT NULL, `lastAccessedAt` INTEGER NOT NULL DEFAULT 0, `embeddingVector` TEXT, `embeddingModel` TEXT, `syncId` TEXT NOT NULL DEFAULT '', `serverId` TEXT, `updatedAtMs` INTEGER NOT NULL DEFAULT 0, `deleted` INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("INSERT INTO `companion_memories_new` (`id`, `vehicleId`, `text`, `category`, `source`, `importance`, `createdAt`, `lastAccessedAt`, `embeddingVector`, `embeddingModel`, `syncId`, `serverId`, `updatedAtMs`, `deleted`) SELECT `id`, `vehicleId`, `text`, `category`, `source`, `importance`, `createdAt`, `lastAccessedAt`, `embeddingVector`, `embeddingModel`, `syncId`, NULL, `createdAt`, 0 FROM `companion_memories`")
+        db.execSQL("DROP TABLE `companion_memories`")
+        db.execSQL("ALTER TABLE `companion_memories_new` RENAME TO `companion_memories`")
         db.execSQL("UPDATE `companion_memories` SET syncId = $uuidExpr WHERE syncId = ''")
-        db.execSQL("UPDATE `companion_memories` SET updatedAtMs = createdAt WHERE updatedAtMs = 0")
-        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_companion_memories_syncId` ON `companion_memories` (`syncId`)")
 
-        // `memory_audit`: no existing identity column - guid is minted fresh for every row,
-        // updatedAtMs backfills from `at`.
-        db.execSQL("ALTER TABLE `memory_audit` ADD COLUMN `guid` TEXT NOT NULL DEFAULT ''")
-        db.execSQL("ALTER TABLE `memory_audit` ADD COLUMN `serverId` TEXT DEFAULT NULL")
-        db.execSQL("ALTER TABLE `memory_audit` ADD COLUMN `updatedAtMs` INTEGER NOT NULL DEFAULT 0")
-        db.execSQL("ALTER TABLE `memory_audit` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
-        db.execSQL("UPDATE `memory_audit` SET guid = $uuidExpr WHERE guid = ''")
-        db.execSQL("UPDATE `memory_audit` SET updatedAtMs = at WHERE updatedAtMs = 0")
-        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_memory_audit_guid` ON `memory_audit` (`guid`)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `memory_audit_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `event` TEXT NOT NULL, `store` TEXT NOT NULL, `detail` TEXT NOT NULL, `refId` INTEGER NOT NULL DEFAULT 0, `vehicleId` TEXT NOT NULL DEFAULT '', `at` INTEGER NOT NULL, `guid` TEXT NOT NULL DEFAULT '', `serverId` TEXT, `updatedAtMs` INTEGER NOT NULL DEFAULT 0, `deleted` INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("INSERT INTO `memory_audit_new` (`id`, `event`, `store`, `detail`, `refId`, `vehicleId`, `at`, `guid`, `serverId`, `updatedAtMs`, `deleted`) SELECT `id`, `event`, `store`, `detail`, `refId`, `vehicleId`, `at`, $uuidExpr, NULL, `at`, 0 FROM `memory_audit`")
+        db.execSQL("DROP TABLE `memory_audit`")
+        db.execSQL("ALTER TABLE `memory_audit_new` RENAME TO `memory_audit`")
     }
 }
