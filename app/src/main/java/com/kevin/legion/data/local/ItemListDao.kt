@@ -3,6 +3,7 @@ package com.kevin.legion.data.local
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Update
 
 /** Data Access Object for [ItemList]. */
 @Dao
@@ -47,4 +48,17 @@ interface ItemListDao {
     // DELETE would be invisible to cross-device sync's snapshot.
     @Query("UPDATE item_lists SET deleted = 1, updatedAt = :at WHERE id = :id")
     suspend fun deleteById(id: Long, at: Long)
+
+    /** Every row regardless of [ItemList.deleted]/[ItemList.archived] - [LastAspectsSync]/
+     * [LastAspectsBackfill]'s merge/push read, same role [CategoryDao.getAllIncludingDeleted]
+     * plays for categories. */
+    @Query("SELECT * FROM item_lists")
+    suspend fun getAllIncludingDeleted(): List<ItemList>
+
+    /** By-PK REPLACE, added for [com.kevin.legion.backend.LastAspectsSync]'s pull merge alone -
+     * every other write in this DAO is a targeted column UPDATE above. A remote row is matched to
+     * a local one by [ItemList.syncId] first (the merge's own lookup), so this always overwrites
+     * the SAME row that match already resolved to. */
+    @Update
+    suspend fun update(list: ItemList)
 }

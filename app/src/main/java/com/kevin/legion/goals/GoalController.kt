@@ -1,6 +1,7 @@
 package com.kevin.legion.goals
 
 import android.content.Context
+import com.kevin.legion.backend.LastAspectsWriteThrough
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Goal
 import java.util.UUID
@@ -111,8 +112,11 @@ object GoalController {
                 metricKey = metricKey,
                 deadlineEpoch = deadlineEpoch,
             )
-            val id = dao.insert(goal)
-            return SetOutcome.Created(goal.copy(id = id))
+            // live-sync ticket: write-through, not a bare dao.insert - pushes to the server (or
+            // enqueues in sync_outbox on failure) the moment this goal is created locally. See
+            // LastAspectsWriteThrough's own class doc.
+            val stored = LastAspectsWriteThrough.addGoal(context, goal)
+            return SetOutcome.Created(stored)
         }
 
         val materialChange = target.statement != statement ||
@@ -132,8 +136,9 @@ object GoalController {
             deadlineEpoch = deadlineEpoch,
             supersedesId = target.id,
         )
-        val id = dao.insert(revision)
-        return SetOutcome.Revised(revision.copy(id = id), target)
+        // live-sync ticket: write-through, same reasoning as the Created branch above.
+        val stored = LastAspectsWriteThrough.addGoal(context, revision)
+        return SetOutcome.Revised(stored, target)
     }
 
     /** Every currently-active goal for [aspect] - the panel's read, and `list_goals`'s single-aspect form. */
@@ -177,6 +182,9 @@ object GoalController {
      * through one function even for the DAO's own single in-place mutation.
      */
     suspend fun closeByLineage(context: Context, lineageId: Long, status: String, closedAt: Long = System.currentTimeMillis()) {
-        CarDatabase.getDatabase(context).goalDao().close(lineageId, status, closedAt)
+        // live-sync ticket: write-through, not a bare dao.close - pushes the closed row to the
+        // server (or enqueues on failure) right after the local in-place UPDATE. See
+        // LastAspectsWriteThrough.closeGoal's own doc comment.
+        LastAspectsWriteThrough.closeGoal(context, lineageId, status, closedAt)
     }
 }

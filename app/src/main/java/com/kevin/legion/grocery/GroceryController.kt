@@ -1,6 +1,7 @@
 package com.kevin.legion.grocery
 
 import android.content.Context
+import com.kevin.legion.backend.LastAspectsWriteThrough
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.GroceryItem
 import com.kevin.legion.data.local.GroceryStaple
@@ -112,7 +113,13 @@ object GroceryController {
             val key = normalizeGroceryName(item.text)
             if (key.isBlank()) continue
             val existing = db(context).groceryStapleDao().getByName(key)
-            db(context).groceryStapleDao().upsert(
+            // live-sync ticket: write-through, not a bare dao.upsert - pushes to the server (or
+            // enqueues on failure) the moment the trip folds this staple in. Also reuses the
+            // existing row's serverId (not just its syncId) so a staple already round-tripped
+            // once does not mint a second server row on its next trip - see
+            // LastAspectsWriteThrough.upsertStaple's own doc comment.
+            LastAspectsWriteThrough.upsertStaple(
+                context,
                 GroceryStaple(
                     name = key,
                     // Keep the most recent spelling the driver used, not the first one ever seen.
@@ -121,6 +128,9 @@ object GroceryController {
                     lastBoughtAt = now,
                     // Reuse the existing row's syncId so a staple keeps one identity across trips.
                     syncId = existing?.syncId ?: java.util.UUID.randomUUID().toString(),
+                    serverId = existing?.serverId,
+                    updatedAtMs = now,
+                    deleted = false,
                 )
             )
         }
@@ -144,6 +154,9 @@ object GroceryController {
     }
 
     /** Forgets one staple - the only way to correct a suggestion list that has learned something wrong. */
+    // live-sync ticket: write-through, not a bare dao.deleteByName - tombstones on a configured
+    // install so the forget propagates to the other device, falls back to the old hard delete on
+    // an unconfigured one. See LastAspectsWriteThrough.forgetStaple's own doc comment.
     suspend fun forgetStaple(context: Context, name: String) =
-        db(context).groceryStapleDao().deleteByName(normalizeGroceryName(name))
+        LastAspectsWriteThrough.forgetStaple(context, normalizeGroceryName(name))
 }

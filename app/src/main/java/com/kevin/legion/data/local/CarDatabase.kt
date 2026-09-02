@@ -305,6 +305,14 @@ import androidx.room.RoomDatabase
  * to reuse). `budget_targets` reuses its existing `updatedAt` column as the sync clock instead,
  * same shape [MIGRATION_59_60] gives `meal_targets`/`sleep_targets`/`workout_plans`/
  * `workout_plan_items`. See [MIGRATION_61_62] for the full account.
+ *
+ * v63 (live-sync's last aspect slice, `goals`/`grocery_staples`/`item_lists`/`list_items` -
+ * `.scratch/live-sync/map.md`'s "Lists"/"Goals"/"Pantry config" rows): `serverId` added to all
+ * four; `deleted` added to `goals`/`grocery_staples` (the other two already had it);
+ * `grocery_staples` also gets a fresh `updatedAtMs` (no existing mutation clock to reuse). **All
+ * four REUSE their existing `syncId` column as the sync identity**, same posture v61 took for
+ * `memories`/`companion_memories` - none of them needed a fresh `guid`. See [MIGRATION_62_63] for
+ * the full account.
  */
 @Database(
     entities = [
@@ -343,7 +351,7 @@ import androidx.room.RoomDatabase
         VoiceNote::class,
         OutboxEntry::class,
     ],
-    version = 62,
+    version = 63,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -486,7 +494,10 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 62
+        const val SCHEMA_VERSION = 63
+        // 2026-09-02: bumped to 63 alongside `@Database(version=)` in the same edit again
+        // (live-sync's last aspect slice - serverId/deleted-or-updatedAtMs added to
+        // goals/grocery_staples/item_lists/list_items, see [MIGRATION_62_63] for the full account).
         // 2026-09-02: bumped to 62 alongside `@Database(version=)` in the same edit again
         // (the ledger-config-supabase ticket - guid/serverId/updatedAtMs-or-updatedAt/deleted
         // added to categories/category_rules/budget_targets, see [MIGRATION_61_62] for the full
@@ -597,6 +608,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53, MIGRATION_53_54,
                         MIGRATION_54_55, MIGRATION_55_56, MIGRATION_56_57, MIGRATION_57_58,
                         MIGRATION_58_59, MIGRATION_59_60, MIGRATION_60_61, MIGRATION_61_62,
+                        MIGRATION_62_63,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

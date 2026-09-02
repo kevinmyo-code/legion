@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 
 /**
  * Data Access Object for [Goal]. Every read here is the copy-forward "latest row per lineage"
@@ -48,11 +49,42 @@ interface GoalDao {
      * this DAO performs in place, because closing is not a material change to the goal's content
      * (statement/number/deadline), it is a status flip on whichever row is already current. A
      * later reopen or restatement still goes through [insert] as a fresh revision.
+     *
+     * live-sync ticket: also bumps [Goal.updatedAt] to [closedAt] - [Goal] has no separate
+     * `updatedAtMs` sync clock (it reuses [Goal.updatedAt], see that entity's own v63 doc comment),
+     * and this in-place UPDATE is the one write this DAO makes that does not go through a fresh
+     * [insert] (whose own `System.currentTimeMillis()` default would otherwise stamp it). Without
+     * this, a close() would never look "changed" to [com.kevin.legion.backend.LastAspectsSync]'s
+     * merge, and the write-through push that follows it in
+     * [com.kevin.legion.backend.LastAspectsWriteThrough.closeGoal] would be the only thing telling
+     * the server anything happened at all.
      */
     @Query(
-        "UPDATE goals SET status = :status, closedAt = :closedAt WHERE id = (" +
+        "UPDATE goals SET status = :status, closedAt = :closedAt, updatedAt = :closedAt WHERE id = (" +
             "SELECT MAX(id) FROM goals WHERE lineageId = :lineageId" +
             ")"
     )
     suspend fun close(lineageId: Long, status: String, closedAt: Long)
+
+    /** By-PK REPLACE, added for [com.kevin.legion.backend.LastAspectsSync]'s pull merge alone -
+     * every other in-app write goes through [insert] (a new revision) or [close] (the one in-place
+     * status flip), never this. A remote row is matched to a local one by [Goal.syncId] first (the
+     * merge's own `localByGuid` lookup), so this always overwrites the SAME row the match already
+     * resolved to - it is not a second way to create or renumber a revision. */
+    @Update
+    suspend fun update(goal: Goal)
+
+    /** Every row regardless of lineage/status, INCLUDING tombstoned - [LastAspectsSync]/
+     * [LastAspectsBackfill]'s merge/push read, same role [CategoryDao.getAllIncludingDeleted]
+     * plays for categories. */
+    @Query("SELECT * FROM goals")
+    suspend fun getAllIncludingDeleted(): List<Goal>
+
+    /** Exists for interface symmetry with every other synced table's soft-delete path - see
+     * [LedgerConfigWriteThrough.addCategory]'s own "no delete counterpart" doc comment for the
+     * precedent. Nothing in [com.kevin.legion.goals.GoalController] deletes a goal today (a goal is
+     * closed, never removed - see [Goal]'s class doc), so this is unused-but-present rather than
+     * wired to a caller. */
+    @Query("UPDATE goals SET deleted = 1, updatedAt = :at WHERE syncId = :syncId")
+    suspend fun softDeleteBySyncId(syncId: String, at: Long)
 }

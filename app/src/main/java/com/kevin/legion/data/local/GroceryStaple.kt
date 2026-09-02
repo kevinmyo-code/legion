@@ -2,6 +2,7 @@ package com.kevin.legion.data.local
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -23,8 +24,17 @@ import androidx.room.PrimaryKey
  * are one staple rather than three that each look infrequent. [displayName] keeps the driver's own
  * capitalisation for reading back - the same "keep item content text as the user typed it"
  * discipline `ui/notes/NotesRows.kt` follows.
+ *
+ * live-sync ticket (v62 -> v63, [MIGRATION_62_63]): [serverId]/[updatedAtMs]/[deleted] added.
+ * **[syncId] is REUSED as the sync identity**, same posture as [Goal]'s own v63 doc comment - this
+ * table already carried a portable identity column, so no fresh `guid` is minted.
+ * [com.kevin.legion.grocery.GroceryController.completeTrip] already reuses the prior row's
+ * [syncId] across an upsert (see that function's own comment) so a staple keeps one identity
+ * across trips even though the PK ([name]) participates in an `OnConflictStrategy.REPLACE`, which
+ * is exactly the same reason [serverId] must be reused there too - see
+ * `backend/LastAspectsOutbox.kt`'s own `upsertStaple` doc comment.
  */
-@Entity(tableName = "grocery_staples")
+@Entity(tableName = "grocery_staples", indices = [Index(value = ["syncId"], unique = true)])
 data class GroceryStaple(
     @PrimaryKey val name: String,
     val displayName: String,
@@ -32,4 +42,7 @@ data class GroceryStaple(
     val timesBought: Int = 1,
     val lastBoughtAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
+    val serverId: String? = null,
+    @ColumnInfo(defaultValue = "0") val updatedAtMs: Long = 0,
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

@@ -86,6 +86,15 @@ object OutboxTarget {
     const val LEDGER_CATEGORIES = "categories"
     const val LEDGER_CATEGORY_RULES = "category_rules"
     const val LEDGER_BUDGET_TARGETS = "budget_targets"
+
+    /** live-sync's last aspect slice - one constant per synced table across the three remaining
+     * device-only domains (Lists, Goals, Pantry config - `.scratch/live-sync/map.md`'s own table).
+     * See [com.kevin.legion.backend.LastAspectsBackend]'s own class doc for why all four share one
+     * interface despite spanning three domains. */
+    const val LISTS_ITEM_LISTS = "item_lists"
+    const val LISTS_LIST_ITEMS = "list_items"
+    const val GOALS = "goals"
+    const val GROCERY_STAPLES = "grocery_staples"
 }
 
 /** [OutboxEntry.operation] values. **The comment this replaces said only [UPSERT] was produced as

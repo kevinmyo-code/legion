@@ -57,12 +57,23 @@ import androidx.room.PrimaryKey
  *
  * Carries [syncId] so that wiring Drive sync onto this table later does not need its own
  * migration, matching [GroceryItem]'s precedent.
+ *
+ * live-sync ticket (v62 -> v63, [MIGRATION_62_63]): [serverId]/[deleted] added, same shape as
+ * [Category]'s own v62 doc comment - **[syncId] is REUSED as the sync identity** rather than
+ * minting a fresh `guid`, since this table already had a portable identity column (same posture as
+ * [MemoryEntry.syncId]/[CompanionMemory.syncId] at v61, and the doc comment [LedgerConfigBackend]
+ * itself calls out as the "reused an existing syncId column" precedent). [updatedAt] is the sync
+ * clock already - it is stamped on every fresh revision by [Goal]'s own `System.currentTimeMillis()`
+ * default and now also bumped by [GoalDao.close], the one in-place mutation this table has (see that
+ * query's own doc comment) - so no separate `updatedAtMs` column, matching [BudgetTarget]'s v62
+ * precedent for the identical reason.
  */
 @Entity(
     tableName = "goals",
     indices = [
         Index(value = ["lineageId"]),
         Index(value = ["aspect", "status"]),
+        Index(value = ["syncId"], unique = true),
     ],
 )
 data class Goal(
@@ -89,4 +100,8 @@ data class Goal(
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
+    // live-sync ticket (v62 -> v63): sync columns - see this entity's own class doc for why there
+    // is no separate guid (syncId is reused) and no separate updatedAtMs (updatedAt is reused).
+    val serverId: String? = null,
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

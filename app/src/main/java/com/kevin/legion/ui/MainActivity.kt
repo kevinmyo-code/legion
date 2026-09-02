@@ -276,6 +276,14 @@ class MainActivity : ComponentActivity() {
             com.kevin.legion.backend.LedgerConfigBackfill.maybeAutoRun(applicationContext)
             com.kevin.legion.backend.LedgerConfigSync.maybeAutoPull(applicationContext)
         }
+        // live-sync's last aspect slice ("give LEGION's lists, goals and grocery staples a
+        // Supabase home, end to end"): goals/grocery_staples/item_lists/list_items. Same
+        // drain-then-backfill-then-pull ordering as the blocks above, for the identical reason.
+        lifecycleScope.launch {
+            com.kevin.legion.backend.LastAspectsOutboxDrain.maybeDrain(applicationContext)
+            com.kevin.legion.backend.LastAspectsBackfill.maybeAutoRun(applicationContext)
+            com.kevin.legion.backend.LastAspectsSync.maybeAutoPull(applicationContext)
+        }
         // The two Supabase tables that had a schema and RLS but never a single row uploaded
         // (measured against the real phone and the real project, one-today ticket): ledger's
         // UNRECONCILED-only reconcile and fleet's maintenance-schedule upload, neither of which

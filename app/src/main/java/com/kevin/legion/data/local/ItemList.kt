@@ -2,6 +2,7 @@ package com.kevin.legion.data.local
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -17,8 +18,21 @@ import androidx.room.PrimaryKey
  * v9->v10 migration ([com.kevin.legion.data.local.MIGRATION_9_10]) copies both without dropping
  * either source table. See that migration's doc comment for why the source tables survive one
  * more version.
+ *
+ * **This table (and [ListItem]) are now FROZEN from the live app's own point of view** -
+ * `notes/NotesController.kt`'s own class doc records that its read/write path was repointed onto
+ * the `events` table entirely (backend-erp ticket 15 step 4, "notes gets ONE local table"), and
+ * `item_lists`/`list_items` keep exactly the rows that existed before that cutover. live-sync's own
+ * map still gives this table a server home (`.scratch/live-sync/map.md`'s "Lists" row) because
+ * those rows are real content with no other surviving copy - "not a duplicate of `events`", per the
+ * map's own ruling - even though nothing in the running app writes a NEW one anymore. See
+ * [serverId]'s own doc comment for what that means for write-through here.
+ *
+ * live-sync ticket (v62 -> v63, [MIGRATION_62_63]): [serverId] added. **[syncId] is REUSED as the
+ * sync identity**, same posture as [Goal]/[GroceryStaple]'s own v63 doc comments - this table
+ * already carried [syncId]/[updatedAt]/[deleted], so nothing else was missing.
  */
-@Entity(tableName = "item_lists")
+@Entity(tableName = "item_lists", indices = [Index(value = ["syncId"], unique = true)])
 data class ItemList(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
@@ -44,6 +58,9 @@ data class ItemList(
     // though nothing syncs yet - see MIGRATION_9_10's doc comment.
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
+    /** live-sync ticket - null until a real round trip earns one. Not client-minted (CLAUDE.md
+     * live-sync ruling 5: "do not trust a client-minted id"). */
+    val serverId: String? = null,
     // Soft-delete tombstone (mirrors CarTask's - see its doc comment for why this survives
     // instead of a hard DELETE).
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,

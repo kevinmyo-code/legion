@@ -411,6 +411,76 @@ object MidnightEvents {
         Log.w(TAG, "ledger_config_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** A foreground [com.kevin.legion.backend.LastAspectsSync.maybeAutoPull] pass completed across
+     * all four last-aspect-slice tables (`goals`/`grocery_staples`/`item_lists`/`list_items`) -
+     * same role as [ledgerConfigAutoPullSucceeded] plays for ledger config. */
+    fun lastAspectsAutoPullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int, skippedTombstoneNoLocalMatch: Int) = safe {
+        Log.d(
+            TAG,
+            "last_aspects_auto_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
+                "tombstoned=$tombstoned skippedTombstoneNoLocalMatch=$skippedTombstoneNoLocalMatch",
+        )
+    }
+
+    /** [com.kevin.legion.backend.LastAspectsSync.maybeAutoPull] failed - degraded to this log
+     * line, same posture as [ledgerConfigAutoPullFailed]. */
+    fun lastAspectsAutoPullFailed(e: Throwable) = safe {
+        Log.w(TAG, "last_aspects_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.LastAspectsOutboxDrain.maybeDrain] pass completed -
+     * same role as [ledgerConfigOutboxDrainSucceeded] plays for ledger config. */
+    fun lastAspectsOutboxDrainSucceeded(succeeded: Int, stillPending: Int, poisoned: Int) = safe {
+        Log.d(TAG, "last_aspects_outbox_drain succeeded=$succeeded stillPending=$stillPending poisoned=$poisoned")
+    }
+
+    /** [com.kevin.legion.backend.LastAspectsOutboxDrain.maybeDrain] failed - degraded to this log
+     * line, same posture as [ledgerConfigOutboxDrainFailed]. */
+    fun lastAspectsOutboxDrainFailed(e: Throwable) = safe {
+        Log.w(TAG, "last_aspects_outbox_drain_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** [com.kevin.legion.backend.LastAspectsRealtime] could not open or maintain its
+     * `postgres_changes` subscription - degraded to this log line, same posture as
+     * [ledgerConfigRealtimeSubscribeFailed]. */
+    fun lastAspectsRealtimeSubscribeFailed(e: Throwable) = safe {
+        Log.w(TAG, "last_aspects_realtime_subscribe_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A [com.kevin.legion.backend.LastAspectsRealtime]-triggered
+     * [com.kevin.legion.backend.LastAspectsSync.pull] completed - same role as
+     * [ledgerConfigRealtimePullSucceeded]. */
+    fun lastAspectsRealtimePullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int) = safe {
+        Log.d(
+            TAG,
+            "last_aspects_realtime_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
+                "tombstoned=$tombstoned",
+        )
+    }
+
+    /** A realtime-triggered last-aspects pull failed - degraded to this log line, same posture as
+     * [ledgerConfigRealtimePullFailed]. */
+    fun lastAspectsRealtimePullFailed(e: Throwable) = safe {
+        Log.w(TAG, "last_aspects_realtime_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.LastAspectsBackfill.maybeAutoRun] pass completed
+     * across all four last-aspect-slice tables - same role as [ledgerConfigBackfillSucceeded]
+     * plays for ledger config. */
+    fun lastAspectsBackfillSucceeded(pushed: Int, alreadyPresent: Int, skippedLocalOnlyDeleted: Int, failedTables: List<String>) = safe {
+        Log.d(
+            TAG,
+            "last_aspects_backfill pushed=$pushed alreadyPresent=$alreadyPresent " +
+                "skippedLocalOnlyDeleted=$skippedLocalOnlyDeleted failed=${failedTables.joinToString("; ")}",
+        )
+    }
+
+    /** [com.kevin.legion.backend.LastAspectsBackfill.maybeAutoRun] threw outright - degraded to
+     * this log line, same posture as [ledgerConfigBackfillFailed]. */
+    fun lastAspectsBackfillFailed(e: Throwable) = safe {
+        Log.w(TAG, "last_aspects_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A voice tool was dispatched. Useful for tracing what tool ran before a crash. */
     fun toolDispatched(toolName: String) = safe { Log.d(TAG, "tool_dispatched: $toolName") }
 

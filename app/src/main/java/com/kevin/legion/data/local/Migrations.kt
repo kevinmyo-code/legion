@@ -2508,3 +2508,138 @@ val MIGRATION_61_62 = object : Migration(61, 62) {
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_budget_targets_guid` ON `budget_targets` (`guid`)")
     }
 }
+
+/**
+ * v62 -> v63, live-sync's last aspect slice (`.scratch/live-sync/map.md`'s "Lists"/"Goals"/"Pantry
+ * config" rows): `goals`, `grocery_staples`, `item_lists`, `list_items` all gain [serverId] and a
+ * unique index on their existing [syncId] column (**reused as the sync identity, never a fresh
+ * `guid`** - all four already carried a portable identity column, same posture
+ * [MIGRATION_60_61] took for `memories`/`companion_memories`). `goals` and `grocery_staples` also
+ * gain [deleted] (neither had a tombstone column before); `grocery_staples` also gains
+ * `updatedAtMs` (it had no mutation-clock column to reuse at all, unlike the other three, which
+ * already stamp `updatedAt` on every write). Table rebuilds throughout - see this class's own
+ * header comment for why an ALTER-based migration is never used here.
+ *
+ * **The same dedup-before-unique-index shape [MIGRATION_61_62] established for `memories`/
+ * `companion_memories`/`memory_audit`** runs first, against each OLD table, before any rebuild -
+ * blank first, then duplicates (keep the lowest `id`/lowest `name` in each group, re-mint the
+ * rest). Defensive: every one of these four tables' `syncId` values was already minted per-row at
+ * insert time with no reuse path except [com.kevin.legion.grocery.GroceryController.completeTrip]'s
+ * own deliberate identity carry-over (which never produces a DUPLICATE, only a repeat), so no
+ * collision is actually expected - but [Migration62To63Test] plants one anyway, on the same
+ * "verify, don't assume" posture the live-sync brief itself calls out.
+ */
+val MIGRATION_62_63 = object : Migration(62, 63) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val uuidExpr = "(" +
+            "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || " +
+            "substr(lower(hex(randomblob(2))), 2) || '-' || " +
+            "substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || " +
+            "lower(hex(randomblob(6)))" +
+            ")"
+
+        // --- dedup pass, against the OLD tables, before any rebuild ------------------------------
+        for (table in listOf("goals", "item_lists", "list_items")) {
+            db.execSQL("UPDATE `$table` SET syncId = $uuidExpr WHERE syncId IS NULL OR syncId = ''")
+            db.execSQL(
+                "UPDATE `$table` SET syncId = $uuidExpr " +
+                    "WHERE id NOT IN (SELECT MIN(id) FROM `$table` GROUP BY syncId)",
+            )
+        }
+        // grocery_staples has no `id` column (PK is `name`) - dedup keeps the lexicographically
+        // lowest `name` in each syncId group instead, same "keep one, re-mint the rest" shape.
+        db.execSQL("UPDATE `grocery_staples` SET syncId = $uuidExpr WHERE syncId IS NULL OR syncId = ''")
+        db.execSQL(
+            "UPDATE `grocery_staples` SET syncId = $uuidExpr " +
+                "WHERE name NOT IN (SELECT MIN(name) FROM `grocery_staples` GROUP BY syncId)",
+        )
+
+        // --- goals --------------------------------------------------------------------------------
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `goals_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`lineageId` INTEGER NOT NULL, `aspect` TEXT NOT NULL, `statement` TEXT NOT NULL, " +
+                "`targetValue` REAL, `unit` TEXT, `metricKey` TEXT, `deadlineEpoch` INTEGER, " +
+                "`status` TEXT NOT NULL, `supersedesId` INTEGER, `closedAt` INTEGER, " +
+                "`createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL DEFAULT 0, " +
+                "`syncId` TEXT NOT NULL DEFAULT '', `serverId` TEXT, `deleted` INTEGER NOT NULL DEFAULT 0)",
+        )
+        db.execSQL(
+            "INSERT INTO `goals_new` (`id`, `lineageId`, `aspect`, `statement`, `targetValue`, `unit`, " +
+                "`metricKey`, `deadlineEpoch`, `status`, `supersedesId`, `closedAt`, `createdAt`, " +
+                "`updatedAt`, `syncId`, `serverId`, `deleted`) " +
+                "SELECT `id`, `lineageId`, `aspect`, `statement`, `targetValue`, `unit`, `metricKey`, " +
+                "`deadlineEpoch`, `status`, `supersedesId`, `closedAt`, `createdAt`, `updatedAt`, " +
+                "`syncId`, NULL, 0 FROM `goals`",
+        )
+        db.execSQL("DROP TABLE `goals`")
+        db.execSQL("ALTER TABLE `goals_new` RENAME TO `goals`")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_goals_lineageId` ON `goals` (`lineageId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_goals_aspect_status` ON `goals` (`aspect`, `status`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_goals_syncId` ON `goals` (`syncId`)")
+
+        // --- grocery_staples ------------------------------------------------------------------------
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `grocery_staples_new` (`name` TEXT NOT NULL, " +
+                "`displayName` TEXT NOT NULL, `timesBought` INTEGER NOT NULL, `lastBoughtAt` INTEGER NOT NULL, " +
+                "`syncId` TEXT NOT NULL DEFAULT '', `serverId` TEXT, `updatedAtMs` INTEGER NOT NULL DEFAULT 0, " +
+                "`deleted` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`name`))",
+        )
+        db.execSQL(
+            "INSERT INTO `grocery_staples_new` (`name`, `displayName`, `timesBought`, `lastBoughtAt`, " +
+                "`syncId`, `serverId`, `updatedAtMs`, `deleted`) " +
+                "SELECT `name`, `displayName`, `timesBought`, `lastBoughtAt`, `syncId`, NULL, " +
+                "`lastBoughtAt`, 0 FROM `grocery_staples`",
+        )
+        db.execSQL("DROP TABLE `grocery_staples`")
+        db.execSQL("ALTER TABLE `grocery_staples_new` RENAME TO `grocery_staples`")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_grocery_staples_syncId` ON `grocery_staples` (`syncId`)")
+
+        // --- item_lists ---------------------------------------------------------------------------
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `item_lists_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`name` TEXT NOT NULL, `tickable` INTEGER NOT NULL, `sortOrder` INTEGER NOT NULL, " +
+                "`lastUsedAt` INTEGER NOT NULL, `archived` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL DEFAULT 0, `syncId` TEXT NOT NULL DEFAULT '', " +
+                "`serverId` TEXT, `deleted` INTEGER NOT NULL DEFAULT 0)",
+        )
+        db.execSQL(
+            "INSERT INTO `item_lists_new` (`id`, `name`, `tickable`, `sortOrder`, `lastUsedAt`, " +
+                "`archived`, `createdAt`, `updatedAt`, `syncId`, `serverId`, `deleted`) " +
+                "SELECT `id`, `name`, `tickable`, `sortOrder`, `lastUsedAt`, `archived`, `createdAt`, " +
+                "`updatedAt`, `syncId`, NULL, `deleted` FROM `item_lists`",
+        )
+        db.execSQL("DROP TABLE `item_lists`")
+        db.execSQL("ALTER TABLE `item_lists_new` RENAME TO `item_lists`")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_item_lists_syncId` ON `item_lists` (`syncId`)")
+
+        // --- list_items ---------------------------------------------------------------------------
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `list_items_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`listId` INTEGER NOT NULL, `text` TEXT NOT NULL, `done` INTEGER NOT NULL, `doneAt` INTEGER, " +
+                "`sortOrder` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL DEFAULT 0, " +
+                "`syncId` TEXT NOT NULL DEFAULT '', `serverId` TEXT, `deleted` INTEGER NOT NULL DEFAULT 0, " +
+                "`startsAt` INTEGER, `endsAt` INTEGER, `allDay` INTEGER NOT NULL, `triggerPlaceLabel` TEXT, " +
+                "`repeatKind` TEXT, `repeatEvery` INTEGER, `repeatDaysOfWeek` TEXT, `repeatDay` INTEGER, " +
+                "`repeatMonth` INTEGER, `repeatEndKind` TEXT, `repeatEndDate` INTEGER, `repeatEndCount` INTEGER, " +
+                "`exact` INTEGER NOT NULL DEFAULT 0, `exactDowngraded` INTEGER NOT NULL DEFAULT 0, " +
+                "`missedAt` INTEGER, `missedDismissedAt` INTEGER, `loggedAt` INTEGER DEFAULT NULL)",
+        )
+        db.execSQL(
+            "INSERT INTO `list_items_new` (`id`, `listId`, `text`, `done`, `doneAt`, `sortOrder`, " +
+                "`createdAt`, `updatedAt`, `syncId`, `serverId`, `deleted`, `startsAt`, `endsAt`, `allDay`, " +
+                "`triggerPlaceLabel`, `repeatKind`, `repeatEvery`, `repeatDaysOfWeek`, `repeatDay`, " +
+                "`repeatMonth`, `repeatEndKind`, `repeatEndDate`, `repeatEndCount`, `exact`, " +
+                "`exactDowngraded`, `missedAt`, `missedDismissedAt`, `loggedAt`) " +
+                "SELECT `id`, `listId`, `text`, `done`, `doneAt`, `sortOrder`, `createdAt`, `updatedAt`, " +
+                "`syncId`, NULL, `deleted`, `startsAt`, `endsAt`, `allDay`, `triggerPlaceLabel`, " +
+                "`repeatKind`, `repeatEvery`, `repeatDaysOfWeek`, `repeatDay`, `repeatMonth`, " +
+                "`repeatEndKind`, `repeatEndDate`, `repeatEndCount`, `exact`, `exactDowngraded`, " +
+                "`missedAt`, `missedDismissedAt`, `loggedAt` FROM `list_items`",
+        )
+        db.execSQL("DROP TABLE `list_items`")
+        db.execSQL("ALTER TABLE `list_items_new` RENAME TO `list_items`")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_list_items_listId` ON `list_items` (`listId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_list_items_startsAt` ON `list_items` (`startsAt`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_list_items_syncId` ON `list_items` (`syncId`)")
+    }
+}

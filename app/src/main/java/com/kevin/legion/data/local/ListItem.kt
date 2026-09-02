@@ -40,10 +40,15 @@ import androidx.room.PrimaryKey
  *   exactly the kind of silent-vanish bug this ticket was written to rule out. A recurring item is
  *   never marked missed (ticket 04: it just re-arms forward), and a place trigger never has a due
  *   time to miss (ticket 12).
+ *
+ * **FROZEN from the live app's own point of view, same as [ItemList]** - see that entity's own
+ * class doc for the cutover this table sits behind. live-sync ticket (v62 -> v63,
+ * [MIGRATION_62_63]): [serverId] added, [syncId] REUSED as the sync identity (same posture as
+ * [ItemList]'s own v63 doc comment).
  */
 @Entity(
     tableName = "list_items",
-    indices = [Index("listId"), Index("startsAt")],
+    indices = [Index("listId"), Index("startsAt"), Index(value = ["syncId"], unique = true)],
 )
 data class ListItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -55,6 +60,9 @@ data class ListItem(
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
+    /** live-sync ticket - null until a real round trip earns one. Not client-minted (CLAUDE.md
+     * live-sync ruling 5: "do not trust a client-minted id"). */
+    val serverId: String? = null,
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 
     // ---- optional time trigger: an item with startsAt is a reminder, not a calendar event ----

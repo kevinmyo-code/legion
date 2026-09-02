@@ -53,10 +53,42 @@ interface GroceryStapleDao {
      * Frequency alone would pin a thing bought weekly for a year above something bought on the last
      * three trips running, long after the habit changed; recency alone would surface a one-off. The
      * pair reads as "what you usually buy, favouring what you have bought lately".
+     *
+     * live-sync ticket: `deleted = 0` added - a forgotten staple (see [deleteByName]'s own doc
+     * comment) must not keep suggesting itself, the same "active reads exclude tombstones"
+     * discipline every other synced table in this file follows.
      */
-    @Query("SELECT * FROM grocery_staples ORDER BY timesBought DESC, lastBoughtAt DESC LIMIT :limit")
+    @Query("SELECT * FROM grocery_staples WHERE deleted = 0 ORDER BY timesBought DESC, lastBoughtAt DESC LIMIT :limit")
     suspend fun topStaples(limit: Int): List<GroceryStaple>
 
+    /**
+     * Hard delete, kept as the UNCONFIGURED-install fallback only (no server copy exists to
+     * tombstone) - [com.kevin.legion.backend.LastAspectsWriteThrough.forgetStaple]'s own fallback
+     * branch, same shape as [LedgerConfigWriteThrough.deleteCategoryRulesBySubstring]'s bare-DAO
+     * fallback. A CONFIGURED install calls [softDeleteByName] instead, so a forgotten staple can be
+     * pushed as a tombstone rather than vanishing with no trace for the server to reconcile against.
+     */
     @Query("DELETE FROM grocery_staples WHERE name = :name")
     suspend fun deleteByName(name: String)
+
+    /** The configured-install "forget" path - tombstones rather than removes, so
+     * [com.kevin.legion.backend.LastAspectsSync]'s pull can propagate the forget to the other
+     * device instead of that device's own copy silently surviving forever. */
+    @Query("UPDATE grocery_staples SET deleted = 1, updatedAtMs = :at WHERE name = :name")
+    suspend fun softDeleteByName(name: String, at: Long)
+
+    /** Every row regardless of [GroceryStaple.deleted] - [LastAspectsSync]/[LastAspectsBackfill]'s
+     * merge/push read, same role [CategoryDao.getAllIncludingDeleted] plays for categories. */
+    @Query("SELECT * FROM grocery_staples")
+    suspend fun getAllIncludingDeleted(): List<GroceryStaple>
+
+    /** [LastAspectsBackfill]'s own write-back, called immediately after a successful push - this
+     * table has no autoincrement-id cursor to rely on instead (see that object's own class doc for
+     * why), so unlike every cursor-backed table here, its "already pushed" check
+     * (`row.serverId != null`) needs the local row updated THIS SAME RUN or an unchanged
+     * `grocery_staples` row would look pending again on every subsequent backfill sweep - not just
+     * until the next pull happens to fill it in, which [LedgerConfigBackfill]'s own cursor-backed
+     * tables can safely wait for. */
+    @Query("UPDATE grocery_staples SET serverId = :serverId WHERE name = :name")
+    suspend fun setServerId(name: String, serverId: String)
 }
