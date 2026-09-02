@@ -1,5 +1,6 @@
 package com.kevin.legion.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -23,9 +24,21 @@ import androidx.room.PrimaryKey
  * see [com.kevin.legion.ledger.buildBudgetVsActual]'s doc comment for why that distinction is
  * load-bearing.
  */
-@Entity(tableName = "categories", indices = [Index(value = ["name"], unique = true)])
+@Entity(
+    tableName = "categories",
+    indices = [Index(value = ["name"], unique = true), Index(value = ["guid"], unique = true)],
+)
 data class Category(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val isFoodCategory: Boolean,
+    // ledger-config-supabase ticket (v61 -> v62, MIGRATION_61_62): sync columns, same shape as
+    // MealTarget/BodyweightLog's own v59/v60 doc comments - a freshly minted guid (this table had
+    // no existing identity column to reuse), serverId once round-tripped, an updatedAtMs LWW clock
+    // (this table had no timestamp column at all to reuse, unlike MealTarget's own `updatedAt`),
+    // and a soft-delete tombstone flag.
+    @ColumnInfo(defaultValue = "''") val guid: String = java.util.UUID.randomUUID().toString(),
+    val serverId: String? = null,
+    @ColumnInfo(defaultValue = "0") val updatedAtMs: Long = 0,
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

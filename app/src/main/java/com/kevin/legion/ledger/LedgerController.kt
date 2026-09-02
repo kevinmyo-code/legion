@@ -493,17 +493,29 @@ object LedgerController {
         return pairingWindow to inPeriod
     }
 
-    /** D9: sets [category]'s budget for [entity]'s currency from [month] onward - D2's "copy forward", written at the point of change rather than duplicated every month. See [com.kevin.legion.data.local.BudgetTarget]'s doc comment for why this is a single upsert, not a per-month row. */
+    /** D9: sets [category]'s budget for [entity]'s currency from [month] onward - D2's "copy forward", written at the point of change rather than duplicated every month. See [com.kevin.legion.data.local.BudgetTarget]'s doc comment for why this is a single upsert, not a per-month row.
+     *
+     * ledger-config-supabase ticket: routes through [com.kevin.legion.backend.LedgerConfigWriteThrough.setBudgetTarget]
+     * rather than a direct DAO upsert - writes locally first, unconditionally, then pushes to
+     * Supabase if configured, enqueueing on failure. Reuses an existing same-key row's own
+     * [com.kevin.legion.data.local.BudgetTarget.guid] via [com.kevin.legion.data.local.BudgetTargetDao.getByKey]
+     * rather than minting a fresh one - see that DAO method's own doc comment for why a fresh guid
+     * here would orphan a server row on `upsert`'s `REPLACE` conflict. */
     suspend fun setBudget(context: Context, entity: LedgerEntity, category: String, month: YearMonth, amountCents: Long) {
         val monthStartMs = month.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-        CarDatabase.getDatabase(context).budgetTargetDao().upsert(
+        val db = CarDatabase.getDatabase(context)
+        val guid = db.budgetTargetDao().getByKey(category, entity.currency, monthStartMs)?.guid
+            ?: java.util.UUID.randomUUID().toString()
+        com.kevin.legion.backend.LedgerConfigWriteThrough.setBudgetTarget(
+            context,
             com.kevin.legion.data.local.BudgetTarget(
                 category = category,
                 currency = entity.currency,
                 amountCents = amountCents,
                 effectiveFromMonthEpoch = monthStartMs,
                 updatedAt = System.currentTimeMillis(),
-            )
+                guid = guid,
+            ),
         )
     }
 
@@ -547,7 +559,12 @@ object LedgerController {
         val existing = db.categoryDao().allNames()
         val result = validateNewCategoryName(name, existing)
         if (result is NewCategoryValidation.Valid) {
-            db.categoryDao().insert(com.kevin.legion.data.local.Category(name = result.trimmed, isFoodCategory = false))
+            // ledger-config-supabase ticket: LedgerConfigWriteThrough.addCategory, not a direct DAO
+            // insert - see setBudget's own comment for the write-through/outbox shape this follows.
+            com.kevin.legion.backend.LedgerConfigWriteThrough.addCategory(
+                context,
+                com.kevin.legion.data.local.Category(name = result.trimmed, isFoodCategory = false),
+            )
         }
         return result
     }
@@ -739,7 +756,6 @@ object LedgerController {
      */
     suspend fun setCategory(context: Context, merchant: String, category: String): CategorySetResult {
         val merchantKey = merchant.trim().uppercase()
-        val db = CarDatabase.getDatabase(context)
 
         // Audit fix 2026-08-07, and the order of what follows is the fix.
         //
@@ -782,11 +798,17 @@ object LedgerController {
         val rowsTouched = updateCategoryOnRows(context, matched, category, categoryPending = false)
 
         if (rowsTouched > 0) {
-            db.categoryRuleDao().deleteBySubstring(merchantKey)
-            db.categoryRuleDao().insert(
+            // ledger-config-supabase ticket: LedgerConfigWriteThrough, not the DAO directly - the
+            // delete soft-deletes and pushes a tombstone per matched row on a configured install
+            // (see LedgerConfigWriteThrough.deleteCategoryRulesBySubstring's own doc comment), and
+            // the insert writes locally first then pushes, exactly matching addCategory's own
+            // write-through shape.
+            com.kevin.legion.backend.LedgerConfigWriteThrough.deleteCategoryRulesBySubstring(context, merchantKey)
+            com.kevin.legion.backend.LedgerConfigWriteThrough.addCategoryRule(
+                context,
                 com.kevin.legion.data.local.CategoryRule(
                     category = category, substring = merchantKey, createdAt = System.currentTimeMillis(),
-                )
+                ),
             )
         }
         return CategorySetResult(rowsTouched = rowsTouched, merchantsTouched = merchantsTouched)
@@ -823,7 +845,9 @@ object LedgerController {
     suspend fun clearCategoryRules(context: Context, merchant: String): Int {
         val merchantKey = merchant.trim().uppercase()
         if (merchantKey.isEmpty()) return 0
-        return CarDatabase.getDatabase(context).categoryRuleDao().deleteBySubstring(merchantKey)
+        // ledger-config-supabase ticket: LedgerConfigWriteThrough, not the DAO directly - see
+        // setCategory's own comment for why.
+        return com.kevin.legion.backend.LedgerConfigWriteThrough.deleteCategoryRulesBySubstring(context, merchantKey)
     }
 
     /**
@@ -835,11 +859,13 @@ object LedgerController {
      * [CategoryAgent] again.
      */
     suspend fun confirmCategoryGuess(context: Context, merchantKey: String, category: String) {
-        val db = CarDatabase.getDatabase(context)
-        db.categoryRuleDao().insert(
+        // ledger-config-supabase ticket: LedgerConfigWriteThrough, not the DAO directly - see
+        // addCategory's own comment for the write-through/outbox shape this follows.
+        com.kevin.legion.backend.LedgerConfigWriteThrough.addCategoryRule(
+            context,
             com.kevin.legion.data.local.CategoryRule(
                 category = category, substring = merchantKey, createdAt = System.currentTimeMillis(),
-            )
+            ),
         )
         val matched = applyToMatching(context) {
             it.categoryPending && it.category == category && it.description.uppercase().contains(merchantKey.uppercase())

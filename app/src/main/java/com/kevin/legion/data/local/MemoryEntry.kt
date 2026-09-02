@@ -2,13 +2,23 @@
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
  * A long-term memory the driver explicitly asked Zero to remember
  * (trips, preferences, running jokes, etc.).
  */
-@Entity(tableName = "memories")
+@Entity(
+    tableName = "memories",
+    // v61 -> v62 (MIGRATION_61_62): the unique index [MIGRATION_60_61] was meant to create on
+    // `syncId` was lost when that migration was rewritten to rebuild the table from generated
+    // createSql rather than ALTER - the generated schema had no index to carry because this
+    // annotation never declared one. Declaring it here is what makes MIGRATION_61_62's index (and
+    // every future rebuild's) durable, and what MemoryBackend's origin_guid upsert actually
+    // depends on for uniqueness.
+    indices = [Index(value = ["syncId"], unique = true)],
+)
 data class MemoryEntry(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val text: String,

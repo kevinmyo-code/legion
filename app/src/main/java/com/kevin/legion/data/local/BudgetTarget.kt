@@ -1,5 +1,6 @@
 package com.kevin.legion.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -29,7 +30,10 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "budget_targets",
-    indices = [Index(value = ["category", "currency", "effectiveFromMonthEpoch"], unique = true)],
+    indices = [
+        Index(value = ["category", "currency", "effectiveFromMonthEpoch"], unique = true),
+        Index(value = ["guid"], unique = true),
+    ],
 )
 data class BudgetTarget(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -39,4 +43,11 @@ data class BudgetTarget(
     /** UTC month-start epoch millis (matches every parser's `atStartOfDay(ZoneOffset.UTC)` convention) - the first month this target applies to. */
     val effectiveFromMonthEpoch: Long,
     val updatedAt: Long,
+    // ledger-config-supabase ticket (v61 -> v62, MIGRATION_61_62): sync columns - guid/serverId/
+    // deleted only, NO separate updatedAtMs, matching MealTarget's own v59/v60 doc comment exactly:
+    // [updatedAt] already exists, is stamped at every write, and is read by nothing else, so it
+    // already IS the mutation clock a sync merge needs.
+    @ColumnInfo(defaultValue = "''") val guid: String = java.util.UUID.randomUUID().toString(),
+    val serverId: String? = null,
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )

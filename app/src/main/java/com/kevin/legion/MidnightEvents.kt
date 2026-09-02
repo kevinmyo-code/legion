@@ -341,6 +341,76 @@ object MidnightEvents {
         Log.w(TAG, "memory_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** A foreground [com.kevin.legion.backend.LedgerConfigSync.maybeAutoPull] pass completed across
+     * all three ledger config tables (`categories`/`category_rules`/`budget_targets`) - same role
+     * as [memoryAutoPullSucceeded] plays for memory. Ledger-config-supabase ticket. */
+    fun ledgerConfigAutoPullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int, skippedTombstoneNoLocalMatch: Int) = safe {
+        Log.d(
+            TAG,
+            "ledger_config_auto_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
+                "tombstoned=$tombstoned skippedTombstoneNoLocalMatch=$skippedTombstoneNoLocalMatch",
+        )
+    }
+
+    /** [com.kevin.legion.backend.LedgerConfigSync.maybeAutoPull] failed - degraded to this log line,
+     * same posture as [memoryAutoPullFailed]. */
+    fun ledgerConfigAutoPullFailed(e: Throwable) = safe {
+        Log.w(TAG, "ledger_config_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.LedgerConfigOutboxDrain.maybeDrain] pass completed -
+     * same role as [memoryOutboxDrainSucceeded] plays for memory. */
+    fun ledgerConfigOutboxDrainSucceeded(succeeded: Int, stillPending: Int, poisoned: Int) = safe {
+        Log.d(TAG, "ledger_config_outbox_drain succeeded=$succeeded stillPending=$stillPending poisoned=$poisoned")
+    }
+
+    /** [com.kevin.legion.backend.LedgerConfigOutboxDrain.maybeDrain] failed - degraded to this log
+     * line, same posture as [memoryOutboxDrainFailed]. */
+    fun ledgerConfigOutboxDrainFailed(e: Throwable) = safe {
+        Log.w(TAG, "ledger_config_outbox_drain_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** [com.kevin.legion.backend.LedgerConfigRealtime] could not open or maintain its
+     * `postgres_changes` subscription - degraded to this log line, same posture as
+     * [memoryRealtimeSubscribeFailed]. */
+    fun ledgerConfigRealtimeSubscribeFailed(e: Throwable) = safe {
+        Log.w(TAG, "ledger_config_realtime_subscribe_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A [com.kevin.legion.backend.LedgerConfigRealtime]-triggered
+     * [com.kevin.legion.backend.LedgerConfigSync.pull] completed - same role as
+     * [memoryRealtimePullSucceeded]. */
+    fun ledgerConfigRealtimePullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int) = safe {
+        Log.d(
+            TAG,
+            "ledger_config_realtime_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
+                "tombstoned=$tombstoned",
+        )
+    }
+
+    /** A realtime-triggered ledger config pull failed - degraded to this log line, same posture as
+     * [memoryRealtimePullFailed]. */
+    fun ledgerConfigRealtimePullFailed(e: Throwable) = safe {
+        Log.w(TAG, "ledger_config_realtime_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.LedgerConfigBackfill.maybeAutoRun] pass completed
+     * across all three ledger config tables - same role as [memoryBackfillSucceeded] plays for
+     * memory. */
+    fun ledgerConfigBackfillSucceeded(pushed: Int, alreadyPresent: Int, skippedLocalOnlyDeleted: Int, failedTables: List<String>) = safe {
+        Log.d(
+            TAG,
+            "ledger_config_backfill pushed=$pushed alreadyPresent=$alreadyPresent " +
+                "skippedLocalOnlyDeleted=$skippedLocalOnlyDeleted failed=${failedTables.joinToString("; ")}",
+        )
+    }
+
+    /** [com.kevin.legion.backend.LedgerConfigBackfill.maybeAutoRun] threw outright - degraded to
+     * this log line, same posture as [memoryBackfillFailed]. */
+    fun ledgerConfigBackfillFailed(e: Throwable) = safe {
+        Log.w(TAG, "ledger_config_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A voice tool was dispatched. Useful for tracing what tool ran before a crash. */
     fun toolDispatched(toolName: String) = safe { Log.d(TAG, "tool_dispatched: $toolName") }
 

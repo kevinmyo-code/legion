@@ -267,6 +267,15 @@ class MainActivity : ComponentActivity() {
             com.kevin.legion.backend.MemoryBackfill.maybeAutoRun(applicationContext)
             com.kevin.legion.backend.MemorySync.maybeAutoPull(applicationContext)
         }
+        // Ledger-config-supabase ticket ("give LEGION's ledger CONFIG a Supabase home, end to
+        // end"): categories/category_rules/budget_targets only, never ledger_transactions (its own
+        // scope boundary - see LedgerConfigBackend's own class doc). Same drain-then-backfill-then-
+        // pull ordering as the body/memory blocks above, for the identical reason.
+        lifecycleScope.launch {
+            com.kevin.legion.backend.LedgerConfigOutboxDrain.maybeDrain(applicationContext)
+            com.kevin.legion.backend.LedgerConfigBackfill.maybeAutoRun(applicationContext)
+            com.kevin.legion.backend.LedgerConfigSync.maybeAutoPull(applicationContext)
+        }
         // The two Supabase tables that had a schema and RLS but never a single row uploaded
         // (measured against the real phone and the real project, one-today ticket): ledger's
         // UNRECONCILED-only reconcile and fleet's maintenance-schedule upload, neither of which

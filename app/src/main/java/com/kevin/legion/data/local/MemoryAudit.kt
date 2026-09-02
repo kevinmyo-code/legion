@@ -3,6 +3,7 @@ package com.kevin.legion.data.local
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
@@ -25,7 +26,14 @@ import androidx.room.Update
  *
  * Rows are cheap and bounded by [MemoryAuditDao.trim] rather than kept forever.
  */
-@Entity(tableName = "memory_audit")
+@Entity(
+    tableName = "memory_audit",
+    // v61 -> v62 (MIGRATION_61_62): same lost-index fix as [MemoryEntry]'s own `indices` doc
+    // comment - [MIGRATION_60_61]'s rebuild only creates what this annotation declares, and it
+    // declared no index, so the unique constraint on `guid` silently vanished. Declared here so
+    // MIGRATION_61_62 and every future rebuild carry it.
+    indices = [Index(value = ["guid"], unique = true)],
+)
 data class MemoryAudit(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     /** What happened - see [Event]. */

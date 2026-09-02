@@ -324,6 +324,12 @@ class MidnightApplication : Application() {
             runCatching { com.kevin.legion.backend.MemoryRealtime.bind(this@MidnightApplication) }
                 .onFailure { MidnightEvents.appStartWorkFailed("bind_memory_realtime", it) }
 
+            // Ledger config Realtime (ledger-config-supabase ticket) - same shape and reasoning as
+            // MemoryRealtime just above; see LedgerConfigRealtime's own class doc for the full
+            // lifecycle contract.
+            runCatching { com.kevin.legion.backend.LedgerConfigRealtime.bind(this@MidnightApplication) }
+                .onFailure { MidnightEvents.appStartWorkFailed("bind_ledger_config_realtime", it) }
+
             // Reconcile the assistant's on/off flag to reality (measured defect, 2026-08-17):
             // AssistantIgnition's persisted flag can read true - and every UI surface built on it
             // agree - while AriaForegroundService is not actually running, because the ONLY

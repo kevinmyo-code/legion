@@ -78,6 +78,14 @@ object OutboxTarget {
      * sync, no per-row outbox) - see that file's own class doc for why. */
     const val MEMORY_MEMORIES = "memories"
     const val MEMORY_COMPANION_MEMORIES = "companion_memories"
+
+    /** Ledger-config-supabase ticket - one constant per synced ledger CONFIG table (categorisation
+     * rules and budgets, never `ledger_transactions` itself - see
+     * [com.kevin.legion.backend.LedgerConfigBackend]'s own class doc for why that table is out of
+     * scope). */
+    const val LEDGER_CATEGORIES = "categories"
+    const val LEDGER_CATEGORY_RULES = "category_rules"
+    const val LEDGER_BUDGET_TARGETS = "budget_targets"
 }
 
 /** [OutboxEntry.operation] values. **The comment this replaces said only [UPSERT] was produced as

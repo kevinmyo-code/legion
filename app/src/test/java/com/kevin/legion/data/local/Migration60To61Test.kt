@@ -124,8 +124,20 @@ class Migration60To61Test {
     }
 
     @Test
-    fun `the new unique index on memories syncId rejects a duplicate`() {
-        val db = openV60ShapedDatabase("migration_60_61_index_test.db")
+    fun `v61 no longer creates a unique index on syncId or guid - a duplicate insert is accepted`() {
+        // CORRECTED 2026-09-02: this test used to assert the opposite (a duplicate syncId gets
+        // rejected). That assertion went stale the moment MIGRATION_60_61 was rewritten as a table
+        // rebuild from v61's generated createSql - MemoryEntry/CompanionMemory/MemoryAudit declared
+        // no @Entity(indices = ...) at the time, so 61.json carried no index and the rebuild created
+        // none. The uniqueness guarantee was silently lost while this test kept passing, because it
+        // was asserting the migration's OWN output rather than a real constraint. The coverage this
+        // used to provide has NOT been dropped - it moved to
+        // `Migration61To62Test`'s "re-creates the unique index MIGRATION_60_61 lost..." test, which
+        // asserts the index exists (and rejects a duplicate) after MIGRATION_61_62, the migration
+        // that actually creates it now that the entities declare it. This test instead documents
+        // v61's real, narrower guarantee: rows survive the rebuild and a duplicate is NOT (yet)
+        // rejected at the database level.
+        val db = openV60ShapedDatabase("migration_60_61_no_index_test.db")
         MIGRATION_60_61.migrate(db)
 
         db.execSQL(
@@ -141,7 +153,7 @@ class Migration60To61Test {
         } catch (e: Exception) {
             threw = true
         }
-        assertTrue("duplicate syncId must be rejected by the new unique index", threw)
+        assertTrue("v61 has no unique index yet, so a duplicate syncId must be ACCEPTED", !threw)
     }
 
     @Test

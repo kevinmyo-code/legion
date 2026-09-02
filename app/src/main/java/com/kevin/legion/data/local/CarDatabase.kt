@@ -296,6 +296,15 @@ import androidx.room.RoomDatabase
  * `memory_audit`). `memories`/`companion_memories` reuse their existing `syncId` column as the
  * sync identity rather than adding a new `guid`; `memory_audit` gets a fresh `guid`, minted for
  * every pre-existing row. See [MIGRATION_60_61] for the full account.
+ *
+ * v62 (ledger-config-supabase ticket, "give LEGION's ledger CONFIG a Supabase home, end to end" -
+ * the third aspect built off v60's template, scoped to `categories`/`category_rules`/
+ * `budget_targets` only - `ledger_transactions` already has a server table and its own upload path
+ * and is explicitly out of scope): `guid`/`serverId`/`deleted` added to all three tables, plus a
+ * fresh `updatedAtMs` on `categories`/`category_rules` (neither had an existing timestamp column
+ * to reuse). `budget_targets` reuses its existing `updatedAt` column as the sync clock instead,
+ * same shape [MIGRATION_59_60] gives `meal_targets`/`sleep_targets`/`workout_plans`/
+ * `workout_plan_items`. See [MIGRATION_61_62] for the full account.
  */
 @Database(
     entities = [
@@ -334,7 +343,7 @@ import androidx.room.RoomDatabase
         VoiceNote::class,
         OutboxEntry::class,
     ],
-    version = 61,
+    version = 62,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -477,7 +486,11 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 61
+        const val SCHEMA_VERSION = 62
+        // 2026-09-02: bumped to 62 alongside `@Database(version=)` in the same edit again
+        // (the ledger-config-supabase ticket - guid/serverId/updatedAtMs-or-updatedAt/deleted
+        // added to categories/category_rules/budget_targets, see [MIGRATION_61_62] for the full
+        // account).
         // 2026-09-02: bumped to 61 alongside `@Database(version=)` in the same edit again
         // (the memory-supabase ticket - serverId/updatedAtMs/deleted added to all three memory
         // tables, see [MIGRATION_60_61] for the full account).
@@ -583,7 +596,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50,
                         MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53, MIGRATION_53_54,
                         MIGRATION_54_55, MIGRATION_55_56, MIGRATION_56_57, MIGRATION_57_58,
-                        MIGRATION_58_59, MIGRATION_59_60, MIGRATION_60_61,
+                        MIGRATION_58_59, MIGRATION_59_60, MIGRATION_60_61, MIGRATION_61_62,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it
@@ -614,10 +627,20 @@ abstract class CarDatabase : RoomDatabase() {
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                             super.onCreate(db)
+                            // ledger-config-supabase ticket (v62): `categories` now carries a
+                            // UNIQUE `guid` column with SQL default `''` (see [Category.guid]'s own
+                            // v62 doc comment). Leaving `guid` out of this INSERT the way the
+                            // pre-v62 version of this callback did would give every one of the 16
+                            // starter rows the SAME blank guid, and `INSERT OR IGNORE` would then
+                            // silently drop rows 2-16 on THAT unique-index conflict rather than the
+                            // `name` one this callback was actually written to guard - caught by
+                            // CarDatabaseFreshInstallTest collapsing from 16 rows to 1. Each row
+                            // gets its own freshly-minted guid so only a genuine `name` collision
+                            // (the intended `OR IGNORE` case) is ever silently dropped.
                             for ((name, isFood) in CategorySeed.starter) {
                                 db.execSQL(
-                                    "INSERT OR IGNORE INTO `categories` (`name`, `isFoodCategory`) VALUES (?, ?)",
-                                    arrayOf<Any>(name, if (isFood) 1 else 0),
+                                    "INSERT OR IGNORE INTO `categories` (`name`, `isFoodCategory`, `guid`) VALUES (?, ?, ?)",
+                                    arrayOf<Any>(name, if (isFood) 1 else 0, java.util.UUID.randomUUID().toString()),
                                 )
                             }
                         }

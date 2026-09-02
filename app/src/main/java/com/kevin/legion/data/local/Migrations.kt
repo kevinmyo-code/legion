@@ -2388,3 +2388,123 @@ val MIGRATION_60_61 = object : Migration(60, 61) {
         db.execSQL("ALTER TABLE `memory_audit_new` RENAME TO `memory_audit`")
     }
 }
+
+/**
+ * v61 -> v62 (ledger-config-supabase ticket, "give LEGION's ledger CONFIG a Supabase home, end to
+ * end" - the third aspect built off [MIGRATION_59_60]'s own template): sync columns added to all
+ * three ledger config tables (`categories`, `category_rules`, `budget_targets`).
+ * `ledger_transactions` is explicitly out of scope - see
+ * [com.kevin.legion.backend.LedgerConfigBackend]'s own class doc.
+ *
+ * **All three had no existing portable identity column to reuse**, unlike memory's `syncId` -
+ * every one gets a freshly-minted `guid`, matching `memory_audit`'s own v61 precedent exactly
+ * (mint inline in the copy, rather than blank-then-backfill, since there is nothing to preserve).
+ *
+ * **`categories`/`category_rules` get a fresh `updatedAtMs`; `budget_targets` does not.**
+ * `category_rules.updatedAtMs` backfills from its existing `createdAt`, same shape
+ * [MIGRATION_60_61] gives `memory_audit.updatedAtMs` from `at`. `categories` has no timestamp
+ * column at all to backfill from, so its `updatedAtMs` is stamped with the wall-clock time this
+ * migration runs (`strftime('%s','now') * 1000`) - a real "touched now" instant rather than the
+ * placeholder `0` MIGRATION_59_60 explicitly avoided for the same reason. `budget_targets` instead
+ * reuses its existing `updatedAt` column as the sync clock and gets no new column at all, matching
+ * [MIGRATION_59_60]'s "TARGET tables" loop (`meal_targets`/`sleep_targets`/`workout_plans`/
+ * `workout_plan_items`) rather than its "LOG tables" one.
+ *
+ * **Table rebuild throughout, not `ALTER TABLE ... ADD COLUMN`** - the same lesson [MIGRATION_60_61]
+ * was rewritten to apply after its ALTER-based first draft crashed the app on the real phone with
+ * Room reporting a column missing that a plainly-applied ALTER had just added. Every `createSql`
+ * below is copied verbatim from the generated `app/schemas/.../62.json`, create/copy/drop/rename,
+ * per CLAUDE.md section 5. Every pre-existing index is dropped by the `DROP TABLE` and must be
+ * (and is) recreated explicitly below, alongside each table's new `guid` index.
+ *
+ * **Also folds in the fix for a regression [MIGRATION_60_61] introduced the same day it was
+ * rewritten.** That rewrite rebuilds `memories`/`companion_memories`/`memory_audit` from v61's
+ * generated `createSql`, but [MemoryEntry]/[CompanionMemory]/[MemoryAudit] declared no
+ * `@Entity(indices = ...)` at the time, so `61.json` had no index to carry and the unique
+ * constraint on `syncId`/`guid` silently vanished - exactly the CLAUDE.md sec 4 rule-6 shape
+ * ("a check that passes when nothing parsed is not a gate") applied to schema instead of data.
+ * The three entities now declare the index (see each one's own `indices` doc comment), so v63's
+ * hypothetical future rebuild would carry it automatically; this migration creates it explicitly
+ * for everyone already sitting at v61/v62 before that declaration existed. **Deduplication runs
+ * before the index, and must** - these three columns already hold real values carried over from
+ * v60 (unlike categories/category_rules/budget_targets above, which mint every guid fresh in this
+ * same migration and so can never collide), so a `CREATE UNIQUE INDEX` here without a dedup pass
+ * first would crash on launch on any phone where two rows already share a value, the exact way
+ * MIGRATION_60_61's own ALTER-based first draft crashed for an unrelated reason.
+ */
+val MIGRATION_61_62 = object : Migration(61, 62) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Same non-RFC-4122 shape MIGRATION_59_60/MIGRATION_60_61 use - only needs to be
+        // effectively unique.
+        val uuidExpr = "(" +
+            "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || " +
+            "substr(lower(hex(randomblob(2))), 2) || '-' || " +
+            "substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || " +
+            "lower(hex(randomblob(6)))" +
+            ")"
+
+        // --- memories.syncId / companion_memories.syncId / memory_audit.guid ----------------------
+        // The lost-index fix (see class doc). Blank first (defensive - MIGRATION_60_61 should
+        // already have backfilled every blank value, but a blank is never allowed to collide with
+        // a real one either), THEN duplicates (keep the lowest `id` in each group, re-mint the
+        // rest), THEN the index - each step depends on the last having already run.
+        db.execSQL("UPDATE `memories` SET syncId = $uuidExpr WHERE syncId IS NULL OR syncId = ''")
+        db.execSQL(
+            "UPDATE `memories` SET syncId = $uuidExpr " +
+                "WHERE id NOT IN (SELECT MIN(id) FROM `memories` GROUP BY syncId)",
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_memories_syncId` ON `memories` (`syncId`)")
+
+        db.execSQL("UPDATE `companion_memories` SET syncId = $uuidExpr WHERE syncId IS NULL OR syncId = ''")
+        db.execSQL(
+            "UPDATE `companion_memories` SET syncId = $uuidExpr " +
+                "WHERE id NOT IN (SELECT MIN(id) FROM `companion_memories` GROUP BY syncId)",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_companion_memories_syncId` " +
+                "ON `companion_memories` (`syncId`)",
+        )
+
+        db.execSQL("UPDATE `memory_audit` SET guid = $uuidExpr WHERE guid IS NULL OR guid = ''")
+        db.execSQL(
+            "UPDATE `memory_audit` SET guid = $uuidExpr " +
+                "WHERE id NOT IN (SELECT MIN(id) FROM `memory_audit` GROUP BY guid)",
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_memory_audit_guid` ON `memory_audit` (`guid`)")
+
+        // --- categories --------------------------------------------------------------------------
+        db.execSQL("CREATE TABLE IF NOT EXISTS `categories_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `isFoodCategory` INTEGER NOT NULL, `guid` TEXT NOT NULL DEFAULT '', `serverId` TEXT, `updatedAtMs` INTEGER NOT NULL DEFAULT 0, `deleted` INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL(
+            "INSERT INTO `categories_new` (`id`, `name`, `isFoodCategory`, `guid`, `serverId`, `updatedAtMs`, `deleted`) " +
+                "SELECT `id`, `name`, `isFoodCategory`, $uuidExpr, NULL, (strftime('%s','now') * 1000), 0 FROM `categories`",
+        )
+        db.execSQL("DROP TABLE `categories`")
+        db.execSQL("ALTER TABLE `categories_new` RENAME TO `categories`")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_categories_name` ON `categories` (`name`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_categories_guid` ON `categories` (`guid`)")
+
+        // --- category_rules -----------------------------------------------------------------------
+        db.execSQL("CREATE TABLE IF NOT EXISTS `category_rules_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `category` TEXT NOT NULL, `substring` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `guid` TEXT NOT NULL DEFAULT '', `serverId` TEXT, `updatedAtMs` INTEGER NOT NULL DEFAULT 0, `deleted` INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL(
+            "INSERT INTO `category_rules_new` (`id`, `category`, `substring`, `createdAt`, `guid`, `serverId`, `updatedAtMs`, `deleted`) " +
+                "SELECT `id`, `category`, `substring`, `createdAt`, $uuidExpr, NULL, `createdAt`, 0 FROM `category_rules`",
+        )
+        db.execSQL("DROP TABLE `category_rules`")
+        db.execSQL("ALTER TABLE `category_rules_new` RENAME TO `category_rules`")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_category_rules_guid` ON `category_rules` (`guid`)")
+
+        // --- budget_targets ------------------------------------------------------------------------
+        db.execSQL("CREATE TABLE IF NOT EXISTS `budget_targets_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `category` TEXT NOT NULL, `currency` TEXT NOT NULL, `amountCents` INTEGER NOT NULL, `effectiveFromMonthEpoch` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `guid` TEXT NOT NULL DEFAULT '', `serverId` TEXT, `deleted` INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL(
+            "INSERT INTO `budget_targets_new` (`id`, `category`, `currency`, `amountCents`, `effectiveFromMonthEpoch`, `updatedAt`, `guid`, `serverId`, `deleted`) " +
+                "SELECT `id`, `category`, `currency`, `amountCents`, `effectiveFromMonthEpoch`, `updatedAt`, $uuidExpr, NULL, 0 FROM `budget_targets`",
+        )
+        db.execSQL("DROP TABLE `budget_targets`")
+        db.execSQL("ALTER TABLE `budget_targets_new` RENAME TO `budget_targets`")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_budget_targets_category_currency_effectiveFromMonthEpoch` " +
+                "ON `budget_targets` (`category`, `currency`, `effectiveFromMonthEpoch`)",
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_budget_targets_guid` ON `budget_targets` (`guid`)")
+    }
+}

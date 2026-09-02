@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 
 /**
  * Data Access Object for [Category]. D14's "fixed list" (ticket 07) means fixed FROM THE MODEL'S
@@ -15,11 +16,20 @@ import androidx.room.Query
  */
 @Dao
 interface CategoryDao {
-    @Query("SELECT * FROM categories ORDER BY name ASC")
+    /** Active categories only (`deleted = 0` added ledger-config-supabase ticket) - every app-facing
+     * reader ([com.kevin.legion.ledger.LedgerController.allCategories], the category-guess prompt)
+     * must never offer or display a category tombstoned by a remote delete. */
+    @Query("SELECT * FROM categories WHERE deleted = 0 ORDER BY name ASC")
     suspend fun getAll(): List<Category>
 
-    /** Every category's name, in the exact spelling [CategoryAgent]'s prompt must offer the model and validate its answer against - D14's "fixed list" enforced at the boundary of an LLM call. */
-    @Query("SELECT name FROM categories ORDER BY name ASC")
+    /** Every row, active AND soft-deleted - [com.kevin.legion.backend.LedgerConfigSync.pull]'s own
+     * local match scan, same "getAll(), not getAllActive()" reasoning [MemoryDao.getAll]'s own doc
+     * comment gives. */
+    @Query("SELECT * FROM categories")
+    suspend fun getAllIncludingDeleted(): List<Category>
+
+    /** Every category's name, in the exact spelling [CategoryAgent]'s prompt must offer the model and validate its answer against - D14's "fixed list" enforced at the boundary of an LLM call. `deleted = 0` added ledger-config-supabase ticket, same reasoning as [getAll]. */
+    @Query("SELECT name FROM categories WHERE deleted = 0 ORDER BY name ASC")
     suspend fun allNames(): List<String>
 
     /**
@@ -28,8 +38,10 @@ interface CategoryDao {
      * cannot enforce, because SQLite's default text comparison is case-sensitive/byte-wise. `COLLATE
      * NOCASE` is an ASCII-only fold (Room/SQLite ship no ICU collation on-device), a deliberately
      * accepted limit - good enough for the plain-English category names this table has ever held.
+     * `deleted = 0` added ledger-config-supabase ticket - a tombstoned category's name is free to
+     * reuse.
      */
-    @Query("SELECT EXISTS(SELECT 1 FROM categories WHERE name = :name COLLATE NOCASE)")
+    @Query("SELECT EXISTS(SELECT 1 FROM categories WHERE name = :name COLLATE NOCASE AND deleted = 0)")
     suspend fun existsByNameIgnoreCase(name: String): Boolean
 
     /**
@@ -43,4 +55,8 @@ interface CategoryDao {
      */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(category: Category)
+
+    /** Whole-row update - [com.kevin.legion.backend.LedgerConfigSync.pull]'s merge write. */
+    @Update
+    suspend fun update(category: Category)
 }
