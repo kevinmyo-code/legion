@@ -102,6 +102,26 @@ object MidnightEvents {
         Log.w(TAG, "app_start_failed stage=$stage ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /**
+     * A foreground [com.kevin.legion.backend.EventsSync.maybeAutoPull] pass completed - the only
+     * evidence that will ever exist on a real device that the automatic events pull ran and what
+     * it did, since it has no UI of its own (it is not another Settings button; see that object's
+     * own class doc for why).
+     */
+    fun eventsAutoPullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int, unrecognizedKinds: List<String>) = safe {
+        Log.d(
+            TAG,
+            "events_auto_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
+                "tombstoned=$tombstoned unrecognizedKinds=$unrecognizedKinds",
+        )
+    }
+
+    /** [com.kevin.legion.backend.EventsSync.maybeAutoPull] failed - degraded to this log line
+     * rather than a crash or a dialog, per that function's own doc comment. */
+    fun eventsAutoPullFailed(e: Throwable) = safe {
+        Log.w(TAG, "events_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A voice tool was dispatched. Useful for tracing what tool ran before a crash. */
     fun toolDispatched(toolName: String) = safe { Log.d(TAG, "tool_dispatched: $toolName") }
 
