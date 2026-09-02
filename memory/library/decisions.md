@@ -5082,3 +5082,17 @@ Verified: `compileDebugKotlin -Pnokey` and `testDebugUnitTest` green, 2870 tests
 33 from the pre-existing 2897 baseline for the deleted `EventsReconcileTest`/`BackendMigrationResolverTest`
 events-report tests, up 6 for the new rename/delete/enqueue/unconfigured coverage in
 `EventsAppointmentWriterTest`).
+
+**2026-09-02: `obd_samples`'s two sync channels resolved - Supabase wins, `SyncEngine`'s Drive-JSON
+registry entry retired.** Found during the live-sync survey (`.scratch/live-sync/map.md`'s "Known,
+and deliberately not fixed here" section): `obd_samples` was registered in BOTH the legacy
+Drive-JSON `sync/SyncEngine` registry AND `backend/ObdSampleReconcile.kt`'s Supabase batch upload,
+and neither file referenced the other - nobody had ever ruled on which one wins. Kevin's ruling:
+Supabase wins. CLAUDE.md's backend-erp pivot already makes Supabase the system of record, and
+`SyncEngine` has never once executed on a real device (`memory/library/standing-caveats-2026-08.md`)
+- this was an unfinished cutover left sitting next to a live redundancy, not two genuine channels
+actually racing each other. `SyncEngine.REGISTRY`'s `obd_samples` `Spec` entry is removed, with a
+dated comment recording the old entry's exact shape, matching the pattern every other retirement in
+that file already uses. The pre-loop `applyReassignments(db)` re-key call is UNCHANGED - it operates
+on the local `obd_samples` table regardless of which channel populates it. No other registry entry
+touched; no Room migration - this is a sync-registry change, not a schema one.

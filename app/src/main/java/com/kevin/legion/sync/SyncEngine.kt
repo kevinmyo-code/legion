@@ -206,8 +206,22 @@ object SyncEngine {
         // along with the registry entry. Do not re-add "drive_reassignments" here to "restore" a
         // Drive-JSON channel - the live one now is Supabase, not this registry.
         //
-        // High-volume append-only, sharded by month, natural composite identity.
-        Spec("obd_samples", listOf("vehicleId", "pid", "timestamp"), Mode.UNION, naturalPk = false, shardTs = "timestamp"),
+        // "obd_samples" RETIRED here 2026-09-02 (live-sync map, ticket "obd_samples is registered
+        // in two sync channels at once", Kevin's ruling recorded in memory/library/decisions.md's
+        // 2026-09-02 entry) - it was ALSO registered in `backend/ObdSampleReconcile.kt`'s Supabase
+        // batch upload, and neither file referenced the other; nobody had ever decided which wins.
+        // Supabase wins: CLAUDE.md's backend-erp pivot makes it the system of record, and this
+        // registry has never once executed on a real device (memory/library/standing-caveats-
+        // 2026-08.md), so this was an unfinished cutover sitting next to a live redundancy, not two
+        // genuine channels in a real race. The old Spec here was:
+        // `Spec("obd_samples", listOf("vehicleId", "pid", "timestamp"), Mode.UNION, naturalPk =
+        // false, shardTs = "timestamp")` - high-volume append-only, sharded by month, natural
+        // composite identity. Do not re-add it to "restore" a Drive-JSON channel - the live one is
+        // Supabase, via `ObdSampleReconcile`. The pre-loop `applyReassignments(db)` call below
+        // (still gated on "drive_reassignments"'s own comment above, not on this entry) is
+        // UNCHANGED - it re-keys the local `obd_samples` table regardless of which channel
+        // populates it, and that local table itself is untouched by this retirement.
+        //
         // music_plays was registered here until 2026-08-03. The table was dropped in
         // the v1 port with the rest of the music-taste ledger (CLAUDE.md sec 5), so
         // every sync pass threw `no such table: music_plays` from monthsToSync and
@@ -588,6 +602,11 @@ object SyncEngine {
             // what gets uploaded. Re-keying after syncFile returned would fix this
             // device and re-upload the OLD rows anyway, so the correction would
             // resurrect on every pass, forever, on every device.
+            // UNREACHABLE since obd_samples's own 2026-09-02 registry retirement above (spec.table
+            // can no longer be "obd_samples" - REGISTRY has no such entry to iterate) - left in
+            // place rather than deleted, matching this file's own "retire the entry, keep the
+            // history visible" pattern; the pre-loop applyReassignments(db) call still runs every
+            // pass regardless, per that entry's own comment.
             if (spec.table == "obd_samples") applyReassignments(db)
             // Re-read local (post-merge) and upload it as the converged snapshot.
             val localAfter = queryRows(db, selectSql)
