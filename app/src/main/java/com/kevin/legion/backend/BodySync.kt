@@ -15,7 +15,6 @@ import com.kevin.legion.plan.TrustTier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -614,21 +613,22 @@ object BodySync {
     @Volatile private var lastAutoPullAt = 0L
 
     private const val AUTO_PULL_MIN_INTERVAL_MS = 5 * 60 * 1000L
+    /** Default retry gap for [resolveUserIdForAutoPull] below - kept here so existing callers and
+     *  tests naming this constant are undisturbed. See [SupabaseAuth.resolveSignedInUserId]'s own
+     *  doc comment for the mechanism this closes over. */
     private const val AUTO_PULL_RETRY_DELAY_MS = 1_000L
 
-    /** Same bounded-retry shape as [EventsSync.resolveUserIdForAutoPull] - `internal` so a test can
-     * drive it directly. */
+    /**
+     * **Thin delegation (2026-09-02).** This used to be its own copy of
+     * [EventsSync.resolveUserIdForAutoPull]'s bounded-retry logic - the copy-by-hand that let the
+     * cold-start race resurface in six OTHER files that never got either version. The one retry now
+     * lives in [SupabaseAuth.resolveSignedInUserId]; `internal` here only so a test can drive it
+     * directly against a fake gateway without a real [SupabaseClientProvider]-backed client.
+     */
     internal suspend fun resolveUserIdForAutoPull(
         auth: SupabaseAuth,
         retryDelayMs: Long = AUTO_PULL_RETRY_DELAY_MS,
-    ): String? {
-        var readiness = auth.awaitCurrentUserId()
-        if (readiness is UserIdReadiness.StillRestoring) {
-            delay(retryDelayMs)
-            readiness = auth.awaitCurrentUserId()
-        }
-        return (readiness as? UserIdReadiness.Settled)?.userId
-    }
+    ): String? = auth.resolveSignedInUserId(retryDelayMs)
 
     /**
      * `MainActivity.onResume`'s hook, called alongside [EventsSync.maybeAutoPull] - see

@@ -7,6 +7,7 @@ import com.kevin.legion.plan.TrustTier
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -210,5 +211,54 @@ class BodyBackfillTest {
         } finally {
             BodyWriteThrough.backendOverride = null
         }
+    }
+
+    // --- BodyBackfill.runIfSignedIn - the converted cold-start guard (2026-09-02) --------------
+
+    /** Models a restore still in flight on the first bounded wait, settled by the retry - the
+     *  same shape [EventsSyncTest]'s own `RetryOnceGateway` uses to exercise
+     *  [SupabaseAuth.resolveSignedInUserId], driven here through [BodyBackfill.runIfSignedIn]
+     *  specifically so this converted call site (not just the shared resolver) is covered. */
+    private class RetryOnceGateway(private val userIdOnceReady: String) : SupabaseAuthGateway {
+        var awaitSessionReadyCalls = 0
+        override suspend fun signInWithPassword(email: String, password: String) = Unit
+        override suspend fun signOut() = Unit
+        override fun currentUserId(): String? = if (awaitSessionReadyCalls >= 2) userIdOnceReady else null
+        override suspend fun awaitSessionReady(timeoutMillis: Long): Boolean {
+            awaitSessionReadyCalls++
+            return awaitSessionReadyCalls >= 2
+        }
+        override suspend fun householdRosterSize(): Int = 0
+    }
+
+    @Test
+    fun `runIfSignedIn retries once through a still-restoring session, then backfills`() = runBlocking {
+        insertLocalBodyweight("guid-cold-start")
+        val gateway = RetryOnceGateway(userIdOnceReady = "user-1")
+        val auth = SupabaseAuth(context, gatewayProvider = { gateway })
+
+        val report = BodyBackfill.runIfSignedIn(context, auth, backend)
+
+        assertEquals(1, report?.pushed)
+        assertEquals(listOf("guid-cold-start"), backend.bodyweightUpsertCalls)
+        assertEquals(2, gateway.awaitSessionReadyCalls)
+    }
+
+    @Test
+    fun `runIfSignedIn reports no run for a genuinely settled sign-out, never a zero-progress report`() = runBlocking {
+        insertLocalBodyweight("guid-should-not-push")
+        val gateway = object : SupabaseAuthGateway {
+            override suspend fun signInWithPassword(email: String, password: String) = Unit
+            override suspend fun signOut() = Unit
+            override fun currentUserId(): String? = null
+            override suspend fun awaitSessionReady(timeoutMillis: Long): Boolean = true
+            override suspend fun householdRosterSize(): Int = 0
+        }
+        val auth = SupabaseAuth(context, gatewayProvider = { gateway })
+
+        val report = BodyBackfill.runIfSignedIn(context, auth, backend)
+
+        assertNull(report)
+        assertTrue(backend.bodyweightUpsertCalls.isEmpty())
     }
 }

@@ -568,11 +568,15 @@ object BodyOutboxDrain {
     }
 
     /** `MainActivity.onResume`'s hook - see this object's own class doc for the ordering that
-     * matters. No-ops silently when Supabase is not configured or nobody is signed in. */
+     * matters. No-ops silently when Supabase is not configured or nobody is signed in - via
+     * [SupabaseAuth.resolveSignedInUserId] (cold-start fix, 2026-09-02: a raw `currentUserId()`
+     * guard here used to race the async session restore the same way [EventsSync.maybeAutoPull]'s
+     * own doc comment traces; this function is already `suspend` so it can just await the
+     * shared resolver instead). */
     suspend fun maybeDrain(context: Context) {
         val app = context.applicationContext
         val client = SupabaseClientProvider.get(app) ?: return
-        if (SupabaseAuth(app).currentUserId() == null) return
+        if (SupabaseAuth(app).resolveSignedInUserId() == null) return
         try {
             val report = drain(app, SupabaseBodyBackend(client))
             MidnightEvents.bodyOutboxDrainSucceeded(report.succeeded, report.stillPending, report.poisoned)

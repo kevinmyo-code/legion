@@ -65,12 +65,19 @@ object BodyRealtime {
         )
     }
 
+    // `subscribe` is a plain `fun` (called from a lifecycle callback that is not itself suspend),
+    // so the cold-start-sensitive auth check cannot happen right here - it now happens as the
+    // first thing inside `scope.launch` below, via SupabaseAuth.resolveSignedInUserId, which IS
+    // suspend. Cold-start fix, 2026-09-02: the guard used to be a raw `currentUserId() == null`
+    // read taken synchronously before the launch, the same race EventsSync.maybeAutoPull's own
+    // doc comment traces, never carried over to this file. `channels.isNotEmpty()` stays a
+    // synchronous pre-launch check (unchanged) since it is reading in-memory state, not auth.
     private fun subscribe(context: Context) {
         val client = SupabaseClientProvider.get(context) ?: return
-        if (SupabaseAuth(context).currentUserId() == null) return
         if (channels.isNotEmpty()) return
 
         scope.launch {
+            if (SupabaseAuth(context).resolveSignedInUserId() == null) return@launch
             try {
                 val coalescer = PullCoalescer(scope) {
                     try {

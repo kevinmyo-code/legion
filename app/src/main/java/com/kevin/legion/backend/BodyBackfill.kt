@@ -283,19 +283,41 @@ object BodyBackfill {
      * [BodyOutboxDrain.maybeDrain]'s own class doc states for the drain immediately before it.
      * No-ops silently when Supabase is not configured or nobody is signed in, matching
      * [BodyOutboxDrain.maybeDrain]'s own guard shape.
+     *
+     * **Cold-start fix, 2026-09-02.** The guard here used to be a raw `currentUserId() == null`
+     * read - the same race [EventsSync.maybeAutoPull]'s own doc comment traces, just never carried
+     * over to this file. It now awaits [SupabaseAuth.resolveSignedInUserId] instead, which is
+     * `suspend` and can genuinely wait out the restore since this whole function already runs
+     * inline (see this doc comment's own paragraph on why that matters). The throttle slot is
+     * reserved BEFORE this await, same reservation-before-await shape
+     * [EventsSync.maybeAutoPull]'s doc comment states the reasoning for - otherwise a second
+     * `onResume` firing while this one is still awaiting the restore could schedule a second run.
      */
     suspend fun maybeAutoRun(context: Context) {
         val now = System.currentTimeMillis()
         if (now - lastAutoRunAt < AUTO_RUN_MIN_INTERVAL_MS) return
         val app = context.applicationContext
         val client = SupabaseClientProvider.get(app) ?: return
-        if (SupabaseAuth(app).currentUserId() == null) return
         lastAutoRunAt = now
         try {
-            val report = run(app, SupabaseBodyBackend(client))
+            val report = runIfSignedIn(app, SupabaseAuth(app), SupabaseBodyBackend(client)) ?: return
             MidnightEvents.bodyBackfillSucceeded(report.pushed, report.alreadyPresent, report.skippedLocalOnlyDeleted, report.failed)
         } catch (e: Exception) {
             MidnightEvents.bodyBackfillFailed(e)
         }
+    }
+
+    /**
+     * [maybeAutoRun]'s guard-then-[run], factored out so `BodyBackfillTest` can drive the
+     * "still restoring, then succeeds" retry directly against a fake [SupabaseAuthGateway] (via
+     * [auth]'s own test seam) and a fake [BodyBackend] - without a real
+     * [SupabaseClientProvider]-backed client, which nothing in this test environment has (same
+     * posture [EventsSync.resolveUserIdForAutoPull]'s own doc comment states for why it is
+     * `internal` rather than `private`). Returns null when nobody is signed in - [maybeAutoRun]
+     * treats that exactly like its own no-op return, never as a zero-progress [Report].
+     */
+    internal suspend fun runIfSignedIn(context: Context, auth: SupabaseAuth, backend: BodyBackend): Report? {
+        if (auth.resolveSignedInUserId() == null) return null
+        return run(context, backend)
     }
 }

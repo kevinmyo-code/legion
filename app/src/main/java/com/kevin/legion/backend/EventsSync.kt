@@ -7,7 +7,6 @@ import com.kevin.legion.data.local.Event
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -370,37 +369,29 @@ object EventsSync {
      * fires on essentially every foreground return, and a pull is a real network round trip. */
     private const val AUTO_PULL_MIN_INTERVAL_MS = 5 * 60 * 1000L
 
-    /** Gap before the one retry in [resolveUserIdForAutoPull] - long enough that a restore stuck
-     *  on cold I/O has had a moment to make progress, short enough that the whole cold-start
-     *  determination (two [SupabaseAuthGateway.awaitSessionReady] bounds plus this gap) stays a
-     *  few seconds, not a hang. This runs on [autoPullScope] (background, fire-and-forget), so
-     *  taking a few extra seconds here costs nothing the way it would on a foreground call. */
+    /** Gap before the one retry [SupabaseAuth.resolveSignedInUserId] takes - kept here as the
+     *  default for [resolveUserIdForAutoPull] below so existing callers and tests naming this
+     *  constant are undisturbed. See [SupabaseAuth.resolveSignedInUserId]'s own doc comment for
+     *  the mechanism and the reasoning behind the value. */
     private const val AUTO_PULL_RETRY_DELAY_MS = 1_000L
 
     /**
-     * Resolves the signed-in user id for one [maybeAutoPull] attempt, retrying [awaitCurrentUserId]
-     * exactly once after [retryDelayMs] if the first call reports [UserIdReadiness.StillRestoring] -
-     * see that function's own doc comment for the mechanism, and [maybeAutoPull]'s for why a single
-     * retry replaced the old accept-and-wait-for-next-resume posture. Returns null for a genuine
-     * sign-out OR a restore that is still going after both bounded waits - either way, this run
-     * does not pull; a genuinely stuck restore gets another crack at it on the next resume, same as
-     * before this fix, just no longer the ONLY chance a cold start gets.
+     * **Thin delegation, not an implementation (2026-09-02).** This used to hold its own copy of
+     * the bounded-retry logic; that copy was hand-duplicated into [BodySync.resolveUserIdForAutoPull]
+     * and then never propagated to the six OTHER callers still using a raw [SupabaseAuth.currentUserId]
+     * guard, which is exactly the bug this pass fixed. The one retry now lives in
+     * [SupabaseAuth.resolveSignedInUserId] - see that method's own doc comment for the mechanism,
+     * and [maybeAutoPull]'s doc comment for why a single retry replaced the old
+     * accept-and-wait-for-next-resume posture.
      *
-     * `internal`, not `private`, so `EventsSyncAutoPullTest` can drive the retry directly against a
+     * `internal`, not `private`, so `EventsSyncTest` can drive the retry directly against a
      * fake [SupabaseAuthGateway] (via [SupabaseAuth]'s own test seam) without needing a real
      * [SupabaseClientProvider]-backed client, which nothing in this test environment has.
      */
     internal suspend fun resolveUserIdForAutoPull(
         auth: SupabaseAuth,
         retryDelayMs: Long = AUTO_PULL_RETRY_DELAY_MS,
-    ): String? {
-        var readiness = auth.awaitCurrentUserId()
-        if (readiness is UserIdReadiness.StillRestoring) {
-            delay(retryDelayMs)
-            readiness = auth.awaitCurrentUserId()
-        }
-        return (readiness as? UserIdReadiness.Settled)?.userId
-    }
+    ): String? = auth.resolveSignedInUserId(retryDelayMs)
 
     /**
      * `MainActivity.onResume`'s hook. **Deliberately separate from

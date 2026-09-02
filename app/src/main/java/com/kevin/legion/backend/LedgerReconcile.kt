@@ -244,6 +244,12 @@ object LedgerReconcile {
      * **Still only ever uploads `UNRECONCILED` rows** - this function changes WHEN [run] executes,
      * never WHAT it uploads. See this object's own class doc for why `DETERMINISTIC`/
      * `LLM_RECONCILED` rows stay blocked regardless of how often this runs.
+     *
+     * **Cold-start fix, 2026-09-02.** The guard inside [autoRunScope]'s coroutine used to be a raw
+     * `currentUserId() == null` read - the same race [EventsSync.maybeAutoPull]'s own doc comment
+     * traces, never carried over here. It now awaits [SupabaseAuth.resolveSignedInUserId] instead,
+     * which is fine to do from inside the launched coroutine since [lastAutoRunAt] is already
+     * reserved synchronously below, before the launch.
      */
     fun maybeAutoRun(context: Context) {
         val now = System.currentTimeMillis()
@@ -253,7 +259,7 @@ object LedgerReconcile {
         lastAutoRunAt = now
         autoRunScope.launch {
             try {
-                if (SupabaseAuth(app).currentUserId() == null) return@launch
+                if (SupabaseAuth(app).resolveSignedInUserId() == null) return@launch
                 val report = run(app, SupabaseLedgerBackend(client)).getOrThrow()
                 MidnightEvents.ledgerAutoReconcileSucceeded(report.uploaded, report.skipped.size, report.serverCountAfter)
             } catch (e: Exception) {

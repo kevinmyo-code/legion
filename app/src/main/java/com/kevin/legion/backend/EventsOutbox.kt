@@ -588,11 +588,15 @@ object EventsOutboxDrain {
      * awaits this before calling [EventsSync.maybeAutoPull], which is the entire point (see this
      * object's own class doc for why the ordering matters); a fire-and-forget drain racing its own
      * pull would reintroduce the exact hazard this function exists to close.
+     *
+     * **Cold-start fix, 2026-09-02.** The guard used to be a raw `currentUserId() == null` read -
+     * the same race [EventsSync.maybeAutoPull]'s own doc comment traces, never carried over here.
+     * This function is already `suspend`, so it awaits [SupabaseAuth.resolveSignedInUserId] instead.
      */
     suspend fun maybeDrain(context: Context) {
         val app = context.applicationContext
         val client = SupabaseClientProvider.get(app) ?: return
-        if (SupabaseAuth(app).currentUserId() == null) return
+        if (SupabaseAuth(app).resolveSignedInUserId() == null) return
         try {
             val report = drain(app, SupabaseEventsBackend(client))
             MidnightEvents.eventsOutboxDrainSucceeded(report.succeeded, report.stillPending, report.poisoned)

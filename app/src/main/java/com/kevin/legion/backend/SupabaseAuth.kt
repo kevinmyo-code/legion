@@ -8,6 +8,7 @@ import io.github.jan.supabase.exceptions.RestException
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import java.io.IOException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 
@@ -167,6 +168,14 @@ interface SupabaseAuthGateway {
  * session restore, short enough that a real user notices a wait rather than a freeze. */
 private const val SUPABASE_SESSION_READY_TIMEOUT_MS = 3_000L
 
+/** Gap before the one retry in [SupabaseAuth.resolveSignedInUserId] - long enough that a restore
+ * stuck on cold I/O has had a moment to make progress, short enough that the whole cold-start
+ * determination (two [SupabaseAuthGateway.awaitSessionReady] bounds plus this gap) stays a few
+ * seconds, not a hang. Every caller of [SupabaseAuth.resolveSignedInUserId] runs this off the UI
+ * thread (a background auto-trigger scope, or a lifecycle callback's own launched coroutine), so
+ * taking a few extra seconds here costs nothing the way it would on a foreground call. */
+private const val AUTO_PULL_RETRY_DELAY_MS = 1_000L
+
 /**
  * Wraps a real [SupabaseClient]'s Auth/Postgrest plugins as a [SupabaseAuthGateway], translating
  * supabase-kt/Ktor's own exception types into this package's [AuthRejectedException]/
@@ -307,6 +316,16 @@ class SupabaseAuth(
      * it now calls [awaitCurrentUserId] below instead of this method. This method itself is
      * unchanged and still racy; it remains for a caller that already awaits its own session state
      * by some other means, or that can genuinely tolerate an occasional false negative.
+     *
+     * **Same day, same bug, six more places (traced 2026-09-02): the fix above was copied by hand
+     * into [BodySync], and every OTHER caller of this method - `BodyBackfill`, `BodyOutbox`,
+     * `BodyRealtime`, `EventsOutbox`, `EventsRealtime`, `LedgerReconcile`,
+     * `MaintenanceScheduleReconcile` - kept the raw `currentUserId() == null` guard, because they
+     * were written from the pre-fix template rather than from this one. All seven now go through
+     * [resolveSignedInUserId] below, the single shared implementation of the retry
+     * [EventsSync.resolveUserIdForAutoPull] first introduced.** This method is still racy and still
+     * has no live direct caller as of this pass; a NEW caller with a cold-start-sensitive question
+     * should reach for [resolveSignedInUserId], not this method.
      */
     fun currentUserId(): String? = gatewayProvider(context)?.currentUserId()
 
@@ -331,6 +350,33 @@ class SupabaseAuth(
         val gateway = gatewayProvider(context) ?: return UserIdReadiness.Settled(null)
         if (!gateway.awaitSessionReady(timeoutMillis)) return UserIdReadiness.StillRestoring
         return UserIdReadiness.Settled(gateway.currentUserId())
+    }
+
+    /**
+     * **The one place this codebase resolves "is anyone signed in, and who" for a cold-start
+     * caller - built 2026-09-02 after the fix that first closed this race
+     * ([EventsSync.resolveUserIdForAutoPull]) was copied by hand into [BodySync] and left as a raw
+     * [currentUserId] guard everywhere else (seven call sites, one bug: `BodyBackfill`,
+     * `BodyOutbox`, `BodyRealtime`, `EventsOutbox`, `EventsRealtime`, `LedgerReconcile`,
+     * `MaintenanceScheduleReconcile`).** [EventsSync.resolveUserIdForAutoPull] and
+     * [BodySync.resolveUserIdForAutoPull] are now thin delegations to this method rather than
+     * independent copies, so there is exactly one implementation of the retry left to keep correct.
+     *
+     * Calls [awaitCurrentUserId] and, if it reports [UserIdReadiness.StillRestoring], waits
+     * [retryDelayMs] and calls it exactly once more - never loops. Returns null for a genuine,
+     * settled sign-out OR a restore still going after both bounded waits; either way this run does
+     * not proceed, and (for every existing auto-trigger caller) a later foreground return gets
+     * another chance at it. **This is the call a NEW cold-start-sensitive auth check should reach
+     * for** - prefer it over the raw [currentUserId] the way [isHouseholdMember] already prefers
+     * awaiting the restore over a bare read.
+     */
+    suspend fun resolveSignedInUserId(retryDelayMs: Long = AUTO_PULL_RETRY_DELAY_MS): String? {
+        var readiness = awaitCurrentUserId()
+        if (readiness is UserIdReadiness.StillRestoring) {
+            delay(retryDelayMs)
+            readiness = awaitCurrentUserId()
+        }
+        return (readiness as? UserIdReadiness.Settled)?.userId
     }
 
     /** See [MembershipResult] for what each branch means. */
