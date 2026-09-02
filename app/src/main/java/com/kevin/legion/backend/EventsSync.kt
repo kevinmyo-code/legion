@@ -7,6 +7,7 @@ import com.kevin.legion.data.local.Event
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -102,15 +103,25 @@ object EventsSync {
 
     /**
      * @param inserted server rows with no local match at all - the case that delivers the
-     *   120 previously-invisible coursework rows.
+     *   120 previously-invisible coursework rows. **Never includes a tombstoned row with no local
+     *   match** - see [skippedTombstoneNoLocalMatch] for why that case is its own bucket, not this
+     *   one and not [tombstoned].
      * @param updated local rows overwritten because the server's own `updated_at` was at least as
      *   new as the local row's (rule 4's LAST-WRITE-WINS, server wins on an exact tie - see
      *   [pull]'s own inline comment for why) AND the resulting row actually differs from what was
      *   already there (an unchanged tie writes nothing and is not counted here).
      * @param skippedLocalNewer local rows strictly newer than the server's version, left
      *   completely alone.
-     * @param tombstoned server rows reporting `deleted_at` non-null, soft-deleted locally for the
-     *   first time this run (an already-tombstoned local row is left alone and not re-counted).
+     * @param tombstoned server rows reporting `deleted_at` non-null **that matched an existing
+     *   local row**, soft-deleted locally for the first time this run (an already-tombstoned local
+     *   row is left alone and not re-counted).
+     * @param skippedTombstoneNoLocalMatch server rows reporting `deleted_at` non-null with NO
+     *   local match at all - traced 2026-09-02 on the A25: a routine pull inserted 88 such rows as
+     *   fresh, locally-tombstoned dead weight (`deleted = 1` on a row this phone had never held),
+     *   a bug that would keep growing on every server-side deletion from here. A tombstone exists
+     *   to mark something the local database HAS; one with nothing to mark is inserted nowhere and
+     *   counted here, never in [inserted] (it was never really an insert) and never in [tombstoned]
+     *   (nothing was actually deleted here - there was nothing to delete).
      * @param unrecognizedKinds every distinct [RemoteEvent.kind] value seen this run that is not
      *   one of [EventKind]'s three known constants, sorted - reported, never silently dropped; the
      *   rows themselves are still merged normally.
@@ -120,6 +131,7 @@ object EventsSync {
         val updated: Int,
         val skippedLocalNewer: Int,
         val tombstoned: Int,
+        val skippedTombstoneNoLocalMatch: Int,
         val unrecognizedKinds: List<String>,
     )
 
@@ -169,6 +181,7 @@ object EventsSync {
         var updated = 0
         var skippedLocalNewer = 0
         var tombstoned = 0
+        var skippedTombstoneNoLocalMatch = 0
         val unrecognizedKinds = sortedSetOf<String>()
 
         for (remote in serverEvents) {
@@ -178,6 +191,16 @@ object EventsSync {
 
             // See this object's own class doc for why guid/originGuid is checked before serverId.
             val local = remote.originGuid?.let { localByGuid[it] } ?: localByServerId[remote.serverId]
+
+            if (local == null && remote.deleted) {
+                // Traced 2026-09-02 (the 88-row bug, see PullReport.skippedTombstoneNoLocalMatch's
+                // own doc comment): a tombstone with nothing local to mark is not an insert and not
+                // a tombstone-applied - it is inserted nowhere. Checked BEFORE the plain
+                // "no local match" branch below so this case never falls into it and gets written
+                // as a brand-new, already-dead local row.
+                skippedTombstoneNoLocalMatch++
+                continue
+            }
 
             if (local == null) {
                 // Rule 3: no local match at all -> INSERT. id = 0 lets Room autoincrement a fresh
@@ -242,6 +265,7 @@ object EventsSync {
             updated = updated,
             skippedLocalNewer = skippedLocalNewer,
             tombstoned = tombstoned,
+            skippedTombstoneNoLocalMatch = skippedTombstoneNoLocalMatch,
             unrecognizedKinds = unrecognizedKinds.toList(),
         )
     }
@@ -346,6 +370,38 @@ object EventsSync {
      * fires on essentially every foreground return, and a pull is a real network round trip. */
     private const val AUTO_PULL_MIN_INTERVAL_MS = 5 * 60 * 1000L
 
+    /** Gap before the one retry in [resolveUserIdForAutoPull] - long enough that a restore stuck
+     *  on cold I/O has had a moment to make progress, short enough that the whole cold-start
+     *  determination (two [SupabaseAuthGateway.awaitSessionReady] bounds plus this gap) stays a
+     *  few seconds, not a hang. This runs on [autoPullScope] (background, fire-and-forget), so
+     *  taking a few extra seconds here costs nothing the way it would on a foreground call. */
+    private const val AUTO_PULL_RETRY_DELAY_MS = 1_000L
+
+    /**
+     * Resolves the signed-in user id for one [maybeAutoPull] attempt, retrying [awaitCurrentUserId]
+     * exactly once after [retryDelayMs] if the first call reports [UserIdReadiness.StillRestoring] -
+     * see that function's own doc comment for the mechanism, and [maybeAutoPull]'s for why a single
+     * retry replaced the old accept-and-wait-for-next-resume posture. Returns null for a genuine
+     * sign-out OR a restore that is still going after both bounded waits - either way, this run
+     * does not pull; a genuinely stuck restore gets another crack at it on the next resume, same as
+     * before this fix, just no longer the ONLY chance a cold start gets.
+     *
+     * `internal`, not `private`, so `EventsSyncAutoPullTest` can drive the retry directly against a
+     * fake [SupabaseAuthGateway] (via [SupabaseAuth]'s own test seam) without needing a real
+     * [SupabaseClientProvider]-backed client, which nothing in this test environment has.
+     */
+    internal suspend fun resolveUserIdForAutoPull(
+        auth: SupabaseAuth,
+        retryDelayMs: Long = AUTO_PULL_RETRY_DELAY_MS,
+    ): String? {
+        var readiness = auth.awaitCurrentUserId()
+        if (readiness is UserIdReadiness.StillRestoring) {
+            delay(retryDelayMs)
+            readiness = auth.awaitCurrentUserId()
+        }
+        return (readiness as? UserIdReadiness.Settled)?.userId
+    }
+
     /**
      * `MainActivity.onResume`'s hook. **Deliberately separate from
      * [com.kevin.legion.sync.SyncEngine.maybeAutoSync]** - that engine is a distinct Drive-JSON
@@ -354,21 +410,30 @@ object EventsSync {
      * logged breadcrumb rather than a dialog or a crash, when Supabase is not configured yet or
      * nobody is signed in - both ordinary states on a fresh or half-set-up install. Fire-and-forget
      * on [autoPullScope]; this function itself never suspends and never touches the UI thread.
+     *
+     * **The cold-start guard used to read [SupabaseAuth.currentUserId] synchronously and just
+     * return on null, on the reasoning that a false negative only costs the NEXT resume - see
+     * that method's own doc comment, corrected 2026-09-02.** Observed on the A25 the same day:
+     * force-stop, launch, wait 16 seconds - no pull, nothing in logcat at all; background and
+     * re-foreground the SAME app and `events_auto_pull inserted=89` fires immediately. The
+     * reasoning was right about the mechanism and wrong about the cost - for a phone someone
+     * checks once and pockets, "wait for the next resume" often means "never", not "slightly
+     * later". The throttle slot is still reserved synchronously, right here, before any awaiting
+     * happens - that is what keeps a second `onResume` firing mid-restore (background/foreground
+     * while this coroutine is still waiting) from launching a second pull; see
+     * [resolveUserIdForAutoPull] for the bounded, single-retry wait that replaced the bare
+     * `currentUserId()` read.
      */
     fun maybeAutoPull(context: Context) {
         val now = System.currentTimeMillis()
         if (now - lastAutoPullAt < AUTO_PULL_MIN_INTERVAL_MS) return
         val app = context.applicationContext
         val client = SupabaseClientProvider.get(app) ?: return
-        // SupabaseAuth.currentUserId()'s own doc comment names a real cold-start race: it can read
-        // null for a signed-in account while the session restore is still in flight. Accepted here
-        // rather than awaited - a false negative just means this pull runs on the NEXT resume
-        // instead, never a crash or a hang, and awaiting would turn a fire-and-forget hook into one
-        // that blocks its own launch on a session restore.
-        if (SupabaseAuth(app).currentUserId() == null) return
         lastAutoPullAt = now
         autoPullScope.launch {
             try {
+                val userId = resolveUserIdForAutoPull(SupabaseAuth(app))
+                if (userId == null) return@launch
                 val report = pull(app, SupabaseEventsBackend(client))
                 MidnightEvents.eventsAutoPullSucceeded(
                     report.inserted,
@@ -376,6 +441,7 @@ object EventsSync {
                     report.skippedLocalNewer,
                     report.tombstoned,
                     report.unrecognizedKinds,
+                    report.skippedTombstoneNoLocalMatch,
                 )
             } catch (e: Exception) {
                 MidnightEvents.eventsAutoPullFailed(e)

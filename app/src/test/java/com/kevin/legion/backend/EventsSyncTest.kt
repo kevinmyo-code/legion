@@ -216,6 +216,26 @@ class EventsSyncTest {
     }
 
     @Test
+    fun `a tombstoned server row with no local match is skipped, never inserted`() = runBlocking {
+        // The 88-row bug traced 2026-09-02 on the A25: a routine pull was inserting server
+        // tombstones for rows this phone had never held, as fresh dead weight (deleted = 1 on a
+        // row nothing local ever pointed at). No local row is seeded here at all - this is the
+        // no-local-match case, distinct from the existing tombstone test below which DOES seed one.
+        val backend = FakeEventsBackend()
+        backend.rows["srv-ghost"] = remoteEvent(
+            "srv-ghost", "Never held on this phone", updatedAtMs = 1_000L, originGuid = "guid-ghost", deleted = true,
+        )
+
+        val report = EventsSync.pull(context, backend)
+
+        assertEquals(0, report.inserted)
+        assertEquals(0, report.tombstoned)
+        assertEquals(1, report.skippedTombstoneNoLocalMatch)
+        val all = CarDatabase.getDatabase(context).eventDao().getAll()
+        assertEquals(0, all.size)
+    }
+
+    @Test
     fun `an unrecognized kind is carried through, never silently dropped`() = runBlocking {
         val backend = FakeEventsBackend()
         backend.rows["srv-4"] = remoteEvent("srv-4", "Some future row shape", updatedAtMs = 1_000L, kind = "car_task", originGuid = "guid-5")
@@ -227,6 +247,82 @@ class EventsSyncTest {
         val all = CarDatabase.getDatabase(context).eventDao().getAll()
         assertEquals(1, all.size)
         assertEquals("car_task", all.single().kind)
+    }
+
+    /**
+     * [EventsSync.resolveUserIdForAutoPull] - the cold-start fix traced 2026-09-02 (see
+     * [EventsSync.maybeAutoPull]'s own doc comment for what was observed on the A25). Exercised
+     * against a fake [SupabaseAuthGateway] via [SupabaseAuth]'s own test seam, same posture as
+     * [SupabaseAuthTest] - never a real [SupabaseClientProvider]-backed client.
+     */
+    private class RetryOnceGateway(private val userIdOnceReady: String) : SupabaseAuthGateway {
+        var awaitSessionReadyCalls = 0
+        override suspend fun signInWithPassword(email: String, password: String) = Unit
+        override suspend fun signOut() = Unit
+        override fun currentUserId(): String? = if (awaitSessionReadyCalls >= 2) userIdOnceReady else null
+        override suspend fun awaitSessionReady(timeoutMillis: Long): Boolean {
+            awaitSessionReadyCalls++
+            // Settles only on the SECOND call - models a restore that is still in flight on the
+            // first bounded wait and has finished by the retry, the exact shape of the A25 trace.
+            return awaitSessionReadyCalls >= 2
+        }
+        override suspend fun householdRosterSize(): Int = 0
+    }
+
+    @Test
+    fun `resolveUserIdForAutoPull retries once when the restore is still in flight, then succeeds`() = runBlocking {
+        val gateway = RetryOnceGateway(userIdOnceReady = "user-1")
+        val auth = SupabaseAuth(context, gatewayProvider = { gateway })
+
+        val userId = EventsSync.resolveUserIdForAutoPull(auth, retryDelayMs = 0L)
+
+        assertEquals("user-1", userId)
+        assertEquals(2, gateway.awaitSessionReadyCalls)
+    }
+
+    @Test
+    fun `resolveUserIdForAutoPull gives up after exactly one retry, never loops`() = runBlocking {
+        val gateway = object : SupabaseAuthGateway {
+            var awaitSessionReadyCalls = 0
+            override suspend fun signInWithPassword(email: String, password: String) = Unit
+            override suspend fun signOut() = Unit
+            override fun currentUserId(): String? = null
+            override suspend fun awaitSessionReady(timeoutMillis: Long): Boolean {
+                awaitSessionReadyCalls++
+                return false // never settles, within either bound
+            }
+            override suspend fun householdRosterSize(): Int = 0
+        }
+        val auth = SupabaseAuth(context, gatewayProvider = { gateway })
+
+        val userId = EventsSync.resolveUserIdForAutoPull(auth, retryDelayMs = 0L)
+
+        assertNull(userId)
+        // Exactly two calls (the first attempt plus the one retry), never a third - the bound
+        // that keeps this from becoming an unbounded retry loop on a permanently-stuck restore.
+        assertEquals(2, gateway.awaitSessionReadyCalls)
+    }
+
+    @Test
+    fun `resolveUserIdForAutoPull does not retry a genuine settled sign-out`() = runBlocking {
+        val gateway = object : SupabaseAuthGateway {
+            var awaitSessionReadyCalls = 0
+            override suspend fun signInWithPassword(email: String, password: String) = Unit
+            override suspend fun signOut() = Unit
+            override fun currentUserId(): String? = null
+            override suspend fun awaitSessionReady(timeoutMillis: Long): Boolean {
+                awaitSessionReadyCalls++
+                return true // settles immediately, to a genuine sign-out
+            }
+            override suspend fun householdRosterSize(): Int = 0
+        }
+        val auth = SupabaseAuth(context, gatewayProvider = { gateway })
+
+        val userId = EventsSync.resolveUserIdForAutoPull(auth, retryDelayMs = 0L)
+
+        assertNull(userId)
+        // A settled sign-out is a real answer, not "don't know yet" - only one call, no retry.
+        assertEquals(1, gateway.awaitSessionReadyCalls)
     }
 
     @Test

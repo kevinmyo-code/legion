@@ -78,6 +78,23 @@ sealed interface MembershipResult {
 }
 
 /**
+ * Outcome of [SupabaseAuth.awaitCurrentUserId] - the same "settled or still restoring" split
+ * [MembershipResult.Indeterminate]'s doc comment describes for [SupabaseAuth.isHouseholdMember],
+ * factored out here because [EventsSync.maybeAutoPull] needs only the user id, not a household
+ * membership check.
+ */
+sealed interface UserIdReadiness {
+    /** The restore settled (either way) within the caller's bound. [userId] is null for a
+     *  genuine sign-out, non-null for a real signed-in account - both are trustworthy answers,
+     *  unlike the same-shaped null [SupabaseAuth.currentUserId] can return mid-restore. */
+    data class Settled(val userId: String?) : UserIdReadiness
+
+    /** [SupabaseAuthGateway.awaitSessionReady] timed out with the restore still in progress - the
+     *  honest "don't know yet" that a bare null from [SupabaseAuth.currentUserId] cannot express. */
+    data object StillRestoring : UserIdReadiness
+}
+
+/**
  * Thrown by a [SupabaseAuthGateway] when the remote side rejected the request outright (bad
  * credentials, unknown account). Owned by this package rather than re-thrown as
  * [io.github.jan.supabase.exceptions.RestException] directly, so [SupabaseAuth]'s branch logic -
@@ -281,8 +298,40 @@ class SupabaseAuth(
      * in `ui/` or elsewhere calls this method directly (only [isHouseholdMember], below, calls the
      * gateway's version). If a future caller needs a reliable answer on a cold process, it should
      * go through [isHouseholdMember] (which does await) rather than this method.
+     *
+     * **That last sentence stopped being true 2026-09-02.** [EventsSync.maybeAutoPull] DID call
+     * this method directly and hit exactly the race described above - observed on the A25:
+     * force-stop, launch, wait 16 seconds, nothing in logcat, no pull at all, because the guard
+     * read null while the restore was still in flight and the whole pull was skipped rather than
+     * merely delayed. [isHouseholdMember]'s own roster check is more than that caller needs, so
+     * it now calls [awaitCurrentUserId] below instead of this method. This method itself is
+     * unchanged and still racy; it remains for a caller that already awaits its own session state
+     * by some other means, or that can genuinely tolerate an occasional false negative.
      */
     fun currentUserId(): String? = gatewayProvider(context)?.currentUserId()
+
+    /**
+     * Like [currentUserId], but waits (bounded by [timeoutMillis]) for the async session restore
+     * to settle first - see [SupabaseAuthGateway.awaitSessionReady]'s doc comment for the
+     * mechanism this closes over. Returns [UserIdReadiness.Settled] with the (possibly null, for
+     * a genuine sign-out) user id once the restore has resolved one way or the other, or
+     * [UserIdReadiness.StillRestoring] if [timeoutMillis] elapsed while it was still in progress -
+     * the same honest third state [MembershipResult.Indeterminate] carries for [isHouseholdMember],
+     * so a caller here gets to tell "signed out" apart from "don't know yet" instead of collapsing
+     * both into a null the way [currentUserId] does.
+     *
+     * Built for [EventsSync.maybeAutoPull]'s cold-start fix (traced 2026-09-02, see
+     * [currentUserId]'s own doc comment for what was observed on the phone) but not specific to
+     * it - any future caller with the same "give the restore a real chance before deciding"
+     * need should prefer this over [currentUserId].
+     */
+    suspend fun awaitCurrentUserId(
+        timeoutMillis: Long = SUPABASE_SESSION_READY_TIMEOUT_MS,
+    ): UserIdReadiness {
+        val gateway = gatewayProvider(context) ?: return UserIdReadiness.Settled(null)
+        if (!gateway.awaitSessionReady(timeoutMillis)) return UserIdReadiness.StillRestoring
+        return UserIdReadiness.Settled(gateway.currentUserId())
+    }
 
     /** See [MembershipResult] for what each branch means. */
     suspend fun isHouseholdMember(): MembershipResult {

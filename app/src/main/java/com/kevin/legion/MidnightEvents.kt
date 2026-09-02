@@ -107,12 +107,26 @@ object MidnightEvents {
      * evidence that will ever exist on a real device that the automatic events pull ran and what
      * it did, since it has no UI of its own (it is not another Settings button; see that object's
      * own class doc for why).
+     *
+     * [skippedTombstoneNoLocalMatch] defaults to 0 rather than being added as a required parameter
+     * so [com.kevin.legion.backend.EventsRealtime]'s own call to the sibling
+     * [eventsRealtimePullSucceeded] (a realtime-triggered pull, out of scope for this change) did
+     * not need touching - traced 2026-09-02, the same [PullReport][com.kevin.legion.backend.EventsSync.PullReport]
+     * field this log line now surfaces for the auto-pull path is documented on that data class.
      */
-    fun eventsAutoPullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int, unrecognizedKinds: List<String>) = safe {
+    fun eventsAutoPullSucceeded(
+        inserted: Int,
+        updated: Int,
+        skippedLocalNewer: Int,
+        tombstoned: Int,
+        unrecognizedKinds: List<String>,
+        skippedTombstoneNoLocalMatch: Int = 0,
+    ) = safe {
         Log.d(
             TAG,
             "events_auto_pull inserted=$inserted updated=$updated skippedLocalNewer=$skippedLocalNewer " +
-                "tombstoned=$tombstoned unrecognizedKinds=$unrecognizedKinds",
+                "tombstoned=$tombstoned skippedTombstoneNoLocalMatch=$skippedTombstoneNoLocalMatch " +
+                "unrecognizedKinds=$unrecognizedKinds",
         )
     }
 
