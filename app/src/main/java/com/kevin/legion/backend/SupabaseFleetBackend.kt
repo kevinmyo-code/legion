@@ -22,6 +22,7 @@ private const val CODE_CLEAR_EVENTS_TABLE = "code_clear_events"
 private const val OIL_ANALYSES_TABLE = "oil_analyses"
 private const val CHASSIS_QUIRKS_TABLE = "chassis_quirks"
 private const val VEHICLE_SPECS_TABLE = "vehicle_specs"
+private const val MAINTENANCE_SCHEDULES_TABLE = "maintenance_schedules"
 private const val BUILD_ENTRIES_TABLE = "build_entries"
 private const val DRIVE_REASSIGNMENTS_TABLE = "drive_reassignments"
 private const val OBD_SAMPLES_TABLE = "obd_samples"
@@ -477,6 +478,49 @@ private data class ChassisQuirkRowDto(
         sourceUrl = sourceUrl,
         provenance = provenance,
         updatedAtMs = parseTs(updatedAt),
+    )
+}
+
+/** The wire shape for [SupabaseFleetBackend.upsertMaintenanceSchedule]. Every column always
+ * present, no defaults - same "this is a full REPLACE, not a partial PATCH" reasoning as
+ * [ChassisQuirkUpsertDto]. No `id`/`origin_guid` - see [MaintenanceScheduleUpload]'s own doc for
+ * why `(vehicle_id, service_name)` is the whole identity. */
+@Serializable
+private data class MaintenanceScheduleUpsertDto(
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("service_name") val serviceName: String,
+    @SerialName("interval_miles") val intervalMiles: Int?,
+    @SerialName("interval_months") val intervalMonths: Int?,
+    @SerialName("interval_source") val intervalSource: String,
+    @SerialName("never_done") val neverDone: Boolean,
+    val provenance: String,
+)
+
+/** The wire shape read back off `public.maintenance_schedules` for every operation. */
+@Serializable
+private data class MaintenanceScheduleRowDto(
+    val id: String,
+    @SerialName("vehicle_id") val vehicleId: String,
+    @SerialName("service_name") val serviceName: String,
+    @SerialName("interval_miles") val intervalMiles: Int? = null,
+    @SerialName("interval_months") val intervalMonths: Int? = null,
+    @SerialName("interval_source") val intervalSource: String,
+    @SerialName("never_done") val neverDone: Boolean,
+    val provenance: String,
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("deleted_at") val deletedAt: String? = null,
+) {
+    fun toRemoteMaintenanceSchedule() = RemoteMaintenanceSchedule(
+        serverId = id,
+        vehicleServerId = vehicleId,
+        serviceName = serviceName,
+        intervalMiles = intervalMiles,
+        intervalMonths = intervalMonths,
+        intervalSource = intervalSource,
+        neverDone = neverDone,
+        provenance = provenance,
+        updatedAtMs = parseTs(updatedAt),
+        deleted = deletedAt != null,
     )
 }
 
@@ -1041,6 +1085,37 @@ class SupabaseFleetBackend(private val client: SupabaseClient) : FleetBackend {
                 }
                 .decodeSingle<VehicleSpecRowDto>()
                 .toRemoteVehicleSpec()
+        }
+
+    override suspend fun fetchActiveMaintenanceSchedules(): Result<List<RemoteMaintenanceSchedule>> =
+        translating("load the maintenance schedule") {
+            client.postgrest.from(MAINTENANCE_SCHEDULES_TABLE)
+                .select {
+                    filter { filter("deleted_at", FilterOperator.IS, "null") }
+                }
+                .decodeList<MaintenanceScheduleRowDto>()
+                .map { it.toRemoteMaintenanceSchedule() }
+        }
+
+    override suspend fun upsertMaintenanceSchedule(schedule: MaintenanceScheduleUpload): Result<RemoteMaintenanceSchedule> =
+        translating("save that maintenance schedule") {
+            client.postgrest.from(MAINTENANCE_SCHEDULES_TABLE)
+                .upsert(
+                    MaintenanceScheduleUpsertDto(
+                        vehicleId = schedule.vehicleServerId,
+                        serviceName = schedule.serviceName,
+                        intervalMiles = schedule.intervalMiles,
+                        intervalMonths = schedule.intervalMonths,
+                        intervalSource = schedule.intervalSource,
+                        neverDone = schedule.neverDone,
+                        provenance = schedule.provenance,
+                    ),
+                ) {
+                    onConflict = "vehicle_id,service_name"
+                    select()
+                }
+                .decodeSingle<MaintenanceScheduleRowDto>()
+                .toRemoteMaintenanceSchedule()
         }
 
     override suspend fun fetchActiveBuildEntries(): Result<List<RemoteBuildEntry>> =

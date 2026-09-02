@@ -50,6 +50,7 @@ class FleetReconcileTest {
         val vehicleSpecs = mutableMapOf<String, RemoteVehicleSpec>() // keyed by vehicleServerId
         val buildEntries = mutableMapOf<String, RemoteBuildEntry>() // keyed by syncId
         val driveReassignments = mutableMapOf<String, RemoteDriveReassignment>() // keyed by syncId
+        val maintenanceSchedules = mutableMapOf<String, RemoteMaintenanceSchedule>() // keyed by "vehicleServerId|serviceName" (exact, not match-key - matches the real ON CONFLICT(vehicle_id, service_name) comparing the literal string)
         var clock = 1_000L
         private var vehicleCounter = 0
         private var serviceHistoryCounter = 0
@@ -59,6 +60,7 @@ class FleetReconcileTest {
         private var oilAnalysisCounter = 0
         private var buildEntryCounter = 0
         private var driveReassignmentCounter = 0
+        private var maintenanceScheduleCounter = 0
 
         /** Set to make the NEXT [uploadMigratedVehicle] call fail - the short-circuit test's hook. */
         var failNextVehicleUpload = false
@@ -402,6 +404,30 @@ class FleetReconcileTest {
         /** Set to make the NEXT [uploadObdSampleBatch] call fail - same hook shape as
          *  [failNextVehicleUpload]. */
         var failNextObdSampleBatch = false
+
+        override suspend fun fetchActiveMaintenanceSchedules(): Result<List<RemoteMaintenanceSchedule>> =
+            Result.success(maintenanceSchedules.values.toList())
+
+        override suspend fun upsertMaintenanceSchedule(schedule: MaintenanceScheduleUpload): Result<RemoteMaintenanceSchedule> {
+            val key = "${schedule.vehicleServerId}|${schedule.serviceName}"
+            val row = RemoteMaintenanceSchedule(
+                serverId = maintenanceSchedules[key]?.serverId ?: "ms-${++maintenanceScheduleCounter}",
+                vehicleServerId = schedule.vehicleServerId,
+                serviceName = schedule.serviceName,
+                intervalMiles = schedule.intervalMiles,
+                intervalMonths = schedule.intervalMonths,
+                intervalSource = schedule.intervalSource,
+                neverDone = schedule.neverDone,
+                provenance = schedule.provenance,
+                updatedAtMs = ++clock,
+                deleted = false,
+            )
+            // A genuine REPLACE-on-conflict, matching SupabaseFleetBackend.upsertMaintenanceSchedule's
+            // real ON CONFLICT(vehicle_id, service_name) DO UPDATE - always overwrites, never checks
+            // for "already there" first, per MaintenanceScheduleUpload's own doc comment.
+            maintenanceSchedules[key] = row
+            return Result.success(row)
+        }
 
         override suspend fun uploadObdSampleBatch(batch: List<ObdSampleUpload>): Result<Unit> {
             if (failNextObdSampleBatch) {

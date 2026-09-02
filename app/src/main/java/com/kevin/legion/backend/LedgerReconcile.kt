@@ -1,10 +1,15 @@
 package com.kevin.legion.backend
 
 import android.content.Context
+import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.IngestMethod
 import com.kevin.legion.engine.ledger.LedgerAspectSeeder
 import com.kevin.legion.engine.ledger.LedgerRecordBridge
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * The one-time (and re-runnable) Phase 4 step 1/2 job for Ledger's one record type, `Transaction`
@@ -215,5 +220,45 @@ object LedgerReconcile {
                 onlyOnServer = (serverGuids - engineGuids).sorted(),
             ),
         )
+    }
+
+    private val autoRunScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var lastAutoRunAt = 0L
+
+    /** Floor between automatic runs, matching [EventsSync]'s own `AUTO_PULL_MIN_INTERVAL_MS` -
+     * this is a full-table scan (168 rows on the real phone, not a queue drain), so a floor exists
+     * to stop every foreground return from re-scanning the whole engine `Transaction` set, while
+     * still being short enough that a driver who logs a transaction and backgrounds/foregrounds
+     * the app sees it reach the server within the same sitting. */
+    private const val AUTO_RUN_MIN_INTERVAL_MS = 5 * 60 * 1000L
+
+    /**
+     * `MainActivity.onResume`'s hook - this reconcile's only production caller before this ticket
+     * was a Settings row nobody had wired up to run automatically. No-ops silently, with a logged
+     * breadcrumb rather than a dialog or a crash, when Supabase is not configured or nobody is
+     * signed in, matching [EventsSync.maybeAutoPull]'s own guard shape exactly. Fire-and-forget on
+     * [autoRunScope]; never suspends the caller.
+     *
+     * **Still only ever uploads `UNRECONCILED` rows** - this function changes WHEN [run] executes,
+     * never WHAT it uploads. See this object's own class doc for why `DETERMINISTIC`/
+     * `LLM_RECONCILED` rows stay blocked regardless of how often this runs.
+     */
+    fun maybeAutoRun(context: Context) {
+        val now = System.currentTimeMillis()
+        if (now - lastAutoRunAt < AUTO_RUN_MIN_INTERVAL_MS) return
+        val app = context.applicationContext
+        val client = SupabaseClientProvider.get(app) ?: return
+        lastAutoRunAt = now
+        autoRunScope.launch {
+            try {
+                if (SupabaseAuth(app).currentUserId() == null) return@launch
+                val report = run(app, SupabaseLedgerBackend(client)).getOrThrow()
+                MidnightEvents.ledgerAutoReconcileSucceeded(report.uploaded, report.skipped.size, report.serverCountAfter)
+            } catch (e: Exception) {
+                MidnightEvents.ledgerAutoReconcileFailed(e)
+            }
+        }
     }
 }

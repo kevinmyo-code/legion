@@ -240,6 +240,16 @@ class MainActivity : ComponentActivity() {
             // EventsSync.maybeAutoPull's own doc comment.
             com.kevin.legion.backend.EventsSync.maybeAutoPull(applicationContext)
         }
+        // The two Supabase tables that had a schema and RLS but never a single row uploaded
+        // (measured against the real phone and the real project, one-today ticket): ledger's
+        // UNRECONCILED-only reconcile and fleet's maintenance-schedule upload, neither of which
+        // had ANY caller before this. Both are self-contained fire-and-forget calls with their own
+        // throttle and their own "not configured / not signed in" guard - see each object's own
+        // maybeAutoRun doc comment - so, unlike the events pair above, there is no ordering
+        // dependency between them or with the events launch, and each gets its own top-level call
+        // rather than sharing that lifecycleScope block.
+        com.kevin.legion.backend.LedgerReconcile.maybeAutoRun(applicationContext)
+        com.kevin.legion.backend.MaintenanceScheduleReconcile.maybeAutoRun(applicationContext)
         // Scheduled whole-database backup (Phase 0 item 1,
         // `.scratch/backend-erp/issues/05-migration-path.md`). DatabaseSnapshot.backupNow was
         // manual-only before this - its only callers were three buttons on DriveSyncScreen - so

@@ -174,6 +174,31 @@ object MidnightEvents {
         Log.w(TAG, "events_realtime_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** A foreground [com.kevin.legion.backend.LedgerReconcile.maybeAutoRun] pass completed - the
+     * only evidence that will ever exist on a real device that ledger's UNRECONCILED-only upload
+     * ran automatically, since (like [eventsAutoPullSucceeded]'s pull) it has no UI of its own. */
+    fun ledgerAutoReconcileSucceeded(uploaded: Int, skipped: Int, serverCountAfter: Int) = safe {
+        Log.d(TAG, "ledger_auto_reconcile uploaded=$uploaded skipped=$skipped serverCountAfter=$serverCountAfter")
+    }
+
+    /** [com.kevin.legion.backend.LedgerReconcile.maybeAutoRun] failed - degraded to this log line,
+     * same posture as [eventsAutoPullFailed]. */
+    fun ledgerAutoReconcileFailed(e: Throwable) = safe {
+        Log.w(TAG, "ledger_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.MaintenanceScheduleReconcile.maybeAutoRun] pass
+     * completed - same "only evidence this ran" role as [ledgerAutoReconcileSucceeded]. */
+    fun maintenanceScheduleAutoReconcileSucceeded(uploaded: Int, skipped: Int, serverCountAfter: Int) = safe {
+        Log.d(TAG, "maintenance_schedule_auto_reconcile uploaded=$uploaded skipped=$skipped serverCountAfter=$serverCountAfter")
+    }
+
+    /** [com.kevin.legion.backend.MaintenanceScheduleReconcile.maybeAutoRun] failed - degraded to
+     * this log line, same posture as [eventsAutoPullFailed]. */
+    fun maintenanceScheduleAutoReconcileFailed(e: Throwable) = safe {
+        Log.w(TAG, "maintenance_schedule_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A voice tool was dispatched. Useful for tracing what tool ran before a crash. */
     fun toolDispatched(toolName: String) = safe { Log.d(TAG, "tool_dispatched: $toolName") }
 

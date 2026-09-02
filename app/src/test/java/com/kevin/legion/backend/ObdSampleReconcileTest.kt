@@ -57,6 +57,8 @@ class ObdSampleReconcileTest {
         override suspend fun fetchActiveDriveReassignments(): Result<List<RemoteDriveReassignment>> = error("out of scope")
         override suspend fun upsertDriveReassignment(reassignment: DriveReassignmentUpload): Result<RemoteDriveReassignment> = error("out of scope")
 
+        override suspend fun fetchActiveMaintenanceSchedules(): Result<List<RemoteMaintenanceSchedule>> = error("out of scope")
+        override suspend fun upsertMaintenanceSchedule(schedule: MaintenanceScheduleUpload): Result<RemoteMaintenanceSchedule> = error("out of scope")
         override suspend fun uploadObdSampleBatch(batch: List<ObdSampleUpload>): Result<Unit> {
             if (failNextBatch) {
                 failNextBatch = false

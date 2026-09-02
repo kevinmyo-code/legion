@@ -201,4 +201,15 @@ interface MaintenanceItemDao {
     /** Active item only - see [getForVehicle]'s doc on the `deleted = 0` filter. */
     @Query("SELECT * FROM maintenance_items WHERE vehicleId = :vehicleId AND serviceName = :serviceName AND deleted = 0")
     suspend fun get(vehicleId: String, serviceName: String): MaintenanceItem?
+
+    /**
+     * Every active item across EVERY vehicle - added for [com.kevin.legion.backend.MaintenanceScheduleReconcile],
+     * which (like [com.kevin.legion.backend.FleetReconcile]'s `service_records` wave) needs the
+     * whole table to diff against the server, not one vehicle's slice. No schema change - a plain
+     * new query against the existing table, same `deleted = 0` filter every other ordinary reader
+     * in this file already applies (see [softDelete]'s doc for why [com.kevin.legion.sync.SyncEngine]
+     * is the one deliberate exception, which this is not).
+     */
+    @Query("SELECT * FROM maintenance_items WHERE deleted = 0")
+    suspend fun getAllActive(): List<MaintenanceItem>
 }

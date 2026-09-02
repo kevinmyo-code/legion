@@ -600,6 +600,59 @@ data class DriveReassignmentUpload(
 )
 
 /**
+ * A `public.maintenance_schedules` row as Postgres reports it
+ * (`supabase/migrations/20260825000500_aspect_places_fleet.sql`,
+ * `20260901000200_maintenance_schedules_never_done_default.sql`). **No `last_done_mileage`/
+ * `last_done_date` here, by design, matching the engine's own decision** - the table's own DDL
+ * comment says so directly: "is this due" is derived by reading the latest matching
+ * `service_history` row against these intervals, never stored a second time (see
+ * [com.kevin.legion.engine.fleet.FleetRecordBridge.projectAnchorLegacy]'s own doc for the identical
+ * rule on the phone side). [neverDone] defaults `false` on both sides as of the migration above.
+ * [intervalSource] is free TEXT, matching [com.kevin.legion.data.local.MaintenanceItem.intervalSource]'s
+ * own "widening an enum stored as TEXT is not a migration" posture.
+ */
+data class RemoteMaintenanceSchedule(
+    val serverId: String,
+    val vehicleServerId: String,
+    val serviceName: String,
+    val intervalMiles: Int?,
+    val intervalMonths: Int?,
+    val intervalSource: String,
+    val neverDone: Boolean,
+    val provenance: String,
+    val updatedAtMs: Long,
+    val deleted: Boolean,
+)
+
+/**
+ * One [com.kevin.legion.data.local.MaintenanceItem] row, ready for
+ * [FleetBackend.upsertMaintenanceSchedule] - [MaintenanceScheduleReconcile]'s upload, mirroring
+ * [ChassisQuirkUpload]/[VehicleSpecUpload]'s REPLACE-on-conflict shape rather than
+ * [ServiceHistoryUpload]'s check-then-insert one: a schedule's interval or `neverDone` flag CAN
+ * legitimately change between runs (a driver-confirmed interval edit, a `set_never_done` call), so
+ * re-uploading is expected to overwrite the server row wholesale, not to be treated as a duplicate.
+ * **[serviceName] is [MaintenanceScheduleReconcile]'s to set, not necessarily the local row's own
+ * casing** - see that object's own class doc for why it prefers an already-on-file server casing
+ * when one matches under [com.kevin.legion.engine.fleet.FleetRecordBridge.serviceNameMatchKey], so
+ * this upload never creates a same-service near-duplicate that differs only by case or whitespace.
+ * No `originGuid` - `maintenance_items` has no portable guid of its own (composite local primary
+ * key `(vehicleId, serviceName)`), matching [ChassisQuirkUpload]'s "natural key IS the identity"
+ * posture. [provenance] is asserted explicitly by [MaintenanceScheduleReconcile] - always `"USER"`,
+ * per [RemoteMaintenanceSchedule]'s own column default and this table's DDL comment: every row on
+ * file is either a driver-typed interval or LEGION's own SEEDED/LOOKUP guess the driver is free to
+ * correct, never a machine-verified fact the way `code_events` is.
+ */
+data class MaintenanceScheduleUpload(
+    val vehicleServerId: String,
+    val serviceName: String,
+    val intervalMiles: Int?,
+    val intervalMonths: Int?,
+    val intervalSource: String,
+    val neverDone: Boolean,
+    val provenance: String,
+)
+
+/**
  * The Phase 4 fleet seam for `vehicles`, `service_history`, `drives` (wave 1), `code_events`,
  * `code_clear_events`, `oil_analyses`, `chassis_quirks` (wave 3), and `vehicle_specs`,
  * `build_entries`, `drive_reassignments` (this wave, the last three tables) -
@@ -734,6 +787,17 @@ interface FleetBackend {
      * retry of an already-applied correction is a legitimate no-op re-post, per the migration file's
      * own comment on why this table carries no CHECK against naming the same vehicle twice. */
     suspend fun upsertDriveReassignment(reassignment: DriveReassignmentUpload): Result<RemoteDriveReassignment>
+
+    /** Every active (not soft-deleted) maintenance schedule, server-side. Used by
+     * [MaintenanceScheduleReconcile] both to refresh its "server already has this casing of the
+     * service name" map (see [MaintenanceScheduleUpload]'s own doc) and to diff against the local
+     * table. Never called from a hot-path read. */
+    suspend fun fetchActiveMaintenanceSchedules(): Result<List<RemoteMaintenanceSchedule>>
+
+    /** Upserts by `(vehicle_id, service_name)` (`maintenance_schedules_unique_per_vehicle`'s own
+     * unique constraint) - a genuine REPLACE-on-conflict, always overwriting every column, same
+     * posture as [upsertChassisQuirk]/[upsertVehicleSpec]. */
+    suspend fun upsertMaintenanceSchedule(schedule: MaintenanceScheduleUpload): Result<RemoteMaintenanceSchedule>
 
     /**
      * Bulk-upserts a batch onto `(vehicle_id, pid, recorded_at)` (the table's own natural key,
