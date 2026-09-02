@@ -82,3 +82,45 @@ bug, and absence is the one thing a passing test does not report.
 - **`obd_samples` is registered in TWO sync channels at once** - the legacy Drive-JSON `SyncEngine`
   registry and `ObdSampleReconcile`'s Supabase batch upload - and neither file references the other.
   Nobody has decided which wins. Found during the survey, unresolved.
+
+## What gets a server home, and what is allowed to regenerate (Kevin, 2026-09-02)
+
+*"not literally everything. go per ur recommendations."*
+
+Thirty-odd Room tables have no Supabase equivalent. Giving all of them one is real schema work
+for data that in several cases rebuilds itself within a week. The test applied: **can this be
+recreated from something that survives?** If yes, it regenerates after the wipe. If no, it gets a
+table.
+
+**Gets a server home - cannot be recreated:**
+
+| Aspect | Tables | Rows | Why |
+|---|---|---|---|
+| Body | `meal_logs`, `meal_targets`, `workout_plans`, `workout_plan_items`, `workout_set_logs`, `bodyweight_logs`, `sleep_logs`, `sleep_targets` | 42 | Health history. A weight from August cannot be re-measured |
+| Memory | `memories`, `companion_memories`, `memory_audit` | 425 | Facts the assistant was told: work address, gym address, height, age. Nothing else holds these |
+| Lists | `item_lists`, `list_items` | 76 | Real to-dos under named lists (Car, Reminders, Calendar) - "suspension rebuild", "oil and filter change". Overlaps the events reminders in places but is not a duplicate of them |
+| Ledger config | `categories`, `category_rules`, `budget_targets` | 132 | The categorisation rules and budgets Kevin built by hand. Re-deriving them means re-doing that work |
+| Pantry config | `grocery_staples` | 34 | His usual-buy list, built from use |
+| Goals | `goals` | 4 | Stated intentions, not derived from anything |
+
+**Regenerates - deliberately no server table:**
+
+| Table | Rows | Why not |
+|---|---|---|
+| `music_play_history` | 673 | Spotify holds this itself. Duplicating a third party's own history is not our job |
+| `proactive_raises` | 115 | A log of what was spoken - overwhelmingly `startup_opener / "the app was opened"`. Noise, and it regrows immediately |
+| `vehicle_capabilities` | 88 | Which PIDs a car answers. Re-probed on the next OBD connection |
+| `daily_drive_logs` | 100 | Generated prose about each day, derived from `drives`, which IS on the server. The source survives; the narrative is re-derivable |
+| `widget_instances`, `sitrep_modules`, `sitrep_schedule`, `proactive_settings`, `companion_profiles`, `monthly_recaps`, `advisor_advice` | ~40 | Configuration and derived output. Rebuilds from use within days |
+| `vehicles_replica`, `service_history_replica` | 7 | Local caches OF server data. Uploading a cache of the server to the server is circular |
+| `records`, `field_defs`, `record_types`, `aspects` | 692 | Aspect-engine staging. Its Event/Item/Place/Receipt/LineItem/Vehicle/ServiceHistory rows are ALREADY on the server in their domain tables - uploading these too would duplicate every one |
+| `car_tasks` | 14 | Dead table, dropped from the design |
+| `maintenance_items` | 54 | Now uploads via `MaintenanceScheduleReconcile` to `maintenance_schedules` |
+
+**Written off, with Kevin's explicit agreement:** 161 `DETERMINISTIC` ledger transactions. Their §4
+anchors were never persisted (rule 8's own recorded gap), so the server cannot accept them as
+verified and uploading them anyway would assert a verdict nothing can audit. Kevin, 2026-09-02:
+*"thats ok its not that important this data. just wipe then reingest after."* The statements survive
+in Drive and re-ingestion now happens in the web app.
+
+**So the remaining job is 17 tables and roughly 710 rows**, not 30 and 2,533.
