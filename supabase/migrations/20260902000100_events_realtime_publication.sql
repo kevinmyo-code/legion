@@ -1,0 +1,23 @@
+-- Publish public.events on the supabase_realtime publication.
+--
+-- Found 2026-09-02 by running the new Realtime subscription against the live project on a real
+-- phone. The client was fine - the log reads "Connected to realtime websocket!" - and then:
+--
+--   Unable to subscribe to changes with given parameters. Please check Realtime is enabled for
+--   the given connect parameters: [event: *, schema: public, table: events, filters: [], select: nil]
+--
+-- Cause: `select ... from pg_publication_tables where pubname = 'supabase_realtime'` returned NO
+-- ROWS. Supabase Realtime only broadcasts tables that are members of that publication, and a table
+-- is never added automatically - not by `create table`, and not by any migration in this repo. The
+-- publication has existed empty since the project was created.
+--
+-- Worth stating because it is the third instance today of the same shape: the phone-side code was
+-- correct and the thing it depended on had never been switched on. A subscription that is refused
+-- looks exactly like a subscription that has nothing to say.
+--
+-- REPLICA IDENTITY is deliberately left at its default. A postgres_changes DELETE payload only
+-- carries the primary key under the default identity, and FULL would make every UPDATE write the
+-- whole old row to WAL for every table subscriber. LEGION does not need the payload: the realtime
+-- event is a TRIGGER that fires EventsSync.pull, which then fetches authoritative rows over REST.
+-- See `.scratch/live-sync/map.md` ruling 3 - a realtime event is not a data source.
+alter publication supabase_realtime add table public.events;
