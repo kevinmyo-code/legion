@@ -64,7 +64,9 @@ import com.kevin.legion.ui.theme.LegionTheme
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import com.kevin.legion.util.clockTime
 import com.kevin.legion.vehicle.ObdBluetoothManager
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Single-activity shell (ticket 07 resolution). Everything the app shows -
@@ -219,13 +221,25 @@ class MainActivity : ComponentActivity() {
             com.kevin.legion.location.LocationController.init(applicationContext)
         }.onFailure { com.kevin.legion.MidnightEvents.appStartWorkFailed("resume_init_location", it) }
         SyncEngine.maybeAutoSync(applicationContext)
-        // First live-sync slice (backend-erp, "the missing half of events sync"): a real,
-        // automatic PULL of public.events, MERGE semantics only - never entangled with the
-        // SyncEngine call just above, which is a wholly separate Drive-JSON mechanism that has
-        // never once executed on a real device. Guarded internally (no-ops when Supabase isn't
-        // configured or nobody is signed in) and fire-and-forget on its own scope - see
-        // EventsSync.maybeAutoPull's own doc comment.
-        com.kevin.legion.backend.EventsSync.maybeAutoPull(applicationContext)
+        // Events-outbox ticket (push half of events sync): drain any queued local `events` writes
+        // BEFORE the pull below runs - see EventsOutboxDrain's own class doc for exactly why that
+        // ordering is load-bearing (short version: a local mutation must at least be ATTEMPTED
+        // against the server before that server's own state is read back, or the pull's
+        // server-wins tiebreak has nothing local yet to reconcile against). Launched on
+        // lifecycleScope, not fire-and-forget like the pull immediately below, precisely so the
+        // pull is not even SCHEDULED until this suspend call returns - two independent
+        // fire-and-forget launches give no such guarantee, since either coroutine could be
+        // scheduled first.
+        lifecycleScope.launch {
+            com.kevin.legion.backend.EventsOutboxDrain.maybeDrain(applicationContext)
+            // First live-sync slice (backend-erp, "the missing half of events sync"): a real,
+            // automatic PULL of public.events, MERGE semantics only - never entangled with the
+            // SyncEngine call just above, which is a wholly separate Drive-JSON mechanism that has
+            // never once executed on a real device. Guarded internally (no-ops when Supabase isn't
+            // configured or nobody is signed in) and fire-and-forget on its own scope - see
+            // EventsSync.maybeAutoPull's own doc comment.
+            com.kevin.legion.backend.EventsSync.maybeAutoPull(applicationContext)
+        }
         // Scheduled whole-database backup (Phase 0 item 1,
         // `.scratch/backend-erp/issues/05-migration-path.md`). DatabaseSnapshot.backupNow was
         // manual-only before this - its only callers were three buttons on DriveSyncScreen - so

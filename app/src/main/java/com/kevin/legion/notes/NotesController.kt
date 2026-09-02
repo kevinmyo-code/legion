@@ -185,7 +185,14 @@ object NotesController {
         sortOrder = sortOrder ?: 0,
         createdAt = createdAt,
         updatedAt = updatedAtMs,
-        syncId = serverId,
+        // v58 -> v59 (MIGRATION_58_59) widened Event.serverId to nullable so a genuinely
+        // unsynced kind=event row (events-outbox ticket) is never confused for one that has
+        // touched the server. ListItem.syncId itself stays non-null (ListItem predates that
+        // widening and nothing about its own contract changed) - "" is this mapper's existing
+        // convention for "nothing meaningful here" (see this function's own class doc on the
+        // unconfigured path's identical placeholder-serverId posture), reused rather than
+        // inventing a second empty-string-shaped meaning.
+        syncId = serverId ?: "",
         deleted = deleted,
         startsAt = startsAt,
         endsAt = endsAt,

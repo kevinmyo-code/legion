@@ -122,6 +122,19 @@ object MidnightEvents {
         Log.w(TAG, "events_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** A foreground [com.kevin.legion.backend.EventsOutboxDrain.maybeDrain] pass completed - same
+     * "only evidence this ran" role as [eventsAutoPullSucceeded] plays for the pull it runs
+     * immediately before (see that drain's own class doc for why the ordering is load-bearing). */
+    fun eventsOutboxDrainSucceeded(succeeded: Int, stillPending: Int, poisoned: Int) = safe {
+        Log.d(TAG, "events_outbox_drain succeeded=$succeeded stillPending=$stillPending poisoned=$poisoned")
+    }
+
+    /** [com.kevin.legion.backend.EventsOutboxDrain.maybeDrain] failed - degraded to this log line,
+     * same posture as [eventsAutoPullFailed]. */
+    fun eventsOutboxDrainFailed(e: Throwable) = safe {
+        Log.w(TAG, "events_outbox_drain_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A voice tool was dispatched. Useful for tracing what tool ran before a crash. */
     fun toolDispatched(toolName: String) = safe { Log.d(TAG, "tool_dispatched: $toolName") }
 

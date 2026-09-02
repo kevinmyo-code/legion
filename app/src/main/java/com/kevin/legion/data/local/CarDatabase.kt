@@ -276,6 +276,14 @@ import androidx.room.RoomDatabase
  * lives elsewhere) would be a misdescription on an unconfigured install where it is the only store
  * there is. See [Event]'s own doc comment and [MIGRATION_44_45] for the rename mechanics (a real
  * `ALTER TABLE ... RENAME TO`, not a drop/recreate, so no data is lost by the migration itself).
+ *
+ * v59 (events-outbox ticket, push half of events sync): `sync_outbox` (new, [OutboxEntry] - a
+ * generic durable server-write queue, `events` the first user) and `events.serverId` widened from
+ * `NOT NULL` to nullable (see [Event.serverId]'s own v59 doc comment for why a genuinely unsynced
+ * row now carries null there instead of a client-minted placeholder UUID indistinguishable from a
+ * real one). See [MIGRATION_58_59] for the schema itself - a table rebuild for `events` (SQLite has
+ * no `ALTER COLUMN`, same `_new`/copy/drop/rename shape [MIGRATION_50_51] already established for
+ * `vehicle_sidecar`) plus a plain additive `CREATE TABLE` for `sync_outbox`.
  */
 @Database(
     entities = [
@@ -312,8 +320,9 @@ import androidx.room.RoomDatabase
         VehicleReplica::class, ServiceHistoryReplica::class,
         VehicleSidecar::class,
         VoiceNote::class,
+        OutboxEntry::class,
     ],
-    version = 58,
+    version = 59,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -420,6 +429,12 @@ abstract class CarDatabase : RoomDatabase() {
      * [VoiceNote]'s own doc comment. */
     abstract fun voiceNoteDao(): VoiceNoteDao
 
+    /** The durable server-write queue (v59, events-outbox ticket) - see [OutboxEntry]'s own class
+     * doc. Drained by `backend/EventsOutboxDrain.kt` on app foreground, before
+     * [com.kevin.legion.backend.EventsSync.maybeAutoPull] - see that drain's own doc comment for
+     * why the ordering is load-bearing. */
+    abstract fun outboxDao(): OutboxDao
+
     companion object {
         @Volatile
         private var INSTANCE: CarDatabase? = null
@@ -450,7 +465,7 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 58
+        const val SCHEMA_VERSION = 59
         // 2026-08-28: bumped 47 -> 49, and this one was NOT a same-edit bump - it was a REPAIR.
         // Versions 48 and 49 (tickets 17 and 18) each moved `@Database(version=)` and left this
         // constant behind, and the doc comment above was wrong about the consequence. It says a
@@ -550,6 +565,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50,
                         MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53, MIGRATION_53_54,
                         MIGRATION_54_55, MIGRATION_55_56, MIGRATION_56_57, MIGRATION_57_58,
+                        MIGRATION_58_59,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

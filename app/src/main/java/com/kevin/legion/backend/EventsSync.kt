@@ -112,7 +112,12 @@ object EventsSync {
         // look exactly like "no local match" below and get wrongly resurrected as a fresh insert.
         val localRows = db.eventDao().getAll()
         val localByGuid = localRows.filter { it.guid.isNotBlank() }.associateBy { it.guid }
-        val localByServerId = localRows.associateBy { it.serverId }
+        // Filtered to non-null (v58 -> v59, MIGRATION_58_59 widened Event.serverId to nullable for
+        // the events-outbox ticket) - an outbox-pending row genuinely has no serverId yet, and more
+        // than one can exist at once, so leaving nulls in would collapse them all onto one map entry
+        // for a key `remote.serverId` (always non-null) could never match anyway. Harmless either
+        // way since the lookup below is always keyed by a real server uuid, but filtering says so.
+        val localByServerId = localRows.mapNotNull { row -> row.serverId?.let { it to row } }.toMap()
 
         var inserted = 0
         var updated = 0

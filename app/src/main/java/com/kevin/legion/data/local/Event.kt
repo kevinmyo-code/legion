@@ -134,7 +134,26 @@ data class Event(
      *   rule was relaxed for it.
      */
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val serverId: String,
+    /**
+     * **WIDENED to nullable, v58 -> v59 ([MIGRATION_58_59]), events-outbox ticket.** Used to be
+     * `NOT NULL` and every locally-authored row (before a real server round trip) carried a
+     * client-minted placeholder UUID here instead - `service/LiveToolbox.kt`'s `addAppointment`
+     * and this file's own [com.kevin.legion.notes.NotesController]-equivalent unconfigured branch
+     * both did this, and [com.kevin.legion.backend.EventsSync]'s own class doc names the exact cost:
+     * "both are syntactically identical UUID strings; there is no structural way to tell them
+     * apart" from a genuine server uuid. **A row that has never touched the server now carries
+     * `null` here instead of a fake value that reads exactly like a real one** - [guid] is (and
+     * always was) that row's real, stable sync identity; a null [serverId] is simply "no round trip
+     * yet", filled in for real the next time [com.kevin.legion.backend.EventsSync.pull] matches
+     * this row by [guid] against the server's own [com.kevin.legion.backend.RemoteEvent.originGuid].
+     * **Existing fake-UUID rows already on a device are NOT migrated to null by [MIGRATION_58_59]**
+     * - out of scope for that migration (nothing distinguishes a fake UUID from a real one at the
+     * value level, so there is nothing safe to null out after the fact); only NEW rows written after
+     * this change ever carry null. A caller that must act on "genuinely synced or not" for an
+     * OLD row cannot use this column's nullness as that signal and has no way to ask the question
+     * at all - the same documented limitation [EventsSync]'s own class doc already states.
+     */
+    val serverId: String?,
     val title: String,
     val startsAt: Long?,
     val endsAt: Long? = null,
@@ -479,7 +498,13 @@ interface EventDao {
  * 1. A row already exists for [Event.serverId] - unchanged from before. The EXISTING local id wins
  *    even if [row] carries a different one, because an established id must never move, not even to
  *    a "more correct" carried one - anything already pointing at it (a scheduled alarm, a soft
- *    foreign key) would break.
+ *    foreign key) would break. **[row]'s [Event.serverId] must be non-null to reach this branch at
+ *    all** (v58 -> v59 widening, [MIGRATION_58_59]) - a row with no serverId yet has nothing to look
+ *    up by, so the null case skips straight to branch 2/3 below. Every real caller of this function
+ *    already only ever passes a genuine, post-ACK serverId here (see
+ *    [com.kevin.legion.notes.NotesController.applyChange]/`addItem`); the null-safe `?.let` exists
+ *    for type-correctness against the now-nullable field, not because this function is expected to
+ *    receive one in practice.
  * 2. No existing row, and [row]'s carried id is non-zero AND unoccupied ([getById] returns null
  *    for it) - insert AT that id. This is the new branch: it is what lets a wholesale replica
  *    refresh put a migrated row back at its originating engine record's id instead of an
@@ -494,7 +519,7 @@ interface EventDao {
  *    yet. A fresh id here costs nothing; a stolen id would cost the other row's own alarm/reference.
  */
 suspend fun EventDao.upsert(row: Event): Long {
-    val existing = getByServerId(row.serverId)
+    val existing = row.serverId?.let { getByServerId(it) }
     if (existing != null) {
         update(row.copy(id = existing.id))
         return existing.id

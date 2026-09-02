@@ -5049,6 +5049,13 @@ object LiveToolbox {
      * [date]/[time] are already-parsed local values; [timeArg] is the raw `HH:mm` string purely so
      * the confirmation sentence echoes back exactly what the driver said rather than a reformatted
      * version of it (matching [scheduleItem]'s own reply style elsewhere in this file).
+     *
+     * **Events-outbox ticket: the write itself now goes through
+     * [com.kevin.legion.backend.EventsAppointmentWriter], not straight to [EventDao].** This
+     * function's own job shrinks to "resolve dates, phrase the confirmation" - the local write, the
+     * server push attempt, and enqueueing a durable retry on a push failure all live in that
+     * object now (see its own class doc for why [Event.serverId] on a fresh row is null rather than
+     * the client-minted placeholder UUID this function used to mint here directly).
      */
     private suspend fun addAppointment(
         context: Context,
@@ -5075,30 +5082,26 @@ object LiveToolbox {
             start to start + CALENDAR_EVENT_DEFAULT_DURATION_MS
         }
 
-        val db = CarDatabase.getDatabase(context)
-        val now = System.currentTimeMillis()
-        val row = Event(
-            id = db.eventDao().nextAppointmentId(),
-            serverId = java.util.UUID.randomUUID().toString(),
-            guid = java.util.UUID.randomUUID().toString(),
-            title = itemArg,
-            startsAt = startMs,
-            endsAt = endMs,
-            allDay = allDay,
-            source = DatesAspectSeeder.SOURCE_LEGION,
-            kind = EventKind.EVENT,
-            updatedAtMs = now,
-            createdAt = now,
-        )
         return try {
-            db.eventDao().insert(row)
+            com.kevin.legion.backend.EventsAppointmentWriter.addEvent(
+                context = context,
+                title = itemArg,
+                startsAtMs = startMs,
+                endsAtMs = endMs,
+                allDay = allDay,
+                source = DatesAspectSeeder.SOURCE_LEGION,
+                kind = EventKind.EVENT,
+            )
             result(
                 true,
                 ScheduleIntentResolver.confirmationPhrase(ScheduleIntentResolver.Kind.Appointment, itemArg, whenPhrase),
             )
         } catch (e: Exception) {
             // A genuine Room failure (disk full, etc) - worded, never a silent "added" - same "no
-            // false success" contract every write in this file holds (CLAUDE.md §7).
+            // false success" contract every write in this file holds (CLAUDE.md §7). A push
+            // failure to the server is NOT this branch - EventsAppointmentWriter.addEvent already
+            // wrote the local row and enqueued a retry before returning normally in that case; only
+            // the LOCAL write throwing reaches here.
             result(false, "I couldn't save that appointment - try again?")
         }
     }

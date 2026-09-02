@@ -2174,3 +2174,83 @@ val MIGRATION_57_58 = object : Migration(57, 58) {
         )
     }
 }
+
+/**
+ * v58 -> v59: the events-outbox ticket (push half of events sync, "the engine survives, scoped" -
+ * ticket 18 - carried forward). Two independent additions, landed together because they are the
+ * same ticket and one motivates the other:
+ *
+ * 1. **`sync_outbox` (new, [OutboxEntry]).** A plain additive `CREATE TABLE`, no data to carry -
+ *    nothing wrote one before this version existed. See that entity's own class doc for the shape
+ *    and why it is deliberately generic rather than `events_outbox`.
+ *
+ * 2. **`events.serverId` widened from `NOT NULL` to nullable.** SQLite has no `ALTER TABLE ...
+ *    ALTER COLUMN`, so this follows the exact `_new`/copy/drop/rename precedent [MIGRATION_50_51]
+ *    already established for `vehicle_sidecar` (that migration's own doc comment: "no precedent
+ *    for [DROP COLUMN] anywhere else in this file... every prior column removal in this codebase
+ *    used the create-new/copy/drop-old/rename-new shape") - the same shape applies to loosening a
+ *    constraint, not just dropping a column, since SQLite's `ALTER TABLE` surface is equally
+ *    incapable of either. **Every existing row's `serverId` is copied through completely
+ *    unchanged** - this migration does not attempt to null out any already-fake client-minted
+ *    placeholder UUID (there is no way to tell one apart from a genuine server uuid at the value
+ *    level; see [Event.serverId]'s own v59 doc comment), it only stops the column from REJECTING a
+ *    null on a future write. The unique index is recreated verbatim - SQLite already permits
+ *    multiple NULLs through a UNIQUE index (NULL is never equal to NULL for uniqueness purposes),
+ *    so more than one genuinely-unsynced row can coexist without a constraint violation.
+ *
+ *    Column list and order copied verbatim from `app/schemas/com.kevin.legion.data.local.CarDatabase/58.json`'s
+ *    own `events` `createSql`, with only `serverId`'s own `NOT NULL` removed - CLAUDE.md §5's
+ *    "copy generated SQL verbatim" discipline, applied to a targeted rebuild instead of a fresh
+ *    table.
+ */
+val MIGRATION_58_59 = object : Migration(58, 59) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `sync_outbox` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`targetTable` TEXT NOT NULL, " +
+                "`operation` TEXT NOT NULL, " +
+                "`localId` INTEGER NOT NULL, " +
+                "`payload` TEXT NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL, " +
+                "`attempts` INTEGER NOT NULL DEFAULT 0, " +
+                "`lastError` TEXT)"
+        )
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `events_new` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `serverId` TEXT, " +
+                "`title` TEXT NOT NULL, `startsAt` INTEGER, `endsAt` INTEGER, " +
+                "`allDay` INTEGER NOT NULL, `location` TEXT, `notes` TEXT, `source` TEXT NOT NULL, " +
+                "`googleEventId` TEXT, `done` INTEGER NOT NULL, `doneAt` INTEGER, " +
+                "`sortOrder` INTEGER, `triggerPlaceLabel` TEXT, `repeatKind` TEXT, " +
+                "`repeatEvery` INTEGER, `repeatDaysOfWeek` TEXT, `repeatDay` INTEGER, " +
+                "`repeatMonth` INTEGER, `repeatEndKind` TEXT, `repeatEndDate` INTEGER, " +
+                "`repeatEndCount` INTEGER, `exact` INTEGER NOT NULL, " +
+                "`exactDowngraded` INTEGER NOT NULL, `missedAt` INTEGER, " +
+                "`missedDismissedAt` INTEGER, `loggedAt` INTEGER, `updatedAtMs` INTEGER NOT NULL, " +
+                "`deleted` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL DEFAULT 0, " +
+                "`kind` TEXT NOT NULL DEFAULT 'reminder', `structuredMeta` TEXT, " +
+                "`guid` TEXT NOT NULL DEFAULT '')"
+        )
+        db.execSQL(
+            "INSERT INTO `events_new` (`id`, `serverId`, `title`, `startsAt`, `endsAt`, `allDay`, " +
+                "`location`, `notes`, `source`, `googleEventId`, `done`, `doneAt`, `sortOrder`, " +
+                "`triggerPlaceLabel`, `repeatKind`, `repeatEvery`, `repeatDaysOfWeek`, `repeatDay`, " +
+                "`repeatMonth`, `repeatEndKind`, `repeatEndDate`, `repeatEndCount`, `exact`, " +
+                "`exactDowngraded`, `missedAt`, `missedDismissedAt`, `loggedAt`, `updatedAtMs`, " +
+                "`deleted`, `createdAt`, `kind`, `structuredMeta`, `guid`) " +
+                "SELECT `id`, `serverId`, `title`, `startsAt`, `endsAt`, `allDay`, `location`, " +
+                "`notes`, `source`, `googleEventId`, `done`, `doneAt`, `sortOrder`, " +
+                "`triggerPlaceLabel`, `repeatKind`, `repeatEvery`, `repeatDaysOfWeek`, `repeatDay`, " +
+                "`repeatMonth`, `repeatEndKind`, `repeatEndDate`, `repeatEndCount`, `exact`, " +
+                "`exactDowngraded`, `missedAt`, `missedDismissedAt`, `loggedAt`, `updatedAtMs`, " +
+                "`deleted`, `createdAt`, `kind`, `structuredMeta`, `guid` FROM `events`"
+        )
+        db.execSQL("DROP TABLE `events`")
+        db.execSQL("ALTER TABLE `events_new` RENAME TO `events`")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_events_serverId` ON `events` (`serverId`)"
+        )
+    }
+}
