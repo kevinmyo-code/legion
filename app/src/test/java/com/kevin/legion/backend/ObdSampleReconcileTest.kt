@@ -10,6 +10,8 @@ import com.kevin.legion.engine.fleet.FleetRecordBridge
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -33,6 +35,10 @@ class ObdSampleReconcileTest {
         val vehicles = mutableMapOf<String, RemoteVehicle>() // keyed by originGuid
         val batches = mutableListOf<List<ObdSampleUpload>>()
         var failNextBatch = false
+
+        /** Settable so a [maybeAutoRun][ObdSampleReconcile.maybeAutoRun]-adjacent test can assert
+         *  the reported [ObdSampleReconcile.Report.serverCountAfter] without a live HEAD count. */
+        var serverCount = 0L
 
         override suspend fun fetchActiveVehicles(): Result<List<RemoteVehicle>> = Result.success(vehicles.values.toList())
         override suspend fun uploadMigratedVehicle(vehicle: MigratedVehicle): Result<Boolean> = error("out of scope")
@@ -67,11 +73,14 @@ class ObdSampleReconcileTest {
             batches.add(batch)
             return Result.success(Unit)
         }
+
+        override suspend fun countObdSamples(): Result<Long> = Result.success(serverCount)
     }
 
     @Before
     fun clearState() {
         RoomTestReset.resetCarDatabaseSingleton()
+        SupabaseConfig.clear(context)
     }
 
     private fun remoteVehicleFor(obdMac: String, serverId: String) = RemoteVehicle(
@@ -269,5 +278,70 @@ class ObdSampleReconcileTest {
         assertEquals(0, second.uploaded)
         assertEquals(1, second.skippedUnresolvedVehicle.size)
         assertEquals(first.cursorAt, second.cursorAt)
+    }
+
+    // --- ObdSampleReconcile.maybeAutoRun's two guard halves ----------------------------------
+
+    @Test
+    fun `autoRunGate returns null when Supabase is not configured`() {
+        // clearState's SupabaseConfig.clear(context) already left this unconfigured.
+        assertNull(ObdSampleReconcile.autoRunGate(context))
+    }
+
+    /**
+     * Exercises [ObdSampleReconcile.isThrottled] directly rather than [ObdSampleReconcile.autoRunGate]
+     * as a whole: driving [autoRunGate] with a CONFIGURED Supabase project throws
+     * `IllegalStateException` under Robolectric (`SettingsSessionManager` needs a platform Settings
+     * implementation this JVM sandbox does not provide - confirmed empirically, not assumed), the
+     * same reason [com.kevin.legion.backend.BodyOutboxDrainTest] only ever calls
+     * `SupabaseClientProvider.get` unconfigured. [isThrottled]'s own doc explains why it is pulled
+     * out as a pure predicate for exactly this reason. This still proves the property the ticket
+     * asks for - a reservation at time T throttles a call shortly after T and releases one once
+     * the floor elapses - just via [ObdSampleReconcile.setLastAutoRunAtForTest] rather than a live
+     * [ObdSampleReconcile.maybeAutoRun] round trip.
+     */
+    @Test
+    fun `isThrottled is true immediately after a reservation, false once the floor elapses`() {
+        val reservedAt = 10_000_000L
+        ObdSampleReconcile.setLastAutoRunAtForTest(reservedAt)
+
+        assertTrue(ObdSampleReconcile.isThrottled(reservedAt + 1_000L)) // 1s later - inside the 5-minute floor
+        assertTrue(ObdSampleReconcile.isThrottled(reservedAt)) // the same instant
+        assertFalse(ObdSampleReconcile.isThrottled(reservedAt + 6 * 60_000L)) // 6 minutes later - past the floor
+    }
+
+    private fun fakeGateway(userId: String?) = object : SupabaseAuthGateway {
+        override suspend fun signInWithPassword(email: String, password: String) = Unit
+        override suspend fun signOut() = Unit
+        override fun currentUserId(): String? = userId
+        override suspend fun awaitSessionReady(timeoutMillis: Long): Boolean = true
+        override suspend fun householdRosterSize(): Int = 0
+    }
+
+    @Test
+    fun `runIfSignedIn no-ops for a genuinely signed-out session, never attempting an upload`() = runBlocking {
+        val obdMac = "AA:BB:CC:DD:EE:09"
+        insertLegacyVehicle(obdMac)
+        val backend = FakeObdFleetBackend().apply { vehicles[obdMac] = remoteVehicleFor(obdMac, "vehicle-1") }
+        insertSample(obdMac)
+        val auth = SupabaseAuth(context, gatewayProvider = { fakeGateway(null) })
+
+        ObdSampleReconcile.runIfSignedIn(context, backend, auth)
+
+        assertTrue(backend.batches.isEmpty())
+        assertEquals(0L, ObdSampleUploadCursor.lastUploadedId(context))
+    }
+
+    @Test
+    fun `runIfSignedIn runs once when signed in`() = runBlocking {
+        val obdMac = "AA:BB:CC:DD:EE:10"
+        insertLegacyVehicle(obdMac)
+        val backend = FakeObdFleetBackend().apply { vehicles[obdMac] = remoteVehicleFor(obdMac, "vehicle-1") }
+        insertSample(obdMac)
+        val auth = SupabaseAuth(context, gatewayProvider = { fakeGateway("user-1") })
+
+        ObdSampleReconcile.runIfSignedIn(context, backend, auth)
+
+        assertEquals(1, backend.batches.sumOf { it.size })
     }
 }

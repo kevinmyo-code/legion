@@ -811,6 +811,16 @@ interface FleetBackend {
      * [DriveReport.uploaded]'s own doc comment states for `drives`.
      */
     suspend fun uploadObdSampleBatch(batch: List<ObdSampleUpload>): Result<Unit>
+
+    /**
+     * A HEAD-only exact count of `obd_samples`, no rows downloaded - deliberately NOT
+     * [fetchActiveVehicles]'s shape. [ObdSampleReconcile]'s own class doc explains at length why a
+     * full-row `fetchActiveX` here would "defeat the entire batching effort for a report line"; a
+     * `Prefer: count=exact` HEAD request pays for none of that, only a number in the response's
+     * `Content-Range` header, so [ObdSampleReconcile.maybeAutoRun] can still say something honest
+     * about the server's state after a run without re-opening that tradeoff.
+     */
+    suspend fun countObdSamples(): Result<Long>
 }
 
 /** Thrown (wrapped in [Result.failure]) by [SupabaseFleetBackend] for every failure branch - owned

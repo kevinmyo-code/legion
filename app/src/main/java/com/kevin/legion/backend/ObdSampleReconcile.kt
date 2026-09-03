@@ -1,8 +1,14 @@
 package com.kevin.legion.backend
 
 import android.content.Context
+import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.engine.fleet.FleetRecordBridge
+import io.github.jan.supabase.SupabaseClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Install-scoped high-water mark for [ObdSampleReconcile]'s upload - the local [OdbSample.id] of
@@ -148,6 +154,11 @@ object ObdSampleReconcile {
      *   words and for tests, mirrors [ObdSampleUploadCursor.lastUploadedId] after this call. Now
      *   advances past a permanently-unexportable sample too, not only past uploaded ones - see
      *   [run]'s own per-sample loop comment.
+     * @param serverCountAfter the server's `obd_samples` row count after this run, via
+     *   [FleetBackend.countObdSamples]'s HEAD-only request - deliberately not a full
+     *   [FleetBackend.fetchActiveVehicles]-style fetch (see that method's own doc for why), so this
+     *   is the one place a caller can see "how many rows does the server actually have" without
+     *   [ObdSampleReconcile] paying for a row-for-row diff it otherwise refuses to do.
      */
     data class Report(
         val sourceCount: Int,
@@ -156,6 +167,7 @@ object ObdSampleReconcile {
         val skippedPermanentlyUnexportableVehicles: List<String>,
         val skippedPermanentlyUnexportableSampleCount: Int,
         val cursorAt: Long,
+        val serverCountAfter: Long,
     )
 
     suspend fun run(context: Context, backend: FleetBackend): Result<Report> {
@@ -248,6 +260,8 @@ object ObdSampleReconcile {
             }
         }
 
+        val serverCountAfter = backend.countObdSamples().getOrElse { return Result.failure(it) }
+
         return Result.success(
             Report(
                 sourceCount = sourceCount,
@@ -256,7 +270,95 @@ object ObdSampleReconcile {
                 skippedPermanentlyUnexportableVehicles = skippedPermanentlyUnexportableVehicles,
                 skippedPermanentlyUnexportableSampleCount = skippedPermanentlyUnexportableSampleCount,
                 cursorAt = cursor,
+                serverCountAfter = serverCountAfter,
             ),
         )
+    }
+
+    private val autoRunScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var lastAutoRunAt = 0L
+
+    /** Same floor and reasoning as [LedgerReconcile]'s own `AUTO_RUN_MIN_INTERVAL_MS` - resuming
+     *  [run] scans only the rows past [ObdSampleUploadCursor], so the cost this floor guards
+     *  against is a foreground return every few seconds re-hitting the cursor/HEAD-count round
+     *  trips for a table that grows ~600 rows/day, not a full-table scan the way
+     *  [LedgerReconcile]'s own floor guards against. */
+    private const val AUTO_RUN_MIN_INTERVAL_MS = 5 * 60 * 1000L
+
+    /** The throttle half of [autoRunGate], pulled out as a pure predicate so
+     *  [ObdSampleReconcileTest] can exercise the floor's own arithmetic directly against
+     *  [setLastAutoRunAtForTest] - constructing a real [SupabaseClient] to drive [autoRunGate]
+     *  itself fails outright under Robolectric (`SettingsSessionManager` needs a platform Settings
+     *  implementation the JVM test sandbox does not provide - confirmed by the
+     *  `IllegalStateException` an earlier version of this test threw), the same reason
+     *  [com.kevin.legion.backend.BodyOutboxDrainTest]'s own `SupabaseClientProvider.get` call is
+     *  only ever exercised unconfigured. */
+    internal fun isThrottled(now: Long): Boolean = now - lastAutoRunAt < AUTO_RUN_MIN_INTERVAL_MS
+
+    /** Test-only escape hatch for [isThrottled]'s own test - never called from [autoRunGate] or
+     *  [maybeAutoRun]. Same "reset the process-static field a test cannot otherwise reach" idiom
+     *  [com.kevin.legion.testutil.RoomTestReset] uses for [CarDatabase]'s singleton. */
+    internal fun setLastAutoRunAtForTest(atMs: Long) {
+        lastAutoRunAt = atMs
+    }
+
+    /**
+     * The synchronous half of [maybeAutoRun] - the throttle floor ([isThrottled]) and the "is
+     * Supabase even configured" check, extracted so [ObdSampleReconcileTest] can assert on this
+     * gate's own return value directly, without a live Supabase project or a background coroutine
+     * to await. [lastAutoRunAt] is reserved here, before [maybeAutoRun] ever launches anything
+     * async - the "reserved before any awaiting" property that makes a cold start immediately
+     * followed by a foreground resume one run, not two.
+     */
+    internal fun autoRunGate(context: Context, now: Long = System.currentTimeMillis()): SupabaseClient? {
+        if (isThrottled(now)) return null
+        val app = context.applicationContext
+        val client = SupabaseClientProvider.get(app) ?: return null
+        lastAutoRunAt = now
+        return client
+    }
+
+    /**
+     * The async half of [maybeAutoRun] - resolves who is signed in via
+     * [SupabaseAuth.resolveSignedInUserId] (never the raw `currentUserId() == null` guard; see
+     * that method's own 2026-09-02 doc comment for the cold-start race it replaced) and, if anyone
+     * is, runs [run] and reports the result via [MidnightEvents]. Extracted from [maybeAutoRun]
+     * (rather than inlined in the launched coroutine, the way [LedgerReconcile.maybeAutoRun] does
+     * it) purely so [ObdSampleReconcileTest] can drive "signed out" and "signed in" directly
+     * against a fake [SupabaseAuth] gatewayProvider - the seam [SupabaseAuth]'s own class doc
+     * already names for exactly this. Fails to a logged [MidnightEvents] event, never a crash or a
+     * dialog, matching every sibling `maybeAutoRun`'s posture.
+     */
+    internal suspend fun runIfSignedIn(context: Context, backend: FleetBackend, auth: SupabaseAuth) {
+        try {
+            if (auth.resolveSignedInUserId() == null) return
+            val report = run(context, backend).getOrThrow()
+            MidnightEvents.obdSampleAutoReconcileSucceeded(
+                report.uploaded,
+                report.skippedUnresolvedVehicle.size + report.skippedPermanentlyUnexportableSampleCount,
+                report.serverCountAfter,
+            )
+        } catch (e: Exception) {
+            MidnightEvents.obdSampleAutoReconcileFailed(e)
+        }
+    }
+
+    /**
+     * `MainActivity.onResume`'s hook - `obd_samples` had 5,263 rows never uploaded because this
+     * reconcile's only production caller before this ticket was a Settings row nobody had wired up
+     * to run automatically (see this object's own class doc for the ticket-30 backlog those rows
+     * came from). No-ops silently, with a logged breadcrumb rather than a dialog or a crash, when
+     * Supabase is not configured or nobody is signed in - see [autoRunGate]/[runIfSignedIn] for
+     * the two halves this delegates to. Fire-and-forget on [autoRunScope]; never suspends the
+     * caller.
+     */
+    fun maybeAutoRun(context: Context) {
+        val client = autoRunGate(context) ?: return
+        val app = context.applicationContext
+        autoRunScope.launch {
+            runIfSignedIn(app, SupabaseFleetBackend(client), SupabaseAuth(app))
+        }
     }
 }

@@ -3,6 +3,7 @@ package com.kevin.legion.backend
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.exceptions.RestException
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Count
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import java.io.IOException
 import java.time.Instant
@@ -1229,5 +1230,23 @@ class SupabaseFleetBackend(private val client: SupabaseClient) : FleetBackend {
                 }
             }
             Unit
+        }
+
+    /**
+     * `head = true` + `Count.EXACT` - a `HEAD` request whose only payload is the `Content-Range`
+     * header [io.github.jan.supabase.postgrest.result.PostgrestResult.countOrNull] reads, never a
+     * downloaded row. See [FleetBackend.countObdSamples]'s own doc for why this, not
+     * [fetchActiveVehicles]'s full-fetch shape, is what [ObdSampleReconcile.maybeAutoRun] calls.
+     * `countOrNull()` returning null (no `Content-Range` header at all) is treated as zero rather
+     * than failed - the same "empty, not unreadable" question CLAUDE.md's proactive-raise rule
+     * asks elsewhere doesn't apply to a HEAD count the way it does to a permission-gated read, and
+     * a genuinely broken request already surfaces as a caught exception before `countOrNull` runs.
+     */
+    override suspend fun countObdSamples(): Result<Long> =
+        translating("count OBD samples") {
+            client.postgrest.from(OBD_SAMPLES_TABLE).select {
+                head = true
+                count(Count.EXACT)
+            }.countOrNull() ?: 0L
         }
 }

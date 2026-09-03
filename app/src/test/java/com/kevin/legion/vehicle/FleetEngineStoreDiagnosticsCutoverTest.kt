@@ -144,6 +144,7 @@ class FleetEngineStoreDiagnosticsCutoverTest {
         override suspend fun fetchActiveMaintenanceSchedules(): Result<List<RemoteMaintenanceSchedule>> = error("out of scope")
         override suspend fun upsertMaintenanceSchedule(schedule: MaintenanceScheduleUpload): Result<RemoteMaintenanceSchedule> = error("out of scope")
         override suspend fun uploadObdSampleBatch(batch: List<ObdSampleUpload>): Result<Unit> = error("out of scope")
+        override suspend fun countObdSamples(): Result<Long> = error("out of scope")
     }
 
     @Before

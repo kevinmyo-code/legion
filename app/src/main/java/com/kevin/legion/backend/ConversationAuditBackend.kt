@@ -50,6 +50,14 @@ interface ConversationAuditBackend {
      * interrupted run can never double-count.
      */
     suspend fun uploadConversationAuditBatch(batch: List<ConversationAuditUpload>): Result<Unit>
+
+    /**
+     * A HEAD-only exact count of `conversation_audit`, no rows downloaded - same shape and same
+     * reason as [FleetBackend.countObdSamples]: cheap enough to call after every
+     * [ConversationAuditReconcile.maybeAutoRun] pass without re-opening this table's own
+     * batch-and-resume tradeoff for the sake of a report line.
+     */
+    suspend fun countConversationAudit(): Result<Long>
 }
 
 /** Thrown (wrapped in [Result.failure]) by [SupabaseConversationAuditBackend] - owned by this

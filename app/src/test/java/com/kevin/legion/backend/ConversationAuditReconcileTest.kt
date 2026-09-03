@@ -8,6 +8,7 @@ import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -30,15 +31,23 @@ class ConversationAuditReconcileTest {
     private class FakeConversationAuditBackend : ConversationAuditBackend {
         val batches = mutableListOf<List<ConversationAuditUpload>>()
 
+        /** Settable so a [maybeAutoRun][ConversationAuditReconcile.maybeAutoRun]-adjacent test can
+         *  assert the reported [ConversationAuditReconcile.Report.serverCountAfter] without a live
+         *  HEAD count. */
+        var serverCount = 0L
+
         override suspend fun uploadConversationAuditBatch(batch: List<ConversationAuditUpload>): Result<Unit> {
             batches.add(batch)
             return Result.success(Unit)
         }
+
+        override suspend fun countConversationAudit(): Result<Long> = Result.success(serverCount)
     }
 
     @Before
     fun clearState() {
         RoomTestReset.resetCarDatabaseSingleton()
+        SupabaseConfig.clear(context)
     }
 
     private suspend fun insertRow(
@@ -122,5 +131,56 @@ class ConversationAuditReconcileTest {
         ConversationAuditReconcile.run(context, backend).getOrThrow()
 
         assertEquals(DeviceId.current(context), backend.batches.single().single().deviceId)
+    }
+
+    // --- ConversationAuditReconcile.maybeAutoRun's two guard halves --------------------------
+
+    @Test
+    fun `autoRunGate returns null when Supabase is not configured`() {
+        // clearState's SupabaseConfig.clear(context) already left this unconfigured.
+        assertNull(ConversationAuditReconcile.autoRunGate(context))
+    }
+
+    /** Same "drive the pure predicate, not the client-building gate" reasoning as
+     *  `ObdSampleReconcileTest`'s identical test - see that test's own doc for why. */
+    @Test
+    fun `isThrottled is true immediately after a reservation, false once the floor elapses`() {
+        val reservedAt = 10_000_000L
+        ConversationAuditReconcile.setLastAutoRunAtForTest(reservedAt)
+
+        assertTrue(ConversationAuditReconcile.isThrottled(reservedAt + 1_000L))
+        assertTrue(ConversationAuditReconcile.isThrottled(reservedAt))
+        assertFalse(ConversationAuditReconcile.isThrottled(reservedAt + 6 * 60_000L))
+    }
+
+    private fun fakeGateway(userId: String?) = object : SupabaseAuthGateway {
+        override suspend fun signInWithPassword(email: String, password: String) = Unit
+        override suspend fun signOut() = Unit
+        override fun currentUserId(): String? = userId
+        override suspend fun awaitSessionReady(timeoutMillis: Long): Boolean = true
+        override suspend fun householdRosterSize(): Int = 0
+    }
+
+    @Test
+    fun `runIfSignedIn no-ops for a genuinely signed-out session, never attempting an upload`() = runBlocking {
+        insertRow(ConversationAudit.Kind.COMPANION, "should not upload")
+        val backend = FakeConversationAuditBackend()
+        val auth = SupabaseAuth(context, gatewayProvider = { fakeGateway(null) })
+
+        ConversationAuditReconcile.runIfSignedIn(context, backend, auth)
+
+        assertTrue(backend.batches.isEmpty())
+        assertEquals(0L, ConversationAuditUploadCursor.lastUploadedId(context, DeviceId.current(context)))
+    }
+
+    @Test
+    fun `runIfSignedIn runs once when signed in`() = runBlocking {
+        insertRow(ConversationAudit.Kind.COMPANION, "should upload")
+        val backend = FakeConversationAuditBackend()
+        val auth = SupabaseAuth(context, gatewayProvider = { fakeGateway("user-1") })
+
+        ConversationAuditReconcile.runIfSignedIn(context, backend, auth)
+
+        assertEquals(1, backend.batches.sumOf { it.size })
     }
 }

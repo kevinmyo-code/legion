@@ -1,8 +1,14 @@
 package com.kevin.legion.backend
 
 import android.content.Context
+import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.engine.DeviceId
+import io.github.jan.supabase.SupabaseClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Install-scoped high-water mark for [ConversationAuditReconcile]'s upload, keyed by [DeviceId] -
@@ -83,10 +89,15 @@ object ConversationAuditReconcile {
      *   window.
      * @param uploaded rows this RUN sent, counted by batch size attempted - same convention as
      *   [ObdSampleReconcile.Report.uploaded].
+     * @param serverCountAfter the server's `conversation_audit` row count after this run, via
+     *   [ConversationAuditBackend.countConversationAudit]'s HEAD-only request - same "cheap enough
+     *   to report, too expensive to diff against" posture [ObdSampleReconcile.Report.serverCountAfter]
+     *   states for its own table.
      */
     data class Report(
         val sourceCount: Int,
         val uploaded: Int,
+        val serverCountAfter: Long,
     )
 
     suspend fun run(context: Context, backend: ConversationAuditBackend): Result<Report> {
@@ -120,11 +131,78 @@ object ConversationAuditReconcile {
             ConversationAuditUploadCursor.advance(context, deviceId, cursor)
         }
 
+        val serverCountAfter = backend.countConversationAudit().getOrElse { return Result.failure(it) }
+
         return Result.success(
             Report(
                 sourceCount = db.conversationAuditDao().count(),
                 uploaded = uploadedThisRun,
+                serverCountAfter = serverCountAfter,
             ),
         )
+    }
+
+    private val autoRunScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var lastAutoRunAt = 0L
+
+    /** Same floor and reasoning as [ObdSampleReconcile]'s own `AUTO_RUN_MIN_INTERVAL_MS` - this
+     *  table is smaller (197 rows as of 2026-08-29 versus obd_samples' 26,059, per this object's
+     *  own class doc) but the resumable-cursor shape and the reason for a floor are identical. */
+    private const val AUTO_RUN_MIN_INTERVAL_MS = 5 * 60 * 1000L
+
+    /** Same throttle predicate, same reason it is pulled out separately, as
+     *  [ObdSampleReconcile.isThrottled] - see that function's own doc for why [autoRunGate] itself
+     *  cannot be driven directly under Robolectric. */
+    internal fun isThrottled(now: Long): Boolean = now - lastAutoRunAt < AUTO_RUN_MIN_INTERVAL_MS
+
+    /** Test-only escape hatch for [isThrottled]'s own test - same idiom as
+     *  [ObdSampleReconcile.setLastAutoRunAtForTest]. */
+    internal fun setLastAutoRunAtForTest(atMs: Long) {
+        lastAutoRunAt = atMs
+    }
+
+    /** The synchronous half of [maybeAutoRun] - same throttle-floor-plus-configuration gate as
+     *  [ObdSampleReconcile.autoRunGate], extracted for the identical reason: a directly assertable
+     *  return value for [ConversationAuditReconcileTest], with [lastAutoRunAt] reserved here,
+     *  before [maybeAutoRun] launches anything async. */
+    internal fun autoRunGate(context: Context, now: Long = System.currentTimeMillis()): SupabaseClient? {
+        if (isThrottled(now)) return null
+        val app = context.applicationContext
+        val client = SupabaseClientProvider.get(app) ?: return null
+        lastAutoRunAt = now
+        return client
+    }
+
+    /** The async half of [maybeAutoRun] - same shape and same reason as
+     *  [ObdSampleReconcile.runIfSignedIn]: resolves who is signed in via
+     *  [SupabaseAuth.resolveSignedInUserId], runs [run] if anyone is, and reports via
+     *  [MidnightEvents], extracted so [ConversationAuditReconcileTest] can drive the "signed out"
+     *  and "signed in" branches directly against a fake [SupabaseAuth] gatewayProvider. */
+    internal suspend fun runIfSignedIn(context: Context, backend: ConversationAuditBackend, auth: SupabaseAuth) {
+        try {
+            if (auth.resolveSignedInUserId() == null) return
+            val report = run(context, backend).getOrThrow()
+            MidnightEvents.conversationAuditAutoReconcileSucceeded(report.uploaded, report.serverCountAfter)
+        } catch (e: Exception) {
+            MidnightEvents.conversationAuditAutoReconcileFailed(e)
+        }
+    }
+
+    /**
+     * `MainActivity.onResume`'s hook - `conversation_audit` had 78 rows never uploaded because
+     * this reconcile's only production caller before this ticket was a Settings row nobody had
+     * wired up to run automatically. No-ops silently, with a logged breadcrumb rather than a
+     * dialog or a crash, when Supabase is not configured or nobody is signed in - see
+     * [autoRunGate]/[runIfSignedIn] for the two halves this delegates to. Fire-and-forget on
+     * [autoRunScope]; never suspends the caller.
+     */
+    fun maybeAutoRun(context: Context) {
+        val client = autoRunGate(context) ?: return
+        val app = context.applicationContext
+        autoRunScope.launch {
+            runIfSignedIn(app, SupabaseConversationAuditBackend(client), SupabaseAuth(app))
+        }
     }
 }

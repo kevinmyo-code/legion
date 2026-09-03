@@ -3,6 +3,7 @@ package com.kevin.legion.backend
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.exceptions.RestException
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Count
 import java.io.IOException
 import java.time.Instant
 import kotlinx.serialization.SerialName
@@ -79,5 +80,15 @@ class SupabaseConversationAuditBackend(private val client: SupabaseClient) : Con
                 }
             }
             Unit
+        }
+
+    /** Same HEAD-only `Count.EXACT` shape as [SupabaseFleetBackend.countObdSamples] - see that
+     *  function's own doc comment for why a HEAD request, not a full fetch, is the right cost here. */
+    override suspend fun countConversationAudit(): Result<Long> =
+        translating("count conversation audit rows") {
+            client.postgrest.from(CONVERSATION_AUDIT_TABLE).select {
+                head = true
+                count(Count.EXACT)
+            }.countOrNull() ?: 0L
         }
 }

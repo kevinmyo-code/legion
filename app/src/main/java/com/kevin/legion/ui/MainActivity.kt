@@ -294,6 +294,14 @@ class MainActivity : ComponentActivity() {
         // rather than sharing that lifecycleScope block.
         com.kevin.legion.backend.LedgerReconcile.maybeAutoRun(applicationContext)
         com.kevin.legion.backend.MaintenanceScheduleReconcile.maybeAutoRun(applicationContext)
+        // The two remaining batch uploads that were reachable only from a BackendMigrationScreen
+        // row nobody had wired up to run automatically: 5,263 obd_samples rows and 78
+        // conversation_audit rows measured never-uploaded against the real phone and the real
+        // project. Same self-contained fire-and-forget shape as the pair above - each has its own
+        // throttle and its own "not configured / not signed in" guard, see each object's own
+        // maybeAutoRun doc comment.
+        com.kevin.legion.backend.ObdSampleReconcile.maybeAutoRun(applicationContext)
+        com.kevin.legion.backend.ConversationAuditReconcile.maybeAutoRun(applicationContext)
         // Scheduled whole-database backup (Phase 0 item 1,
         // `.scratch/backend-erp/issues/05-migration-path.md`). DatabaseSnapshot.backupNow was
         // manual-only before this - its only callers were three buttons on DriveSyncScreen - so

@@ -199,6 +199,36 @@ object MidnightEvents {
         Log.w(TAG, "maintenance_schedule_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** A foreground [com.kevin.legion.backend.ObdSampleReconcile.maybeAutoRun] pass completed -
+     * same "only evidence this ran" role as [ledgerAutoReconcileSucceeded], for the 5,263-row
+     * backlog `.scratch/backend-erp/issues/30-*.md` found sitting behind a Settings row nobody
+     * had wired up. [serverCountAfter] is a HEAD-only exact count, not a full fetch - see
+     * [com.kevin.legion.backend.ObdSampleReconcile.Report.serverCountAfter]'s own doc. */
+    fun obdSampleAutoReconcileSucceeded(uploaded: Int, skipped: Int, serverCountAfter: Long) = safe {
+        Log.d(TAG, "obd_sample_auto_reconcile uploaded=$uploaded skipped=$skipped serverCountAfter=$serverCountAfter")
+    }
+
+    /** [com.kevin.legion.backend.ObdSampleReconcile.maybeAutoRun] failed - degraded to this log
+     * line, same posture as [eventsAutoPullFailed]. */
+    fun obdSampleAutoReconcileFailed(e: Throwable) = safe {
+        Log.w(TAG, "obd_sample_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.ConversationAuditReconcile.maybeAutoRun] pass
+     * completed - same "only evidence this ran" role as [ledgerAutoReconcileSucceeded]. No
+     * `skipped` parameter - unlike [ledgerAutoReconcileSucceeded]'s ledger wave,
+     * [com.kevin.legion.backend.ConversationAuditReconcile] never skips a row, only batches and
+     * resumes (see that object's own class doc). */
+    fun conversationAuditAutoReconcileSucceeded(uploaded: Int, serverCountAfter: Long) = safe {
+        Log.d(TAG, "conversation_audit_auto_reconcile uploaded=$uploaded serverCountAfter=$serverCountAfter")
+    }
+
+    /** [com.kevin.legion.backend.ConversationAuditReconcile.maybeAutoRun] failed - degraded to
+     * this log line, same posture as [eventsAutoPullFailed]. */
+    fun conversationAuditAutoReconcileFailed(e: Throwable) = safe {
+        Log.w(TAG, "conversation_audit_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A foreground [com.kevin.legion.backend.BodySync.maybeAutoPull] pass completed across all
      * eight body tables - same "only evidence this ran" role as [eventsAutoPullSucceeded] plays
      * for events. Body-supabase ticket. */

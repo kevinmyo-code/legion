@@ -437,6 +437,8 @@ class FleetReconcileTest {
             obdSampleBatches.add(batch)
             return Result.success(Unit)
         }
+
+        override suspend fun countObdSamples(): Result<Long> = error("out of scope")
     }
 
     @Before

@@ -54,6 +54,7 @@ class MaintenanceScheduleReconcileTest {
         override suspend fun fetchActiveDriveReassignments(): Result<List<RemoteDriveReassignment>> = error("out of scope")
         override suspend fun upsertDriveReassignment(reassignment: DriveReassignmentUpload): Result<RemoteDriveReassignment> = error("out of scope")
         override suspend fun uploadObdSampleBatch(batch: List<ObdSampleUpload>): Result<Unit> = error("out of scope")
+        override suspend fun countObdSamples(): Result<Long> = error("out of scope")
 
         override suspend fun fetchActiveMaintenanceSchedules(): Result<List<RemoteMaintenanceSchedule>> =
             Result.success(schedules.values.toList())
