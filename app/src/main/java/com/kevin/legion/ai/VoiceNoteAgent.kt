@@ -127,8 +127,19 @@ object VoiceNoteAgent {
      * file, an upload that never finishes, or a call the transcription service itself refused.
      * **Never touches the file at [audioPath]** - a failure here leaves the audio exactly where the
      * recorder left it, retryable by whatever calls this again.
+     *
+     * **Checks [GeminiKeyProvider.hasKey] before attempting any network I/O** - added alongside
+     * the FAILED-state ticket, matching the same pre-flight-check convention `service/LiveToolbox.kt`
+     * and `service/LiveSessionController.kt` already use elsewhere in this codebase. Previously
+     * every call attempted the real upload unconditionally even with a blank key, which meant a
+     * genuinely useless network round trip on every attempt with no key configured - slower, and a
+     * less honest failure reason ("upload session start failed (HTTP 401)") than simply saying no
+     * key is configured.
      */
     suspend fun transcribeAndSummarize(audioPath: String, mimeType: String = "audio/m4a"): Result {
+        if (!GeminiKeyProvider.hasKey()) {
+            return Result.Failed("No Gemini key is configured, so this recording can't be transcribed.")
+        }
         val file = File(audioPath)
         val bytes = try {
             if (!file.exists()) return Result.Failed("No audio file found at $audioPath.")

@@ -334,6 +334,7 @@ fun CalendarScreen() {
             onBack = { selectedRecordingId = null },
             onRenamed = { reloadNonce++ },
             onDeleted = { selectedRecordingId = null; reloadNonce++ },
+            onRetried = { reloadNonce++ },
         )
         return
     }

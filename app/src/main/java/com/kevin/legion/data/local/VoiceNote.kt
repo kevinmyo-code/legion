@@ -74,6 +74,23 @@ object VoiceNoteProvenance {
  * and true, but the ticket's own next column, [interrupted], exists as "an explicit boolean, not
  * inferred at read time" specifically because a second interruption path (mic preemption) has a
  * real timestamp and would otherwise slip through a rule keyed on [endedAt] alone.
+ *
+ * **[transcriptionFailureReason]/[transcriptionAttemptStartedAt] (added v65, `.scratch` follow-up
+ * to CLAUDE.md §7's outcome-verb rule: "a spinner that never resolves is the claim §7 forbids") -
+ * the failure and in-flight halves of the SAME gap: a stopped note with a null [transcript] used to
+ * read as "still transcribing" whether the call was genuinely in flight, had already failed, or
+ * belonged to a process that died mid-call, and none of those three is the same sentence.**
+ * [transcriptionFailureReason] carries the WORDS of the last failure, never just a boolean - the
+ * same "store the reason, not the verdict" posture [ListItem.exactDowngraded] set for a refusal in
+ * this schema and CLAUDE.md §4 rule 8 states for a gate's own inputs: a bare "failed" flag with no
+ * reason is an assertion nobody can act on. Null means no failure is currently on record for this
+ * row - cleared the instant a new attempt starts, so a stale reason from an earlier attempt can
+ * never linger next to a since-succeeded transcript. [transcriptionAttemptStartedAt] is set the
+ * moment [com.kevin.legion.voice.VoiceNoteController.transcribeAndPersist] begins and cleared the
+ * moment it finishes (success OR failure) - a non-null value read back at the NEXT app start (by
+ * [com.kevin.legion.voice.VoiceNoteController.reconcileAfterProcessDeath]) can only mean the process
+ * died mid-call, the same "a timestamp nobody ever cleared means the write that would have cleared
+ * it never ran" shape [interrupted]'s own crash-recovery half uses for [endedAt].
  */
 @Entity(tableName = "voice_notes")
 data class VoiceNote(
@@ -94,6 +111,11 @@ data class VoiceNote(
      * stop - a mic preemption (ticket 01's `RING_LISTENING` rule) or a process death discovered on
      * the next app start. Never inferred from [endedAt] - see this class's own doc comment. */
     val interrupted: Boolean = false,
+    /** Words, not a flag - see this class's own doc comment. Null means no failure is on record. */
+    val transcriptionFailureReason: String? = null,
+    /** Non-null exactly while a transcription attempt is genuinely in flight - see this class's
+     * own doc comment for how a stale value here is read as an abandoned attempt. */
+    val transcriptionAttemptStartedAt: Long? = null,
 )
 
 /** Data access for [VoiceNote]. Deliberately narrow - file cleanup and the ADR 0041 delete
@@ -109,6 +131,38 @@ interface VoiceNoteDao {
 
     @Update
     suspend fun update(note: VoiceNote)
+
+    /**
+     * Narrow, column-only updates for the two transcription-attempt-tracking columns - deliberately
+     * NOT a read-then-`.copy()`-then-[update], because that shape has a real lost-update race:
+     * [com.kevin.legion.voice.VoiceNoteController.transcribeAndPersist] reads the row, then (after a
+     * network round trip) writes a `.copy()` of that STALE snapshot - if a rename or any other write
+     * to the SAME row lands in between, the stale snapshot's copy silently reverts it. Found
+     * 2026-09-04 via a genuinely flaky `rename` test: the row's title came back null because a
+     * concurrent transcription attempt's own attempt-started stamp, built from a snapshot fetched
+     * before the rename, overwrote it back to null moments later. A plain `UPDATE ... SET col = :x
+     * WHERE id = :id` touches ONLY the named columns no matter what else changed on the row between
+     * read and write, because there is no read.
+     */
+    @Query("UPDATE voice_notes SET transcriptionAttemptStartedAt = :startedAt, transcriptionFailureReason = NULL WHERE id = :id")
+    suspend fun markTranscriptionAttemptStarted(id: Long, startedAt: Long)
+
+    /** The failure/no-audio/abandoned-attempt exit path's own narrow update - see
+     * [markTranscriptionAttemptStarted]'s own doc comment for why this is a column-only `UPDATE`
+     * rather than a read-`.copy()`-write. */
+    @Query("UPDATE voice_notes SET transcriptionFailureReason = :reason, transcriptionAttemptStartedAt = NULL WHERE id = :id")
+    suspend fun markTranscriptionFailed(id: Long, reason: String)
+
+    /** The success exit path's own narrow update - same [markTranscriptionAttemptStarted] reasoning,
+     * extended to the columns a successful transcription actually writes. `COALESCE(title, :title)`
+     * is the SQL form of [VoiceNote.title]'s own "a user-supplied titleHint is never overwritten by
+     * the model's guess" rule: only an untitled row (still NULL at write time) picks up [title]. */
+    @Query(
+        "UPDATE voice_notes SET title = COALESCE(title, :title), summary = :summary, " +
+            "transcript = :transcript, transcriptionFailureReason = NULL, " +
+            "transcriptionAttemptStartedAt = NULL WHERE id = :id",
+    )
+    suspend fun applyTranscriptionSuccess(id: Long, title: String, summary: String, transcript: String)
 
     @Query("SELECT * FROM voice_notes WHERE id = :id")
     suspend fun getById(id: Long): VoiceNote?
@@ -133,6 +187,14 @@ interface VoiceNoteDao {
      * not be re-scanned as if it crashed. */
     @Query("SELECT * FROM voice_notes WHERE endedAt IS NULL")
     suspend fun getUnended(): List<VoiceNote>
+
+    /** Every row whose transcription attempt was left in flight - the crash-recovery scan
+     * [com.kevin.legion.voice.VoiceNoteController.reconcileAfterProcessDeath] runs alongside
+     * [getUnended] at startup. See [VoiceNote.transcriptionAttemptStartedAt]'s own doc comment: a
+     * non-null value read back on the NEXT app start can only mean the process died mid-call,
+     * because a normal completion (success or failure) always clears it before that call returns. */
+    @Query("SELECT * FROM voice_notes WHERE transcriptionAttemptStartedAt IS NOT NULL")
+    suspend fun getStalledTranscriptions(): List<VoiceNote>
 
     /** Every audio path this table currently claims - the orphan-file scan's "what is spoken for"
      * side. Nullable column, but a row past recording always has one until its audio is dropped

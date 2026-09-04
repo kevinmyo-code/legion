@@ -90,6 +90,7 @@ fun VoiceNotesScreen(onBack: () -> Unit) {
             onBack = { selectedId = null },
             onRenamed = { reloadNonce++ },
             onDeleted = { selectedId = null; reloadNonce++ },
+            onRetried = { reloadNonce++ },
         )
         return
     }
@@ -254,6 +255,7 @@ fun VoiceNoteRow(note: VoiceNote, onClick: () -> Unit) {
         val stateColor = when (rowState) {
             VoiceNoteRowState.INTERRUPTED -> sem.estimated
             VoiceNoteRowState.TRANSCRIBING -> sem.ghost
+            VoiceNoteRowState.FAILED -> sem.estimated
             VoiceNoteRowState.RECORDED -> sem.debit
             VoiceNoteRowState.READY -> sem.faint
         }
@@ -263,6 +265,16 @@ fun VoiceNoteRow(note: VoiceNote, onClick: () -> Unit) {
                 "AI-generated summary: ${note.summary}",
                 style = LegionType.stamp,
                 color = sem.faint,
+                maxLines = 2,
+            )
+        } else if (note.transcriptionFailureReason != null) {
+            // Said in words on the list row too, not only once opened - same "a driver deciding
+            // which recording to trust should not have to open every one" posture the interrupted
+            // line below already follows. Open the recording to retry.
+            Text(
+                note.transcriptionFailureReason,
+                style = LegionType.stamp,
+                color = sem.estimated,
                 maxLines = 2,
             )
         } else {
@@ -297,6 +309,7 @@ fun VoiceNoteDetailScreen(
     onBack: () -> Unit,
     onRenamed: () -> Unit,
     onDeleted: () -> Unit,
+    onRetried: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -304,6 +317,11 @@ fun VoiceNoteDetailScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var deleteError by remember { mutableStateOf<String?>(null) }
     var playing by remember { mutableStateOf(false) }
+    // Local, immediate feedback that the tap registered - VoiceNoteController.retryTranscription
+    // is fire-and-forget (same shape stop() itself uses), so this reads "Retrying..." the instant
+    // it is tapped rather than staying on the stale "Transcription failed" text until the next
+    // reload happens to land after the background call finishes.
+    var retrying by remember(note.id) { mutableStateOf(false) }
 
     val mediaPlayer = remember { MediaPlayer() }
     DisposableEffect(Unit) {
@@ -365,6 +383,14 @@ fun VoiceNoteDetailScreen(
             VoiceNoteDetail(
                 note = note,
                 playing = playing,
+                retrying = retrying,
+                onRetry = {
+                    retrying = true
+                    scope.launch {
+                        VoiceNoteController.retryTranscription(context, note.id)
+                        onRetried()
+                    }
+                },
                 onTogglePlayback = {
                     val path = note.audioPath
                     if (path == null) return@VoiceNoteDetail
@@ -395,7 +421,13 @@ fun VoiceNoteDetailScreen(
  * interrupted wording without standing up the whole screen (delete dialog, MediaPlayer, nav state).
  */
 @Composable
-fun VoiceNoteDetail(note: VoiceNote, playing: Boolean, onTogglePlayback: () -> Unit) {
+fun VoiceNoteDetail(
+    note: VoiceNote,
+    playing: Boolean,
+    retrying: Boolean = false,
+    onRetry: () -> Unit = {},
+    onTogglePlayback: () -> Unit,
+) {
     val sem = LocalLegionSemantics.current
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
         val kindWord = if (note.kind == VoiceNoteKind.MEETING) "Meeting" else "Solo"
@@ -412,6 +444,21 @@ fun VoiceNoteDetail(note: VoiceNote, playing: Boolean, onTogglePlayback: () -> U
                 color = sem.estimated,
                 modifier = Modifier.padding(top = 6.dp),
             )
+        }
+
+        // FAILED per voiceNoteRowState - said in words (CLAUDE.md §7's outcome-verb rule) with a
+        // Retry the user can act on. The audio is unchanged on disk (VoiceNoteAgent never touches
+        // the file on a failure), so a retry is always genuinely possible here.
+        if (note.transcript == null && note.transcriptionFailureReason != null) {
+            Text(
+                "Transcription failed: ${note.transcriptionFailureReason}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = sem.estimated,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            Button(onClick = onRetry, enabled = !retrying, modifier = Modifier.padding(top = 6.dp)) {
+                Text(if (retrying) "RETRYING..." else "RETRY")
+            }
         }
 
         if (note.audioPath != null) {

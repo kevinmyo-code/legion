@@ -66,12 +66,27 @@ object VoiceNoteController {
     private var recorderInstance: VoiceNoteRecorder? = null
     private val recorderLock = Any()
 
+    /** Test seam: settable from a unit test so `stop`/[retryTranscription]'s fire-and-forget
+     * launches run on a scope the test's own `runTest` can actually wait on, instead of a real
+     * background thread pool a test has no deterministic way to await. Same
+     * [recorderOverride]/[backendOverride] shape. Defaults to null, meaning "use [controllerScope]
+     * below"; production code never sets this. Found necessary 2026-09-04: adding the
+     * attempt-started/failure-reason writes below (the FAILED-state ticket) doubled the number of
+     * Room writes each background transcription performs, which was enough to turn an already-fragile
+     * "nobody awaits this" gap into [VoiceNoteControllerTest] flaking on unrelated test methods -
+     * `kotlinx.coroutines.test.UncaughtExceptionsBeforeTest` blaming whichever test happened to be
+     * running when a PREVIOUS test's leaked write finally landed against a Robolectric shadow layer
+     * already torn down for a different test method. */
+    @Volatile
+    internal var controllerScopeOverride: CoroutineScope? = null
+
     /** Own scope for the transcribe-after-stop work (see this object's class doc), independent of
      * any caller's lifecycle - [Dispatchers.IO] because [VoiceNoteAgent.transcribeAndSummarize]
      * reads a file off disk and makes a network call, neither of which belongs on a caller's own
      * dispatcher. [SupervisorJob] so one failed transcription can never cancel a sibling one still
      * in flight. */
-    private val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val defaultControllerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val controllerScope: CoroutineScope get() = controllerScopeOverride ?: defaultControllerScope
 
     private fun dao(context: Context): VoiceNoteDao = CarDatabase.getDatabase(context).voiceNoteDao()
 
@@ -152,15 +167,17 @@ object VoiceNoteController {
      * [com.kevin.legion.notes.NotesController]'s own id-carry posture) before syncing it to the
      * backend if one is configured.
      *
-     * **A failure here leaves the row exactly as [stop] left it** - [VoiceNote.summary]/
-     * [VoiceNote.transcript] stay null, [VoiceNote.audioPath] stays untouched on disk
-     * ([VoiceNoteAgent.transcribeAndSummarize]'s own doc comment: "never touches the file"), and
-     * nothing about this is surfaced as an error to any live caller, because by the time this runs
-     * the turn or screen that triggered [stop] is long gone. [get]/[listNotes]/[findByTitleOrLatest]
-     * read whatever state the row is actually in and say so in words (no summary yet vs. a summary
-     * present) - there is
-     * no separate "processing failed" flag to set, and the audio being intact means a future retry
-     * (not built by this ticket) could always be added without losing anything.
+     * **A failure here leaves [VoiceNote.summary]/[VoiceNote.transcript] null and
+     * [VoiceNote.audioPath] untouched on disk** ([VoiceNoteAgent.transcribeAndSummarize]'s own doc
+     * comment: "never touches the file") - **but, unlike before, no longer leaves the row silently
+     * indistinguishable from one still in progress.** [VoiceNote.transcriptionFailureReason] is
+     * written in words (CLAUDE.md §7's outcome-verb rule, §4 rule 8's "store the reason, not just
+     * the verdict"), and [voiceNoteRowState][com.kevin.legion.ui.voicenotes.voiceNoteRowState]
+     * reads it into [com.kevin.legion.ui.voicenotes.VoiceNoteRowState.FAILED] rather than
+     * `TRANSCRIBING`. [VoiceNote.transcriptionAttemptStartedAt] is stamped BEFORE the call and
+     * cleared on every exit path (success or failure) - a value still sitting there on the NEXT app
+     * start is exactly how [reconcileAfterProcessDeath] recognises an attempt this same function
+     * never got to finish, because the process running it died first.
      *
      * `internal`, not `private`, so [VoiceNoteControllerTest] can call this directly and await it
      * synchronously - [stop]'s own `controllerScope.launch` makes the real production call
@@ -169,28 +186,79 @@ object VoiceNoteController {
     internal suspend fun transcribeAndPersist(context: Context, noteId: Long, audioPath: String?) {
         if (audioPath == null) {
             Log.w(TAG, "transcribeAndPersist: note $noteId has no audio path - nothing to transcribe")
+            // Safe no-op if the row is already gone - Room's generated UPDATE...WHERE id=:id simply
+            // matches zero rows, no existence check needed first.
+            markFailed(context, noteId, "No audio was saved for this recording, so it can't be transcribed.")
             return
         }
+        if (dao(context).getById(noteId) == null) {
+            Log.w(TAG, "transcribeAndPersist: note $noteId no longer exists (deleted before transcribe started)")
+            return
+        }
+        // Narrow column-only writes throughout this function, deliberately never a read-`.copy()`-
+        // write - see VoiceNoteDao.markTranscriptionAttemptStarted's own doc comment for the
+        // lost-update race that shape has (a concurrent rename losing its own write to a stale
+        // snapshot this function held from before its network call). Cleared on every exit below -
+        // a stale non-null value on the next app start is read by reconcileAfterProcessDeath as
+        // "this attempt never finished", per this function's own doc comment. Also clears any
+        // PRIOR failure reason, so a retry that is currently in flight never reads as still-failed.
+        dao(context).markTranscriptionAttemptStarted(noteId, now())
         when (val result = VoiceNoteAgent.transcribeAndSummarize(audioPath)) {
             is VoiceNoteAgent.Result.Failed -> {
                 Log.w(TAG, "transcribeAndPersist: note $noteId failed: ${result.reason}")
+                markFailed(context, noteId, result.reason)
             }
             is VoiceNoteAgent.Result.Success -> {
-                val current = dao(context).getById(noteId) ?: run {
+                dao(context).applyTranscriptionSuccess(noteId, result.title, result.summary, result.transcript)
+                // Read AFTER the write (never the stale pre-write snapshot) so syncToBackend
+                // upserts the row's genuinely-current state, title-preservation rule included.
+                val updated = dao(context).getById(noteId) ?: run {
                     Log.w(TAG, "transcribeAndPersist: note $noteId no longer exists (deleted mid-transcribe)")
                     return
                 }
-                val updated = current.copy(
-                    // A user-supplied titleHint (start's own argument) is never overwritten by the
-                    // model's guess - only an untitled note picks up the model's title.
-                    title = current.title ?: result.title,
-                    summary = result.summary,
-                    transcript = result.transcript,
-                )
-                dao(context).update(updated)
                 syncToBackend(context, updated)
             }
         }
+    }
+
+    /** Shared by [transcribeAndPersist]'s own failure branch and its no-audio-path guard - writes
+     * [reason] onto the row and clears the in-flight marker via [VoiceNoteDao.markTranscriptionFailed]'s
+     * narrow column-only update (see that function's own doc comment for why never a read-`.copy()`-
+     * write). Room's generated `UPDATE ... WHERE id = :id` is itself a safe no-op against a row that
+     * no longer exists (deleted mid-transcribe) - matches the "nothing left to roll back" posture
+     * [syncToBackend]'s own doc comment describes for a backend failure. */
+    private suspend fun markFailed(context: Context, noteId: Long, reason: String) {
+        dao(context).markTranscriptionFailed(noteId, reason)
+    }
+
+    private fun now(): Long = System.currentTimeMillis()
+
+    /**
+     * The hands-path (and, per ADR 0035, any future voice-path) retry for a row
+     * [voiceNoteRowState][com.kevin.legion.ui.voicenotes.voiceNoteRowState] reads as
+     * [com.kevin.legion.ui.voicenotes.VoiceNoteRowState.FAILED] - "a failure the user cannot act
+     * on is a dead end" per this ticket's own brief, and the audio [VoiceNoteAgent] never touches
+     * on a failure is exactly what makes a retry always possible. Runs the SAME
+     * [transcribeAndPersist] [stop] itself kicks off, on [controllerScope] so a screen navigating
+     * away can never cancel it, same fire-and-forget shape as the original attempt.
+     */
+    sealed interface RetryResult {
+        /** The retry was kicked off - does not itself mean it will succeed, same "Saved never
+         * means ready" posture [StopOutcome.Saved] already uses for the original attempt. */
+        data object Retrying : RetryResult
+        /** No such id - never reported as a retry having started. */
+        data object NotFound : RetryResult
+        /** The row has no audio left to retry against (already surfaced via [markFailed]'s own
+         * "No audio was saved" reason, so this is the read-time confirmation of that same fact). */
+        data object NoAudio : RetryResult
+    }
+
+    suspend fun retryTranscription(context: Context, noteId: Long): RetryResult {
+        val appContext = context.applicationContext
+        val note = dao(appContext).getById(noteId) ?: return RetryResult.NotFound
+        val audioPath = note.audioPath ?: return RetryResult.NoAudio
+        controllerScope.launch { transcribeAndPersist(appContext, noteId, audioPath) }
+        return RetryResult.Retrying
     }
 
     /** Pushes [note]'s current fields to the backend if one is configured, and stamps the returned
@@ -224,9 +292,34 @@ object VoiceNoteController {
      * had nothing calling it. `service/AriaForegroundService.kt`'s `onCreate` is the one caller,
      * once, before anything reads a [VoiceNote] for display - routed through the same shared
      * [recorder] instance every other function on this object uses, so its in-memory state (there
-     * is none active this early) and the sweep agree with each other. */
+     * is none active this early) and the sweep agree with each other.
+     *
+     * **Also sweeps abandoned transcription attempts** - a SECOND, unrelated crash shape from the
+     * same root cause (a process that died mid-work), closed here rather than in
+     * [VoiceNoteRecorder]: [VoiceNoteRecorder.reconcileAfterProcessDeath] only ever scans
+     * [VoiceNoteDao.getUnended] (a recording that never observed a stop), which says nothing about
+     * a recording that DID stop cleanly but whose background transcription was still running when
+     * the process died. [VoiceNoteDao.getStalledTranscriptions] is that second, independent scan -
+     * see [VoiceNote.transcriptionAttemptStartedAt]'s own doc comment for why a non-null value read
+     * back here can only mean the attempt never finished. Each stalled row is marked
+     * [VoiceNote.transcriptionFailureReason] rather than silently re-launched: the audio is
+     * unchanged on disk either way, so nothing is lost by requiring the explicit
+     * [retryTranscription] a person can see and act on, rather than resuming background network
+     * work the moment the app happens to start (which could run at an arbitrary time with no one
+     * watching for a second failure).
+     */
     suspend fun reconcileAfterProcessDeath(context: Context) {
         recorder(context).reconcileAfterProcessDeath()
+        val stalled = dao(context).getStalledTranscriptions()
+        for (note in stalled) {
+            // markTranscriptionFailed's own narrow column-only UPDATE, not a read-.copy()-write -
+            // this runs once at app start before anything else could plausibly be racing the same
+            // row, but the narrow form costs nothing and keeps every writer in this file consistent.
+            dao(context).markTranscriptionFailed(
+                note.id,
+                "Transcription was interrupted when the app closed. Tap Retry to try again.",
+            )
+        }
     }
 
     // -------------------------------------------------------------------- read / list

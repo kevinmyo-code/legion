@@ -913,3 +913,32 @@ Loaded migration 2 into the editor, pressed Ctrl+Enter, saw "Success. No rows re
 **Regression check:** a database setup or deployment documented as "dashboard SQL editor" without a verification step that queries the target to confirm the objects exist.
 
 **Status:** CLOSED. Applies to backend-ERP Phase 2 deployment and any future dashboard-based migrations. The lesson is recorded here for future database work.
+
+## L-2026-09-04: A spinner that never resolves is the app asserting an outcome it never observed
+
+Voice-note transcription failed on the phone with a Files API 404. The row sat on "Transcribing"
+indefinitely - at +15s, at +35s, and several minutes later. Not a slow call: the work was over and
+lost, and the UI was still claiming it was underway.
+
+The cause is structural rather than a missed case. `VoiceNoteRowState` had exactly four states -
+RECORDED / TRANSCRIBING / READY / INTERRUPTED - and no failed state existed for a row to move into.
+`VoiceNoteController`'s own doc comment said so plainly: *"nothing about this is surfaced as an
+error to any live caller... there is no separate 'processing failed' flag to set."* **It was written
+down, in the file, and still shipped** - the same shape as L11, where a verification gap was
+surfaced in writing and then treated as a note rather than a gate.
+
+**The rule, and it generalises past this feature: an in-progress state must be reachable-from only
+while work is actually in flight.** If the only way out of a pending state is success, then failure
+and pending are the same pixel forever, and the app is making §7's forbidden claim - asserting an
+outcome it did not observe - purely by omission. §7 has always covered what the assistant SAYS; this
+is the same rule pointed at what a screen shows, and it was the weaker surface because nobody thought
+of a spinner as a sentence.
+
+**Two checks whenever a state machine has a pending state.** Is there a terminal failure state, and
+can a row reach it? And what happens to a row that is pending when the process dies - `interrupted`
+and `reconcileAfterProcessDeath` exist on this very entity because that question was asked correctly
+about RECORDING, and not asked at all about TRANSCRIBING.
+
+Store the REASON, not a boolean. §4 rule 8's posture applies unchanged to a failure verdict: a state
+that says "it failed" with no retrievable why is unactionable, and `ListItem.exactDowngraded` is the
+existing precedent in this schema for storing the words of a refusal rather than only the fact of it.

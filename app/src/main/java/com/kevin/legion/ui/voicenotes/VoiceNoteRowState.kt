@@ -3,13 +3,20 @@ package com.kevin.legion.ui.voicenotes
 import com.kevin.legion.data.local.VoiceNote
 
 /**
- * The four states a recording can be in, read straight (`ui/METERS pane and this screen's own
- * list both need it): "recorded / transcribing / ready / interrupted", per the recordings-UI
- * ticket - "these are different sentences and must read differently". Pulled out of
+ * The five states a recording can be in, read straight (`ui/METERS pane and this screen's own
+ * list both need it): "recorded / transcribing / failed / ready / interrupted", per the
+ * recordings-UI ticket - "these are different sentences and must read differently". Pulled out of
  * [VoiceNoteRow]'s own body (which previously only ever branched on `summary != null` vs `null`
  * plus a separate, unconditional `interrupted` line) so the mapping is one pure function, testable
  * without standing up Compose, and so the METERS pane's own recordings row can read the identical
  * state a list row would show for the same note rather than reimplementing the branching.
+ *
+ * **[FAILED] added (`.scratch` follow-up to CLAUDE.md §7's outcome-verb rule) because a row whose
+ * transcription attempt genuinely failed used to fall into the SAME branch as one still in
+ * progress** - both simply had a null [VoiceNote.transcript] - so a permanent failure read as
+ * "Transcribing" forever, a spinner making exactly the claim §7 forbids: that work is still
+ * underway when it is over and lost. Reading [VoiceNote.transcriptionFailureReason] is what tells
+ * the two apart now.
  *
  * **Precedence, in order:** [INTERRUPTED] first - a note flagged interrupted may still pick up a
  * transcript later (mid-recording preemption does not stop the audio already captured from being
@@ -18,19 +25,25 @@ import com.kevin.legion.data.local.VoiceNote
  * next - [VoiceNote.endedAt] null means the recording genuinely has not been stopped yet (this
  * table's own doc comment: a crashed, never-observed stop is swept to [INTERRUPTED] on the next
  * app start before anything ever reads it, so an [endedAt]-null row seen here is a recording
- * still actually in progress). [TRANSCRIBING] covers the ordinary wait after a clean stop, before
+ * still actually in progress). [FAILED] is next - a stored [VoiceNote.transcriptionFailureReason]
+ * with no transcript yet means the last attempt genuinely failed (or was abandoned mid-call by a
+ * process death, swept to a failure reason by
+ * [com.kevin.legion.voice.VoiceNoteController.reconcileAfterProcessDeath]), and this is checked
+ * BEFORE [TRANSCRIBING] specifically so a failed row never reads as still in progress.
+ * [TRANSCRIBING] covers the ordinary wait after a clean stop with no failure on record, before
  * [VoiceNoteController.transcribeAndPersist]'s background call has written a transcript back onto
  * the row. [READY] is everything else - a transcript is present, so [VoiceNote.summary] is too
  * (the class doc's own nullability contract: summary is never non-null while transcript is null).
  */
-enum class VoiceNoteRowState { RECORDED, TRANSCRIBING, READY, INTERRUPTED }
+enum class VoiceNoteRowState { RECORDED, TRANSCRIBING, FAILED, READY, INTERRUPTED }
 
 /** The pure mapping described on [VoiceNoteRowState] itself. */
 fun voiceNoteRowState(note: VoiceNote): VoiceNoteRowState = when {
     note.interrupted -> VoiceNoteRowState.INTERRUPTED
     note.endedAt == null -> VoiceNoteRowState.RECORDED
-    note.transcript == null -> VoiceNoteRowState.TRANSCRIBING
-    else -> VoiceNoteRowState.READY
+    note.transcript != null -> VoiceNoteRowState.READY
+    note.transcriptionFailureReason != null -> VoiceNoteRowState.FAILED
+    else -> VoiceNoteRowState.TRANSCRIBING
 }
 
 /** The word a list row or the METERS pane shows for [VoiceNoteRowState] - one vocabulary, so a
@@ -39,6 +52,7 @@ fun voiceNoteRowState(note: VoiceNote): VoiceNoteRowState = when {
 fun voiceNoteRowStateLabel(state: VoiceNoteRowState): String = when (state) {
     VoiceNoteRowState.RECORDED -> "Recording"
     VoiceNoteRowState.TRANSCRIBING -> "Transcribing"
+    VoiceNoteRowState.FAILED -> "Transcription failed"
     VoiceNoteRowState.READY -> "Ready"
     VoiceNoteRowState.INTERRUPTED -> "Interrupted"
 }

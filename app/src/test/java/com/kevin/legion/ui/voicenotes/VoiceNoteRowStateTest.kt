@@ -18,6 +18,7 @@ class VoiceNoteRowStateTest {
         transcript: String? = "verbatim",
         summary: String? = "gist",
         interrupted: Boolean = false,
+        transcriptionFailureReason: String? = null,
     ) = VoiceNote(
         startedAt = 1_000,
         endedAt = endedAt,
@@ -26,6 +27,7 @@ class VoiceNoteRowStateTest {
         audioPath = "/tmp/x.m4a",
         kind = VoiceNoteKind.SOLO,
         interrupted = interrupted,
+        transcriptionFailureReason = transcriptionFailureReason,
     )
 
     // -------------------------------------------------------------------- voiceNoteRowState
@@ -37,7 +39,7 @@ class VoiceNoteRowStateTest {
     }
 
     @Test
-    fun `a stopped note with no transcript yet reads as TRANSCRIBING`() {
+    fun `a stopped note with no transcript yet and no failure reads as TRANSCRIBING`() {
         val n = note(endedAt = 2_000, transcript = null, summary = null)
         assertEquals(VoiceNoteRowState.TRANSCRIBING, voiceNoteRowState(n))
     }
@@ -45,6 +47,20 @@ class VoiceNoteRowStateTest {
     @Test
     fun `a note with a transcript and summary reads as READY`() {
         val n = note(endedAt = 2_000, transcript = "verbatim", summary = "gist")
+        assertEquals(VoiceNoteRowState.READY, voiceNoteRowState(n))
+    }
+
+    @Test
+    fun `a stopped note with a stored failure reason and no transcript reads as FAILED, not TRANSCRIBING`() {
+        val n = note(endedAt = 2_000, transcript = null, summary = null,
+            transcriptionFailureReason = "The upload didn't finish processing: file status check failed (HTTP 404)")
+        assertEquals(VoiceNoteRowState.FAILED, voiceNoteRowState(n))
+    }
+
+    @Test
+    fun `a successful retry clears the failure reason and the row reads READY again, never FAILED`() {
+        val n = note(endedAt = 2_000, transcript = "verbatim", summary = "gist",
+            transcriptionFailureReason = null)
         assertEquals(VoiceNoteRowState.READY, voiceNoteRowState(n))
     }
 
@@ -61,9 +77,9 @@ class VoiceNoteRowStateTest {
     }
 
     @Test
-    fun `the four states map to four distinct, non-blank words`() {
+    fun `the five states map to five distinct, non-blank words`() {
         val labels = VoiceNoteRowState.entries.map { voiceNoteRowStateLabel(it) }
-        assertEquals(4, labels.toSet().size)
+        assertEquals(5, labels.toSet().size)
         labels.forEach { org.junit.Assert.assertTrue(it.isNotBlank()) }
     }
 

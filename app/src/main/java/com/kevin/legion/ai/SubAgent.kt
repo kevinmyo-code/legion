@@ -752,7 +752,15 @@ class SubAgent(
         // same BYO key. UPLOAD_URL is the resumable-start leg only; the second leg POSTs to
         // whatever session URL that leg's `x-goog-upload-url` response header hands back.
         private const val UPLOAD_URL = "https://generativelanguage.googleapis.com/upload/v1beta/files"
-        private const val FILES_URL = "https://generativelanguage.googleapis.com/v1beta/files"
+        // Deliberately the v1beta ROOT, not `.../v1beta/files` - [FileUploadResult.Uploaded.name]
+        // is the file's full resource name (`files/{id}`, per Google's own resource-name
+        // convention, same shape [uploadFile]'s own `file.optString("name")` read confirms), so
+        // every caller below already appends a `name` that STARTS WITH `files/`. Appending it onto
+        // a base that also ends in `/files` doubled the segment (`.../v1beta/files/files/{id}`),
+        // which 404s unconditionally - found 2026-09-04 via
+        // "The upload didn't finish processing: file status check failed (HTTP 404)" on every
+        // single recording, never a transient miss.
+        private const val FILES_URL = "https://generativelanguage.googleapis.com/v1beta"
 
         // Fast, cheap text model for delegated domain work. The voice turn runs
         // on the Live model (see GeminiLiveSession); workers don't need to be

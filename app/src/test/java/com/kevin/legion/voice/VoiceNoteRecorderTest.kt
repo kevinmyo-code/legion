@@ -57,6 +57,25 @@ class VoiceNoteRecorderTest {
             rows.values.filter { it.startedAt >= startInclusive && it.startedAt < endExclusive }
                 .sortedBy { it.startedAt }
         override suspend fun getUnended(): List<VoiceNote> = rows.values.filter { it.endedAt == null }
+        override suspend fun getStalledTranscriptions(): List<VoiceNote> =
+            rows.values.filter { it.transcriptionAttemptStartedAt != null }
+        override suspend fun markTranscriptionAttemptStarted(id: Long, startedAt: Long) {
+            rows[id]?.let { rows[id] = it.copy(transcriptionAttemptStartedAt = startedAt, transcriptionFailureReason = null) }
+        }
+        override suspend fun markTranscriptionFailed(id: Long, reason: String) {
+            rows[id]?.let { rows[id] = it.copy(transcriptionFailureReason = reason, transcriptionAttemptStartedAt = null) }
+        }
+        override suspend fun applyTranscriptionSuccess(id: Long, title: String, summary: String, transcript: String) {
+            rows[id]?.let {
+                rows[id] = it.copy(
+                    title = it.title ?: title,
+                    summary = summary,
+                    transcript = transcript,
+                    transcriptionFailureReason = null,
+                    transcriptionAttemptStartedAt = null,
+                )
+            }
+        }
         override suspend fun getAllAudioPaths(): List<String> = rows.values.mapNotNull { it.audioPath }
         override suspend fun deleteById(id: Long) {
             rows.remove(id)

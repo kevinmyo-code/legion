@@ -10,6 +10,7 @@ import com.kevin.legion.service.MicArbiter
 import com.kevin.legion.testutil.RoomTestReset
 import java.io.File
 import java.util.UUID
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -34,9 +35,12 @@ import org.robolectric.RuntimeEnvironment
  * DAO, so start/stop/reconcile all land in the one database every other assertion reads back from.
  *
  * **No Gemini key is configured in this environment**, so [VoiceNoteAgent.transcribeAndSummarize]
- * always takes its own caught-exception "couldn't reach the transcription service" path -
- * deterministic either way it got there, same posture [BodyWriteSameFunctionTest]'s own class doc
- * states for [com.kevin.legion.meals.MealController.logMeal]'s LLM call. That makes
+ * always takes its own [com.kevin.legion.ai.GeminiKeyProvider.hasKey] pre-flight-check path (added
+ * alongside the FAILED-state ticket - previously this fell through to a caught real-network-call
+ * exception instead, which was slow and, worse, is what originally made this whole suite flaky:
+ * see [VoiceNoteController.controllerScopeOverride]'s own doc comment) - deterministic and FAST
+ * either way, same posture [BodyWriteSameFunctionTest]'s own class doc states for
+ * [com.kevin.legion.meals.MealController.logMeal]'s LLM call. That makes
  * [VoiceNoteController.transcribeAndPersist] deterministically hit [VoiceNoteAgent.Result.Failed]
  * here - this suite is not exercising a Success transcription (that is
  * [com.kevin.legion.ai.VoiceNoteAgentParseResponseTest]'s job), only what the CONTROLLER does with
@@ -101,21 +105,46 @@ class VoiceNoteControllerTest {
             audioCaptureFactory = { path -> FakeAudioCapture(path) },
         )
         VoiceNoteController.backendOverride = null
+        // controllerScopeOverride itself is set per-test by runControllerTest below, not here -
+        // see that function's own doc comment for why it has to be the TEST's own TestScope
+        // rather than one built in @Before, which runs outside any coroutine.
     }
 
     @After
     fun tearDown() {
         VoiceNoteController.recorderOverride = null
         VoiceNoteController.backendOverride = null
+        VoiceNoteController.controllerScopeOverride = null
         MicArbiter.Claimant.entries.forEach { MicArbiter.release(it) }
         File(context.cacheDir, "voicenotes").deleteRecursively()
         RoomTestReset.drainArchDiskIoPool()
     }
 
+    /**
+     * `runTest`, but with [VoiceNoteController.controllerScopeOverride] pointed at THIS call's own
+     * [TestScope] before the test body runs. Every test in this class that touches [stop] or
+     * [VoiceNoteController.retryTranscription] must go through this, not a bare `runTest {}` -
+     * see [VoiceNoteController.controllerScopeOverride]'s own doc comment for the failure this
+     * closes: a fire-and-forget `controllerScope.launch` on a REAL [kotlinx.coroutines.Dispatchers.IO]
+     * thread pool has no deterministic finish time a test can wait on, and doubling the writes each
+     * background transcription performs (this ticket's own attempt-started/failure-reason columns)
+     * was enough to turn that latent gap into cross-test corruption. Routing the launch through
+     * `this` [TestScope] instead makes it a genuine CHILD of the test's own coroutine hierarchy -
+     * `runTest` does not return until every child of its own scope has completed, on WHATEVER
+     * dispatcher that child actually suspends on, which is what a bespoke `UnconfinedTestDispatcher`
+     * scope (tried first, insufficient - it still leaked once in testing) cannot promise: an
+     * eagerly-started coroutine can still suspend on a REAL dispatcher hop (Room's own connection
+     * pool) that resumes on its own schedule, off any clock `runTest` controls.
+     */
+    private fun runControllerTest(block: suspend TestScope.() -> Unit) = runTest {
+        VoiceNoteController.controllerScopeOverride = this
+        block()
+    }
+
     // -------------------------------------------------------------------- start / stop
 
     @Test
-    fun `start delegates to the shared recorder and refuses a second concurrent start`() = runTest {
+    fun `start delegates to the shared recorder and refuses a second concurrent start`() = runControllerTest {
         val first = VoiceNoteController.start(context, VoiceNoteKind.SOLO)
         assertTrue(first is VoiceNoteStartResult.Started)
 
@@ -125,7 +154,7 @@ class VoiceNoteControllerTest {
     }
 
     @Test
-    fun `stop returns Saved and NothingRecording is reported when nothing was recording`() = runTest {
+    fun `stop returns Saved and NothingRecording is reported when nothing was recording`() = runControllerTest {
         assertEquals(VoiceNoteController.StopOutcome.NothingRecording, VoiceNoteController.stop(context))
 
         val started = VoiceNoteController.start(context, VoiceNoteKind.MEETING) as VoiceNoteStartResult.Started
@@ -137,7 +166,7 @@ class VoiceNoteControllerTest {
     // -------------------------------------------------------------------- transcribeAndPersist
 
     @Test
-    fun `a failed transcription leaves summary and transcript null, audio untouched`() = runTest {
+    fun `a failed transcription leaves summary and transcript null, audio untouched`() = runControllerTest {
         val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO) as VoiceNoteStartResult.Started
         VoiceNoteController.stop(context)
 
@@ -154,7 +183,24 @@ class VoiceNoteControllerTest {
     }
 
     @Test
-    fun `transcribeAndPersist with no audio path is a safe no-op`() = runTest {
+    fun `a failed transcription stores its reason in words and clears the in-flight marker`() = runControllerTest {
+        val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO) as VoiceNoteStartResult.Started
+        VoiceNoteController.stop(context)
+
+        VoiceNoteController.transcribeAndPersist(context, started.noteId, started.audioPath)
+
+        val note = dao().getById(started.noteId)!!
+        assertTrue("a failure must be readable as words, never only a boolean",
+            note.transcriptionFailureReason?.isNotBlank() == true)
+        assertNull("the row must not read as still in flight once the attempt has finished",
+            note.transcriptionAttemptStartedAt)
+        assertEquals("a null-transcript row with a failure reason must read as FAILED, never TRANSCRIBING",
+            com.kevin.legion.ui.voicenotes.VoiceNoteRowState.FAILED,
+            com.kevin.legion.ui.voicenotes.voiceNoteRowState(note))
+    }
+
+    @Test
+    fun `transcribeAndPersist with no audio path is a safe no-op that still records why`() = runControllerTest {
         val id = dao().insert(VoiceNote(startedAt = 1_000L, kind = VoiceNoteKind.SOLO, audioPath = null))
 
         VoiceNoteController.transcribeAndPersist(context, id, null)
@@ -162,12 +208,119 @@ class VoiceNoteControllerTest {
         val note = dao().getById(id)!!
         assertNull(note.summary)
         assertNull(note.transcript)
+        assertTrue("no audio to transcribe is still a failure that must be said in words, never a silent no-op",
+            note.transcriptionFailureReason?.isNotBlank() == true)
+    }
+
+    /** A real, non-empty audio file on disk - `retryTranscription`/`NoAudio` both need to tell
+     * "audio present" apart from "audio missing" by [VoiceNote.audioPath]'s own nullness, same
+     * fake-bytes shape [FakeAudioCapture] uses elsewhere in this suite. Not routed through
+     * `start`/`stop` (which would ALSO schedule a `controllerScope`-launched background transcribe
+     * of its own, on top of the one this test's own [VoiceNoteController.retryTranscription] call
+     * launches) - two independent fire-and-forget launches per test method is exactly the
+     * concurrent-Room-teardown race `RoomTestReset`'s own class doc describes, and this test only
+     * needs to prove ONE of them: [VoiceNoteController.retryTranscription]'s own immediate return
+     * value, never its background outcome. */
+    private fun realAudioFile(): String {
+        val file = File(context.cacheDir, "voicenotes/retry-test-${System.nanoTime()}.m4a")
+        file.parentFile?.mkdirs()
+        file.writeBytes(byteArrayOf(1, 2, 3, 4))
+        return file.absolutePath
+    }
+
+    @Test
+    fun `retryTranscription reports Retrying for a failed note with audio, NotFound for no row, NoAudio for a row with none`() = runControllerTest {
+        val id = dao().insert(
+            VoiceNote(
+                startedAt = 1_000L, endedAt = 2_000L, kind = VoiceNoteKind.SOLO,
+                audioPath = realAudioFile(),
+                transcriptionFailureReason = "an earlier attempt failed",
+            ),
+        )
+
+        // retryTranscription launches its re-attempt fire-and-forget on controllerScope, the SAME
+        // shape [stop] itself uses for the original attempt (see that function's own doc comment) -
+        // routed onto THIS test's own TestScope by runControllerTest, so runTest's own structured
+        // concurrency waits for that launch to finish before the test method returns; no manual
+        // await needed here.
+        assertEquals(VoiceNoteController.RetryResult.Retrying,
+            VoiceNoteController.retryTranscription(context, id))
+
+        assertEquals("an id with no row must never report a retry as started",
+            VoiceNoteController.RetryResult.NotFound, VoiceNoteController.retryTranscription(context, 999_999L))
+
+        val noAudioId = dao().insert(VoiceNote(startedAt = 1_000L, kind = VoiceNoteKind.SOLO, audioPath = null,
+            transcriptionFailureReason = "No audio was saved for this recording, so it can't be transcribed."))
+        assertEquals("a row with no audio left must report NoAudio, never a retry that cannot possibly work",
+            VoiceNoteController.RetryResult.NoAudio, VoiceNoteController.retryTranscription(context, noAudioId))
+    }
+
+    @Test
+    fun `a new transcription attempt clears a stale failure reason from a previous attempt`() = runControllerTest {
+        val id = dao().insert(
+            VoiceNote(
+                startedAt = 1_000L, endedAt = 2_000L, kind = VoiceNoteKind.SOLO,
+                audioPath = realAudioFile(),
+                // A reason an actual attempt in THIS test could never have produced, so the
+                // assertion below cannot pass by coincidence.
+                transcriptionFailureReason = "STALE - must not survive a new attempt",
+            ),
+        )
+
+        // Called directly (the internal seam), not via retryTranscription's fire-and-forget launch
+        // - this is the exact call retryTranscription makes, awaited synchronously so the
+        // assertion below is deterministic rather than racing a background coroutine.
+        VoiceNoteController.transcribeAndPersist(context, id, dao().getById(id)!!.audioPath)
+
+        val note = dao().getById(id)!!
+        assertTrue("a new attempt must overwrite a stale reason from a previous one, never leave it lingering",
+            note.transcriptionFailureReason != "STALE - must not survive a new attempt")
+        assertNull("the row must not read as still in flight once the new attempt has also finished",
+            note.transcriptionAttemptStartedAt)
+    }
+
+    @Test
+    fun `reconcileAfterProcessDeath marks an abandoned in-flight transcription as failed, distinct from one genuinely still running`() = runControllerTest {
+        val stalled = dao().insert(
+            VoiceNote(
+                startedAt = 1_000L, endedAt = 2_000L, kind = VoiceNoteKind.SOLO,
+                audioPath = "/tmp/stalled.m4a",
+                // Set directly, simulating a process that died between transcribeAndPersist
+                // stamping this and ever clearing it - see VoiceNote.transcriptionAttemptStartedAt's
+                // own doc comment.
+                transcriptionAttemptStartedAt = 1_500L,
+            ),
+        )
+        val genuinelyTranscribing = dao().insert(
+            VoiceNote(
+                startedAt = 1_000L, endedAt = 2_000L, kind = VoiceNoteKind.SOLO,
+                audioPath = "/tmp/still-running.m4a",
+                // No attempt marker at all - this row has simply never been picked up yet, the
+                // ordinary TRANSCRIBING case, and must NOT be swept.
+            ),
+        )
+
+        VoiceNoteController.reconcileAfterProcessDeath(context)
+
+        val stalledNote = dao().getById(stalled)!!
+        assertTrue("an abandoned attempt must be surfaced as a failure in words, not left silent",
+            stalledNote.transcriptionFailureReason?.isNotBlank() == true)
+        assertNull(stalledNote.transcriptionAttemptStartedAt)
+        assertEquals(com.kevin.legion.ui.voicenotes.VoiceNoteRowState.FAILED,
+            com.kevin.legion.ui.voicenotes.voiceNoteRowState(stalledNote))
+
+        val runningNote = dao().getById(genuinelyTranscribing)!!
+        assertNull("a row with no attempt marker was never actually abandoned - must be left alone",
+            runningNote.transcriptionFailureReason)
+        assertEquals("a genuinely-still-transcribing row must keep reading as TRANSCRIBING, never FAILED",
+            com.kevin.legion.ui.voicenotes.VoiceNoteRowState.TRANSCRIBING,
+            com.kevin.legion.ui.voicenotes.voiceNoteRowState(runningNote))
     }
 
     // -------------------------------------------------------------------- rename
 
     @Test
-    fun `rename updates the title and reports false for an unknown id`() = runTest {
+    fun `rename updates the title and reports false for an unknown id`() = runControllerTest {
         val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO) as VoiceNoteStartResult.Started
         VoiceNoteController.stop(context)
 
@@ -181,7 +334,7 @@ class VoiceNoteControllerTest {
     // -------------------------------------------------------------------- delete (ADR 0041 cascade)
 
     @Test
-    fun `delete with no backend removes the row and its audio file`() = runTest {
+    fun `delete with no backend removes the row and its audio file`() = runControllerTest {
         val started = VoiceNoteController.start(context, VoiceNoteKind.SOLO) as VoiceNoteStartResult.Started
         VoiceNoteController.stop(context)
         val audioFile = File(started.audioPath)
@@ -195,12 +348,12 @@ class VoiceNoteControllerTest {
     }
 
     @Test
-    fun `delete reports NotFound for an id with no row, never a delete that did not happen`() = runTest {
+    fun `delete reports NotFound for an id with no row, never a delete that did not happen`() = runControllerTest {
         assertEquals(VoiceNoteController.DeleteResult.NotFound, VoiceNoteController.delete(context, 999_999L))
     }
 
     @Test
-    fun `a backend delete failure leaves both the server row and the local one untouched`() = runTest {
+    fun `a backend delete failure leaves both the server row and the local one untouched`() = runControllerTest {
         val fakeBackend = FakeVoiceNotesBackend()
         VoiceNoteController.backendOverride = fakeBackend
 
@@ -224,7 +377,7 @@ class VoiceNoteControllerTest {
     // -------------------------------------------------------------------- syncToBackend
 
     @Test
-    fun `syncToBackend upserts every field and stamps the returned serverId back onto the row`() = runTest {
+    fun `syncToBackend upserts every field and stamps the returned serverId back onto the row`() = runControllerTest {
         val fakeBackend = FakeVoiceNotesBackend()
         VoiceNoteController.backendOverride = fakeBackend
 
@@ -259,7 +412,7 @@ class VoiceNoteControllerTest {
     // day-view RECORDED section - `ui/CalendarScreen.kt`)
 
     @Test
-    fun `listInRange buckets a late-evening note into its own day, never the next`() = runTest {
+    fun `listInRange buckets a late-evening note into its own day, never the next`() = runControllerTest {
         // The exact day/dayEndExclusive construction ui/CalendarScreen.kt's own effect uses:
         // local midnight, plus com.kevin.legion.ui.notes.DAY_FILTER_WINDOW_MS (24h) exclusive.
         val zone = java.time.ZoneId.systemDefault()
@@ -285,7 +438,7 @@ class VoiceNoteControllerTest {
     }
 
     @Test
-    fun `listInRange excludes a note from the day before, at the exact start boundary it must include instead`() = runTest {
+    fun `listInRange excludes a note from the day before, at the exact start boundary it must include instead`() = runControllerTest {
         val zone = java.time.ZoneId.systemDefault()
         val day = java.time.LocalDate.of(2026, 9, 4).atStartOfDay(zone).toInstant().toEpochMilli()
         val dayEndExclusive = day + 24L * 60 * 60 * 1000
@@ -304,7 +457,7 @@ class VoiceNoteControllerTest {
     }
 
     @Test
-    fun `reconcileAfterProcessDeath runs through the shared recorder instance`() = runTest {
+    fun `reconcileAfterProcessDeath runs through the shared recorder instance`() = runControllerTest {
         val id = dao().insert(VoiceNote(startedAt = 1_000L, kind = VoiceNoteKind.SOLO, audioPath = "/tmp/x.m4a"))
 
         VoiceNoteController.reconcileAfterProcessDeath(context)

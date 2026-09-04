@@ -2682,3 +2682,28 @@ val MIGRATION_63_64 = object : Migration(63, 64) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_checklist_ticks_day` ON `checklist_ticks` (`day`)")
     }
 }
+
+/**
+ * v64 -> v65: `voice_notes` gets a failed/in-flight-transcription vocabulary
+ * (`.scratch` follow-up to CLAUDE.md §7's outcome-verb rule - see [VoiceNote]'s own doc comment
+ * for the full account of why a null [VoiceNote.transcript] used to read identically whether a
+ * transcription was genuinely still running, had already failed, or belonged to a process that
+ * died mid-call). Two nullable columns added, nothing else touched - same "plain `ALTER TABLE ...
+ * ADD COLUMN`, no rebuild" shape [MIGRATION_59_60]'s own `serverId` additions and every other
+ * single-nullable-column addition in this file already use; a table rebuild is only warranted when
+ * a column's nullability or ordering itself has to change, neither of which applies here. Copied
+ * verbatim from `app/schemas/com.kevin.legion.data.local.CarDatabase/65.json`'s own generated
+ * `createSql` for `voice_notes` (CLAUDE.md §5: no hand-written `CREATE TABLE`), confirmed against a
+ * real kapt run.
+ */
+val MIGRATION_64_65 = object : Migration(64, 65) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // No `DEFAULT NULL` clause - the generated schema declares both columns plain-nullable
+        // with no default at all, and SQLite's own `PRAGMA table_info` records a literal `DEFAULT
+        // NULL` clause as the STRING "NULL" rather than a genuine null `dflt_value`, which is a
+        // real mismatch [Migration64To65Test] catches: a column added this way would silently
+        // disagree with what Room itself would generate for a fresh install.
+        db.execSQL("ALTER TABLE `voice_notes` ADD COLUMN `transcriptionFailureReason` TEXT")
+        db.execSQL("ALTER TABLE `voice_notes` ADD COLUMN `transcriptionAttemptStartedAt` INTEGER")
+    }
+}
