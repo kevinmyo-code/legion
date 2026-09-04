@@ -168,6 +168,20 @@ interface PantryBackend {
      * a fresh upload. `Result.failure` means the request itself did not complete.
      */
     suspend fun uploadMigratedReceipt(receipt: MigratedReceipt): Result<Boolean>
+
+    /**
+     * live-sync ticket "pantry and ledger get a pull": every receipt (header plus lines) created
+     * on or after [sinceMs] (`created_at >= sinceMs`, inclusive - same boundary-row re-fetch shape
+     * every other `fetchChangedXSince` in this codebase has). **No tombstone semantics** - `receipts`
+     * has no `deleted_at` column (the immutability trigger blocks UPDATE outright and blocks DELETE
+     * except on an `UNRECONCILED` row a rule-7 supersession removes entirely), so
+     * [PantryReceiptsSync.pull] is insert-if-absent only, same reasoning as
+     * [LedgerBackend.fetchChangedTransactionsSince]'s own doc comment.
+     * Defaults to an empty result - every fake/test [PantryBackend] implementation keeps compiling
+     * without overriding this, same convention [FleetBackend.fetchChangedVehiclesSince] set.
+     */
+    suspend fun fetchChangedReceiptsSince(sinceMs: Long): Result<List<RemoteReceipt>> =
+        Result.success(emptyList())
 }
 
 /** Thrown (wrapped in [Result.failure]) by [SupabasePantryBackend] for every failure branch - owned

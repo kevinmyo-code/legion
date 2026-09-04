@@ -147,4 +147,14 @@ class SupabaseLedgerBackend(private val client: SupabaseClient) : LedgerBackend 
             )
             true
         }
+
+    /** See [LedgerBackend.fetchChangedTransactionsSince]'s own doc comment for why this is a plain
+     * `created_at gte` filter with no tombstone branch. */
+    override suspend fun fetchChangedTransactionsSince(sinceMs: Long): Result<List<RemoteLedgerTransaction>> =
+        translating("load changed ledger transactions") {
+            client.postgrest.from(LEDGER_TRANSACTIONS_TABLE)
+                .select { filter { gte("created_at", Instant.ofEpochMilli(sinceMs).toString()) } }
+                .decodeList<LedgerTransactionRowDto>()
+                .map { it.toRemoteLedgerTransaction() }
+        }
 }

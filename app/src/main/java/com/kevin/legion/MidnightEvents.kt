@@ -564,6 +564,83 @@ object MidnightEvents {
         Log.w(TAG, "fleet_realtime_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** A foreground [com.kevin.legion.backend.LedgerTransactionsSync.maybeAutoPull] pass completed -
+     * same role as [fleetAutoPullSucceeded]. `inserted`/`alreadyPresent` mirror the insert-if-absent
+     * shape [LedgerTransactionsSync]'s own class doc explains (no LWW, no tombstone branch);
+     * [unrecognizedProvenance] is a count of rows this pull refused to insert because their
+     * `provenance` string did not match a known [com.kevin.legion.data.local.IngestMethod] - should
+     * be zero on every real pull, and non-zero here is a signal worth looking at directly, not just
+     * logging past. */
+    fun ledgerTransactionsAutoPullSucceeded(inserted: Int, alreadyPresent: Int, unrecognizedProvenance: Int) = safe {
+        Log.d(
+            TAG,
+            "ledger_transactions_auto_pull inserted=$inserted alreadyPresent=$alreadyPresent " +
+                "unrecognizedProvenance=$unrecognizedProvenance",
+        )
+    }
+
+    /** [com.kevin.legion.backend.LedgerTransactionsSync.maybeAutoPull] threw outright - degraded to
+     * this log line, same posture as [fleetAutoPullFailed]. */
+    fun ledgerTransactionsAutoPullFailed(e: Throwable) = safe {
+        Log.w(TAG, "ledger_transactions_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** [com.kevin.legion.backend.LedgerTransactionsRealtime]'s channel subscribe attempt failed -
+     * same posture as [fleetRealtimeSubscribeFailed]. */
+    fun ledgerTransactionsRealtimeSubscribeFailed(e: Throwable) = safe {
+        Log.w(TAG, "ledger_transactions_realtime_subscribe_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A [com.kevin.legion.backend.LedgerTransactionsRealtime]-triggered
+     * [com.kevin.legion.backend.LedgerTransactionsSync.pull] completed - same role as
+     * [fleetRealtimePullSucceeded]. */
+    fun ledgerTransactionsRealtimePullSucceeded(inserted: Int, alreadyPresent: Int) = safe {
+        Log.d(TAG, "ledger_transactions_realtime_pull inserted=$inserted alreadyPresent=$alreadyPresent")
+    }
+
+    /** A realtime-triggered ledger transactions pull failed - degraded to this log line, same
+     * posture as [fleetRealtimePullFailed]. */
+    fun ledgerTransactionsRealtimePullFailed(e: Throwable) = safe {
+        Log.w(TAG, "ledger_transactions_realtime_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.PantryReceiptsSync.maybeAutoPull] pass completed -
+     * same role as [ledgerTransactionsAutoPullSucceeded]. [linesInserted] is this pull's own
+     * addition: a receipt-level count alone would hide whether the lines that ride along with a
+     * newly-inserted receipt actually landed. */
+    fun pantryReceiptsAutoPullSucceeded(inserted: Int, alreadyPresent: Int, unrecognizedProvenance: Int, linesInserted: Int) = safe {
+        Log.d(
+            TAG,
+            "pantry_receipts_auto_pull inserted=$inserted alreadyPresent=$alreadyPresent " +
+                "unrecognizedProvenance=$unrecognizedProvenance linesInserted=$linesInserted",
+        )
+    }
+
+    /** [com.kevin.legion.backend.PantryReceiptsSync.maybeAutoPull] threw outright - degraded to this
+     * log line, same posture as [ledgerTransactionsAutoPullFailed]. */
+    fun pantryReceiptsAutoPullFailed(e: Throwable) = safe {
+        Log.w(TAG, "pantry_receipts_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** [com.kevin.legion.backend.PantryReceiptsRealtime]'s channel subscribe attempt failed - same
+     * posture as [ledgerTransactionsRealtimeSubscribeFailed]. */
+    fun pantryReceiptsRealtimeSubscribeFailed(e: Throwable) = safe {
+        Log.w(TAG, "pantry_receipts_realtime_subscribe_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A [com.kevin.legion.backend.PantryReceiptsRealtime]-triggered
+     * [com.kevin.legion.backend.PantryReceiptsSync.pull] completed - same role as
+     * [ledgerTransactionsRealtimePullSucceeded]. */
+    fun pantryReceiptsRealtimePullSucceeded(inserted: Int, alreadyPresent: Int) = safe {
+        Log.d(TAG, "pantry_receipts_realtime_pull inserted=$inserted alreadyPresent=$alreadyPresent")
+    }
+
+    /** A realtime-triggered pantry receipts pull failed - degraded to this log line, same posture as
+     * [ledgerTransactionsRealtimePullFailed]. */
+    fun pantryReceiptsRealtimePullFailed(e: Throwable) = safe {
+        Log.w(TAG, "pantry_receipts_realtime_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A voice tool was dispatched. Useful for tracing what tool ran before a crash. */
     fun toolDispatched(toolName: String) = safe { Log.d(TAG, "tool_dispatched: $toolName") }
 

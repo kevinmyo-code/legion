@@ -263,4 +263,19 @@ class SupabasePantryBackend(private val client: SupabaseClient) : PantryBackend 
             }
             true
         }
+
+    /** See [PantryBackend.fetchChangedReceiptsSince]'s own doc comment for why this is a plain
+     * `created_at gte` filter on the header, with lines joined in-memory exactly as
+     * [fetchActiveReceipts] already does - the changed-receipts set is always small (a handful of
+     * rows per pull), so a second unfiltered `receipt_line_items` read costs nothing here the way it
+     * already costs nothing in [fetchActiveReceipts]. */
+    override suspend fun fetchChangedReceiptsSince(sinceMs: Long): Result<List<RemoteReceipt>> =
+        translating("load changed grocery receipts") {
+            val receipts = client.postgrest.from(RECEIPTS_TABLE)
+                .select { filter { gte("created_at", java.time.Instant.ofEpochMilli(sinceMs).toString()) } }
+                .decodeList<ReceiptRowDto>()
+            val lines = client.postgrest.from(LINE_ITEMS_TABLE).select().decodeList<ReceiptLineRowDto>()
+            val linesByReceiptId = lines.groupBy { it.receiptId }
+            receipts.map { it.toRemoteReceipt(linesByReceiptId[it.id].orEmpty()) }
+        }
 }

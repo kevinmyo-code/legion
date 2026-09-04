@@ -1,0 +1,23 @@
+-- LEGION live-sync: give the ledger and pantry aspects a PULL, not just the one-way projection
+-- LedgerReconcile/PantryController's commitReceipt already write through.
+-- Ticket: .scratch/live-sync/map.md ticket 05 ("the same treatment for the other six aspects"),
+--   ledger-transactions and pantry-receipts slice.
+-- Depends on: 20260825000300_aspect_ledger_pantry.sql (public.ledger_transactions/public.receipts/
+--   public.receipt_line_items and the forbid_mutation_of_facts trigger both carry).
+--
+-- =============================================================================================
+-- Realtime. LedgerTransactionsSync.pull/PantryReceiptsSync.pull each merge exactly one table
+-- (receipt_line_items rides along with its receipts header - see PantryReceiptsRealtime.kt's own
+-- class doc for why that table gets no channel of its own) - a table is never added to the
+-- publication automatically (20260902000100_events_realtime_publication.sql's own header comment),
+-- and shipping this without the step produces a subscription that looks refused rather than one
+-- with nothing to say. REPLICA IDENTITY left at its default - both Realtime objects' own
+-- postgres_changes event is a trigger for a pull, never a data source, so the payload itself is
+-- never read (same posture as every sibling live-sync migration).
+--
+-- UNAPPLIED as of this commit - no CLI or project credentials in this environment. Apply by hand
+-- (or via CI with real credentials) before LedgerTransactionsSync/PantryReceiptsSync's pulls are
+-- exercised against a real Supabase project.
+-- =============================================================================================
+alter publication supabase_realtime add table public.ledger_transactions;
+alter publication supabase_realtime add table public.receipts;

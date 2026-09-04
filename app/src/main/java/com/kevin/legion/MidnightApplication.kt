@@ -342,6 +342,16 @@ class MidnightApplication : Application() {
             runCatching { com.kevin.legion.backend.FleetRealtime.bind(this@MidnightApplication) }
                 .onFailure { MidnightEvents.appStartWorkFailed("bind_fleet_realtime", it) }
 
+            // Ledger transactions + pantry receipts Realtime (live-sync ticket "give LEGION's
+            // pantry and ledger transactions a pull") - same shape and reasoning as
+            // LedgerConfigRealtime/FleetRealtime above; see each object's own class doc for the
+            // full lifecycle contract and the append-only, insert-if-absent posture that makes
+            // both of these narrower than every sibling Realtime bound above.
+            runCatching { com.kevin.legion.backend.LedgerTransactionsRealtime.bind(this@MidnightApplication) }
+                .onFailure { MidnightEvents.appStartWorkFailed("bind_ledger_transactions_realtime", it) }
+            runCatching { com.kevin.legion.backend.PantryReceiptsRealtime.bind(this@MidnightApplication) }
+                .onFailure { MidnightEvents.appStartWorkFailed("bind_pantry_receipts_realtime", it) }
+
             // Reconcile the assistant's on/off flag to reality (measured defect, 2026-08-17):
             // AssistantIgnition's persisted flag can read true - and every UI surface built on it
             // agree - while AriaForegroundService is not actually running, because the ONLY

@@ -310,6 +310,15 @@ class MainActivity : ComponentActivity() {
         // maybeAutoRun doc comment.
         com.kevin.legion.backend.ObdSampleReconcile.maybeAutoRun(applicationContext)
         com.kevin.legion.backend.ConversationAuditReconcile.maybeAutoRun(applicationContext)
+        // live-sync ticket "give LEGION's pantry and ledger transactions a pull": both tables
+        // measured at zero rows restored on a wiped phone despite the server holding 7 and 3
+        // respectively. Neither has a live write path this pull needs to wait on - ledger has none
+        // at all (CLAUDE.md §4 keeps it that way) and pantry's own commitReceipt is synchronous,
+        // never queued - so, like the two batch uploads just above, each is a self-contained
+        // fire-and-forget call with its own throttle and its own "not configured / not signed in"
+        // guard, no ordering dependency on anything else in this method.
+        com.kevin.legion.backend.LedgerTransactionsSync.maybeAutoPull(applicationContext)
+        com.kevin.legion.backend.PantryReceiptsSync.maybeAutoPull(applicationContext)
         // Scheduled whole-database backup (Phase 0 item 1,
         // `.scratch/backend-erp/issues/05-migration-path.md`). DatabaseSnapshot.backupNow was
         // manual-only before this - its only callers were three buttons on DriveSyncScreen - so

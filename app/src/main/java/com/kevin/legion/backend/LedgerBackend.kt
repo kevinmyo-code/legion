@@ -110,6 +110,22 @@ interface LedgerBackend {
      * [MigratedLedgerTransaction.originGuid] was already present (a re-run, per ticket 05 phase 4
      * step 1: "a re-run is free"). `Result.failure` means the request itself did not complete. */
     suspend fun uploadMigratedTransaction(txn: MigratedLedgerTransaction): Result<Boolean>
+
+    /**
+     * live-sync ticket "pantry and ledger get a pull": every row this table has ever HAD created
+     * on or after [sinceMs] (`created_at >= sinceMs`, inclusive - the same re-fetch-the-boundary-row
+     * shape every other `fetchChangedXSince` in this codebase has, see [FleetSync]'s own class doc).
+     * **"Includes tombstones" does not apply here** - see [RemoteLedgerTransaction]'s own doc
+     * comment: this table has no `deleted_at` at all, `created_at` is the only clock it has, and a
+     * row a rule-7 supersession later deletes is physically gone from this result the same way it is
+     * from [fetchActiveTransactions]. [LedgerTransactionsSync.pull] is therefore insert-if-absent
+     * only, never a merge with an update or tombstone branch - see that object's own class doc for
+     * why that is the correct, not merely simplified, treatment of an append-only table.
+     * Defaults to an empty result - every fake/test [LedgerBackend] implementation keeps compiling
+     * without overriding this, same convention [FleetBackend.fetchChangedVehiclesSince] set.
+     */
+    suspend fun fetchChangedTransactionsSince(sinceMs: Long): Result<List<RemoteLedgerTransaction>> =
+        Result.success(emptyList())
 }
 
 /** Thrown (wrapped in [Result.failure]) by [SupabaseLedgerBackend] for every failure branch - owned
