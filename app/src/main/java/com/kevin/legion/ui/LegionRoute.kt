@@ -178,14 +178,14 @@ object LegionRoute {
     /** Connect Google Drive - the entry point that makes [com.kevin.legion.sync.SyncEngine] reachable (2026-08-03). */
     const val SETTINGS_DRIVE_SYNC = "settings/drive-sync"
 
-    /**
-     * Backend-erp Phase 4's hands path for [com.kevin.legion.backend.PlacesReconcile]/
-     * [com.kevin.legion.backend.PantryReconcile]/[com.kevin.legion.backend.EventsReconcile] - see
-     * `ui/settings/BackendMigrationScreen.kt`'s own doc comment. Reached from
-     * [SETTINGS_CONNECTIONS], same shape as [SETTINGS_DRIVE_SYNC] being reached from
-     * [SETTINGS_GOOGLE].
-     */
-    const val SETTINGS_BACKEND_MIGRATION = "settings/backend-migration"
+    // SETTINGS_BACKEND_MIGRATION ("settings/backend-migration") deleted 2026-09-03 (live-sync
+    // ticket 05's own follow-up, Kevin: "yes auto wire it. no more backend migrations page.").
+    // It was backend-erp Phase 4's hands path for PlacesReconcile/PantryReconcile/FleetReconcile
+    // (and, until 2026-09-02, EventsReconcile) - the last three of the seven reconciles that were
+    // still manual-only now all run automatically off MainActivity.onResume, the same way
+    // LedgerReconcile/MaintenanceScheduleReconcile/ObdSampleReconcile/ConversationAuditReconcile
+    // already did, so nothing on the retired screen was reachable anywhere else. See
+    // `.scratch/live-sync/map.md` and `memory/library/decisions.md`'s 2026-09-03 entry.
 
     // SETTINGS_LEDGER_REINGEST_DRY_RUN ("settings/ledger-reingest-dry-run") deleted - backend-erp
     // ticket 25. That dry run checked whether historical LOCAL statement files could recover their

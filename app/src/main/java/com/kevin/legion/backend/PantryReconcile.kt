@@ -2,6 +2,7 @@ package com.kevin.legion.backend
 
 import android.content.Context
 import androidx.room.withTransaction
+import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.PantryLineItem
@@ -9,6 +10,11 @@ import com.kevin.legion.data.local.PantryReceipt
 import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.pantry.PantryAspectSeeder
 import com.kevin.legion.pantry.PantryReceiptAgent
+import io.github.jan.supabase.SupabaseClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 /**
@@ -319,5 +325,82 @@ object PantryReconcile {
                 onlyOnServer = (serverGuids - engineGuids).sorted(),
             ),
         )
+    }
+
+    private val autoRunScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var lastAutoRunAt = 0L
+
+    /** Same floor and reasoning as [LedgerReconcile]'s own `AUTO_RUN_MIN_INTERVAL_MS` - a
+     * full-table scan of every stored receipt, not a queue drain, so a floor exists to stop every
+     * foreground return from re-scanning the whole engine `Receipt` set and re-running the
+     * reconciliation-gate arithmetic against each one. */
+    private const val AUTO_RUN_MIN_INTERVAL_MS = 5 * 60 * 1000L
+
+    /** The throttle half of [autoRunGate], pulled out as a pure predicate so a test can exercise
+     *  the floor's own arithmetic directly against [setLastAutoRunAtForTest] - same reasoning as
+     *  [ObdSampleReconcile.isThrottled]'s own doc comment (a configured [SupabaseClient] throws
+     *  under Robolectric). */
+    internal fun isThrottled(now: Long): Boolean = now - lastAutoRunAt < AUTO_RUN_MIN_INTERVAL_MS
+
+    /** Test-only escape hatch for [isThrottled]'s own test - never called from [autoRunGate] or
+     *  [maybeAutoRun]. */
+    internal fun setLastAutoRunAtForTest(atMs: Long) {
+        lastAutoRunAt = atMs
+    }
+
+    /**
+     * The synchronous half of [maybeAutoRun] - the throttle floor ([isThrottled]) and the "is
+     * Supabase even configured" check, extracted so a test can assert on this gate's own return
+     * value directly. [lastAutoRunAt] is reserved here, before [maybeAutoRun] ever launches
+     * anything async - the "reserved before any awaiting" property that makes a cold start
+     * immediately followed by a foreground resume one run, not two.
+     */
+    internal fun autoRunGate(context: Context, now: Long = System.currentTimeMillis()): SupabaseClient? {
+        if (isThrottled(now)) return null
+        val app = context.applicationContext
+        val client = SupabaseClientProvider.get(app) ?: return null
+        lastAutoRunAt = now
+        return client
+    }
+
+    /**
+     * The async half of [maybeAutoRun] - resolves who is signed in via
+     * [SupabaseAuth.resolveSignedInUserId] (never the raw `currentUserId() == null` guard) and,
+     * if anyone is, runs [run] and reports the result via [MidnightEvents]. Extracted so a test
+     * can drive "signed out" and "signed in" directly against a fake [SupabaseAuth] gatewayProvider.
+     * Fails to a logged [MidnightEvents] event, never a crash or a dialog, matching every sibling
+     * `maybeAutoRun`'s posture.
+     */
+    internal suspend fun runIfSignedIn(context: Context, backend: PantryBackend, auth: SupabaseAuth) {
+        try {
+            if (auth.resolveSignedInUserId() == null) return
+            val report = run(context, backend).getOrThrow()
+            MidnightEvents.pantryAutoReconcileSucceeded(
+                report.uploaded,
+                report.uploadedUnreconciled.size,
+                report.rejectedOveraccounted.size,
+                report.serverCountAfter,
+            )
+        } catch (e: Exception) {
+            MidnightEvents.pantryAutoReconcileFailed(e)
+        }
+    }
+
+    /**
+     * `MainActivity.onResume`'s hook - this reconcile's only production caller before this ticket
+     * was a Settings row nobody had wired up to run automatically (the `BackendMigrationScreen`
+     * migration row). No-ops silently, with a logged breadcrumb rather than a dialog or a crash,
+     * when Supabase is not configured or nobody is signed in - see [autoRunGate]/[runIfSignedIn]
+     * for the two halves this delegates to. Fire-and-forget on [autoRunScope]; never suspends the
+     * caller.
+     */
+    fun maybeAutoRun(context: Context) {
+        val client = autoRunGate(context) ?: return
+        val app = context.applicationContext
+        autoRunScope.launch {
+            runIfSignedIn(app, SupabasePantryBackend(client), SupabaseAuth(app))
+        }
     }
 }

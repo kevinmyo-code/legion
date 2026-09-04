@@ -229,6 +229,53 @@ object MidnightEvents {
         Log.w(TAG, "conversation_audit_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** A foreground [com.kevin.legion.backend.PlacesReconcile.maybeAutoRun] pass completed - same
+     * "only evidence this ran" role as [ledgerAutoReconcileSucceeded]. Places' only backfill
+     * mechanism (`ui/settings/BackendMigrationScreen.kt`'s retirement, live-sync ticket 05). */
+    fun placesAutoReconcileSucceeded(uploaded: Int, serverCountAfter: Int) = safe {
+        Log.d(TAG, "places_auto_reconcile uploaded=$uploaded serverCountAfter=$serverCountAfter")
+    }
+
+    /** [com.kevin.legion.backend.PlacesReconcile.maybeAutoRun] failed - degraded to this log line,
+     * same posture as [eventsAutoPullFailed]. */
+    fun placesAutoReconcileFailed(e: Throwable) = safe {
+        Log.w(TAG, "places_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.PantryReconcile.maybeAutoRun] pass completed - same
+     * "only evidence this ran" role as [ledgerAutoReconcileSucceeded]. Pantry's only backfill
+     * mechanism (`ui/settings/BackendMigrationScreen.kt`'s retirement, live-sync ticket 05). */
+    fun pantryAutoReconcileSucceeded(uploaded: Int, uploadedUnreconciled: Int, rejectedOveraccounted: Int, serverCountAfter: Int) = safe {
+        Log.d(
+            TAG,
+            "pantry_auto_reconcile uploaded=$uploaded uploadedUnreconciled=$uploadedUnreconciled " +
+                "rejectedOveraccounted=$rejectedOveraccounted serverCountAfter=$serverCountAfter",
+        )
+    }
+
+    /** [com.kevin.legion.backend.PantryReconcile.maybeAutoRun] failed - degraded to this log line,
+     * same posture as [eventsAutoPullFailed]. */
+    fun pantryAutoReconcileFailed(e: Throwable) = safe {
+        Log.w(TAG, "pantry_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A foreground [com.kevin.legion.backend.FleetReconcile.maybeAutoRun] pass completed - same
+     * "only evidence this ran" role as [ledgerAutoReconcileSucceeded]. Fleet's only route to the
+     * server at all (it has no configured write path - see that object's own class doc), and its
+     * only backfill mechanism (`ui/settings/BackendMigrationScreen.kt`'s retirement, live-sync
+     * ticket 05). [uploaded] sums all ten sub-reports' own `uploaded` counts - see
+     * [com.kevin.legion.backend.FleetReconcile.runIfSignedIn]'s own doc for why this is a rough
+     * breadcrumb, not the per-table breakdown. [serverCountAfter] is `vehicles`' own count only. */
+    fun fleetAutoReconcileSucceeded(uploaded: Int, serverCountAfter: Int) = safe {
+        Log.d(TAG, "fleet_auto_reconcile uploaded=$uploaded serverCountAfter=$serverCountAfter")
+    }
+
+    /** [com.kevin.legion.backend.FleetReconcile.maybeAutoRun] failed - degraded to this log line,
+     * same posture as [eventsAutoPullFailed]. */
+    fun fleetAutoReconcileFailed(e: Throwable) = safe {
+        Log.w(TAG, "fleet_auto_reconcile_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A foreground [com.kevin.legion.backend.BodySync.maybeAutoPull] pass completed across all
      * eight body tables - same "only evidence this ran" role as [eventsAutoPullSucceeded] plays
      * for events. Body-supabase ticket. */

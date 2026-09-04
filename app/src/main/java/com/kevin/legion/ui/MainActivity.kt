@@ -294,6 +294,36 @@ class MainActivity : ComponentActivity() {
         // rather than sharing that lifecycleScope block.
         com.kevin.legion.backend.LedgerReconcile.maybeAutoRun(applicationContext)
         com.kevin.legion.backend.MaintenanceScheduleReconcile.maybeAutoRun(applicationContext)
+        // The three reconciles that were STILL manual-only after every other aspect got wired
+        // above (live-sync ticket 05's own "the other six aspects" gap, closed here): places,
+        // pantry and fleet each had exactly one caller before this, a BackendMigrationScreen row
+        // nobody had wired up to run automatically - and for all three this reconcile is the ONLY
+        // backfill mechanism there is, the sole route a pre-write-through row (or, for fleet,
+        // EVERY row - fleet has no configured write path at all) ever reaches the server by. Same
+        // self-contained fire-and-forget shape as the two calls immediately above: each has its
+        // own throttle and its own "not configured / not signed in" guard, see each object's own
+        // maybeAutoRun doc comment. The BackendMigrationScreen these three were last reachable
+        // from is retired in the same change that added these three calls.
+        com.kevin.legion.backend.PlacesReconcile.maybeAutoRun(applicationContext)
+        com.kevin.legion.backend.PantryReconcile.maybeAutoRun(applicationContext)
+        // FleetReconcile and FleetSync BOTH write `vehicles_replica`, so they are sequenced in one
+        // coroutine rather than launched as two independent fire-and-forget calls.
+        //
+        // FleetReconcile wipes that table wholesale and refills it
+        // (`vehicleReplicaDao().deleteAllForReplicaRefresh()`, safe on its own - the replica is a
+        // cache of the server's active set, never a source of truth). FleetSync merges into the
+        // same table with an insert-or-update keyed on serverId. Interleaved, FleetSync can read
+        // "no row for this serverId" immediately after the wipe, decide to insert, and lose the
+        // race to FleetReconcile's own insert - which is
+        //   SQLiteConstraintException: UNIQUE constraint failed: vehicles_replica.serverId
+        // the exact crash observed on the A25 on 2026-09-03 and fixed in FleetSync's new-vehicle
+        // branch. Two independent coroutines would have reintroduced it by a different route.
+        //
+        // Reconcile first (upload + refill), then the pull, so the pull reads a settled table.
+        lifecycleScope.launch {
+            com.kevin.legion.backend.FleetReconcile.maybeAutoRunAwaiting(applicationContext)
+            com.kevin.legion.backend.FleetSync.maybeAutoPull(applicationContext)
+        }
         // Fleet's live pull (live-sync ticket "the missing half of fleet sync"): vehicles first
         // (reconstructing a wiped phone's legacy row + sidecar from the last_obd_mac hint where
         // possible), then the nine tables that gap blocked, then the windowed obd_samples pull. No
@@ -796,9 +826,11 @@ private fun LegionShell(
             composable(LegionRoute.SETTINGS_PROACTIVE_SPEECH) {
                 com.kevin.legion.ui.settings.ProactiveSpeechScreen(onBack = { navController.popBackStack() })
             }
-            composable(LegionRoute.SETTINGS_BACKEND_MIGRATION) {
-                com.kevin.legion.ui.settings.BackendMigrationScreen(onBack = { navController.popBackStack() })
-            }
+            // SETTINGS_BACKEND_MIGRATION/BackendMigrationScreen deleted 2026-09-03 (live-sync).
+            // Every reconcile it hosted now runs automatically on foreground, so the screen's
+            // only remaining job was letting someone trigger by hand what the app already does
+            // by itself - and a page titled "Backend migration" after the migration is finished
+            // is exactly the stale label this codebase keeps getting bitten by.
             // SETTINGS_LEDGER_REINGEST_DRY_RUN/ReingestDryRunScreen deleted - backend-erp ticket 25.
             // That dry run existed to check whether historical LOCAL statement files could recover
             // their reconciliation anchors; with ingestion moved to the web app there is no phone-
@@ -809,7 +841,6 @@ private fun LegionShell(
                     onOpenKeyScreen = { navController.navigate(LegionRoute.SETTINGS_KEY) },
                     onOpenGoogleAccess = { navController.navigate(LegionRoute.SETTINGS_GOOGLE) },
                     onOpenSpotify = { navController.navigate(LegionRoute.SETTINGS_SPOTIFY) },
-                    onOpenBackendMigration = { navController.navigate(LegionRoute.SETTINGS_BACKEND_MIGRATION) },
                 )
             }
             composable(LegionRoute.SETTINGS_DATA_PRIVACY) {

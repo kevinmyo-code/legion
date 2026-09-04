@@ -48,7 +48,6 @@ fun ConnectionsScreen(
     onOpenKeyScreen: () -> Unit,
     onOpenGoogleAccess: () -> Unit,
     onOpenSpotify: () -> Unit,
-    onOpenBackendMigration: () -> Unit,
 ) {
     val context = LocalContext.current
 
@@ -140,11 +139,10 @@ fun ConnectionsScreen(
                 // Household section of the Gemini key screen because it is an action, not a
                 // credential.
                 Spacer(Modifier.height(8.dp))
-                SettingsNavRow(
-                    label = "Backend migration",
-                    status = "Upload places, pantry, and notes+dates to your Supabase project.",
-                    onClick = onOpenBackendMigration,
-                )
+                // The "Backend migration" row stood here until 2026-09-03. It was the only
+                // caller of PlacesReconcile/PantryReconcile/FleetReconcile; all three now run
+                // automatically on foreground (see MainActivity.onResume), so the row's whole
+                // job became offering to do by hand what the app already does by itself.
 
                 // Ticket 12's dry run row lived here (read-only, re-reading historical LOCAL
                 // statement files to check whether their anchors could be recovered) - removed,

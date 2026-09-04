@@ -1,6 +1,7 @@
 package com.kevin.legion.backend
 
 import android.content.Context
+import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.BuildEntry
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ChassisQuirk
@@ -17,7 +18,12 @@ import com.kevin.legion.engine.PayloadCodec
 import com.kevin.legion.engine.fleet.FleetAspectSeeder
 import com.kevin.legion.engine.fleet.FleetRecordBridge
 import com.kevin.legion.engine.migration.EngineFleetServiceHistoryRetirementCopy
+import io.github.jan.supabase.SupabaseClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 /**
@@ -1210,4 +1216,114 @@ object FleetReconcile {
         deleted = deleted,
         originGuid = originGuid,
     )
+
+    private val autoRunScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var lastAutoRunAt = 0L
+
+    /** Same floor and reasoning as [LedgerReconcile]'s own `AUTO_RUN_MIN_INTERVAL_MS` - this is
+     * the largest reconcile in the codebase, ten tables and a full-table scan of each on every
+     * call (see this object's own class doc: fleet has NO configured write path, so THIS reconcile
+     * is the only route fleet data ever reaches the server by), so a floor exists to stop every
+     * foreground return from re-running all ten scans. */
+    private const val AUTO_RUN_MIN_INTERVAL_MS = 5 * 60 * 1000L
+
+    /** The throttle half of [autoRunGate], pulled out as a pure predicate so a test can exercise
+     *  the floor's own arithmetic directly against [setLastAutoRunAtForTest] - same reasoning as
+     *  [ObdSampleReconcile.isThrottled]'s own doc comment (a configured [SupabaseClient] throws
+     *  under Robolectric). */
+    internal fun isThrottled(now: Long): Boolean = now - lastAutoRunAt < AUTO_RUN_MIN_INTERVAL_MS
+
+    /** Test-only escape hatch for [isThrottled]'s own test - never called from [autoRunGate] or
+     *  [maybeAutoRun]. */
+    internal fun setLastAutoRunAtForTest(atMs: Long) {
+        lastAutoRunAt = atMs
+    }
+
+    /**
+     * The synchronous half of [maybeAutoRun] - the throttle floor ([isThrottled]) and the "is
+     * Supabase even configured" check, extracted so a test can assert on this gate's own return
+     * value directly. [lastAutoRunAt] is reserved here, before [maybeAutoRun] ever launches
+     * anything async - the "reserved before any awaiting" property that makes a cold start
+     * immediately followed by a foreground resume one run, not two.
+     */
+    internal fun autoRunGate(context: Context, now: Long = System.currentTimeMillis()): SupabaseClient? {
+        if (isThrottled(now)) return null
+        val app = context.applicationContext
+        val client = SupabaseClientProvider.get(app) ?: return null
+        lastAutoRunAt = now
+        return client
+    }
+
+    /**
+     * The async half of [maybeAutoRun] - resolves who is signed in via
+     * [SupabaseAuth.resolveSignedInUserId] (never the raw `currentUserId() == null` guard) and,
+     * if anyone is, runs [run] and reports the result via [MidnightEvents]. Extracted so a test
+     * can drive "signed out" and "signed in" directly against a fake [SupabaseAuth] gatewayProvider.
+     * Fails to a logged [MidnightEvents] event, never a crash or a dialog, matching every sibling
+     * `maybeAutoRun`'s posture. The reported `uploaded` total sums all ten sub-reports' own
+     * `uploaded` counts - a single number is a rough breadcrumb only, [Report] itself (not
+     * surfaced here) is where a caller who needs the per-table breakdown must look.
+     */
+    internal suspend fun runIfSignedIn(context: Context, backend: FleetBackend, auth: SupabaseAuth) {
+        try {
+            if (auth.resolveSignedInUserId() == null) return
+            val report = run(context, backend).getOrThrow()
+            val uploadedTotal = report.vehicle.uploaded + report.serviceHistory.uploaded + report.drive.uploaded +
+                report.codeEvent.uploaded + report.codeClearEvent.uploaded + report.oilAnalysis.uploaded +
+                report.chassisQuirk.uploaded + report.vehicleSpec.uploaded + report.buildEntry.uploaded +
+                report.driveReassignment.uploaded
+            MidnightEvents.fleetAutoReconcileSucceeded(uploadedTotal, report.vehicle.serverCountAfter)
+        } catch (e: Exception) {
+            MidnightEvents.fleetAutoReconcileFailed(e)
+        }
+    }
+
+    /**
+     * `MainActivity.onResume`'s hook - fleet has NO configured write path (this object's own class
+     * doc), so this reconcile was the ONLY route fleet data ever reached the server by, and its
+     * only production caller before this ticket was a Settings row nobody had wired up to run
+     * automatically (the `BackendMigrationScreen` migration row). No-ops silently, with a logged
+     * breadcrumb rather than a dialog or a crash, when Supabase is not configured or nobody is
+     * signed in - see [autoRunGate]/[runIfSignedIn] for the two halves this delegates to.
+     * Fire-and-forget on [autoRunScope]; never suspends the caller.
+     *
+     * **Confirmed before wiring this up: no delete/retraction pass exists anywhere in this file.**
+     * Every section here is upload-then-refill-a-LOCAL-replica; the class doc's own "Never
+     * touches, trashes, or deletes an engine record or a Drive row" line holds for the server side
+     * too - grepped every `backend.`/`Backend.` call in this file and none of them is a delete or
+     * retract. `db.*ReplicaDao().deleteAllForReplicaRefresh()` wipes only the on-device Room
+     * replica immediately before refilling it from the server's own active set, never a server
+     * row - unlike the old `EventsReconcile`, which really did `DELETE FROM events WHERE
+     * kind = :kind` against the local source of truth and withheld unmatched rows (see
+     * `.scratch/live-sync/map.md`'s "what was actually wrong" section).
+     */
+    fun maybeAutoRun(context: Context) {
+        val client = autoRunGate(context) ?: return
+        val app = context.applicationContext
+        autoRunScope.launch {
+            runIfSignedIn(app, SupabaseFleetBackend(client), SupabaseAuth(app))
+        }
+    }
+
+    /**
+     * [maybeAutoRun]'s suspending twin, for a caller that must know this pass has FINISHED.
+     *
+     * The only such caller today is `MainActivity.onResume`, which runs this and then
+     * [FleetSync.maybeAutoPull] in one coroutine. Both write `vehicles_replica` - this one wipes
+     * and refills it wholesale, the pull merges into it keyed on serverId - so launched as two
+     * independent fire-and-forget calls they can interleave, and the pull can read "no row for
+     * this serverId" just after the wipe, decide to insert, and collide with this pass's own
+     * insert on `vehicles_replica.serverId`'s unique index. That is the crash observed on the A25
+     * on 2026-09-03; see the call site's own comment.
+     *
+     * Identical gate and throttle to [maybeAutoRun] - it reserves the same timestamp, so a caller
+     * cannot get two passes by using one variant then the other.
+     */
+    suspend fun maybeAutoRunAwaiting(context: Context) {
+        val client = autoRunGate(context) ?: return
+        val app = context.applicationContext
+        runIfSignedIn(app, SupabaseFleetBackend(client), SupabaseAuth(app))
+    }
 }
