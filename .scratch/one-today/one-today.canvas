@@ -79,6 +79,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "fb5600f319732e46",
+      "type": "file",
+      "file": ".scratch/one-today/issues/09-a-list-you-tick-every-day.md",
+      "x": 0,
+      "y": 1200,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": []

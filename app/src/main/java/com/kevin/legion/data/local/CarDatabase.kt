@@ -313,6 +313,19 @@ import androidx.room.RoomDatabase
  * four REUSE their existing `syncId` column as the sync identity**, same posture v61 took for
  * `memories`/`companion_memories` - none of them needed a fresh `guid`. See [MIGRATION_62_63] for
  * the full account.
+ *
+ * v64 (recurring checklists, `.scratch/one-today/issues/08-events-are-not-todos.md`'s follow-on -
+ * Kevin 2026-09-02: "bio, maintenance etc should all just be todos... i can make the list be a
+ * daily reoccuring thing or not, then i tick off if i do it, end of day it records and resets"):
+ * three brand-new tables, `checklists` + `checklist_items` + `checklist_ticks` - a plain
+ * `CREATE TABLE IF NOT EXISTS` each, same shape [MIGRATION_55_56] used for `voice_notes`, since
+ * nothing existing is altered. **Deliberately no reset job anywhere in this schema or its
+ * migration** - a tick is a row keyed by `(item, day)`, so tomorrow's read finds no row for
+ * tomorrow's day and that IS the reset; see [Checklist]/[ChecklistTick]'s own class docs for the
+ * full reasoning. All three tables carry the same four sync columns
+ * (`updatedAt`/`syncId`/`serverId`/`deleted`) every other v60-onward table does, wired but unused -
+ * no sync code was written in this ticket. See [MIGRATION_63_64] for the schema itself, and
+ * `com.kevin.legion.checklists.ChecklistController` for the single read/write path (no UI yet).
  */
 @Database(
     entities = [
@@ -350,8 +363,9 @@ import androidx.room.RoomDatabase
         VehicleSidecar::class,
         VoiceNote::class,
         OutboxEntry::class,
+        Checklist::class, ChecklistItem::class, ChecklistTick::class,
     ],
-    version = 63,
+    version = 64,
     exportSchema = true,
 )
 abstract class CarDatabase : RoomDatabase() {
@@ -464,6 +478,14 @@ abstract class CarDatabase : RoomDatabase() {
      * why the ordering is load-bearing. */
     abstract fun outboxDao(): OutboxDao
 
+    /** Recurring checklists (v64, `.scratch/one-today/issues/08-events-are-not-todos.md`'s
+     * follow-on - see [Checklist]'s own class doc for the design). Populated only by
+     * `com.kevin.legion.checklists.ChecklistController`; no UI reads or writes these DAOs directly
+     * yet (this ticket is data-layer-and-controller only). */
+    abstract fun checklistDao(): ChecklistDao
+    abstract fun checklistItemDao(): ChecklistItemDao
+    abstract fun checklistTickDao(): ChecklistTickDao
+
     companion object {
         @Volatile
         private var INSTANCE: CarDatabase? = null
@@ -494,7 +516,10 @@ abstract class CarDatabase : RoomDatabase() {
          * (it reads the live `PRAGMA user_version` instead, which can't drift), so a
          * forgotten bump here only ever makes the UI's restore button MORE conservative
          * (comparing against a stale, lower number), never less. */
-        const val SCHEMA_VERSION = 63
+        const val SCHEMA_VERSION = 64
+        // 2026-09-04: bumped to 64 alongside `@Database(version=)` in the same edit again
+        // (recurring checklists - three brand-new tables, checklists/checklist_items/
+        // checklist_ticks, see [MIGRATION_63_64] for the full account).
         // 2026-09-02: bumped to 63 alongside `@Database(version=)` in the same edit again
         // (live-sync's last aspect slice - serverId/deleted-or-updatedAtMs added to
         // goals/grocery_staples/item_lists/list_items, see [MIGRATION_62_63] for the full account).
@@ -608,7 +633,7 @@ abstract class CarDatabase : RoomDatabase() {
                         MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53, MIGRATION_53_54,
                         MIGRATION_54_55, MIGRATION_55_56, MIGRATION_56_57, MIGRATION_57_58,
                         MIGRATION_58_59, MIGRATION_59_60, MIGRATION_60_61, MIGRATION_61_62,
-                        MIGRATION_62_63,
+                        MIGRATION_62_63, MIGRATION_63_64,
                     )
                     // NO destructive downgrade fallback. This deliberately has no
                     // `.fallbackToDestructiveMigrationOnDowngrade(...)`, removed 2026-08-12 after it

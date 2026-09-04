@@ -2643,3 +2643,42 @@ val MIGRATION_62_63 = object : Migration(62, 63) {
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_list_items_syncId` ON `list_items` (`syncId`)")
     }
 }
+
+/**
+ * v63 -> v64: recurring checklists (`.scratch/one-today/issues/08-events-are-not-todos.md`'s
+ * follow-on) - three brand-new tables, same "plain `CREATE TABLE IF NOT EXISTS`, nothing else
+ * touched" shape [MIGRATION_55_56] used for `voice_notes`. Copied verbatim from
+ * `app/schemas/com.kevin.legion.data.local.CarDatabase/64.json`'s own generated `createSql` for
+ * each table (CLAUDE.md §5: no hand-written `CREATE TABLE`), confirmed against a real kapt run.
+ * See [Checklist]/[ChecklistItem]/[ChecklistTick]'s own class docs for what each table means.
+ */
+val MIGRATION_63_64 = object : Migration(63, 64) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `checklists` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`name` TEXT NOT NULL, `recursDaily` INTEGER NOT NULL, `sortOrder` INTEGER NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL, `archived` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL DEFAULT 0, `syncId` TEXT NOT NULL DEFAULT '', " +
+                "`serverId` TEXT, `deleted` INTEGER NOT NULL DEFAULT 0)"
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_checklists_syncId` ON `checklists` (`syncId`)")
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `checklist_items` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`checklistId` INTEGER NOT NULL, `text` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL DEFAULT 0, " +
+                "`syncId` TEXT NOT NULL DEFAULT '', `serverId` TEXT, `deleted` INTEGER NOT NULL DEFAULT 0)"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_checklist_items_checklistId` ON `checklist_items` (`checklistId`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_checklist_items_syncId` ON `checklist_items` (`syncId`)")
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `checklist_ticks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`itemId` INTEGER NOT NULL, `day` INTEGER NOT NULL, `tickedAt` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL DEFAULT 0, `syncId` TEXT NOT NULL DEFAULT '', " +
+                "`serverId` TEXT, `deleted` INTEGER NOT NULL DEFAULT 0)"
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_checklist_ticks_itemId_day` ON `checklist_ticks` (`itemId`, `day`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_checklist_ticks_day` ON `checklist_ticks` (`day`)")
+    }
+}
