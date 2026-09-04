@@ -22,7 +22,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.clickable
 import com.kevin.legion.backend.EventKind
+import com.kevin.legion.checklists.ChecklistController
+import com.kevin.legion.checklists.checklistSectionLabel
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.Checklist
 import com.kevin.legion.data.local.Event
 import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.data.local.VoiceNote
@@ -126,6 +129,22 @@ import kotlinx.coroutines.launch
  * day must never render identically. [recordedLoadFailed] is set from
  * [VoiceNoteController.VoiceNotesForDayResult.Failed] and rendered as its own sentence, distinct
  * from the ordinary "nothing recorded this day" [recordedRows]-is-empty case.
+ *
+ * **A section per recurring checklist (one-today ticket 09, `.scratch/one-today/issues/09-a-list-
+ * you-tick-every-day.md`), each named with what Kevin actually called it** - never poured into
+ * YET TO DO, which is [dayRows] alone: a six-line "bio" routine would swamp a day's real todos, and
+ * [ChecklistController]'s own class doc is explicit that "done" for one of these lines is a fact
+ * about a `(item, day)` pair, not the same kind of fact [InboxRowView.done] is about a reminder or
+ * task. [checklistsToday] is loaded in the same [LaunchedEffect] as [dayRows]/[scheduleRows]/
+ * [recordedRows], keyed the same way, off [ChecklistController.checklistsForDay] (which already
+ * excludes a checklist entirely for a day before it existed - trap 1, enforced in the controller,
+ * never re-derived here) and [ChecklistController.itemsWithTickState] per checklist. **Tickable on
+ * any day shown, including a past one** - the brief's own call: a retroactive tick is already
+ * representable ([com.kevin.legion.data.local.ChecklistTick]'s `day`/`tickedAt` split) and
+ * correct, so this screen does not block it. **Excluded from [notDone]/[done] below, same as
+ * [scheduleRows]/[recordedRows]** - a checklist's own progress renders on ITS OWN section header
+ * ([checklistSectionLabel]) and must never fold into the day's task completion ratio (ticket 08's
+ * rule, restated for a third table sharing this screen).
  */
 @Composable
 fun CalendarScreen() {
@@ -166,6 +185,10 @@ fun CalendarScreen() {
     // own doc comment for why these two must never render as the same sentence.
     var recordedLoadFailed by remember { mutableStateOf(false) }
     var selectedRecordingId by remember { mutableStateOf<Long?>(null) }
+    // Recurring checklists (one-today ticket 09) - one entry per checklist that applies to
+    // [selectedDayStart], each carrying its own items' tick state for that day. See this screen's
+    // own file doc comment for why these get their own sections rather than joining [dayRows].
+    var checklistsToday by remember { mutableStateOf(emptyList<ChecklistDayEntry>()) }
     var reloadNonce by remember { mutableStateOf(0) }
 
     LaunchedEffect(displayedMonth, reloadNonce) {
@@ -245,6 +268,21 @@ fun CalendarScreen() {
                 recordedLoadFailed = true
             }
         }
+
+        // CHECKLISTS - the local epoch day [ChecklistController] itself keys everything on
+        // (`LocalDate.toEpochDay()`, never a millisecond range - matching
+        // [com.kevin.legion.data.local.ChecklistTick.day]'s own column). [selectedDayStart] is
+        // already a device-zone start-of-day instant ([todayStartOnOpen]'s own construction), so
+        // converting it back through [zone] round-trips to the same calendar day it was built
+        // from. [ChecklistController.checklistsForDay] excludes a checklist entirely for a day
+        // before it existed (trap 1) - nothing here re-checks that, by design.
+        val checklistDay = java.time.Instant.ofEpochMilli(day).atZone(zone).toLocalDate().toEpochDay().toInt()
+        checklistsToday = ChecklistController.checklistsForDay(context, checklistDay).map { checklist ->
+            ChecklistDayEntry(
+                checklist = checklist,
+                items = ChecklistController.itemsWithTickState(context, checklist.id, checklistDay),
+            )
+        }
     }
 
     // Only ever called from [dayRows] (reminders + tasks) - [scheduleRows] rows carry no checkbox
@@ -265,6 +303,19 @@ fun CalendarScreen() {
             } else {
                 NotesController.tickAppointment(context, appointment)
             }
+            reloadNonce++
+        }
+    }
+
+    // Ticks/unticks a checklist item for [selectedDayStart]'s own calendar day - never [today()]'s
+    // default, so a tap on a past day's row writes a retroactive tick for THAT day rather than
+    // today's (the brief's own "tickable on past days" call). [ticked] is the state the row is
+    // ALREADY rendering, read from the last load, same "toggle flips what I last saw" shape
+    // [toggle] above uses for reminders/tasks.
+    fun toggleChecklistItem(itemId: Long, ticked: Boolean) {
+        val checklistDay = java.time.Instant.ofEpochMilli(selectedDayStart).atZone(zone).toLocalDate().toEpochDay().toInt()
+        scope.launch {
+            if (ticked) ChecklistController.untick(context, itemId, checklistDay) else ChecklistController.tick(context, itemId, checklistDay)
             reloadNonce++
         }
     }
@@ -372,6 +423,23 @@ fun CalendarScreen() {
             } else {
                 recordedRows.forEach { note -> RecordedDayRow(note = note, onClick = { selectedRecordingId = note.id }) }
             }
+            // CHECKLISTS - one section per applicable checklist, named with what Kevin called it,
+            // never merged into YET TO DO/DONE (this screen's own file doc comment). A checklist
+            // with no items yet gets its own honest "no items yet" line rather than an absent
+            // section - it DOES apply to this day (it exists), it simply has nothing in it yet.
+            checklistsToday.forEach { entry ->
+                DeckSectionRule(checklistSectionLabel(entry.checklist, entry.items))
+                if (entry.items.isEmpty()) {
+                    Text("No items yet.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
+                } else {
+                    entry.items.forEach { itemState ->
+                        ChecklistItemDayRow(
+                            itemState = itemState,
+                            onToggle = { toggleChecklistItem(itemState.item.id, itemState.ticked) },
+                        )
+                    }
+                }
+            }
             DeckSectionRule("Yet to do")
             if (notDone.isEmpty()) {
                 Text("Nothing left on this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))
@@ -449,6 +517,34 @@ private fun RecordedDayRow(note: VoiceNote, onClick: () -> Unit) {
                 "${clockTime(note.startedAt)} - ${formatVoiceNoteDuration(note.startedAt, note.endedAt)}",
                 style = LegionType.stamp,
                 color = sem.faint,
+            )
+        }
+    }
+}
+
+/** One [Checklist] applicable to the viewed day, plus its items' tick state for that day - the
+ * per-checklist unit [CalendarScreen]'s own `checklistsToday` list holds. See this screen's own
+ * file doc comment for why a checklist gets its own section rather than joining [dayRows]. */
+private data class ChecklistDayEntry(val checklist: Checklist, val items: List<ChecklistController.ItemState>)
+
+/**
+ * One checklist item row for the day view: a real tick checkbox (never absent/disabled the way
+ * [CalendarDayRow] renders an event or a recurring occurrence) plus the item's text, struck to
+ * [LocalLegionSemantics.faint] once ticked - same "done fades" convention [CalendarDayRow] already
+ * uses for a reminder/task row. Deliberately has no date label - a checklist item has no due
+ * instant of its own, only a per-day tick state, which the section header's own progress count
+ * already carries in aggregate.
+ */
+@Composable
+private fun ChecklistItemDayRow(itemState: ChecklistController.ItemState, onToggle: () -> Unit) {
+    val sem = LocalLegionSemantics.current
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Checkbox(checked = itemState.ticked, onCheckedChange = { onToggle() })
+        Column {
+            Text(
+                itemState.item.text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (itemState.ticked) sem.faint else MaterialTheme.colorScheme.onSurface,
             )
         }
     }

@@ -116,6 +116,19 @@ object LegionRoute {
      */
     const val NOTES = "notes"
 
+    /**
+     * Recurring checklists (`.scratch/one-today/issues/09-a-list-you-tick-every-day.md`) - see
+     * [com.kevin.legion.ui.checklists.ChecklistsScreen]. Reached from `ui/MetersScreen.kt`'s own
+     * LISTS pane (2026-09-04), same "the row it is named on actually opens it" fix that ticket
+     * gave [MONEY_PANTRY]/`onOpenGroceriesList` on 2026-09-01 - this is a THIRD, genuinely
+     * different list from either of those two ("Persistent list" is [NotesController]'s items,
+     * "Groceries trip" is [com.kevin.legion.grocery.GroceryController]'s), so it gets its own row
+     * and its own route rather than being folded into one of the existing two. No sub-routes: the
+     * list-of-checklists -> single-checklist editor -> history drill-downs are internal Compose
+     * state inside that one screen, same convention [NOTES]'s own doc comment establishes.
+     */
+    const val CHECKLISTS = "checklists"
+
     // VOICE_NOTES: not added here. A concurrent session (same day, ticket 04) registered
     // SETTINGS_VOICE_NOTES -> ui/voicenotes/VoiceNotesScreen.kt below instead - see that
     // constant's own doc comment. A second top-level route to the same screen was drafted here

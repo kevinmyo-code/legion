@@ -26,7 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.Checklist
 import com.kevin.legion.data.local.LedgerCurrency
 import com.kevin.legion.data.local.VoiceNoteKind
 import com.kevin.legion.grocery.GroceryController
@@ -129,6 +131,10 @@ fun MetersScreen(
     // other `onOpen*` default on this screen, so existing previews/tests that construct
     // [MetersContent] directly do not all need updating for a param they never exercise.
     onOpenVoiceNotes: () -> Unit = {},
+    // Recurring checklists (one-today ticket 09, 2026-09-04): the LISTS pane's new "Checklists"
+    // row taps through to [com.kevin.legion.ui.checklists.ChecklistsScreen]. Defaults to a no-op
+    // for the same reason [onOpenVoiceNotes] does.
+    onOpenChecklists: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(MetersUiState()) }
@@ -175,6 +181,12 @@ fun MetersScreen(
         val persistentOpenCount = NotesController.openItemCount(context)
         val groceriesOpenCount = GroceryController.items(context).count { !it.done }
 
+        // CHECKLISTS: a third, genuinely different list from either of the two above (one-today
+        // ticket 09) - the count of non-archived checklists, not a today's-items count, since this
+        // row's job is only to open the management screen (see [ChecklistsScreen]'s own doc for
+        // where the per-day tick state actually renders - CalendarScreen's day view, not here).
+        val checklistCount = ChecklistController.allChecklists(context).size
+
         // RECORDINGS: same one-shot read `VoiceNotesScreen.kt`'s own list makes - this pane only
         // ever needs the count, not the rows themselves, so `.size` is fine at this list's real
         // scale (a driver dictating notes, not importing a call-centre archive).
@@ -200,6 +212,7 @@ fun MetersScreen(
             maintenanceUnknownCount = maintenanceUnknownCount,
             persistentOpenCount = persistentOpenCount,
             groceriesTripOpenCount = groceriesOpenCount,
+            checklistCount = checklistCount,
             voiceNotesCount = voiceNotesCount,
             weather = weather,
             nowMs = now,
@@ -208,7 +221,7 @@ fun MetersScreen(
 
     MetersContent(
         state, onOpenBody, onOpenMoney, onOpenFleet, onOpenNotes, onOpenPantry, onOpenGroceriesList,
-        onOpenMedia, onOpenVoiceNotes,
+        onOpenMedia, onOpenVoiceNotes, onOpenChecklists,
     )
 }
 
@@ -230,6 +243,9 @@ data class MetersUiState(
     val maintenanceUnknownCount: Int = 0,
     val persistentOpenCount: Int = 0,
     val groceriesTripOpenCount: Int = 0,
+    /** The LISTS pane's third row (one-today ticket 09) - non-archived [Checklist] count, not a
+     * today's-tick-state count; see [MetersScreen]'s "CHECKLISTS" read comment. */
+    val checklistCount: Int = 0,
     /** The RECORDINGS pane's own count row - see [MetersScreen]'s "RECORDINGS" read comment. */
     val voiceNotesCount: Int = 0,
     /** Rehomed from `TodayUiState.weather` (one-today ticket 07) - `null` until the first
@@ -251,6 +267,7 @@ fun MetersContent(
     onOpenGroceriesList: () -> Unit,
     onOpenMedia: () -> Unit = {},
     onOpenVoiceNotes: () -> Unit = {},
+    onOpenChecklists: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
     val connectionState by ObdBluetoothManager.connectionState.collectAsStateWithLifecycle()
@@ -573,6 +590,16 @@ fun MetersContent(
                 // Fixed on-device 2026-09-01 - was [onOpenPantry] (pantry inventory), now the
                 // grocery trip list itself (see [onOpenGroceriesList]'s own doc comment above).
                 modifier = Modifier.clickable(onClick = onOpenGroceriesList),
+            )
+            // A third, genuinely different list (one-today ticket 09) - recurring checklists
+            // ("bio", etc), never [state.persistentOpenCount]'s reminders/tasks or
+            // [state.groceriesTripOpenCount]'s shopping trip. Opens the management screen; the
+            // per-day tick state itself renders on CalendarScreen's day view, not here - see
+            // [ChecklistsScreen]'s own class doc.
+            DeckRow(
+                label = "Checklists",
+                value = "${state.checklistCount} lists",
+                modifier = Modifier.clickable(onClick = onOpenChecklists),
             )
         }
 

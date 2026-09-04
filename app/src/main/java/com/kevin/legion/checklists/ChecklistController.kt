@@ -82,6 +82,14 @@ object ChecklistController {
 
     // ---- item CRUD -----------------------------------------------------------------------------
 
+    /** Every live item on [checklistId], structure only - no tick state, no day. The UI's own
+     * "add / edit / reorder / remove items" management screen (`ui/checklists/ChecklistsScreen.kt`,
+     * one-today ticket 09's UI slice) reads through here rather than [itemsWithTickState], which
+     * demands a [day] this screen has no reason to ask for; a day-scoped read belongs to the
+     * calendar day view, not to editing a checklist's own structure. */
+    suspend fun itemsFor(context: Context, checklistId: Long): List<ChecklistItem> =
+        db(context).checklistItemDao().forChecklist(checklistId)
+
     suspend fun addItem(context: Context, checklistId: Long, text: String, sortOrder: Int = 0): ChecklistItem {
         val item = ChecklistItem(checklistId = checklistId, text = text, sortOrder = sortOrder)
         val id = db(context).checklistItemDao().insert(item)
