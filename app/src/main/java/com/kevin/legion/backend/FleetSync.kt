@@ -246,7 +246,23 @@ object FleetSync {
                     ),
                 )
                 db.vehicleSidecarDao().upsert(VehicleSidecar(serverId = r.serverId, obdMac = localMac))
-                db.vehicleReplicaDao().insert(r.toReplica())
+                // Insert-or-update, NOT a blind insert. This branch is entered on "no local
+                // SIDECAR", which is not the same condition as "no local REPLICA" - a previous
+                // pull that created the replica row and then failed before its sidecar landed
+                // leaves exactly that split. A blind insert then trips
+                // `vehicles_replica.serverId`'s unique index and aborts the whole fleet pull,
+                // taking drives and code events down with it.
+                //
+                // Observed on the A25 2026-09-03: replica held 3 rows, sidecar 1, and every
+                // subsequent pull died on
+                //   SQLiteConstraintException: UNIQUE constraint failed: vehicles_replica.serverId
+                // The LWW branch below already resolved this correctly; this one did not.
+                val existingForNew = db.vehicleReplicaDao().getByServerId(r.serverId)
+                if (existingForNew == null) {
+                    db.vehicleReplicaDao().insert(r.toReplica())
+                } else {
+                    db.vehicleReplicaDao().update(r.toReplica().copy(id = existingForNew.id))
+                }
                 inserted++
                 continue
             }
