@@ -87,6 +87,13 @@ interface VehicleSidecarDao {
     @Query("SELECT * FROM vehicle_sidecar WHERE obdMac = :obdMac")
     suspend fun getByMac(obdMac: String): VehicleSidecar?
 
+    /** Every sidecar row on this device - `FleetSync`'s pull builds the whole `serverId -> obdMac`
+     * map from this once vehicles have been pulled (ticket "fleet pull"'s reconstruction: every
+     * server vehicle gets a sidecar row, hint-matched or synthetic, so this map always covers every
+     * vehicle a child table's `vehicleServerId` could possibly reference). */
+    @Query("SELECT * FROM vehicle_sidecar")
+    suspend fun getAll(): List<VehicleSidecar>
+
     /** Create-or-replace-wholesale - only ever called with a row already fully specified from the
      * current legacy [Vehicle] row's own phone-only columns (see
      * [com.kevin.legion.vehicle.FleetEngineStore]'s `syncVehicleToServer`), so a whole-row REPLACE

@@ -336,6 +336,12 @@ class MidnightApplication : Application() {
             runCatching { com.kevin.legion.backend.LastAspectsRealtime.bind(this@MidnightApplication) }
                 .onFailure { MidnightEvents.appStartWorkFailed("bind_last_aspects_realtime", it) }
 
+            // Fleet Realtime (live-sync ticket "the missing half of fleet sync") - same shape and
+            // reasoning as LedgerConfigRealtime above; see FleetRealtime's own class doc for the
+            // full lifecycle contract and why obd_samples/chassis_quirks are deliberately excluded.
+            runCatching { com.kevin.legion.backend.FleetRealtime.bind(this@MidnightApplication) }
+                .onFailure { MidnightEvents.appStartWorkFailed("bind_fleet_realtime", it) }
+
             // Reconcile the assistant's on/off flag to reality (measured defect, 2026-08-17):
             // AssistantIgnition's persisted flag can read true - and every UI surface built on it
             // agree - while AriaForegroundService is not actually running, because the ONLY

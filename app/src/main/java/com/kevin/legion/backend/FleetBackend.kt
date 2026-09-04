@@ -23,6 +23,17 @@ package com.kevin.legion.backend
  * "RULED 2026-08-29") - `supabase/migrations/20260829000200_vehicles_archived.sql`. It is USER
  * state, not device state (a car Kevin retired is retired everywhere), which is why it lives here
  * rather than in [com.kevin.legion.data.local.VehicleSidecar].
+ *
+ * [lastObdMac] joined at the live-sync fleet-pull ticket (2026-09-03), reversing part of ticket 26
+ * ruling 14's "obdMac is never uploaded, it is a MAC address and a car can change dongles" - the
+ * reversal is narrow and recorded in `memory/library/decisions.md`'s 2026-09-03 entry: identity
+ * still never keys on this column (that half of ruling 14 stands), it is sent BEST-EFFORT on every
+ * vehicle upsert purely as a REBUILD HINT, so a wiped phone that pulls this vehicle back down can
+ * reconstruct the legacy [com.kevin.legion.data.local.Vehicle] row and its
+ * [com.kevin.legion.data.local.VehicleSidecar] entry without waiting for the dongle to physically
+ * reconnect. Nullable and possibly stale (the car may since have a different dongle, or none at
+ * all) - see [FleetSync]'s own reconstruction logic for what happens when it is absent or already
+ * claimed by another vehicle's sidecar.
  */
 data class RemoteVehicle(
     val serverId: String,
@@ -39,6 +50,12 @@ data class RemoteVehicle(
     val deleted: Boolean,
     val originGuid: String?,
     val archived: Boolean,
+    // Defaulted to null (unlike every other field on this DTO) so the pre-existing fakes in
+    // FleetReconcileTest/MaintenanceScheduleReconcileTest/ObdSampleReconcileTest/
+    // FleetEngineStoreVehicleCutoverTest/FleetEngineStoreServiceHistoryCutoverTest - none of which
+    // exercise the hint - keep compiling unchanged. FleetSyncTest's own fake sets it explicitly
+    // wherever the hint matters to what it is asserting.
+    val lastObdMac: String? = null,
 )
 
 /**
@@ -91,6 +108,12 @@ data class MigratedVehicle(
  * [archived] joined ticket 27 - see [RemoteVehicle.archived]'s own doc comment. Always sent
  * explicitly (never omitted): this is a full PATCH of every column this type carries, same
  * "every column always touched" posture the rest of this type already has.
+ *
+ * [lastObdMac] joined the live-sync fleet-pull ticket (2026-09-03) - see [RemoteVehicle.lastObdMac]'s
+ * own doc comment. [com.kevin.legion.vehicle.FleetEngineStore.syncVehicleToServer] always sends the
+ * car's current [com.kevin.legion.data.local.Vehicle.obdMac] here on every sync, so the hint stays
+ * fresh; it is never read back into any decision this upload's own caller makes, only stored for a
+ * future pull to use.
  */
 data class VehicleUpload(
     val serverId: String?,
@@ -104,6 +127,7 @@ data class VehicleUpload(
     val odometerBaseline: Int?,
     val odometerBaselineAtMs: Long?,
     val archived: Boolean,
+    val lastObdMac: String?,
 )
 
 /**
@@ -574,6 +598,26 @@ data class ObdSampleUpload(
     val lng: Double?,
 )
 
+/**
+ * One `public.obd_samples` row as Postgres reports it, for [FleetBackend.fetchObdSamplesSince]'s
+ * WINDOWED pull (live-sync ticket, Kevin's OBD-volume ruling 2026-09-03: "recent window only,
+ * roughly the last 30 days"). No `serverId`/`syncId` at all - the table's own natural key is
+ * `(vehicle_id, pid, recorded_at)` (its own `on conflict do nothing`, per [ObdSampleUpload]'s own
+ * doc comment), which [FleetSync]'s pull-side dedup matches against directly rather than needing a
+ * separate identity column. No `deleted`/`deleted_at` either - `obd_samples` has no tombstone
+ * column at all (telemetry is append-only and never corrected), so a pull here is pure insert-if-
+ * absent, never a merge.
+ */
+data class RemoteObdSample(
+    val vehicleServerId: String,
+    val pid: String,
+    val value: Double,
+    val unit: String,
+    val recordedAtMs: Long,
+    val lat: Double?,
+    val lng: Double?,
+)
+
 data class RemoteDriveReassignment(
     val serverId: String,
     val syncId: String,
@@ -821,6 +865,75 @@ interface FleetBackend {
      * about the server's state after a run without re-opening that tradeoff.
      */
     suspend fun countObdSamples(): Result<Long>
+
+    // =============================================================================================
+    // Live pull (`FleetSync`, live-sync map ticket "fleet pull", 2026-09-03) - every `fetchChangedX
+    // Since` below is the tombstone-INCLUDING sibling of this file's `fetchActiveX` methods above,
+    // the same widening [LedgerConfigBackend.fetchChangedCategoriesSince] made over its own
+    // `fetchActiveX`-shaped predecessor. A `fetchActiveX` filters `deleted_at IS NULL` at the query
+    // level, which is exactly what made a tombstone unreachable for `EventsReconcile` before that was
+    // fixed - see this map's own class doc on the map's "what was actually wrong" section. These
+    // methods exist ALONGSIDE `fetchActiveX`, never replacing it: `FleetReconcile`/
+    // `MaintenanceScheduleReconcile`/`ObdSampleReconcile`'s own upload-then-refill logic keeps using
+    // `fetchActiveX` unchanged, per this ticket's own "do not touch the two batch reconciles' upload
+    // logic" instruction.
+    // =============================================================================================
+
+    /** Every vehicle changed at or after [sinceMs], tombstones included - `deleted_at` is NOT
+     * filtered, unlike [fetchActiveVehicles]. **Defaults to an empty result** - every fake
+     * `FleetBackend` predating this ticket (`FleetReconcileTest`/`ObdSampleReconcileTest`/etc.)
+     * exercises only the upload-side methods above and has no reason to implement a pull it never
+     * calls; [SupabaseFleetBackend] and `FleetSyncTest`'s own fake both override every method in
+     * this section for real. */
+    suspend fun fetchChangedVehiclesSince(sinceMs: Long): Result<List<RemoteVehicle>> = Result.success(emptyList())
+
+    /** Every service-history row changed at or after [sinceMs], tombstones included. Same default
+     * as [fetchChangedVehiclesSince]. */
+    suspend fun fetchChangedServiceHistorySince(sinceMs: Long): Result<List<RemoteServiceHistory>> = Result.success(emptyList())
+
+    /** Every drive changed at or after [sinceMs], tombstones included. Same default as
+     * [fetchChangedVehiclesSince]. */
+    suspend fun fetchChangedDrivesSince(sinceMs: Long): Result<List<RemoteDrive>> = Result.success(emptyList())
+
+    /** Every code event changed at or after [sinceMs], tombstones included. Same default as
+     * [fetchChangedVehiclesSince]. */
+    suspend fun fetchChangedCodeEventsSince(sinceMs: Long): Result<List<RemoteCodeEvent>> = Result.success(emptyList())
+
+    /** Every code-clear event changed at or after [sinceMs], tombstones included. Same default as
+     * [fetchChangedVehiclesSince]. */
+    suspend fun fetchChangedCodeClearEventsSince(sinceMs: Long): Result<List<RemoteCodeClearEvent>> = Result.success(emptyList())
+
+    /** Every oil analysis changed at or after [sinceMs], tombstones included. Same default as
+     * [fetchChangedVehiclesSince]. */
+    suspend fun fetchChangedOilAnalysesSince(sinceMs: Long): Result<List<RemoteOilAnalysis>> = Result.success(emptyList())
+
+    /** Every vehicle_spec row changed at or after [sinceMs]. No tombstone parameter to widen - this
+     * table has no `deleted_at` column at all (see [RemoteVehicleSpec]'s own doc comment), so this is
+     * simply the incremental-by-`updated_at` sibling of [fetchVehicleSpecs]'s unconditional full
+     * fetch, not a tombstone widening. Same default as [fetchChangedVehiclesSince]. */
+    suspend fun fetchChangedVehicleSpecsSince(sinceMs: Long): Result<List<RemoteVehicleSpec>> = Result.success(emptyList())
+
+    /** Every build-sheet entry changed at or after [sinceMs], tombstones included. Same default as
+     * [fetchChangedVehiclesSince]. */
+    suspend fun fetchChangedBuildEntriesSince(sinceMs: Long): Result<List<RemoteBuildEntry>> = Result.success(emptyList())
+
+    /** Every drive-reassignment correction changed at or after [sinceMs], tombstones included. Same
+     * default as [fetchChangedVehiclesSince]. */
+    suspend fun fetchChangedDriveReassignmentsSince(sinceMs: Long): Result<List<RemoteDriveReassignment>> = Result.success(emptyList())
+
+    /** Every maintenance schedule changed at or after [sinceMs], tombstones included. Same default
+     * as [fetchChangedVehiclesSince]. */
+    suspend fun fetchChangedMaintenanceSchedulesSince(sinceMs: Long): Result<List<RemoteMaintenanceSchedule>> = Result.success(emptyList())
+
+    /**
+     * One vehicle's `obd_samples` rows recorded at or after [sinceMs] - the WINDOWED pull Kevin's
+     * OBD-volume ruling (2026-09-03) asks for, deliberately never a whole-table fetch the way
+     * [countObdSamples]'s own doc comment says would "defeat the entire batching effort" applied in
+     * reverse (a full download instead of a full upload). Scoped to one vehicle at a time, not the
+     * whole table, so [FleetSync]'s pull can run the download per configured vehicle and never has to
+     * materialise every car's rows in memory at once. Same default as [fetchChangedVehiclesSince].
+     */
+    suspend fun fetchObdSamplesSince(vehicleServerId: String, sinceMs: Long): Result<List<RemoteObdSample>> = Result.success(emptyList())
 }
 
 /** Thrown (wrapped in [Result.failure]) by [SupabaseFleetBackend] for every failure branch - owned

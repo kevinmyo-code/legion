@@ -125,6 +125,14 @@ interface ServiceRecordDao {
     @Query("SELECT * FROM service_records WHERE syncId = :syncId LIMIT 1")
     suspend fun getBySyncId(syncId: String): ServiceRecord?
 
+    /** Finds a row by its [ServiceRecord.serverId] - `FleetSync`'s pull-side identity lookup for a
+     * row that reached the server through the LIVE cutover write ([FleetBackend.upsertServiceHistory])
+     * rather than the one-time migration insert, which is exactly the case where `origin_guid`
+     * ([getBySyncId]'s own key) is null server-side (see [RemoteServiceHistory.originGuid]'s own doc
+     * comment). Deliberately unfiltered on `deleted`, matching [getById]/[getBySyncId]'s own posture. */
+    @Query("SELECT * FROM service_records WHERE serverId = :serverId LIMIT 1")
+    suspend fun getByServerId(serverId: String): ServiceRecord?
+
     /** Total records for a vehicle - ticket 09's FLEET "NOT BUILT YET" block needs a real count, not a hardcoded one. */
     @Query("SELECT COUNT(*) FROM service_records WHERE vehicleId = :vehicleId AND deleted = 0")
     suspend fun countForVehicle(vehicleId: String): Int
@@ -178,4 +186,29 @@ interface ServiceRecordDao {
      */
     @Query("UPDATE service_records SET serverId = :serverId WHERE id = :id")
     suspend fun setServerId(id: Long, serverId: String)
+
+    /** `FleetSync`'s pull-side LWW merge of an already-present row - every field a
+     * [com.kevin.legion.backend.RemoteServiceHistory] carries, applied in one targeted write so a
+     * concurrent local writer's edit to a column this pull does not touch (there is none today, but
+     * the discipline matches every other targeted write in this file) is never at risk. `deleted`
+     * here mirrors the SERVER's own tombstone, a different channel from [softDelete]'s LOCAL-ONLY
+     * one (see [ServiceRecord.deleted]'s own doc comment on why the legacy Drive `Mode.UNION` sync
+     * can never see a local tombstone) - this pull runs over Supabase directly and is not subject to
+     * that limitation, so a `deleted = 1` written here genuinely reflects the server's own state. */
+    @Query(
+        "UPDATE service_records SET serviceName = :serviceName, mileage = :mileage, date = :date, " +
+            "costCents = :costCents, kind = :kind, deleted = :deleted, updatedAt = :updatedAt, " +
+            "serverId = :serverId WHERE id = :id"
+    )
+    suspend fun applyPulledMerge(
+        id: Long,
+        serviceName: String,
+        mileage: Int?,
+        date: Long?,
+        costCents: Long?,
+        kind: String,
+        deleted: Boolean,
+        updatedAt: Long,
+        serverId: String,
+    ): Int
 }

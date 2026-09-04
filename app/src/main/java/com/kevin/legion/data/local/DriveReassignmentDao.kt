@@ -43,4 +43,12 @@ interface DriveReassignmentDao {
      * own doc comment for why this is bookkeeping only, never consulted for identity. */
     @Query("UPDATE drive_reassignments SET serverId = :serverId WHERE id = :id")
     suspend fun setServerId(id: Long, serverId: String)
+
+    /** `FleetSync`'s pull-side tombstone handling - same "no local `deleted` column, a server
+     * tombstone becomes a real local delete" reasoning as [DriveDao.deleteBySyncId]. A deleted
+     * reassignment simply stops being re-applied on future runs; this does not un-apply whatever it
+     * already did to `obd_samples`, which is a known, named limitation - see `FleetSync`'s own class
+     * doc. */
+    @Query("DELETE FROM drive_reassignments WHERE syncId = :syncId")
+    suspend fun deleteBySyncId(syncId: String)
 }

@@ -175,6 +175,36 @@ interface VehicleDao {
     @Query("UPDATE vehicles SET archived = :archived, updatedAt = :now WHERE obdMac = :mac")
     suspend fun setArchived(mac: String, archived: Boolean, now: Long)
 
+    /** `FleetSync`'s pull-side LWW merge of an ALREADY-KNOWN vehicle (ticket "fleet pull",
+     * 2026-09-03) - every server-owned identity column in one targeted write, so `onboarded`/
+     * `tripMilesSinceBaseline`/`lastOdometerPromptAt`/`personaPrompt`/`voiceName`/`personaTraits`
+     * (all phone-only, per [Vehicle]'s own class doc) ride along untouched, the same "no whole-row
+     * clobber" discipline every other targeted write in this file already follows. Unlike
+     * [setIdentity], [confirmed] is taken from the remote row rather than always forced `true` -
+     * this is a MERGE of the server's actual state, not a driver confirming something just now.
+     * [odometerBaseline]/[odometerBaselineAt] follow the same "0/0L means never stated" convention
+     * [FleetEngineStore.syncVehicleToServer] already reads off this same pair. */
+    @Query(
+        "UPDATE vehicles SET year = :year, make = :make, model = :model, trim = :trim, name = :name, " +
+            "engine = :engine, confirmed = :confirmed, archived = :archived, " +
+            "odometerBaseline = :odometerBaseline, odometerBaselineAt = :odometerBaselineAt, " +
+            "updatedAt = :now WHERE obdMac = :mac"
+    )
+    suspend fun applyPulledIdentity(
+        mac: String,
+        year: Int,
+        make: String,
+        model: String,
+        trim: String,
+        name: String,
+        engine: String,
+        confirmed: Boolean,
+        archived: Boolean,
+        odometerBaseline: Int,
+        odometerBaselineAt: Long,
+        now: Long,
+    ): Int
+
     @Query("SELECT * FROM vehicles WHERE obdMac = :mac")
     suspend fun getByMac(mac: String): Vehicle?
 

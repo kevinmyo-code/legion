@@ -33,4 +33,11 @@ interface OilAnalysisDao {
      * check [com.kevin.legion.backend.FleetReconcile] uses, same role as [CodeEventDao.getBySyncId]. */
     @Query("SELECT * FROM oil_analyses WHERE syncId = :syncId LIMIT 1")
     suspend fun getBySyncId(syncId: String): OilAnalysis?
+
+    /** `FleetSync`'s pull-side tombstone handling - the tombstone design [delete]'s own dormant-code
+     * comment above says was needed before wiring a delete flow: a `deleted_at` set server-side is
+     * the trigger, and removing the local row (this table's own "no update" posture, same as
+     * [DriveDao.deleteBySyncId]) is how it is honoured on this device. */
+    @Query("DELETE FROM oil_analyses WHERE syncId = :syncId")
+    suspend fun deleteBySyncId(syncId: String)
 }

@@ -398,6 +398,11 @@ object FleetEngineStore {
                 odometerBaseline = odometerAtMs?.let { vehicle.odometerBaseline },
                 odometerBaselineAtMs = odometerAtMs,
                 archived = vehicle.archived,
+                // Best-effort rebuild hint (ticket "fleet pull", 2026-09-03 ruling reversing part
+                // of ticket 26 ruling 14 - see VehicleUpload.lastObdMac's own doc comment). Sent on
+                // every sync so it always reflects the car's CURRENT dongle, never the one that
+                // happened to be plugged in the first time this car synced.
+                lastObdMac = mac,
             ),
         ).getOrElse {
             Log.w("FleetEngineStore", "Supabase vehicle sync failed for $mac: ${it.message}")

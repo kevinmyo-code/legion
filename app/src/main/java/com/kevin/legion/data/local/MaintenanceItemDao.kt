@@ -212,4 +212,35 @@ interface MaintenanceItemDao {
      */
     @Query("SELECT * FROM maintenance_items WHERE deleted = 0")
     suspend fun getAllActive(): List<MaintenanceItem>
+
+    /** Every row across every vehicle, tombstoned included - `FleetSync`'s pull-side LWW merge needs
+     * to find an already-present (possibly tombstoned) row before deciding insert vs. update, the
+     * same "must see the tombstone to make a correct decision" reasoning [getForVehicleIncludingDeleted]'s
+     * own doc gives for a single vehicle, widened to every vehicle the way [getAllActive] widens
+     * [getForVehicle]. */
+    @Query("SELECT * FROM maintenance_items")
+    suspend fun getAllIncludingDeleted(): List<MaintenanceItem>
+
+    /** `FleetSync`'s pull-side LWW merge of an already-present `(vehicleId, serviceName)` row - every
+     * column a [com.kevin.legion.backend.RemoteMaintenanceSchedule] carries, applied in one targeted
+     * write (ticket 05's law: this is an UPDATE against a composite key already confirmed to exist by
+     * the caller's own lookup, so its row count is not separately checked the way a blind write here
+     * would need to be). `lastDoneMileage`/`lastDoneDate` are never touched - same "the server does
+     * not carry these, they are derived from `service_history` at read time" reasoning
+     * [MaintenanceScheduleReconcile]'s own class doc states for the upload direction. */
+    @Query(
+        "UPDATE maintenance_items SET intervalMiles = :intervalMiles, intervalMonths = :intervalMonths, " +
+            "intervalSource = :intervalSource, neverDone = :neverDone, deleted = :deleted, " +
+            "updatedAt = :updatedAt WHERE vehicleId = :vehicleId AND serviceName = :serviceName"
+    )
+    suspend fun applyPulledMerge(
+        vehicleId: String,
+        serviceName: String,
+        intervalMiles: Int?,
+        intervalMonths: Int?,
+        intervalSource: String,
+        neverDone: Boolean,
+        deleted: Boolean,
+        updatedAt: Long,
+    )
 }

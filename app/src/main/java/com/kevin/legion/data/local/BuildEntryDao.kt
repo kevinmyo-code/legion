@@ -63,4 +63,10 @@ interface BuildEntryDao {
      * doc comment. Mirrors [DriveDao.setServerId]/[CodeEventDao.setServerId] exactly. */
     @Query("UPDATE build_entries SET serverId = :serverId WHERE id = :id")
     suspend fun setServerId(id: Long, serverId: String)
+
+    /** `FleetSync`'s pull-side tombstone handling - the tombstone design [delete]'s own dormant-code
+     * comment says was needed first: a `deleted_at` set server-side is the trigger, honoured here as
+     * a real local delete rather than a soft one, same posture as [DriveDao.deleteBySyncId]. */
+    @Query("DELETE FROM build_entries WHERE syncId = :syncId")
+    suspend fun deleteBySyncId(syncId: String)
 }

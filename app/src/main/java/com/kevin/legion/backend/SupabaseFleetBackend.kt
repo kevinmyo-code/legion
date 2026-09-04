@@ -85,6 +85,10 @@ private data class VehicleWriteDto(
     @SerialName("odometer_baseline") val odometerBaseline: Int?,
     @SerialName("odometer_baseline_at") val odometerBaselineAt: String?,
     val archived: Boolean,
+    // Rebuild hint, joined 2026-09-03 (RemoteVehicle.lastObdMac's own doc comment) - always sent,
+    // never omitted, so every sync refreshes it with the car's CURRENT obdMac, same "every column
+    // always touched" posture the rest of this DTO already has.
+    @SerialName("last_obd_mac") val lastObdMac: String?,
 )
 
 /** The wire shape read back off `public.vehicles` for every operation. */
@@ -104,6 +108,7 @@ private data class VehicleRowDto(
     @SerialName("updated_at") val updatedAt: String,
     @SerialName("deleted_at") val deletedAt: String? = null,
     val archived: Boolean = false,
+    @SerialName("last_obd_mac") val lastObdMac: String? = null,
 ) {
     fun toRemoteVehicle() = RemoteVehicle(
         serverId = id,
@@ -120,6 +125,7 @@ private data class VehicleRowDto(
         deleted = deletedAt != null,
         originGuid = originGuid,
         archived = archived,
+        lastObdMac = lastObdMac,
     )
 }
 
@@ -783,6 +789,7 @@ class SupabaseFleetBackend(private val client: SupabaseClient) : FleetBackend {
                 odometerBaseline = vehicle.odometerBaseline,
                 odometerBaselineAt = tsOrNull(vehicle.odometerBaselineAtMs),
                 archived = vehicle.archived,
+                lastObdMac = vehicle.lastObdMac,
             )
             if (vehicle.serverId == null) {
                 client.postgrest.from(VEHICLES_TABLE)
@@ -1248,5 +1255,133 @@ class SupabaseFleetBackend(private val client: SupabaseClient) : FleetBackend {
                 head = true
                 count(Count.EXACT)
             }.countOrNull() ?: 0L
+        }
+
+    // =============================================================================================
+    // FleetSync's live pull - the `fetchChangedXSince` widenings [FleetBackend]'s own class doc
+    // describes, plus the windowed [fetchObdSamplesSince]. Every one below is a `gte("updated_at",
+    // ...)` select with NO `deleted_at IS NULL` filter, the same shape
+    // [SupabaseLedgerConfigBackend.fetchChangedCategoriesSince] already established - reused here
+    // verbatim rather than reinvented.
+    // =============================================================================================
+
+    private fun fleetTs(ms: Long): String = Instant.ofEpochMilli(ms).toString()
+
+    override suspend fun fetchChangedVehiclesSince(sinceMs: Long): Result<List<RemoteVehicle>> =
+        translating("load changed vehicles") {
+            client.postgrest.from(VEHICLES_TABLE)
+                .select { filter { gte("updated_at", fleetTs(sinceMs)) } }
+                .decodeList<VehicleRowDto>()
+                .map { it.toRemoteVehicle() }
+        }
+
+    override suspend fun fetchChangedServiceHistorySince(sinceMs: Long): Result<List<RemoteServiceHistory>> =
+        translating("load changed service history") {
+            client.postgrest.from(SERVICE_HISTORY_TABLE)
+                .select { filter { gte("updated_at", fleetTs(sinceMs)) } }
+                .decodeList<ServiceHistoryRowDto>()
+                .map { it.toRemoteServiceHistory() }
+        }
+
+    override suspend fun fetchChangedDrivesSince(sinceMs: Long): Result<List<RemoteDrive>> =
+        translating("load changed drives") {
+            client.postgrest.from(DRIVES_TABLE)
+                .select { filter { gte("updated_at", fleetTs(sinceMs)) } }
+                .decodeList<DriveRowDto>()
+                .map { it.toRemoteDrive() }
+        }
+
+    override suspend fun fetchChangedCodeEventsSince(sinceMs: Long): Result<List<RemoteCodeEvent>> =
+        translating("load changed stored codes") {
+            client.postgrest.from(CODE_EVENTS_TABLE)
+                .select { filter { gte("updated_at", fleetTs(sinceMs)) } }
+                .decodeList<CodeEventRowDto>()
+                .map { it.toRemoteCodeEvent() }
+        }
+
+    override suspend fun fetchChangedCodeClearEventsSince(sinceMs: Long): Result<List<RemoteCodeClearEvent>> =
+        translating("load changed code-clear history") {
+            client.postgrest.from(CODE_CLEAR_EVENTS_TABLE)
+                .select { filter { gte("updated_at", fleetTs(sinceMs)) } }
+                .decodeList<CodeClearEventRowDto>()
+                .map { it.toRemoteCodeClearEvent() }
+        }
+
+    override suspend fun fetchChangedOilAnalysesSince(sinceMs: Long): Result<List<RemoteOilAnalysis>> =
+        translating("load changed oil analyses") {
+            client.postgrest.from(OIL_ANALYSES_TABLE)
+                .select { filter { gte("updated_at", fleetTs(sinceMs)) } }
+                .decodeList<OilAnalysisRowDto>()
+                .map { it.toRemoteOilAnalysis() }
+        }
+
+    override suspend fun fetchChangedVehicleSpecsSince(sinceMs: Long): Result<List<RemoteVehicleSpec>> =
+        translating("load changed vehicle specs") {
+            // No deleted_at filter to widen - vehicle_specs has none, see RemoteVehicleSpec's own
+            // doc comment.
+            client.postgrest.from(VEHICLE_SPECS_TABLE)
+                .select { filter { gte("updated_at", fleetTs(sinceMs)) } }
+                .decodeList<VehicleSpecRowDto>()
+                .map { it.toRemoteVehicleSpec() }
+        }
+
+    override suspend fun fetchChangedBuildEntriesSince(sinceMs: Long): Result<List<RemoteBuildEntry>> =
+        translating("load changed build-sheet entries") {
+            client.postgrest.from(BUILD_ENTRIES_TABLE)
+                .select { filter { gte("updated_at", fleetTs(sinceMs)) } }
+                .decodeList<BuildEntryRowDto>()
+                .map { it.toRemoteBuildEntry() }
+        }
+
+    override suspend fun fetchChangedDriveReassignmentsSince(sinceMs: Long): Result<List<RemoteDriveReassignment>> =
+        translating("load changed drive-reassignment corrections") {
+            client.postgrest.from(DRIVE_REASSIGNMENTS_TABLE)
+                .select { filter { gte("updated_at", fleetTs(sinceMs)) } }
+                .decodeList<DriveReassignmentRowDto>()
+                .map { it.toRemoteDriveReassignment() }
+        }
+
+    override suspend fun fetchChangedMaintenanceSchedulesSince(sinceMs: Long): Result<List<RemoteMaintenanceSchedule>> =
+        translating("load changed maintenance schedules") {
+            client.postgrest.from(MAINTENANCE_SCHEDULES_TABLE)
+                .select { filter { gte("updated_at", fleetTs(sinceMs)) } }
+                .decodeList<MaintenanceScheduleRowDto>()
+                .map { it.toRemoteMaintenanceSchedule() }
+        }
+
+    /** The wire shape read back for [fetchObdSamplesSince] - deliberately no `id`/`serverId`/
+     * `deleted_at`, see [RemoteObdSample]'s own doc comment for why. */
+    @Serializable
+    private data class ObdSampleRowDto(
+        @SerialName("vehicle_id") val vehicleId: String,
+        val pid: String,
+        val value: Double,
+        val unit: String,
+        @SerialName("recorded_at") val recordedAt: String,
+        val lat: Double? = null,
+        val lng: Double? = null,
+    ) {
+        fun toRemoteObdSample() = RemoteObdSample(
+            vehicleServerId = vehicleId,
+            pid = pid,
+            value = value,
+            unit = unit,
+            recordedAtMs = parseTs(recordedAt),
+            lat = lat,
+            lng = lng,
+        )
+    }
+
+    override suspend fun fetchObdSamplesSince(vehicleServerId: String, sinceMs: Long): Result<List<RemoteObdSample>> =
+        translating("load recent OBD samples") {
+            client.postgrest.from(OBD_SAMPLES_TABLE)
+                .select {
+                    filter {
+                        eq("vehicle_id", vehicleServerId)
+                        gte("recorded_at", fleetTs(sinceMs))
+                    }
+                }
+                .decodeList<ObdSampleRowDto>()
+                .map { it.toRemoteObdSample() }
         }
 }

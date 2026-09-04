@@ -46,4 +46,11 @@ interface DriveDao {
      * comment for why this is bookkeeping only, never consulted for identity. */
     @Query("UPDATE drives SET serverId = :serverId WHERE id = :id")
     suspend fun setServerId(id: Long, serverId: String)
+
+    /** `FleetSync`'s pull-side tombstone handling (live-sync map, ticket "fleet pull"): a drive has
+     * no local `deleted` column to flip (this table's own class doc: "no update, no delete"), so
+     * honouring a server tombstone means removing the local row outright rather than soft-deleting
+     * it. Matched by [Drive.syncId] - the same portable identity [getBySyncId] already keys on. */
+    @Query("DELETE FROM drives WHERE syncId = :syncId")
+    suspend fun deleteBySyncId(syncId: String)
 }

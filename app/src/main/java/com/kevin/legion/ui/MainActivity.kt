@@ -294,6 +294,14 @@ class MainActivity : ComponentActivity() {
         // rather than sharing that lifecycleScope block.
         com.kevin.legion.backend.LedgerReconcile.maybeAutoRun(applicationContext)
         com.kevin.legion.backend.MaintenanceScheduleReconcile.maybeAutoRun(applicationContext)
+        // Fleet's live pull (live-sync ticket "the missing half of fleet sync"): vehicles first
+        // (reconstructing a wiped phone's legacy row + sidecar from the last_obd_mac hint where
+        // possible), then the nine tables that gap blocked, then the windowed obd_samples pull. No
+        // outbox to drain first - see FleetSync.maybeAutoPull's own doc comment for why fleet has
+        // none. Runs after the two batch uploads above so a vehicle this run just uploaded is
+        // already server-side by the time this pull reads it back - not load-bearing (the pull
+        // would simply see it next run otherwise), just the natural order.
+        com.kevin.legion.backend.FleetSync.maybeAutoPull(applicationContext)
         // The two remaining batch uploads that were reachable only from a BackendMigrationScreen
         // row nobody had wired up to run automatically: 5,263 obd_samples rows and 78
         // conversation_audit rows measured never-uploaded against the real phone and the real

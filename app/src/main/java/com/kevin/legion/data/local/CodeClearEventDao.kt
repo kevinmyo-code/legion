@@ -47,4 +47,9 @@ interface CodeClearEventDao {
      * own doc comment for why this is bookkeeping only, never consulted for identity. */
     @Query("UPDATE code_clear_events SET serverId = :serverId WHERE id = :id")
     suspend fun setServerId(id: Long, serverId: String)
+
+    /** `FleetSync`'s pull-side tombstone handling - same "no local `deleted` column, so a server
+     * tombstone means a real local delete" reasoning as [DriveDao.deleteBySyncId]. */
+    @Query("DELETE FROM code_clear_events WHERE syncId = :syncId")
+    suspend fun deleteBySyncId(syncId: String)
 }

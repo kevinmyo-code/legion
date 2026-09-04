@@ -5096,3 +5096,39 @@ dated comment recording the old entry's exact shape, matching the pattern every 
 that file already uses. The pre-loop `applyReassignments(db)` re-key call is UNCHANGED - it operates
 on the local `obd_samples` table regardless of which channel populates it. No other registry entry
 touched; no Room migration - this is a sync-registry change, not a schema one.
+
+**2026-09-03: `public.vehicles` gains `last_obd_mac` - a narrow, deliberate reversal of ticket 26
+ruling 14 (2026-08-29), to unblock fleet's live pull.** `.scratch/live-sync/map.md` ticket 05's
+fleet slice traced the blocker: every fleet table's local key is `Vehicle.obdMac`, and ruling 14 -
+*"It is a MAC address, and a car can change dongles"* - had kept `obdMac` off the server entirely.
+`VehicleSidecar` is the only mac<->serverId map and is local-only, so on a wiped phone a pull into
+`VehicleReplica` alone left `FleetEngineStore.getAll` (which still enumerates the LEGACY `vehicles`
+table by mac) returning nothing - nine tables downstream of a vehicle (`service_history`, `drives`,
+`code_events`, `code_clear_events`, `oil_analyses`, `vehicle_specs`, `build_entries`,
+`drive_reassignments`, `maintenance_schedules`) were unreachable until the exact same dongle
+happened to physically reconnect, which ruling 14 never actually required.
+
+Kevin's ruling: add a nullable `last_obd_mac` column, sent best-effort on every vehicle upsert, as
+a REBUILD HINT - never an identity. **The original reasoning survives in full for identity**:
+nothing may key, join, or dedupe on this column, ever, and a stale hint (the car since changed
+dongles) must never corrupt anything - `FleetSync.pullVehicles` refuses a hint already claimed by
+another vehicle's sidecar and falls back to `ActiveVehicle.newVehicleId()`'s existing synthetic-id
+convention (the same one a dongle-less `createCarProfile` car already uses) rather than ever
+guessing or fabricating a mac. A vehicle with a null or unmatched hint still appears and is fully
+usable - it just starts under a synthetic id, exactly as if it had been hand-created with no
+dongle at all, until a real dongle syncs and the CURRENT mac overwrites the hint server-side on the
+next upload (`VehicleUpload.lastObdMac` is sent unconditionally, refreshing it every sync).
+
+What makes this a reversal of scope, not of the ruling itself: ruling 14 was about `obdMac` as
+IDENTITY, and that half is untouched - this column is consulted exactly once per vehicle, the very
+first time a device sees that server row with no local sidecar entry yet, purely to shortcut a
+reconnect that would otherwise have to wait for the physical dongle. `supabase/migrations/
+20260903000100_fleet_pull.sql` adds the column (unapplied, as with every other UNAPPLIED migration
+in this repo - no CLI credentials in this environment). `backend/FleetSync.kt` is the pull that
+consumes it; `backend/FleetBackend.kt`/`SupabaseFleetBackend.kt` carry the wire shape.
+
+Also ruled the same day: `obd_samples`' live pull is WINDOWED, not whole-history - "recent window
+only... roughly the last 30 days", named as `FleetSync.OBD_PULL_WINDOW_DAYS`. Older rows stay
+server-side; the phone is a cache for this table, not the archive, and `FleetSync.PullReport`
+reports pulled-this-run alongside the server's own unwindowed `countObdSamples()` total side by
+side so neither number is mistaken for the whole history.

@@ -511,6 +511,59 @@ object MidnightEvents {
         Log.w(TAG, "last_aspects_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
+    /** A foreground [com.kevin.legion.backend.FleetSync.maybeAutoPull] pass completed across every
+     * fleet table this pull merges (vehicles/service_history/drives/code_events/code_clear_events/
+     * oil_analyses/vehicle_specs/build_entries/drive_reassignments/maintenance_schedules), plus the
+     * windowed `obd_samples` pull - same role as [ledgerConfigAutoPullSucceeded]. [reconstructed] is
+     * this pull's own addition: how many vehicles this run rebuilt a legacy row and sidecar entry
+     * for (a mac-hint match or a synthetic id), the count the "on a wiped phone" fix exists to make
+     * non-zero. [obdSamplesPulled] is the count actually downloaded THIS run inside the window;
+     * [obdSamplesServerTotal] is the server's own whole-table count ([FleetBackend.countObdSamples],
+     * unwindowed) - logged side by side deliberately, so the gap between them stays visible rather
+     * than letting the phone's windowed copy read as the whole history. */
+    fun fleetAutoPullSucceeded(
+        reconstructed: Int,
+        inserted: Int,
+        updated: Int,
+        tombstoned: Int,
+        skippedLocalNewer: Int,
+        skippedTombstoneNoLocalMatch: Int,
+        obdSamplesPulled: Int,
+        obdSamplesServerTotal: Long,
+    ) = safe {
+        Log.d(
+            TAG,
+            "fleet_auto_pull reconstructed=$reconstructed inserted=$inserted updated=$updated " +
+                "tombstoned=$tombstoned skippedLocalNewer=$skippedLocalNewer " +
+                "skippedTombstoneNoLocalMatch=$skippedTombstoneNoLocalMatch " +
+                "obdSamplesPulled=$obdSamplesPulled obdSamplesServerTotal=$obdSamplesServerTotal",
+        )
+    }
+
+    /** [com.kevin.legion.backend.FleetSync.maybeAutoPull] threw outright - degraded to this log
+     * line, same posture as [ledgerConfigAutoPullFailed]. */
+    fun fleetAutoPullFailed(e: Throwable) = safe {
+        Log.w(TAG, "fleet_auto_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** [com.kevin.legion.backend.FleetRealtime]'s channel subscribe attempt failed - same posture as
+     * [ledgerConfigRealtimeSubscribeFailed]. */
+    fun fleetRealtimeSubscribeFailed(e: Throwable) = safe {
+        Log.w(TAG, "fleet_realtime_subscribe_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
+    /** A [com.kevin.legion.backend.FleetRealtime]-triggered [com.kevin.legion.backend.FleetSync.pull]
+     * completed - same role as [ledgerConfigRealtimePullSucceeded]. */
+    fun fleetRealtimePullSucceeded(inserted: Int, updated: Int, tombstoned: Int) = safe {
+        Log.d(TAG, "fleet_realtime_pull inserted=$inserted updated=$updated tombstoned=$tombstoned")
+    }
+
+    /** A realtime-triggered fleet pull failed - degraded to this log line, same posture as
+     * [ledgerConfigRealtimePullFailed]. */
+    fun fleetRealtimePullFailed(e: Throwable) = safe {
+        Log.w(TAG, "fleet_realtime_pull_failed ${e.javaClass.simpleName}: ${e.message}", e)
+    }
+
     /** A voice tool was dispatched. Useful for tracing what tool ran before a crash. */
     fun toolDispatched(toolName: String) = safe { Log.d(TAG, "tool_dispatched: $toolName") }
 
